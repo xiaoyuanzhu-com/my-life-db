@@ -21,7 +21,8 @@ export function Header() {
             <span className="text-xl font-bold text-foreground">MyLifeDB</span>
           </Link>
 
-          <nav className="flex gap-6">
+          {/* Desktop navigation - hidden on mobile */}
+          <nav className="hidden md:flex gap-6">
             {navLinks.map((link) => {
               const isActive = pathname === link.href;
               return (
