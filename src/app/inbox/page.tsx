@@ -7,15 +7,15 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import Link from 'next/link';
 import type { Entry } from '@/types';
 
-export default function HomePage() {
-  const [recentEntries, setRecentEntries] = useState<Entry[]>([]);
+export default function InboxPage() {
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  async function loadRecentEntries() {
+  async function loadEntries() {
     try {
       const response = await fetch('/api/entries?directory=inbox');
       const data = await response.json();
-      setRecentEntries(data.entries.slice(0, 5)); // Show only 5 most recent
+      setEntries(data.entries);
     } catch (error) {
       console.error('Failed to load entries:', error);
     } finally {
@@ -24,7 +24,7 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    loadRecentEntries();
+    loadEntries();
   }, []);
 
   async function handleDelete(entryId: string) {
@@ -36,7 +36,7 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        await loadRecentEntries();
+        await loadEntries();
       }
     } catch (error) {
       console.error('Failed to delete entry:', error);
@@ -47,9 +47,17 @@ export default function HomePage() {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900">MyLifeDB</h1>
-          <p className="text-gray-600">Capture your thoughts, organize your knowledge</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
+            <p className="text-gray-600 mt-1">Your captured thoughts</p>
+          </div>
+          <Link
+            href="/"
+            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+          >
+            ← Home
+          </Link>
         </div>
 
         {/* Quick Add */}
@@ -58,48 +66,21 @@ export default function HomePage() {
             <h2 className="text-xl font-semibold text-gray-900">Quick Capture</h2>
           </CardHeader>
           <CardContent>
-            <QuickAdd onEntryCreated={loadRecentEntries} />
+            <QuickAdd onEntryCreated={loadEntries} />
           </CardContent>
         </Card>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="text-center py-6">
-              <div className="text-3xl font-bold text-blue-600">{recentEntries.length}</div>
-              <div className="text-sm text-gray-600">Recent Entries</div>
-            </CardContent>
-          </Card>
-          <Link href="/inbox">
-            <Card hover>
-              <CardContent className="text-center py-6">
-                <div className="text-lg font-semibold text-gray-900">View Inbox</div>
-                <div className="text-sm text-gray-600">See all captures</div>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/library">
-            <Card hover>
-              <CardContent className="text-center py-6">
-                <div className="text-lg font-semibold text-gray-900">Browse Library</div>
-                <div className="text-sm text-gray-600">Organized knowledge</div>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-
-        {/* Recent Entries */}
+        {/* Entry List */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Recent Entries</h2>
-            <Link href="/inbox" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-              View all →
-            </Link>
+            <h2 className="text-xl font-semibold text-gray-900">
+              All Entries ({entries.length})
+            </h2>
           </div>
 
           {isLoading ? (
             <div className="text-center py-12 text-gray-500">Loading...</div>
-          ) : recentEntries.length === 0 ? (
+          ) : entries.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
                 <p className="text-gray-600">No entries yet. Start capturing your thoughts above!</p>
@@ -107,7 +88,7 @@ export default function HomePage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {recentEntries.map((entry) => (
+              {entries.map((entry) => (
                 <EntryCard
                   key={entry.metadata.id}
                   entry={entry}

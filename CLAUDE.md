@@ -47,6 +47,10 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
 - Uses flat config format (eslint.config.mjs)
 - Ignores: `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`
 
+## Development Server
+
+**IMPORTANT:** Do NOT run `npm run dev` in the terminal. The user already has a development server running. Assume the server is always running at http://localhost:3000.
+
 ## Git Workflow
 
 **IMPORTANT:** Do NOT create git commits automatically. Only commit when explicitly instructed by the user with commands like "commit it" or "commit this".
