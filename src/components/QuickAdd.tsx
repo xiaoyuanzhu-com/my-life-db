@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Upload, Send } from 'lucide-react';
+import { Upload, Send, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuickAddProps {
@@ -107,7 +107,7 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
     <form onSubmit={handleSubmit} className="w-full">
       <div
         className={cn(
-          'relative rounded-lg border-2 border-dashed transition-all',
+          'relative rounded-lg border-2 border-dashed transition-all flex flex-col',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-border bg-card',
@@ -118,29 +118,57 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        {/* Textarea - grows to fill space, min height = 3x button height (40px * 3 = 120px) */}
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="What's on your mind? Type or drag files here..."
-          rows={6}
           disabled={isLoading}
           className={cn(
-            'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0 pr-14',
-            'placeholder:text-muted-foreground/60'
+            'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
+            'placeholder:text-muted-foreground/60 min-h-[120px]',
+            'pb-[52px]' // Space for bottom row (40px button + 12px padding)
           )}
           aria-invalid={!!error}
         />
 
-        {/* Send button positioned at lower right inside the input box */}
-        <Button
-          type="submit"
-          disabled={isLoading || (!content.trim() && selectedFiles.length === 0)}
-          size="icon"
-          className="absolute bottom-3 right-3"
-          aria-label={isLoading ? 'Saving...' : 'Send'}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+        {/* Bottom row: File chips + Send button - fixed at bottom */}
+        <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+          {/* File chips */}
+          <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto">
+            {selectedFiles.map((file, index) => (
+              <div
+                key={index}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 h-10',
+                  'bg-muted rounded-md text-sm whitespace-nowrap flex-shrink-0'
+                )}
+              >
+                <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="max-w-[120px] truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="ml-1 hover:bg-background rounded-full p-0.5 transition-colors"
+                  aria-label="Remove file"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Send button - fixed size */}
+          <Button
+            type="submit"
+            disabled={isLoading || (!content.trim() && selectedFiles.length === 0)}
+            size="icon"
+            className="h-10 w-10 flex-shrink-0"
+            aria-label={isLoading ? 'Saving...' : 'Send'}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
 
         {isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-lg pointer-events-none">
@@ -154,35 +182,6 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
 
       {error && (
         <p className="text-sm text-destructive mt-2">{error}</p>
-      )}
-
-      {/* Show selected files */}
-      {selectedFiles.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {selectedFiles.map((file, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between px-3 py-2 bg-muted rounded-md text-sm"
-            >
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="truncate">{file.name}</span>
-                <span className="text-muted-foreground flex-shrink-0">
-                  ({(file.size / 1024).toFixed(1)} KB)
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => removeFile(index)}
-                className="h-6 px-2"
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-        </div>
       )}
 
       <input
