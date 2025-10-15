@@ -1,12 +1,6 @@
 // API route for entries
 import { NextRequest, NextResponse } from 'next/server';
 import { createEntry, listEntries } from '@/lib/fs/storage';
-import { z } from 'zod';
-
-const CreateEntrySchema = z.object({
-  content: z.string().min(1),
-  tags: z.array(z.string()).optional(),
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,20 +21,35 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const validated = CreateEntrySchema.parse(body);
+    const formData = await request.formData();
+    const content = formData.get('content') as string;
+    const fileEntries = formData.getAll('files') as File[];
 
-    const entry = await createEntry(validated.content, validated.tags);
-
-    return NextResponse.json(entry, { status: 201 });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
+    if (!content && fileEntries.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid request data', details: error.errors },
+        { error: 'Content or files required' },
         { status: 400 }
       );
     }
 
+    // Process uploaded files
+    const files = [];
+    for (const file of fileEntries) {
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      files.push({
+        buffer,
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+      });
+    }
+
+    const entry = await createEntry(content || '', undefined, files);
+
+    return NextResponse.json(entry, { status: 201 });
+  } catch (error) {
     console.error('Error creating entry:', error);
     return NextResponse.json(
       { error: 'Failed to create entry' },

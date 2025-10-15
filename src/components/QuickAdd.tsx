@@ -15,13 +15,14 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!content.trim()) {
-      setError('Please enter some content');
+    if (!content.trim() && selectedFiles.length === 0) {
+      setError('Please enter some content or select files');
       return;
     }
 
@@ -29,14 +30,18 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
     setError('');
 
     try {
+      // Create FormData to support file uploads
+      const formData = new FormData();
+      formData.append('content', content.trim());
+
+      // Add files to FormData
+      selectedFiles.forEach((file) => {
+        formData.append('files', file);
+      });
+
       const response = await fetch('/api/entries', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content: content.trim(),
-        }),
+        body: formData, // Send as multipart/form-data
       });
 
       if (!response.ok) {
@@ -44,6 +49,10 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
       }
 
       setContent('');
+      setSelectedFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       onEntryCreated?.();
     } catch (err) {
       setError('Failed to save entry. Please try again.');
@@ -77,17 +86,21 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
 
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      // TODO: Implement file upload
-      setError('File upload coming soon! For now, you can paste text.');
+      setSelectedFiles(prev => [...prev, ...files]);
+      setError('');
     }
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (files && files.length > 0) {
-      // TODO: Implement file upload
-      setError('File upload coming soon! For now, you can paste text.');
+      setSelectedFiles(prev => [...prev, ...Array.from(files)]);
+      setError('');
     }
+  }
+
+  function removeFile(index: number) {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -121,7 +134,7 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
         {/* Send button positioned at lower right inside the input box */}
         <Button
           type="submit"
-          disabled={isLoading || !content.trim()}
+          disabled={isLoading || (!content.trim() && selectedFiles.length === 0)}
           size="icon"
           className="absolute bottom-3 right-3"
           aria-label={isLoading ? 'Saving...' : 'Send'}
@@ -143,12 +156,42 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
         <p className="text-sm text-destructive mt-2">{error}</p>
       )}
 
+      {/* Show selected files */}
+      {selectedFiles.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {selectedFiles.map((file, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between px-3 py-2 bg-muted rounded-md text-sm"
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="truncate">{file.name}</span>
+                <span className="text-muted-foreground flex-shrink-0">
+                  ({(file.size / 1024).toFixed(1)} KB)
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => removeFile(index)}
+                className="h-6 px-2"
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <input
         ref={fileInputRef}
         type="file"
         className="hidden"
         onChange={handleFileSelect}
         multiple
+        accept="image/*,application/pdf,.doc,.docx,.txt,.md"
       />
     </form>
   );

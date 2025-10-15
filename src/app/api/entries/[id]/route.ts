@@ -1,6 +1,6 @@
 // API route for single entry operations
 import { NextRequest, NextResponse } from 'next/server';
-import { readEntry, updateEntry, deleteEntry } from '@/lib/fs/storage';
+import { findEntryByUUID, updateEntry, deleteEntry } from '@/lib/fs/storage';
 import { z } from 'zod';
 
 const UpdateEntrySchema = z.object({
@@ -17,8 +17,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    // Try inbox first, then search library if needed
-    let entry = await readEntry(`inbox/${id}.md`);
+    // Find entry by UUID across all dates
+    const entry = await findEntryByUUID(id, 'inbox');
 
     if (!entry) {
       return NextResponse.json(
@@ -46,15 +46,17 @@ export async function PATCH(
     const body = await request.json();
     const validated = UpdateEntrySchema.parse(body);
 
-    // Try inbox first
-    let entry = await updateEntry(`inbox/${id}.md`, validated);
-
-    if (!entry) {
+    // Find entry by UUID first
+    const existingEntry = await findEntryByUUID(id, 'inbox');
+    if (!existingEntry) {
       return NextResponse.json(
         { error: 'Entry not found' },
         { status: 404 }
       );
     }
+
+    // Update using the entry's directory path
+    const entry = await updateEntry(existingEntry.directoryPath, validated);
 
     return NextResponse.json(entry);
   } catch (error) {
@@ -79,12 +81,23 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const success = await deleteEntry(`inbox/${id}.md`);
+
+    // Find entry by UUID first
+    const entry = await findEntryByUUID(id, 'inbox');
+    if (!entry) {
+      return NextResponse.json(
+        { error: 'Entry not found' },
+        { status: 404 }
+      );
+    }
+
+    // Delete using the entry's directory path
+    const success = await deleteEntry(entry.directoryPath);
 
     if (!success) {
       return NextResponse.json(
-        { error: 'Entry not found or could not be deleted' },
-        { status: 404 }
+        { error: 'Could not delete entry' },
+        { status: 500 }
       );
     }
 
