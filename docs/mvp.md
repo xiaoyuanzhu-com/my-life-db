@@ -24,11 +24,11 @@
 - ✅ Text capture with quick-add
 - ✅ Auto-save
 - ✅ AI tagging (2-3 tags per entry)
-- ✅ Manual Space creation
-- ✅ Entry-Space linking
+- ✅ Directory-based organization
+- ✅ Entry filing to directories
 - ✅ Full-text search
 - ✅ Export to Markdown
-- ✅ Local SQLite storage
+- ✅ Filesystem storage
 
 **What's Out:**
 - ⏭️ Voice/file upload
@@ -44,8 +44,8 @@
 ### 2.1 Main Application Pages
 - `/` - Homepage (default landing) - combined input, quick insights, and search
 - `/inbox` - Full Inbox view
-- `/library` - Library overview
-- `/library/[spaceId]` - Space detail view
+- `/library` - Library overview (directory browser)
+- `/library/[dirPath]` - Directory detail view
 - `/search` - Advanced search results page
 
 ### 2.2 Settings
@@ -58,9 +58,9 @@
 ### 3.1 Homepage
 - Quick-add input (prominent)
 - Global search bar
-- Quick insights panel (recent entries count, suggested Spaces)
+- Quick insights panel (recent entries count, suggested directories)
 - Recent entries preview (last 5-10)
-- Quick access to Spaces
+- Quick access to directories
 
 ### 3.2 Inbox (Entry Capture)
 - Quick-add bar (always visible)
@@ -79,38 +79,38 @@
 - Accept/reject tag suggestions
 - Confidence display
 
-### 3.4 Library (Spaces)
-- Space sidebar navigation
-- Create Space (manual)
-- Edit Space (title, description, cover)
-- Delete Space
-- Archive Space
-- Space detail view
-- Space card component
+### 3.4 Library (Directory Browser)
+- Directory tree navigation
+- Create directory
+- Rename directory
+- Delete directory
+- Archive directory
+- Directory detail view
+- Directory card component
 
-### 3.5 Entry-Space Linking
-- Link entry to Space(s)
-- Unlink entry from Space
-- View entries in Space
-- Many-to-many relationship
+### 3.5 Entry Filing
+- Move entry to directory
+- Copy entry to multiple directories
+- View entries in directory
+- Filesystem-based organization
 
 ### 3.6 Search
 - Global search bar (⌘K shortcut)
-- Full-text search (SQLite FTS5)
+- Full-text search across all files
 - Filter by date range
-- Filter by Space
+- Filter by directory
 - Search results list
 - Result highlighting
 
 ### 3.7 Export
-- Export single Space to Markdown
-- Export all data (JSON + Markdown)
-- Download as ZIP file
+- Export single directory to ZIP
+- Export all data (native filesystem copy)
+- Already in Markdown format
 
 ### 3.8 UI Components
 - Quick-add input
 - Entry card
-- Space card
+- Directory card
 - Search bar
 - Filter panel
 - Modal dialogs
@@ -121,16 +121,16 @@
 
 ## 4. Data Models
 
-### 4.1 Database Schema
+### 4.1 Filesystem Structure
 ### 4.2 TypeScript Types
-### 4.3 API Contracts
+### 4.3 File Formats
 
 ---
 
 ## 5. Common Patterns
 
-### 5.1 Server Actions
-### 5.2 Database Queries
+### 5.1 File Operations
+### 5.2 Directory Navigation
 ### 5.3 Error Handling
 ### 5.4 Loading States
 
