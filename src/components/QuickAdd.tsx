@@ -122,7 +122,7 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="What's on your mind? Type or drag files here..."
+          placeholder="Capture anything..."
           disabled={isLoading}
           className={cn(
             'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
