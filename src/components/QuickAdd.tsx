@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Upload } from 'lucide-react';
+import { Upload, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuickAddProps {
@@ -112,11 +112,22 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
           rows={6}
           disabled={isLoading}
           className={cn(
-            'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
+            'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0 pr-14',
             'placeholder:text-muted-foreground/60'
           )}
           aria-invalid={!!error}
         />
+
+        {/* Send button positioned at lower right inside the input box */}
+        <Button
+          type="submit"
+          disabled={isLoading || !content.trim()}
+          size="icon"
+          className="absolute bottom-3 right-3"
+          aria-label={isLoading ? 'Saving...' : 'Send'}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
 
         {isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-lg pointer-events-none">
@@ -131,26 +142,6 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
       {error && (
         <p className="text-sm text-destructive mt-2">{error}</p>
       )}
-
-      <div className="flex justify-end mt-4 gap-2">
-        {content.trim() && (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setContent('')}
-            disabled={isLoading}
-          >
-            Clear
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={isLoading || !content.trim()}
-          size="lg"
-        >
-          {isLoading ? 'Saving...' : 'Capture'}
-        </Button>
-      </div>
 
       <input
         ref={fileInputRef}
