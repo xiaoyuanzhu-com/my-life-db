@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Textarea } from './ui/Textarea';
-import { Button } from './ui/Button';
+import { Textarea } from './ui/textarea';
+import { Button } from './ui/button';
 
 interface QuickAddProps {
   onEntryCreated?: () => void;
@@ -57,10 +57,13 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
           onChange={(e) => setContent(e.target.value)}
           placeholder="What's on your mind? Start typing..."
           rows={4}
-          error={error}
           disabled={isLoading}
           className="font-sans"
+          aria-invalid={!!error}
         />
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
         <div className="flex justify-end gap-2">
           {content.trim() && (
             <Button

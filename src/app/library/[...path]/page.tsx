@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { EntryCard } from '@/components/EntryCard';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import type { Entry, Directory } from '@/types';
 
@@ -59,19 +59,19 @@ export default function DirectoryDetailPage({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-warm-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
       </div>
     );
   }
 
   if (!directory) {
     return (
-      <div className="min-h-screen bg-warm-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <Card>
           <CardContent className="text-center py-12">
-            <p className="text-gray-600">Directory not found</p>
-            <Link href="/library" className="text-amber-600 hover:text-amber-700 text-sm font-medium mt-4 inline-block">
+            <p className="text-muted-foreground">Directory not found</p>
+            <Link href="/library" className="text-primary hover:text-amber-700 text-sm font-medium mt-4 inline-block">
               ← Back to Library
             </Link>
           </CardContent>
@@ -81,22 +81,22 @@ export default function DirectoryDetailPage({
   }
 
   return (
-    <div className="min-h-screen bg-warm-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span className="text-4xl">{directory.metadata.icon || '📁'}</span>
-              <h1 className="text-3xl font-bold text-gray-900">{directory.metadata.name}</h1>
+              <h1 className="text-3xl font-bold text-foreground">{directory.metadata.name}</h1>
             </div>
             {directory.metadata.description && (
-              <p className="text-gray-600">{directory.metadata.description}</p>
+              <p className="text-muted-foreground">{directory.metadata.description}</p>
             )}
           </div>
           <Link
             href="/library"
-            className="text-amber-600 hover:text-amber-700 text-sm font-medium"
+            className="text-primary hover:text-amber-700 text-sm font-medium"
           >
             ← Library
           </Link>
@@ -106,15 +106,15 @@ export default function DirectoryDetailPage({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="text-center py-6">
-              <div className="text-2xl font-bold text-amber-600">{entries.length}</div>
-              <div className="text-sm text-gray-600">Entries</div>
+              <div className="text-2xl font-bold text-primary">{entries.length}</div>
+              <div className="text-sm text-muted-foreground">Entries</div>
             </CardContent>
           </Card>
           {directory.subdirectories.length > 0 && (
             <Card>
               <CardContent className="text-center py-6">
-                <div className="text-2xl font-bold text-amber-600">{directory.subdirectories.length}</div>
-                <div className="text-sm text-gray-600">Subdirectories</div>
+                <div className="text-2xl font-bold text-primary">{directory.subdirectories.length}</div>
+                <div className="text-sm text-muted-foreground">Subdirectories</div>
               </CardContent>
             </Card>
           )}
@@ -123,7 +123,7 @@ export default function DirectoryDetailPage({
         {/* Subdirectories */}
         {directory.subdirectories.length > 0 && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Subdirectories</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-4">Subdirectories</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {directory.subdirectories.map((subdir) => (
                 <Link
@@ -134,7 +134,7 @@ export default function DirectoryDetailPage({
                     <CardContent className="py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">📁</span>
-                        <span className="font-medium text-gray-900">{subdir}</span>
+                        <span className="font-medium text-foreground">{subdir}</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -146,14 +146,14 @@ export default function DirectoryDetailPage({
 
         {/* Entries */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-foreground mb-4">
             Entries ({entries.length})
           </h2>
 
           {entries.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   No entries in this directory yet. Move entries from your Inbox to organize them here.
                 </p>
               </CardContent>

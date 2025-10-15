@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QuickAdd } from '@/components/QuickAdd';
 import { EntryCard } from '@/components/EntryCard';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import type { Entry } from '@/types';
 
@@ -44,18 +44,18 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900">MyLifeDB</h1>
-          <p className="text-gray-600">Capture your thoughts, organize your knowledge</p>
+          <h1 className="text-4xl font-bold text-foreground">MyLifeDB</h1>
+          <p className="text-muted-foreground">Capture your thoughts, organize your knowledge</p>
         </div>
 
         {/* Quick Add */}
         <Card>
           <CardHeader>
-            <h2 className="text-xl font-semibold text-gray-900">Quick Capture</h2>
+            <CardTitle>Quick Capture</CardTitle>
           </CardHeader>
           <CardContent>
             <QuickAdd onEntryCreated={loadRecentEntries} />
@@ -66,23 +66,23 @@ export default function HomePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="text-center py-6">
-              <div className="text-3xl font-bold text-blue-600">{recentEntries.length}</div>
-              <div className="text-sm text-gray-600">Recent Entries</div>
+              <div className="text-3xl font-bold text-primary">{recentEntries.length}</div>
+              <div className="text-sm text-muted-foreground">Recent Entries</div>
             </CardContent>
           </Card>
           <Link href="/inbox">
-            <Card hover>
+            <Card className="transition-shadow hover:shadow-md">
               <CardContent className="text-center py-6">
-                <div className="text-lg font-semibold text-gray-900">View Inbox</div>
-                <div className="text-sm text-gray-600">See all captures</div>
+                <div className="text-lg font-semibold text-foreground">View Inbox</div>
+                <div className="text-sm text-muted-foreground">See all captures</div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/library">
-            <Card hover>
+            <Card className="transition-shadow hover:shadow-md">
               <CardContent className="text-center py-6">
-                <div className="text-lg font-semibold text-gray-900">Browse Library</div>
-                <div className="text-sm text-gray-600">Organized knowledge</div>
+                <div className="text-lg font-semibold text-foreground">Browse Library</div>
+                <div className="text-sm text-muted-foreground">Organized knowledge</div>
               </CardContent>
             </Card>
           </Link>
@@ -91,18 +91,18 @@ export default function HomePage() {
         {/* Recent Entries */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Recent Entries</h2>
-            <Link href="/inbox" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+            <h2 className="text-2xl font-bold text-foreground">Recent Entries</h2>
+            <Link href="/inbox" className="text-primary hover:text-primary/80 text-sm font-medium">
               View all →
             </Link>
           </div>
 
           {isLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading...</div>
+            <div className="text-center py-12 text-muted-foreground">Loading...</div>
           ) : recentEntries.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-600">No entries yet. Start capturing your thoughts above!</p>
+                <p className="text-muted-foreground">No entries yet. Start capturing your thoughts above!</p>
               </CardContent>
             </Card>
           ) : (

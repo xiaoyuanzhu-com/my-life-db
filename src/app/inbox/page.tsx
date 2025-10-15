@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QuickAdd } from '@/components/QuickAdd';
 import { EntryCard } from '@/components/EntryCard';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import type { Entry } from '@/types';
 
@@ -44,17 +44,17 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
-            <p className="text-gray-600 mt-1">Your captured thoughts</p>
+            <h1 className="text-3xl font-bold text-foreground">Inbox</h1>
+            <p className="text-muted-foreground mt-1">Your captured thoughts</p>
           </div>
           <Link
             href="/"
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="text-primary hover:text-blue-700 text-sm font-medium"
           >
             ← Home
           </Link>
@@ -63,7 +63,7 @@ export default function InboxPage() {
         {/* Quick Add */}
         <Card>
           <CardHeader>
-            <h2 className="text-xl font-semibold text-gray-900">Quick Capture</h2>
+            <h2 className="text-xl font-semibold text-foreground">Quick Capture</h2>
           </CardHeader>
           <CardContent>
             <QuickAdd onEntryCreated={loadEntries} />
@@ -73,17 +73,17 @@ export default function InboxPage() {
         {/* Entry List */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-xl font-semibold text-foreground">
               All Entries ({entries.length})
             </h2>
           </div>
 
           {isLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading...</div>
+            <div className="text-center py-12 text-muted-foreground">Loading...</div>
           ) : entries.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-600">No entries yet. Start capturing your thoughts above!</p>
+                <p className="text-muted-foreground">No entries yet. Start capturing your thoughts above!</p>
               </CardContent>
             </Card>
           ) : (

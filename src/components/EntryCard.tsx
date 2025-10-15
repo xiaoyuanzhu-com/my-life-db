@@ -1,7 +1,7 @@
 'use client';
 
-import { Card, CardContent } from './ui/Card';
-import { Button } from './ui/Button';
+import { Card, CardContent } from './ui/card';
+import { Button } from './ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import type { Entry } from '@/types';
 
@@ -25,14 +25,14 @@ export function EntryCard({ entry, onDelete, onMove }: EntryCardProps) {
     : entry.content.split('\n').slice(1).join('\n').substring(0, 200) + (entry.content.length > 200 ? '...' : '');
 
   return (
-    <Card hover className="group">
+    <Card className="group transition-shadow hover:shadow-md">
       <CardContent className="space-y-3">
         <div>
-          <h3 className="font-medium text-gray-900 line-clamp-2">
+          <h3 className="font-medium text-foreground line-clamp-2">
             {displayTitle}
           </h3>
           {displayContent && (
-            <p className="mt-2 text-sm text-gray-600 line-clamp-3 whitespace-pre-wrap">
+            <p className="mt-2 text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
               {displayContent}
             </p>
           )}
@@ -43,7 +43,7 @@ export function EntryCard({ entry, onDelete, onMove }: EntryCardProps) {
             {entry.metadata.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary"
               >
                 #{tag}
               </span>
@@ -51,8 +51,8 @@ export function EntryCard({ entry, onDelete, onMove }: EntryCardProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500">{timeAgo}</span>
+        <div className="flex items-center justify-between pt-2 border-t">
+          <span className="text-xs text-muted-foreground">{timeAgo}</span>
 
           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
             {onMove && (
@@ -67,9 +67,8 @@ export function EntryCard({ entry, onDelete, onMove }: EntryCardProps) {
             {onDelete && (
               <Button
                 size="sm"
-                variant="ghost"
+                variant="destructive"
                 onClick={() => onDelete(entry.metadata.id)}
-                className="text-red-600 hover:bg-red-50"
               >
                 Delete
               </Button>

@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { DirectoryCard } from '@/components/DirectoryCard';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import type { Directory } from '@/types';
 
@@ -66,17 +66,17 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Library</h1>
-            <p className="text-gray-600 mt-1">Your organized knowledge</p>
+            <h1 className="text-3xl font-bold text-foreground">Library</h1>
+            <p className="text-muted-foreground mt-1">Your organized knowledge</p>
           </div>
           <Link
             href="/"
-            className="text-amber-600 hover:text-amber-700 text-sm font-medium"
+            className="text-primary hover:text-amber-700 text-sm font-medium"
           >
             ← Home
           </Link>
@@ -92,7 +92,7 @@ export default function LibraryPage() {
             <Card>
               <CardContent>
                 <form onSubmit={handleCreateDirectory} className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Create New Directory</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Create New Directory</h3>
                   <Input
                     label="Name"
                     value={newDirName}
@@ -132,16 +132,16 @@ export default function LibraryPage() {
 
         {/* Directory List */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-foreground mb-4">
             Directories ({directories.length})
           </h2>
 
           {isLoading ? (
-            <div className="text-center py-12 text-gray-500">Loading...</div>
+            <div className="text-center py-12 text-muted-foreground">Loading...</div>
           ) : directories.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   No directories yet. Create your first directory to start organizing!
                 </p>
               </CardContent>
