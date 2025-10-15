@@ -46,3 +46,7 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
 ### ESLint Configuration
 - Uses flat config format (eslint.config.mjs)
 - Ignores: `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`
+
+## Git Workflow
+
+**IMPORTANT:** Do NOT create git commits automatically. Only commit when explicitly instructed by the user with commands like "commit it" or "commit this".
