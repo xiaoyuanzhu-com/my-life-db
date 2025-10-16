@@ -16,6 +16,32 @@ export interface EntryMetadata {
     tags: string[]; // AI-generated tags
     summary: string | null; // Brief AI summary
     confidence?: number; // 0-1 confidence score
+
+    // Content analysis
+    entities?: {
+      people?: string[]; // People mentioned
+      places?: string[]; // Locations mentioned
+      organizations?: string[]; // Companies, groups
+      concepts?: string[]; // Key concepts/topics
+      dates?: string[]; // Dates/times mentioned
+    };
+
+    // Classification
+    category?: 'journal' | 'idea' | 'observation' | 'question' | 'meeting' | 'todo' | 'note' | 'other';
+    sentiment?: 'positive' | 'negative' | 'neutral' | 'mixed';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+
+    // Context
+    mood?: string; // For journal entries
+    actionItems?: Array<{
+      task: string;
+      assignee?: string;
+      dueDate?: string;
+    }>;
+
+    // Relationships
+    relatedEntryIds?: string[]; // Similar/related entries
+    suggestedSpaces?: string[]; // Suggested categories/spaces
   };
 
   // File attachments metadata
@@ -71,4 +97,70 @@ export interface SearchQuery {
     tags?: string[];
   };
   limit?: number;
+}
+
+// AI Extraction Types
+export interface TextExtractionResult {
+  title: string | null;
+  summary: string | null;
+  tags: string[];
+  entities: {
+    people: string[];
+    places: string[];
+    organizations: string[];
+    concepts: string[];
+    dates: string[];
+  };
+  category: 'journal' | 'idea' | 'observation' | 'question' | 'meeting' | 'todo' | 'note' | 'other';
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  mood?: string;
+  actionItems: Array<{
+    task: string;
+    assignee?: string;
+    dueDate?: string;
+  }>;
+  confidence: number; // 0-1
+}
+
+export interface ImageExtractionResult {
+  caption: string | null;
+  ocrText: string | null;
+  imageType: 'photo' | 'screenshot' | 'diagram' | 'chart' | 'document' | 'other';
+  detectedObjects: string[];
+  tags: string[];
+  confidence: number;
+}
+
+export interface AudioExtractionResult {
+  transcription: string | null;
+  duration: number; // seconds
+  speakerCount: number;
+  keyPoints: string[];
+  actionItems: Array<{
+    task: string;
+    assignee?: string;
+  }>;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  confidence: number;
+}
+
+export interface LinkExtractionResult {
+  title: string | null;
+  description: string | null;
+  previewImage: string | null;
+  domain: string;
+  contentType: 'article' | 'video' | 'product' | 'tool' | 'other';
+  author?: string;
+  publishedDate?: string;
+  tags: string[];
+  confidence: number;
+}
+
+export interface ExtractionOptions {
+  includeEntities?: boolean;
+  includeSentiment?: boolean;
+  includeActionItems?: boolean;
+  includeRelatedEntries?: boolean;
+  minConfidence?: number; // 0-1, filter results below threshold
 }

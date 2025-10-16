@@ -41,6 +41,31 @@ export default function HomePage() {
     }
   }
 
+  async function handleProcess(entryId: string) {
+    try {
+      const response = await fetch(`/api/entries/${entryId}/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          includeEntities: true,
+          includeSentiment: true,
+          includeActionItems: true,
+          includeRelatedEntries: false,
+        }),
+      });
+
+      if (response.ok) {
+        await loadRecentEntries();
+      } else {
+        console.error('Failed to process entry');
+      }
+    } catch (error) {
+      console.error('Failed to process entry:', error);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Centered Input Section */}
@@ -69,6 +94,7 @@ export default function HomePage() {
                     key={entry.metadata.id}
                     entry={entry}
                     onDelete={handleDelete}
+                    onProcess={handleProcess}
                   />
                 ))}
               </div>
