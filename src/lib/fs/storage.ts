@@ -2,7 +2,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import type { Entry, EntryMetadata, Directory, DirectoryMetadata } from '@/types';
+import type { Entry, EntryMetadata, Directory, DirectoryMetadata, MessageType, AttachmentType } from '@/types';
 import { formatDateForDirectory, extractDateFromPath } from '@/lib/utils/slug';
 
 // Data root directory
@@ -19,6 +19,56 @@ export async function initializeStorage(): Promise<void> {
 // Generate unique UUID for entries
 export function generateId(): string {
   return randomUUID();
+}
+
+// Determine attachment type from MIME type
+function getAttachmentType(mimeType: string): AttachmentType {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType === 'application/pdf') return 'pdf';
+  return 'other';
+}
+
+// Determine message type based on content and attachments
+function determineMessageType(
+  content: string,
+  files?: Array<{ mimeType: string }>
+): MessageType {
+  const hasText = content && content.trim().length > 0;
+  const hasFiles = files && files.length > 0;
+
+  // No content at all
+  if (!hasText && !hasFiles) {
+    return 'text'; // Default to text
+  }
+
+  // Only text, no files
+  if (hasText && !hasFiles) {
+    // Check if it's a URL
+    const urlPattern = /^https?:\/\//i;
+    if (urlPattern.test(content.trim())) {
+      return 'url';
+    }
+    return 'text';
+  }
+
+  // Only files, no text
+  if (!hasText && hasFiles) {
+    // Single file determines type
+    if (files.length === 1) {
+      const mimeType = files[0].mimeType;
+      if (mimeType.startsWith('image/')) return 'image';
+      if (mimeType.startsWith('audio/')) return 'audio';
+      if (mimeType.startsWith('video/')) return 'video';
+      if (mimeType === 'application/pdf') return 'pdf';
+    }
+    // Multiple files or unknown type
+    return 'mixed';
+  }
+
+  // Both text and files
+  return 'mixed';
 }
 
 // --- Entry Operations ---
@@ -39,6 +89,9 @@ export async function createEntry(
   const entryDir = path.join(INBOX_DIR, dateDir, id);
   await fs.mkdir(entryDir, { recursive: true });
 
+  // Determine message type
+  const messageType = determineMessageType(content, files);
+
   // Save files alongside text.md
   const attachments = [];
   if (files && files.length > 0) {
@@ -50,6 +103,7 @@ export async function createEntry(
         filename: file.filename,
         mimeType: file.mimeType,
         size: file.size,
+        type: getAttachmentType(file.mimeType),
       });
     }
   }
@@ -57,6 +111,7 @@ export async function createEntry(
   // Create metadata
   const metadata: EntryMetadata = {
     id,
+    type: messageType,
     slug: null, // Will be set by AI processing later
     title: null, // Will be set by AI processing later
     createdAt: nowISO,

@@ -85,11 +85,20 @@ export function EntryCard({ entry, onDelete, onMove, onProcess }: EntryCardProps
             <h3 className="flex-1 font-medium text-foreground line-clamp-2">
               {displayTitle}
             </h3>
-            {entry.metadata.ai.processed && entry.metadata.ai.category && (
-              <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                {entry.metadata.ai.category}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Message type badge */}
+              {entry.metadata.type && entry.metadata.type !== 'text' && (
+                <span className="shrink-0 text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground border">
+                  {entry.metadata.type}
+                </span>
+              )}
+              {/* AI category badge */}
+              {entry.metadata.ai.processed && entry.metadata.ai.category && (
+                <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  {entry.metadata.ai.category}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* AI-generated summary */}

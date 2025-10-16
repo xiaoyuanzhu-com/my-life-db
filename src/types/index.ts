@@ -1,7 +1,25 @@
 // Core types for MyLifeDB
 
+/**
+ * Message Type - what kind of content the user sent
+ */
+export type MessageType =
+  | 'text'      // Plain text only
+  | 'url'       // Web link
+  | 'image'     // Single image (no text)
+  | 'audio'     // Audio recording
+  | 'video'     // Video file
+  | 'pdf'       // PDF document
+  | 'mixed';    // Text + attachments
+
+/**
+ * Attachment Type - categorized file type
+ */
+export type AttachmentType = 'image' | 'audio' | 'video' | 'pdf' | 'other';
+
 export interface EntryMetadata {
   id: string; // UUID v4
+  type: MessageType; // Type of message
   slug: string | null; // URL-safe slug from AI-generated title, initially null
   title: string | null; // AI-generated title, initially null
   createdAt: string; // ISO date string
@@ -49,6 +67,7 @@ export interface EntryMetadata {
     filename: string;
     mimeType: string;
     size: number; // bytes
+    type: AttachmentType; // Categorized file type
     ai?: {
       caption?: string; // Image caption
       ocr?: string; // Extracted text
