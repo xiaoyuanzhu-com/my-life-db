@@ -5,15 +5,16 @@ import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 
 const DATA_ROOT = path.join(process.cwd(), 'data');
-const SETTINGS_FILE = path.join(DATA_ROOT, 'settings.json');
+const APP_CONFIG_DIR = path.join(DATA_ROOT, 'apps', 'mylifedb');
+const SETTINGS_FILE = path.join(APP_CONFIG_DIR, 'config.json');
 
 /**
  * Load user settings from disk
  */
 export async function loadSettings(): Promise<UserSettings> {
   try {
-    // Ensure data directory exists
-    await fs.mkdir(DATA_ROOT, { recursive: true });
+    // Ensure app config directory exists
+    await fs.mkdir(APP_CONFIG_DIR, { recursive: true });
 
     // Try to read settings file
     const content = await fs.readFile(SETTINGS_FILE, 'utf-8');
@@ -52,8 +53,8 @@ export async function loadSettings(): Promise<UserSettings> {
  */
 export async function saveSettings(settings: UserSettings): Promise<void> {
   try {
-    // Ensure data directory exists
-    await fs.mkdir(DATA_ROOT, { recursive: true });
+    // Ensure app config directory exists
+    await fs.mkdir(APP_CONFIG_DIR, { recursive: true });
 
     // Write settings to file
     await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
