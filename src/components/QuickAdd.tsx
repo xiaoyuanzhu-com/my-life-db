@@ -107,7 +107,7 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
     <form onSubmit={handleSubmit} className="w-full">
       <div
         className={cn(
-          'relative rounded-lg border-2 border-dashed transition-all flex flex-col',
+          'relative rounded-lg border-2 border-dashed transition-all min-h-[172px]',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-border bg-card',
@@ -118,16 +118,24 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        {/* Show centered placeholder when empty */}
+        {!content && selectedFiles.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-3">
+            <p className="text-lg text-muted-foreground/60 text-center">
+              Type your thoughts or drag & drop files...
+            </p>
+          </div>
+        )}
+
         {/* Textarea - grows to fill space, min height = 3x button height (40px * 3 = 120px) */}
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Capture anything..."
+          placeholder=""
           disabled={isLoading}
           className={cn(
             'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
-            'placeholder:text-muted-foreground/60 min-h-[120px]',
-            'pb-[52px]' // Space for bottom row (40px button + 12px padding)
+            'min-h-[120px] pb-[52px]'
           )}
           aria-invalid={!!error}
         />
@@ -158,15 +166,13 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
             ))}
           </div>
 
-          {/* Send button - fixed size */}
+          {/* Send button - text only */}
           <Button
             type="submit"
             disabled={isLoading || (!content.trim() && selectedFiles.length === 0)}
-            size="icon"
-            className="h-10 w-10 flex-shrink-0"
-            aria-label={isLoading ? 'Saving...' : 'Send'}
+            className="h-10 flex-shrink-0"
           >
-            <Send className="h-4 w-4" />
+            <span>Send</span>
           </Button>
         </div>
 
