@@ -32,12 +32,15 @@ export default function InboxPage() {
     loadEntries();
   }, []);
 
-  // Group entries by date
+  // Group entries by date based on client's local timezone
   const groupedEntries = useMemo(() => {
     const groups = new Map<string, Entry[]>();
 
     entries.forEach((entry) => {
-      const dateKey = entry.date; // Format: YYYY-MM-DD
+      // Use createdAt timestamp and format in client's local timezone
+      const createdDate = new Date(entry.metadata.createdAt);
+      const dateKey = format(createdDate, 'yyyy-MM-dd'); // Format in local timezone
+
       if (!groups.has(dateKey)) {
         groups.set(dateKey, []);
       }
@@ -92,7 +95,7 @@ export default function InboxPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="px-[20%] py-8">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Inbox</h1>
@@ -112,7 +115,7 @@ export default function InboxPage() {
             {groupedEntries.map((group) => (
               <section key={group.date} className="space-y-4">
                 {/* Sticky Date Header - sticks below global header */}
-                <div className="sticky top-[73px] z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-3 border-b -mx-4 px-4">
+                <div className="sticky top-[73px] z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-3 border-b">
                   <h2 className="text-xl font-semibold text-foreground">
                     {group.displayDate}
                   </h2>

@@ -81,7 +81,7 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="px-[20%] py-12">
         <div className="text-center">Loading settings...</div>
       </div>
     );
@@ -89,15 +89,15 @@ export default function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="px-[20%] py-12">
         <div className="text-center text-destructive">Failed to load settings</div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12 mb-20 md:mb-0">
-      <div className="space-y-6">
+    <div className="px-[20%] py-12 mb-20 md:mb-0">
+      <div className="max-w-4xl space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground mt-2">
