@@ -3,14 +3,14 @@
 import { useState, useRef } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Upload, Send, X } from 'lucide-react';
+import { Upload, Send, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface QuickAddProps {
+interface OmniInputProps {
   onEntryCreated?: () => void;
 }
 
-export function QuickAdd({ onEntryCreated }: QuickAddProps) {
+export function OmniInput({ onEntryCreated }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -107,48 +107,38 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
     <form onSubmit={handleSubmit} className="w-full">
       <div
         className={cn(
-          'relative rounded-lg border-2 border-dashed transition-all min-h-[172px]',
+          'relative rounded-xl border transition-all overflow-hidden',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-border bg-card',
-          'hover:border-primary/50'
+          'hover:border-primary/50 focus-within:border-primary'
         )}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Show centered placeholder when empty */}
-        {!content && selectedFiles.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-3">
-            <p className="text-lg text-muted-foreground/60 text-center">
-              Type your thoughts or drag & drop files...
-            </p>
-          </div>
-        )}
-
-        {/* Textarea - grows to fill space, min height = 3x button height (40px * 3 = 120px) */}
+        {/* Textarea with regular placeholder */}
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder=""
+          placeholder="What's up?"
           disabled={isLoading}
           className={cn(
-            'border-0 bg-transparent text-lg resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
-            'min-h-[120px] pb-[52px]'
+            'border-0 bg-transparent text-base resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
+            'placeholder:text-muted-foreground/50 min-h-[120px] px-4 pt-4 pb-2'
           )}
           aria-invalid={!!error}
         />
 
-        {/* Bottom row: File chips + Send button - fixed at bottom */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-          {/* File chips */}
-          <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto">
+        {/* File chips above control bar */}
+        {selectedFiles.length > 0 && (
+          <div className="flex items-center gap-2 px-4 pb-2 overflow-x-auto">
             {selectedFiles.map((file, index) => (
               <div
                 key={index}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 h-10',
+                  'flex items-center gap-1.5 px-3 py-1.5',
                   'bg-muted rounded-md text-sm whitespace-nowrap flex-shrink-0'
                 )}
               >
@@ -165,19 +155,33 @@ export function QuickAdd({ onEntryCreated }: QuickAddProps) {
               </div>
             ))}
           </div>
+        )}
 
-          {/* Send button - text only */}
+        {/* Bottom control bar - floating buttons */}
+        <div className="flex items-center justify-between px-3 py-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Add file"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+
           <Button
             type="submit"
-            disabled={isLoading || (!content.trim() && selectedFiles.length === 0)}
-            className="h-10 flex-shrink-0"
+            disabled={isLoading}
+            size="sm"
+            className="h-8"
           >
             <span>Send</span>
           </Button>
         </div>
 
         {isDragging && (
-          <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-lg pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-xl pointer-events-none">
             <div className="text-center">
               <Upload className="h-12 w-12 mx-auto mb-2 text-primary" />
               <p className="text-sm font-medium text-primary">Drop files here</p>
