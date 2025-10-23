@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { UserSettings } from '@/lib/config/settings';
 import { Sparkles, Save, RotateCcw, Check } from 'lucide-react';
 
@@ -12,7 +19,6 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'ai' | 'extraction'>('ai');
 
   useEffect(() => {
     loadSettings();
@@ -97,7 +103,7 @@ export default function SettingsPage() {
 
   return (
     <div className="px-[20%] py-12 mb-20 md:mb-0">
-      <div className="max-w-4xl space-y-6">
+      <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground mt-2">
@@ -105,44 +111,17 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* Simple tabs */}
-        <div className="border-b">
-          <div className="flex gap-6">
-            <button
-              className={`pb-3 px-1 border-b-2 transition-colors ${
-                activeTab === 'ai'
-                  ? 'border-primary text-primary font-medium'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setActiveTab('ai')}
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4" />
-                AI Configuration
-              </div>
-            </button>
-            <button
-              className={`pb-3 px-1 border-b-2 transition-colors ${
-                activeTab === 'extraction'
-                  ? 'border-primary text-primary font-medium'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setActiveTab('extraction')}
-            >
-              Extraction Settings
-            </button>
-          </div>
-        </div>
-
-        {/* AI Configuration Tab */}
-        {activeTab === 'ai' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Provider</CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                Choose your AI provider for information extraction
-              </p>
-            </CardHeader>
+        {/* AI Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              AI Provider
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Choose your AI provider for information extraction
+            </p>
+          </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Provider</label>
@@ -308,17 +287,15 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
-        )}
 
-        {/* Extraction Settings Tab */}
-        {activeTab === 'extraction' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Default Extraction Options</CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                Configure what information is extracted from your entries
-              </p>
-            </CardHeader>
+        {/* Extraction Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Default Extraction Options</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Configure what information is extracted from your entries
+            </p>
+          </CardHeader>
             <CardContent className="space-y-4">
               {[
                 { key: 'autoProcess', label: 'Auto-process new entries', description: 'Automatically extract information when creating entries' },
@@ -364,7 +341,54 @@ export default function SettingsPage() {
               ))}
             </CardContent>
           </Card>
-        )}
+
+        {/* Skills Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Skills & Capabilities</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Configure AI skills and processing capabilities
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[
+              { key: 'crawl', label: 'Web Crawling' },
+              { key: 'imageCaptioning', label: 'Image Captioning' },
+              { key: 'imageOcr', label: 'Image OCR' },
+              { key: 'asr', label: 'Automatic Speech Recognition' },
+              { key: 'speakerRecognition', label: 'Speaker Recognition' },
+              { key: 'faceDetection', label: 'Face Detection' },
+              { key: 'faceRecognition', label: 'Face Recognition' },
+            ].map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between py-2">
+                <div className="space-y-0.5">
+                  <label className="text-sm font-medium">
+                    {label}
+                  </label>
+                </div>
+                <Select
+                  value={settings.skills?.[key as keyof typeof settings.skills] || 'homelab-ai-in-docker'}
+                  onValueChange={(value) =>
+                    setSettings({
+                      ...settings,
+                      skills: {
+                        ...settings.skills,
+                        [key]: value,
+                      },
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="homelab-ai-in-docker">homelab-ai-in-docker</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         {/* Action Buttons */}
         <div className="flex items-center justify-between pt-6 border-t">
