@@ -1,10 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { siGithub, siDiscord } from 'simple-icons';
+import { Settings } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 export function Footer() {
+  const pathname = usePathname();
+
   return (
     <footer className="bg-card mt-auto">
       <div className="max-w-7xl mx-auto px-4 py-2">
@@ -44,6 +48,16 @@ export function Footer() {
           </Link>
 
           <ThemeToggle />
+
+          <Link
+            href="/settings"
+            className={`flex items-center hover:text-foreground transition-colors ${
+              pathname === '/settings' ? 'text-foreground' : ''
+            }`}
+            title="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </div>
     </footer>
