@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
 import { siGithub, siDiscord } from 'simple-icons';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Footer() {
   return (
@@ -39,6 +42,8 @@ export function Footer() {
               <path d={siDiscord.path} />
             </svg>
           </Link>
+
+          <ThemeToggle />
         </div>
       </div>
     </footer>
