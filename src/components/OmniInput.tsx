@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Upload, Send, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { InputTypeTag } from './InputTypeTag';
+import { detectInputType, InputType } from '@/lib/utils/inputTypeDetector';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
@@ -16,7 +18,51 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [detectedType, setDetectedType] = useState<InputType | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced input type detection
+  const performDetection = useCallback(async () => {
+    if (!content.trim() && selectedFiles.length === 0) {
+      setDetectedType(null);
+      setIsDetecting(false);
+      return;
+    }
+
+    setIsDetecting(true);
+
+    try {
+      const result = await detectInputType(content, selectedFiles);
+      setDetectedType(result.type);
+    } catch (err) {
+      console.error('Detection error:', err);
+      setDetectedType(null);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [content, selectedFiles]);
+
+  // Effect to trigger debounced detection
+  useEffect(() => {
+    // Clear existing timeout
+    if (detectionTimeoutRef.current) {
+      clearTimeout(detectionTimeoutRef.current);
+    }
+
+    // Set new timeout for detection (300ms debounce)
+    detectionTimeoutRef.current = setTimeout(() => {
+      performDetection();
+    }, 300);
+
+    // Cleanup
+    return () => {
+      if (detectionTimeoutRef.current) {
+        clearTimeout(detectionTimeoutRef.current);
+      }
+    };
+  }, [performDetection]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +96,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
 
       setContent('');
       setSelectedFiles([]);
+      setDetectedType(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -169,6 +216,9 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
           >
             <Plus className="h-4 w-4" />
           </Button>
+
+          {/* Input type tag in the middle */}
+          <InputTypeTag type={detectedType} isDetecting={isDetecting} />
 
           <Button
             type="submit"
