@@ -16,7 +16,7 @@ export function Header() {
 
   return (
     <header className="bg-card border-b sticky top-0 z-10">
-      <div className="max-w-7xl mx-auto px-4 py-2">
+      <div className="px-[10%] py-2">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image
