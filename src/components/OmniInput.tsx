@@ -155,9 +155,10 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
       <div
         className={cn(
           'relative rounded-xl border transition-all overflow-hidden',
+          'bg-muted',
           isDragging
             ? 'border-primary bg-primary/5'
-            : 'border-border bg-card',
+            : 'border-border',
           'hover:border-primary/50 focus-within:border-primary'
         )}
         onDragEnter={handleDragEnter}
@@ -172,7 +173,8 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
           placeholder="What's up?"
           disabled={isLoading}
           className={cn(
-            'border-0 bg-transparent text-base resize-none focus-visible:ring-0 focus-visible:ring-offset-0',
+            'border-0 bg-transparent shadow-none text-base resize-none',
+            'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
             'placeholder:text-muted-foreground/50 min-h-[120px] px-4 pt-4 pb-2'
           )}
           aria-invalid={!!error}
