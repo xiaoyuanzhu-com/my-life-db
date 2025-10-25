@@ -1,4 +1,12 @@
-# MyLifeDB MVP
+# MyLifeDB
+
+**Your thoughts. Your files. Your system.**
+
+Just directories and markdown files. That's it.
+
+No database. No migration. No vendor lock-in. Apps adapt to your files, not the other way around. Use any editor, any tool, any app—simultaneously. Your knowledge lives in plain text, forever yours.
+
+---
 
 A filesystem-based personal knowledge management system built with Next.js 15, React 19, and TypeScript.
 
