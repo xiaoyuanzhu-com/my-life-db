@@ -1,10 +1,26 @@
 # MyLifeDB
 
-**Your thoughts. Your files. Your system.**
+> folders and files, that's it.
 
-Just directories and markdown files. That's it.
+what's behind:
 
-No database. No migration. No vendor lock-in. Apps adapt to your files, not the other way around. Use any editor, any tool, any app—simultaneously. Your knowledge lives in plain text, forever yours.
+* app adapt to you, not the other way around.
+* use your favorite apps, at the same time.
+* zero vendor lock-in.
+
+## Conventions
+
+### .app folder
+
+Every app can have its own folder to store app-specific data, settings, cache, etc.
+
+### .log folder
+
+Who did what and when, log mainly serve 2 purposes: 1, audit trail; 2, app who joined later can replay the log to catch up.
+
+### README.md
+
+Each folder can have a README.md to describe the purpose of the folder, its structure, and any other relevant information.
 
 ---
 
