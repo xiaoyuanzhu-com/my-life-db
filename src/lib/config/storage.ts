@@ -32,6 +32,10 @@ export async function loadSettings(): Promise<UserSettings> {
         ...DEFAULT_SETTINGS.ai,
         ...settings.ai,
       },
+      vendors: {
+        ...DEFAULT_SETTINGS.vendors,
+        ...settings.vendors,
+      },
       extraction: {
         ...DEFAULT_SETTINGS.extraction,
         ...settings.extraction,
@@ -82,6 +86,10 @@ export async function updateSettings(
     ai: {
       ...currentSettings.ai,
       ...updates.ai,
+    },
+    vendors: {
+      ...currentSettings.vendors,
+      ...updates.vendors,
     },
     extraction: {
       ...currentSettings.extraction,

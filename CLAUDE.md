@@ -54,3 +54,7 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
 ## Git Workflow
 
 **IMPORTANT:** Do NOT create git commits automatically. Only commit when explicitly instructed by the user with commands like "commit it" or "commit this".
+
+## Design Preferences
+
+- **Minimal Borders**: Avoid using too many dividers and borders in the UI. Keep the design clean and minimal.

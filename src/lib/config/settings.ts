@@ -40,6 +40,17 @@ export interface UserSettings {
   // AI Configuration
   ai: AIConfig;
 
+  // Vendor Configuration
+  vendors?: {
+    openai?: {
+      baseUrl?: string;
+      apiKey?: string;
+    };
+    homelabAi?: {
+      baseUrl?: string;
+    };
+  };
+
   // Extraction Options (defaults for processing)
   extraction: {
     autoProcess: boolean; // Auto-process new entries
@@ -130,5 +141,16 @@ export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> 
           }
         : undefined,
     },
+    vendors: settings.vendors
+      ? {
+          ...settings.vendors,
+          openai: settings.vendors.openai
+            ? {
+                ...settings.vendors.openai,
+                apiKey: settings.vendors.openai.apiKey ? '***' : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
   };
 }

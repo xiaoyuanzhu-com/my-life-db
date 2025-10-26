@@ -58,6 +58,10 @@ export async function PUT(request: NextRequest) {
         ...currentSettings.ai,
         ...updates.ai,
       },
+      vendors: {
+        ...currentSettings.vendors,
+        ...updates.vendors,
+      },
       extraction: {
         ...currentSettings.extraction,
         ...updates.extraction,

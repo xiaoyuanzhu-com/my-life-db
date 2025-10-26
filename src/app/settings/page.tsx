@@ -4,15 +4,8 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { UserSettings } from '@/lib/config/settings';
-import { Sparkles, Save, RotateCcw, Check } from 'lucide-react';
+import { Sparkles, Save, Check } from 'lucide-react';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Partial<UserSettings> | null>(null);
@@ -64,26 +57,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleReset() {
-    if (!confirm('Are you sure you want to reset all settings to defaults?')) return;
-
-    try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset' }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
-        setSaveMessage('Settings reset to defaults');
-        setTimeout(() => setSaveMessage(null), 3000);
-      }
-    } catch (error) {
-      console.error('Failed to reset settings:', error);
-    }
-  }
 
   if (isLoading) {
     return (
@@ -288,6 +261,67 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+        {/* Vendor Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Vendor Configuration</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Configure third-party vendor endpoints and credentials
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">OpenAI - Base URL (OPENAI_BASE_URL)</label>
+              <Input
+                placeholder="https://api.openai.com/v1"
+                value={settings.vendors?.openai?.baseUrl || ''}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    vendors: {
+                      ...settings.vendors,
+                      openai: { ...settings.vendors?.openai, baseUrl: e.target.value },
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">OpenAI - API Key (OPENAI_API_KEY)</label>
+              <Input
+                type="password"
+                placeholder="sk-..."
+                value={settings.vendors?.openai?.apiKey || ''}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    vendors: {
+                      ...settings.vendors,
+                      openai: { ...settings.vendors?.openai, apiKey: e.target.value },
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Homelab AI in Docker - Base URL</label>
+              <Input
+                placeholder="http://localhost:8080"
+                value={settings.vendors?.homelabAi?.baseUrl || ''}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    vendors: {
+                      ...settings.vendors,
+                      homelabAi: { ...settings.vendors?.homelabAi, baseUrl: e.target.value },
+                    },
+                  })
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Extraction Settings */}
         <Card>
           <CardHeader>
@@ -342,79 +376,24 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-        {/* Skills Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Skills & Capabilities</CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">
-              Configure AI skills and processing capabilities
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { key: 'crawl', label: 'Web Crawling' },
-              { key: 'imageCaptioning', label: 'Image Captioning' },
-              { key: 'imageOcr', label: 'Image OCR' },
-              { key: 'asr', label: 'Automatic Speech Recognition' },
-              { key: 'speakerRecognition', label: 'Speaker Recognition' },
-              { key: 'faceDetection', label: 'Face Detection' },
-              { key: 'faceRecognition', label: 'Face Recognition' },
-            ].map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between py-2">
-                <div className="space-y-0.5">
-                  <label className="text-sm font-medium">
-                    {label}
-                  </label>
-                </div>
-                <Select
-                  value={settings.skills?.[key as keyof typeof settings.skills] || 'homelab-ai-in-docker'}
-                  onValueChange={(value) =>
-                    setSettings({
-                      ...settings,
-                      skills: {
-                        ...settings.skills,
-                        [key]: value,
-                      },
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Select provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="homelab-ai-in-docker">homelab-ai-in-docker</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
         {/* Action Buttons */}
-        <div className="flex items-center justify-between pt-6 border-t">
-          <Button variant="outline" onClick={handleReset} className="gap-2">
-            <RotateCcw className="h-4 w-4" />
-            Reset to Defaults
+        <div className="flex items-center justify-end gap-3 pt-6">
+          {saveMessage && (
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-green-600" />
+              <span
+                className={`text-sm ${
+                  saveMessage.includes('Error') ? 'text-destructive' : 'text-green-600'
+                }`}
+              >
+                {saveMessage}
+              </span>
+            </div>
+          )}
+          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+            <Save className="h-4 w-4" />
+            {isSaving ? 'Saving...' : 'Save Settings'}
           </Button>
-
-          <div className="flex items-center gap-3">
-            {saveMessage && (
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-600" />
-                <span
-                  className={`text-sm ${
-                    saveMessage.includes('Error') ? 'text-destructive' : 'text-green-600'
-                  }`}
-                >
-                  {saveMessage}
-                </span>
-              </div>
-            )}
-            <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-              <Save className="h-4 w-4" />
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </Button>
-          </div>
         </div>
       </div>
     </div>
