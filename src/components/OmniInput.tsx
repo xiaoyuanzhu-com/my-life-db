@@ -173,7 +173,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
           placeholder="What's up?"
           disabled={isLoading}
           className={cn(
-            'border-0 bg-transparent shadow-none text-base resize-none',
+            'border-0 bg-transparent shadow-none text-base resize-none cursor-text',
             'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
             'placeholder:text-muted-foreground/50 min-h-[120px] px-4 pt-4 pb-2'
           )}
@@ -212,7 +212,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Add file"
           >
@@ -226,7 +226,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
             type="submit"
             disabled={isLoading}
             size="sm"
-            className="h-8"
+            className="h-8 cursor-pointer"
           >
             <span>Send</span>
           </Button>
