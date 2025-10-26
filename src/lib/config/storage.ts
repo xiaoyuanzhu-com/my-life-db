@@ -1,24 +1,23 @@
-// Settings storage and persistence
-import { promises as fs } from 'fs';
-import path from 'path';
+// Settings storage and persistence using SQLite
 import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
-
-const DATA_ROOT = path.join(process.cwd(), 'data');
-const APP_CONFIG_DIR = path.join(DATA_ROOT, 'apps', 'mylifedb');
-const SETTINGS_FILE = path.join(APP_CONFIG_DIR, 'config.json');
+import { getDatabase } from '../db/connection';
 
 /**
- * Load user settings from disk
+ * Load user settings from database
  */
 export async function loadSettings(): Promise<UserSettings> {
   try {
-    // Ensure app config directory exists
-    await fs.mkdir(APP_CONFIG_DIR, { recursive: true });
+    const db = getDatabase();
+    const row = db.prepare('SELECT data FROM settings WHERE id = 1').get() as { data: string } | undefined;
 
-    // Try to read settings file
-    const content = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    const settings = JSON.parse(content) as UserSettings;
+    if (!row) {
+      // No settings found, return defaults
+      console.log('No settings found in database, using defaults');
+      return DEFAULT_SETTINGS;
+    }
+
+    const settings = JSON.parse(row.data) as UserSettings;
 
     // Merge with defaults to ensure all fields exist
     return {
@@ -46,24 +45,28 @@ export async function loadSettings(): Promise<UserSettings> {
       },
     };
   } catch (error) {
-    // If file doesn't exist or is invalid, return defaults
-    console.log('No settings file found, using defaults');
+    console.error('Error loading settings from database:', error);
     return DEFAULT_SETTINGS;
   }
 }
 
 /**
- * Save user settings to disk
+ * Save user settings to database
  */
 export async function saveSettings(settings: UserSettings): Promise<void> {
   try {
-    // Ensure app config directory exists
-    await fs.mkdir(APP_CONFIG_DIR, { recursive: true });
+    const db = getDatabase();
+    const data = JSON.stringify(settings);
 
-    // Write settings to file
-    await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+    // Use INSERT OR REPLACE to upsert the settings
+    const stmt = db.prepare(`
+      INSERT INTO settings (id, data) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET data = excluded.data
+    `);
+
+    stmt.run(data);
   } catch (error) {
-    console.error('Failed to save settings:', error);
+    console.error('Failed to save settings to database:', error);
     throw new Error('Failed to save settings');
   }
 }

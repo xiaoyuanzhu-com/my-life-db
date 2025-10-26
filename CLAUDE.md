@@ -21,6 +21,13 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
 
 ## Architecture
 
+### Data Storage
+- Uses SQLite for settings persistence
+- Database location: `MY_DATA_DIR/.app/mylifedb/database.sqlite`
+- `MY_DATA_DIR` environment variable sets the base data directory (defaults to `./data`)
+- Database is automatically created and initialized on first use
+- Uses `better-sqlite3` for synchronous database operations
+
 ### App Router Structure
 - Uses Next.js App Router located in `src/app/`
 - Root layout in `src/app/layout.tsx` handles:
