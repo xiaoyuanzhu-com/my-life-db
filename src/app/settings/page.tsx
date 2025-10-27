@@ -57,7 +57,6 @@ export default function SettingsPage() {
     }
   }
 
-
   if (isLoading) {
     return (
       <div className="px-[20%] py-12">
