@@ -43,11 +43,11 @@ export function getDatabase(): BetterSqlite3.Database {
  * Initialize database schema
  */
 function initializeSchema(database: BetterSqlite3.Database) {
-  // Create settings table if it doesn't exist
+  // Create settings table with key-value structure
   database.exec(`
     CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      data TEXT NOT NULL,
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -57,7 +57,7 @@ function initializeSchema(database: BetterSqlite3.Database) {
     CREATE TRIGGER IF NOT EXISTS settings_updated_at
     AFTER UPDATE ON settings
     BEGIN
-      UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+      UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE key = NEW.key;
     END;
   `);
 }

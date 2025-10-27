@@ -30,15 +30,30 @@ const result = stmt.get(1);
 
 ## Schema
 
-### Settings Table
+### Settings Table (Key-Value)
 
 ```sql
 CREATE TABLE settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),  -- Ensures only one settings row
-  data TEXT NOT NULL,                      -- JSON-serialized settings
+  key TEXT PRIMARY KEY,                    -- Setting key (e.g., 'vendors.openai.apiKey')
+  value TEXT NOT NULL,                     -- Setting value (stored as string)
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+**Example rows:**
+```
+key                          | value                        | updated_at
+----------------------------|------------------------------|-------------------
+ai_provider                 | openai                       | 2025-10-27 10:00:00
+vendors_openai_api_key      | sk-Fl_XqG9l0PRiU8W8z5oPkQ   | 2025-10-27 10:00:00
+vendors_openai_base_url     | https://api.openai.com/v1   | 2025-10-27 10:00:00
+extraction_auto_process     | false                        | 2025-10-27 10:00:00
+```
+
+**Key Naming Convention:**
+- Uses snake_case format
+- Nested properties separated by underscores
+- Examples: `vendors_openai_api_key`, `ai_provider`, `extraction_auto_process`
 
 ## Environment Variables
 

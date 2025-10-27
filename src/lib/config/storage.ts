@@ -1,7 +1,26 @@
-// Settings storage and persistence using SQLite
+// Settings storage and persistence using SQLite (key-value)
 import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import { getDatabase } from '../db/connection';
+
+/**
+ * Get a single setting value by key
+ */
+function getSetting(db: any, key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+/**
+ * Set a single setting value by key
+ */
+function setSetting(db: any, key: string, value: string): void {
+  const stmt = db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+  stmt.run(key, value);
+}
 
 /**
  * Load user settings from database
@@ -9,41 +28,61 @@ import { getDatabase } from '../db/connection';
 export async function loadSettings(): Promise<UserSettings> {
   try {
     const db = getDatabase();
-    const row = db.prepare('SELECT data FROM settings WHERE id = 1').get() as { data: string } | undefined;
 
-    if (!row) {
-      // No settings found, return defaults
-      console.log('No settings found in database, using defaults');
-      return DEFAULT_SETTINGS;
-    }
-
-    const settings = JSON.parse(row.data) as UserSettings;
-
-    // Merge with defaults to ensure all fields exist
-    return {
-      ...DEFAULT_SETTINGS,
-      ...settings,
+    // Load settings from key-value pairs
+    const settings: UserSettings = {
       preferences: {
-        ...DEFAULT_SETTINGS.preferences,
-        ...settings.preferences,
+        theme: (getSetting(db, 'preferences_theme') as any) || DEFAULT_SETTINGS.preferences.theme,
+        defaultView: (getSetting(db, 'preferences_default_view') as any) || DEFAULT_SETTINGS.preferences.defaultView,
+        weeklyDigest: getSetting(db, 'preferences_weekly_digest') === 'true' || DEFAULT_SETTINGS.preferences.weeklyDigest,
+        digestDay: parseInt(getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)) as any,
       },
       ai: {
-        ...DEFAULT_SETTINGS.ai,
-        ...settings.ai,
+        provider: (getSetting(db, 'ai_provider') as any) || DEFAULT_SETTINGS.ai.provider,
+        openai: {
+          apiKey: getSetting(db, 'ai_openai_api_key') || '',
+          baseUrl: getSetting(db, 'ai_openai_base_url') || undefined,
+          model: getSetting(db, 'ai_openai_model') || undefined,
+          embeddingModel: getSetting(db, 'ai_openai_embedding_model') || undefined,
+        },
+        ollama: {
+          baseUrl: getSetting(db, 'ai_ollama_base_url') || '',
+          model: getSetting(db, 'ai_ollama_model') || '',
+          embeddingModel: getSetting(db, 'ai_ollama_embedding_model') || undefined,
+        },
+        custom: {
+          baseUrl: getSetting(db, 'ai_custom_base_url') || '',
+          apiKey: getSetting(db, 'ai_custom_api_key') || undefined,
+          headers: undefined,
+          model: getSetting(db, 'ai_custom_model') || undefined,
+        },
       },
       vendors: {
-        ...DEFAULT_SETTINGS.vendors,
-        ...settings.vendors,
+        openai: {
+          baseUrl: getSetting(db, 'vendors_openai_base_url') || undefined,
+          apiKey: getSetting(db, 'vendors_openai_api_key') || undefined,
+        },
+        homelabAi: {
+          baseUrl: getSetting(db, 'vendors_homelab_ai_base_url') || undefined,
+        },
       },
       extraction: {
-        ...DEFAULT_SETTINGS.extraction,
-        ...settings.extraction,
+        autoProcess: getSetting(db, 'extraction_auto_process') === 'true' || DEFAULT_SETTINGS.extraction.autoProcess,
+        includeEntities: getSetting(db, 'extraction_include_entities') !== 'false',
+        includeSentiment: getSetting(db, 'extraction_include_sentiment') !== 'false',
+        includeActionItems: getSetting(db, 'extraction_include_action_items') !== 'false',
+        includeRelatedEntries: getSetting(db, 'extraction_include_related_entries') === 'true',
+        minConfidence: parseFloat(getSetting(db, 'extraction_min_confidence') || String(DEFAULT_SETTINGS.extraction.minConfidence)),
       },
       storage: {
-        ...DEFAULT_SETTINGS.storage,
-        ...settings.storage,
+        dataPath: getSetting(db, 'storage_data_path') || DEFAULT_SETTINGS.storage.dataPath,
+        backupPath: getSetting(db, 'storage_backup_path') || undefined,
+        autoBackup: getSetting(db, 'storage_auto_backup') === 'true' || DEFAULT_SETTINGS.storage.autoBackup,
+        maxFileSize: parseInt(getSetting(db, 'storage_max_file_size') || String(DEFAULT_SETTINGS.storage.maxFileSize)),
       },
     };
+
+    return settings;
   } catch (error) {
     console.error('Error loading settings from database:', error);
     return DEFAULT_SETTINGS;
@@ -56,15 +95,47 @@ export async function loadSettings(): Promise<UserSettings> {
 export async function saveSettings(settings: UserSettings): Promise<void> {
   try {
     const db = getDatabase();
-    const data = JSON.stringify(settings);
 
-    // Use INSERT OR REPLACE to upsert the settings
-    const stmt = db.prepare(`
-      INSERT INTO settings (id, data) VALUES (1, ?)
-      ON CONFLICT(id) DO UPDATE SET data = excluded.data
-    `);
+    // Save each setting as a key-value pair
+    // Preferences
+    setSetting(db, 'preferences_theme', settings.preferences.theme);
+    setSetting(db, 'preferences_default_view', settings.preferences.defaultView);
+    setSetting(db, 'preferences_weekly_digest', String(settings.preferences.weeklyDigest));
+    setSetting(db, 'preferences_digest_day', String(settings.preferences.digestDay));
 
-    stmt.run(data);
+    // AI
+    setSetting(db, 'ai_provider', settings.ai.provider);
+    if (settings.ai.openai?.apiKey) setSetting(db, 'ai_openai_api_key', settings.ai.openai.apiKey);
+    if (settings.ai.openai?.baseUrl) setSetting(db, 'ai_openai_base_url', settings.ai.openai.baseUrl);
+    if (settings.ai.openai?.model) setSetting(db, 'ai_openai_model', settings.ai.openai.model);
+    if (settings.ai.openai?.embeddingModel) setSetting(db, 'ai_openai_embedding_model', settings.ai.openai.embeddingModel);
+
+    if (settings.ai.ollama?.baseUrl) setSetting(db, 'ai_ollama_base_url', settings.ai.ollama.baseUrl);
+    if (settings.ai.ollama?.model) setSetting(db, 'ai_ollama_model', settings.ai.ollama.model);
+    if (settings.ai.ollama?.embeddingModel) setSetting(db, 'ai_ollama_embedding_model', settings.ai.ollama.embeddingModel);
+
+    if (settings.ai.custom?.baseUrl) setSetting(db, 'ai_custom_base_url', settings.ai.custom.baseUrl);
+    if (settings.ai.custom?.apiKey) setSetting(db, 'ai_custom_api_key', settings.ai.custom.apiKey);
+    if (settings.ai.custom?.model) setSetting(db, 'ai_custom_model', settings.ai.custom.model);
+
+    // Vendors
+    if (settings.vendors?.openai?.baseUrl) setSetting(db, 'vendors_openai_base_url', settings.vendors.openai.baseUrl);
+    if (settings.vendors?.openai?.apiKey) setSetting(db, 'vendors_openai_api_key', settings.vendors.openai.apiKey);
+    if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
+
+    // Extraction
+    setSetting(db, 'extraction_auto_process', String(settings.extraction.autoProcess));
+    setSetting(db, 'extraction_include_entities', String(settings.extraction.includeEntities));
+    setSetting(db, 'extraction_include_sentiment', String(settings.extraction.includeSentiment));
+    setSetting(db, 'extraction_include_action_items', String(settings.extraction.includeActionItems));
+    setSetting(db, 'extraction_include_related_entries', String(settings.extraction.includeRelatedEntries));
+    setSetting(db, 'extraction_min_confidence', String(settings.extraction.minConfidence));
+
+    // Storage
+    setSetting(db, 'storage_data_path', settings.storage.dataPath);
+    if (settings.storage.backupPath) setSetting(db, 'storage_backup_path', settings.storage.backupPath);
+    setSetting(db, 'storage_auto_backup', String(settings.storage.autoBackup));
+    setSetting(db, 'storage_max_file_size', String(settings.storage.maxFileSize));
   } catch (error) {
     console.error('Failed to save settings to database:', error);
     throw new Error('Failed to save settings');
