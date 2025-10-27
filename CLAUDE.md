@@ -44,6 +44,21 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
   - Tailwind theme inline configuration with font variables
 - Geist font family used via CSS variables (`--font-geist-sans`, `--font-geist-mono`)
 
+### UI Components (shadcn/ui)
+**IMPORTANT:** This project uses shadcn/ui components. Follow these rules:
+
+1. **Adding New Components**:
+   - ALWAYS use the official shadcn CLI: `npx shadcn@latest add <component-name>`
+   - Example: `npx shadcn@latest add tabs`
+   - NEVER create shadcn components manually
+
+2. **Available Components**: Check https://ui.shadcn.com/docs/components for available components
+
+3. **Why Use CLI**:
+   - Automatically installs required dependencies (e.g., @radix-ui packages)
+   - Ensures correct component structure and styling
+   - Maintains consistency with project configuration
+
 ### TypeScript Configuration
 - Path alias: `@/*` maps to `./src/*`
 - Module resolution: bundler
