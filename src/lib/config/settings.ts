@@ -61,6 +61,43 @@ export interface UserSettings {
     minConfidence: number; // 0-1
   };
 
+  // Processing Features (by input type)
+  processing?: {
+    text?: {
+      entityExtraction: boolean;
+      autoTagging: boolean;
+      embeddings: boolean;
+    };
+    url?: {
+      contentCrawl: boolean;
+      screenshot: boolean;
+      metadataExtraction: boolean;
+      embeddings: boolean;
+    };
+    image?: {
+      captioning: boolean;
+      ocr: boolean;
+      embeddings: boolean;
+    };
+    audio?: {
+      transcription: boolean; // ASR
+      speakerDiarization: boolean;
+      timestampExtraction: boolean;
+      embeddings: boolean;
+    };
+    video?: {
+      audioTranscription: boolean;
+      frameCaptioning: boolean;
+      embeddings: boolean;
+    };
+    pdf?: {
+      textExtraction: boolean;
+      ocr: boolean; // for scanned PDFs
+      metadataExtraction: boolean;
+      embeddings: boolean;
+    };
+  };
+
   // Storage Configuration
   storage: {
     dataPath: string;
@@ -88,6 +125,41 @@ export const DEFAULT_SETTINGS: UserSettings = {
     includeActionItems: true,
     includeRelatedEntries: false,
     minConfidence: 0.5,
+  },
+  processing: {
+    text: {
+      entityExtraction: true,
+      autoTagging: true,
+      embeddings: true,
+    },
+    url: {
+      contentCrawl: true,
+      screenshot: true,
+      metadataExtraction: true,
+      embeddings: true,
+    },
+    image: {
+      captioning: true,
+      ocr: true,
+      embeddings: true,
+    },
+    audio: {
+      transcription: true,
+      speakerDiarization: false,
+      timestampExtraction: true,
+      embeddings: true,
+    },
+    video: {
+      audioTranscription: true,
+      frameCaptioning: true,
+      embeddings: true,
+    },
+    pdf: {
+      textExtraction: true,
+      ocr: true,
+      metadataExtraction: true,
+      embeddings: true,
+    },
   },
   storage: {
     dataPath: './data',

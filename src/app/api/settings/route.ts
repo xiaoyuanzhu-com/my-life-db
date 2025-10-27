@@ -66,6 +66,34 @@ export async function PUT(request: NextRequest) {
         ...currentSettings.extraction,
         ...updates.extraction,
       },
+      processing: {
+        ...currentSettings.processing,
+        ...updates.processing,
+        text: {
+          ...currentSettings.processing?.text,
+          ...updates.processing?.text,
+        },
+        url: {
+          ...currentSettings.processing?.url,
+          ...updates.processing?.url,
+        },
+        image: {
+          ...currentSettings.processing?.image,
+          ...updates.processing?.image,
+        },
+        audio: {
+          ...currentSettings.processing?.audio,
+          ...updates.processing?.audio,
+        },
+        video: {
+          ...currentSettings.processing?.video,
+          ...updates.processing?.video,
+        },
+        pdf: {
+          ...currentSettings.processing?.pdf,
+          ...updates.processing?.pdf,
+        },
+      },
       storage: {
         ...currentSettings.storage,
         ...updates.storage,
