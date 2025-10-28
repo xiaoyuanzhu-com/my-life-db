@@ -729,7 +729,180 @@ MY_DATA_DIR/
 | **Audio Transcription** | Planned | Whisper → enrichment.transcription |
 | **PDF Parsing** | Planned | pdf-parse → enrichment.extractedText |
 
-### 5.5 File System Indexing
+### 5.5 Task Queue Architecture
+
+**Problem Statement:**
+
+Traditional single `status` field is insufficient because:
+- Multiple independent processes run on same item (search index, face detection, AI enrichment, etc.)
+- Each external service can fail independently
+- Need to retry failures without affecting other processes
+- External services (Meilisearch, Qdrant, AI APIs) are unreliable
+
+**Design Decision: Task-Based Processing**
+
+Instead of boolean flags (`is_search_indexed`, `has_faces_detected`, etc.), use a general-purpose task queue to track all async/external operations.
+
+**Architecture:**
+
+```
+┌─────────────────────┐
+│  Application Logic  │
+│  - Enqueue tasks    │
+│  - Define handlers  │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Task Queue (lib)   │
+│  - Scheduling       │
+│  - Retry logic      │
+│  - Persistence      │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  SQLite (tasks)     │
+│  - Pending          │
+│  - Processing       │
+│  - Completed/Failed │
+└─────────────────────┘
+```
+
+**Task Queue Schema:**
+
+```sql
+CREATE TABLE tasks (
+  -- Identity
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,                     -- e.g., 'search_index', 'face_detection'
+
+  -- Payload (application-defined JSON)
+  payload TEXT NOT NULL,
+
+  -- Status
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+
+  -- Execution tracking
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 3,
+  last_attempt_at TEXT,
+  next_retry_at TEXT,                     -- Exponential backoff
+
+  -- Results
+  result TEXT,                            -- Success result (JSON)
+  error TEXT,                             -- Failure error message
+
+  -- Scheduling
+  priority INTEGER DEFAULT 5              -- 1=highest, 10=lowest
+    CHECK(priority >= 1 AND priority <= 10),
+  run_after TEXT,                         -- Schedule for future
+
+  -- Timestamps
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE INDEX idx_tasks_pending ON tasks(status, priority, next_retry_at)
+  WHERE status IN ('pending', 'failed');
+CREATE INDEX idx_tasks_type ON tasks(type, status);
+```
+
+**Hybrid Approach: Cached Flags + Task Queue**
+
+Combine fast queries (cached flags) with detailed tracking (task queue):
+
+```sql
+-- Inbox table: Add cached flags for UI performance
+ALTER TABLE inbox ADD COLUMN is_search_indexed INTEGER DEFAULT 0;
+ALTER TABLE inbox ADD COLUMN is_archived INTEGER DEFAULT 0;
+ALTER TABLE inbox ADD COLUMN archived_at DATETIME;
+
+-- Task queue: Track detailed execution state
+-- (separate tasks table as shown above)
+```
+
+**Task Types:**
+
+| Task Type | Priority | External Service | Retry Strategy |
+|-----------|----------|------------------|----------------|
+| `search_index` | High (3) | Meilisearch/Qdrant | 5 attempts, exp. backoff |
+| `search_deindex` | High (1) | Meilisearch/Qdrant | 5 attempts, exp. backoff |
+| `ai_slug_generation` | High (3) | LLM API | 3 attempts |
+| `url_crawl` | High (3) | Playwright | 3 attempts |
+| `image_caption` | Medium (5) | Vision API | 3 attempts |
+| `face_detection` | Medium (5) | Face API | 3 attempts |
+| `place_detection` | Medium (6) | Location API | 3 attempts |
+| `audio_transcription` | Medium (5) | Whisper API | 3 attempts |
+| `ai_summary` | Low (7) | LLM API | 3 attempts |
+
+**Example Flow: Archive Item**
+
+```typescript
+async function archiveInboxItem(id: string) {
+  const db = getDatabase();
+  const queue = getTaskQueue();
+
+  db.transaction(() => {
+    // 1. Update database
+    db.run(`UPDATE inbox SET is_archived = 1, archived_at = datetime('now') WHERE id = ?`, [id]);
+
+    // 2. Move files
+    const item = getInboxItemById(id);
+    fs.renameSync(
+      path.join(INBOX_DIR, item.folderName),
+      path.join(ARCHIVE_DIR, item.folderName)
+    );
+    db.run(`UPDATE inbox SET folder_name = ? WHERE id = ?`, [`archive/${item.folderName}`, id]);
+
+    // 3. Queue de-index task (async, can fail, will retry)
+    if (item.isSearchIndexed) {
+      queue.enqueue('search_deindex', { itemId: id }, {
+        priority: 1,  // High priority
+        maxAttempts: 5
+      });
+    }
+  })();
+
+  // Task worker processes de-index task asynchronously
+}
+```
+
+**Retry Strategy:**
+
+Exponential backoff with jitter:
+```
+Attempt 1: Fail → Retry in ~10s
+Attempt 2: Fail → Retry in ~1min
+Attempt 3: Fail → Retry in ~10min
+Attempt 4: Fail → Retry in ~1hr
+Attempt 5+: Fail → Retry in ~6hr (capped)
+```
+
+**Benefits:**
+
+1. ✅ **Decoupled**: Archive succeeds even if de-index fails
+2. ✅ **Resilient**: Auto-retry with backoff
+3. ✅ **Observable**: Can query task status
+4. ✅ **Maintainable**: Add new task types without schema changes
+5. ✅ **Testable**: Disable worker for synchronous tests
+
+**Trade-offs:**
+
+| Aspect | Boolean Flags | Task Queue | Decision |
+|--------|---------------|------------|----------|
+| Query speed | ✅ Fast (indexed column) | ⚠️ Requires JOIN | Hybrid (cache + queue) |
+| Retry logic | ❌ Manual | ✅ Built-in | Task queue |
+| Error tracking | ❌ Lost | ✅ Preserved | Task queue |
+| Complexity | ✅ Simple | ⚠️ More moving parts | Worth it |
+
+**Implementation:**
+
+See `src/lib/task-queue/` for application-agnostic task queue library.
+
+### 5.6 File System Indexing
 
 **Full directory/file index for semantic search across all content**
 
@@ -808,7 +981,7 @@ INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALU
 }');
 ```
 
-### 5.6 Schema Evolution Strategy
+### 5.7 Schema Evolution Strategy
 
 **Design Principle:** App should gracefully handle old data schemas and provide smooth upgrades
 
@@ -1021,7 +1194,7 @@ async function fullScan() {
 | **Cached folder sizes** | Fast folder stats | Complex invalidation | ❌ Rejected (on-demand fine) |
 | **Hybrid (chosen)** | Best balance | Some complexity | ✅ Chosen |
 
-### 5.7 URL Crawl Implementation
+### 5.8 URL Crawl Implementation
 
 **End-to-End Flow:**
 
