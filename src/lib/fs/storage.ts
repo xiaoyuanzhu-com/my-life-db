@@ -5,15 +5,16 @@ import { randomUUID } from 'crypto';
 import type { Entry, EntryMetadata, Directory, DirectoryMetadata, MessageType, AttachmentType } from '@/types';
 import { formatDateForDirectory, extractDateFromPath } from '@/lib/utils/slug';
 
-// Data root directory
-const DATA_ROOT = path.join(process.cwd(), 'data');
-const INBOX_DIR = path.join(DATA_ROOT, 'inbox');
-const LIBRARY_DIR = path.join(DATA_ROOT, 'library');
+// Data root directory (respects MY_DATA_DIR environment variable)
+export const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), 'data');
+export const APP_DIR = path.join(DATA_ROOT, '.app', 'mylifedb');
+export const INBOX_DIR = path.join(APP_DIR, 'inbox');
+export const LIBRARY_DIR = DATA_ROOT; // Library is at the root level, user-owned
 
 // Initialize data directories
 export async function initializeStorage(): Promise<void> {
   await fs.mkdir(INBOX_DIR, { recursive: true });
-  await fs.mkdir(LIBRARY_DIR, { recursive: true });
+  // Library dir is the DATA_ROOT itself, already exists
 }
 
 // Generate unique UUID for entries

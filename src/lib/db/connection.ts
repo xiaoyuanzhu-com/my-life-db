@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
+import { runMigrations } from './migrations';
 
 let db: BetterSqlite3.Database | null = null;
 
@@ -32,34 +33,17 @@ export function getDatabase(): BetterSqlite3.Database {
     // Enable foreign keys
     db.pragma('foreign_keys = ON');
 
-    // Initialize schema
-    initializeSchema(db);
+    // Enable WAL mode for better concurrency
+    db.pragma('journal_mode = WAL');
+
+    // Optimize page cache (64MB)
+    db.pragma('cache_size = -64000');
+
+    // Run migrations to ensure schema is up to date
+    runMigrations(db);
   }
 
   return db;
-}
-
-/**
- * Initialize database schema
- */
-function initializeSchema(database: BetterSqlite3.Database) {
-  // Create settings table with key-value structure
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  // Create trigger to update updated_at timestamp
-  database.exec(`
-    CREATE TRIGGER IF NOT EXISTS settings_updated_at
-    AFTER UPDATE ON settings
-    BEGIN
-      UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE key = NEW.key;
-    END;
-  `);
 }
 
 /**

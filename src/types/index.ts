@@ -183,3 +183,130 @@ export interface ExtractionOptions {
   includeRelatedEntries?: boolean;
   minConfidence?: number; // 0-1, filter results below threshold
 }
+
+// ============================================================================
+// New Inbox Database Types (file-based approach)
+// ============================================================================
+
+/**
+ * File type categorization
+ */
+export type FileType = 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'other';
+
+/**
+ * Processing status for inbox items
+ */
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+/**
+ * Individual file in an inbox item
+ * Includes both user uploads and generated files (e.g., content.html for URLs)
+ */
+export interface InboxFile {
+  filename: string;
+  size: number; // bytes
+  mimeType: string;
+  type: FileType;
+  hash?: string; // Content hash for deduplication
+  enrichment?: {
+    // Image enrichment
+    caption?: string;
+    ocr?: string;
+    faces?: Array<{
+      name?: string;
+      confidence: number;
+      boundingBox?: { x: number; y: number; width: number; height: number };
+    }>;
+
+    // Audio/Video enrichment
+    transcription?: string;
+    duration?: number; // seconds
+
+    // Document enrichment
+    extractedText?: string;
+    pageCount?: number;
+
+    // URL enrichment (for content.html files)
+    url?: string;
+    title?: string;
+    author?: string;
+    publishedDate?: string;
+  };
+}
+
+/**
+ * Inbox item - temporary staging before moving to library
+ * Stored in database (no metadata.json file)
+ */
+export interface InboxItem {
+  // Core identity
+  id: string; // UUID (permanent)
+  folderName: string; // Current folder name (uuid initially, then slug)
+
+  // Content type
+  type: MessageType;
+
+  // Files (text.md is just another file in this array)
+  files: InboxFile[];
+
+  // Processing state
+  status: ProcessingStatus;
+  processedAt: string | null; // ISO date string
+  error: string | null;
+
+  // Item-level enrichment (not file-level)
+  aiSlug: string | null; // Generated slug for folder rename
+
+  // Schema version (for evolution tracking)
+  schemaVersion: number;
+
+  // Timestamps
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+}
+
+/**
+ * Library file - permanent indexed file
+ */
+export interface LibraryFile {
+  // Core identity
+  id: string; // UUID (permanent)
+  path: string; // Relative from MY_DATA_DIR
+
+  // File attributes
+  fileName: string;
+  isFolder: boolean;
+  fileSize: number | null; // NULL for folders
+  modifiedAt: string; // ISO date string
+  contentHash: string | null; // Only for text files
+
+  // Content classification
+  contentType: FileType | null;
+  searchableText: string | null; // Extracted content for search
+
+  // Enrichment (JSON, extensible)
+  enrichment: {
+    caption?: string;
+    ocr?: string;
+    summary?: string;
+    tags?: string[];
+    faces?: Array<{
+      name?: string;
+      confidence: number;
+    }>;
+    entities?: {
+      people?: string[];
+      places?: string[];
+      organizations?: string[];
+      concepts?: string[];
+    };
+    [key: string]: unknown; // Allow future enrichment fields
+  } | null;
+
+  // Schema version
+  schemaVersion: number;
+
+  // Timestamps
+  indexedAt: string; // ISO date string
+  enrichedAt: string | null; // ISO date string
+}
