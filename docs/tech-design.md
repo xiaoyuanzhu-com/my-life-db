@@ -424,6 +424,13 @@ CREATE TABLE inbox (
   -- Item-level enrichment (not file-level)
   ai_slug TEXT,                           -- Generated slug for folder rename
 
+  -- Archive state
+  is_archived INTEGER DEFAULT 0,          -- Boolean: 0=active, 1=archived
+  archived_at DATETIME,                   -- When archived
+
+  -- Search indexing cache (updated by task handlers)
+  is_search_indexed INTEGER DEFAULT 0,    -- Boolean: 0=not indexed, 1=indexed
+
   -- Metadata versioning (for schema evolution detection)
   schema_version INTEGER DEFAULT 1,       -- Track which schema this record uses
 
@@ -436,6 +443,8 @@ CREATE INDEX idx_inbox_created_at ON inbox(created_at DESC);
 CREATE INDEX idx_inbox_status ON inbox(status);
 CREATE INDEX idx_inbox_folder_name ON inbox(folder_name);
 CREATE INDEX idx_inbox_schema_version ON inbox(schema_version);
+CREATE INDEX idx_inbox_archived ON inbox(is_archived, created_at DESC);
+CREATE INDEX idx_inbox_active ON inbox(created_at DESC) WHERE is_archived = 0;
 
 -- NOTE: Full-text search moved to Meilisearch (external service)
 -- NOTE: Vector search moved to Qdrant (external service)
@@ -729,6 +738,34 @@ MY_DATA_DIR/
 | **Audio Transcription** | Planned | Whisper → enrichment.transcription |
 | **PDF Parsing** | Planned | pdf-parse → enrichment.extractedText |
 
+**Archive Design:**
+
+1. **Column vs Separate Table**
+   - **Decision:** Use `is_archived` column in inbox table (NOT separate archive table)
+   - **Why:**
+     - Simpler: single table, single query
+     - Consistent with library/spaces tables
+     - Easier to unarchive (just flip boolean)
+     - Good enough for expected scale (inbox is temporary)
+   - **Alt:** Separate archive table - rejected (complexity, data migration overhead)
+
+2. **Filesystem Handling**
+   - **Decision:** Move files to `archive/` directory, update `folder_name` in DB
+   - **Why:** Clear visual separation, clean inbox directory
+   - **Implementation:** `folder_name` becomes `archive/{uuid}` or `archive/{slug}`
+   - **Alt:** Keep files in inbox/ - rejected (confusing folder structure)
+
+3. **Manual Cleanup**
+   - **Decision:** Let user clean up archives manually
+   - **Why:** User controls data retention, no surprise deletions
+   - **Future:** Optional auto-cleanup job with user-configurable retention period
+
+4. **De-indexing**
+   - **Decision:** Queue async de-index task (don't block archive operation)
+   - **Why:** External services can fail, shouldn't block user action
+   - **Implementation:** Task queue handles retry with exponential backoff
+   - **See:** Section 5.5 for task queue details
+
 ### 5.5 Task Queue Architecture
 
 **Problem Statement:**
@@ -815,13 +852,13 @@ CREATE INDEX idx_tasks_type ON tasks(type, status);
 Combine fast queries (cached flags) with detailed tracking (task queue):
 
 ```sql
--- Inbox table: Add cached flags for UI performance
-ALTER TABLE inbox ADD COLUMN is_search_indexed INTEGER DEFAULT 0;
-ALTER TABLE inbox ADD COLUMN is_archived INTEGER DEFAULT 0;
-ALTER TABLE inbox ADD COLUMN archived_at DATETIME;
+-- Inbox table: Cached flags for UI performance (see schema in section 5.3)
+-- - is_search_indexed: Fast query for "ready to search" items
+-- - is_archived: Fast query for active vs archived filtering
 
--- Task queue: Track detailed execution state
--- (separate tasks table as shown above)
+-- Task queue: Detailed execution state (see schema above)
+-- - Tracks attempts, errors, retry timing
+-- - Enables monitoring and manual retry
 ```
 
 **Task Types:**
