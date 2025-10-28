@@ -391,49 +391,55 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_email ON users(email);
 
--- Entries (Inbox)
-CREATE TABLE entries (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  content TEXT NOT NULL,
-  content_type TEXT NOT NULL CHECK(content_type IN ('text', 'voice', 'file', 'link')),
-  metadata JSON NOT NULL,
-  tags JSON,
-  suggested_spaces JSON,
-  embedding BLOB,                  -- Serialized float32 array
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  is_archived INTEGER DEFAULT 0,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+-- Schema versioning (for migration tracking)
+CREATE TABLE schema_version (
+  version INTEGER PRIMARY KEY,
+  applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  description TEXT
 );
 
-CREATE INDEX idx_entries_user_created ON entries(user_id, created_at DESC);
-CREATE INDEX idx_entries_user_archived ON entries(user_id, is_archived);
-CREATE INDEX idx_entries_content_type ON entries(user_id, content_type);
+INSERT INTO schema_version (version, description) VALUES (1, 'Initial schema with inbox and library tables');
 
--- Full-text search index
-CREATE VIRTUAL TABLE entries_fts USING fts5(
-  content,
-  tags,
-  content='entries',
-  content_rowid='rowid'
+-- Inbox (temporary staging, app-managed)
+-- NOTE: Metadata stored in database only, NOT in .meta.json files
+CREATE TABLE inbox (
+  -- Core identity
+  id TEXT PRIMARY KEY,                    -- UUID (permanent, even after folder rename)
+
+  -- File system
+  folder_name TEXT NOT NULL UNIQUE,       -- Current folder name (uuid initially, then slug after processing)
+
+  -- Content type
+  type TEXT NOT NULL CHECK(type IN ('text', 'url', 'image', 'audio', 'video', 'pdf', 'mixed')),
+
+  -- Files (JSON array - all files treated equally, text.md is just another file)
+  -- Schema: [{ filename, size, mimeType, type, hash, enrichment: {...} }]
+  files JSON NOT NULL,
+
+  -- Processing state
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+  processed_at DATETIME,
+  error TEXT,
+
+  -- Item-level enrichment (not file-level)
+  ai_slug TEXT,                           -- Generated slug for folder rename
+
+  -- Metadata versioning (for schema evolution detection)
+  schema_version INTEGER DEFAULT 1,       -- Track which schema this record uses
+
+  -- Timestamps
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
 );
 
--- Triggers to keep FTS in sync
-CREATE TRIGGER entries_ai AFTER INSERT ON entries BEGIN
-  INSERT INTO entries_fts(rowid, content, tags)
-  VALUES (new.rowid, new.content, json_extract(new.tags, '$'));
-END;
+CREATE INDEX idx_inbox_created_at ON inbox(created_at DESC);
+CREATE INDEX idx_inbox_status ON inbox(status);
+CREATE INDEX idx_inbox_folder_name ON inbox(folder_name);
+CREATE INDEX idx_inbox_schema_version ON inbox(schema_version);
 
-CREATE TRIGGER entries_ad AFTER DELETE ON entries BEGIN
-  DELETE FROM entries_fts WHERE rowid = old.rowid;
-END;
-
-CREATE TRIGGER entries_au AFTER UPDATE ON entries BEGIN
-  UPDATE entries_fts
-  SET content = new.content, tags = json_extract(new.tags, '$')
-  WHERE rowid = new.rowid;
-END;
+-- NOTE: Full-text search moved to Meilisearch (external service)
+-- NOTE: Vector search moved to Qdrant (external service)
+-- SQLite FTS5 removed per architecture decision (see section 3.5)
 
 -- Spaces (Library)
 CREATE TABLE spaces (
@@ -644,20 +650,24 @@ export const spacesRelations = relations(spaces, ({ one, many }) => ({
 MY_DATA_DIR/
 ├── .app/
 │   └── mylifedb/
-│       ├── database.sqlite          # All app state + metadata
+│       ├── database.sqlite          # All metadata (inbox + library index)
 │       ├── inbox/                   # Temporary staging (app-managed)
-│       │   └── {ai-slug}/
-│       │       ├── content.md       # Main content
-│       │       ├── content.html     # Original (preserved)
-│       │       ├── screenshot.png   # Visual capture
-│       │       └── main-content.md  # Cleaned extraction
+│       │   ├── {uuid}/              # Initially UUID-named
+│       │   │   ├── text.md          # User's raw text input (if any)
+│       │   │   ├── photo.jpg        # User's uploaded file (if any)
+│       │   │   └── song.mp3         # Another file (if any)
+│       │   └── {slug}/              # After processing, renamed to slug
+│       │       ├── text.md          # User's original text
+│       │       ├── content.html     # For URLs: original HTML (preserved)
+│       │       ├── screenshot.png   # For URLs: visual capture
+│       │       └── main-content.md  # For URLs: cleaned extraction
 │       ├── cache/
 │       │   ├── thumbnails/
 │       │   └── temp/
 │       └── archive/                 # Archived content
 │           └── {original-path}/
 │
-└── {user-library}/                  # User-owned, free-form
+└── {user-library}/                  # User-owned, free-form (NO metadata.json!)
     ├── bookmarks/                   # User decides structure
     ├── dev/
     │   └── react/
@@ -684,28 +694,222 @@ MY_DATA_DIR/
 **Full directory/file index for semantic search across all content**
 
 ```sql
--- Index all files (mylifedb-managed AND user-added)
-CREATE TABLE indexed_files (
-  path TEXT PRIMARY KEY,               -- Relative from MY_DATA_DIR
+-- Library: Index all files (mylifedb-managed AND user-added)
+-- Renamed from 'indexed_files' for clarity
+CREATE TABLE library (
+  -- Core identity
+  id TEXT PRIMARY KEY,                    -- UUID (permanent, stable identifier)
+  path TEXT NOT NULL UNIQUE,              -- Relative from MY_DATA_DIR (can change if user moves)
+
+  -- File attributes
   file_name TEXT NOT NULL,
   is_folder BOOLEAN NOT NULL,
-  file_size INTEGER,                   -- NULL for folders
+  file_size INTEGER,                      -- NULL for folders
   modified_at DATETIME NOT NULL,
-  content_hash TEXT,                   -- Only for text files
+  content_hash TEXT,                      -- Only for text files (performance)
+
+  -- Content classification
+  content_type TEXT,                      -- 'url' | 'text' | 'image' | 'pdf' | 'audio' | 'video'
+  searchable_text TEXT,                   -- Extracted content for search engines
+
+  -- Enrichment (JSON, extensible for schema evolution)
+  -- Schema: { caption, ocr, summary, tags, faces, entities, etc. }
+  enrichment JSON,
+
+  -- Metadata versioning (for schema evolution detection)
+  schema_version INTEGER DEFAULT 1,
+
+  -- Timestamps
   indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-  -- Extracted for search
-  content_type TEXT,                   -- url, text, image, etc.
-  searchable_text TEXT                 -- Extracted content
+  enriched_at DATETIME
 );
 
-CREATE INDEX idx_path_prefix ON indexed_files(path);
-CREATE INDEX idx_modified ON indexed_files(modified_at);
+CREATE INDEX idx_library_path_prefix ON library(path);
+CREATE INDEX idx_library_modified ON library(modified_at);
+CREATE INDEX idx_library_content_type ON library(content_type);
+CREATE INDEX idx_library_schema_version ON library(schema_version);
 
--- Archive in separate table (performance)
-CREATE TABLE archived_files (
-  -- Same schema
+-- Metadata schema registry (track expected schemas for validation)
+CREATE TABLE metadata_schemas (
+  version INTEGER PRIMARY KEY,
+  table_name TEXT NOT NULL,               -- 'inbox' | 'library'
+  field_name TEXT NOT NULL,               -- 'files' | 'enrichment'
+  schema_json TEXT NOT NULL,              -- JSON Schema definition
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(table_name, field_name, version)
 );
+
+-- Example: Register initial schemas
+INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALUES
+(1, 'inbox', 'files', '{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["filename", "size", "mimeType", "type"],
+    "properties": {
+      "filename": {"type": "string"},
+      "size": {"type": "integer"},
+      "mimeType": {"type": "string"},
+      "type": {"type": "string", "enum": ["text", "image", "audio", "video", "pdf", "other"]},
+      "hash": {"type": "string"},
+      "enrichment": {"type": "object"}
+    }
+  }
+}'),
+(1, 'library', 'enrichment', '{
+  "type": "object",
+  "properties": {
+    "caption": {"type": "string"},
+    "ocr": {"type": "string"},
+    "summary": {"type": "string"},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "faces": {"type": "array"}
+  }
+}');
+```
+
+### 5.5 Schema Evolution Strategy
+
+**Design Principle:** App should gracefully handle old data schemas and provide smooth upgrades
+
+**Core Requirements:**
+1. ✅ **Backward compatible:** App doesn't break when reading old schema data
+2. ✅ **Detectable:** App highlights when metadata schema doesn't match current version
+3. ✅ **Re-processable:** User can trigger re-processing to upgrade to latest schema
+4. ✅ **Auto-migration:** Database table changes migrate automatically on app startup
+
+**Implementation:**
+
+```typescript
+// 1. Schema Version Detection
+export async function detectSchemaVersion(
+  table: 'inbox' | 'library',
+  record: any
+): Promise<{
+  currentVersion: number;
+  expectedVersion: number;
+  isOutdated: boolean;
+  changes: string[];
+}> {
+  const currentVersion = record.schema_version || 1;
+  const expectedVersion = await getLatestSchemaVersion(table);
+
+  if (currentVersion === expectedVersion) {
+    return { currentVersion, expectedVersion, isOutdated: false, changes: [] };
+  }
+
+  // Validate against expected schema
+  const expectedSchema = await db.get(
+    'SELECT schema_json FROM metadata_schemas WHERE table_name = ? AND version = ?',
+    [table, expectedVersion]
+  );
+
+  const ajv = new Ajv();
+  const validate = ajv.compile(JSON.parse(expectedSchema.schema_json));
+
+  const fieldData = table === 'inbox' ? record.files : record.enrichment;
+  const isValid = validate(fieldData);
+  const changes = isValid ? [] : (validate.errors || []).map(e => e.message);
+
+  return {
+    currentVersion,
+    expectedVersion,
+    isOutdated: true,
+    changes
+  };
+}
+
+// 2. Re-process to Latest Schema
+export async function migrateRecord(
+  table: 'inbox' | 'library',
+  id: string
+): Promise<void> {
+  const record = await db.get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+
+  // Get raw files (always preserved)
+  const rawFiles = JSON.parse(record.files || '[]');
+
+  // Re-process with latest enrichment pipeline
+  const enrichedFiles = await enrichFiles(rawFiles);
+
+  // Update to latest schema
+  const latestVersion = await getLatestSchemaVersion(table);
+  await db.run(
+    `UPDATE ${table}
+     SET files = ?, schema_version = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [JSON.stringify(enrichedFiles), latestVersion, id]
+  );
+}
+
+// 3. Automatic Database Migrations
+export async function runMigrations() {
+  const currentVersion = await db.get(
+    'SELECT MAX(version) as version FROM schema_version'
+  );
+
+  const pendingMigrations = migrations.filter(
+    m => m.version > (currentVersion?.version || 0)
+  );
+
+  for (const migration of pendingMigrations) {
+    console.log(`Running migration ${migration.version}: ${migration.description}`);
+    await migration.up(db);
+    await db.run(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)',
+      [migration.version, migration.description]
+    );
+  }
+}
+
+// Example migration
+export const migrations = [
+  {
+    version: 2,
+    description: 'Add face recognition metadata to library enrichment',
+    async up(db) {
+      // Update metadata schema
+      await db.run(`
+        INSERT INTO metadata_schemas (version, table_name, field_name, schema_json)
+        VALUES (2, 'library', 'enrichment', '{ ... new schema with faces ... }')
+      `);
+
+      // No need to update existing data - backward compatible
+      // Users can re-process manually to get new enrichment
+    }
+  }
+];
+```
+
+**UI Components:**
+
+```typescript
+// components/SchemaVersionBadge.tsx
+export function SchemaVersionBadge({ record }: { record: InboxItem | LibraryFile }) {
+  const { isOutdated, changes, currentVersion, expectedVersion } =
+    await detectSchemaVersion(record.table, record);
+
+  if (!isOutdated) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <Badge variant="warning">
+        Schema v{currentVersion} (latest: v{expectedVersion})
+      </Badge>
+      <Button
+        size="sm"
+        onClick={() => migrateRecord(record.table, record.id)}
+      >
+        Re-process
+      </Button>
+      {changes.length > 0 && (
+        <Tooltip content={`Missing: ${changes.join(', ')}`}>
+          <InfoIcon />
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 ```
 
 **Sync Strategy: Hybrid Approach**
@@ -720,12 +924,12 @@ watcher.on('change', async (eventType, filename) => {
 // 2. Startup: Light reconciliation scan
 async function reconcileIndex() {
   // Only check: which indexed files no longer exist?
-  const indexed = await db.all('SELECT path, modified_at FROM indexed_files');
+  const indexed = await db.all('SELECT path, modified_at FROM library');
 
   for (const file of indexed) {
     const stats = await fs.stat(join(MY_DATA_DIR, file.path)).catch(() => null);
     if (!stats) {
-      await db.run('DELETE FROM indexed_files WHERE path = ?', file.path);
+      await db.run('DELETE FROM library WHERE path = ?', [file.path]);
     }
   }
 }
@@ -733,7 +937,7 @@ async function reconcileIndex() {
 // 3. Full scan: On-demand only (user triggers)
 async function fullScan() {
   for await (const file of walkDirectory(MY_DATA_DIR)) {
-    const existing = await db.get('SELECT modified_at FROM indexed_files WHERE path = ?', file.path);
+    const existing = await db.get('SELECT modified_at FROM library WHERE path = ?', [file.path]);
 
     if (!existing || existing.modified_at < file.modifiedAt) {
       await indexFile(file);  // Changed or new
@@ -777,7 +981,7 @@ async function fullScan() {
 | **Cached folder sizes** | Fast folder stats | Complex invalidation | ❌ Rejected (on-demand fine) |
 | **Hybrid (chosen)** | Best balance | Some complexity | ✅ Chosen |
 
-### 5.5 URL Crawl Implementation
+### 5.6 URL Crawl Implementation
 
 **End-to-End Flow:**
 
