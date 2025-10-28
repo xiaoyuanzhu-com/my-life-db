@@ -14,10 +14,6 @@ what's behind:
 
 Every app can have its own folder to store app-specific data, settings, cache, etc.
 
-### .log folder
-
-Who did what and when, log mainly serve 2 purposes: 1, audit trail; 2, app who joined later can replay the log to catch up.
-
 ### README.md
 
 Each folder can have a README.md to describe the purpose of the folder, its structure, and any other relevant information.
