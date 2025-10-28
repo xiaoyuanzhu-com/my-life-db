@@ -1,55 +1,53 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { EntryCard } from '@/components/EntryCard';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import type { Entry } from '@/types';
+import type { InboxItem } from '@/types';
 
-interface GroupedEntries {
+interface GroupedItems {
   date: string;
   displayDate: string;
-  entries: Entry[];
+  items: InboxItem[];
 }
 
 export default function InboxPage() {
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [items, setItems] = useState<InboxItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function loadEntries() {
+    async function loadItems() {
       try {
-        const response = await fetch('/api/entries?directory=inbox');
+        const response = await fetch('/api/inbox');
         const data = await response.json();
-        setEntries(data.entries);
+        setItems(data.items);
       } catch (error) {
-        console.error('Failed to load entries:', error);
+        console.error('Failed to load inbox items:', error);
       } finally {
         setIsLoading(false);
       }
     }
 
-    loadEntries();
+    loadItems();
   }, []);
 
-  // Group entries by date based on client's local timezone
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<string, Entry[]>();
+  // Group items by date based on client's local timezone
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, InboxItem[]>();
 
-    entries.forEach((entry) => {
-      // Use createdAt timestamp and format in client's local timezone
-      const createdDate = new Date(entry.metadata.createdAt);
-      const dateKey = format(createdDate, 'yyyy-MM-dd'); // Format in local timezone
+    items.forEach((item) => {
+      const createdDate = new Date(item.createdAt);
+      const dateKey = format(createdDate, 'yyyy-MM-dd');
 
       if (!groups.has(dateKey)) {
         groups.set(dateKey, []);
       }
-      groups.get(dateKey)!.push(entry);
+      groups.get(dateKey)!.push(item);
     });
 
     // Convert to array and sort by date (newest first)
-    const result: GroupedEntries[] = Array.from(groups.entries())
-      .map(([date, entries]) => {
+    const result: GroupedItems[] = Array.from(groups.entries())
+      .map(([date, items]) => {
         const parsedDate = parseISO(date);
         let displayDate: string;
 
@@ -64,32 +62,32 @@ export default function InboxPage() {
         return {
           date,
           displayDate,
-          entries: entries.sort((a, b) =>
-            new Date(b.metadata.createdAt).getTime() - new Date(a.metadata.createdAt).getTime()
+          items: items.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           ),
         };
       })
       .sort((a, b) => b.date.localeCompare(a.date));
 
     return result;
-  }, [entries]);
+  }, [items]);
 
-  async function handleDelete(entryId: string) {
-    if (!confirm('Are you sure you want to delete this entry?')) return;
+  async function handleDelete(itemId: string) {
+    if (!confirm('Are you sure you want to delete this item?')) return;
 
     try {
-      const response = await fetch(`/api/entries/${entryId}`, {
+      const response = await fetch(`/api/inbox/${itemId}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        // Reload entries
-        const entriesResponse = await fetch('/api/entries?directory=inbox');
-        const data = await entriesResponse.json();
-        setEntries(data.entries);
+        // Reload items
+        const itemsResponse = await fetch('/api/inbox');
+        const data = await itemsResponse.json();
+        setItems(data.items);
       }
     } catch (error) {
-      console.error('Failed to delete entry:', error);
+      console.error('Failed to delete item:', error);
     }
   }
 
@@ -104,15 +102,15 @@ export default function InboxPage() {
         {/* Timeline */}
         {isLoading ? (
           <div className="text-center py-12 text-muted-foreground">Loading...</div>
-        ) : entries.length === 0 ? (
+        ) : items.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
-              <p className="text-muted-foreground">No entries in your inbox yet.</p>
+              <p className="text-muted-foreground">No items in your inbox yet.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-8">
-            {groupedEntries.map((group) => (
+            {groupedItems.map((group) => (
               <section key={group.date} className="space-y-4">
                 {/* Sticky Date Header - sticks below global header */}
                 <div className="sticky top-[73px] z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-3 border-b">
@@ -121,14 +119,62 @@ export default function InboxPage() {
                   </h2>
                 </div>
 
-                {/* Entry Grid for this date */}
+                {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {group.entries.map((entry) => (
-                    <EntryCard
-                      key={entry.metadata.id}
-                      entry={entry}
-                      onDelete={handleDelete}
-                    />
+                  {group.items.map((item) => (
+                    <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                      <CardContent className="p-4">
+                        {/* Item Type Badge */}
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                            {item.type}
+                          </span>
+                          {item.status !== 'pending' && (
+                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                              item.status === 'completed' ? 'bg-green-100 text-green-700' :
+                              item.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {item.status}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Files List */}
+                        <div className="space-y-2 mb-3">
+                          {item.files.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm">
+                              <span className="text-muted-foreground">
+                                {file.type === 'text' ? '📝' :
+                                 file.type === 'image' ? '🖼️' :
+                                 file.type === 'audio' ? '🎵' :
+                                 file.type === 'video' ? '🎥' :
+                                 file.type === 'pdf' ? '📄' : '📎'}
+                              </span>
+                              <span className="truncate">{file.filename}</span>
+                              <span className="text-xs text-muted-foreground ml-auto">
+                                {(file.size / 1024).toFixed(1)} KB
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Timestamp */}
+                        <div className="text-xs text-muted-foreground mb-3">
+                          {format(new Date(item.createdAt), 'h:mm a')}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            className="text-xs text-red-600 hover:text-red-700 font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               </section>

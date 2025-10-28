@@ -689,7 +689,47 @@ MY_DATA_DIR/
    - **Why:** Keeps user directories clean
    - **Alt:** Sidecar files - rejected (pollutes user structure)
 
-### 5.4 File System Indexing
+### 5.4 Inbox Implementation Details
+
+**Design Decisions:**
+
+1. **File-based Approach (text.md = just another file)**
+   - **Decision:** Treat text input as a file (text.md) rather than separate field
+   - **Why:** Unified file handling, simpler enrichment pipeline, consistent processing
+   - **Alt:** Text as separate DB field - rejected (special-case logic, harder to enrich)
+
+2. **Database-only Metadata (no .meta.json files)**
+   - **Decision:** All metadata stored in database, clean user directories
+   - **Why:** No file pollution, faster queries, atomic updates
+   - **Alt:** Sidecar .meta.json files - rejected (clutters directories, sync issues)
+
+3. **UUID → Slug Workflow**
+   - **Decision:** Folders initially named with UUID, renamed to slug after AI processing
+   - **Why:** Stable ID (UUID never changes), human-readable names (slug), clean separation
+   - **Alt:** Slug-only - rejected (slug collisions, can't identify before processing)
+
+4. **File Deduplication Strategy (macOS-style)**
+   - **Decision:** Space + number suffix pattern (`photo.jpg` → `photo 2.jpg`)
+   - **Why:** Familiar to users, simple logic, preserves extensions
+   - **Alt:** Hash suffixes - rejected (cryptic names), Timestamps - rejected (too long)
+
+5. **Schema Versioning**
+   - **Decision:** Track `schema_version` in both inbox and library tables
+   - **Why:** Graceful evolution, detect outdated metadata, enable re-processing
+   - **Implementation:** Version in DB column, schemas in metadata_schemas registry
+   - **User Experience:** Badge shows outdated items, "Re-process" button upgrades
+
+**Processing Features (Future Implementation):**
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| **URL Crawling** | Planned | Playwright → content.html, screenshot.png, main-content.md |
+| **Image Captioning** | Planned | Vision AI → enrichment.caption |
+| **OCR Extraction** | Planned | Tesseract → enrichment.ocr |
+| **Audio Transcription** | Planned | Whisper → enrichment.transcription |
+| **PDF Parsing** | Planned | pdf-parse → enrichment.extractedText |
+
+### 5.5 File System Indexing
 
 **Full directory/file index for semantic search across all content**
 
@@ -768,7 +808,7 @@ INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALU
 }');
 ```
 
-### 5.5 Schema Evolution Strategy
+### 5.6 Schema Evolution Strategy
 
 **Design Principle:** App should gracefully handle old data schemas and provide smooth upgrades
 
@@ -981,7 +1021,7 @@ async function fullScan() {
 | **Cached folder sizes** | Fast folder stats | Complex invalidation | ❌ Rejected (on-demand fine) |
 | **Hybrid (chosen)** | Best balance | Some complexity | ✅ Chosen |
 
-### 5.6 URL Crawl Implementation
+### 5.7 URL Crawl Implementation
 
 **End-to-End Flow:**
 
@@ -1109,6 +1149,47 @@ async function learnFromUserMove(oldPath: string, newPath: string) {
 ### 6.1 REST API Endpoints
 
 **Base URL:** `/api/v1`
+
+#### Inbox
+
+```typescript
+// Create inbox item (multipart/form-data)
+POST /api/inbox
+Body: FormData {
+  text?: string;           // Optional text content
+  files?: File[];          // Optional file attachments
+}
+Response: InboxItem
+Notes:
+  - Must provide either text or files (or both)
+  - Text saved as text.md file
+  - Files saved with original names (auto-deduplicated if needed)
+  - Returns full InboxItem with all metadata
+
+// List inbox items
+GET /api/inbox?status=pending&limit=50&offset=0
+Response: {
+  items: InboxItem[];
+  total: number;
+}
+
+// Get inbox item by ID
+GET /api/inbox/:id
+Response: InboxItem
+
+// Update inbox item
+PUT /api/inbox/:id
+Body: FormData {
+  text?: string;           // Replace text content
+  files?: File[];          // Add new files
+  removeFiles?: string[];  // Filenames to remove
+}
+Response: InboxItem
+
+// Delete inbox item (removes files too)
+DELETE /api/inbox/:id
+Response: { success: boolean }
+```
 
 #### Entries
 
