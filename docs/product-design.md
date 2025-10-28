@@ -1,8 +1,8 @@
 # Product Requirements Document: MyLifeDB
 
-**Version:** 1.0
-**Last Updated:** 2025-10-15
-**Status:** Draft
+**Version:** 1.1
+**Last Updated:** 2025-10-28
+**Status:** Updated - URL Crawl & Data Architecture
 **Owner:** Product Team
 
 ---
@@ -727,9 +727,265 @@ The following features are **explicitly not included** in V1:
 
 ---
 
-## 10. Appendices
+## 10. Data Architecture & URL Crawl Feature
 
-### 10.1 Glossary
+### 10.1 Data Directory Structure
+
+**Decision:** Separate app-managed data from user-owned content
+
+```
+MY_DATA_DIR/
+├── .app/
+│   └── mylifedb/
+│       ├── database.sqlite          # App state, index, metadata
+│       ├── inbox/                   # Temporary staging area
+│       │   └── {ai-generated-slug}/
+│       │       ├── content.md
+│       │       ├── content.html
+│       │       ├── screenshot.png
+│       │       └── main-content.md
+│       └── cache/                   # Thumbnails, temp files
+│
+└── {user-content}/                  # User's library (free-form structure)
+    ├── bookmarks/
+    ├── notes/
+    ├── projects/
+    └── ...                          # Whatever structure user creates
+```
+
+**Key Principles:**
+1. **Inbox is app-managed:** Lives in `.app/mylifedb/inbox/` (temporary staging)
+2. **Library is user-owned:** Lives in root directory, completely free-form structure
+3. **Multi-app compatibility:** Other apps can read/write to `MY_DATA_DIR` root
+4. **No `.meta.json` pollution:** Metadata stays in database, not scattered in user folders
+
+**Alternatives Considered:**
+- ❌ **Inbox in root directory:** Rejected - clutters user's space with app concept
+- ❌ **Library folder layer:** Rejected - unnecessary nesting, user owns root directly
+- ❌ **`.meta.json` files:** Rejected - pollutes user directories, should use database
+
+### 10.2 File System Indexing Strategy
+
+**Decision:** Full file system index in SQLite for semantic search
+
+```sql
+CREATE TABLE indexed_files (
+  path TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL,
+  is_folder BOOLEAN NOT NULL,
+  file_size INTEGER,
+  modified_at DATETIME NOT NULL,
+  content_hash TEXT,               -- Only for text files
+  indexed_at DATETIME
+);
+```
+
+**Sync Mechanism:** Hybrid approach
+- **fs.watch() API:** Real-time file system monitoring
+- **Startup reconciliation:** Light scan to remove deleted files from index
+- **Change detection:** `mtime + size` for binary files, `mtime + size + hash` for text files
+
+**Why Full Index:**
+- Enables fast semantic search across all content (not just mylifedb-managed)
+- Supports multi-app scenario (discovers files added by other apps)
+- Performance acceptable: 10k files ~500ms scan (only checks timestamps)
+
+**Alternatives Considered:**
+- ❌ **Minimal index (mylifedb-only):** Rejected - semantic search would miss user-added content
+- ❌ **Cached folder sizes:** Rejected - adds complexity, on-demand calculation fast enough
+- ⚠️ **Content hash for all files:** Rejected - too slow for large binary files (images, videos)
+
+### 10.3 URL Crawl Workflow
+
+**User Journey:**
+
+```
+1. User adds URL
+   ↓
+2. Saved to inbox: .app/mylifedb/inbox/{uuid}/
+   ↓
+3. Background: Crawl URL, extract content, take screenshot
+   ↓
+4. Rename: {uuid}/ → {ai-short-summary}/ (e.g., "understanding-react-hooks")
+   ↓
+5. User manually settles: Copy folder to library root
+   ↓
+6. User organizes: Move/edit in library as preferred
+   ↓
+7. mylifedb re-indexes: Detects changes via fs.watch()
+```
+
+**Settlement Approach: "Deadly Simple Export"**
+- Inbox item becomes a **self-contained folder** with human-readable files
+- User copies folder to library root (or any location)
+- User freely organizes: rename, move, merge, split, edit
+- mylifedb observes and learns from user's final organization
+
+**Example Output:**
+
+Inbox folder:
+```
+.app/mylifedb/inbox/understanding-react-hooks/
+├── content.md           # Main content in markdown
+├── content.html         # Original HTML (preserved)
+├── screenshot.png       # Visual memory
+└── main-content.md      # Extracted article (cleaned)
+```
+
+User settles → copies to library root:
+```
+understanding-react-hooks/
+└── (same files)
+```
+
+User organizes → moves to preferred location:
+```
+dev/react/understanding-react-hooks/
+└── (mylifedb learns: React content → dev/react/)
+```
+
+**Design Philosophy:**
+- **Human-first:** Output is readable markdown, not JSON blobs
+- **User control:** mylifedb suggests, user decides final structure
+- **Learning-friendly:** Observe user's manual organization to improve auto-suggestions
+
+**Alternatives Considered:**
+- ❌ **Auto-move to library:** Rejected - removes user control, might organize incorrectly
+- ❌ **Keep in inbox forever:** Rejected - inbox is temporary staging, not permanent storage
+- ⚠️ **Append to existing files:** Possible but complex - support later after observing user patterns
+
+### 10.4 Content Type Detection vs. Destination Classification
+
+**Key Insight:** These are **two separate concerns**
+
+#### Type Detection (Fast, Deterministic)
+```typescript
+// Pure code-based detection (client-side capable)
+function detectContentType(item): 'url' | 'text' | 'image' | 'pdf' | 'video' | 'audio'
+```
+
+**Approach:** File extension, MIME type, simple heuristics
+**Speed:** Instant (<1ms)
+**Accuracy:** 100% for type detection
+
+#### Destination Classification (Flexible, AI-Powered)
+
+**Decision: Single Evolving LLM Prompt**
+
+```typescript
+const guide = `
+CURRENT LIBRARY STRUCTURE:
+- dev/ (23 items)
+- dev/react/ (8 items)
+- recipes/ (12 items)
+
+LEARNED PATTERNS (from user's past choices):
+- github.com → dev/ (confidence: 0.95, seen 18 times)
+- keyword "meeting" → notes/ (confidence: 0.7, seen 5 times)
+
+RULES:
+- Prefer existing folders
+- github.com almost always goes to dev/
+- Consider content meaning, not just source type
+`;
+
+// Single LLM call with full context
+const result = await llm.classify(item, guide);
+```
+
+**Why This Approach:**
+- **Simplest architecture:** One smart prompt, no complex pipeline
+- **Fully transparent:** User can read/edit entire guide
+- **Auto-evolves:** Learns from user actions, updates prompt
+- **Type-agnostic:** URL can go to notes/todo/anywhere based on content
+
+**Learning from User Actions:**
+```typescript
+// When user moves: inbox/understanding-react-hooks → dev/react/understanding-react-hooks
+await learnPattern({
+  domain: "github.com",
+  keywords: ["react", "hooks"],
+  destination: "dev/react/",
+  confidence: +0.1  // Boost confidence
+});
+
+// Next time: github.com + "react" → dev/react/ (higher confidence)
+```
+
+**Alternatives Considered:**
+- ❌ **Complex decision tree:** Rejected - rigid, hard to evolve
+- ❌ **Sequential pipeline (rules → LLM):** Rejected - adds complexity
+  - **Trade-off:** Fast path for common URLs (skip LLM) vs. simpler architecture
+  - **Decision:** Accept LLM cost (~1-2s) for simplicity
+  - **Mitigation:** Cache identical URLs, async background processing
+- ❌ **Type-based classification:** Rejected - URLs can be notes/todos/etc., depends on content
+
+### 10.5 Search Architecture
+
+**Decision: Dual Search System**
+
+1. **Meilisearch:** Instant keyword search (<50ms)
+   - Typo-tolerant
+   - Faceted search
+   - Real-time indexing
+
+2. **Qdrant:** Semantic/vector search (~100-200ms)
+   - Conceptual similarity
+   - "Find similar ideas"
+   - Embeddings-based
+
+**Deployment:** Docker Compose (both services)
+
+**Why Both:**
+- **Keyword search:** Fast, precise, user expects it
+- **Semantic search:** Discovers connections, "find things I forgot"
+- **Common practice:** Many modern apps use both (e.g., Notion, Obsidian plugins)
+
+**UI Strategy:**
+- Default: Show keyword results first (instant feedback)
+- Background: Load semantic results
+- User can toggle: "Keyword" vs "Semantic" vs "Both"
+
+**Alternatives Considered:**
+- ❌ **SQLite FTS5 only:** Rejected - no semantic search, limited features
+- ❌ **Qdrant only:** Rejected - slower, users expect instant keyword search
+- ❌ **sqlite-vss (SQLite vector):** Rejected - less mature, fewer features than Qdrant
+  - **Trade-off:** Simplicity (one DB) vs. features (dedicated vector DB)
+  - **Decision:** Accept Docker Compose complexity for better search experience
+
+### 10.6 Archive Strategy
+
+**Decision: Separate table + directory**
+
+```sql
+-- Move archived items to separate table
+CREATE TABLE archived_files (
+  -- Same schema as indexed_files
+);
+
+-- Physical location
+.app/mylifedb/archive/{original-path}/
+```
+
+**Why:**
+- **Performance:** Active queries never touch archived data
+- **Clean separation:** Archive excluded from file watch
+- **Recoverable:** Can unarchive anytime
+
+**UI Behavior:**
+- Default views: `WHERE archived = 0`
+- Settings toggle: "Show Archived Items"
+- Unarchive: Move row back + restore files
+
+**Alternatives Considered:**
+- ❌ **Boolean flag only:** Rejected - archived items still impact query performance
+- ✅ **Separate table:** Chosen - complete isolation, better performance
+
+---
+
+## 11. Appendices
+
+### 11.1 Glossary
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -797,6 +1053,7 @@ The following features are **explicitly not included** in V1:
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2025-10-28 | Product Team | Added URL crawl workflow, data architecture decisions, search strategy, classification approach |
 | 1.0 | 2025-10-15 | Product Team | Initial product requirements document |
 
 ---

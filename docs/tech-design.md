@@ -1,8 +1,8 @@
 # Technical Design Document: MyLifeDB
 
-**Version:** 1.0
-**Last Updated:** 2025-10-15
-**Status:** Draft
+**Version:** 1.1
+**Last Updated:** 2025-10-28
+**Status:** Updated - URL Crawl, File Indexing, Classification
 **Owner:** Engineering Team
 
 ---
@@ -56,33 +56,40 @@ This document provides technical specifications for implementing MyLifeDB, a per
 
 ### 2.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client Layer                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  Inbox   │  │Reflection│  │ Library  │  │  Search  │  │
-│  │   UI     │  │    UI    │  │    UI    │  │    UI    │  │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │
-│         React 19 + Next.js 15 (App Router)                │
-└─────────────────────────────────────────────────────────────┘
-                            ↕ HTTP/WS
-┌─────────────────────────────────────────────────────────────┐
-│                      Application Layer                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Capture   │  │     AI      │  │Organization │        │
-│  │   Service   │  │  Processor  │  │   Service   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│                   Next.js API Routes                        │
-└─────────────────────────────────────────────────────────────┘
-                            ↕
-┌─────────────────────────────────────────────────────────────┐
-│                        Data Layer                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   SQLite    │  │    Files    │  │   Vector    │        │
-│  │  (Metadata) │  │  (Content)  │  │     DB      │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│    better-sqlite3    Node FS API     ChromaDB              │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Client["Client Layer<br/>(React 19 + Next.js 15)"]
+        InboxUI[Inbox UI]
+        ReflectionUI[Reflection UI]
+        LibraryUI[Library UI]
+        SearchUI[Search UI]
+    end
+
+    subgraph Application["Application Layer<br/>(Next.js API Routes)"]
+        Capture[Capture Service]
+        AI[AI Processor]
+        Organization[Organization Service]
+    end
+
+    subgraph Data["Data Layer"]
+        SQLite[(SQLite<br/>better-sqlite3)]
+        Files[(File System<br/>Node FS API)]
+        VectorDB[(Qdrant<br/>Vectors)]
+    end
+
+    subgraph SearchLayer["Search Layer<br/>(Docker Compose)"]
+        Meilisearch[Meilisearch<br/>Keyword]
+        QdrantSearch[Qdrant<br/>Semantic]
+    end
+
+    Client <-->|HTTP/WS| Application
+    Application <--> Data
+    Application <--> SearchLayer
+
+    style Client fill:#e1f5ff
+    style Application fill:#fff4e1
+    style Data fill:#e8f5e9
+    style SearchLayer fill:#f3e5f5
 ```
 
 ### 2.2 Architecture Principles
@@ -139,13 +146,14 @@ flowchart LR
 | **sharp** | 0.33+ | Image processing |
 | **ffmpeg** | - | Audio/video processing |
 
-### 3.3 AI/ML
+### 3.3 AI/ML & Search
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
 | **OpenAI SDK** | 4.0+ | AI API client (optional) |
 | **Ollama** | Latest | Local LLM runtime (optional) |
-| **ChromaDB** | 0.4+ | Vector database |
+| **Meilisearch** | 1.5+ | Instant keyword search engine |
+| **Qdrant** | 1.7+ | Vector database for semantic search |
 | **transformers.js** | 3.0+ | In-browser ML models |
 | **natural** | 6.0+ | NLP utilities |
 
@@ -167,8 +175,15 @@ flowchart LR
 | **SQLite over PostgreSQL** | Offline-first, zero-config, portable, perfect for local-first apps |
 | **Drizzle over Prisma** | Lighter, better TypeScript inference, SQL-like syntax |
 | **Zustand over Redux** | Simpler API, less boilerplate, sufficient for our needs |
-| **ChromaDB over Pinecone** | Embedded/local option, open-source, no vendor lock-in |
+| **Meilisearch + Qdrant over single solution** | Best of both: instant keyword + semantic search |
+| **Qdrant over ChromaDB** | More mature, better Docker support, richer features |
 | **better-sqlite3 over node-sqlite3** | Synchronous API, better performance, simpler code |
+
+**Search Stack Decision Log:**
+- **Considered sqlite-vss:** Simpler (in-process), but less mature and fewer features
+- **Considered FTS5 only:** Fast keyword search, but no semantic capabilities
+- **Decision:** Accept Docker Compose complexity for superior search experience
+- **Trade-off:** Operational complexity vs. feature completeness
 
 ---
 
@@ -621,32 +636,267 @@ export const spacesRelations = relations(spaces, ({ one, many }) => ({
 }));
 ```
 
-### 5.3 File Storage Structure
+### 5.3 File Storage Structure (Updated)
+
+**Decision:** Multi-app compatible structure with clear separation
 
 ```
-data/
-├── db/
-│   └── mylifedb.sqlite         # Main database
-├── users/
-│   └── {userId}/
-│       ├── entries/
-│       │   └── {entryId}/
-│       │       ├── content.md
-│       │       └── attachments/
-│       │           ├── image.jpg
-│       │           └── document.pdf
-│       ├── spaces/
-│       │   └── {spaceId}/
-│       │       ├── cover.jpg
-│       │       └── exports/
-│       │           └── {timestamp}.zip
-│       ├── vectors/
-│       │   └── chroma/          # ChromaDB data
-│       └── backups/
-│           └── {timestamp}.db
-└── temp/
-    └── uploads/                 # Temporary upload processing
+MY_DATA_DIR/
+├── .app/
+│   └── mylifedb/
+│       ├── database.sqlite          # All app state + metadata
+│       ├── inbox/                   # Temporary staging (app-managed)
+│       │   └── {ai-slug}/
+│       │       ├── content.md       # Main content
+│       │       ├── content.html     # Original (preserved)
+│       │       ├── screenshot.png   # Visual capture
+│       │       └── main-content.md  # Cleaned extraction
+│       ├── cache/
+│       │   ├── thumbnails/
+│       │   └── temp/
+│       └── archive/                 # Archived content
+│           └── {original-path}/
+│
+└── {user-library}/                  # User-owned, free-form
+    ├── bookmarks/                   # User decides structure
+    ├── dev/
+    │   └── react/
+    ├── notes/
+    └── ...
 ```
+
+**Key Design Decisions:**
+
+1. **Inbox Location:** `.app/mylifedb/inbox/` (not root)
+   - **Why:** Keeps app concepts separate from user content
+   - **Alt:** Root directory - rejected (clutters user's namespace)
+
+2. **Library Structure:** Root directory, completely free-form
+   - **Why:** User owns structure, multi-app compatible
+   - **Alt:** `library/` subfolder - rejected (unnecessary nesting)
+
+3. **Metadata Storage:** Database only (no `.meta.json` files)
+   - **Why:** Keeps user directories clean
+   - **Alt:** Sidecar files - rejected (pollutes user structure)
+
+### 5.4 File System Indexing
+
+**Full directory/file index for semantic search across all content**
+
+```sql
+-- Index all files (mylifedb-managed AND user-added)
+CREATE TABLE indexed_files (
+  path TEXT PRIMARY KEY,               -- Relative from MY_DATA_DIR
+  file_name TEXT NOT NULL,
+  is_folder BOOLEAN NOT NULL,
+  file_size INTEGER,                   -- NULL for folders
+  modified_at DATETIME NOT NULL,
+  content_hash TEXT,                   -- Only for text files
+  indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  -- Extracted for search
+  content_type TEXT,                   -- url, text, image, etc.
+  searchable_text TEXT                 -- Extracted content
+);
+
+CREATE INDEX idx_path_prefix ON indexed_files(path);
+CREATE INDEX idx_modified ON indexed_files(modified_at);
+
+-- Archive in separate table (performance)
+CREATE TABLE archived_files (
+  -- Same schema
+);
+```
+
+**Sync Strategy: Hybrid Approach**
+
+```typescript
+// 1. Real-time: fs.watch() for file system changes
+const watcher = fs.watch(MY_DATA_DIR, { recursive: true });
+watcher.on('change', async (eventType, filename) => {
+  await indexFile(filename);  // Update index
+});
+
+// 2. Startup: Light reconciliation scan
+async function reconcileIndex() {
+  // Only check: which indexed files no longer exist?
+  const indexed = await db.all('SELECT path, modified_at FROM indexed_files');
+
+  for (const file of indexed) {
+    const stats = await fs.stat(join(MY_DATA_DIR, file.path)).catch(() => null);
+    if (!stats) {
+      await db.run('DELETE FROM indexed_files WHERE path = ?', file.path);
+    }
+  }
+}
+
+// 3. Full scan: On-demand only (user triggers)
+async function fullScan() {
+  for await (const file of walkDirectory(MY_DATA_DIR)) {
+    const existing = await db.get('SELECT modified_at FROM indexed_files WHERE path = ?', file.path);
+
+    if (!existing || existing.modified_at < file.modifiedAt) {
+      await indexFile(file);  // Changed or new
+    }
+  }
+}
+```
+
+**Change Detection Strategy:**
+
+| File Type | Detection Method | Reason |
+|-----------|------------------|--------|
+| **Text files** | `mtime + size + hash` | Content often changes without size change (edit word) |
+| **Binary files** | `mtime + size` only | Hashing large files too expensive; size change = content changed |
+| **Folders** | `mtime` only | Track folder itself, files handled separately |
+
+**Performance Characteristics:**
+
+| Operation | Speed | Notes |
+|-----------|-------|-------|
+| File system watch event | ~1ms | Real-time, incremental |
+| Startup reconciliation (10k files) | ~200-500ms | Just checks existence |
+| Full scan (10k files) | ~500ms-1s | Only checks timestamps |
+| Text file hash | ~1-5ms | Fast, small files |
+| Binary file hash | Skip | Too expensive (images: MB-GB) |
+
+**Why Full Index (Not Minimal):**
+
+- **Semantic search requirement:** Must search all content, not just app-managed
+- **Multi-app scenario:** Discovers files added by other apps
+- **Performance acceptable:** Modern SSDs handle 10k files in <1s
+- **User expectation:** "Search everything" = everything in MY_DATA_DIR
+
+**Alternatives Considered:**
+
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| **Minimal index (mylifedb-only)** | Simple, fast | Semantic search misses user content | ❌ Rejected |
+| **On-demand scan (no index)** | Always in sync | Slow queries | ❌ Rejected |
+| **Hash all files** | Perfect change detection | Too slow for binaries | ⚠️ Partial (text only) |
+| **Cached folder sizes** | Fast folder stats | Complex invalidation | ❌ Rejected (on-demand fine) |
+| **Hybrid (chosen)** | Best balance | Some complexity | ✅ Chosen |
+
+### 5.5 URL Crawl Implementation
+
+**End-to-End Flow:**
+
+```typescript
+// 1. User adds URL
+async function addUrl(url: string, userId: string) {
+  const entryId = uuid();
+  const inboxPath = `.app/mylifedb/inbox/${entryId}`;
+
+  // Create staging directory
+  await fs.mkdir(join(MY_DATA_DIR, inboxPath), { recursive: true });
+  await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'url.txt'), url);
+
+  // Save to database
+  await db.run(`
+    INSERT INTO entries (id, source_type, status, inbox_path)
+    VALUES (?, 'url', 'pending', ?)
+  `, [entryId, inboxPath]);
+
+  // Queue for background processing
+  await jobQueue.add('crawl-url', { entryId });
+
+  return { entryId, inboxPath };
+}
+
+// 2. Background: Crawl & Process
+async function crawlUrl(entryId: string) {
+  const entry = await getEntry(entryId);
+  const url = await fs.readFile(join(MY_DATA_DIR, entry.inbox_path, 'url.txt'), 'utf-8');
+
+  try {
+    // Crawl using Playwright/Puppeteer
+    const { html, markdown, text, screenshot } = await crawlWebPage(url);
+
+    // Extract metadata
+    const metadata = extractMetadata(html);  // Title, author, date, etc.
+
+    // Generate AI summary for folder name
+    const aiSlug = await generateSlug(metadata.title || text.substring(0, 100));
+
+    // Save to inbox
+    const inboxPath = entry.inbox_path;
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.html'), html);
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.md'), markdown);
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'main-content.md'), text);
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'screenshot.png'), screenshot);
+
+    // Rename folder to human-readable slug
+    const newInboxPath = `.app/mylifedb/inbox/${aiSlug}`;
+    await fs.rename(
+      join(MY_DATA_DIR, inboxPath),
+      join(MY_DATA_DIR, newInboxPath)
+    );
+
+    // Update database
+    await db.run(`
+      UPDATE entries
+      SET status = 'ready', inbox_path = ?, metadata = ?
+      WHERE id = ?
+    `, [newInboxPath, JSON.stringify(metadata), entryId]);
+
+  } catch (error) {
+    await db.run(`UPDATE entries SET status = 'error', error = ? WHERE id = ?`, [error.message, entryId]);
+  }
+}
+
+// 3. User Settlement: Manual Export
+// User action: Copy .app/mylifedb/inbox/understanding-react-hooks/ to library root
+// No code needed - pure file operation
+
+// 4. Learning: Detect user's organization
+async function learnFromUserMove(oldPath: string, newPath: string) {
+  // Detect: user moved inbox/understanding-react-hooks → dev/react/understanding-react-hooks
+
+  const entry = await db.get(`SELECT * FROM entries WHERE inbox_path LIKE ?`, `%${basename(oldPath)}%`);
+  if (!entry) return;  // Not our entry
+
+  const destination = dirname(newPath);  // "dev/react"
+
+  // Extract signals
+  const metadata = JSON.parse(entry.metadata || '{}');
+  const url = metadata.url || '';
+  const domain = url ? new URL(url).hostname : null;
+  const keywords = extractKeywords(metadata.title || '');
+
+  // Update learned patterns
+  if (domain) {
+    await db.run(`
+      INSERT INTO learned_patterns (pattern_type, pattern_value, target_path, confidence, sample_count)
+      VALUES ('domain', ?, ?, 0.5, 1)
+      ON CONFLICT (pattern_type, pattern_value, target_path)
+      DO UPDATE SET
+        confidence = MIN(confidence + 0.2, 1.0),
+        sample_count = sample_count + 1
+    `, [domain, destination]);
+  }
+
+  for (const keyword of keywords.slice(0, 5)) {
+    await db.run(`
+      INSERT INTO learned_patterns (pattern_type, pattern_value, target_path, confidence, sample_count)
+      VALUES ('keyword', ?, ?, 0.3, 1)
+      ON CONFLICT (pattern_type, pattern_value, target_path)
+      DO UPDATE SET confidence = MIN(confidence + 0.1, 1.0), sample_count = sample_count + 1
+    `, [keyword, destination]);
+  }
+
+  // Mark entry as settled
+  await db.run(`UPDATE entries SET status = 'settled', library_path = ? WHERE id = ?`, [newPath, entry.id]);
+}
+```
+
+**Crawling Libraries:**
+
+| Library | Purpose | Notes |
+|---------|---------|-------|
+| **Playwright** | Full browser automation | Best for JS-heavy sites, screenshots |
+| **Cheerio** | HTML parsing | Fast for static sites |
+| **Readability** | Article extraction | Mozilla's algorithm |
+| **Turndown** | HTML → Markdown | Clean conversion |
 
 ---
 
@@ -826,6 +1076,20 @@ Response: { embedding: number[] }
 // Generate insights for Space
 POST /api/v1/ai/insights/:spaceId
 Response: Insight[]
+
+// Classify destination (content organization)
+POST /api/v1/ai/classify
+Body: {
+  content: string;
+  contentType: 'url' | 'text' | 'image' | 'pdf';
+  metadata?: { url?: string; title?: string };
+}
+Response: {
+  path: string;              // Suggested destination
+  confidence: number;        // 0-1
+  reasoning: string;         // Why this location
+  isNewFolder: boolean;      // Creating new vs. using existing
+}
 
 // Chat with content (future)
 POST /api/v1/ai/chat
@@ -1067,33 +1331,224 @@ export function QuickAdd() {
 
 ### 8.1 AI Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      AI Pipeline                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐      ┌──────────────┐                     │
-│  │   Tagging    │      │  Embedding   │                     │
-│  │   Service    │      │   Service    │                     │
-│  └──────────────┘      └──────────────┘                     │
-│         ↓                      ↓                             │
-│  ┌──────────────────────────────────┐                       │
-│  │      Clustering Engine           │                       │
-│  │  • Similarity computation        │                       │
-│  │  • DBSCAN/Hierarchical           │                       │
-│  │  • Confidence scoring            │                       │
-│  └──────────────────────────────────┘                       │
-│         ↓                                                    │
-│  ┌──────────────────────────────────┐                       │
-│  │     Insight Generator            │                       │
-│  │  • Summarization                 │                       │
-│  │  • Trend detection               │                       │
-│  │  • Connection finding            │                       │
-│  └──────────────────────────────────┘                       │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    Input[Content Input] --> Tagging[Tagging Service]
+    Input --> Embedding[Embedding Service]
+
+    Tagging --> Clustering[Clustering Engine]
+    Embedding --> Clustering
+
+    Clustering --> InsightGen[Insight Generator]
+
+    InsightGen --> Classifier[Destination Classifier]
+
+    Clustering -.-> ClusterDetails["• Similarity computation<br/>• DBSCAN/Hierarchical<br/>• Confidence scoring"]
+    InsightGen -.-> InsightDetails["• Summarization<br/>• Trend detection<br/>• Connection finding"]
+    Classifier -.-> ClassifierDetails["• Type detection (code)<br/>• Path suggestion (LLM)<br/>• Learning from actions"]
+
+    style Tagging fill:#e3f2fd
+    style Embedding fill:#e3f2fd
+    style Clustering fill:#fff3e0
+    style InsightGen fill:#f3e5f5
+    style Classifier fill:#e8f5e9
+    style ClusterDetails fill:#fff,stroke:#ccc,stroke-dasharray: 5 5
+    style InsightDetails fill:#fff,stroke:#ccc,stroke-dasharray: 5 5
+    style ClassifierDetails fill:#fff,stroke:#ccc,stroke-dasharray: 5 5
 ```
 
-### 8.2 Tagging Service
+### 8.2 Content Type Detection vs Destination Classification
+
+**Two-Stage Approach:**
+
+#### Stage 1: Type Detection (Fast, Code-Based)
+
+```typescript
+// lib/ai/typeDetector.ts
+export function detectContentType(item: InboxItem): ContentType {
+  // Client-side capable, no AI needed
+  if (item.url) {
+    const ext = getFileExtension(item.url);
+    if (['.jpg', '.png', '.gif', '.webp'].includes(ext)) return 'image';
+    if (['.pdf'].includes(ext)) return 'pdf';
+    if (['.mp4', '.mov', '.webm'].includes(ext)) return 'video';
+    if (['.mp3', '.wav', '.m4a'].includes(ext)) return 'audio';
+    return 'url';  // Default for web pages
+  }
+
+  if (item.file) {
+    const mime = item.file.mimeType;
+    if (mime.startsWith('image/')) return 'image';
+    if (mime === 'application/pdf') return 'pdf';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+  }
+
+  return 'text';  // Default fallback
+}
+```
+
+**Performance:** <1ms, 100% accurate for type
+
+#### Stage 2: Destination Classification (LLM-Based, Evolving)
+
+**Decision: Single Evolving Prompt Architecture**
+
+```typescript
+// lib/ai/destinationClassifier.ts
+export class DestinationClassifier {
+  async classify(item: ProcessedItem): Promise<ClassificationResult> {
+    const guide = await this.buildGuide();
+
+    const prompt = `${guide}
+
+NEW ITEM TO CATEGORIZE:
+Type: ${item.contentType}
+${item.url ? `URL: ${item.url}\nDomain: ${new URL(item.url).hostname}` : ''}
+Title: ${item.title}
+Content preview: ${item.content?.substring(0, 1000)}
+
+Suggest where to save this. Return JSON:
+{
+  "path": "exact/folder/path/",
+  "confidence": 0.0-1.0,
+  "reasoning": "one sentence explanation",
+  "isNewFolder": boolean
+}`;
+
+    const result = await this.llm.complete(prompt, {
+      temperature: 0.3,  // More deterministic
+      responseFormat: 'json'
+    });
+
+    return JSON.parse(result);
+  }
+
+  private async buildGuide(): Promise<string> {
+    // Scan user's library structure
+    const folders = await this.scanLibraryFolders();
+
+    // Get learned patterns
+    const patterns = await db.all(`
+      SELECT pattern_type, pattern_value, target_path, confidence, sample_count
+      FROM learned_patterns
+      WHERE confidence > 0.5
+      ORDER BY confidence DESC, sample_count DESC
+      LIMIT 50
+    `);
+
+    return `You are organizing content into a personal knowledge library.
+
+CURRENT LIBRARY STRUCTURE:
+${folders.map(f => `- ${f.path}/ (${f.count} items, last: ${f.lastModified})`).join('\n')}
+
+LEARNED PATTERNS (from user's past choices):
+${patterns.map(p =>
+  `- ${p.pattern_type}:"${p.pattern_value}" → ${p.target_path} (conf: ${p.confidence.toFixed(2)}, seen ${p.sample_count}x)`
+).join('\n')}
+
+RULES:
+- Prefer existing folders over creating new ones
+- Consider content meaning, not just source type (a URL can be notes/todo/etc.)
+- Use learned patterns as strong hints
+- Be specific with paths (e.g., "dev/react/" not just "dev/")
+- If truly doesn't fit, suggest new folder with clear reasoning`;
+  }
+
+  async learnFromUserAction(item: ProcessedItem, chosenPath: string) {
+    const features = this.extractFeatures(item);
+
+    // Update pattern confidences
+    for (const [type, value] of Object.entries(features)) {
+      await db.run(`
+        INSERT INTO learned_patterns (pattern_type, pattern_value, target_path, confidence, sample_count)
+        VALUES (?, ?, ?, 0.3, 1)
+        ON CONFLICT (pattern_type, pattern_value, target_path)
+        DO UPDATE SET
+          confidence = MIN(confidence + 0.1, 1.0),
+          sample_count = sample_count + 1,
+          last_seen = CURRENT_TIMESTAMP
+      `, [type, value, chosenPath]);
+    }
+  }
+
+  private extractFeatures(item: ProcessedItem) {
+    const features: Record<string, string> = {};
+
+    if (item.url) {
+      features.domain = new URL(item.url).hostname;
+      features.urlPath = new URL(item.url).pathname.split('/')[1];
+    }
+
+    // Extract top keywords
+    const keywords = extractKeywords(item.title + ' ' + item.content, { topN: 5 });
+    keywords.forEach((kw, i) => {
+      features[`keyword_${i}`] = kw;
+    });
+
+    return features;
+  }
+}
+```
+
+**Database Schema for Learning:**
+
+```sql
+CREATE TABLE learned_patterns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern_type TEXT NOT NULL,         -- 'domain', 'keyword', 'url_path'
+  pattern_value TEXT NOT NULL,        -- 'github.com', 'react', '/blog/'
+  target_path TEXT NOT NULL,          -- 'dev/', 'recipes/', 'notes/'
+
+  confidence REAL DEFAULT 0.5,        -- 0-1, increases with correct usage
+  sample_count INTEGER DEFAULT 1,     -- How many times seen
+  last_seen DATETIME,                 -- Last time pattern matched
+
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(pattern_type, pattern_value, target_path)
+);
+
+CREATE INDEX idx_patterns_lookup ON learned_patterns(pattern_type, pattern_value, confidence DESC);
+```
+
+**Why This Approach:**
+
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| **Architecture** | Single LLM prompt (not pipeline) | Simplest, most flexible, fully transparent |
+| **Type detection** | Separate, code-based | Fast, deterministic, no AI cost |
+| **Learning** | Update prompt context | Transparent, user can see/edit rules |
+| **Cache** | Cache identical URLs | Reduce LLM cost for duplicates |
+| **Performance** | Accept ~1-2s LLM latency | Background job, user not blocked |
+
+**Alternatives Considered:**
+
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| **Sequential pipeline (rules → LLM)** | Fast path for common cases | Complex code, harder to maintain | ❌ Rejected |
+| **Decision tree** | Transparent logic | Rigid, hard to evolve | ❌ Rejected |
+| **Ensemble (all vote)** | Uses all signals | Always pays LLM cost, complex | ❌ Rejected |
+| **Pure rules (no LLM)** | Fast, cheap | Limited power for edge cases | ❌ Rejected |
+| **Single prompt (chosen)** | Simple, flexible, transparent | Every call needs LLM | ✅ Chosen |
+
+**Mitigation for LLM Cost:**
+
+```typescript
+// Cache classification results
+const cacheKey = hash({
+  url: item.url,
+  title: item.title,
+  contentPreview: item.content?.substring(0, 200)
+});
+
+const cached = await cache.get(`classify:${cacheKey}`);
+if (cached) return cached;
+
+const result = await classifier.classify(item);
+await cache.set(`classify:${cacheKey}`, result, { ttl: '7d' });
+```
+
+### 8.3 Tagging Service
 
 ```typescript
 // lib/ai/tagger.ts
@@ -1924,4 +2379,5 @@ export class MyLifeDBClient {
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2025-10-28 | Engineering Team | Added URL crawl implementation, file system indexing strategy, dual search (Meilisearch + Qdrant), destination classification, alternatives analysis |
 | 1.0 | 2025-10-15 | Engineering Team | Initial technical design |
