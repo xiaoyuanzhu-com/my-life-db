@@ -204,21 +204,21 @@ POST /api/tasks/rate-limit    // Set global rate limit
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | TEXT/VARCHAR(36) | PRIMARY KEY | UUID v4 |
+| `id` | TEXT/VARCHAR(36) | PRIMARY KEY | UUID v7 (time-ordered) |
 | `type` | TEXT/VARCHAR(255) | NOT NULL | Task type identifier |
 | `payload` | TEXT/JSON | NOT NULL | Task input data (JSON) |
 | `status` | TEXT/VARCHAR(20) | NOT NULL, DEFAULT 'pending' | `pending`, `processing`, `completed`, `failed` |
 | `version` | INTEGER | NOT NULL, DEFAULT 0 | Optimistic lock version (incremented on claim) |
 | `attempts` | INTEGER | DEFAULT 0 | Execution attempt count |
 | `max_attempts` | INTEGER | DEFAULT 3 | Give up after this many attempts |
-| `last_attempt_at` | TIMESTAMP/TEXT | NULL | ISO timestamp of last execution |
-| `next_retry_at` | TIMESTAMP/TEXT | NULL | ISO timestamp for next retry (NULL = ready now) |
+| `last_attempt_at` | INTEGER | NULL | Unix timestamp (seconds) of last execution |
+| `next_retry_at` | INTEGER | NULL | Unix timestamp for next retry (NULL = ready now) |
 | `result` | TEXT/JSON | NULL | Success result (JSON) |
 | `error` | TEXT | NULL | Error message (failure only) |
-| `run_after` | TIMESTAMP/TEXT | NULL | Don't run before this timestamp |
-| `created_at` | TIMESTAMP/TEXT | NOT NULL | ISO timestamp |
-| `updated_at` | TIMESTAMP/TEXT | NOT NULL | ISO timestamp |
-| `completed_at` | TIMESTAMP/TEXT | NULL | ISO timestamp (when reached terminal state) |
+| `run_after` | INTEGER | NULL | Don't run before this Unix timestamp |
+| `created_at` | INTEGER | NOT NULL | Unix timestamp (seconds) |
+| `updated_at` | INTEGER | NOT NULL | Unix timestamp (seconds) |
+| `completed_at` | INTEGER | NULL | Unix timestamp (when reached terminal state) |
 
 **Indexes:**
 
@@ -248,15 +248,15 @@ pending → processing → failed → [max attempts] → failed (terminal)
 **EnqueueOptions:**
 ```json
 {
-  "maxAttempts": 3,                      // int (optional, default: 3)
-  "runAfter": "2025-01-15T10:00:00Z"     // ISO timestamp (optional)
+  "maxAttempts": 3,        // int (optional, default: 3)
+  "runAfter": 1736942400   // Unix timestamp (optional)
 }
 ```
 
 **Task:**
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
   "payload": {
     "to": "user@example.com",
@@ -265,16 +265,16 @@ pending → processing → failed → [max attempts] → failed (terminal)
   "status": "completed",
   "attempts": 2,
   "maxAttempts": 3,
-  "lastAttemptAt": "2025-01-15T10:05:30Z",
+  "lastAttemptAt": 1736942730,
   "nextRetryAt": null,
   "result": {
     "messageId": "abc123"
   },
   "error": null,
   "runAfter": null,
-  "createdAt": "2025-01-15T10:00:00Z",
-  "updatedAt": "2025-01-15T10:05:30Z",
-  "completedAt": "2025-01-15T10:05:30Z"
+  "createdAt": 1736942400,
+  "updatedAt": 1736942730,
+  "completedAt": 1736942730
 }
 ```
 
@@ -330,7 +330,8 @@ pending → processing → failed → [max attempts] → failed (terminal)
 
 **Implementation Notes:**
 - Use transactions for atomic updates
-- Convert timestamps to/from ISO 8601 strings
+- Generate UUID v7 for task IDs (time-ordered)
+- Store all timestamps as Unix timestamps (integers, seconds)
 - Parse/stringify JSON for payload/result fields
 - Validate status transitions
 
@@ -569,7 +570,7 @@ while (running) {
   },
   "options": {
     "maxAttempts": 3,
-    "runAfter": "2025-01-15T10:00:00Z"
+    "runAfter": 1736942400
   }
 }
 ```
@@ -577,10 +578,10 @@ while (running) {
 **Response:** `201 Created`
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
   "status": "pending",
-  "createdAt": "2025-01-15T09:55:00Z"
+  "createdAt": 1736942100
 }
 ```
 
@@ -594,15 +595,15 @@ while (running) {
 **Response:** `200 OK`
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
   "payload": { "to": "user@example.com" },
   "status": "completed",
   "attempts": 1,
   "result": { "messageId": "abc123" },
   "error": null,
-  "createdAt": "2025-01-15T09:55:00Z",
-  "completedAt": "2025-01-15T10:00:00Z"
+  "createdAt": 1736942100,
+  "completedAt": 1736942400
 }
 ```
 
@@ -639,7 +640,7 @@ while (running) {
 **Response:** `200 OK`
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "01936d3f-1234-7abc-def0-123456789abc",
   "status": "pending",
   "attempts": 0,
   "nextRetryAt": null
@@ -726,7 +727,7 @@ while (running) {
 **Description:** Cleanup old tasks
 
 **Query Parameters:**
-- `olderThan` (required): ISO timestamp (delete completed tasks older than this)
+- `olderThan` (required): Unix timestamp (delete completed tasks older than this)
 
 **Response:** `200 OK`
 ```json
