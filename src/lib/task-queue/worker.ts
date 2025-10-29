@@ -166,7 +166,6 @@ export class TaskWorker {
     try {
       // Skip if paused
       if (this.paused) {
-        this.schedulePoll();
         return;
       }
 
@@ -175,7 +174,6 @@ export class TaskWorker {
 
       if (tasks.length === 0) {
         this.log('No ready tasks');
-        this.schedulePoll();
         return;
       }
 
@@ -223,7 +221,6 @@ export class TaskWorker {
   private recoverStale(): void {
     try {
       if (this.paused) {
-        this.scheduleStaleRecovery();
         return;
       }
 
@@ -282,25 +279,22 @@ export function startWorker(config?: WorkerConfig): void {
  * Stop global worker
  */
 export function stopWorker(): void {
-  if (globalWorker) {
-    globalWorker.stop();
-  }
+  const worker = globalThis.__mylifedb_taskqueue_worker;
+  if (worker) worker.stop();
 }
 
 /**
  * Pause global worker
  */
 export function pauseWorker(): void {
-  if (globalWorker) {
-    globalWorker.pause();
-  }
+  const worker = globalThis.__mylifedb_taskqueue_worker;
+  if (worker) worker.pause();
 }
 
 /**
  * Resume global worker
  */
 export function resumeWorker(): void {
-  if (globalWorker) {
-    globalWorker.resume();
-  }
+  const worker = globalThis.__mylifedb_taskqueue_worker;
+  if (worker) worker.resume();
 }

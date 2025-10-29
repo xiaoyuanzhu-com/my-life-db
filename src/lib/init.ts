@@ -5,7 +5,12 @@
 
 import { initializeTaskQueue } from './task-queue/startup';
 
-let initialized = false;
+declare global {
+  // eslint-disable-next-line no-var
+  var __mylifedb_app_initialized: boolean | undefined;
+}
+
+let initialized = globalThis.__mylifedb_app_initialized ?? false;
 
 /**
  * Initialize application services
@@ -27,6 +32,7 @@ export function initializeApp() {
     });
 
     initialized = true;
+    globalThis.__mylifedb_app_initialized = true;
     console.log('[App] Application initialization complete');
   } catch (error) {
     console.error('[App] Failed to initialize application:', error);

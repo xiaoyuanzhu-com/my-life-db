@@ -6,6 +6,7 @@
 import { startWorker } from './worker';
 import { registerUrlProcessingHandler } from '../inbox/processUrlInboxItem';
 import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
+import { acquireProcessLock, setupLockAutoRelease } from '@/lib/utils/processLock';
 
 let initialized = false;
 
@@ -33,21 +34,37 @@ export function initializeTaskQueue(options?: {
   // registerFaceDetectionHandler();
   // registerAudioTranscriptionHandler();
 
-  // Start worker if requested
+  // Start worker if requested, guarded by cross-process lock
   if (options?.startWorker !== false) {
-    startWorker({
-      verbose: options?.verbose ?? false,
-      pollIntervalMs: 1000,
-      batchSize: 5,
-      maxAttempts: 3,
-      staleTaskTimeoutSeconds: 300, // 5 minutes
-      staleTaskRecoveryIntervalMs: 60_000, // 1 minute
-    });
-    console.log('[TaskQueue] Worker started');
+    (async () => {
+      try {
+        const { acquired, ownerPid } = await acquireProcessLock('taskqueue-worker');
+        if (acquired) {
+          setupLockAutoRelease('taskqueue-worker');
+          startWorker({
+            verbose: options?.verbose ?? false,
+            pollIntervalMs: 1000,
+            batchSize: 5,
+            maxAttempts: 3,
+            staleTaskTimeoutSeconds: 300, // 5 minutes
+            staleTaskRecoveryIntervalMs: 60_000, // 1 minute
+          });
+          console.log('[TaskQueue] Worker started');
 
-    // Enqueue startup tasks
-    enqueueSyncTask();
-    console.log('[TaskQueue] Enqueued startup sync task');
+          // Enqueue startup tasks
+          enqueueSyncTask();
+          console.log('[TaskQueue] Enqueued startup sync task');
+        } else {
+          console.log(
+            ownerPid
+              ? `[TaskQueue] Worker start skipped (lock held by pid ${ownerPid})`
+              : '[TaskQueue] Worker start skipped (lock held)'
+          );
+        }
+      } catch (err) {
+        console.error('[TaskQueue] Failed to acquire worker lock:', err);
+      }
+    })();
   }
 
   initialized = true;

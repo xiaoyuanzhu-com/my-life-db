@@ -4,6 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { getWorker } from '@/lib/task-queue/worker';
 
 /**
