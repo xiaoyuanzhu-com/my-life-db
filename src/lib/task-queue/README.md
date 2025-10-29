@@ -32,7 +32,6 @@
 - ✅ **Task Deletion**: Delete completed/failed tasks
 - ✅ **Cleanup**: Bulk delete old completed tasks
 - ✅ **Background Worker**: Automatic polling and processing
-- ✅ **Batch Processing**: Process multiple tasks per poll
 - ✅ **RPS Control**: Limit execution rate (tasks per second)
 - ✅ **Parallelism Control**: Control concurrent task execution
 - ✅ **Worker Pause/Resume**: Pause worker without stopping it
@@ -69,6 +68,16 @@
   - Handler should implement its own timeout logic
   - Worker timeout protects against crashes, not slow handlers
 - **Recommendation**: Handlers should fail fast or implement internal timeout
+
+**Why No Batch Processing?**
+- **Problem**: Batch mode changes handler interface from `worker(payload)` to `worker([payload1, payload2, ...])`
+- **Conflict**: Breaks clean, unified interface - caller must handle two different patterns
+- **Alternative**: For high-performance scenarios, use purpose-built systems (Redis queues like BullMQ, message queues like RabbitMQ/SQS)
+- **Design Goal**: Our SQLite-based queue prioritizes simplicity and local processing, not extreme throughput
+- **Workaround**: Users needing batch processing can:
+  - Enqueue a single "batch job" task with array payload
+  - Handler processes the array internally
+  - Or migrate to a dedicated high-performance queue system
 
 ---
 
