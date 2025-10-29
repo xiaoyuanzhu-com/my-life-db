@@ -1,5 +1,6 @@
 // API route for search
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { searchEntries } from '@/lib/fs/storage';
 
 export async function GET(request: NextRequest) {

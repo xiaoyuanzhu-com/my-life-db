@@ -51,8 +51,8 @@ export async function processEntry(
 
           // Update attachment AI data
           metadata.attachments[i].ai = {
-            caption: imageExtraction.caption,
-            ocr: imageExtraction.ocrText,
+            caption: imageExtraction.caption ?? undefined,
+            ocr: imageExtraction.ocrText ?? undefined,
           };
 
           // Add image tags to entry tags

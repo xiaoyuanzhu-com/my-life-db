@@ -1,3 +1,4 @@
+import 'server-only';
 /**
  * Inbox File System Sync - Scan inbox folders and sync with database
  *

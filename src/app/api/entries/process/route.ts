@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { listEntries, updateEntry } from '@/lib/fs/storage';
 import { batchProcessEntries } from '@/lib/ai/processor';
 import type { ExtractionOptions } from '@/types';

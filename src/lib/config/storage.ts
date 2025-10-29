@@ -36,7 +36,9 @@ export async function loadSettings(): Promise<UserSettings> {
         theme: (getSetting(db, 'preferences_theme') as UserSettings['preferences']['theme']) || DEFAULT_SETTINGS.preferences.theme,
         defaultView: (getSetting(db, 'preferences_default_view') as UserSettings['preferences']['defaultView']) || DEFAULT_SETTINGS.preferences.defaultView,
         weeklyDigest: getSetting(db, 'preferences_weekly_digest') === 'true' || DEFAULT_SETTINGS.preferences.weeklyDigest,
-        digestDay: parseInt(getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)),
+        digestDay: parseInt(
+          getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)
+        ) as UserSettings['preferences']['digestDay'],
       },
       ai: {
         provider: (getSetting(db, 'ai_provider') as UserSettings['ai']['provider']) || DEFAULT_SETTINGS.ai.provider,

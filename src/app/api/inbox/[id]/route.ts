@@ -1,5 +1,6 @@
 // API route for individual inbox item operations
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { getInboxItemById, deleteInboxItem, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { getUniqueFilename } from '@/lib/fs/fileDeduplication';

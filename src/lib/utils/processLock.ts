@@ -1,3 +1,4 @@
+import 'server-only';
 /**
  * Simple cross-process lock via lock file
  * Ensures only one process performs a critical section (e.g., starts worker)
@@ -93,4 +94,3 @@ export function setupLockAutoRelease(lockName: string): void {
   process.on('SIGTERM', handler);
   process.on('exit', () => { void releaseProcessLock(lockName); });
 }
-

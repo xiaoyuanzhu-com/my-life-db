@@ -1,5 +1,6 @@
 // API route for directories
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { createDirectory, listDirectories, readDirectory } from '@/lib/fs/storage';
 import { z } from 'zod';
 

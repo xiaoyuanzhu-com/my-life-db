@@ -1,5 +1,6 @@
 // API route to serve entry attachment files
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import fs from 'fs/promises';
 import path from 'path';
 

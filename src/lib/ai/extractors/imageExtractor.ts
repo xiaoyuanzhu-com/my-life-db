@@ -44,8 +44,8 @@ async function generateImageCaption(
  * Extract text from image using OCR
  */
 async function extractOCRText(
-  _filePath: string,
-  _mimeType: string
+  filePath: string,
+  mimeType: string
 ): Promise<string | null> {
   // TODO: Implement OCR using Tesseract.js or cloud OCR service
   // This would extract any text visible in the image
@@ -69,7 +69,7 @@ async function extractOCRText(
  */
 async function classifyImageType(
   filename: string,
-  _mimeType: string
+  mimeType: string
 ): Promise<'photo' | 'screenshot' | 'diagram' | 'chart' | 'document' | 'other'> {
   // Rule-based classification for now
   // TODO: Use image classification AI model

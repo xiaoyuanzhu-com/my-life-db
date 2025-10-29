@@ -203,7 +203,7 @@ export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> 
       openai: settings.ai.openai
         ? {
             ...settings.ai.openai,
-            apiKey: settings.ai.openai.apiKey ? '***' : undefined,
+            apiKey: settings.ai.openai.apiKey ? '***' : '',
           }
         : undefined,
       custom: settings.ai.custom

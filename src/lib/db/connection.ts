@@ -1,4 +1,5 @@
 // Database connection and initialization
+import 'server-only';
 import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
 import { join } from 'path';

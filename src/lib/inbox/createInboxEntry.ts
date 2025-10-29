@@ -1,3 +1,4 @@
+import 'server-only';
 // Create inbox entry with file-based approach
 import fs from 'fs/promises';
 import path from 'path';

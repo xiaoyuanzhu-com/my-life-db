@@ -1,3 +1,4 @@
+import 'server-only';
 /**
  * UUID v7 Generator
  * Generates time-sortable UUIDs with millisecond precision

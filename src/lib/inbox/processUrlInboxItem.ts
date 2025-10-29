@@ -1,3 +1,4 @@
+import 'server-only';
 /**
  * URL Inbox Item Processor - Orchestrates URL crawling and processing
  */

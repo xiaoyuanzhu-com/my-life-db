@@ -1,5 +1,6 @@
 // API route for entries
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { createEntry, listEntries } from '@/lib/fs/storage';
 
 export async function GET(request: NextRequest) {

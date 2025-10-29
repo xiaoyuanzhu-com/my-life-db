@@ -253,7 +253,6 @@ export class TaskWorker {
  * Store in globalThis to survive hot reloads in development
  */
 declare global {
-  // eslint-disable-next-line no-var
   var __mylifedb_taskqueue_worker: TaskWorker | undefined;
 }
 

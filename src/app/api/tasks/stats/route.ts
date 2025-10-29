@@ -4,6 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { getTaskStats } from '@/lib/task-queue/task-manager';
 import { getPendingTaskCountByType, hasReadyTasks } from '@/lib/task-queue/scheduler';
 

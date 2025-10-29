@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { getTasks, createTask, getTaskStats } from '@/lib/task-queue/task-manager';
 import type { TaskStatus } from '@/lib/task-queue/types';
 

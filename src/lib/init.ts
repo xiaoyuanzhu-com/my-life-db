@@ -6,7 +6,6 @@
 import { initializeTaskQueue } from './task-queue/startup';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __mylifedb_app_initialized: boolean | undefined;
 }
 

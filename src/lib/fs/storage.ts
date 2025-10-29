@@ -1,4 +1,5 @@
 // Filesystem storage utilities for MyLifeDB
+import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';

@@ -1,5 +1,6 @@
 // API route for single entry operations
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { findEntryByUUID, updateEntry, deleteEntry } from '@/lib/fs/storage';
 import { z } from 'zod';
 

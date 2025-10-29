@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { getTaskById, deleteTask } from '@/lib/task-queue/task-manager';
 
 type RouteContext = {

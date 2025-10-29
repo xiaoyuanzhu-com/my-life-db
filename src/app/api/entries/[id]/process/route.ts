@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 import { findEntryByUUID, updateEntry } from '@/lib/fs/storage';
 import { processEntry } from '@/lib/ai/processor';
 import type { ExtractionOptions } from '@/types';

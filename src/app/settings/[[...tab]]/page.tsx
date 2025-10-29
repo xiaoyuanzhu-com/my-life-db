@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useSettingsContext } from '../_context/SettingsContext';
 import { SettingsHeader } from '../_components/SettingsHeader';
 import { TasksTab } from '../_components/TasksTab';
+import type { UserSettings } from '@/lib/config/settings';
 
 export default function SettingsPage() {
   const params = useParams();
@@ -149,7 +150,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             openai: { ...settings.ai?.openai, baseUrl: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -166,7 +167,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             openai: { ...settings.ai?.openai, model: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -188,7 +189,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             ollama: { ...settings.ai?.ollama, baseUrl: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -204,7 +205,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             ollama: { ...settings.ai?.ollama, model: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -226,7 +227,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             custom: { ...settings.ai?.custom, baseUrl: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -243,7 +244,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             custom: { ...settings.ai?.custom, apiKey: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />
@@ -294,7 +295,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.text,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
@@ -342,7 +343,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.url,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
@@ -389,7 +390,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.image,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
@@ -437,7 +438,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.audio,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
@@ -484,7 +485,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.video,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
@@ -532,7 +533,7 @@ export default function SettingsPage() {
                                 ...settings.processing?.pdf,
                                 [key]: !currentValue,
                               },
-                            },
+                            } as UserSettings['processing'],
                           });
                         }}
                       >
