@@ -1,7 +1,7 @@
 // Initial migration: Settings table
 import type BetterSqlite3 from 'better-sqlite3';
 
-export default {
+const migration = {
   version: 1,
   description: 'Initial schema with settings table',
 
@@ -30,3 +30,5 @@ export default {
     db.exec(`DROP TABLE IF EXISTS settings;`);
   },
 };
+
+export default migration;

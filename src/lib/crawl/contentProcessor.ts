@@ -93,14 +93,14 @@ function htmlToMarkdown(html: string): string {
 
   // Convert unordered lists
   md = md.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, content) => {
-    let list = content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+    const list = content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
     return '\n' + list + '\n';
   });
 
   // Convert ordered lists
   md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, content) => {
     let counter = 1;
-    let list = content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => {
+    const list = content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => {
       return `${counter++}. $1\n`;
     });
     return '\n' + list + '\n';

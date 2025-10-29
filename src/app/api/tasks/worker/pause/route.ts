@@ -3,14 +3,14 @@
  * POST /api/tasks/worker/pause - Pause the task worker
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { pauseWorker, getWorker } from '@/lib/task-queue/worker';
 
 /**
  * POST /api/tasks/worker/pause
  * Pause the task worker
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     pauseWorker();
     const worker = getWorker();

@@ -39,6 +39,7 @@ export default function DirectoryDetailPage({
 
   useEffect(() => {
     loadDirectory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirPath]);
 
   async function handleDelete(entryId: string) {
@@ -130,7 +131,7 @@ export default function DirectoryDetailPage({
                   key={subdir}
                   href={`/library/${path.join('/')}/${subdir}`}
                 >
-                  <Card hover>
+                  <Card className="hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors">
                     <CardContent className="py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">📁</span>

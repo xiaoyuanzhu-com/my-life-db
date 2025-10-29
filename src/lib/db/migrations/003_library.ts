@@ -1,7 +1,7 @@
 // Library table for file indexing
 import type BetterSqlite3 from 'better-sqlite3';
 
-export default {
+const migration = {
   version: 3,
   description: 'Create library table for file system indexing',
 
@@ -40,3 +40,5 @@ export default {
     `);
   },
 };
+
+export default migration;

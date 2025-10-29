@@ -3,10 +3,10 @@
 /**
  * Generate a title for an entry based on its content
  * This is a stub implementation that will be replaced with actual AI processing
- * @param content - The entry content
+ * @param _content - The entry content
  * @returns Generated title or null
  */
-export async function generateTitle(content: string): Promise<string | null> {
+export async function generateTitle(_content: string): Promise<string | null> {
   // TODO: Implement AI title generation
   // This will be called async during insights/review phase
   // For now, return null (no title generated)
@@ -16,10 +16,10 @@ export async function generateTitle(content: string): Promise<string | null> {
 /**
  * Generate tags for an entry based on its content
  * This is a stub implementation that will be replaced with actual AI processing
- * @param content - The entry content
+ * @param _content - The entry content
  * @returns Array of generated tags
  */
-export async function generateTags(content: string): Promise<string[]> {
+export async function generateTags(_content: string): Promise<string[]> {
   // TODO: Implement AI tag generation
   // This will be called async during insights/review phase
   // For now, return empty array
@@ -29,10 +29,10 @@ export async function generateTags(content: string): Promise<string[]> {
 /**
  * Generate a summary for an entry based on its content
  * This is a stub implementation that will be replaced with actual AI processing
- * @param content - The entry content
+ * @param _content - The entry content
  * @returns Generated summary or null
  */
-export async function generateSummary(content: string): Promise<string | null> {
+export async function generateSummary(_content: string): Promise<string | null> {
   // TODO: Implement AI summary generation
   // This will be called async during insights/review phase
   // For now, return null

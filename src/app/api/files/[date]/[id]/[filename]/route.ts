@@ -37,7 +37,7 @@ export async function GET(
 
     // Return file with appropriate headers
     // Use Response instead of NextResponse for binary data
-    return new Response(fileBuffer, {
+    return new Response(fileBuffer as unknown as BodyInit, {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,

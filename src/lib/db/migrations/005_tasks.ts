@@ -1,7 +1,7 @@
 // Task queue table for background job processing
 import type BetterSqlite3 from 'better-sqlite3';
 
-export default {
+const migration = {
   version: 5,
   description: 'Create tasks table for background job processing',
 
@@ -63,3 +63,5 @@ export default {
     `);
   },
 };
+
+export default migration;

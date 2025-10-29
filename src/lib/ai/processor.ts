@@ -124,7 +124,7 @@ export async function batchProcessEntries(
 /**
  * Find related entries using similarity search
  */
-async function findRelatedEntries(entry: Entry): Promise<string[]> {
+async function findRelatedEntries(_entry: Entry): Promise<string[]> {
   // TODO: Implement vector similarity search using embeddings
   // This would:
   // 1. Generate embedding for current entry

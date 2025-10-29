@@ -6,13 +6,11 @@ import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
 import { listInboxItems } from '@/lib/db/inbox';
 import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
-import { initializeApp } from '@/lib/init';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 
-// Ensure app is initialized
-initializeApp();
+// Note: App initialization now happens in instrumentation.ts at server startup
 
 /**
  * GET /api/inbox

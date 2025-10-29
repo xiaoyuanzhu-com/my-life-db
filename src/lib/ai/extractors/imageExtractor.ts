@@ -30,8 +30,8 @@ export async function extractImageInfo(
  * Generate a descriptive caption for the image
  */
 async function generateImageCaption(
-  filePath: string,
-  mimeType: string
+  _filePath: string,
+  _mimeType: string
 ): Promise<string | null> {
   // TODO: Use AI vision model (OpenAI GPT-4 Vision, LLaVA, etc.)
   // This would analyze the image and generate a natural language description
@@ -44,8 +44,8 @@ async function generateImageCaption(
  * Extract text from image using OCR
  */
 async function extractOCRText(
-  filePath: string,
-  mimeType: string
+  _filePath: string,
+  _mimeType: string
 ): Promise<string | null> {
   // TODO: Implement OCR using Tesseract.js or cloud OCR service
   // This would extract any text visible in the image
@@ -69,7 +69,7 @@ async function extractOCRText(
  */
 async function classifyImageType(
   filename: string,
-  mimeType: string
+  _mimeType: string
 ): Promise<'photo' | 'screenshot' | 'diagram' | 'chart' | 'document' | 'other'> {
   // Rule-based classification for now
   // TODO: Use image classification AI model
@@ -123,7 +123,7 @@ async function generateImageTags(filename: string): Promise<string[]> {
 /**
  * Detect objects in the image
  */
-export async function detectObjects(filePath: string): Promise<string[]> {
+export async function detectObjects(_filePath: string): Promise<string[]> {
   // TODO: Use object detection model (YOLO, COCO, etc.)
   // Would detect common objects: person, car, dog, laptop, etc.
 
@@ -134,7 +134,7 @@ export async function detectObjects(filePath: string): Promise<string[]> {
  * Get dominant colors from image
  */
 export async function extractDominantColors(
-  filePath: string
+  _filePath: string
 ): Promise<string[]> {
   // TODO: Use image processing library (sharp, canvas)
   // Extract 3-5 dominant colors in hex format

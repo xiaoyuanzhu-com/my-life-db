@@ -3,14 +3,14 @@
  * POST /api/tasks/worker/resume - Resume the task worker
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { resumeWorker, getWorker } from '@/lib/task-queue/worker';
 
 /**
  * POST /api/tasks/worker/resume
  * Resume the task worker
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     resumeWorker();
     const worker = getWorker();

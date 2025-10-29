@@ -93,20 +93,24 @@ export default function LibraryPage() {
               <CardContent>
                 <form onSubmit={handleCreateDirectory} className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">Create New Directory</h3>
-                  <Input
-                    label="Name"
-                    value={newDirName}
-                    onChange={(e) => setNewDirName(e.target.value)}
-                    placeholder="e.g., Work Projects, Personal Notes"
-                    disabled={isCreating}
-                  />
-                  <Input
-                    label="Description (optional)"
-                    value={newDirDescription}
-                    onChange={(e) => setNewDirDescription(e.target.value)}
-                    placeholder="What will you store here?"
-                    disabled={isCreating}
-                  />
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Name</label>
+                    <Input
+                      value={newDirName}
+                      onChange={(e) => setNewDirName(e.target.value)}
+                      placeholder="e.g., Work Projects, Personal Notes"
+                      disabled={isCreating}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Description (optional)</label>
+                    <Input
+                      value={newDirDescription}
+                      onChange={(e) => setNewDirDescription(e.target.value)}
+                      placeholder="What will you store here?"
+                      disabled={isCreating}
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <Button type="submit" disabled={isCreating || !newDirName.trim()}>
                       {isCreating ? 'Creating...' : 'Create'}

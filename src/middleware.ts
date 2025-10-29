@@ -4,13 +4,9 @@
  */
 
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
-// Import initialization but don't call it here (will be called in route handlers)
-// Middleware runs in Edge Runtime, so we can't use Node.js APIs here
-
-export function middleware(request: NextRequest) {
-  // Just pass through - initialization happens in API routes
+export function middleware() {
+  // Just pass through - initialization happens in instrumentation.ts
   return NextResponse.next();
 }
 
@@ -25,4 +21,5 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
+  runtime: 'nodejs',
 };

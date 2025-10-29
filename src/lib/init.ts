@@ -20,8 +20,9 @@ export function initializeApp() {
 
   try {
     // Initialize task queue and start worker
+    // Temporarily verbose for debugging (set to false in production)
     initializeTaskQueue({
-      verbose: process.env.NODE_ENV === 'development',
+      verbose: true,
       startWorker: true,
     });
 

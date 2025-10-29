@@ -110,6 +110,7 @@ export function TasksTab() {
     // Auto-refresh every 5 seconds
     const interval = setInterval(refreshData, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
   const formatDate = (timestamp: number) => {

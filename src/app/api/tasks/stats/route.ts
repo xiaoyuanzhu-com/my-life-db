@@ -3,7 +3,7 @@
  * GET /api/tasks/stats - Get task queue statistics
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getTaskStats } from '@/lib/task-queue/task-manager';
 import { getPendingTaskCountByType, hasReadyTasks } from '@/lib/task-queue/scheduler';
 
@@ -11,7 +11,7 @@ import { getPendingTaskCountByType, hasReadyTasks } from '@/lib/task-queue/sched
  * GET /api/tasks/stats
  * Get task queue statistics
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const basicStats = getTaskStats();
     const pendingByType = getPendingTaskCountByType();

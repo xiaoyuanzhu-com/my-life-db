@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Upload, Send, X, Plus } from 'lucide-react';
+import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InputTypeTag } from './InputTypeTag';
 import { detectInputType, InputType } from '@/lib/utils/inputTypeDetector';

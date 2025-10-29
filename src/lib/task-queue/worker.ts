@@ -253,17 +253,21 @@ export class TaskWorker {
 
 /**
  * Global worker instance (singleton)
+ * Store in globalThis to survive hot reloads in development
  */
-let globalWorker: TaskWorker | null = null;
+declare global {
+  // eslint-disable-next-line no-var
+  var __mylifedb_taskqueue_worker: TaskWorker | undefined;
+}
 
 /**
  * Get or create global worker
  */
 export function getWorker(config?: WorkerConfig): TaskWorker {
-  if (!globalWorker) {
-    globalWorker = new TaskWorker(config);
+  if (!globalThis.__mylifedb_taskqueue_worker) {
+    globalThis.__mylifedb_taskqueue_worker = new TaskWorker(config);
   }
-  return globalWorker;
+  return globalThis.__mylifedb_taskqueue_worker;
 }
 
 /**

@@ -2,11 +2,12 @@
 import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import { getDatabase } from '../db/connection';
+import type BetterSqlite3 from 'better-sqlite3';
 
 /**
  * Get a single setting value by key
  */
-function getSetting(db: any, key: string): string | null {
+function getSetting(db: BetterSqlite3.Database, key: string): string | null {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
   return row ? row.value : null;
 }
@@ -14,7 +15,7 @@ function getSetting(db: any, key: string): string | null {
 /**
  * Set a single setting value by key
  */
-function setSetting(db: any, key: string, value: string): void {
+function setSetting(db: BetterSqlite3.Database, key: string, value: string): void {
   const stmt = db.prepare(`
     INSERT INTO settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
@@ -32,13 +33,13 @@ export async function loadSettings(): Promise<UserSettings> {
     // Load settings from key-value pairs
     const settings: UserSettings = {
       preferences: {
-        theme: (getSetting(db, 'preferences_theme') as any) || DEFAULT_SETTINGS.preferences.theme,
-        defaultView: (getSetting(db, 'preferences_default_view') as any) || DEFAULT_SETTINGS.preferences.defaultView,
+        theme: (getSetting(db, 'preferences_theme') as UserSettings['preferences']['theme']) || DEFAULT_SETTINGS.preferences.theme,
+        defaultView: (getSetting(db, 'preferences_default_view') as UserSettings['preferences']['defaultView']) || DEFAULT_SETTINGS.preferences.defaultView,
         weeklyDigest: getSetting(db, 'preferences_weekly_digest') === 'true' || DEFAULT_SETTINGS.preferences.weeklyDigest,
-        digestDay: parseInt(getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)) as any,
+        digestDay: parseInt(getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)),
       },
       ai: {
-        provider: (getSetting(db, 'ai_provider') as any) || DEFAULT_SETTINGS.ai.provider,
+        provider: (getSetting(db, 'ai_provider') as UserSettings['ai']['provider']) || DEFAULT_SETTINGS.ai.provider,
         openai: {
           apiKey: getSetting(db, 'ai_openai_api_key') || '',
           baseUrl: getSetting(db, 'ai_openai_base_url') || undefined,

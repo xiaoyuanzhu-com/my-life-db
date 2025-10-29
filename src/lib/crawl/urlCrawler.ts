@@ -43,7 +43,7 @@ export async function crawlUrl(
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
-  } catch (error) {
+  } catch {
     throw new Error(`Invalid URL: ${url}`);
   }
 

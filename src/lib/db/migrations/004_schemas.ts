@@ -1,7 +1,7 @@
 // Metadata schemas registry for schema evolution tracking
 import type BetterSqlite3 from 'better-sqlite3';
 
-export default {
+const migration = {
   version: 4,
   description: 'Create metadata schemas registry for schema evolution',
 
@@ -64,3 +64,5 @@ export default {
     db.exec(`DROP TABLE IF EXISTS schema_version;`);
   },
 };
+
+export default migration;

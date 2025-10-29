@@ -1,7 +1,7 @@
 // Inbox table for temporary staging
 import type BetterSqlite3 from 'better-sqlite3';
 
-export default {
+const migration = {
   version: 2,
   description: 'Create inbox table for temporary staging',
 
@@ -38,3 +38,5 @@ export default {
     `);
   },
 };
+
+export default migration;

@@ -3,14 +3,14 @@
  * GET /api/tasks/worker/status - Get worker status
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getWorker } from '@/lib/task-queue/worker';
 
 /**
  * GET /api/tasks/worker/status
  * Get worker status
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const worker = getWorker();
 

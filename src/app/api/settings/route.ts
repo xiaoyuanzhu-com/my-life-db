@@ -66,7 +66,7 @@ export async function PUT(request: NextRequest) {
         ...currentSettings.extraction,
         ...updates.extraction,
       },
-      processing: {
+      processing: updates.processing ? ({
         ...currentSettings.processing,
         ...updates.processing,
         text: {
@@ -93,7 +93,7 @@ export async function PUT(request: NextRequest) {
           ...currentSettings.processing?.pdf,
           ...updates.processing?.pdf,
         },
-      },
+      } as UserSettings['processing']) : currentSettings.processing,
       storage: {
         ...currentSettings.storage,
         ...updates.storage,

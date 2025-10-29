@@ -122,7 +122,7 @@ export default function SettingsPage() {
                           ai: {
                             ...settings.ai,
                             openai: { ...settings.ai?.openai, apiKey: e.target.value },
-                          },
+                          } as UserSettings['ai'],
                         })
                       }
                     />

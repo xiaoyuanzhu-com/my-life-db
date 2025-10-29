@@ -15,7 +15,6 @@ export async function extractTextInfo(
     includeEntities = true,
     includeSentiment = true,
     includeActionItems = true,
-    minConfidence = 0.5,
   } = options;
 
   // Basic rule-based extraction for now

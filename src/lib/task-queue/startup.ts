@@ -5,6 +5,7 @@
 
 import { startWorker } from './worker';
 import { registerUrlProcessingHandler } from '../inbox/processUrlInboxItem';
+import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
 
 let initialized = false;
 
@@ -25,6 +26,7 @@ export function initializeTaskQueue(options?: {
 
   // Register all task handlers
   registerUrlProcessingHandler();
+  registerInboxSyncHandler();
 
   // TODO: Register other handlers here
   // registerImageCaptionHandler();
@@ -42,6 +44,10 @@ export function initializeTaskQueue(options?: {
       staleTaskRecoveryIntervalMs: 60_000, // 1 minute
     });
     console.log('[TaskQueue] Worker started');
+
+    // Enqueue startup tasks
+    enqueueSyncTask();
+    console.log('[TaskQueue] Enqueued startup sync task');
   }
 
   initialized = true;

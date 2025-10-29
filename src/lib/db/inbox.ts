@@ -39,7 +39,7 @@ export function getInboxItemById(id: string): InboxItem | null {
 
   const row = db
     .prepare('SELECT * FROM inbox WHERE id = ?')
-    .get(id) as any;
+    .get(id) as unknown;
 
   if (!row) return null;
 
@@ -54,7 +54,7 @@ export function getInboxItemByFolderName(folderName: string): InboxItem | null {
 
   const row = db
     .prepare('SELECT * FROM inbox WHERE folder_name = ?')
-    .get(folderName) as any;
+    .get(folderName) as unknown;
 
   if (!row) return null;
 
@@ -72,7 +72,7 @@ export function listInboxItems(options?: {
   const db = getDatabase();
 
   let sql = 'SELECT * FROM inbox';
-  const params: any[] = [];
+  const params: (string | number)[] = [];
 
   if (options?.status) {
     sql += ' WHERE status = ?';
@@ -91,7 +91,7 @@ export function listInboxItems(options?: {
     }
   }
 
-  const rows = db.prepare(sql).all(...params) as any[];
+  const rows = db.prepare(sql).all(...params) as unknown[];
 
   return rows.map(rowToInboxItem);
 }
@@ -106,7 +106,7 @@ export function updateInboxItem(
   const db = getDatabase();
 
   const fields: string[] = [];
-  const values: any[] = [];
+  const values: (string | number | null)[] = [];
 
   if (updates.folderName !== undefined) {
     fields.push('folder_name = ?');
@@ -169,18 +169,19 @@ export function deleteInboxItem(id: string): void {
 /**
  * Convert database row to InboxItem
  */
-function rowToInboxItem(row: any): InboxItem {
+function rowToInboxItem(row: unknown): InboxItem {
+  const r = row as Record<string, unknown>;
   return {
-    id: row.id,
-    folderName: row.folder_name,
-    type: row.type,
-    files: JSON.parse(row.files) as InboxFile[],
-    status: row.status,
-    processedAt: row.processed_at,
-    error: row.error,
-    aiSlug: row.ai_slug,
-    schemaVersion: row.schema_version,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: r.id as string,
+    folderName: r.folder_name as string,
+    type: r.type as InboxItem['type'],
+    files: JSON.parse(r.files as string) as InboxFile[],
+    status: r.status as InboxItem['status'],
+    processedAt: r.processed_at as string | null,
+    error: r.error as string | null,
+    aiSlug: r.ai_slug as string | null,
+    schemaVersion: r.schema_version as number,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
   };
 }
