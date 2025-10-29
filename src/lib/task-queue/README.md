@@ -169,34 +169,7 @@ tq<CrawlPayload>('crawl')
   .add({ wrong: 'field' });  // ❌ Type error
 ```
 
-### 2.2 Task Handler Interface
-
-**Purpose:** User-defined function that executes a task
-
-**Contract:**
-```
-Input:  JSON payload (application-defined)
-Output: JSON result (optional) OR Error
-```
-
-**Pseudocode:**
-```
-function TaskHandler(payload: JSON): JSON | Error {
-  // User implementation
-  // Throw/return error to mark task as failed
-  // Return result to mark task as completed
-}
-```
-
-**Example:**
-```javascript
-async function handleEmailSend(payload) {
-  await sendEmail(payload.to, payload.subject, payload.body);
-  return { messageId: "abc123" };
-}
-```
-
-### 2.3 Management API (REST/Admin Only)
+### 2.2 Management API (REST/Admin Only)
 
 **Purpose:** Administrative operations (monitoring, debugging)
 
@@ -567,42 +540,12 @@ while (running) {
 }
 ```
 
-**Pause Behavior:**
-
-```
-When paused:
-- Worker continues polling (keeps state alive)
-- No tasks executed
-- Status queries still work
-- Can resume instantly without restart
-
-Use cases:
-- Maintenance window
-- Debugging
-- Temporary overload
-- Manual intervention
-```
-
-**Parallelism (Future Feature):**
-
-```
-Current: Sequential (parallelism = 1)
-- Process one task at a time
-- Simple, predictable
-
-Future: Concurrent (parallelism > 1)
-- Process N tasks in parallel
-- Use threads/goroutines/async
-- Need task locking to prevent duplicate execution
-```
-
 **Implementation Notes:**
 - Use polling (not push-based)
-- Configurable poll interval (default: 1000ms)
-- Configurable batch size (default: 10)
+- Poll interval: default 1000ms
+- Batch size: default 10
 - Graceful shutdown: finish current batch before stopping
-- Pause is instant (checks flag before each task)
-- Default: Sequential processing (parallelism = 1)
+- When paused: continue polling but don't execute tasks
 
 ---
 
@@ -902,98 +845,11 @@ await tq.stop();               // Graceful shutdown
 
 ### 6.2 Task Detail View
 
-**Purpose:** Show full task information
-
-**Features:**
-- Task metadata (id, type, status, attempts, timestamps)
-- Payload (JSON viewer)
-- Result (JSON viewer, if completed)
-- Error message (if failed)
-- Retry timeline (list of attempts with timestamps and errors)
-- Actions: Retry, Delete
-
-**Pseudocode:**
-```jsx
-<TaskDetail task={task}>
-  <Section title="Metadata">
-    <Field label="ID">{task.id}</Field>
-    <Field label="Type">{task.type}</Field>
-    <Field label="Status"><StatusBadge status={task.status} /></Field>
-    <Field label="Attempts">{task.attempts}/{task.maxAttempts}</Field>
-    <Field label="Created">{formatDate(task.createdAt)}</Field>
-    {task.completedAt && <Field label="Completed">{formatDate(task.completedAt)}</Field>}
-    {task.runAfter && <Field label="Scheduled">{formatDate(task.runAfter)}</Field>}
-  </Section>
-
-  <Section title="Payload">
-    <JsonViewer data={task.payload} />
-  </Section>
-
-  {task.result && (
-    <Section title="Result">
-      <JsonViewer data={task.result} />
-    </Section>
-  )}
-
-  {task.error && (
-    <Section title="Error">
-      <ErrorMessage>{task.error}</ErrorMessage>
-    </Section>
-  )}
-
-  <Section title="Actions">
-    <Button *ngIf="task.status === 'failed'" onClick={retry}>Retry Now</Button>
-    <Button *ngIf="['completed', 'failed'].includes(task.status)" onClick={delete}>Delete</Button>
-  </Section>
-</TaskDetail>
-```
+**Components:** Metadata fields, JSON payload viewer, result viewer, error message, retry/delete actions
 
 ### 6.3 Queue Stats Dashboard
 
-**Purpose:** Show queue health metrics
-
-**Features:**
-- Status breakdown (pie chart or cards)
-- Tasks by type (bar chart)
-- Recent failures (list of last 10 failed tasks)
-- Processing rate (tasks/hour)
-- Cleanup action (delete old completed tasks)
-
-**Pseudocode:**
-```jsx
-<StatsDashboard stats={stats}>
-  <Section title="Status Overview">
-    <Card>
-      <Metric label="Pending" value={stats.pending} color="blue" />
-      <Metric label="Processing" value={stats.processing} color="yellow" />
-      <Metric label="Completed" value={stats.completed} color="green" />
-      <Metric label="Failed" value={stats.failed} color="red" />
-    </Card>
-  </Section>
-
-  <Section title="By Type">
-    <BarChart data={stats.byType} />
-  </Section>
-
-  <Section title="Actions">
-    <Button onClick={cleanupOldTasks}>Clean Up Completed Tasks</Button>
-  </Section>
-</StatsDashboard>
-```
-
-### 6.4 Status Badge Component
-
-**Purpose:** Color-coded status indicator
-
-**Pseudocode:**
-```jsx
-<StatusBadge status={status}>
-  {status === 'pending' && <Badge color="blue">Pending</Badge>}
-  {status === 'processing' && <Badge color="yellow">Processing</Badge>}
-  {status === 'completed' && <Badge color="green">Completed</Badge>}
-  {status === 'failed' && <Badge color="red">Failed</Badge>}
-</StatusBadge>
-```
+**Components:** Status count cards (pending/processing/completed/failed), tasks by type chart, cleanup action
 
 ---
 
@@ -1216,60 +1072,9 @@ const queue = new TaskQueue({
 });
 ```
 
-### 8.3 Register Handlers
+### 8.3 Usage Example
 
-```typescript
-// Define handlers
-queue.registerHandler('send_email', async (payload) => {
-  const { to, subject, body } = payload;
-  const messageId = await sendEmail(to, subject, body);
-  return { messageId };
-});
-
-queue.registerHandler('process_image', async (payload) => {
-  const { imageUrl } = payload;
-  const result = await processImage(imageUrl);
-  return result;
-});
-
-queue.registerHandler('search_index', async (payload) => {
-  const { itemId } = payload;
-  await indexInMeilisearch(itemId);
-  await indexInQdrant(itemId);
-});
-```
-
-### 8.4 Enqueue Tasks
-
-```typescript
-// From application code
-queue.enqueue('send_email', {
-  to: 'user@example.com',
-  subject: 'Welcome',
-  body: 'Hello!'
-}, {
-  priority: 3,
-  maxAttempts: 5
-});
-
-// From API route
-export async function POST(request: NextRequest) {
-  const { type, payload, options } = await request.json();
-  const taskId = queue.enqueue(type, payload, options);
-  return NextResponse.json({ id: taskId }, { status: 201 });
-}
-```
-
-### 8.5 Mount UI Routes
-
-```typescript
-// src/app/tasks/page.tsx
-import { TaskList } from '@/components/tasks/TaskList';
-
-export default function TasksPage() {
-  return <TaskList />;
-}
-```
+See section 2.1 and 5.2 for complete usage examples.
 
 ---
 
@@ -1299,149 +1104,32 @@ export default function TasksPage() {
 - **Poll Interval Tuning**: Reduce for low-latency, increase for efficiency
 - **Cleanup Schedule**: Run cleanup during off-peak hours
 
-### 9.4 Monitoring & Observability
+### 9.4 Monitoring
 
-**Metrics to Track:**
-- Queue depth (pending count)
-- Processing rate (tasks/minute)
-- Failure rate (failed/total)
-- Retry rate (attempts > 1 count)
-- Handler latency (execution time)
-- Worker health (last poll time)
+**Key Metrics:** Queue depth, processing rate, failure rate, handler latency
 
-**Logging:**
-- Log task enqueue (type, id)
-- Log task execution start/end
-- Log task failures (error message)
-- Log worker start/stop
-- Log handler registration
+**Logging:** Task enqueue/start/end/failure, worker start/stop
 
-### 9.5 Prior Art & Similar Projects
+### 9.5 Similar Systems
 
-**Existing Systems:**
-- **BullMQ** (Node.js, Redis): Feature-rich, requires Redis
-- **Celery** (Python, various brokers): Distributed, complex setup
-- **Sidekiq** (Ruby, Redis): Production-proven, Redis-dependent
-- **pg-boss** (Node.js, PostgreSQL): Similar concept, Postgres-specific
-- **Faktory** (Language-agnostic, Redis protocol): Closest to this spec
-
-**Prompt-Only Library Concept:**
-- **Novel approach**: No existing "prompt-only OSS lib" found
-- **Benefits**: Technology-agnostic, easy to customize, no dependency hell
-- **Risks**: Implementation quality varies by agent/developer
-- **Recommendation**: Provide reference implementation + test suite
+BullMQ (Redis), Celery (Python), Sidekiq (Ruby), pg-boss (PostgreSQL), Faktory (language-agnostic)
 
 ---
 
-## 10. Testing Guide
+## 10. Testing
 
-### 10.1 Unit Tests
+**Unit Tests:** Task creation, status transitions, retry logic, handler execution, exactly-once guarantee
 
-**Test Coverage:**
-- Task creation (valid/invalid payloads)
-- Task status transitions
-- Retry delay calculation
-- Handler execution (success/failure)
-- Idempotency (duplicate prevention)
-- Task cancellation (allowed/forbidden states)
-- Cleanup (old task deletion)
+**Integration Tests:** End-to-end processing, concurrent workers, API endpoints
 
-**Example Test:**
-```typescript
-test('should retry failed task with exponential backoff', async () => {
-  const queue = new TaskQueue({ db, enableWorker: false });
-  let attempts = 0;
-
-  queue.registerHandler('test', async () => {
-    attempts++;
-    if (attempts < 3) throw new Error('Fail');
-  });
-
-  const taskId = queue.enqueue('test', {}, { maxAttempts: 3 });
-
-  await queue.processBatch();  // Attempt 1: fail
-  expect(queue.getTask(taskId).status).toBe('failed');
-
-  await queue.processBatch();  // Attempt 2: fail
-  expect(queue.getTask(taskId).attempts).toBe(2);
-
-  await queue.processBatch();  // Attempt 3: success
-  expect(queue.getTask(taskId).status).toBe('completed');
-  expect(attempts).toBe(3);
-});
-```
-
-### 10.2 Integration Tests
-
-**Test Scenarios:**
-- End-to-end task processing
-- Concurrent worker safety
-- API endpoint responses
-- UI component rendering
-- Database constraint enforcement
-
-### 10.3 Load Tests
-
-**Benchmarks:**
-- Enqueue 1000 tasks/sec
-- Process 100 tasks/sec (depends on handler)
-- List 10,000 tasks with pagination
-- Cleanup 100,000 old tasks
+**Load Tests:** Enqueue throughput, processing rate, query performance
 
 ---
 
-## 11. FAQ
-
-**Q: Why not use existing library like BullMQ?**
-A: Existing libraries are language/database-specific. This spec works for any stack.
-
-**Q: Can I use this with PostgreSQL/MySQL?**
-A: Yes! Adjust SQL syntax (timestamps, JSON types) but logic is identical.
-
-**Q: How do I handle long-running tasks?**
-A: Keep handlers under 30 seconds. For longer tasks, split into smaller tasks or use separate worker process.
-
-**Q: Can multiple servers run workers?**
-A: Yes, with shared database. Use `UPDATE ... WHERE status = 'pending'` for atomic task claiming.
-
-**Q: How do I prioritize within same priority level?**
-A: Use `created_at` as tiebreaker (older first). Or add `scheduled_for` field.
-
-**Q: What about task progress tracking?**
-A: Out of scope. Handlers can update external state, but queue doesn't track progress percentage.
-
-**Q: Can I modify task payload after enqueueing?**
-A: No. Enqueue new task or cancel+re-enqueue.
-
-**Q: How do I debug failed tasks?**
-A: Check `error` field in task record. Add detailed logging in handlers.
-
----
-
-## 12. Changelog
-
-**v1.0 (2025-01-28)**
-- Initial specification
-- Language-agnostic, database-agnostic design
-- Complete API, UI, and reference implementation specs
-
----
-
-## License
-
-This specification is released into the public domain (CC0 1.0 Universal).
-Implementations may use any license.
-
----
-
-**End of Specification**
-
-> **Implementation Checklist:**
-> ☐ Database schema created
-> ☐ Core modules implemented (Manager, Scheduler, Executor, Worker)
-> ☐ API endpoints created
-> ☐ UI components built
-> ☐ Handlers registered
-> ☐ Tests written
-> ☐ Documentation updated
-> ☐ Worker deployed
+**Implementation Checklist:**
+- ☐ Database schema created
+- ☐ Core modules implemented (Manager, Scheduler, Executor, Worker)
+- ☐ API endpoints created
+- ☐ UI components built
+- ☐ Handlers registered
+- ☐ Tests written
