@@ -3,7 +3,7 @@
  */
 
 import { getDatabase } from '../db/connection';
-import type { Task } from './task-manager';
+import type { Task } from './types';
 
 /**
  * Calculate retry delay with exponential backoff and jitter
@@ -11,22 +11,25 @@ import type { Task } from './task-manager';
  *
  * Default delays (with jitter):
  * - Attempt 1: ~10s
- * - Attempt 2: ~20s
- * - Attempt 3: ~40s
- * - Attempt 4: ~80s
- * - Attempt 5+: ~160s (capped)
+ * - Attempt 2: ~40s
+ * - Attempt 3: ~2.6min
+ * - Attempt 4: ~10.6min
+ * - Attempt 5: ~42.6min
+ * - Attempt 6+: ~6hr (capped)
+ *
+ * @returns delay in seconds
  */
 export function calculateRetryDelay(
   attempts: number,
-  baseDelayMs: number = 10_000,
-  maxDelayMs: number = 160_000,
+  baseDelaySeconds: number = 10,
+  maxDelaySeconds: number = 21600, // 6 hours
   jitterFactor: number = 0.3
 ): number {
-  // Exponential backoff: base * 2^(attempts - 1)
-  const exponentialDelay = baseDelayMs * Math.pow(2, attempts - 1);
+  // Exponential backoff: base * 4^(attempts - 1)
+  const exponentialDelay = baseDelaySeconds * Math.pow(4, attempts - 1);
 
   // Cap at max delay
-  const cappedDelay = Math.min(exponentialDelay, maxDelayMs);
+  const cappedDelay = Math.min(exponentialDelay, maxDelaySeconds);
 
   // Add jitter: random value between -jitterFactor and +jitterFactor
   const jitter = (Math.random() * 2 - 1) * jitterFactor;
@@ -53,7 +56,7 @@ export function getNextRetryTime(task: Task): number {
  */
 export function getReadyTasks(limit: number = 10): Task[] {
   const db = getDatabase();
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
   const stmt = db.prepare(`
     SELECT *
@@ -71,9 +74,9 @@ export function getReadyTasks(limit: number = 10): Task[] {
  * Get tasks that are stale (in-progress for too long)
  * These tasks likely crashed and should be retried
  */
-export function getStaleTasks(timeoutMs: number = 300_000): Task[] {
+export function getStaleTasks(timeoutSeconds: number = 300): Task[] {
   const db = getDatabase();
-  const cutoffTime = Date.now() - timeoutMs;
+  const cutoffTime = Math.floor(Date.now() / 1000) - timeoutSeconds;
 
   const stmt = db.prepare(`
     SELECT *
@@ -112,7 +115,7 @@ export function getPendingTaskCountByType(): Record<string, number> {
  */
 export function hasReadyTasks(): boolean {
   const db = getDatabase();
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
   const row = db.prepare(`
     SELECT COUNT(*) as count
@@ -123,4 +126,61 @@ export function hasReadyTasks(): boolean {
   `).get(now) as { count: number };
 
   return row.count > 0;
+}
+
+/**
+ * Rate limiter using token bucket algorithm
+ */
+export class RateLimiter {
+  private tokens: number;
+  private lastRefill: number;
+  private readonly capacity: number;
+  private readonly refillRate: number; // tokens per second
+
+  constructor(rateLimit: number) {
+    this.capacity = rateLimit;
+    this.refillRate = rateLimit;
+    this.tokens = rateLimit;
+    this.lastRefill = Date.now();
+  }
+
+  /**
+   * Try to consume a token
+   * @returns true if token consumed, false if rate limit exceeded
+   */
+  tryConsume(): boolean {
+    this.refill();
+
+    if (this.tokens >= 1) {
+      this.tokens -= 1;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Refill tokens based on elapsed time
+   */
+  private refill(): void {
+    const now = Date.now();
+    const elapsedSeconds = (now - this.lastRefill) / 1000;
+    const tokensToAdd = elapsedSeconds * this.refillRate;
+
+    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
+    this.lastRefill = now;
+  }
+
+  /**
+   * Get time until next token is available (in milliseconds)
+   */
+  getTimeUntilNextToken(): number {
+    if (this.tokens >= 1) {
+      return 0;
+    }
+
+    const tokensNeeded = 1 - this.tokens;
+    const timeMs = (tokensNeeded / this.refillRate) * 1000;
+    return Math.ceil(timeMs);
+  }
 }

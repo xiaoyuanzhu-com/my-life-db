@@ -71,6 +71,24 @@ export async function POST(request: NextRequest) {
       files,
     });
 
+    // TODO: Trigger URL processing if inbox item type is 'url'
+    // if (inboxItem.type === 'url') {
+    //   const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
+    //   if (urlFile) {
+    //     // Read URL from file and enqueue processing
+    //     const urlPath = path.join(
+    //       storageConfig.dataPath,
+    //       '.app',
+    //       'mylifedb',
+    //       'inbox',
+    //       inboxItem.folderName,
+    //       'url.txt'
+    //     );
+    //     const url = await fs.readFile(urlPath, 'utf-8');
+    //     enqueueUrlProcessing(inboxItem.id, url.trim());
+    //   }
+    // }
+
     return NextResponse.json(inboxItem, { status: 201 });
   } catch (error) {
     console.error('Error creating inbox item:', error);

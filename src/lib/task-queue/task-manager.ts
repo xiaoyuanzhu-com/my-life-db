@@ -4,36 +4,19 @@
 
 import { getDatabase } from '../db/connection';
 import { generateUUIDv7 } from './uuid';
-
-export type TaskStatus = 'to-do' | 'in-progress' | 'success' | 'failed';
-
-export interface Task {
-  id: string;
-  type: string;
-  payload: string; // JSON string
-  status: TaskStatus;
-  version: number;
-  attempts: number;
-  last_attempt_at: number | null;
-  result: string | null;
-  error: string | null;
-  run_after: number | null;
-  created_at: number;
-  updated_at: number;
-  completed_at: number | null;
-}
+import type { Task, TaskPayload, TaskStatus } from './types';
 
 export interface CreateTaskInput {
   type: string;
-  payload: Record<string, unknown>;
-  run_after?: number; // Unix timestamp (ms)
+  payload: TaskPayload;
+  run_after?: number; // Unix timestamp (seconds)
 }
 
 export interface UpdateTaskInput {
   status?: TaskStatus;
   attempts?: number;
   last_attempt_at?: number;
-  result?: Record<string, unknown> | null;
+  result?: TaskPayload | null;
   error?: string | null;
   version?: number;
 }
@@ -43,7 +26,7 @@ export interface UpdateTaskInput {
  */
 export function createTask(input: CreateTaskInput): Task {
   const db = getDatabase();
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
   const id = generateUUIDv7();
 
   const stmt = db.prepare(`
@@ -151,7 +134,7 @@ export function updateTask(
   expectedVersion: number
 ): boolean {
   const db = getDatabase();
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
   const setClauses: string[] = ['updated_at = ?'];
   const params: unknown[] = [now];
@@ -276,9 +259,9 @@ export function getTaskStats(): {
 /**
  * Clean up old completed tasks
  */
-export function cleanupOldTasks(olderThanMs: number): number {
+export function cleanupOldTasks(olderThanSeconds: number): number {
   const db = getDatabase();
-  const cutoffTime = Date.now() - olderThanMs;
+  const cutoffTime = Math.floor(Date.now() / 1000) - olderThanSeconds;
 
   const stmt = db.prepare(`
     DELETE FROM tasks

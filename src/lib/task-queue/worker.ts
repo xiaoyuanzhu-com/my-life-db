@@ -16,8 +16,8 @@ export interface WorkerConfig {
   /** Maximum attempts per task (default: 3) */
   maxAttempts?: number;
 
-  /** Stale task timeout in milliseconds (default: 300000ms = 5 minutes) */
-  staleTaskTimeoutMs?: number;
+  /** Stale task timeout in seconds (default: 300s = 5 minutes) */
+  staleTaskTimeoutSeconds?: number;
 
   /** Stale task recovery interval (default: 60000ms = 1 minute) */
   staleTaskRecoveryIntervalMs?: number;
@@ -38,7 +38,7 @@ export class TaskWorker {
       pollIntervalMs: config.pollIntervalMs ?? 1000,
       batchSize: config.batchSize ?? 5,
       maxAttempts: config.maxAttempts ?? 3,
-      staleTaskTimeoutMs: config.staleTaskTimeoutMs ?? 300_000,
+      staleTaskTimeoutSeconds: config.staleTaskTimeoutSeconds ?? 300, // 5 minutes
       staleTaskRecoveryIntervalMs: config.staleTaskRecoveryIntervalMs ?? 60_000,
       verbose: config.verbose ?? false,
     };
@@ -227,7 +227,7 @@ export class TaskWorker {
         return;
       }
 
-      const staleTasks = getStaleTasks(this.config.staleTaskTimeoutMs);
+      const staleTasks = getStaleTasks(this.config.staleTaskTimeoutSeconds);
 
       if (staleTasks.length > 0) {
         this.log(`Found ${staleTasks.length} stale task(s), recovering...`);

@@ -3,15 +3,7 @@
  */
 
 import { getTaskById, updateTask } from './task-manager';
-import type { Task } from './task-manager';
-
-/**
- * Task handler function type
- */
-export type TaskHandler<TPayload = unknown, TResult = unknown> = (
-  payload: TPayload,
-  task: Task
-) => Promise<TResult> | TResult;
+import type { Task, TaskHandler } from './types';
 
 /**
  * Global handler registry
@@ -21,14 +13,15 @@ const handlers = new Map<string, TaskHandler>();
 /**
  * Register a task handler
  */
-export function registerHandler<TPayload = unknown, TResult = unknown>(
+export function registerHandler<TPayload = unknown>(
   type: string,
-  handler: TaskHandler<TPayload, TResult>
+  handler: TaskHandler<TPayload>
 ): void {
   if (handlers.has(type)) {
     console.warn(`[TaskQueue] Handler for "${type}" already registered, overwriting`);
   }
-  handlers.set(type, handler);
+  // Type assertion is safe because we're handling the generic properly at call sites
+  handlers.set(type, handler as TaskHandler);
 }
 
 /**
@@ -99,7 +92,7 @@ export async function executeTask(
     {
       status: 'in-progress',
       attempts: task.attempts + 1,
-      last_attempt_at: Date.now(),
+      last_attempt_at: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
     },
     task.version
   );
@@ -146,7 +139,7 @@ export async function executeTask(
   // 7. Execute handler
   try {
     const payload = JSON.parse(task.payload);
-    const result = await handler(payload, claimedTask);
+    const result = await handler(payload);
 
     // 8. Mark as success
     const updated = updateTask(

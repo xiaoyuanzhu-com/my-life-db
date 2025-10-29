@@ -4,6 +4,7 @@ import migration001 from './001_initial';
 import migration002 from './002_inbox';
 import migration003 from './003_library';
 import migration004 from './004_schemas';
+import migration005 from './005_tasks';
 
 export interface Migration {
   version: number;
@@ -18,6 +19,7 @@ export const migrations: Migration[] = [
   migration002,
   migration003,
   migration004,
+  migration005,
 ];
 
 /**
