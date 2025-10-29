@@ -85,34 +85,7 @@
 
 ## 2. Interface Contracts
 
-### 2.1 Task Handler Interface
-
-**Purpose:** User-defined function that executes a task
-
-**Contract:**
-```
-Input:  JSON payload (application-defined)
-Output: JSON result (optional) OR Error
-```
-
-**Pseudocode:**
-```
-function TaskHandler(payload: JSON): JSON | Error {
-  // User implementation
-  // Throw/return error to mark task as failed
-  // Return result to mark task as completed
-}
-```
-
-**Example:**
-```javascript
-async function handleEmailSend(payload) {
-  await sendEmail(payload.to, payload.subject, payload.body);
-  return { messageId: "abc123" };
-}
-```
-
-### 2.2 Queue Interface (Application-Level)
+### 2.1 Queue Interface (Application-Level)
 
 **Purpose:** Simple, ergonomic API for application code
 
@@ -194,6 +167,33 @@ tq<CrawlPayload>('crawl')
 
 tq<CrawlPayload>('crawl')
   .add({ wrong: 'field' });  // ❌ Type error
+```
+
+### 2.2 Task Handler Interface
+
+**Purpose:** User-defined function that executes a task
+
+**Contract:**
+```
+Input:  JSON payload (application-defined)
+Output: JSON result (optional) OR Error
+```
+
+**Pseudocode:**
+```
+function TaskHandler(payload: JSON): JSON | Error {
+  // User implementation
+  // Throw/return error to mark task as failed
+  // Return result to mark task as completed
+}
+```
+
+**Example:**
+```javascript
+async function handleEmailSend(payload) {
+  await sendEmail(payload.to, payload.subject, payload.body);
+  return { messageId: "abc123" };
+}
 ```
 
 ### 2.3 Management API (REST/Admin Only)
