@@ -6,6 +6,8 @@
 
 > **What is this?** This is a complete specification that any coding agent or developer can use to implement a task queue system in their preferred technology stack. It defines features, interfaces, data models, and API contracts without prescribing implementation details.
 
+> **Code Examples:** All interface definitions and examples use JavaScript for consistency. Developers using other languages (Python, Go, Ruby, etc.) can adapt these patterns to their language's conventions.
+
 ## Table of Contents
 
 1. [Features](#1-features)
@@ -102,30 +104,11 @@ function TaskHandler(payload: JSON): JSON | Error {
 }
 ```
 
-**Examples:**
+**Example:**
 ```javascript
-// JavaScript
 async function handleEmailSend(payload) {
   await sendEmail(payload.to, payload.subject, payload.body);
   return { messageId: "abc123" };
-}
-```
-
-```python
-# Python
-def handle_email_send(payload):
-    send_email(payload["to"], payload["subject"], payload["body"])
-    return {"message_id": "abc123"}
-```
-
-```go
-// Go
-func HandleEmailSend(payload map[string]interface{}) (map[string]interface{}, error) {
-    err := sendEmail(payload["to"], payload["subject"], payload["body"])
-    if err != nil {
-        return nil, err
-    }
-    return map[string]interface{}{"message_id": "abc123"}, nil
 }
 ```
 
