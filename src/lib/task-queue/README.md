@@ -31,8 +31,8 @@
 - ✅ **Timeout Protection**: Auto-recover stale tasks after timeout
 - ✅ **Future Scheduling**: Schedule tasks to run at specific time
 - ✅ **Manual Retry**: Force retry of failed tasks
-- ✅ **Task Deletion**: Delete completed/failed tasks
-- ✅ **Cleanup**: Bulk delete old completed tasks
+- ✅ **Task Deletion**: Delete success/failed tasks
+- ✅ **Cleanup**: Bulk delete old success tasks
 - ✅ **Background Worker**: Automatic polling and processing
 - ✅ **RPS Control**: Limit execution rate (tasks per second)
 - ✅ **Parallelism Control**: Control concurrent task execution
@@ -58,10 +58,10 @@
 - **Complexity**: Low - just check version in UPDATE WHERE clause
 
 **Why Timeout Protection?**
-- **Problem**: Worker crashes while processing → task stuck in 'processing' forever
-- **Solution**: Auto-recover tasks in 'processing' state for > timeout duration
+- **Problem**: Worker crashes while processing → task stuck in 'in-progress' forever
+- **Solution**: Auto-recover tasks in 'in-progress' state for > timeout duration
 - **Default**: 5 minutes (configurable)
-- **Mechanism**: Worker polls for stale tasks and resets to 'pending'
+- **Mechanism**: Worker polls for stale tasks and marks as 'failed' with retry delay
 
 **Why No Handler Timeout Enforcement?**
 - **Rationale**:
@@ -98,9 +98,10 @@ tq(type: String): TaskTypeContext
 // TaskTypeContext methods (all chainable)
 .add(payload: JSON, options?: EnqueueOptions): TaskTypeContext
 .setWorker(handler: Function): TaskTypeContext
-.setWorkerCount(count: Number): TaskTypeContext     // Parallelism for this type
-.setRateLimit(tasksPerSecond: Number): TaskTypeContext
-.setTimeout(seconds: Number): TaskTypeContext        // Task timeout for this type
+.setWorkerCount(count: Number): TaskTypeContext        // Parallelism for this type
+.setRateLimit(tasksPerSecond: Number): TaskTypeContext  // Rate limit for this type
+.setTimeout(seconds: Number): TaskTypeContext           // Task timeout for this type
+.setMaxAttempts(count: Number): TaskTypeContext         // Max retry attempts (default: 3)
 ```
 
 **Example Usage:**
@@ -114,7 +115,8 @@ tq('crawl')
   })
   .setWorkerCount(3)
   .setRateLimit(10)      // 10 tasks/sec for crawl type
-  .setTimeout(300);      // 5 min timeout for crawl tasks
+  .setTimeout(300)       // 5 min timeout for crawl tasks
+  .setMaxAttempts(5);    // Retry up to 5 times
 
 // Enqueue tasks
 tq('crawl').add({ url: 'https://www.google.com/' });
@@ -207,15 +209,13 @@ POST /api/tasks/rate-limit    // Set global rate limit
 | `id` | TEXT/VARCHAR(36) | PRIMARY KEY | UUID v7 (time-ordered) |
 | `type` | TEXT/VARCHAR(255) | NOT NULL | Task type identifier |
 | `payload` | TEXT/JSON | NOT NULL | Task input data (JSON) |
-| `status` | TEXT/VARCHAR(20) | NOT NULL, DEFAULT 'pending' | `pending`, `processing`, `completed`, `failed` |
+| `status` | TEXT/VARCHAR(20) | NOT NULL, DEFAULT 'to-do' | `to-do`, `in-progress`, `success`, `failed` |
 | `version` | INTEGER | NOT NULL, DEFAULT 0 | Optimistic lock version (incremented on claim) |
 | `attempts` | INTEGER | DEFAULT 0 | Execution attempt count |
-| `max_attempts` | INTEGER | DEFAULT 3 | Give up after this many attempts |
 | `last_attempt_at` | INTEGER | NULL | Unix timestamp (seconds) of last execution |
-| `next_retry_at` | INTEGER | NULL | Unix timestamp for next retry (NULL = ready now) |
 | `result` | TEXT/JSON | NULL | Success result (JSON) |
 | `error` | TEXT | NULL | Error message (failure only) |
-| `run_after` | INTEGER | NULL | Don't run before this Unix timestamp |
+| `run_after` | INTEGER | NULL | Don't run before this Unix timestamp (used for scheduling AND retry delays) |
 | `created_at` | INTEGER | NOT NULL | Unix timestamp (seconds) |
 | `updated_at` | INTEGER | NOT NULL | Unix timestamp (seconds) |
 | `completed_at` | INTEGER | NULL | Unix timestamp (when reached terminal state) |
@@ -223,10 +223,10 @@ POST /api/tasks/rate-limit    // Set global rate limit
 **Indexes:**
 
 ```sql
--- Critical for worker queries (FIFO + retry timing)
-CREATE INDEX idx_tasks_pending
-ON tasks(status, created_at ASC, next_retry_at)
-WHERE status IN ('pending', 'failed');
+-- Critical for worker queries (FIFO + scheduling)
+CREATE INDEX idx_tasks_todo
+ON tasks(status, created_at ASC, run_after)
+WHERE status IN ('to-do', 'failed');
 
 -- Fast type-based queries
 CREATE INDEX idx_tasks_type ON tasks(type, status);
@@ -238,20 +238,25 @@ CREATE INDEX idx_tasks_created ON tasks(created_at DESC);
 **Status Transitions:**
 
 ```
-pending → processing → completed ✓
-pending → processing → failed → [wait for next_retry_at] → processing → completed ✓
-pending → processing → failed → [max attempts] → failed (terminal)
+to-do → in-progress → success ✓
+to-do → in-progress → failed → [wait for run_after] → in-progress → success ✓
+to-do → in-progress → failed → [attempts >= max] → failed (terminal)
 ```
 
-**Note:** Failed tasks stay in 'failed' status until `next_retry_at` passes, then are claimed directly to 'processing' (not back to 'pending'). Both pending and eligible failed tasks compete for the same worker slots.
+**Retry Logic:**
+- Failed tasks stay in 'failed' status until `run_after` passes
+- Worker queries: `WHERE status IN ('to-do', 'failed') AND run_after <= NOW()`
+- When claimed: status changes to 'in-progress' (from either 'to-do' or 'failed')
+- After execution: check `attempts >= maxAttempts` to decide terminal state
+- Both to-do and eligible failed tasks compete for the same worker slots
+- Max attempts is configured per task type (via `setMaxAttempts()`), default: 3
 
 ### 3.2 JSON Data Structures
 
 **EnqueueOptions:**
 ```json
 {
-  "maxAttempts": 3,        // int (optional, default: 3)
-  "runAfter": 1736942400   // Unix timestamp (optional)
+  "runAfter": 1736942400   // Unix timestamp (optional) - schedule for future execution
 }
 ```
 
@@ -264,11 +269,9 @@ pending → processing → failed → [max attempts] → failed (terminal)
     "to": "user@example.com",
     "subject": "Welcome"
   },
-  "status": "completed",
+  "status": "success",
   "attempts": 2,
-  "maxAttempts": 3,
   "lastAttemptAt": 1736942730,
-  "nextRetryAt": null,
   "result": {
     "messageId": "abc123"
   },
@@ -293,19 +296,19 @@ pending → processing → failed → [max attempts] → failed (terminal)
 **QueueStats:**
 ```json
 {
-  "pending": 42,
-  "processing": 3,
-  "completed": 1205,
+  "to-do": 42,
+  "in-progress": 3,
+  "success": 1205,
   "failed": 15,
   "byType": {
     "send_email": {
-      "pending": 10,
-      "completed": 500,
+      "to-do": 10,
+      "success": 500,
       "failed": 3
     },
     "process_image": {
-      "pending": 32,
-      "completed": 705,
+      "to-do": 32,
+      "success": 705,
       "failed": 12
     }
   }
@@ -352,14 +355,13 @@ pending → processing → failed → [max attempts] → failed (terminal)
 
 ```sql
 SELECT * FROM tasks
-WHERE status IN ('pending', 'failed')
+WHERE status IN ('to-do', 'failed')
   AND (run_after IS NULL OR run_after <= NOW())
-  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
 ORDER BY created_at ASC  -- FIFO: oldest first
 LIMIT batchSize;
 ```
 
-**Note:** Failed tasks waiting for retry (`next_retry_at > NOW()`) are NOT selected. Once retry time arrives, they compete for worker slots just like pending tasks.
+**Note:** Failed tasks waiting for retry (`run_after > NOW()`) are NOT selected. Once `run_after` time arrives, they compete for worker slots just like to-do tasks. The `run_after` field serves dual purpose: initial scheduling AND retry delays.
 
 **Retry Strategy (Exponential Backoff with Jitter):**
 
@@ -417,7 +419,7 @@ Example: maxRPS = 10
 ```sql
 -- Claim task atomically (only one worker succeeds)
 UPDATE tasks
-SET status = 'processing',
+SET status = 'in-progress',
     version = version + 1,           -- Increment version
     last_attempt_at = NOW(),
     attempts = attempts + 1,
@@ -440,20 +442,20 @@ WHERE id = ?
 **Stale Task Recovery (Timeout Protection):**
 
 ```sql
--- Find tasks stuck in 'processing' for > timeout
+-- Find tasks stuck in 'in-progress' for > timeout
 SELECT * FROM tasks
-WHERE status = 'processing'
+WHERE status = 'in-progress'
   AND last_attempt_at < NOW() - INTERVAL timeout
 LIMIT 100;
 
--- Reset to failed for retry (will compete for worker slots when next_retry_at arrives)
+-- Reset to failed for retry (will compete for worker slots when run_after arrives)
 UPDATE tasks
 SET status = 'failed',
     error = 'Task timeout - worker may have crashed',
-    next_retry_at = NOW() + retry_delay,
+    run_after = NOW() + retry_delay,
     updated_at = NOW()
 WHERE id = ?
-  AND status = 'processing'
+  AND status = 'in-progress'
   AND last_attempt_at < NOW() - INTERVAL timeout;
 ```
 
@@ -478,13 +480,15 @@ WHERE id = ?
 
 3. Call handler(task.payload)
    - If success:
-     - UPDATE status = 'completed', result, completed_at
+     - UPDATE status = 'success', result, completed_at
      - WHERE id = ? AND version = currentVersion
    - If error:
-     - Calculate next_retry_at
-     - UPDATE status = 'failed', error, next_retry_at
+     - Calculate run_after = NOW() + retry_delay
+     - UPDATE status = 'failed', error, run_after
      - WHERE id = ? AND version = currentVersion
-     - If attempts >= max_attempts: set completed_at (terminal)
+     - If attempts >= max_attempts (from task type config):
+       - Keep status = 'failed' (terminal)
+       - Set completed_at (marks as terminal)
 
 4. If UPDATE rowsAffected = 0:
    - Another worker may have recovered this task (timeout)
@@ -495,7 +499,7 @@ WHERE id = ?
 - Always check version in WHERE clause
 - Catch all handler exceptions/errors
 - Use database transactions for atomic updates
-- Log execution events (claimed, completed, failed, skipped)
+- Log execution events (claimed, success, failed, skipped)
 - Run stale task recovery periodically (every poll cycle)
 
 ### 4.4 Worker Module
@@ -576,7 +580,6 @@ while (running) {
     "subject": "Welcome"
   },
   "options": {
-    "maxAttempts": 3,
     "runAfter": 1736942400
   }
 }
@@ -587,7 +590,7 @@ while (running) {
 {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
-  "status": "pending",
+  "status": "to-do",
   "createdAt": 1736942100
 }
 ```
@@ -605,7 +608,7 @@ while (running) {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
   "payload": { "to": "user@example.com" },
-  "status": "completed",
+  "status": "success",
   "attempts": 1,
   "result": { "messageId": "abc123" },
   "error": null,
@@ -623,7 +626,7 @@ while (running) {
 
 **Query Parameters:**
 - `type` (optional): Filter by task type
-- `status` (optional): Filter by status (can repeat: `status=failed&status=pending`)
+- `status` (optional): Filter by status (can repeat: `status=failed&status=to-do`)
 - `limit` (optional): Max results (default: 50, max: 100)
 - `offset` (optional): Pagination offset (default: 0)
 
@@ -648,9 +651,9 @@ while (running) {
 ```json
 {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
-  "status": "pending",
+  "status": "to-do",
   "attempts": 0,
-  "nextRetryAt": null
+  "runAfter": null
 }
 ```
 
@@ -660,13 +663,13 @@ while (running) {
 
 #### DELETE /api/tasks/:id
 
-**Description:** Delete task (only if completed/failed)
+**Description:** Delete task (only if success/failed)
 
 **Response:** `204 No Content`
 
 **Error Responses:**
 - `404 Not Found`: Task does not exist
-- `400 Bad Request`: Task still pending/processing
+- `400 Bad Request`: Task still in to-do/in-progress status
 
 #### GET /api/tasks/stats
 
@@ -675,14 +678,14 @@ while (running) {
 **Response:** `200 OK`
 ```json
 {
-  "pending": 42,
-  "processing": 3,
-  "completed": 1205,
+  "to-do": 42,
+  "in-progress": 3,
+  "success": 1205,
   "failed": 15,
   "byType": {
     "send_email": {
-      "pending": 10,
-      "completed": 500,
+      "to-do": 10,
+      "success": 500,
       "failed": 3
     }
   }
@@ -734,7 +737,7 @@ while (running) {
 **Description:** Cleanup old tasks
 
 **Query Parameters:**
-- `olderThan` (required): Unix timestamp (delete completed tasks older than this)
+- `olderThan` (required): Unix timestamp (delete success tasks older than this)
 
 **Response:** `200 OK`
 ```json
@@ -814,9 +817,9 @@ await tq.stop();               // Graceful shutdown
 - Columns: ID, Type, Status, Attempts, Created, Actions
 - Status badge (color-coded)
 - Filter by type (dropdown)
-- Filter by status (checkboxes: pending, processing, completed, failed)
+- Filter by status (checkboxes: to-do, in-progress, success, failed)
 - Pagination (prev/next)
-- Actions per row: Retry (failed only), Delete (completed/failed only)
+- Actions per row: Retry (failed only), Delete (success/failed only)
 - Worker controls: Pause/Resume, Rate limit setting
 
 **Pseudocode:**
@@ -830,7 +833,7 @@ await tq.stop();               // Graceful shutdown
 
   <Filters>
     <TypeDropdown options={taskTypes} />
-    <StatusCheckboxes options={['pending', 'processing', 'completed', 'failed']} />
+    <StatusCheckboxes options={['to-do', 'in-progress', 'success', 'failed']} />
   </Filters>
 
   <Table>
@@ -842,7 +845,7 @@ await tq.stop();               // Graceful shutdown
       <Cell>{formatDate(task.createdAt)}</Cell>
       <Cell>
         <Button *ngIf="task.status === 'failed'" onClick={retry(task.id)}>Retry</Button>
-        <Button *ngIf="['completed', 'failed'].includes(task.status)" onClick={delete(task.id)}>Delete</Button>
+        <Button *ngIf="['success', 'failed'].includes(task.status)" onClick={delete(task.id)}>Delete</Button>
       </Cell>
     </Row>
   </Table>
@@ -857,7 +860,7 @@ await tq.stop();               // Graceful shutdown
 
 ### 6.3 Queue Stats Dashboard
 
-**Components:** Status count cards (pending/processing/completed/failed), tasks by type chart, cleanup action
+**Components:** Status count cards (to-do/in-progress/success/failed), tasks by type chart, cleanup action
 
 ---
 
@@ -948,6 +951,7 @@ interface TaskTypeContext<T = any> {
   setWorkerCount(count: number): TaskTypeContext<T>;
   setRateLimit(tasksPerSecond: number): TaskTypeContext<T>;
   setTimeout(seconds: number): TaskTypeContext<T>;
+  setMaxAttempts(count: number): TaskTypeContext<T>;
 }
 
 // Task handler
@@ -955,8 +959,7 @@ type TaskHandler<T = any> = (payload: T) => Promise<any>;
 
 // Enqueue options
 interface EnqueueOptions {
-  maxAttempts?: number;
-  runAfter?: Date;
+  runAfter?: Date;  // Schedule for future execution
 }
 ```
 
@@ -1106,7 +1109,7 @@ See section 2.1 and 5.2 for complete usage examples.
 
 ### 9.3 Performance Optimization
 
-- **Partial Indexes**: Use `WHERE status IN ('pending', 'failed')` for worker queries
+- **Partial Indexes**: Use `WHERE status IN ('to-do', 'failed')` for worker queries
 - **Connection Pooling**: Reuse database connections
 - **Batch Size Tuning**: Adjust based on handler execution time
 - **Poll Interval Tuning**: Reduce for low-latency, increase for efficiency
