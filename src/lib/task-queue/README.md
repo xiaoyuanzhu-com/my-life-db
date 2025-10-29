@@ -256,7 +256,7 @@ to-do → in-progress → failed → [attempts >= max] → failed (terminal)
 **EnqueueOptions:**
 ```json
 {
-  "runAfter": 1736942400   // Unix timestamp (optional) - schedule for future execution
+  "run_after": 1736942400   // Unix timestamp (optional) - schedule for future execution
 }
 ```
 
@@ -271,15 +271,15 @@ to-do → in-progress → failed → [attempts >= max] → failed (terminal)
   },
   "status": "success",
   "attempts": 2,
-  "lastAttemptAt": 1736942730,
+  "last_attempt_at": 1736942730,
   "result": {
     "messageId": "abc123"
   },
   "error": null,
-  "runAfter": null,
-  "createdAt": 1736942400,
-  "updatedAt": 1736942730,
-  "completedAt": 1736942730
+  "run_after": null,
+  "created_at": 1736942400,
+  "updated_at": 1736942730,
+  "completed_at": 1736942730
 }
 ```
 
@@ -580,7 +580,7 @@ while (running) {
     "subject": "Welcome"
   },
   "options": {
-    "runAfter": 1736942400
+    "run_after": 1736942400
   }
 }
 ```
@@ -591,7 +591,7 @@ while (running) {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
   "status": "to-do",
-  "createdAt": 1736942100
+  "created_at": 1736942100
 }
 ```
 
@@ -612,8 +612,8 @@ while (running) {
   "attempts": 1,
   "result": { "messageId": "abc123" },
   "error": null,
-  "createdAt": 1736942100,
-  "completedAt": 1736942400
+  "created_at": 1736942100,
+  "completed_at": 1736942400
 }
 ```
 
@@ -653,7 +653,7 @@ while (running) {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
   "status": "to-do",
   "attempts": 0,
-  "runAfter": null
+  "run_after": null
 }
 ```
 
@@ -788,7 +788,7 @@ tq('process_image').add({ imageUrl: '/uploads/photo.jpg' });
 // Advanced: Custom options
 tq('send_email').add(
   { to: 'vip@example.com', subject: 'Important' },
-  { maxAttempts: 10, runAfter: new Date('2025-12-31') }
+  { run_after: new Date('2025-12-31') }
 );
 
 // Global controls
@@ -842,7 +842,7 @@ await tq.stop();               // Graceful shutdown
       <Cell>{task.type}</Cell>
       <Cell><StatusBadge status={task.status} /></Cell>
       <Cell>{task.attempts}/{task.maxAttempts}</Cell>
-      <Cell>{formatDate(task.createdAt)}</Cell>
+      <Cell>{formatDate(task.created_at)}</Cell>
       <Cell>
         <Button *ngIf="task.status === 'failed'" onClick={retry(task.id)}>Retry</Button>
         <Button *ngIf="['success', 'failed'].includes(task.status)" onClick={delete(task.id)}>Delete</Button>
@@ -959,7 +959,7 @@ type TaskHandler<T = any> = (payload: T) => Promise<any>;
 
 // Enqueue options
 interface EnqueueOptions {
-  runAfter?: Date;  // Schedule for future execution
+  run_after?: Date;  // Schedule for future execution
 }
 ```
 
