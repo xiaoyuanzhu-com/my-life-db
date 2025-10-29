@@ -8,6 +8,61 @@
 
 > **Code Examples:** All interface definitions and examples use JavaScript for consistency. Developers using other languages (Python, Go, Ruby, etc.) can adapt these patterns to their language's conventions.
 
+## Architecture
+
+### System Layers
+
+```mermaid
+graph TB
+    Caller[Application Code]
+    UI[Web UI]
+
+    subgraph "Task Queue System"
+        API[REST API Layer<br/>/api/task-queue/*]
+        Core[Core Layer<br/>TaskQueue, Executor, Scheduler, Worker]
+        DB[(Database<br/>tasks table)]
+    end
+
+    Caller -->|tq('type').add()| Core
+    Caller -->|tq('type').setWorker()| Core
+    UI -->|HTTP Requests| API
+    API --> Core
+    Core --> DB
+
+    style Core fill:#e1f5ff
+    style API fill:#fff4e1
+    style UI fill:#f0e1ff
+    style DB fill:#e1ffe1
+```
+
+### Task Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> to_do: Task Created
+    to_do --> in_progress: Worker Claims<br/>(optimistic lock)
+
+    in_progress --> success: Handler Succeeds
+    in_progress --> failed: Handler Fails
+
+    failed --> in_progress: Retry Time Arrives<br/>(attempts < max)
+    failed --> [*]: Max Attempts Reached<br/>(terminal)
+
+    success --> [*]: Terminal State
+
+    note right of in_progress
+        - Status: 'in-progress'
+        - Worker executing handler
+        - Timeout protection active
+    end note
+
+    note right of failed
+        - Status: 'failed'
+        - run_after set to future
+        - Waits for retry time
+    end note
+```
+
 ## Table of Contents
 
 1. [Features](#1-features)
@@ -80,6 +135,18 @@
   - Enqueue a single "batch job" task with array payload
   - Handler processes the array internally
   - Or migrate to a dedicated high-performance queue system
+
+**Why Polling Instead of DB Triggers?**
+- **Polling**: Universal, works on all databases (SQLite, PostgreSQL, MySQL, etc.)
+- **DB Triggers**: Can't directly call application code (JavaScript/Python handlers)
+- **Poll Interval**: Configurable (default 1000ms, can reduce to 100ms for near-instant execution)
+- **Simplicity**: Easier to debug, test, and reason about
+- **Trade-off**: 100ms-1000ms latency is acceptable for most background job use cases
+
+**Authentication & Authorization:**
+- **Out of scope**: This spec does not include auth/admin features
+- **User responsibility**: Protect REST API endpoints with your application's auth middleware
+- **Recommendation**: Use existing auth system (JWT, session-based, API keys, etc.)
 
 ---
 
@@ -563,193 +630,27 @@ while (running) {
 
 ## 5. API Specification
 
-### 5.1 REST API Endpoints
+### REST API
 
-**Base Path:** `/api/tasks`
+The task queue provides a RESTful API for management and monitoring. See the complete OpenAPI specification:
 
-#### POST /api/tasks
+**[openapi.yaml](./openapi.yaml)**
 
-**Description:** Create new task
+**Base Path:** `/api/task-queue/*`
 
-**Request:**
-```json
-{
-  "type": "send_email",
-  "payload": {
-    "to": "user@example.com",
-    "subject": "Welcome"
-  },
-  "options": {
-    "run_after": 1736942400
-  }
-}
-```
+**Key Endpoints:**
+- `POST /tasks` - Create new task
+- `GET /tasks/:id` - Get task details
+- `GET /tasks` - List tasks with filters
+- `POST /tasks/:id/retry` - Retry failed task
+- `DELETE /tasks/:id` - Delete task
+- `GET /tasks/stats` - Queue statistics
+- `POST /tasks/pause` - Pause worker
+- `POST /tasks/resume` - Resume worker
 
-**Response:** `201 Created`
-```json
-{
-  "id": "01936d3f-1234-7abc-def0-123456789abc",
-  "type": "send_email",
-  "status": "to-do",
-  "created_at": 1736942100
-}
-```
+**Note:** Protect these endpoints with your application's authentication/authorization middleware.
 
-**Error Responses:**
-- `400 Bad Request`: Invalid type or payload
-
-#### GET /api/tasks/:id
-
-**Description:** Get task by ID
-
-**Response:** `200 OK`
-```json
-{
-  "id": "01936d3f-1234-7abc-def0-123456789abc",
-  "type": "send_email",
-  "payload": { "to": "user@example.com" },
-  "status": "success",
-  "attempts": 1,
-  "result": { "messageId": "abc123" },
-  "error": null,
-  "created_at": 1736942100,
-  "completed_at": 1736942400
-}
-```
-
-**Error Responses:**
-- `404 Not Found`: Task does not exist
-
-#### GET /api/tasks
-
-**Description:** List tasks with filters
-
-**Query Parameters:**
-- `type` (optional): Filter by task type
-- `status` (optional): Filter by status (can repeat: `status=failed&status=to-do`)
-- `limit` (optional): Max results (default: 50, max: 100)
-- `offset` (optional): Pagination offset (default: 0)
-
-**Response:** `200 OK`
-```json
-{
-  "tasks": [
-    { "id": "...", "type": "...", "status": "..." },
-    { "id": "...", "type": "...", "status": "..." }
-  ],
-  "total": 42,
-  "limit": 50,
-  "offset": 0
-}
-```
-
-#### POST /api/tasks/:id/retry
-
-**Description:** Retry failed task immediately
-
-**Response:** `200 OK`
-```json
-{
-  "id": "01936d3f-1234-7abc-def0-123456789abc",
-  "status": "to-do",
-  "attempts": 0,
-  "run_after": null
-}
-```
-
-**Error Responses:**
-- `404 Not Found`: Task does not exist
-- `400 Bad Request`: Task not in failed state
-
-#### DELETE /api/tasks/:id
-
-**Description:** Delete task (only if success/failed)
-
-**Response:** `204 No Content`
-
-**Error Responses:**
-- `404 Not Found`: Task does not exist
-- `400 Bad Request`: Task still in to-do/in-progress status
-
-#### GET /api/tasks/stats
-
-**Description:** Get queue statistics
-
-**Response:** `200 OK`
-```json
-{
-  "to-do": 42,
-  "in-progress": 3,
-  "success": 1205,
-  "failed": 15,
-  "byType": {
-    "send_email": {
-      "to-do": 10,
-      "success": 500,
-      "failed": 3
-    }
-  }
-}
-```
-
-#### POST /api/tasks/pause
-
-**Description:** Pause worker (stop executing tasks, keep polling)
-
-**Response:** `200 OK`
-```json
-{
-  "paused": true
-}
-```
-
-#### POST /api/tasks/resume
-
-**Description:** Resume worker (start executing tasks again)
-
-**Response:** `200 OK`
-```json
-{
-  "paused": false
-}
-```
-
-#### POST /api/tasks/rate-limit
-
-**Description:** Set rate limit (tasks per second)
-
-**Request:**
-```json
-{
-  "tasksPerSecond": 10  // 0 = unlimited
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "tasksPerSecond": 10
-}
-```
-
-#### DELETE /api/tasks
-
-**Description:** Cleanup old tasks
-
-**Query Parameters:**
-- `olderThan` (required): Unix timestamp (delete success tasks older than this)
-
-**Response:** `200 OK`
-```json
-{
-  "deleted": 350
-}
-```
-
-**Error Responses:**
-- `400 Bad Request`: Invalid timestamp
-
-### 5.2 Programmatic API (Application Code)
+### Programmatic API (Application Code)
 
 **Simple, task-type scoped interface:**
 
@@ -806,61 +707,61 @@ await tq.stop();               // Graceful shutdown
 
 ---
 
-## 6. UI Components
+## 6. UI Page
 
-### 6.1 Task List View
+### Single Page Design
 
-**Purpose:** Display tasks with filtering and actions
+**Route:** `/task-queue` (or follow project conventions)
 
-**Features:**
-- Table/list of tasks
-- Columns: ID, Type, Status, Attempts, Created, Actions
-- Status badge (color-coded)
-- Filter by type (dropdown)
-- Filter by status (checkboxes: to-do, in-progress, success, failed)
-- Pagination (prev/next)
-- Actions per row: Retry (failed only), Delete (success/failed only)
-- Worker controls: Pause/Resume, Rate limit setting
+**Layout:** Tabbed interface with 3 sections
 
-**Pseudocode:**
-```jsx
-<TaskList>
-  <Controls>
-    <Button onClick={pauseWorker} *ngIf="!paused">Pause Worker</Button>
-    <Button onClick={resumeWorker} *ngIf="paused">Resume Worker</Button>
-    <Input label="Rate Limit (tasks/sec)" value={rateLimit} onChange={setRateLimit} />
-  </Controls>
+### Required Components
 
-  <Filters>
-    <TypeDropdown options={taskTypes} />
-    <StatusCheckboxes options={['to-do', 'in-progress', 'success', 'failed']} />
-  </Filters>
+#### 1. TaskTable Component
+- **Purpose:** Main task list with filtering and actions
+- **Features:**
+  - Data table with columns: ID, Type, Status, Attempts, Created, Actions
+  - Status badge (color-coded: to-do/blue, in-progress/yellow, success/green, failed/red)
+  - Type filter (dropdown)
+  - Status filter (multi-select checkboxes)
+  - Pagination controls
+  - Row actions: Retry (failed only), Delete (success/failed only)
+  - Sortable columns
+  - Real-time refresh (optional)
 
-  <Table>
-    <Row *ngFor="task in tasks">
-      <Cell>{task.id}</Cell>
-      <Cell>{task.type}</Cell>
-      <Cell><StatusBadge status={task.status} /></Cell>
-      <Cell>{task.attempts}/{task.maxAttempts}</Cell>
-      <Cell>{formatDate(task.created_at)}</Cell>
-      <Cell>
-        <Button *ngIf="task.status === 'failed'" onClick={retry(task.id)}>Retry</Button>
-        <Button *ngIf="['success', 'failed'].includes(task.status)" onClick={delete(task.id)}>Delete</Button>
-      </Cell>
-    </Row>
-  </Table>
+#### 2. StatsCard Component
+- **Purpose:** Queue health overview
+- **Features:**
+  - Status count cards (to-do, in-progress, success, failed)
+  - Tasks by type breakdown (chart or table)
+  - Processing rate metric
+  - Worker status indicator
 
-  <Pagination current={page} total={totalPages} />
-</TaskList>
-```
+#### 3. WorkerControls Component
+- **Purpose:** Worker management
+- **Features:**
+  - Pause/Resume buttons
+  - Rate limit input (tasks per second)
+  - Worker status indicator (running/paused)
+  - Poll interval display (read-only)
 
-### 6.2 Task Detail View
+#### 4. TaskDetailModal Component
+- **Purpose:** View full task details
+- **Features:**
+  - Metadata display (all task fields)
+  - JSON payload viewer (syntax highlighted)
+  - Result viewer (if success)
+  - Error message (if failed)
+  - Retry/Delete action buttons
 
-**Components:** Metadata fields, JSON payload viewer, result viewer, error message, retry/delete actions
+#### 5. StatusBadge Component
+- **Purpose:** Visual status indicator
+- **Props:** status (to-do | in-progress | success | failed)
+- **Styling:** Color-coded badge/chip
 
-### 6.3 Queue Stats Dashboard
-
-**Components:** Status count cards (to-do/in-progress/success/failed), tasks by type chart, cleanup action
+#### 6. JsonViewer Component
+- **Purpose:** Display formatted JSON
+- **Features:** Syntax highlighting, collapsible sections
 
 ---
 
@@ -1054,93 +955,132 @@ class Worker {
 
 ## 8. Integration Guide
 
-### 8.1 Database Setup
+This guide helps you integrate the task queue into your existing project seamlessly.
 
-**Step 1:** Create tasks table
-```sql
--- See section 3.1 for complete schema
-CREATE TABLE tasks (...);
-CREATE INDEX idx_tasks_pending ON tasks(...);
-CREATE INDEX idx_tasks_type ON tasks(...);
+### 8.1 Database Integration
+
+**If your project has an existing database module:**
+
+1. Use your existing database connection/instance
+2. Run the migration to create the `tasks` table (see section 3.1 for schema)
+3. Pass the database instance to task queue init
+
+```javascript
+// Example: Using existing DB module
+import { db } from '@/lib/db';  // Your existing database module
+import { tq } from '@/lib/task-queue';
+
+tq.init({ db });
 ```
 
-**Step 2:** Run migrations (if using migration system)
+**If you don't have a database module:**
 
-### 8.2 Initialize Queue
+1. Decide on database location:
+   - SQLite: Specify file path (e.g., `./data/tasks.db`)
+   - PostgreSQL/MySQL: Provide connection URI
+2. Create a simple database module in `src/lib/db/`
+3. Initialize the database and create the tasks table
 
-```typescript
+```javascript
+// Example: New SQLite database
 import Database from 'better-sqlite3';
-import { TaskQueue } from '@/lib/task-queue';
+import { tq } from '@/lib/task-queue';
 
-// Initialize
-const db = new Database('./database.sqlite');
-const queue = new TaskQueue({
-  db,
-  pollInterval: 2000,   // 2 seconds
-  batchSize: 5,         // 5 tasks per batch
-  enableWorker: true,   // auto-start worker
-  taskTimeout: 300      // 5 minutes (recover stale tasks)
-});
+const db = new Database('./data/tasks.db');
+
+// Run migration (see section 3.1 for SQL)
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (...)`);
+
+tq.init({ db });
 ```
 
-### 8.3 Usage Example
+### 8.2 API Integration
 
-See section 2.1 and 5.2 for complete usage examples.
+**If your project has an existing API framework:**
 
----
+Mount the task queue API endpoints under `/api/task-queue/*`:
 
-## 9. Concerns & Considerations
+```javascript
+// Example: Express.js
+import { createTaskQueueRouter } from '@/lib/task-queue/api';
+app.use('/api/task-queue', createTaskQueueRouter());
 
-### 9.1 Known Limitations
+// Example: Fastify
+import { taskQueueRoutes } from '@/lib/task-queue/api';
+fastify.register(taskQueueRoutes, { prefix: '/api/task-queue' });
 
-1. **Single Database Required**: All workers must share same database
-2. **SQLite Concurrency**: Limited to ~1000 writes/sec (use WAL mode)
-3. **No Multi-Server Coordination**: Not designed for distributed setups
-4. **Sequential Processing**: Tasks in batch processed one-by-one
-5. **No Task Dependencies**: Can't express "run B after A"
+// Example: Next.js App Router
+// Create files in src/app/api/task-queue/[...route]/route.ts
+// See reference implementation section 7.2
+```
 
-### 9.2 Security Considerations
+**If you don't have an API framework:**
 
-- **Payload Validation**: Handlers must validate payload data
-- **SQL Injection**: Use parameterized queries (NOT string concatenation)
-- **API Authentication**: Protect REST endpoints with auth middleware
-- **Rate Limiting**: Prevent abuse of enqueue endpoint
-- **Result Size**: Limit result JSON size to prevent DoS
+Ask the user for their preference:
+- Which framework? (Express, Fastify, Koa, Next.js, etc.)
+- Existing API structure? (RESTful, GraphQL, tRPC, etc.)
+- Auth middleware? (JWT, session-based, API keys, etc.)
 
-### 9.3 Performance Optimization
+Then implement accordingly and mount endpoints.
 
-- **Partial Indexes**: Use `WHERE status IN ('to-do', 'failed')` for worker queries
-- **Connection Pooling**: Reuse database connections
-- **Batch Size Tuning**: Adjust based on handler execution time
-- **Poll Interval Tuning**: Reduce for low-latency, increase for efficiency
-- **Cleanup Schedule**: Run cleanup during off-peak hours
+### 8.3 UI Integration
 
-### 9.4 Monitoring
+**If your project has an existing UI:**
 
-**Key Metrics:** Queue depth, processing rate, failure rate, handler latency
+Mount the task queue UI at `/task-queue` (or follow your project's routing conventions):
 
-**Logging:** Task enqueue/start/end/failure, worker start/stop
+```javascript
+// Example: React Router
+import { TaskQueuePage } from '@/components/task-queue';
+<Route path="/task-queue" element={<TaskQueuePage />} />
 
-### 9.5 Similar Systems
+// Example: Next.js App Router
+// Create src/app/task-queue/page.tsx
+// See section 6 for required components
 
-BullMQ (Redis), Celery (Python), Sidekiq (Ruby), pg-boss (PostgreSQL), Faktory (language-agnostic)
+// Example: Vue Router
+import TaskQueuePage from '@/views/TaskQueuePage.vue';
+{ path: '/task-queue', component: TaskQueuePage }
+```
 
----
+**If you don't have a UI framework:**
 
-## 10. Testing
+Ask the user for their preference:
+- Which framework? (React, Vue, Svelte, Angular, etc.)
+- UI library? (shadcn/ui, Material-UI, Ant Design, etc.)
+- Routing? (React Router, Next.js, Vue Router, etc.)
 
-**Unit Tests:** Task creation, status transitions, retry logic, handler execution, exactly-once guarantee
+Then implement the components (see section 6) using their chosen stack.
 
-**Integration Tests:** End-to-end processing, concurrent workers, API endpoints
+### 8.4 Worker Initialization
 
-**Load Tests:** Enqueue throughput, processing rate, query performance
+Start the worker when your application starts:
 
----
+```javascript
+// Example: Next.js (in server component or API route)
+import { tq } from '@/lib/task-queue';
+import { db } from '@/lib/db';
 
-**Implementation Checklist:**
-- ☐ Database schema created
-- ☐ Core modules implemented (Manager, Scheduler, Executor, Worker)
-- ☐ API endpoints created
-- ☐ UI components built
-- ☐ Handlers registered
-- ☐ Tests written
+// Initialize on app startup
+tq.init({
+  db,
+  pollInterval: 1000,  // 1 second
+  batchSize: 10
+});
+
+// Register handlers
+tq('send_email').setWorker(async (payload) => {
+  await sendEmail(payload);
+}).setMaxAttempts(3);
+
+// Worker starts automatically
+```
+
+### 8.5 Integration Checklist
+
+- ☐ Database: Created `tasks` table, passed DB instance to `tq.init()`
+- ☐ API: Mounted REST endpoints at `/api/task-queue/*`
+- ☐ UI: Created page at `/task-queue` with required components
+- ☐ Worker: Registered handlers, worker running
+- ☐ Auth: Protected API endpoints with existing auth middleware
+- ☐ Testing: Verified enqueue, execution, retry, UI access
