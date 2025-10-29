@@ -707,61 +707,132 @@ await tq.stop();               // Graceful shutdown
 
 ---
 
-## 6. UI Page
+## 6. UI Implementation
 
-### Single Page Design
+### Overview
 
-**Route:** `/task-queue` (or follow project conventions)
+**Route:** `/inbox` (implemented as inbox page)
+**Layout:** Expandable queue-based interface with status-driven organization
 
-**Layout:** Tabbed interface with 3 sections
+### Current Implementation
 
-### Required Components
+The UI is implemented as an expandable accordion interface that groups inbox items (tasks) by their processing status. This provides a clean, organized view for monitoring and managing tasks through their lifecycle.
 
-#### 1. TaskTable Component
-- **Purpose:** Main task list with filtering and actions
-- **Features:**
-  - Data table with columns: ID, Type, Status, Attempts, Created, Actions
-  - Status badge (color-coded: to-do/blue, in-progress/yellow, success/green, failed/red)
-  - Type filter (dropdown)
-  - Status filter (multi-select checkboxes)
-  - Pagination controls
-  - Row actions: Retry (failed only), Delete (success/failed only)
-  - Sortable columns
-  - Real-time refresh (optional)
+### Features
 
-#### 2. StatsCard Component
-- **Purpose:** Queue health overview
-- **Features:**
-  - Status count cards (to-do, in-progress, success, failed)
-  - Tasks by type breakdown (chart or table)
-  - Processing rate metric
-  - Worker status indicator
+#### Queue Organization
+- **Four Status-Based Queues:**
+  - **Pending Queue (Yellow)**: Items awaiting processing
+  - **Processing Queue (Blue)**: Items currently being processed
+  - **Completed Queue (Green)**: Successfully processed items
+  - **Failed Queue (Red)**: Items with processing errors
 
-#### 3. WorkerControls Component
-- **Purpose:** Worker management
-- **Features:**
-  - Pause/Resume buttons
-  - Rate limit input (tasks per second)
-  - Worker status indicator (running/paused)
-  - Poll interval display (read-only)
+#### Expandable Interface
+- Each queue is collapsible/expandable independently
+- Queue headers show item count badges
+- Color-coded visual indicators for quick status recognition
+- Minimal borders design following project guidelines
 
-#### 4. TaskDetailModal Component
-- **Purpose:** View full task details
-- **Features:**
-  - Metadata display (all task fields)
-  - JSON payload viewer (syntax highlighted)
-  - Result viewer (if success)
-  - Error message (if failed)
-  - Retry/Delete action buttons
+#### Pagination
+- Each queue has independent pagination
+- 10 items per page per queue
+- Previous/Next navigation buttons
+- Direct page number selection
+- Pagination state maintained per queue
 
-#### 5. StatusBadge Component
-- **Purpose:** Visual status indicator
-- **Props:** status (to-do | in-progress | success | failed)
-- **Styling:** Color-coded badge/chip
+#### Item Details
+Each item card displays:
+- Folder name (UUID or AI-generated slug)
+- Item type badge (text, url, image, audio, video, pdf, mixed)
+- Creation timestamp
+- File list with icons and sizes
+- Processing metadata:
+  - Processed timestamp (when applicable)
+  - AI-generated slug (when available)
+  - Error messages (for failed items)
+- Delete action button
 
-#### 6. JsonViewer Component
-- **Purpose:** Display formatted JSON
-- **Features:** Syntax highlighting, collapsible sections
+### UI Components
+
+The implementation uses the following shadcn/ui components:
+
+#### Accordion Component (`src/components/ui/accordion.tsx`)
+```typescript
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+```
+- Provides expandable/collapsible sections for each queue
+- Supports multiple open sections simultaneously
+- Smooth animations for expand/collapse
+
+#### Pagination Component (`src/components/ui/pagination.tsx`)
+```typescript
+import { Pagination, PaginationContent, PaginationItem, PaginationLink,
+         PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
+```
+- Page navigation controls
+- Active page highlighting
+- Disabled state for boundary pages
+
+#### Card Component (`src/components/ui/card.tsx`)
+```typescript
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+```
+- Item display containers
+- Structured layout for metadata
+
+### Page Structure
+
+**Location:** `src/app/inbox/page.tsx`
+
+```typescript
+// Key state management
+const [items, setItems] = useState<InboxItem[]>([]);
+const [queuePages, setQueuePages] = useState<Record<ProcessingStatus, number>>({
+  pending: 1,
+  processing: 1,
+  completed: 1,
+  failed: 1,
+});
+
+// Group items by status
+const queuedItems = useMemo(() => {
+  const queues: Record<ProcessingStatus, InboxItem[]> = {
+    pending: [],
+    processing: [],
+    completed: [],
+    failed: [],
+  };
+  items.forEach((item) => queues[item.status].push(item));
+  return queues;
+}, [items]);
+```
+
+### User Interactions
+
+1. **Expand/Collapse Queues**: Click accordion headers to toggle queue visibility
+2. **Navigate Pages**: Use pagination controls to browse items within a queue
+3. **Delete Items**: Click delete button on individual items with confirmation
+4. **View Details**: All item metadata visible in expanded card view
+
+### Design Considerations
+
+- **Minimal Borders**: Follows project design preferences with clean, minimal borders
+- **Status-First Organization**: Groups by processing state rather than chronological order
+- **Independent Queue Management**: Each queue maintains its own pagination state
+- **Responsive Layout**: Adapts to different screen sizes with proper spacing
+
+### Future Enhancements
+
+Potential improvements for the task queue UI:
+- Real-time updates via polling or WebSocket
+- Bulk operations (select multiple, bulk delete, bulk retry)
+- Advanced filtering within queues
+- Search functionality
+- Task detail modal with full JSON payload viewer
+- Retry button for failed items
+- Export/download functionality
+- Processing statistics dashboard
+- Worker status indicators and controls
 
 ---
 
