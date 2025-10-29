@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/SettingsContext';
 import { SettingsHeader } from '../_components/SettingsHeader';
+import { TasksTab } from '../_components/TasksTab';
 
 export default function SettingsPage() {
   const params = useParams();
@@ -42,12 +43,14 @@ export default function SettingsPage() {
     } else if (activeTab === 'vendors') {
       saveSettings({ vendors: settings.vendors });
     }
+    // Tasks tab doesn't need saving - it's read-only
   };
 
   const tabs = [
     { label: 'General', value: 'general', path: '/settings' },
     { label: 'Processing', value: 'processing', path: '/settings/processing' },
     { label: 'Vendors', value: 'vendors', path: '/settings/vendors' },
+    { label: 'Tasks', value: 'tasks', path: '/settings/tasks' },
   ];
 
   return (
@@ -612,25 +615,30 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Save Button */}
-        <div className="flex items-center justify-end gap-3 pt-6">
-          {saveMessage && (
-            <div className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-green-600" />
-              <span
-                className={`text-sm ${
-                  saveMessage.includes('Error') ? 'text-destructive' : 'text-green-600'
-                }`}
-              >
-                {saveMessage}
-              </span>
-            </div>
-          )}
-          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-            <Save className="h-4 w-4" />
-            {isSaving ? 'Saving...' : 'Save Settings'}
-          </Button>
-        </div>
+        {/* Tasks Tab */}
+        {activeTab === 'tasks' && <TasksTab />}
+
+        {/* Save Button - Only show for tabs that have settings to save */}
+        {activeTab !== 'tasks' && (
+          <div className="flex items-center justify-end gap-3 pt-6">
+            {saveMessage && (
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-600" />
+                <span
+                  className={`text-sm ${
+                    saveMessage.includes('Error') ? 'text-destructive' : 'text-green-600'
+                  }`}
+                >
+                  {saveMessage}
+                </span>
+              </div>
+            )}
+            <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+              <Save className="h-4 w-4" />
+              {isSaving ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

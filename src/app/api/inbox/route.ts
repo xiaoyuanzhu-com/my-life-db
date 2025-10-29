@@ -1,7 +1,18 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
 import { listInboxItems } from '@/lib/db/inbox';
+import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
+import { getStorageConfig } from '@/lib/config/storage';
+import { initializeApp } from '@/lib/init';
+
+// Force Node.js runtime (not Edge)
+export const runtime = 'nodejs';
+
+// Ensure app is initialized
+initializeApp();
 
 /**
  * GET /api/inbox
@@ -71,23 +82,30 @@ export async function POST(request: NextRequest) {
       files,
     });
 
-    // TODO: Trigger URL processing if inbox item type is 'url'
-    // if (inboxItem.type === 'url') {
-    //   const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
-    //   if (urlFile) {
-    //     // Read URL from file and enqueue processing
-    //     const urlPath = path.join(
-    //       storageConfig.dataPath,
-    //       '.app',
-    //       'mylifedb',
-    //       'inbox',
-    //       inboxItem.folderName,
-    //       'url.txt'
-    //     );
-    //     const url = await fs.readFile(urlPath, 'utf-8');
-    //     enqueueUrlProcessing(inboxItem.id, url.trim());
-    //   }
-    // }
+    // Trigger URL processing if inbox item type is 'url'
+    if (inboxItem.type === 'url') {
+      const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
+      if (urlFile) {
+        try {
+          // Read URL from file and enqueue processing
+          const storageConfig = await getStorageConfig();
+          const urlPath = path.join(
+            storageConfig.dataPath,
+            '.app',
+            'mylifedb',
+            'inbox',
+            inboxItem.folderName,
+            'url.txt'
+          );
+          const url = await fs.readFile(urlPath, 'utf-8');
+          const taskId = enqueueUrlProcessing(inboxItem.id, url.trim());
+          console.log(`[API] Enqueued URL processing task ${taskId} for inbox item ${inboxItem.id}`);
+        } catch (error) {
+          console.error('[API] Failed to enqueue URL processing:', error);
+          // Don't fail the request if task enqueue fails
+        }
+      }
+    }
 
     return NextResponse.json(inboxItem, { status: 201 });
   } catch (error) {

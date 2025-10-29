@@ -207,3 +207,18 @@ export async function updateAIConfig(aiConfig: Partial<UserSettings['ai']>) {
   await saveSettings(settings);
   return settings.ai;
 }
+
+/**
+ * Get all settings (alias for loadSettings)
+ */
+export async function getSettings(): Promise<UserSettings> {
+  return loadSettings();
+}
+
+/**
+ * Get storage configuration only
+ */
+export async function getStorageConfig() {
+  const settings = await loadSettings();
+  return settings.storage;
+}
