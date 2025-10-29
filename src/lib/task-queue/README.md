@@ -239,9 +239,11 @@ CREATE INDEX idx_tasks_created ON tasks(created_at DESC);
 
 ```
 pending → processing → completed ✓
-pending → processing → failed → [retry] → pending → processing → completed ✓
+pending → processing → failed → [wait for next_retry_at] → processing → completed ✓
 pending → processing → failed → [max attempts] → failed (terminal)
 ```
+
+**Note:** Failed tasks stay in 'failed' status until `next_retry_at` passes, then are claimed directly to 'processing' (not back to 'pending'). Both pending and eligible failed tasks compete for the same worker slots.
 
 ### 3.2 JSON Data Structures
 
@@ -357,6 +359,8 @@ ORDER BY created_at ASC  -- FIFO: oldest first
 LIMIT batchSize;
 ```
 
+**Note:** Failed tasks waiting for retry (`next_retry_at > NOW()`) are NOT selected. Once retry time arrives, they compete for worker slots just like pending tasks.
+
 **Retry Strategy (Exponential Backoff with Jitter):**
 
 ```
@@ -442,10 +446,11 @@ WHERE status = 'processing'
   AND last_attempt_at < NOW() - INTERVAL timeout
 LIMIT 100;
 
--- Reset to pending for retry
+-- Reset to failed for retry (will compete for worker slots when next_retry_at arrives)
 UPDATE tasks
-SET status = 'pending',
-    next_retry_at = NULL,
+SET status = 'failed',
+    error = 'Task timeout - worker may have crashed',
+    next_retry_at = NOW() + retry_delay,
     updated_at = NOW()
 WHERE id = ?
   AND status = 'processing'
@@ -455,6 +460,8 @@ WHERE id = ?
 **Recovery Mechanism:**
 - Worker polls for stale tasks every poll cycle
 - Default timeout: 5 minutes (configurable)
+- Stale tasks are marked as 'failed' and scheduled for retry
+- They will consume a worker slot when retried (same as any failed task)
 - Handles: crashes, network issues, OOM kills, hung processes
 - Does NOT handle: slow handlers (that's handler's responsibility)
 
