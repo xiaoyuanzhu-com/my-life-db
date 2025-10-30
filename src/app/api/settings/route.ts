@@ -32,6 +32,9 @@ export async function PUT(request: NextRequest) {
   try {
     const updates = await request.json() as Partial<UserSettings>;
 
+    // Load current settings
+    const currentSettings = await loadSettings();
+
     // Validate AI config if being updated
     if (updates.ai) {
       const validation = validateAIConfig(updates.ai);
@@ -43,10 +46,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Load current settings
-    const currentSettings = await loadSettings();
-
-    // Merge updates
+    // Merge updates (frontend already stripped unchanged masked keys)
     const updatedSettings: UserSettings = {
       ...currentSettings,
       ...updates,

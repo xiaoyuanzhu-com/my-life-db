@@ -194,7 +194,13 @@ export function validateAIConfig(config: AIConfig): { valid: boolean; error?: st
   return { valid: true };
 }
 
-// Sanitize settings before saving (remove sensitive data from logs)
+// Helper function to mask API key with asterisks of the same length
+function maskApiKey(apiKey: string | undefined): string | undefined {
+  if (!apiKey) return apiKey;
+  return '*'.repeat(apiKey.length);
+}
+
+// Sanitize settings before sending to client (mask sensitive data)
 export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> {
   return {
     ...settings,
@@ -203,13 +209,13 @@ export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> 
       openai: settings.ai.openai
         ? {
             ...settings.ai.openai,
-            apiKey: settings.ai.openai.apiKey ? '***' : '',
+            apiKey: maskApiKey(settings.ai.openai.apiKey) || '',
           }
         : undefined,
       custom: settings.ai.custom
         ? {
             ...settings.ai.custom,
-            apiKey: settings.ai.custom.apiKey ? '***' : undefined,
+            apiKey: maskApiKey(settings.ai.custom.apiKey),
           }
         : undefined,
     },
@@ -219,7 +225,7 @@ export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> 
           openai: settings.vendors.openai
             ? {
                 ...settings.vendors.openai,
-                apiKey: settings.vendors.openai.apiKey ? '***' : undefined,
+                apiKey: maskApiKey(settings.vendors.openai.apiKey),
               }
             : undefined,
         }

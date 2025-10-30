@@ -10,12 +10,64 @@ interface SettingsContextType {
   isSaving: boolean;
   saveMessage: string | null;
   saveSettings: (partialSettings: Partial<UserSettings>) => Promise<void>;
+  originalSettings: Partial<UserSettings> | null; // Track original loaded settings
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
+// Helper function to check if a string is masked (all asterisks)
+function isMaskedApiKey(apiKey: string | undefined): boolean {
+  if (!apiKey) return false;
+  return /^\*+$/.test(apiKey);
+}
+
+// Helper function to remove unchanged masked API keys from update payload
+function stripUnchangedMaskedKeys(
+  updates: Partial<UserSettings>,
+  original: Partial<UserSettings>
+): Partial<UserSettings> {
+  const cleaned = { ...updates };
+
+  // Check AI OpenAI API key
+  if (cleaned.ai?.openai?.apiKey &&
+      isMaskedApiKey(cleaned.ai.openai.apiKey) &&
+      cleaned.ai.openai.apiKey === original.ai?.openai?.apiKey) {
+    // Remove the apiKey field entirely if unchanged
+    const { apiKey, ...rest } = cleaned.ai.openai;
+    cleaned.ai = {
+      ...cleaned.ai,
+      openai: Object.keys(rest).length > 0 ? rest : undefined,
+    };
+  }
+
+  // Check AI Custom API key
+  if (cleaned.ai?.custom?.apiKey &&
+      isMaskedApiKey(cleaned.ai.custom.apiKey) &&
+      cleaned.ai.custom.apiKey === original.ai?.custom?.apiKey) {
+    const { apiKey, ...rest } = cleaned.ai.custom;
+    cleaned.ai = {
+      ...cleaned.ai,
+      custom: Object.keys(rest).length > 0 ? rest : undefined,
+    };
+  }
+
+  // Check Vendor OpenAI API key
+  if (cleaned.vendors?.openai?.apiKey &&
+      isMaskedApiKey(cleaned.vendors.openai.apiKey) &&
+      cleaned.vendors.openai.apiKey === original.vendors?.openai?.apiKey) {
+    const { apiKey, ...rest } = cleaned.vendors.openai;
+    cleaned.vendors = {
+      ...cleaned.vendors,
+      openai: Object.keys(rest).length > 0 ? rest : undefined,
+    };
+  }
+
+  return cleaned;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Partial<UserSettings> | null>(null);
+  const [originalSettings, setOriginalSettings] = useState<Partial<UserSettings> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -29,6 +81,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/settings');
       const data = await response.json();
       setSettings(data);
+      setOriginalSettings(data); // Track original values
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -37,7 +90,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }
 
   async function saveSettingsFn(partialSettings: Partial<UserSettings>) {
-    if (!settings) return;
+    if (!settings || !originalSettings) return;
 
     setIsSaving(true);
     setSaveMessage(null);
@@ -46,10 +99,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // Merge only the provided fields with existing settings
       const updatedSettings = { ...settings, ...partialSettings };
 
+      // Strip out unchanged masked API keys before sending
+      const cleanedSettings = stripUnchangedMaskedKeys(updatedSettings, originalSettings);
+
       const response = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
+        body: JSON.stringify(cleanedSettings),
       });
 
       if (response.ok) {
@@ -78,6 +134,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         isSaving,
         saveMessage,
         saveSettings: saveSettingsFn,
+        originalSettings,
       }}
     >
       {children}
