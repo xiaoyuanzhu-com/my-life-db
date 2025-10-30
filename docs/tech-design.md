@@ -676,12 +676,12 @@ MY_DATA_DIR/
 │       │   │   └── song.mp3         # Another file (if any)
 │       │   └── {slug}/              # After processing, renamed to slug
 │       │       ├── content.md       # User's original text input
-│       │       ├── photo.jpg        # User's original file(s)
-│       │       ├── _url_content.html     # Processed: original HTML (for URLs)
-│       │       ├── _url_screenshot.png   # Processed: visual capture (for URLs)
-│       │       ├── _url_summary.md       # Processed: cleaned extraction (for URLs)
-│       │       ├── _image_caption.md     # Processed: AI-generated caption (for images)
-│       │       └── _audio_transcript.md  # Processed: transcription (for audio)
+│       │       ├── photo.jpg        # User's original file(s) - NEVER renamed
+│       │       ├── webpage.html     # Processed: original HTML (for URLs)
+│       │       ├── webpage.png      # Processed: visual capture (for URLs)
+│       │       ├── summary.md       # Processed: cleaned extraction (for URLs)
+│       │       ├── caption.md       # Processed: AI-generated caption (for images)
+│       │       └── transcript.md    # Processed: transcription (for audio)
 │       ├── cache/
 │       │   ├── thumbnails/
 │       │   └── temp/
@@ -715,20 +715,19 @@ MY_DATA_DIR/
 **Design Decisions:**
 
 1. **Separate User Input vs Processed Output**
-   - **Decision:** Distinguish user files from processed files with `_` prefix
-   - **Why:**
-     - Clear separation of concerns (original vs generated)
-     - Easy to identify which files to preserve vs regenerate
-     - Consistent with "private" convention from programming
+   - **Decision:** Track user files and processed files separately in database
+   - **Why:** Clear separation of concerns (original vs generated), easy to identify which files to preserve vs regenerate
    - **User files:**
-     - Text input: `content.md` (not `text.md`)
+     - Text input: `content.md`
      - Attachments: original filenames (`photo.jpg`, `document.pdf`)
+     - **NEVER renamed or modified** - user files are sacred
      - Stored in `user_files` JSON array
    - **Processed files:**
-     - All prefixed with `_` (e.g., `_url_content.html`, `_image_caption.md`)
-     - Purpose-specific naming (not generic)
+     - Simple, descriptive names: `webpage.html`, `webpage.png`, `summary.md`, `caption.md`, `transcript.md`
      - Stored in `processed_files` JSON array with explicit filenames
      - **NOT** determined by convention - always check DB for actual filenames
+     - **Conflict resolution:** If processed filename conflicts with user file, apply macOS-style deduplication (e.g., `summary.md` → `summary 2.md`)
+   - **Alt:** Underscore prefix for processed files - rejected (unnecessary complexity, harder to read)
    - **Alt:** Single files array - rejected (can't distinguish user vs generated content)
 
 2. **UUID → Slug Workflow**
@@ -739,6 +738,10 @@ MY_DATA_DIR/
 3. **File Deduplication Strategy (macOS-style)**
    - **Decision:** Space + number suffix pattern (`photo.jpg` → `photo 2.jpg`)
    - **Why:** Familiar to users, simple logic, preserves extensions
+   - **Applied to:**
+     - User files when multiple uploads have same name
+     - Processed files when they conflict with user files (user files have priority)
+   - **Example:** User has `summary.md` attachment → generated summary becomes `summary 2.md`
    - **Alt:** Hash suffixes - rejected (cryptic names), Timestamps - rejected (too long)
 
 4. **Schema Versioning**
@@ -751,16 +754,17 @@ MY_DATA_DIR/
 
 | Feature | Status | User Input | Processed Output |
 |---------|--------|------------|------------------|
-| **URL Crawling** | In Progress | `content.md` (URL text) | `_url_content.html`, `_url_screenshot.png`, `_url_summary.md` |
-| **Image Captioning** | Planned | `photo.jpg` (original) | `_image_caption.md` |
-| **OCR Extraction** | Planned | `document.jpg` (scan) | `_ocr_text.md` |
-| **Audio Transcription** | Planned | `recording.mp3` (original) | `_audio_transcript.md` |
-| **PDF Parsing** | Planned | `document.pdf` (original) | `_pdf_text.md` |
+| **URL Crawling** | In Progress | `content.md` (URL text) | `webpage.html`, `webpage.png`, `summary.md` |
+| **Image Captioning** | Planned | `photo.jpg` (original) | `caption.md` |
+| **OCR Extraction** | Planned | `document.jpg` (scan) | `ocr.md` |
+| **Audio Transcription** | Planned | `recording.mp3` (original) | `transcript.md` |
+| **PDF Parsing** | Planned | `document.pdf` (original) | `extracted.md` |
 
 **Key Principles:**
-- User input files: Always preserve originals, never modify
-- Processed files: Always prefix with `_`, store filenames in DB
-- Purpose-specific naming: Not generic (e.g., `_url_summary.md` not `_summary.md`)
+- **User input files:** Always preserve originals with original filenames, NEVER rename or modify
+- **Processed files:** Simple, descriptive names stored explicitly in DB
+- **Conflict resolution:** User files have priority; processed files get deduplicated if needed
+- **No prefix convention:** Database tracking makes prefixes unnecessary
 
 **Archive Design:**
 
@@ -1035,7 +1039,7 @@ INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALU
     "type": "object",
     "required": ["filename", "size", "mimeType", "type", "purpose"],
     "properties": {
-      "filename": {"type": "string", "pattern": "^_.*"},
+      "filename": {"type": "string"},
       "size": {"type": "integer"},
       "mimeType": {"type": "string"},
       "type": {"type": "string", "enum": ["html", "image", "markdown", "text", "other"]},
@@ -1321,10 +1325,24 @@ async function crawlUrl(entryId: string) {
     // Generate AI summary for folder name
     const aiSlug = await generateSlug(metadata.title || text.substring(0, 100));
 
-    // Save processed outputs (all prefixed with _)
+    // Check for conflicts with user files and deduplicate if needed
+    const userFiles = JSON.parse(entry.user_files);
+    const userFilenames = userFiles.map(f => f.filename);
+
+    const getAvailableFilename = (desiredName: string): string => {
+      if (!userFilenames.includes(desiredName)) return desiredName;
+      // Apply macOS-style deduplication
+      const ext = path.extname(desiredName);
+      const base = path.basename(desiredName, ext);
+      let counter = 2;
+      while (userFilenames.includes(`${base} ${counter}${ext}`)) counter++;
+      return `${base} ${counter}${ext}`;
+    };
+
+    // Save processed outputs with simple, descriptive names
     const processedFiles = [];
 
-    const htmlFile = '_url_content.html';
+    const htmlFile = getAvailableFilename('webpage.html');
     await fs.writeFile(join(MY_DATA_DIR, inboxPath, htmlFile), html);
     processedFiles.push({
       filename: htmlFile,
@@ -1334,7 +1352,7 @@ async function crawlUrl(entryId: string) {
       purpose: 'Original HTML content from URL'
     });
 
-    const summaryFile = '_url_summary.md';
+    const summaryFile = getAvailableFilename('summary.md');
     await fs.writeFile(join(MY_DATA_DIR, inboxPath, summaryFile), text);
     processedFiles.push({
       filename: summaryFile,
@@ -1344,7 +1362,7 @@ async function crawlUrl(entryId: string) {
       purpose: 'Extracted main content (cleaned)'
     });
 
-    const screenshotFile = '_url_screenshot.png';
+    const screenshotFile = getAvailableFilename('webpage.png');
     await fs.writeFile(join(MY_DATA_DIR, inboxPath, screenshotFile), screenshot);
     processedFiles.push({
       filename: screenshotFile,
