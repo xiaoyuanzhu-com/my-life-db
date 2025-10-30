@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import type { InboxItem } from '@/types';
+import type { InboxItem, InboxProcessingSummary } from '@/types';
 
 interface GroupedItems {
   date: string;
@@ -11,8 +11,10 @@ interface GroupedItems {
   items: InboxItem[];
 }
 
+type InboxItemWithProcessing = InboxItem & { processing: InboxProcessingSummary };
+
 export default function InboxPage() {
-  const [items, setItems] = useState<InboxItem[]>([]);
+  const [items, setItems] = useState<InboxItemWithProcessing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export default function InboxPage() {
       try {
         const response = await fetch('/api/inbox');
         const data = await response.json();
-        setItems(data.items);
+        setItems(data.items as InboxItemWithProcessing[]);
       } catch (error) {
         console.error('Failed to load inbox items:', error);
       } finally {
@@ -84,11 +86,88 @@ export default function InboxPage() {
         // Reload items
         const itemsResponse = await fetch('/api/inbox');
         const data = await itemsResponse.json();
-        setItems(data.items);
+        setItems(data.items as InboxItemWithProcessing[]);
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
     }
+  }
+
+  async function handleReprocess(item: InboxItemWithProcessing) {
+    try {
+      const res = await fetch(`/api/inbox/${item.id}/reprocess?stage=crawl`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(`Failed to reprocess: ${body.error || res.statusText}`);
+        return;
+      }
+      // Refresh list
+      const itemsResponse = await fetch('/api/inbox');
+      const data = await itemsResponse.json();
+      setItems(data.items as InboxItemWithProcessing[]);
+    } catch (e) {
+      console.error('Reprocess failed', e);
+    }
+  }
+
+  function renderPreview(item: InboxItemWithProcessing) {
+    // Prefer first image file
+    const imageFile = item.files.find(f => f.type === 'image');
+    if (imageFile) {
+      const src = `/api/inbox/files/${encodeURIComponent(item.folderName)}/${encodeURIComponent(imageFile.filename)}`;
+      return (
+        <img
+          src={src}
+          alt={imageFile.filename}
+          className="w-full h-40 object-cover rounded mb-3 border"
+          loading="lazy"
+        />
+      );
+    }
+
+    // For URL items, if crawl completed, show a simple badge
+    if (item.type === 'url') {
+      if (item.processing.crawlDone) {
+        return (
+          <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-green-100 text-green-700">
+            Crawl complete
+          </div>
+        );
+      }
+      if (item.processing.overall === 'processing') {
+        return (
+          <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-blue-100 text-blue-700">
+            Crawling...
+          </div>
+        );
+      }
+    }
+
+    return null;
+  }
+
+  function renderStages(item: InboxItemWithProcessing) {
+    const stages = item.processing.stages;
+    if (stages.length === 0) return null;
+
+    return (
+      <div className="flex flex-wrap gap-1 mb-3">
+        {stages.map((s, idx) => {
+          const color = s.status === 'success'
+            ? 'bg-green-100 text-green-700'
+            : s.status === 'in-progress'
+              ? 'bg-blue-100 text-blue-700'
+              : s.status === 'failed'
+                ? 'bg-red-100 text-red-700'
+                : 'bg-muted text-muted-foreground';
+          return (
+            <span key={idx} className={`text-[10px] px-2 py-0.5 rounded ${color}`}>
+              {s.taskType.replace('_', ' ')}: {s.status}
+            </span>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -124,6 +203,7 @@ export default function InboxPage() {
                   {group.items.map((item) => (
                     <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                       <CardContent className="p-4">
+                        {renderPreview(item as InboxItemWithProcessing)}
                         {/* Item Type Badge */}
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
@@ -139,6 +219,8 @@ export default function InboxPage() {
                             </span>
                           )}
                         </div>
+
+                        {renderStages(item as InboxItemWithProcessing)}
 
                         {/* Files List */}
                         <div className="space-y-2 mb-3">
@@ -165,13 +247,22 @@ export default function InboxPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2">
+                        <div className="flex gap-3 items-center">
                           <button
                             onClick={() => handleDelete(item.id)}
                             className="text-xs text-red-600 hover:text-red-700 font-medium"
                           >
                             Delete
                           </button>
+
+                          {(item as InboxItemWithProcessing).processing.canRetry && (
+                            <button
+                              onClick={() => handleReprocess(item as InboxItemWithProcessing)}
+                              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                            >
+                              Reprocess
+                            </button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

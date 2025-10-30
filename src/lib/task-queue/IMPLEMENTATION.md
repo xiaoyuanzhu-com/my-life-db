@@ -258,6 +258,27 @@ Configure in Settings UI or environment variables:
 
 ### Worker Configuration
 
+## Inbox Task Status Projection
+
+To support fast, simple status checks per inbox item without bloating the `inbox` table, a projection table is maintained:
+
+```
+CREATE TABLE inbox_task_state (
+  inbox_id TEXT NOT NULL,
+  task_type TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('to-do','in-progress','success','failed')),
+  task_id TEXT,
+  attempts INTEGER DEFAULT 0,
+  error TEXT,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (inbox_id, task_type)
+);
+```
+
+- Source of truth remains the `tasks` table; `inbox_task_state` is a read-optimized projection.
+- It is updated at enqueue time (set `to-do`) and on task transitions in the executor (`in-progress`, `success`, `failed`).
+- Query example for an inbox item: `SELECT task_type, status, attempts, error FROM inbox_task_state WHERE inbox_id = ?`.
+
 ```typescript
 startWorker({
   pollIntervalMs: 1000,              // Poll every 1 second

@@ -265,6 +265,28 @@ export interface InboxItem {
   updatedAt: string; // ISO date string
 }
 
+// Processing summary included in API responses for inbox items
+export interface InboxStageStatusSummary {
+  taskType: string;
+  status: 'to-do' | 'in-progress' | 'success' | 'failed';
+  attempts: number;
+  error: string | null;
+  updatedAt: number | null;
+}
+
+export interface InboxProcessingSummary {
+  inboxId: string;
+  overall: ProcessingStatus;
+  stages: InboxStageStatusSummary[];
+  hasFailures: boolean;
+  completedCount: number;
+  totalCount: number;
+  crawlDone: boolean;
+  summaryDone: boolean;
+  screenshotReady: boolean;
+  canRetry: boolean;
+}
+
 /**
  * Library file - permanent indexed file
  */

@@ -8,6 +8,8 @@ import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import type { InboxFile } from '@/types';
+import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
+import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -32,7 +34,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(item);
+    // Attach processing summary
+    const states = getInboxTaskStates(id);
+    const processing = summarizeInboxProcessing(item, states);
+    return NextResponse.json({ ...item, processing } as unknown);
   } catch (error) {
     console.error('Error fetching inbox item:', error);
     return NextResponse.json(

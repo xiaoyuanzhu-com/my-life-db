@@ -11,6 +11,7 @@ import { processHtmlContent, extractMainContent, sanitizeContent } from '../craw
 import { generateUrlSlug } from '../crawl/urlSlugGenerator';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
+import { upsertInboxTaskState } from '../db/inboxTaskState';
 
 export interface UrlProcessingPayload {
   inboxId: string;
@@ -210,6 +211,16 @@ export function enqueueUrlProcessing(inboxId: string, url: string): string {
   });
 
   console.log(`[URLProcessor] Enqueued URL processing task ${taskId} for: ${url}`);
+
+  // Update projection for quick status checks
+  upsertInboxTaskState({
+    inboxId,
+    taskType: 'process_url',
+    status: 'to-do',
+    taskId,
+    attempts: 0,
+    error: null,
+  });
 
   return taskId;
 }

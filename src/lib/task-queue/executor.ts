@@ -4,6 +4,7 @@
 
 import { getTaskById, updateTask } from './task-manager';
 import type { Task, TaskHandler } from './types';
+import { upsertInboxTaskState } from '../db/inboxTaskState';
 
 /**
  * Global handler registry
@@ -116,6 +117,24 @@ export async function executeTask(
     };
   }
 
+  // 5.1 Update projection for inbox tasks to in-progress
+  try {
+    const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
+    const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+    if (inboxId) {
+      upsertInboxTaskState({
+        inboxId,
+        taskType: task.type,
+        status: 'in-progress',
+        taskId: task.id,
+        attempts: claimedTask.attempts,
+        error: null,
+      });
+    }
+  } catch {
+    // ignore payload parse errors for projection
+  }
+
   // 6. Get handler
   const handler = getHandler(task.type);
   if (!handler) {
@@ -128,6 +147,22 @@ export async function executeTask(
       },
       claimedTask.version
     );
+
+    // Update projection: failed (permanent)
+    try {
+      const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
+      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      if (inboxId) {
+        upsertInboxTaskState({
+          inboxId,
+          taskType: task.type,
+          status: 'failed',
+          taskId: task.id,
+          attempts: claimedTask.attempts,
+          error: `No handler registered for task type "${task.type}"`,
+        });
+      }
+    } catch {}
 
     return {
       success: false,
@@ -156,6 +191,22 @@ export async function executeTask(
       console.warn(`[TaskQueue] Version conflict after executing task ${taskId}`);
     }
 
+    // Update projection: success
+    try {
+      const payloadObj = payload as Record<string, unknown>;
+      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      if (inboxId) {
+        upsertInboxTaskState({
+          inboxId,
+          taskType: task.type,
+          status: 'success',
+          taskId: task.id,
+          attempts: claimedTask.attempts,
+          error: null,
+        });
+      }
+    } catch {}
+
     return {
       success: true,
       result,
@@ -174,6 +225,22 @@ export async function executeTask(
       },
       claimedTask.version
     );
+
+    // Update projection: failed
+    try {
+      const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
+      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      if (inboxId) {
+        upsertInboxTaskState({
+          inboxId,
+          taskType: task.type,
+          status: 'failed',
+          taskId: task.id,
+          attempts: claimedTask.attempts,
+          error: errorMessage,
+        });
+      }
+    } catch {}
 
     return {
       success: false,
@@ -203,6 +270,22 @@ export function recoverStaleTasks(tasks: Task[]): number {
     if (updated) {
       recovered++;
       console.log(`[TaskQueue] Recovered stale task ${task.id} (type: ${task.type})`);
+
+      // Update projection: failed due to timeout
+      try {
+        const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
+        const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+        if (inboxId) {
+          upsertInboxTaskState({
+            inboxId,
+            taskType: task.type,
+            status: 'failed',
+            taskId: task.id,
+            attempts: task.attempts,
+            error: 'Task timed out (stale task recovery)',
+          });
+        }
+      } catch {}
     }
   }
 

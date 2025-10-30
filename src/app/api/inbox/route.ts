@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
 import { listInboxItems } from '@/lib/db/inbox';
+import { getInboxTaskStatesForInboxIds } from '@/lib/db/inboxTaskState';
+import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
 import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 
@@ -29,8 +31,17 @@ export async function GET(request: NextRequest) {
 
     const items = listInboxItems({ status, limit, offset });
 
+    // Include processing summaries for all items (batch query)
+    const ids = items.map((i) => i.id);
+    const statesByInbox = getInboxTaskStatesForInboxIds(ids);
+    const itemsWithProcessing = items.map((item) => {
+      const states = statesByInbox[item.id] || [];
+      const processing = summarizeInboxProcessing(item, states);
+      return { ...item, processing } as unknown;
+    });
+
     return NextResponse.json({
-      items,
+      items: itemsWithProcessing,
       total: items.length,
     });
   } catch (error) {

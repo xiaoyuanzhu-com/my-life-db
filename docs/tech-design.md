@@ -412,9 +412,18 @@ CREATE TABLE inbox (
   -- Content type
   type TEXT NOT NULL CHECK(type IN ('text', 'url', 'image', 'audio', 'video', 'pdf', 'mixed')),
 
-  -- Files (JSON array - all files treated equally, text.md is just another file)
-  -- Schema: [{ filename, size, mimeType, type, hash, enrichment: {...} }]
-  files JSON NOT NULL,
+  -- User input files (JSON array - original user uploads)
+  -- Schema: [{ filename, size, mimeType, type, hash }]
+  -- User text saved as: content.md
+  -- User files saved as: original filenames (photo.jpg, document.pdf, etc.)
+  user_files JSON NOT NULL,
+
+  -- Processed output files (JSON array - AI/system generated)
+  -- Schema: [{ filename, size, mimeType, type, purpose }]
+  -- Examples: webpage.html, webpage.png, summary.md, caption.md, transcript.md
+  -- All processed filenames stored explicitly in DB (not by convention)
+  -- Conflict resolution: If user file exists, apply macOS-style deduplication (summary 2.md)
+  processed_files JSON,
 
   -- Processing state
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
@@ -662,14 +671,17 @@ MY_DATA_DIR/
 │       ├── database.sqlite          # All metadata (inbox + library index)
 │       ├── inbox/                   # Temporary staging (app-managed)
 │       │   ├── {uuid}/              # Initially UUID-named
-│       │   │   ├── text.md          # User's raw text input (if any)
+│       │   │   ├── content.md       # User's raw text input (if any)
 │       │   │   ├── photo.jpg        # User's uploaded file (if any)
 │       │   │   └── song.mp3         # Another file (if any)
 │       │   └── {slug}/              # After processing, renamed to slug
-│       │       ├── text.md          # User's original text
-│       │       ├── content.html     # For URLs: original HTML (preserved)
-│       │       ├── screenshot.png   # For URLs: visual capture
-│       │       └── main-content.md  # For URLs: cleaned extraction
+│       │       ├── content.md       # User's original text input
+│       │       ├── photo.jpg        # User's original file(s)
+│       │       ├── _url_content.html     # Processed: original HTML (for URLs)
+│       │       ├── _url_screenshot.png   # Processed: visual capture (for URLs)
+│       │       ├── _url_summary.md       # Processed: cleaned extraction (for URLs)
+│       │       ├── _image_caption.md     # Processed: AI-generated caption (for images)
+│       │       └── _audio_transcript.md  # Processed: transcription (for audio)
 │       ├── cache/
 │       │   ├── thumbnails/
 │       │   └── temp/
@@ -702,41 +714,53 @@ MY_DATA_DIR/
 
 **Design Decisions:**
 
-1. **File-based Approach (text.md = just another file)**
-   - **Decision:** Treat text input as a file (text.md) rather than separate field
-   - **Why:** Unified file handling, simpler enrichment pipeline, consistent processing
-   - **Alt:** Text as separate DB field - rejected (special-case logic, harder to enrich)
+1. **Separate User Input vs Processed Output**
+   - **Decision:** Distinguish user files from processed files with `_` prefix
+   - **Why:**
+     - Clear separation of concerns (original vs generated)
+     - Easy to identify which files to preserve vs regenerate
+     - Consistent with "private" convention from programming
+   - **User files:**
+     - Text input: `content.md` (not `text.md`)
+     - Attachments: original filenames (`photo.jpg`, `document.pdf`)
+     - Stored in `user_files` JSON array
+   - **Processed files:**
+     - All prefixed with `_` (e.g., `_url_content.html`, `_image_caption.md`)
+     - Purpose-specific naming (not generic)
+     - Stored in `processed_files` JSON array with explicit filenames
+     - **NOT** determined by convention - always check DB for actual filenames
+   - **Alt:** Single files array - rejected (can't distinguish user vs generated content)
 
-2. **Database-only Metadata (no .meta.json files)**
-   - **Decision:** All metadata stored in database, clean user directories
-   - **Why:** No file pollution, faster queries, atomic updates
-   - **Alt:** Sidecar .meta.json files - rejected (clutters directories, sync issues)
-
-3. **UUID → Slug Workflow**
+2. **UUID → Slug Workflow**
    - **Decision:** Folders initially named with UUID, renamed to slug after AI processing
    - **Why:** Stable ID (UUID never changes), human-readable names (slug), clean separation
    - **Alt:** Slug-only - rejected (slug collisions, can't identify before processing)
 
-4. **File Deduplication Strategy (macOS-style)**
+3. **File Deduplication Strategy (macOS-style)**
    - **Decision:** Space + number suffix pattern (`photo.jpg` → `photo 2.jpg`)
    - **Why:** Familiar to users, simple logic, preserves extensions
    - **Alt:** Hash suffixes - rejected (cryptic names), Timestamps - rejected (too long)
 
-5. **Schema Versioning**
+4. **Schema Versioning**
    - **Decision:** Track `schema_version` in both inbox and library tables
    - **Why:** Graceful evolution, detect outdated metadata, enable re-processing
    - **Implementation:** Version in DB column, schemas in metadata_schemas registry
    - **User Experience:** Badge shows outdated items, "Re-process" button upgrades
 
-**Processing Features (Future Implementation):**
+**Processing Features:**
 
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| **URL Crawling** | Planned | Playwright → content.html, screenshot.png, main-content.md |
-| **Image Captioning** | Planned | Vision AI → enrichment.caption |
-| **OCR Extraction** | Planned | Tesseract → enrichment.ocr |
-| **Audio Transcription** | Planned | Whisper → enrichment.transcription |
-| **PDF Parsing** | Planned | pdf-parse → enrichment.extractedText |
+| Feature | Status | User Input | Processed Output |
+|---------|--------|------------|------------------|
+| **URL Crawling** | In Progress | `content.md` (URL text) | `_url_content.html`, `_url_screenshot.png`, `_url_summary.md` |
+| **Image Captioning** | Planned | `photo.jpg` (original) | `_image_caption.md` |
+| **OCR Extraction** | Planned | `document.jpg` (scan) | `_ocr_text.md` |
+| **Audio Transcription** | Planned | `recording.mp3` (original) | `_audio_transcript.md` |
+| **PDF Parsing** | Planned | `document.pdf` (original) | `_pdf_text.md` |
+
+**Key Principles:**
+- User input files: Always preserve originals, never modify
+- Processed files: Always prefix with `_`, store filenames in DB
+- Purpose-specific naming: Not generic (e.g., `_url_summary.md` not `_summary.md`)
 
 **Archive Design:**
 
@@ -983,7 +1007,7 @@ CREATE INDEX idx_library_schema_version ON library(schema_version);
 CREATE TABLE metadata_schemas (
   version INTEGER PRIMARY KEY,
   table_name TEXT NOT NULL,               -- 'inbox' | 'library'
-  field_name TEXT NOT NULL,               -- 'files' | 'enrichment'
+  field_name TEXT NOT NULL,               -- 'user_files' | 'processed_files' | 'enrichment'
   schema_json TEXT NOT NULL,              -- JSON Schema definition
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(table_name, field_name, version)
@@ -991,7 +1015,7 @@ CREATE TABLE metadata_schemas (
 
 -- Example: Register initial schemas
 INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALUES
-(1, 'inbox', 'files', '{
+(1, 'inbox', 'user_files', '{
   "type": "array",
   "items": {
     "type": "object",
@@ -1001,8 +1025,21 @@ INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALU
       "size": {"type": "integer"},
       "mimeType": {"type": "string"},
       "type": {"type": "string", "enum": ["text", "image", "audio", "video", "pdf", "other"]},
-      "hash": {"type": "string"},
-      "enrichment": {"type": "object"}
+      "hash": {"type": "string"}
+    }
+  }
+}'),
+(1, 'inbox', 'processed_files', '{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["filename", "size", "mimeType", "type", "purpose"],
+    "properties": {
+      "filename": {"type": "string", "pattern": "^_.*"},
+      "size": {"type": "integer"},
+      "mimeType": {"type": "string"},
+      "type": {"type": "string", "enum": ["html", "image", "markdown", "text", "other"]},
+      "purpose": {"type": "string", "description": "What this processed file represents"}
     }
   }
 }'),
@@ -1239,17 +1276,26 @@ async function fullScan() {
 // 1. User adds URL
 async function addUrl(url: string, userId: string) {
   const entryId = uuid();
-  const inboxPath = `.app/mylifedb/inbox/${entryId}`;
+  const folderName = entryId;
+  const inboxPath = `.app/mylifedb/inbox/${folderName}`;
 
   // Create staging directory
   await fs.mkdir(join(MY_DATA_DIR, inboxPath), { recursive: true });
-  await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'url.txt'), url);
+
+  // Save user input as content.md with the URL
+  await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.md'), url);
 
   // Save to database
   await db.run(`
-    INSERT INTO entries (id, source_type, status, inbox_path)
-    VALUES (?, 'url', 'pending', ?)
-  `, [entryId, inboxPath]);
+    INSERT INTO inbox (id, folder_name, type, user_files, status, created_at, updated_at)
+    VALUES (?, ?, 'url', ?, 'pending', datetime('now'), datetime('now'))
+  `, [entryId, folderName, JSON.stringify([{
+    filename: 'content.md',
+    size: Buffer.byteLength(url),
+    mimeType: 'text/markdown',
+    type: 'text',
+    hash: hashContent(url)
+  }])]);
 
   // Queue for background processing
   await jobQueue.add('crawl-url', { entryId });
@@ -1259,8 +1305,11 @@ async function addUrl(url: string, userId: string) {
 
 // 2. Background: Crawl & Process
 async function crawlUrl(entryId: string) {
-  const entry = await getEntry(entryId);
-  const url = await fs.readFile(join(MY_DATA_DIR, entry.inbox_path, 'url.txt'), 'utf-8');
+  const entry = await db.get('SELECT * FROM inbox WHERE id = ?', [entryId]);
+  const inboxPath = `.app/mylifedb/inbox/${entry.folder_name}`;
+
+  // Read URL from user's content.md
+  const url = await fs.readFile(join(MY_DATA_DIR, inboxPath, 'content.md'), 'utf-8');
 
   try {
     // Crawl using Playwright/Puppeteer
@@ -1272,29 +1321,65 @@ async function crawlUrl(entryId: string) {
     // Generate AI summary for folder name
     const aiSlug = await generateSlug(metadata.title || text.substring(0, 100));
 
-    // Save to inbox
-    const inboxPath = entry.inbox_path;
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.html'), html);
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.md'), markdown);
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'main-content.md'), text);
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'screenshot.png'), screenshot);
+    // Save processed outputs (all prefixed with _)
+    const processedFiles = [];
+
+    const htmlFile = '_url_content.html';
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, htmlFile), html);
+    processedFiles.push({
+      filename: htmlFile,
+      size: Buffer.byteLength(html),
+      mimeType: 'text/html',
+      type: 'html',
+      purpose: 'Original HTML content from URL'
+    });
+
+    const summaryFile = '_url_summary.md';
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, summaryFile), text);
+    processedFiles.push({
+      filename: summaryFile,
+      size: Buffer.byteLength(text),
+      mimeType: 'text/markdown',
+      type: 'markdown',
+      purpose: 'Extracted main content (cleaned)'
+    });
+
+    const screenshotFile = '_url_screenshot.png';
+    await fs.writeFile(join(MY_DATA_DIR, inboxPath, screenshotFile), screenshot);
+    processedFiles.push({
+      filename: screenshotFile,
+      size: screenshot.length,
+      mimeType: 'image/png',
+      type: 'image',
+      purpose: 'Visual capture of the webpage'
+    });
 
     // Rename folder to human-readable slug
-    const newInboxPath = `.app/mylifedb/inbox/${aiSlug}`;
+    const newFolderName = aiSlug;
+    const newInboxPath = `.app/mylifedb/inbox/${newFolderName}`;
     await fs.rename(
       join(MY_DATA_DIR, inboxPath),
       join(MY_DATA_DIR, newInboxPath)
     );
 
-    // Update database
+    // Update database with processed files and new folder name
     await db.run(`
-      UPDATE entries
-      SET status = 'ready', inbox_path = ?, metadata = ?
+      UPDATE inbox
+      SET status = 'completed',
+          folder_name = ?,
+          processed_files = ?,
+          ai_slug = ?,
+          processed_at = datetime('now'),
+          updated_at = datetime('now')
       WHERE id = ?
-    `, [newInboxPath, JSON.stringify(metadata), entryId]);
+    `, [newFolderName, JSON.stringify(processedFiles), aiSlug, entryId]);
 
   } catch (error) {
-    await db.run(`UPDATE entries SET status = 'error', error = ? WHERE id = ?`, [error.message, entryId]);
+    await db.run(`
+      UPDATE inbox
+      SET status = 'failed', error = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `, [error.message, entryId]);
   }
 }
 
