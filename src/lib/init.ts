@@ -31,6 +31,23 @@ export function initializeApp() {
       startWorker: true,
     });
 
+    // Apply log level from user settings (best-effort, async)
+    (async () => {
+      try {
+        const [{ loadSettings }, { setLogLevel }] = await Promise.all([
+          import('@/lib/config/storage'),
+          import('@/lib/log/logger'),
+        ]);
+        const settings = await loadSettings();
+        const level = settings.preferences?.logLevel;
+        if (level) {
+          setLogLevel(level as any);
+          const l = getLogger({ module: 'AppInit' });
+          l.info({ level }, 'log level applied from settings');
+        }
+      } catch {}
+    })();
+
     initialized = true;
     globalThis.__mylifedb_app_initialized = true;
     log.info({}, 'application initialization complete');

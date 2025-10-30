@@ -5,6 +5,9 @@
 import { getDatabase } from '../db/connection';
 import { generateUUIDv7 } from './uuid';
 import type { Task, TaskPayload, TaskStatus } from './types';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'TaskManager' });
 
 export interface CreateTaskInput {
   type: string;
@@ -45,7 +48,22 @@ export function createTask(input: CreateTaskInput): Task {
     now
   );
 
-  return getTaskById(id)!;
+  const created = getTaskById(id)!;
+  // Log task enqueue with payload
+  try {
+    log.info(
+      {
+        event: 'task_enqueued',
+        taskId: created.id,
+        type: created.type,
+        run_after: created.run_after ?? null,
+        payload: input.payload,
+      },
+      'task enqueued'
+    );
+  } catch {}
+
+  return created;
 }
 
 /**
@@ -136,6 +154,10 @@ export function updateTask(
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
+  // Pre-read for logging when transitioning to terminal states
+  const shouldLogOutcome = updates.status === 'success' || updates.status === 'failed';
+  const prev = shouldLogOutcome ? getTaskById(id) : null;
+
   const setClauses: string[] = ['updated_at = ?'];
   const params: unknown[] = [now];
 
@@ -186,7 +208,39 @@ export function updateTask(
   `);
 
   const result = stmt.run(...params);
-  return result.changes > 0;
+  const updated = result.changes > 0;
+
+  // Log terminal status transitions with result/error details
+  if (updated && shouldLogOutcome) {
+    try {
+      const next = getTaskById(id);
+      const parsedPayload = (() => {
+        try { return prev?.payload ? JSON.parse(prev.payload) : null; } catch { return prev?.payload ?? null; }
+      })();
+      const parsedResult = (() => {
+        // Prefer explicit update result if provided; else parse from DB
+        if (updates.result !== undefined) return updates.result;
+        try { return next?.result ? JSON.parse(next.result) : null; } catch { return next?.result ?? null; }
+      })();
+
+      const logBase = {
+        event: updates.status === 'success' ? 'task_success' : 'task_failed',
+        taskId: id,
+        type: prev?.type ?? next?.type ?? 'unknown',
+        attempts: next?.attempts ?? prev?.attempts ?? undefined,
+        payload: parsedPayload,
+      } as Record<string, unknown>;
+
+      if (updates.status === 'success') {
+        log.info({ ...logBase, result: parsedResult }, 'task succeeded');
+      } else {
+        const errorVal = updates.error ?? next?.error ?? null;
+        log.error({ ...logBase, error: errorVal }, 'task failed');
+      }
+    } catch {}
+  }
+
+  return updated;
 }
 
 /**

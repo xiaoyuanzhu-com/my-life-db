@@ -15,19 +15,22 @@ type PinoLike = {
   child: (bindings: Record<string, unknown>) => PinoLike;
 };
 
-function createConsoleWrapper(bindings: Record<string, unknown> = {}): PinoLike {
-  const prefix = Object.keys(bindings).length > 0 ? `[${Object.entries(bindings).map(([k,v]) => `${k}=${String(v)}`).join(' ')}]` : '';
-  return {
-    info: (obj, msg) => console.log(prefix, msg || '', obj ?? ''),
-    warn: (obj, msg) => console.warn(prefix, msg || '', obj ?? ''),
-    error: (obj, msg) => console.error(prefix, msg || '', obj ?? ''),
-    debug: (obj, msg) => console.debug(prefix, msg || '', obj ?? ''),
-    child: (more) => createConsoleWrapper({ ...bindings, ...more }),
-  };
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+function getLevelOrder(level: LogLevel): number {
+  switch (level) {
+    case 'debug': return 10;
+    case 'info': return 20;
+    case 'warn': return 30;
+    case 'error': return 40;
+    default: return 20;
+  }
 }
 
+// dynamic console wrapper is defined later to reference currentLevel
+
 function createPinoLogger(): PinoLike {
-  const level = (process.env.LOG_LEVEL || 'info') as 'debug'|'info'|'warn'|'error';
+  const configuredLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
   // Default to pretty logs in non-production unless explicitly disabled
   const pretty = process.env.LOG_PRETTY ? process.env.LOG_PRETTY === 'true' : process.env.NODE_ENV !== 'production';
   const usePino = process.env.USE_PINO !== 'false';
@@ -36,12 +39,13 @@ function createPinoLogger(): PinoLike {
   // In dev, Next.js/Turbopack often breaks pino transports (worker). Default to console wrapper
   // unless explicitly forced via USE_PINO=true.
   if (!usePino || (isDev && process.env.USE_PINO !== 'true')) {
+    // Console wrapper that respects dynamic global level
     return createConsoleWrapper();
   }
 
   // Attempt to create pino; if transport/worker fails (e.g., Next/Turbopack), fall back to console.
   try {
-    const options: any = { level };
+    const options: any = { level: configuredLevel };
     if (pretty) {
       options.transport = {
         target: 'pino-pretty',
@@ -84,11 +88,41 @@ function createPinoLogger(): PinoLike {
   }
 }
 
-export const logger: PinoLike = createPinoLogger();
+// Global dynamic level controlled by setLogLevel
+let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
+let baseLogger: PinoLike = createPinoLogger();
+let isPino = process.env.USE_PINO === 'true' || (process.env.NODE_ENV === 'production' && process.env.USE_PINO !== 'false');
+
+function should(method: LogLevel): boolean {
+  return getLevelOrder(method) >= getLevelOrder(currentLevel);
+}
+
+function createConsoleWrapper(bindings: Record<string, unknown> = {}): PinoLike {
+  const prefix = Object.keys(bindings).length > 0 ? `[${Object.entries(bindings).map(([k,v]) => `${k}=${String(v)}`).join(' ')}]` : '';
+  return {
+    info: (obj, msg) => { if (should('info')) console.log(prefix, msg || '', obj ?? ''); },
+    warn: (obj, msg) => { if (should('warn')) console.warn(prefix, msg || '', obj ?? ''); },
+    error: (obj, msg) => { if (should('error')) console.error(prefix, msg || '', obj ?? ''); },
+    debug: (obj, msg) => { if (should('debug')) console.debug(prefix, msg || '', obj ?? ''); },
+    child: (more) => createConsoleWrapper({ ...bindings, ...more }),
+  };
+}
+
+export function setLogLevel(level: LogLevel): void {
+  if (level !== 'debug' && level !== 'info' && level !== 'warn' && level !== 'error') return;
+  currentLevel = level;
+  try {
+    // If pino is active and supports level change
+    const anyLogger = baseLogger as unknown as { level?: string };
+    if (anyLogger && typeof anyLogger === 'object' && 'level' in anyLogger) {
+      anyLogger.level = level as unknown as string;
+    }
+  } catch {}
+}
 
 export function getLogger(bindings?: Record<string, unknown>): PinoLike {
   if (bindings && Object.keys(bindings).length > 0) {
-    return logger.child(bindings);
+    return baseLogger.child(bindings);
   }
-  return logger;
+  return baseLogger;
 }

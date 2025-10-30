@@ -35,6 +35,7 @@ export interface UserSettings {
     defaultView: 'home' | 'inbox' | 'library';
     weeklyDigest: boolean;
     digestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
+    logLevel?: 'debug' | 'info' | 'warn' | 'error';
   };
 
   // AI Configuration
@@ -114,6 +115,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
     defaultView: 'home',
     weeklyDigest: false,
     digestDay: 0, // Sunday
+    logLevel: 'info',
   },
   ai: {
     provider: 'none',

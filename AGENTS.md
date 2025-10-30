@@ -43,3 +43,9 @@ Example: check task queue status `curl http://localhost:3000/api/tasks/stats`.
 - Do not auto-commit; only commit on explicit request
 - Add shadcn components via CLI: `npx shadcn@latest add <component>`
 - Avoid deep relative imports; use `@/`
+
+## Agent Communication Preferences (Owner’s Requirements)
+- Keep responses concise. First, explicitly state whether requested changes are done or not. Then provide a very short summary, ideally bullet points.
+- Avoid follow-up questions unless absolutely necessary for an important decision. Default to making sensible choices based on industry best practices and this project’s conventions.
+- Assume MVP-stage priorities: simple, performant, robust, and extensible. Prefer pragmatic solutions with minimal complexity.
+- Only escalate when a decision is truly ambiguous and impactful; otherwise proceed without proposing trivial alternatives.

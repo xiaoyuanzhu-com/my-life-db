@@ -38,7 +38,7 @@ export default function SettingsPage() {
   const handleSave = () => {
     // Save only the relevant settings based on active tab
     if (activeTab === 'general') {
-      saveSettings({ ai: settings.ai });
+      saveSettings({ preferences: settings.preferences });
     } else if (activeTab === 'enrichment') {
       saveSettings({ enrichment: settings.enrichment });
     } else if (activeTab === 'vendors') {
@@ -82,175 +82,35 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                AI Provider
+                General Settings
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
-                Choose your AI provider for information extraction
+                Configure application-wide preferences
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Provider</label>
+                <label className="text-sm font-medium">Log Level</label>
                 <select
                   className="w-full px-3 py-2 rounded-md border bg-background"
-                  value={settings.ai?.provider || 'none'}
+                  value={settings.preferences?.logLevel || 'info'}
                   onChange={(e) =>
                     setSettings({
                       ...settings,
-                      ai: { ...settings.ai, provider: e.target.value as 'openai' | 'ollama' | 'custom' | 'none' },
+                      preferences: ({
+                        ...(settings.preferences || { theme: 'auto', defaultView: 'home', weeklyDigest: false, digestDay: 0 }),
+                        logLevel: e.target.value as 'debug' | 'info' | 'warn' | 'error',
+                      }) as UserSettings['preferences'],
                     })
                   }
                 >
-                  <option value="none">None (Rule-based only)</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama (Local)</option>
-                  <option value="custom">Custom API</option>
+                  <option value="debug">debug</option>
+                  <option value="info">info</option>
+                  <option value="warn">warn</option>
+                  <option value="error">error</option>
                 </select>
+                <p className="text-xs text-muted-foreground">A browser refresh or server restart may be required to apply.</p>
               </div>
-
-              {/* OpenAI Configuration */}
-              {settings.ai?.provider === 'openai' && (
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">OpenAI API Key</label>
-                    <Input
-                      type="password"
-                      placeholder="sk-..."
-                      value={settings.ai?.openai?.apiKey || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            openai: { ...settings.ai?.openai, apiKey: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Get your API key from{' '}
-                      <a
-                        href="https://platform.openai.com/api-keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        OpenAI Dashboard
-                      </a>
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Base URL (Optional)</label>
-                    <Input
-                      placeholder="https://api.openai.com/v1"
-                      value={settings.ai?.openai?.baseUrl || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            openai: { ...settings.ai?.openai, baseUrl: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">Leave empty for default</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Model</label>
-                    <Input
-                      placeholder="gpt-4"
-                      value={settings.ai?.openai?.model || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            openai: { ...settings.ai?.openai, model: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Ollama Configuration */}
-              {settings.ai?.provider === 'ollama' && (
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ollama Base URL</label>
-                    <Input
-                      placeholder="http://localhost:11434"
-                      value={settings.ai?.ollama?.baseUrl || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            ollama: { ...settings.ai?.ollama, baseUrl: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Model</label>
-                    <Input
-                      placeholder="llama2"
-                      value={settings.ai?.ollama?.model || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            ollama: { ...settings.ai?.ollama, model: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Custom API Configuration */}
-              {settings.ai?.provider === 'custom' && (
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">API Base URL</label>
-                    <Input
-                      placeholder="https://your-api.com/v1"
-                      value={settings.ai?.custom?.baseUrl || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            custom: { ...settings.ai?.custom, baseUrl: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">API Key (Optional)</label>
-                    <Input
-                      type="password"
-                      placeholder="Your API key"
-                      value={settings.ai?.custom?.apiKey || ''}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          ai: {
-                            ...settings.ai,
-                            custom: { ...settings.ai?.custom, apiKey: e.target.value },
-                          } as UserSettings['ai'],
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}

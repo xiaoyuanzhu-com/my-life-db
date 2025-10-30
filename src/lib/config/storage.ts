@@ -42,6 +42,7 @@ export async function loadSettings(): Promise<UserSettings> {
         digestDay: parseInt(
           getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)
         ) as UserSettings['preferences']['digestDay'],
+        logLevel: ((getSetting(db, 'preferences_log_level') as UserSettings['preferences']['logLevel']) || DEFAULT_SETTINGS.preferences.logLevel || 'info'),
       },
       ai: {
         provider: (getSetting(db, 'ai_provider') as UserSettings['ai']['provider']) || DEFAULT_SETTINGS.ai.provider,
@@ -108,6 +109,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     setSetting(db, 'preferences_default_view', settings.preferences.defaultView);
     setSetting(db, 'preferences_weekly_digest', String(settings.preferences.weeklyDigest));
     setSetting(db, 'preferences_digest_day', String(settings.preferences.digestDay));
+    if (settings.preferences.logLevel) setSetting(db, 'preferences_log_level', settings.preferences.logLevel);
 
     // AI
     setSetting(db, 'ai_provider', settings.ai.provider);
@@ -198,7 +200,25 @@ export async function resetSettings(): Promise<UserSettings> {
  */
 export async function getAIConfig() {
   const settings = await loadSettings();
-  return settings.ai;
+  const ai = { ...settings.ai };
+
+  // Use vendors.openai credentials for OpenAI if present
+  const vOpenAI = settings.vendors?.openai;
+  if (vOpenAI && (vOpenAI.apiKey || vOpenAI.baseUrl)) {
+    ai.openai = {
+      apiKey: vOpenAI.apiKey || ai.openai?.apiKey || '',
+      baseUrl: vOpenAI.baseUrl || ai.openai?.baseUrl,
+      model: ai.openai?.model,
+      embeddingModel: ai.openai?.embeddingModel,
+    };
+
+    // If provider is not set or 'none', treat as openai when vendor creds exist
+    if (!ai.provider || ai.provider === 'none') {
+      ai.provider = 'openai';
+    }
+  }
+
+  return ai;
 }
 
 /**

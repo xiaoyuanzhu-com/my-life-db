@@ -3,6 +3,9 @@
 
 import { getAIConfig } from '@/lib/config/storage';
 import type { AIConfig } from '@/lib/config/settings';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'AIProvider' });
 
 /**
  * Get the configured AI provider
@@ -44,6 +47,11 @@ async function callOpenAI(prompt: string, config: AIConfig): Promise<string> {
   const baseUrl = config.openai.baseUrl || 'https://api.openai.com/v1';
   const model = config.openai.model || 'gpt-4';
 
+  // Log request
+  try {
+    log.info({ provider: 'openai', model, prompt }, 'llm request');
+  } catch {}
+
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -66,7 +74,11 @@ async function callOpenAI(prompt: string, config: AIConfig): Promise<string> {
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content || '';
+  const output = data.choices[0]?.message?.content || '';
+  try {
+    log.info({ provider: 'openai', model, output }, 'llm response');
+  } catch {}
+  return output;
 }
 
 /**
@@ -76,6 +88,11 @@ async function callOllama(prompt: string, config: AIConfig): Promise<string> {
   if (!config.ollama?.baseUrl || !config.ollama?.model) {
     throw new Error('Ollama configuration incomplete');
   }
+
+  // Log request
+  try {
+    log.info({ provider: 'ollama', model: config.ollama.model, baseUrl: config.ollama.baseUrl, prompt }, 'llm request');
+  } catch {}
 
   const response = await fetch(`${config.ollama.baseUrl}/api/generate`, {
     method: 'POST',
@@ -95,7 +112,11 @@ async function callOllama(prompt: string, config: AIConfig): Promise<string> {
   }
 
   const data = await response.json();
-  return data.response || '';
+  const output = data.response || '';
+  try {
+    log.info({ provider: 'ollama', model: config.ollama.model, output }, 'llm response');
+  } catch {}
+  return output;
 }
 
 /**
@@ -115,6 +136,11 @@ async function callCustomAPI(prompt: string, config: AIConfig): Promise<string> 
     headers['Authorization'] = `Bearer ${config.custom.apiKey}`;
   }
 
+  // Log request
+  try {
+    log.info({ provider: 'custom', baseUrl: config.custom.baseUrl, model: config.custom.model, prompt }, 'llm request');
+  } catch {}
+
   const response = await fetch(`${config.custom.baseUrl}/completions`, {
     method: 'POST',
     headers,
@@ -130,7 +156,11 @@ async function callCustomAPI(prompt: string, config: AIConfig): Promise<string> 
   }
 
   const data = await response.json();
-  return data.response || data.text || '';
+  const output = data.response || data.text || '';
+  try {
+    log.info({ provider: 'custom', baseUrl: config.custom.baseUrl, model: config.custom.model, output }, 'llm response');
+  } catch {}
+  return output;
 }
 
 /**
