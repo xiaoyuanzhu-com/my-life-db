@@ -6,6 +6,9 @@
 import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { pauseWorker, getWorker } from '@/lib/task-queue/worker';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiWorkerPause' });
 
 /**
  * POST /api/tasks/worker/pause
@@ -24,7 +27,7 @@ export async function POST() {
       },
     });
   } catch (error) {
-    console.error('[API] POST /api/tasks/worker/pause error:', error);
+    log.error({ err: error }, 'pause worker failed');
     return NextResponse.json(
       { error: 'Failed to pause worker' },
       { status: 500 }

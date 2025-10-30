@@ -6,6 +6,9 @@ import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiInboxReprocess' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -59,8 +62,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, actions });
   } catch (error) {
-    console.error('Error reprocessing inbox item:', error);
+    log.error({ err: error }, 'reprocess inbox item failed');
     return NextResponse.json({ error: 'Failed to reprocess inbox item' }, { status: 500 });
   }
 }
-

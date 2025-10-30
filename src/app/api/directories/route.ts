@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { createDirectory, listDirectories, readDirectory } from '@/lib/fs/storage';
 import { z } from 'zod';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiDirectories' });
 
 const CreateDirectorySchema = z.object({
   name: z.string().min(1),
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest) {
     const directories = await listDirectories(parentPath);
     return NextResponse.json({ directories, total: directories.length });
   } catch (error) {
-    console.error('Error fetching directories:', error);
+    log.error({ err: error }, 'fetch directories failed');
     return NextResponse.json(
       { error: 'Failed to fetch directories' },
       { status: 500 }
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('Error creating directory:', error);
+    log.error({ err: error }, 'create directory failed');
     return NextResponse.json(
       { error: 'Failed to create directory' },
       { status: 500 }

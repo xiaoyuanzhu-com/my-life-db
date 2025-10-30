@@ -3,6 +3,9 @@ export const runtime = 'nodejs';
 import { listEntries, updateEntry } from '@/lib/fs/storage';
 import { batchProcessEntries } from '@/lib/ai/processor';
 import type { ExtractionOptions } from '@/types';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiEntriesBatchProcess' });
 
 /**
  * POST /api/entries/process
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
       entries: Array.from(results.keys()),
     });
   } catch (error) {
-    console.error('Error batch processing entries:', error);
+    log.error({ err: error }, 'batch process entries failed');
     return NextResponse.json(
       {
         error: 'Failed to batch process entries',

@@ -7,6 +7,9 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { getTaskStats } from '@/lib/task-queue/task-manager';
 import { getPendingTaskCountByType, hasReadyTasks } from '@/lib/task-queue/scheduler';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiTaskStats' });
 
 /**
  * GET /api/tasks/stats
@@ -26,7 +29,7 @@ export async function GET() {
 
     return NextResponse.json(stats);
   } catch (error) {
-    console.error('[API] GET /api/tasks/stats error:', error);
+    log.error({ err: error }, 'get task stats failed');
     return NextResponse.json(
       { error: 'Failed to fetch task statistics' },
       { status: 500 }

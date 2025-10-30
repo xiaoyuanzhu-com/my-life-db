@@ -5,6 +5,9 @@
 import { callAI, isAIAvailable } from '../ai/provider';
 import { generateSlug } from '../utils/slug';
 import type { CrawlResult } from './urlCrawler';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'SlugGenerator' });
 
 export interface SlugGenerationResult {
   slug: string;
@@ -30,7 +33,7 @@ export async function generateUrlSlug(
         };
       }
     } catch (error) {
-      console.warn('[SlugGenerator] AI generation failed:', error);
+      log.warn({ err: error }, 'ai generation failed');
       // Fall through to fallback methods
     }
   }

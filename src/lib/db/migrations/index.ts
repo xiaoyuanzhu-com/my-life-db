@@ -6,6 +6,9 @@ import migration003 from './003_library';
 import migration004 from './004_schemas';
 import migration005 from './005_tasks';
 import migration006 from './006_inbox_task_state';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'DBMigrations' });
 
 export interface Migration {
   version: number;
@@ -48,18 +51,16 @@ export async function runMigrations(db: BetterSqlite3.Database): Promise<void> {
   const pendingMigrations = migrations.filter((m) => m.version > currentVersion);
 
   if (pendingMigrations.length === 0) {
-    console.log(`[DB] All migrations up to date (v${currentVersion})`);
+    log.info({ currentVersion }, 'migrations up to date');
     return;
   }
 
-  console.log(
-    `[DB] Running ${pendingMigrations.length} pending migration(s) from v${currentVersion} to v${migrations[migrations.length - 1].version}`
-  );
+  log.info({ count: pendingMigrations.length, from: currentVersion, to: migrations[migrations.length - 1].version }, 'running pending migrations');
 
   // Run each migration in a transaction
   for (const migration of pendingMigrations) {
     const transaction = db.transaction(() => {
-      console.log(`[DB] Applying migration ${migration.version}: ${migration.description}`);
+      log.info({ version: migration.version, description: migration.description }, 'applying migration');
 
       // Run migration
       migration.up(db);
@@ -69,13 +70,13 @@ export async function runMigrations(db: BetterSqlite3.Database): Promise<void> {
         'INSERT INTO schema_version (version, description) VALUES (?, ?)'
       ).run(migration.version, migration.description);
 
-      console.log(`[DB] ✓ Migration ${migration.version} applied successfully`);
+      log.info({ version: migration.version }, 'migration applied');
     });
 
     transaction();
   }
 
-  console.log(`[DB] All migrations completed successfully`);
+  log.info({}, 'all migrations completed');
 }
 
 /**
@@ -99,7 +100,7 @@ export async function rollbackLastMigration(db: BetterSqlite3.Database): Promise
   const currentVersion = getCurrentSchemaVersion(db);
 
   if (currentVersion === 0) {
-    console.log('[DB] No migrations to rollback');
+    log.info({}, 'no migrations to rollback');
     return;
   }
 
@@ -109,7 +110,7 @@ export async function rollbackLastMigration(db: BetterSqlite3.Database): Promise
     throw new Error(`Migration v${currentVersion} not found`);
   }
 
-  console.log(`[DB] Rolling back migration ${migration.version}: ${migration.description}`);
+  log.info({ version: migration.version, description: migration.description }, 'rolling back migration');
 
   const transaction = db.transaction(() => {
     // Run down migration
@@ -118,7 +119,7 @@ export async function rollbackLastMigration(db: BetterSqlite3.Database): Promise
     // Remove from schema_version
     db.prepare('DELETE FROM schema_version WHERE version = ?').run(currentVersion);
 
-    console.log(`[DB] ✓ Migration ${migration.version} rolled back successfully`);
+    log.info({ version: migration.version }, 'migration rolled back');
   });
 
   transaction();

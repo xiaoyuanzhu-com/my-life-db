@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { findEntryByUUID, updateEntry, deleteEntry } from '@/lib/fs/storage';
 import { z } from 'zod';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiEntryById' });
 
 const UpdateEntrySchema = z.object({
   content: z.string().optional(),
@@ -30,7 +33,7 @@ export async function GET(
 
     return NextResponse.json(entry);
   } catch (error) {
-    console.error('Error fetching entry:', error);
+    log.error({ err: error }, 'fetch entry failed');
     return NextResponse.json(
       { error: 'Failed to fetch entry' },
       { status: 500 }
@@ -68,7 +71,7 @@ export async function PATCH(
       );
     }
 
-    console.error('Error updating entry:', error);
+    log.error({ err: error }, 'update entry failed');
     return NextResponse.json(
       { error: 'Failed to update entry' },
       { status: 500 }
@@ -104,7 +107,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting entry:', error);
+    log.error({ err: error }, 'delete entry failed');
     return NextResponse.json(
       { error: 'Failed to delete entry' },
       { status: 500 }

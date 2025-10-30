@@ -5,6 +5,7 @@
 import { getReadyTasks, getStaleTasks } from './scheduler';
 import { executeTask } from './executor';
 import { recoverStaleTasks } from './executor';
+import { getLogger } from '@/lib/log/logger';
 
 export interface WorkerConfig {
   /** Polling interval in milliseconds (default: 1000ms) */
@@ -32,6 +33,7 @@ export class TaskWorker {
   private paused = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private staleRecoveryTimer: NodeJS.Timeout | null = null;
+  private logger = getLogger({ module: 'TaskQueueWorker' });
 
   constructor(config: WorkerConfig = {}) {
     this.config = {
@@ -208,7 +210,7 @@ export class TaskWorker {
 
       this.log(`Batch complete: ${successCount} succeeded, ${failedCount} failed`);
     } catch (error) {
-      console.error('[TaskQueue] Worker poll error:', error);
+      this.logger.error({ err: error }, 'worker poll error');
     } finally {
       // Schedule next poll
       this.schedulePoll();
@@ -232,7 +234,7 @@ export class TaskWorker {
         this.log(`Recovered ${recovered} stale task(s)`);
       }
     } catch (error) {
-      console.error('[TaskQueue] Stale recovery error:', error);
+      this.logger.error({ err: error }, 'stale recovery error');
     } finally {
       this.scheduleStaleRecovery();
     }
@@ -243,7 +245,7 @@ export class TaskWorker {
    */
   private log(message: string): void {
     if (this.config.verbose) {
-      console.log(`[TaskQueue Worker] ${message}`);
+      this.logger.info({}, message);
     }
   }
 }

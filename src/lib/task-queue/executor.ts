@@ -5,6 +5,9 @@
 import { getTaskById, updateTask } from './task-manager';
 import type { Task, TaskHandler } from './types';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'TaskExecutor' });
 
 /**
  * Global handler registry
@@ -19,7 +22,7 @@ export function registerHandler<TPayload = unknown>(
   handler: TaskHandler<TPayload>
 ): void {
   if (handlers.has(type)) {
-    console.warn(`[TaskQueue] Handler for "${type}" already registered, overwriting`);
+    log.warn({ type }, 'handler already registered, overwriting');
   }
   // Type assertion is safe because we're handling the generic properly at call sites
   handlers.set(type, handler as TaskHandler);
@@ -188,7 +191,7 @@ export async function executeTask(
 
     if (!updated) {
       // Version mismatch - task was modified during execution
-      console.warn(`[TaskQueue] Version conflict after executing task ${taskId}`);
+      log.warn({ taskId }, 'version conflict after executing task');
     }
 
     // Update projection: success
@@ -269,7 +272,7 @@ export function recoverStaleTasks(tasks: Task[]): number {
 
     if (updated) {
       recovered++;
-      console.log(`[TaskQueue] Recovered stale task ${task.id} (type: ${task.type})`);
+      log.info({ taskId: task.id, type: task.type }, 'recovered stale task');
 
       // Update projection: failed due to timeout
       try {

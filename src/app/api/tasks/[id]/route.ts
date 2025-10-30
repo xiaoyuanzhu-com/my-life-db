@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { getTaskById, deleteTask } from '@/lib/task-queue/task-manager';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiTaskById' });
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -33,7 +36,7 @@ export async function GET(
 
     return NextResponse.json(task);
   } catch (error) {
-    console.error('[API] GET /api/tasks/:id error:', error);
+    log.error({ err: error }, 'get task failed');
     return NextResponse.json(
       { error: 'Failed to fetch task' },
       { status: 500 }
@@ -62,7 +65,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[API] DELETE /api/tasks/:id error:', error);
+    log.error({ err: error }, 'delete task failed');
     return NextResponse.json(
       { error: 'Failed to delete task' },
       { status: 500 }

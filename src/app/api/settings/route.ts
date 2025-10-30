@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loadSettings, saveSettings, resetSettings } from '@/lib/config/storage';
 import { validateAIConfig, sanitizeSettings } from '@/lib/config/settings';
 import type { UserSettings } from '@/lib/config/settings';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiSettings' });
 
 /**
  * GET /api/settings
@@ -16,7 +19,7 @@ export async function GET() {
 
     return NextResponse.json(sanitized);
   } catch (error) {
-    console.error('Error loading settings:', error);
+    log.error({ err: error }, 'load settings failed');
     return NextResponse.json(
       { error: 'Failed to load settings' },
       { status: 500 }
@@ -108,7 +111,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(sanitized);
   } catch (error) {
-    console.error('Error updating settings:', error);
+    log.error({ err: error }, 'update settings failed');
     return NextResponse.json(
       { error: 'Failed to update settings', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -136,7 +139,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.error('Error resetting settings:', error);
+    log.error({ err: error }, 'reset settings failed');
     return NextResponse.json(
       { error: 'Failed to reset settings' },
       { status: 500 }

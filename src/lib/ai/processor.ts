@@ -2,6 +2,9 @@ import type { Entry, EntryMetadata, ExtractionOptions } from '@/types';
 import { extractTextInfo } from './extractors/textExtractor';
 import { extractImageInfo } from './extractors/imageExtractor';
 import path from 'path';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'AIProcessor' });
 
 /**
  * Main AI processor that coordinates all extraction services
@@ -80,7 +83,7 @@ export async function processEntry(
 
     return metadata;
   } catch (error) {
-    console.error('Error processing entry:', error);
+    log.error({ err: error, entryId: entry.metadata.id }, 'process entry failed');
 
     // Mark as processed but with error
     metadata.ai = {

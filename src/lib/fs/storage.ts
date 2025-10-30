@@ -5,6 +5,9 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import type { Entry, EntryMetadata, Directory, DirectoryMetadata, MessageType, AttachmentType } from '@/types';
 import { formatDateForDirectory, extractDateFromPath } from '@/lib/utils/slug';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'Storage' });
 
 // Data root directory (respects MY_DATA_DIR environment variable)
 export const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), 'data');
@@ -168,7 +171,7 @@ export async function readEntry(directoryPath: string): Promise<Entry | null> {
       date,
     };
   } catch (error) {
-    console.error('Error reading entry:', error);
+    log.error({ err: error, directoryPath }, 'read entry failed');
     return null;
   }
 }
@@ -215,7 +218,7 @@ export async function deleteEntry(directoryPath: string): Promise<boolean> {
     await fs.rm(fullPath, { recursive: true, force: true });
     return true;
   } catch (error) {
-    console.error('Error deleting entry:', error);
+    log.error({ err: error, directoryPath }, 'delete entry failed');
     return false;
   }
 }
@@ -252,7 +255,7 @@ export async function listEntries(basePath: string = 'inbox'): Promise<Entry[]> 
       new Date(b.metadata.createdAt).getTime() - new Date(a.metadata.createdAt).getTime()
     );
   } catch (error) {
-    console.error('Error listing entries:', error);
+    log.error({ err: error, basePath }, 'list entries failed');
     return [];
   }
 }
@@ -311,7 +314,7 @@ export async function readDirectory(relativePath: string): Promise<Directory | n
       subdirectories,
     };
   } catch (error) {
-    console.error('Error reading directory:', error);
+    log.error({ err: error, relativePath }, 'read directory failed');
     return null;
   }
 }
@@ -334,7 +337,7 @@ export async function listDirectories(parentPath: string = 'library'): Promise<D
 
     return dirData.filter((d): d is Directory => d !== null);
   } catch (error) {
-    console.error('Error listing directories:', error);
+    log.error({ err: error, parentPath }, 'list directories failed');
     return [];
   }
 }
@@ -363,7 +366,7 @@ export async function moveEntry(entryPath: string, targetDirPath: string): Promi
 
     return newPath;
   } catch (error) {
-    console.error('Error moving entry:', error);
+    log.error({ err: error, entryPath, targetDirPath }, 'move entry failed');
     return null;
   }
 }
@@ -386,7 +389,7 @@ export async function findEntryByUUID(uuid: string, basePath: string = 'inbox'):
 
     return null;
   } catch (error) {
-    console.error('Error finding entry by UUID:', error);
+    log.error({ err: error, uuid, basePath }, 'find entry by uuid failed');
     return null;
   }
 }

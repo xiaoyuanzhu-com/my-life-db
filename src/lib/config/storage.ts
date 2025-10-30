@@ -3,6 +3,9 @@ import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import { getDatabase } from '../db/connection';
 import type BetterSqlite3 from 'better-sqlite3';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'SettingsStorage' });
 
 /**
  * Get a single setting value by key
@@ -87,7 +90,7 @@ export async function loadSettings(): Promise<UserSettings> {
 
     return settings;
   } catch (error) {
-    console.error('Error loading settings from database:', error);
+    log.error({ err: error }, 'load settings from db failed');
     return DEFAULT_SETTINGS;
   }
 }
@@ -140,7 +143,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     setSetting(db, 'storage_auto_backup', String(settings.storage.autoBackup));
     setSetting(db, 'storage_max_file_size', String(settings.storage.maxFileSize));
   } catch (error) {
-    console.error('Failed to save settings to database:', error);
+    log.error({ err: error }, 'save settings to db failed');
     throw new Error('Failed to save settings');
   }
 }

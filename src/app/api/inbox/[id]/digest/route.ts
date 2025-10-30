@@ -10,6 +10,9 @@ import type { InboxFile, MessageType, FileType } from '@/types';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
 import { isAIAvailable } from '@/lib/ai/provider';
 import { enqueuePostIndex } from '@/lib/inbox/postIndexProcessor';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiInboxDigest' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ success: true, postIndexTaskId, type: messageType });
   } catch (error) {
-    console.error('Error digesting inbox item:', error);
+    log.error({ err: error }, 'digest inbox item failed');
     return NextResponse.json({ error: 'Failed to digest inbox item' }, { status: 500 });
   }
 }
@@ -153,4 +156,3 @@ function determineMessageType(files: InboxFile[]): MessageType {
   }
   return 'mixed';
 }
-

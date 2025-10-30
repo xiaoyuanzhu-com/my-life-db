@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import fs from 'fs/promises';
 import path from 'path';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiEntryFile' });
 
 const DATA_ROOT = path.join(process.cwd(), 'data');
 
@@ -46,7 +49,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Error serving file:', error);
+    log.error({ err: error }, 'serve file failed');
     return NextResponse.json(
       { error: 'File not found' },
       { status: 404 }

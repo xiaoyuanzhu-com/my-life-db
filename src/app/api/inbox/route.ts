@@ -8,6 +8,7 @@ import { getInboxTaskStatesForInboxIds } from '@/lib/db/inboxTaskState';
 import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
 import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
+import { getLogger } from '@/lib/log/logger';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       total: items.length,
     });
   } catch (error) {
-    console.error('Error listing inbox items:', error);
+    log.error({ err: error }, 'list inbox items failed');
     return NextResponse.json(
       { error: 'Failed to list inbox items' },
       { status: 500 }
@@ -108,9 +109,9 @@ export async function POST(request: NextRequest) {
           );
           const url = await fs.readFile(urlPath, 'utf-8');
           const taskId = enqueueUrlProcessing(inboxItem.id, url.trim());
-          console.log(`[API] Enqueued URL processing task ${taskId} for inbox item ${inboxItem.id}`);
+          log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url processing');
         } catch (error) {
-          console.error('[API] Failed to enqueue URL processing:', error);
+          log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url processing');
           // Don't fail the request if task enqueue fails
         }
       }
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(inboxItem, { status: 201 });
   } catch (error) {
-    console.error('Error creating inbox item:', error);
+    log.error({ err: error }, 'create inbox item failed');
     return NextResponse.json(
       {
         error: 'Failed to create inbox item',
@@ -128,3 +129,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+const log = getLogger({ module: 'ApiInbox' });

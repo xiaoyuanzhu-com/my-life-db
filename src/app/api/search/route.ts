@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { searchEntries } from '@/lib/fs/storage';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiSearch' });
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
       query,
     });
   } catch (error) {
-    console.error('Error searching entries:', error);
+    log.error({ err: error }, 'search entries failed');
     return NextResponse.json(
       { error: 'Failed to search entries' },
       { status: 500 }

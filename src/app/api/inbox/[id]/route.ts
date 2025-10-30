@@ -10,6 +10,9 @@ import path from 'path';
 import type { InboxFile } from '@/types';
 import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
 import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiInboxById' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -39,7 +42,7 @@ export async function GET(
     const processing = summarizeInboxProcessing(item, states);
     return NextResponse.json({ ...item, processing } as unknown);
   } catch (error) {
-    console.error('Error fetching inbox item:', error);
+    log.error({ err: error }, 'fetch inbox item failed');
     return NextResponse.json(
       { error: 'Failed to fetch inbox item' },
       { status: 500 }
@@ -162,7 +165,7 @@ export async function PUT(
     return NextResponse.json(updatedItem);
 
   } catch (error) {
-    console.error('Error updating inbox item:', error);
+    log.error({ err: error }, 'update inbox item failed');
     return NextResponse.json(
       { error: 'Failed to update inbox item' },
       { status: 500 }
@@ -198,7 +201,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting inbox item:', error);
+    log.error({ err: error }, 'delete inbox item failed');
     return NextResponse.json(
       { error: 'Failed to delete inbox item' },
       { status: 500 }

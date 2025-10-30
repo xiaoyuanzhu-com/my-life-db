@@ -47,7 +47,7 @@ async function scanInboxFolders(): Promise<{
   try {
     await fs.mkdir(INBOX_DIR, { recursive: true });
   } catch (error) {
-    console.error('[InboxSync] Failed to create inbox directory:', error);
+    log.error({ err: error }, 'failed to create inbox directory');
     return result;
   }
 
@@ -63,11 +63,11 @@ async function scanInboxFolders(): Promise<{
       .filter(dirent => dirent.isDirectory())
       .map(dirent => dirent.name);
   } catch (error) {
-    console.error('[InboxSync] Failed to read inbox directory:', error);
+    log.error({ err: error }, 'failed to read inbox directory');
     return result;
   }
 
-  console.log(`[InboxSync] Found ${entries.length} folders in inbox directory`);
+  log.info({ count: entries.length }, 'found inbox folders');
 
   // Process each folder
   for (const folderName of entries) {
@@ -86,7 +86,7 @@ async function scanInboxFolders(): Promise<{
 
       // Skip empty folders
       if (files.length === 0) {
-        console.log(`[InboxSync] Skipping empty folder: ${folderName}`);
+        log.info({ folderName }, 'skipping empty folder');
         continue;
       }
 
@@ -102,7 +102,7 @@ async function scanInboxFolders(): Promise<{
       }
 
       if (hasSubdirs) {
-        console.log(`[InboxSync] Skipping folder with subdirectories: ${folderName}`);
+        log.info({ folderName }, 'skipping folder with subdirectories');
         continue;
       }
 
@@ -144,7 +144,7 @@ async function scanInboxFolders(): Promise<{
             }
           }
         } catch (error) {
-          console.error(`[InboxSync] Failed to process file ${filename} in ${folderName}:`, error);
+          log.error({ err: error, filename, folderName }, 'failed to process file');
           result.errors.push({
             folder: folderName,
             error: `Failed to process file: ${filename}`,
@@ -154,7 +154,7 @@ async function scanInboxFolders(): Promise<{
 
       // Skip if no valid files
       if (inboxFiles.length === 0) {
-        console.log(`[InboxSync] No valid files in folder: ${folderName}`);
+        log.info({ folderName }, 'no valid files in folder');
         continue;
       }
 
@@ -184,7 +184,7 @@ async function scanInboxFolders(): Promise<{
           }
         }
       } catch {
-        console.warn('[InboxSync] AI normalization failed, continuing with defaults');
+        log.warn({}, 'ai normalization failed, continuing with defaults');
       }
 
       // Get folder creation time (or use current time as fallback)
@@ -237,7 +237,7 @@ async function scanInboxFolders(): Promise<{
       enqueuePostIndex(inboxItem.id);
 
     } catch (error) {
-      console.error(`[InboxSync] Failed to process folder ${folderName}:`, error);
+      log.error({ err: error, folderName }, 'failed to process inbox folder');
       result.errors.push({
         folder: folderName,
         error: error instanceof Error ? error.message : String(error),
@@ -271,7 +271,7 @@ function markOutdatedSchemas(): {
       });
 
       result.itemsMarkedOutdated++;
-      console.log(`[InboxSync] Marked item ${item.id} as having outdated schema (v${item.schemaVersion})`);
+      log.info({ id: item.id, version: item.schemaVersion }, 'marked item as having outdated schema');
     }
   }
 

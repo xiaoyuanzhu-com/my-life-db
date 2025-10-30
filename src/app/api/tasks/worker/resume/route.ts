@@ -6,6 +6,9 @@
 import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { resumeWorker, getWorker } from '@/lib/task-queue/worker';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiWorkerResume' });
 
 /**
  * POST /api/tasks/worker/resume
@@ -24,7 +27,7 @@ export async function POST() {
       },
     });
   } catch (error) {
-    console.error('[API] POST /api/tasks/worker/resume error:', error);
+    log.error({ err: error }, 'resume worker failed');
     return NextResponse.json(
       { error: 'Failed to resume worker' },
       { status: 500 }

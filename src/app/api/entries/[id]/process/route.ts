@@ -3,6 +3,9 @@ export const runtime = 'nodejs';
 import { findEntryByUUID, updateEntry } from '@/lib/fs/storage';
 import { processEntry } from '@/lib/ai/processor';
 import type { ExtractionOptions } from '@/types';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiEntryProcess' });
 
 /**
  * POST /api/entries/[id]/process
@@ -61,7 +64,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error('Error processing entry:', error);
+    log.error({ err: error }, 'process entry failed');
     return NextResponse.json(
       { error: 'Failed to process entry', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -101,7 +104,7 @@ export async function GET(
       confidence: entry.metadata.ai.confidence || 0,
     });
   } catch (error) {
-    console.error('Error getting processing status:', error);
+    log.error({ err: error }, 'get processing status failed');
     return NextResponse.json(
       { error: 'Failed to get processing status' },
       { status: 500 }

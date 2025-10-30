@@ -4,6 +4,9 @@ export const runtime = 'nodejs';
 import fs from 'fs/promises';
 import path from 'path';
 import { INBOX_DIR } from '@/lib/fs/storage';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiInboxFile' });
 
 export async function GET(
   request: NextRequest,
@@ -36,8 +39,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[API] Inbox file not found:', error);
+    log.error({ err: error }, 'inbox file not found');
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 }
-

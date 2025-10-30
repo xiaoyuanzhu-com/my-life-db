@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { createEntry, listEntries } from '@/lib/fs/storage';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiEntries' });
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ entries, total: entries.length });
   } catch (error) {
-    console.error('Error fetching entries:', error);
+    log.error({ err: error }, 'fetch entries failed');
     return NextResponse.json(
       { error: 'Failed to fetch entries' },
       { status: 500 }
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
-    console.error('Error creating entry:', error);
+    log.error({ err: error }, 'create entry failed');
     return NextResponse.json(
       { error: 'Failed to create entry' },
       { status: 500 }

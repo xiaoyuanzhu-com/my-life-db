@@ -8,6 +8,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { getTasks, createTask, getTaskStats } from '@/lib/task-queue/task-manager';
 import type { TaskStatus } from '@/lib/task-queue/types';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiTasks' });
 
 /**
  * GET /api/tasks
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('[API] GET /api/tasks error:', error);
+    log.error({ err: error }, 'get tasks failed');
     return NextResponse.json(
       { error: 'Failed to fetch tasks' },
       { status: 500 }
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(task, { status: 201 });
   } catch (error) {
-    console.error('[API] POST /api/tasks error:', error);
+    log.error({ err: error }, 'create task failed');
     return NextResponse.json(
       { error: 'Failed to create task' },
       { status: 500 }

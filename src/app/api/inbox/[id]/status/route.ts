@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 import { getInboxStatusView } from '@/lib/inbox/statusView';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'ApiInboxStatus' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -19,8 +22,7 @@ export async function GET(
     }
     return NextResponse.json(view);
   } catch (error) {
-    console.error('Error building inbox status view:', error);
+    log.error({ err: error }, 'get inbox status failed');
     return NextResponse.json({ error: 'Failed to get inbox status' }, { status: 500 });
   }
 }
-
