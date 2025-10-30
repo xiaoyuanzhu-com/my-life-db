@@ -14,9 +14,11 @@
 export async function register() {
   // Only run on Node.js runtime (not Edge)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    console.log('[Instrumentation] Initializing application...');
+    const { getLogger } = await import('@/lib/log/logger');
+    const log = getLogger({ module: 'Instrumentation' });
+    log.info({}, 'initializing application');
     const { initializeApp } = await import('./lib/init');
     initializeApp();
-    console.log('[Instrumentation] Application initialized');
+    log.info({}, 'application initialized');
   }
 }

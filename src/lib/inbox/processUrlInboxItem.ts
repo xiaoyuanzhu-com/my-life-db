@@ -12,6 +12,9 @@ import { generateUrlSlug } from '../crawl/urlSlugGenerator';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'URLProcessor' });
 
 export interface UrlProcessingPayload {
   inboxId: string;
@@ -48,27 +51,27 @@ export async function processUrlInboxItem(
     });
 
     // 3. Crawl URL
-    console.log(`[URLProcessor] Crawling URL: ${url}`);
+    log.info({ url }, 'crawling url');
     const crawlResult = await crawlUrl(url, {
       timeout: 30000,
       followRedirects: true,
     });
 
     // 4. Process content
-    console.log(`[URLProcessor] Processing content for: ${url}`);
+    log.info({ url }, 'processing content');
     const mainContent = extractMainContent(crawlResult.html);
     const sanitizedContent = sanitizeContent(mainContent);
     const processed = processHtmlContent(sanitizedContent);
 
     // 5. Generate slug
-    console.log(`[URLProcessor] Generating slug for: ${url}`);
+    log.info({ url }, 'generating slug');
     const slugResult = await generateUrlSlug(crawlResult);
 
     // 6. Get item directory
     const itemDir = path.join(INBOX_DIR, inboxItem.folderName);
 
     // 7. Save files
-    console.log(`[URLProcessor] Saving files for: ${url}`);
+    log.info({ url }, 'saving files');
 
     // Save original HTML
     await fs.writeFile(
@@ -162,7 +165,7 @@ export async function processUrlInboxItem(
     const finalItemDir = path.join(INBOX_DIR, finalFolderName);
     await fs.rename(itemDir, finalItemDir);
 
-    console.log(`[URLProcessor] Renamed folder: ${inboxItem.folderName} → ${finalFolderName}`);
+    log.info({ from: inboxItem.folderName, to: finalFolderName }, 'renamed folder');
 
     // 10. Update inbox item
     updateInboxItem(inboxId, {
@@ -174,7 +177,7 @@ export async function processUrlInboxItem(
       error: null,
     });
 
-    console.log(`[URLProcessor] Successfully processed: ${url}`);
+    log.info({ url }, 'url processed successfully');
 
     return {
       success: true,
@@ -184,7 +187,7 @@ export async function processUrlInboxItem(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    console.error(`[URLProcessor] Failed to process ${url}:`, errorMessage);
+    log.error({ url, error: errorMessage }, 'url processing failed');
 
     // Update inbox item with error
     updateInboxItem(inboxId, {
@@ -210,7 +213,7 @@ export function enqueueUrlProcessing(inboxId: string, url: string): string {
     url,
   });
 
-  console.log(`[URLProcessor] Enqueued URL processing task ${taskId} for: ${url}`);
+  log.info({ inboxId, url, taskId }, 'url processing task enqueued');
 
   // Update projection for quick status checks
   upsertInboxTaskState({
@@ -230,5 +233,5 @@ export function enqueueUrlProcessing(inboxId: string, url: string): string {
  */
 export function registerUrlProcessingHandler(): void {
   tq('process_url').setWorker(processUrlInboxItem);
-  console.log('[URLProcessor] Registered URL processing handler');
+  log.info({}, 'url processing handler registered');
 }

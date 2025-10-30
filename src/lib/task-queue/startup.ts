@@ -6,9 +6,12 @@
 import { startWorker } from './worker';
 import { registerUrlProcessingHandler } from '../inbox/processUrlInboxItem';
 import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
+import { registerPostIndexHandler } from '@/lib/inbox/postIndexProcessor';
+import { getLogger } from '@/lib/log/logger';
 import { acquireProcessLock, setupLockAutoRelease } from '@/lib/utils/processLock';
 
 let initialized = false;
+const log = getLogger({ module: 'TaskQueueStartup' });
 
 /**
  * Initialize task queue system
@@ -19,15 +22,16 @@ export function initializeTaskQueue(options?: {
   startWorker?: boolean;
 }) {
   if (initialized) {
-    console.log('[TaskQueue] Already initialized');
+    log.info({}, 'already initialized');
     return;
   }
 
-  console.log('[TaskQueue] Initializing...');
+  log.info({}, 'initializing');
 
   // Register all task handlers
   registerUrlProcessingHandler();
   registerInboxSyncHandler();
+  registerPostIndexHandler();
 
   // TODO: Register other handlers here
   // registerImageCaptionHandler();
@@ -49,26 +53,22 @@ export function initializeTaskQueue(options?: {
             staleTaskTimeoutSeconds: 300, // 5 minutes
             staleTaskRecoveryIntervalMs: 60_000, // 1 minute
           });
-          console.log('[TaskQueue] Worker started');
+          log.info({}, 'worker started');
 
           // Enqueue startup tasks
           enqueueSyncTask();
-          console.log('[TaskQueue] Enqueued startup sync task');
+          log.info({}, 'startup sync task enqueued');
         } else {
-          console.log(
-            ownerPid
-              ? `[TaskQueue] Worker start skipped (lock held by pid ${ownerPid})`
-              : '[TaskQueue] Worker start skipped (lock held)'
-          );
+          log.info({ ownerPid: ownerPid || null }, 'worker start skipped (lock held)');
         }
       } catch (err) {
-        console.error('[TaskQueue] Failed to acquire worker lock:', err);
+        log.error({ err }, 'failed to acquire worker lock');
       }
     })();
   }
 
   initialized = true;
-  console.log('[TaskQueue] Initialization complete');
+  log.info({}, 'initialization complete');
 }
 
 /**

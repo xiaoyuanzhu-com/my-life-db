@@ -33,10 +33,10 @@ function stripUnchangedMaskedKeys(
       isMaskedApiKey(cleaned.ai.openai.apiKey) &&
       cleaned.ai.openai.apiKey === original.ai?.openai?.apiKey) {
     // Remove the apiKey field entirely if unchanged
-    const { apiKey, ...rest } = cleaned.ai.openai;
+    const { apiKey: _apiKey, ...rest } = cleaned.ai.openai;
     cleaned.ai = {
       ...cleaned.ai,
-      openai: Object.keys(rest).length > 0 ? rest : undefined,
+      openai: Object.keys(rest).length > 0 ? (rest as any) : undefined,
     };
   }
 
@@ -44,10 +44,10 @@ function stripUnchangedMaskedKeys(
   if (cleaned.ai?.custom?.apiKey &&
       isMaskedApiKey(cleaned.ai.custom.apiKey) &&
       cleaned.ai.custom.apiKey === original.ai?.custom?.apiKey) {
-    const { apiKey, ...rest } = cleaned.ai.custom;
+    const { apiKey: _apiKey, ...rest } = cleaned.ai.custom;
     cleaned.ai = {
       ...cleaned.ai,
-      custom: Object.keys(rest).length > 0 ? rest : undefined,
+      custom: Object.keys(rest).length > 0 ? (rest as any) : undefined,
     };
   }
 
@@ -55,10 +55,10 @@ function stripUnchangedMaskedKeys(
   if (cleaned.vendors?.openai?.apiKey &&
       isMaskedApiKey(cleaned.vendors.openai.apiKey) &&
       cleaned.vendors.openai.apiKey === original.vendors?.openai?.apiKey) {
-    const { apiKey, ...rest } = cleaned.vendors.openai;
+    const { apiKey: _apiKey, ...rest } = cleaned.vendors.openai;
     cleaned.vendors = {
       ...cleaned.vendors,
-      openai: Object.keys(rest).length > 0 ? rest : undefined,
+      openai: Object.keys(rest).length > 0 ? (rest as any) : undefined,
     };
   }
 

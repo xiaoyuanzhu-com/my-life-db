@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import type { InboxItem, InboxProcessingSummary } from '@/types';
@@ -110,17 +111,36 @@ export default function InboxPage() {
     }
   }
 
+  async function handleDigest(item: InboxItemWithProcessing) {
+    try {
+      const res = await fetch(`/api/inbox/${item.id}/digest`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(`Failed to digest: ${body.error || res.statusText}`);
+        return;
+      }
+      // Refresh list
+      const itemsResponse = await fetch('/api/inbox');
+      const data = await itemsResponse.json();
+      setItems(data.items as InboxItemWithProcessing[]);
+    } catch (e) {
+      console.error('Digest failed', e);
+    }
+  }
+
   function renderPreview(item: InboxItemWithProcessing) {
     // Prefer first image file
     const imageFile = item.files.find(f => f.type === 'image');
     if (imageFile) {
       const src = `/api/inbox/files/${encodeURIComponent(item.folderName)}/${encodeURIComponent(imageFile.filename)}`;
       return (
-        <img
+        <Image
           src={src}
           alt={imageFile.filename}
+          width={800}
+          height={320}
           className="w-full h-40 object-cover rounded mb-3 border"
-          loading="lazy"
+          priority={false}
         />
       );
     }
@@ -248,6 +268,13 @@ export default function InboxPage() {
 
                         {/* Actions */}
                         <div className="flex gap-3 items-center">
+                          <button
+                            onClick={() => handleDigest(item as InboxItemWithProcessing)}
+                            className="text-xs text-foreground hover:opacity-80 font-medium"
+                            title="Rebuild index and trigger processing"
+                          >
+                            Digest
+                          </button>
                           <button
                             onClick={() => handleDelete(item.id)}
                             className="text-xs text-red-600 hover:text-red-700 font-medium"

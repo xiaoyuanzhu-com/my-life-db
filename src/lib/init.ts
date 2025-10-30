@@ -4,6 +4,7 @@
  */
 
 import { initializeTaskQueue } from './task-queue/startup';
+import { getLogger } from '@/lib/log/logger';
 
 declare global {
   var __mylifedb_app_initialized: boolean | undefined;
@@ -20,21 +21,21 @@ export function initializeApp() {
     return;
   }
 
-  console.log('[App] Initializing application services...');
+  const log = getLogger({ module: 'AppInit' });
+  log.info({}, 'initializing application services');
 
   try {
     // Initialize task queue and start worker
-    // Temporarily verbose for debugging (set to false in production)
     initializeTaskQueue({
-      verbose: true,
+      verbose: false,
       startWorker: true,
     });
 
     initialized = true;
     globalThis.__mylifedb_app_initialized = true;
-    console.log('[App] Application initialization complete');
+    log.info({}, 'application initialization complete');
   } catch (error) {
-    console.error('[App] Failed to initialize application:', error);
+    log.error({ err: error }, 'failed to initialize application');
     throw error;
   }
 }
