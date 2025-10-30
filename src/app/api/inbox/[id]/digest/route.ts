@@ -9,7 +9,7 @@ import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import type { InboxFile, MessageType, FileType } from '@/types';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
 import { isAIAvailable } from '@/lib/ai/provider';
-import { enqueuePostIndex } from '@/lib/inbox/postIndexProcessor';
+import { enqueuePostIndex } from '@/lib/inbox/postIndexEnricher';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxDigest' });
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Do not change id, folderName, or aiSlug here
     });
 
-    // Enqueue post-index processing as independent task
+    // Enqueue post-index enrichment as independent task
     const postIndexTaskId = enqueuePostIndex(item.id);
 
     return NextResponse.json({ success: true, postIndexTaskId, type: messageType });

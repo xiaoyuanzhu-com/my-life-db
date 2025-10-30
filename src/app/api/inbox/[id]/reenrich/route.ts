@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 import { getInboxItemById } from '@/lib/db/inbox';
-import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
+import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiInboxReprocess' });
+const log = getLogger({ module: 'ApiInboxReenrich' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 /**
- * POST /api/inbox/[id]/reprocess?stage=crawl|summary|all
- * For now only supports URL crawl reprocessing (stage=crawl or all) when type='url'.
+ * POST /api/inbox/[id]/reenrich?stage=crawl|summary|all
+ * For now only supports URL crawl re-enrichment (stage=crawl or all) when type='url'.
  */
 export async function POST(
   request: NextRequest,
@@ -50,19 +50,19 @@ export async function POST(
         'url.txt'
       );
       const url = (await fs.readFile(urlPath, 'utf-8')).trim();
-      const taskId = enqueueUrlProcessing(item.id, url);
+      const taskId = enqueueUrlEnrichment(item.id, url);
       actions.push({ stage: 'crawl', taskId });
     }
 
     // TODO: add summary/screenshot stages as they are implemented
 
     if (actions.length === 0) {
-      return NextResponse.json({ error: 'No supported reprocess actions for this item/stage' }, { status: 400 });
+      return NextResponse.json({ error: 'No supported reenrich actions for this item/stage' }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, actions });
   } catch (error) {
-    log.error({ err: error }, 'reprocess inbox item failed');
-    return NextResponse.json({ error: 'Failed to reprocess inbox item' }, { status: 500 });
+    log.error({ err: error }, 'reenrich inbox item failed');
+    return NextResponse.json({ error: 'Failed to reenrich inbox item' }, { status: 500 });
   }
 }

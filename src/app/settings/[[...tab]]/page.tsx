@@ -39,8 +39,8 @@ export default function SettingsPage() {
     // Save only the relevant settings based on active tab
     if (activeTab === 'general') {
       saveSettings({ ai: settings.ai });
-    } else if (activeTab === 'processing') {
-      saveSettings({ processing: settings.processing });
+    } else if (activeTab === 'enrichment') {
+      saveSettings({ enrichment: settings.enrichment });
     } else if (activeTab === 'vendors') {
       saveSettings({ vendors: settings.vendors });
     }
@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { label: 'General', value: 'general', path: '/settings' },
-    { label: 'Processing', value: 'processing', path: '/settings/processing' },
+    { label: 'Enrichment', value: 'enrichment', path: '/settings/enrichment' },
     { label: 'Vendors', value: 'vendors', path: '/settings/vendors' },
     { label: 'Tasks', value: 'tasks', path: '/settings/tasks' },
   ];
@@ -255,13 +255,13 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Processing Tab - I'll add this in the next file since it's large */}
-        {activeTab === 'processing' && (
+        {/* Enrichment Tab */}
+        {activeTab === 'enrichment' && (
           <Card>
             <CardHeader>
-              <CardTitle>Processing Features</CardTitle>
+              <CardTitle>Enrichment Features</CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
-                Configure AI-powered processing by input type for quick capture and semantic search
+                Configure AI-powered enrichment by input type for quick capture and semantic search
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -281,27 +281,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.text?.[key as keyof typeof settings.processing.text] ?? true) === true
+                          (settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.text?.[key as keyof typeof settings.processing.text] ?? true;
+                          const currentValue = settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true;
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               text: {
-                                ...settings.processing?.text,
+                                ...settings.enrichment?.text,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.text?.[key as keyof typeof settings.processing.text] ?? true) === true
+                            (settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}
@@ -329,27 +329,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.url?.[key as keyof typeof settings.processing.url] ?? true) === true
+                          (settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.url?.[key as keyof typeof settings.processing.url] ?? true;
+                          const currentValue = settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true;
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               url: {
-                                ...settings.processing?.url,
+                                ...settings.enrichment?.url,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.url?.[key as keyof typeof settings.processing.url] ?? true) === true
+                            (settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}
@@ -376,27 +376,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.image?.[key as keyof typeof settings.processing.image] ?? true) === true
+                          (settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.image?.[key as keyof typeof settings.processing.image] ?? true;
+                          const currentValue = settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true;
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               image: {
-                                ...settings.processing?.image,
+                                ...settings.enrichment?.image,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.image?.[key as keyof typeof settings.processing.image] ?? true) === true
+                            (settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}
@@ -424,27 +424,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.audio?.[key as keyof typeof settings.processing.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
+                          (settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.audio?.[key as keyof typeof settings.processing.audio] ?? (key === 'speakerDiarization' ? false : true);
+                          const currentValue = settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true);
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               audio: {
-                                ...settings.processing?.audio,
+                                ...settings.enrichment?.audio,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.audio?.[key as keyof typeof settings.processing.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
+                            (settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}
@@ -471,27 +471,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.video?.[key as keyof typeof settings.processing.video] ?? true) === true
+                          (settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.video?.[key as keyof typeof settings.processing.video] ?? true;
+                          const currentValue = settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true;
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               video: {
-                                ...settings.processing?.video,
+                                ...settings.enrichment?.video,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.video?.[key as keyof typeof settings.processing.video] ?? true) === true
+                            (settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}
@@ -519,27 +519,27 @@ export default function SettingsPage() {
                       </div>
                       <button
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.processing?.pdf?.[key as keyof typeof settings.processing.pdf] ?? true) === true
+                          (settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true) === true
                             ? 'bg-primary'
                             : 'bg-muted'
                         }`}
                         onClick={() => {
-                          const currentValue = settings.processing?.pdf?.[key as keyof typeof settings.processing.pdf] ?? true;
+                          const currentValue = settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true;
                           setSettings({
                             ...settings,
-                            processing: {
-                              ...settings.processing,
+                            enrichment: {
+                              ...settings.enrichment,
                               pdf: {
-                                ...settings.processing?.pdf,
+                                ...settings.enrichment?.pdf,
                                 [key]: !currentValue,
                               },
-                            } as UserSettings['processing'],
+                            } as UserSettings['enrichment'],
                           });
                         }}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.processing?.pdf?.[key as keyof typeof settings.processing.pdf] ?? true) === true
+                            (settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true) === true
                               ? 'translate-x-6'
                               : 'translate-x-1'
                           }`}

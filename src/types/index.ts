@@ -26,10 +26,10 @@ export interface EntryMetadata {
   updatedAt: string; // ISO date string
   tags: string[]; // User or AI-generated tags
 
-  // AI-processed data (populated async during insights/review)
+  // AI-enriched data (populated async during insights/review)
   ai: {
-    processed: boolean;
-    processedAt: string | null; // ISO date string
+    enriched: boolean;
+    enrichedAt: string | null; // ISO date string
     title: string | null; // AI-generated title suggestion
     tags: string[]; // AI-generated tags
     summary: string | null; // Brief AI summary
@@ -194,9 +194,9 @@ export interface ExtractionOptions {
 export type FileType = 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'other';
 
 /**
- * Processing status for inbox items
+ * Enrichment status for inbox items
  */
-export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed';
 
 /**
  * Individual file in an inbox item
@@ -249,9 +249,9 @@ export interface InboxItem {
   // Files (text.md is just another file in this array)
   files: InboxFile[];
 
-  // Processing state
-  status: ProcessingStatus;
-  processedAt: string | null; // ISO date string
+  // Enrichment state
+  status: EnrichmentStatus;
+  enrichedAt: string | null; // ISO date string
   error: string | null;
 
   // Item-level enrichment (not file-level)
@@ -265,7 +265,7 @@ export interface InboxItem {
   updatedAt: string; // ISO date string
 }
 
-// Processing summary included in API responses for inbox items
+// Enrichment summary included in API responses for inbox items
 export interface InboxStageStatusSummary {
   taskType: string;
   status: 'to-do' | 'in-progress' | 'success' | 'failed';
@@ -274,9 +274,9 @@ export interface InboxStageStatusSummary {
   updatedAt: number | null;
 }
 
-export interface InboxProcessingSummary {
+export interface InboxEnrichmentSummary {
   inboxId: string;
-  overall: ProcessingStatus;
+  overall: EnrichmentStatus;
   stages: InboxStageStatusSummary[];
   hasFailures: boolean;
   completedCount: number;

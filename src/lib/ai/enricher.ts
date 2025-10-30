@@ -4,13 +4,13 @@ import { extractImageInfo } from './extractors/imageExtractor';
 import path from 'path';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'AIProcessor' });
+const log = getLogger({ module: 'AIEnricher' });
 
 /**
- * Main AI processor that coordinates all extraction services
- * Processes entries and their attachments to extract structured information
+ * Main AI enricher that coordinates all extraction services
+ * Enriches entries and their attachments to extract structured information
  */
-export async function processEntry(
+export async function enrichEntry(
   entry: Entry,
   options: ExtractionOptions = {}
 ): Promise<EntryMetadata> {
@@ -21,11 +21,11 @@ export async function processEntry(
     if (entry.content && entry.content.trim().length > 0) {
       const textExtraction = await extractTextInfo(entry.content, options);
 
-      // Update AI metadata with extraction results
+      // Update AI metadata with enrichment results
       metadata.ai = {
         ...metadata.ai,
-        processed: true,
-        processedAt: new Date().toISOString(),
+        enriched: true,
+        enrichedAt: new Date().toISOString(),
         title: textExtraction.title,
         tags: textExtraction.tags,
         summary: textExtraction.summary,
@@ -83,13 +83,13 @@ export async function processEntry(
 
     return metadata;
   } catch (error) {
-    log.error({ err: error, entryId: entry.metadata.id }, 'process entry failed');
+    log.error({ err: error, entryId: entry.metadata.id }, 'enrich entry failed');
 
-    // Mark as processed but with error
+    // Mark as attempted but with error
     metadata.ai = {
       ...metadata.ai,
-      processed: false,
-      processedAt: new Date().toISOString(),
+      enriched: false,
+      enrichedAt: new Date().toISOString(),
     };
 
     return metadata;
@@ -97,21 +97,21 @@ export async function processEntry(
 }
 
 /**
- * Batch process multiple entries
+ * Batch enrich multiple entries
  */
-export async function batchProcessEntries(
+export async function batchEnrichEntries(
   entries: Entry[],
   options: ExtractionOptions = {}
 ): Promise<Map<string, EntryMetadata>> {
   const results = new Map<string, EntryMetadata>();
 
-  // Process entries in parallel (with concurrency limit)
+  // Enrich entries in parallel (with concurrency limit)
   const BATCH_SIZE = 5;
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.all(
       batch.map(async (entry) => {
-        const metadata = await processEntry(entry, options);
+        const metadata = await enrichEntry(entry, options);
         return { id: entry.metadata.id, metadata };
       })
     );
@@ -163,22 +163,22 @@ async function suggestSpaces(entry: Entry, metadata: EntryMetadata): Promise<str
 }
 
 /**
- * Re-process an entry (for when AI models improve or user requests refresh)
+ * Re-enrich an entry (for when AI models improve or user requests refresh)
  */
-export async function reprocessEntry(
+export async function reenrichEntry(
   entry: Entry,
   options: ExtractionOptions = {}
 ): Promise<EntryMetadata> {
-  // Force reprocessing even if already processed
-  return processEntry(entry, options);
+  // Force re-enrichment even if already enriched
+  return enrichEntry(entry, options);
 }
 
 /**
- * Get processing status for an entry
+ * Get enrichment status for an entry
  */
-export function getProcessingStatus(metadata: EntryMetadata): {
-  processed: boolean;
-  processedAt: string | null;
+export function getEnrichmentStatus(metadata: EntryMetadata): {
+  enriched: boolean;
+  enrichedAt: string | null;
   hasTitle: boolean;
   hasSummary: boolean;
   hasTags: boolean;
@@ -186,8 +186,8 @@ export function getProcessingStatus(metadata: EntryMetadata): {
   confidence: number;
 } {
   return {
-    processed: metadata.ai.processed,
-    processedAt: metadata.ai.processedAt,
+    enriched: metadata.ai.enriched,
+    enrichedAt: metadata.ai.enrichedAt,
     hasTitle: Boolean(metadata.ai.title),
     hasSummary: Boolean(metadata.ai.summary),
     hasTags: metadata.ai.tags && metadata.ai.tags.length > 0,

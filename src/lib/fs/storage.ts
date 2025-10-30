@@ -117,14 +117,14 @@ export async function createEntry(
   const metadata: EntryMetadata = {
     id,
     type: messageType,
-    slug: null, // Will be set by AI processing later
-    title: null, // Will be set by AI processing later
+    slug: null, // Will be set by AI enrichment later
+    title: null, // Will be set by AI enrichment later
     createdAt: nowISO,
     updatedAt: nowISO,
     tags: tags || [],
     ai: {
-      processed: false,
-      processedAt: null,
+      enriched: false,
+      enrichedAt: null,
       title: null,
       tags: [],
       summary: null,

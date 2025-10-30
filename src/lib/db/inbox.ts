@@ -11,7 +11,7 @@ export function createInboxRecord(item: InboxItem): void {
   const stmt = db.prepare(`
     INSERT INTO inbox (
       id, folder_name, type, files, status,
-      processed_at, error, ai_slug, schema_version,
+      enriched_at, error, ai_slug, schema_version,
       created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -22,7 +22,7 @@ export function createInboxRecord(item: InboxItem): void {
     item.type,
     JSON.stringify(item.files),
     item.status,
-    item.processedAt,
+    item.enrichedAt,
     item.error,
     item.aiSlug,
     item.schemaVersion,
@@ -128,9 +128,9 @@ export function updateInboxItem(
     values.push(updates.status);
   }
 
-  if (updates.processedAt !== undefined) {
-    fields.push('processed_at = ?');
-    values.push(updates.processedAt);
+  if (updates.enrichedAt !== undefined) {
+    fields.push('enriched_at = ?');
+    values.push(updates.enrichedAt);
   }
 
   if (updates.error !== undefined) {
@@ -177,7 +177,7 @@ function rowToInboxItem(row: unknown): InboxItem {
     type: r.type as InboxItem['type'],
     files: JSON.parse(r.files as string) as InboxFile[],
     status: r.status as InboxItem['status'],
-    processedAt: r.processed_at as string | null,
+    enrichedAt: r.enriched_at as string | null,
     error: r.error as string | null,
     aiSlug: r.ai_slug as string | null,
     schemaVersion: r.schema_version as number,

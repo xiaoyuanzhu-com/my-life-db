@@ -1,5 +1,5 @@
 /**
- * Content Processor - Convert HTML to Markdown and clean content
+ * Content Enricher - Convert HTML to Markdown and clean content
  */
 
 export interface ProcessedContent {

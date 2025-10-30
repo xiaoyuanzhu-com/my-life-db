@@ -93,7 +93,7 @@ export function EntryCard({ entry, onDelete, onMove, onProcess }: EntryCardProps
                 </span>
               )}
               {/* AI category badge */}
-              {entry.metadata.ai.processed && entry.metadata.ai.category && (
+              {entry.metadata.ai.enriched && entry.metadata.ai.category && (
                 <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                   {entry.metadata.ai.category}
                 </span>
@@ -119,7 +119,7 @@ export function EntryCard({ entry, onDelete, onMove, onProcess }: EntryCardProps
         </div>
 
         {/* AI Extracted Information */}
-        {entry.metadata.ai.processed && (
+        {entry.metadata.ai.enriched && (
           <div className="space-y-2 pt-2 border-t">
             {/* Sentiment and Priority */}
             <div className="flex flex-wrap gap-2">
@@ -266,7 +266,7 @@ export function EntryCard({ entry, onDelete, onMove, onProcess }: EntryCardProps
           <span className="text-xs text-muted-foreground">{timeAgo}</span>
 
           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {onProcess && !entry.metadata.ai.processed && (
+            {onProcess && !entry.metadata.ai.enriched && (
               <Button
                 size="sm"
                 variant="outline"

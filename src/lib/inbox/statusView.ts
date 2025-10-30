@@ -1,6 +1,6 @@
 import { getInboxItemById } from '@/lib/db/inbox';
 import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
-import type { ProcessingStatus, InboxItem } from '@/types';
+import type { EnrichmentStatus, InboxItem } from '@/types';
 import type { InboxTaskState } from '@/lib/db/inboxTaskState';
 
 export interface InboxStageStatus {
@@ -13,7 +13,7 @@ export interface InboxStageStatus {
 
 export interface InboxStatusView {
   inboxId: string;
-  overall: ProcessingStatus;
+  overall: EnrichmentStatus;
   stages: InboxStageStatus[];
   hasFailures: boolean;
   completedCount: number;
@@ -25,7 +25,7 @@ export interface InboxStatusView {
   canRetry: boolean;
 }
 
-export function summarizeInboxProcessing(
+export function summarizeInboxEnrichment(
   inbox: InboxItem,
   states: InboxTaskState[]
 ): InboxStatusView {
@@ -73,5 +73,5 @@ export function getInboxStatusView(inboxId: string): InboxStatusView | null {
 
   // Load stage states from projection
   const states = getInboxTaskStates(inboxId);
-  return summarizeInboxProcessing(inbox, states);
+  return summarizeInboxEnrichment(inbox, states);
 }

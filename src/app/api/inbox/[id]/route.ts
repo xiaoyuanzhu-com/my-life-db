@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { InboxFile } from '@/types';
 import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
-import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
+import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxById' });
@@ -37,10 +37,10 @@ export async function GET(
       );
     }
 
-    // Attach processing summary
+    // Attach enrichment summary
     const states = getInboxTaskStates(id);
-    const processing = summarizeInboxProcessing(item, states);
-    return NextResponse.json({ ...item, processing } as unknown);
+    const enrichment = summarizeInboxEnrichment(item, states);
+    return NextResponse.json({ ...item, enrichment } as unknown);
   } catch (error) {
     log.error({ err: error }, 'fetch inbox item failed');
     return NextResponse.json(

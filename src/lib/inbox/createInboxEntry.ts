@@ -100,7 +100,7 @@ export async function createInboxEntry(
     type: messageType,
     files: inboxFiles,
     status: 'pending',
-    processedAt: null,
+    enrichedAt: null,
     error: null,
     aiSlug: null,
     schemaVersion: 1,

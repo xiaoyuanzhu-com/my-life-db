@@ -1,12 +1,12 @@
 import 'server-only';
-// Post-Index Processor: schedules appropriate processing after an inbox item is indexed
+// Post-Index Enricher: schedules appropriate enrichment after an inbox item is indexed
 
 import path from 'path';
 import { promises as fs } from 'fs';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { tq } from '@/lib/task-queue';
 import { getInboxItemById } from '@/lib/db/inbox';
-import { enqueueUrlProcessing } from './processUrlInboxItem';
+import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'PostIndex' });
@@ -28,7 +28,7 @@ export function registerPostIndexHandler(): void {
         return { success: false, reason: 'not_found' };
       }
 
-      // URL processing path: derive URL from url.txt or text.md first line
+      // URL enrichment path: derive URL from url.txt or text.md first line
       if (item.type === 'url') {
         const folder = path.join(INBOX_DIR, item.folderName);
         const urlTxt = path.join(folder, 'url.txt');
@@ -51,8 +51,8 @@ export function registerPostIndexHandler(): void {
         }
 
         if (url) {
-          const taskId = enqueueUrlProcessing(inboxId, url);
-          log.info({ inboxId, url, taskId }, 'url processing enqueued');
+          const taskId = enqueueUrlEnrichment(inboxId, url);
+          log.info({ inboxId, url, taskId }, 'url enrichment enqueued');
           return { success: true, queued: 'process_url', taskId };
         } else {
           log.warn({ inboxId }, 'url not found for url-type item');
@@ -61,7 +61,7 @@ export function registerPostIndexHandler(): void {
       }
 
       // Other types can be handled here in the future
-      log.info({ inboxId, type: item.type }, 'no post-index processing for type');
+      log.info({ inboxId, type: item.type }, 'no post-index enrichment for type');
       return { success: true, queued: null };
     } catch (err) {
       log.error({ err, inboxId }, 'post_index worker failed');
@@ -71,4 +71,3 @@ export function registerPostIndexHandler(): void {
 
   log.info({}, 'post_index handler registered');
 }
-

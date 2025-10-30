@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { listEntries, updateEntry } from '@/lib/fs/storage';
-import { batchProcessEntries } from '@/lib/ai/processor';
+import { batchEnrichEntries } from '@/lib/ai/enricher';
 import type { ExtractionOptions } from '@/types';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiEntriesBatchProcess' });
+const log = getLogger({ module: 'ApiEntriesBatchEnrich' });
 
 /**
- * POST /api/entries/process
- * Batch process multiple entries with AI extraction
+ * POST /api/entries/enrich
+ * Batch enrich multiple entries with AI extraction
  */
 export async function POST(request: NextRequest) {
   try {
@@ -23,16 +23,16 @@ export async function POST(request: NextRequest) {
       minConfidence: body.minConfidence || 0.5,
     };
 
-    // Get entries to process
+    // Get entries to enrich
     const basePath = body.basePath || 'inbox';
     const limit = body.limit || 50;
-    const onlyUnprocessed = body.onlyUnprocessed !== false;
+    const onlyUnenriched = body.onlyUnenriched !== false;
 
     let entries = await listEntries(basePath);
 
-    // Filter to only unprocessed entries if requested
-    if (onlyUnprocessed) {
-      entries = entries.filter((entry) => !entry.metadata.ai.processed);
+    // Filter to only unenriched entries if requested
+    if (onlyUnenriched) {
+      entries = entries.filter((entry) => !entry.metadata.ai.enriched);
     }
 
     // Limit number of entries
@@ -41,13 +41,13 @@ export async function POST(request: NextRequest) {
     if (entries.length === 0) {
       return NextResponse.json({
         success: true,
-        processed: 0,
-        message: 'No entries to process',
+        enriched: 0,
+        message: 'No entries to enrich',
       });
     }
 
-    // Process entries in batch
-    const results = await batchProcessEntries(entries, options);
+    // Enrich entries in batch
+    const results = await batchEnrichEntries(entries, options);
 
     // Save updated metadata for each entry
     const saved = await Promise.all(
@@ -65,15 +65,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      processed: successCount,
+      enriched: successCount,
       total: entries.length,
       entries: Array.from(results.keys()),
     });
   } catch (error) {
-    log.error({ err: error }, 'batch process entries failed');
+    log.error({ err: error }, 'batch enrich entries failed');
     return NextResponse.json(
       {
-        error: 'Failed to batch process entries',
+        error: 'Failed to batch enrich entries',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }

@@ -73,7 +73,7 @@ export async function loadSettings(): Promise<UserSettings> {
         },
       },
       extraction: {
-        autoProcess: getSetting(db, 'extraction_auto_process') === 'true' || DEFAULT_SETTINGS.extraction.autoProcess,
+        autoEnrich: getSetting(db, 'extraction_auto_enrich') === 'true' || DEFAULT_SETTINGS.extraction.autoEnrich,
         includeEntities: getSetting(db, 'extraction_include_entities') !== 'false',
         includeSentiment: getSetting(db, 'extraction_include_sentiment') !== 'false',
         includeActionItems: getSetting(db, 'extraction_include_action_items') !== 'false',
@@ -130,7 +130,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
 
     // Extraction
-    setSetting(db, 'extraction_auto_process', String(settings.extraction.autoProcess));
+    setSetting(db, 'extraction_auto_enrich', String(settings.extraction.autoEnrich));
     setSetting(db, 'extraction_include_entities', String(settings.extraction.includeEntities));
     setSetting(db, 'extraction_include_sentiment', String(settings.extraction.includeSentiment));
     setSetting(db, 'extraction_include_action_items', String(settings.extraction.includeActionItems));

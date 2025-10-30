@@ -33,8 +33,8 @@ A filesystem-based personal knowledge management system built with Next.js 15, R
 - ✅ **Full-Text Search**: Search across all entries
 - ✅ **Markdown Storage**: All entries stored as markdown files
 - ✅ **Filesystem-First**: SQLite metadata + file-based storage
-- ✅ **URL Crawling**: Automatic web page crawling with background processing
-- ✅ **Task Queue**: Robust background job processing with retry logic
+- ✅ **URL Crawling**: Automatic web page crawling with background enrichment
+- ✅ **Task Queue**: Robust background job execution with retry logic
 - ✅ **AI Slug Generation**: Smart naming for saved URLs (with fallbacks)
 
 ### Coming Soon
@@ -80,7 +80,7 @@ Visit [http://localhost:3000](http://localhost:3000) to see the app.
 ### First Steps
 
 1. **Capture your first entry**: Use the Quick Capture form on the homepage
-2. **Save a URL**: Add a URL to the inbox - it will be automatically crawled and processed
+2. **Save a URL**: Add a URL to the inbox - it will be automatically crawled and enriched
 3. **View your Inbox**: Click "Inbox" in the navigation to see all captured entries
 4. **Create a directory**: Go to "Library" and click "New Directory"
 5. **Organize**: Move entries from Inbox to your directories (coming soon)
@@ -95,7 +95,7 @@ When you add a URL to the inbox, the system automatically:
 - Saves files: `content.html`, `content.md`, `main-content.md`
 - Renames the folder from UUID to human-readable slug
 
-Monitor processing with the task queue API:
+Monitor enrichment with the task queue API:
 ```bash
 # Check task status
 curl http://localhost:3000/api/tasks/stats
@@ -122,7 +122,7 @@ All your data is stored locally in the `data/` directory as human-readable Markd
 - [Product Design Document](./docs/product-design.md)
 - [Technical Design Document](./docs/tech-design.md)
 - [MVP Implementation Guide](./docs/mvp.md)
-- [Task Queue Implementation](./src/lib/task-queue/IMPLEMENTATION.md) - Background job processing architecture
+- [Task Queue Implementation](./src/lib/task-queue/IMPLEMENTATION.md) - Background job execution architecture
 
 ## API Endpoints
 

@@ -5,8 +5,8 @@ import path from 'path';
 import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
 import { listInboxItems } from '@/lib/db/inbox';
 import { getInboxTaskStatesForInboxIds } from '@/lib/db/inboxTaskState';
-import { summarizeInboxProcessing } from '@/lib/inbox/statusView';
-import { enqueueUrlProcessing } from '@/lib/inbox/processUrlInboxItem';
+import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
+import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
 
@@ -32,17 +32,17 @@ export async function GET(request: NextRequest) {
 
     const items = listInboxItems({ status, limit, offset });
 
-    // Include processing summaries for all items (batch query)
+    // Include enrichment summaries for all items (batch query)
     const ids = items.map((i) => i.id);
     const statesByInbox = getInboxTaskStatesForInboxIds(ids);
-    const itemsWithProcessing = items.map((item) => {
+    const itemsWithEnrichment = items.map((item) => {
       const states = statesByInbox[item.id] || [];
-      const processing = summarizeInboxProcessing(item, states);
-      return { ...item, processing } as unknown;
+      const enrichment = summarizeInboxEnrichment(item, states);
+      return { ...item, enrichment } as unknown;
     });
 
     return NextResponse.json({
-      items: itemsWithProcessing,
+      items: itemsWithEnrichment,
       total: items.length,
     });
   } catch (error) {
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       files,
     });
 
-    // Trigger URL processing if inbox item type is 'url'
+    // Trigger URL enrichment if inbox item type is 'url'
     if (inboxItem.type === 'url') {
       const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
       if (urlFile) {
@@ -108,10 +108,10 @@ export async function POST(request: NextRequest) {
             'url.txt'
           );
           const url = await fs.readFile(urlPath, 'utf-8');
-          const taskId = enqueueUrlProcessing(inboxItem.id, url.trim());
-          log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url processing');
+          const taskId = enqueueUrlEnrichment(inboxItem.id, url.trim());
+          log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url enrichment');
         } catch (error) {
-          log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url processing');
+          log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url enrichment');
           // Don't fail the request if task enqueue fails
         }
       }

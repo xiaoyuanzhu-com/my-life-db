@@ -47,13 +47,13 @@ key                          | value                        | updated_at
 ai_provider                 | openai                       | 2025-10-27 10:00:00
 vendors_openai_api_key      | sk-Fl_XqG9l0PRiU8W8z5oPkQ   | 2025-10-27 10:00:00
 vendors_openai_base_url     | https://api.openai.com/v1   | 2025-10-27 10:00:00
-extraction_auto_process     | false                        | 2025-10-27 10:00:00
+extraction_auto_enrich      | false                        | 2025-10-27 10:00:00
 ```
 
 **Key Naming Convention:**
 - Uses snake_case format
 - Nested properties separated by underscores
-- Examples: `vendors_openai_api_key`, `ai_provider`, `extraction_auto_process`
+- Examples: `vendors_openai_api_key`, `ai_provider`, `extraction_auto_enrich`
 
 ## Environment Variables
 

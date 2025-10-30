@@ -51,9 +51,9 @@ export interface UserSettings {
     };
   };
 
-  // Extraction Options (defaults for processing)
+  // Extraction Options (defaults for enrichment)
   extraction: {
-    autoProcess: boolean; // Auto-process new entries
+    autoEnrich: boolean; // Auto-enrich new entries
     includeEntities: boolean;
     includeSentiment: boolean;
     includeActionItems: boolean;
@@ -61,8 +61,8 @@ export interface UserSettings {
     minConfidence: number; // 0-1
   };
 
-  // Processing Features (by input type)
-  processing?: {
+  // Enrichment Features (by input type)
+  enrichment?: {
     text?: {
       entityExtraction: boolean;
       autoTagging: boolean;
@@ -119,14 +119,14 @@ export const DEFAULT_SETTINGS: UserSettings = {
     provider: 'none',
   },
   extraction: {
-    autoProcess: false,
+    autoEnrich: false,
     includeEntities: true,
     includeSentiment: true,
     includeActionItems: true,
     includeRelatedEntries: false,
     minConfidence: 0.5,
   },
-  processing: {
+  enrichment: {
     text: {
       entityExtraction: true,
       autoTagging: true,

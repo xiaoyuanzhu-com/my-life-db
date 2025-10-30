@@ -14,7 +14,7 @@ import { INBOX_DIR, generateId } from '@/lib/fs/storage';
 import { createInboxRecord, listInboxItems, updateInboxItem } from '@/lib/db/inbox';
 import type { InboxItem, InboxFile, MessageType, FileType } from '@/types';
 import { tq } from '../task-queue';
-import { enqueuePostIndex } from '@/lib/inbox/postIndexProcessor';
+import { enqueuePostIndex } from '@/lib/inbox/postIndexEnricher';
 import { getLogger } from '@/lib/log/logger';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
 import { isAIAvailable } from '@/lib/ai/provider';
@@ -220,7 +220,7 @@ async function scanInboxFolders(): Promise<{
         type: messageType,
         files: inboxFiles,
         status: 'pending',
-        processedAt: null,
+        enrichedAt: null,
         error: null,
         aiSlug: null,
         schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -233,7 +233,7 @@ async function scanInboxFolders(): Promise<{
       result.itemsAdded++;
       log.info({ id: inboxItem.id, folderName, type: inboxItem.type }, 'indexed inbox item');
 
-      // Enqueue post-index processing as independent task
+      // Enqueue post-index enrichment as independent task
       enqueuePostIndex(inboxItem.id);
 
     } catch (error) {

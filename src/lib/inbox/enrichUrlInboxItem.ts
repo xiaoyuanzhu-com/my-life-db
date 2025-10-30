@@ -1,27 +1,27 @@
 import 'server-only';
 /**
- * URL Inbox Item Processor - Orchestrates URL crawling and processing
+ * URL Inbox Item Enricher - Orchestrates URL crawling and enrichment
  */
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
 import { crawlUrl } from '../crawl/urlCrawler';
-import { processHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentProcessor';
+import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { generateUrlSlug } from '../crawl/urlSlugGenerator';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'URLProcessor' });
+const log = getLogger({ module: 'URLEnricher' });
 
-export interface UrlProcessingPayload {
+export interface UrlEnrichmentPayload {
   inboxId: string;
   url: string;
 }
 
-export interface UrlProcessingResult {
+export interface UrlEnrichmentResult {
   success: boolean;
   slug?: string;
   title?: string;
@@ -29,12 +29,12 @@ export interface UrlProcessingResult {
 }
 
 /**
- * Process a URL inbox item (task handler)
+ * Enrich a URL inbox item (task handler)
  * This function is registered as a task handler and executed by the worker
  */
-export async function processUrlInboxItem(
-  payload: UrlProcessingPayload
-): Promise<UrlProcessingResult> {
+export async function enrichUrlInboxItem(
+  payload: UrlEnrichmentPayload
+): Promise<UrlEnrichmentResult> {
   const { inboxId, url } = payload;
 
   try {
@@ -44,10 +44,10 @@ export async function processUrlInboxItem(
       throw new Error(`Inbox item ${inboxId} not found`);
     }
 
-    // 2. Update status to processing
+    // 2. Update status to enriching
     updateInboxItem(inboxId, {
-      status: 'processing',
-      processedAt: new Date().toISOString(),
+      status: 'enriching',
+      enrichedAt: new Date().toISOString(),
     });
 
     // 3. Crawl URL
@@ -57,11 +57,11 @@ export async function processUrlInboxItem(
       followRedirects: true,
     });
 
-    // 4. Process content
-    log.info({ url }, 'processing content');
+    // 4. Enrich content
+    log.info({ url }, 'enriching content');
     const mainContent = extractMainContent(crawlResult.html);
     const sanitizedContent = sanitizeContent(mainContent);
-    const processed = processHtmlContent(sanitizedContent);
+    const processed = enrichHtmlContent(sanitizedContent);
 
     // 5. Generate slug
     log.info({ url }, 'generating slug');
@@ -172,12 +172,12 @@ export async function processUrlInboxItem(
       folderName: finalFolderName,
       files: updatedFiles,
       aiSlug: slugResult.slug,
-      status: 'completed',
-      processedAt: new Date().toISOString(),
+      status: 'enriched',
+      enrichedAt: new Date().toISOString(),
       error: null,
     });
 
-    log.info({ url }, 'url processed successfully');
+    log.info({ url }, 'url enriched successfully');
 
     return {
       success: true,
@@ -187,13 +187,13 @@ export async function processUrlInboxItem(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    log.error({ url, error: errorMessage }, 'url processing failed');
+    log.error({ url, error: errorMessage }, 'url enrichment failed');
 
     // Update inbox item with error
     updateInboxItem(inboxId, {
       status: 'failed',
       error: errorMessage,
-      processedAt: new Date().toISOString(),
+      enrichedAt: new Date().toISOString(),
     });
 
     return {
@@ -204,16 +204,16 @@ export async function processUrlInboxItem(
 }
 
 /**
- * Enqueue URL processing task
- * This is what you call to trigger URL processing
+ * Enqueue URL enrichment task
+ * This is what you call to trigger URL enrichment
  */
-export function enqueueUrlProcessing(inboxId: string, url: string): string {
+export function enqueueUrlEnrichment(inboxId: string, url: string): string {
   const taskId = tq('process_url').add({
     inboxId,
     url,
   });
 
-  log.info({ inboxId, url, taskId }, 'url processing task enqueued');
+  log.info({ inboxId, url, taskId }, 'url enrichment task enqueued');
 
   // Update projection for quick status checks
   upsertInboxTaskState({
@@ -229,9 +229,9 @@ export function enqueueUrlProcessing(inboxId: string, url: string): string {
 }
 
 /**
- * Register URL processing handler (call this on app startup)
+ * Register URL enrichment handler (call this on app startup)
  */
-export function registerUrlProcessingHandler(): void {
-  tq('process_url').setWorker(processUrlInboxItem);
-  log.info({}, 'url processing handler registered');
+export function registerUrlEnrichmentHandler(): void {
+  tq('process_url').setWorker(enrichUrlInboxItem);
+  log.info({}, 'url enrichment handler registered');
 }

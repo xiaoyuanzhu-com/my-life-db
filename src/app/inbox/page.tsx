@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import type { InboxItem, InboxProcessingSummary } from '@/types';
+import type { InboxItem, InboxEnrichmentSummary } from '@/types';
 
 interface GroupedItems {
   date: string;
@@ -12,10 +12,10 @@ interface GroupedItems {
   items: InboxItem[];
 }
 
-type InboxItemWithProcessing = InboxItem & { processing: InboxProcessingSummary };
+type InboxItemWithEnrichment = InboxItem & { enrichment: InboxEnrichmentSummary };
 
 export default function InboxPage() {
-  const [items, setItems] = useState<InboxItemWithProcessing[]>([]);
+  const [items, setItems] = useState<InboxItemWithEnrichment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export default function InboxPage() {
       try {
         const response = await fetch('/api/inbox');
         const data = await response.json();
-        setItems(data.items as InboxItemWithProcessing[]);
+        setItems(data.items as InboxItemWithEnrichment[]);
       } catch (error) {
         console.error('Failed to load inbox items:', error);
       } finally {
@@ -87,31 +87,31 @@ export default function InboxPage() {
         // Reload items
         const itemsResponse = await fetch('/api/inbox');
         const data = await itemsResponse.json();
-        setItems(data.items as InboxItemWithProcessing[]);
+        setItems(data.items as InboxItemWithEnrichment[]);
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
     }
   }
 
-  async function handleReprocess(item: InboxItemWithProcessing) {
+  async function handleReenrich(item: InboxItemWithEnrichment) {
     try {
-      const res = await fetch(`/api/inbox/${item.id}/reprocess?stage=crawl`, { method: 'POST' });
+      const res = await fetch(`/api/inbox/${item.id}/reenrich?stage=crawl`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(`Failed to reprocess: ${body.error || res.statusText}`);
+        alert(`Failed to reenrich: ${body.error || res.statusText}`);
         return;
       }
       // Refresh list
       const itemsResponse = await fetch('/api/inbox');
       const data = await itemsResponse.json();
-      setItems(data.items as InboxItemWithProcessing[]);
+      setItems(data.items as InboxItemWithEnrichment[]);
     } catch (e) {
-      console.error('Reprocess failed', e);
+      console.error('Re-enrich failed', e);
     }
   }
 
-  async function handleDigest(item: InboxItemWithProcessing) {
+  async function handleDigest(item: InboxItemWithEnrichment) {
     try {
       const res = await fetch(`/api/inbox/${item.id}/digest`, { method: 'POST' });
       if (!res.ok) {
@@ -122,13 +122,13 @@ export default function InboxPage() {
       // Refresh list
       const itemsResponse = await fetch('/api/inbox');
       const data = await itemsResponse.json();
-      setItems(data.items as InboxItemWithProcessing[]);
+      setItems(data.items as InboxItemWithEnrichment[]);
     } catch (e) {
       console.error('Digest failed', e);
     }
   }
 
-  function renderPreview(item: InboxItemWithProcessing) {
+  function renderPreview(item: InboxItemWithEnrichment) {
     // Prefer first image file
     const imageFile = item.files.find(f => f.type === 'image');
     if (imageFile) {
@@ -147,14 +147,14 @@ export default function InboxPage() {
 
     // For URL items, if crawl completed, show a simple badge
     if (item.type === 'url') {
-      if (item.processing.crawlDone) {
+      if (item.enrichment.crawlDone) {
         return (
           <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-green-100 text-green-700">
             Crawl complete
           </div>
         );
       }
-      if (item.processing.overall === 'processing') {
+      if (item.enrichment.overall === 'enriching') {
         return (
           <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-blue-100 text-blue-700">
             Crawling...
@@ -166,8 +166,8 @@ export default function InboxPage() {
     return null;
   }
 
-  function renderStages(item: InboxItemWithProcessing) {
-    const stages = item.processing.stages;
+  function renderStages(item: InboxItemWithEnrichment) {
+    const stages = item.enrichment.stages;
     if (stages.length === 0) return null;
 
     return (
@@ -223,7 +223,7 @@ export default function InboxPage() {
                   {group.items.map((item) => (
                     <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                       <CardContent className="p-4">
-                        {renderPreview(item as InboxItemWithProcessing)}
+                        {renderPreview(item as InboxItemWithEnrichment)}
                         {/* Item Type Badge */}
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
@@ -231,8 +231,8 @@ export default function InboxPage() {
                           </span>
                           {item.status !== 'pending' && (
                             <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                              item.status === 'completed' ? 'bg-green-100 text-green-700' :
-                              item.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                              item.status === 'enriched' ? 'bg-green-100 text-green-700' :
+                              item.status === 'enriching' ? 'bg-blue-100 text-blue-700' :
                               'bg-red-100 text-red-700'
                             }`}>
                               {item.status}
@@ -240,7 +240,7 @@ export default function InboxPage() {
                           )}
                         </div>
 
-                        {renderStages(item as InboxItemWithProcessing)}
+                        {renderStages(item as InboxItemWithEnrichment)}
 
                         {/* Files List */}
                         <div className="space-y-2 mb-3">
@@ -269,9 +269,9 @@ export default function InboxPage() {
                         {/* Actions */}
                         <div className="flex gap-3 items-center">
                           <button
-                            onClick={() => handleDigest(item as InboxItemWithProcessing)}
+                            onClick={() => handleDigest(item as InboxItemWithEnrichment)}
                             className="text-xs text-foreground hover:opacity-80 font-medium"
-                            title="Rebuild index and trigger processing"
+                            title="Rebuild index and trigger enrichment"
                           >
                             Digest
                           </button>
@@ -282,12 +282,12 @@ export default function InboxPage() {
                             Delete
                           </button>
 
-                          {(item as InboxItemWithProcessing).processing.canRetry && (
+                          {(item as InboxItemWithEnrichment).enrichment.canRetry && (
                             <button
-                              onClick={() => handleReprocess(item as InboxItemWithProcessing)}
+                              onClick={() => handleReenrich(item as InboxItemWithEnrichment)}
                               className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                             >
-                              Reprocess
+                              Re-enrich
                             </button>
                           )}
                         </div>

@@ -6,7 +6,7 @@ This document describes how the task queue is used for URL crawling in this proj
 
 ## Overview
 
-The task queue system provides a robust, fault-tolerant background job processing infrastructure. It handles URL crawling, content extraction, AI-powered slug generation, and automatic file organization.
+The task queue system provides a robust, fault-tolerant background job execution infrastructure. It handles URL crawling, content extraction, AI-powered slug generation, and automatic file organization.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ The task queue system provides a robust, fault-tolerant background job processin
            ▼
 ┌─────────────────────┐
 │  Execute Handler    │
-│  processUrlInboxItem│
+│  enrichUrlInboxItem │
 └──────────┬──────────┘
            │
            ├─► Crawl URL
@@ -68,14 +68,14 @@ The task queue system provides a robust, fault-tolerant background job processin
 **Location:** `src/lib/crawl/`
 
 - **[urlCrawler.ts](../crawl/urlCrawler.ts)** - Fetch and parse web pages
-- **[contentProcessor.ts](../crawl/contentProcessor.ts)** - HTML → Markdown conversion
+- **[contentEnricher.ts](../crawl/contentEnricher.ts)** - HTML → Markdown conversion
 - **[urlSlugGenerator.ts](../crawl/urlSlugGenerator.ts)** - AI-powered slug generation
 
-### 3. Inbox Processing
+### 3. Inbox Enrichment
 
 **Location:** `src/lib/inbox/`
 
-- **[processUrlInboxItem.ts](../inbox/processUrlInboxItem.ts)** - URL processing orchestrator
+- **[enrichUrlInboxItem.ts](../inbox/enrichUrlInboxItem.ts)** - URL enrichment orchestrator
 
 ### 4. Database
 
@@ -109,7 +109,7 @@ initializeTaskQueue({
 });
 ```
 
-### 2. Trigger URL Processing (TODO)
+### 2. Trigger URL Enrichment (TODO)
 
 Uncomment the code in [src/app/api/inbox/route.ts](../../app/api/inbox/route.ts):
 
@@ -127,7 +127,7 @@ if (inboxItem.type === 'url') {
       'url.txt'
     );
     const url = await fs.readFile(urlPath, 'utf-8');
-    enqueueUrlProcessing(inboxItem.id, url.trim());
+    enqueueUrlEnrichment(inboxItem.id, url.trim());
   }
 }
 ```
@@ -158,18 +158,18 @@ curl -X POST http://localhost:3000/api/tasks/worker/pause
 curl -X POST http://localhost:3000/api/tasks/worker/resume
 ```
 
-## Task Processing Flow
+## Task Flow
 
 ### URL Crawling Task (`process_url`)
 
 1. **Fetch task from queue** - Worker polls for ready tasks
 2. **Claim task** - Optimistic locking prevents duplicate execution
-3. **Update inbox status** - Set to `processing`
+3. **Update inbox status** - Set to `enriching`
 4. **Crawl URL** - Fetch HTML content
    - Extract metadata (title, description, author, etc.)
    - Parse Open Graph tags
    - Handle redirects
-5. **Process content**
+5. **Enrich content**
    - Convert HTML to Markdown
    - Extract clean text
    - Calculate reading time
@@ -183,7 +183,7 @@ curl -X POST http://localhost:3000/api/tasks/worker/resume
    - `main-content.md` - Clean text
 8. **Rename folder** - UUID → slug
 9. **Update inbox item**
-   - Set `status: 'completed'`
+   - Set `status: 'enriched'`
    - Set `aiSlug`
    - Update `files` array with enrichment
 10. **Mark task success**

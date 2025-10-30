@@ -8,7 +8,7 @@ export function SettingsNav() {
 
   const tabs = [
     { label: 'General', path: '/settings' },
-    { label: 'Processing', path: '/settings/processing' },
+    { label: 'Enrichment', path: '/settings/enrichment' },
     { label: 'Vendors', path: '/settings/vendors' },
   ];
 

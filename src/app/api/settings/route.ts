@@ -69,34 +69,34 @@ export async function PUT(request: NextRequest) {
         ...currentSettings.extraction,
         ...updates.extraction,
       },
-      processing: updates.processing ? ({
-        ...currentSettings.processing,
-        ...updates.processing,
+      enrichment: updates.enrichment ? ({
+        ...currentSettings.enrichment,
+        ...updates.enrichment,
         text: {
-          ...currentSettings.processing?.text,
-          ...updates.processing?.text,
+          ...currentSettings.enrichment?.text,
+          ...updates.enrichment?.text,
         },
         url: {
-          ...currentSettings.processing?.url,
-          ...updates.processing?.url,
+          ...currentSettings.enrichment?.url,
+          ...updates.enrichment?.url,
         },
         image: {
-          ...currentSettings.processing?.image,
-          ...updates.processing?.image,
+          ...currentSettings.enrichment?.image,
+          ...updates.enrichment?.image,
         },
         audio: {
-          ...currentSettings.processing?.audio,
-          ...updates.processing?.audio,
+          ...currentSettings.enrichment?.audio,
+          ...updates.enrichment?.audio,
         },
         video: {
-          ...currentSettings.processing?.video,
-          ...updates.processing?.video,
+          ...currentSettings.enrichment?.video,
+          ...updates.enrichment?.video,
         },
         pdf: {
-          ...currentSettings.processing?.pdf,
-          ...updates.processing?.pdf,
+          ...currentSettings.enrichment?.pdf,
+          ...updates.enrichment?.pdf,
         },
-      } as UserSettings['processing']) : currentSettings.processing,
+      } as UserSettings['enrichment']) : currentSettings.enrichment,
       storage: {
         ...currentSettings.storage,
         ...updates.storage,

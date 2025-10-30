@@ -4,9 +4,9 @@
  */
 
 import { startWorker } from './worker';
-import { registerUrlProcessingHandler } from '../inbox/processUrlInboxItem';
+import { registerUrlEnrichmentHandler } from '../inbox/enrichUrlInboxItem';
 import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
-import { registerPostIndexHandler } from '@/lib/inbox/postIndexProcessor';
+import { registerPostIndexHandler } from '@/lib/inbox/postIndexEnricher';
 import { getLogger } from '@/lib/log/logger';
 import { acquireProcessLock, setupLockAutoRelease } from '@/lib/utils/processLock';
 
@@ -29,7 +29,7 @@ export function initializeTaskQueue(options?: {
   log.info({}, 'initializing');
 
   // Register all task handlers
-  registerUrlProcessingHandler();
+  registerUrlEnrichmentHandler();
   registerInboxSyncHandler();
   registerPostIndexHandler();
 

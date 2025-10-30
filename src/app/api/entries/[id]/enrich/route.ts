@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { findEntryByUUID, updateEntry } from '@/lib/fs/storage';
-import { processEntry } from '@/lib/ai/processor';
+import { enrichEntry } from '@/lib/ai/enricher';
 import type { ExtractionOptions } from '@/types';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiEntryProcess' });
+const log = getLogger({ module: 'ApiEntryEnrich' });
 
 /**
- * POST /api/entries/[id]/process
- * Process an entry with AI extraction (title, tags, summary, entities, etc.)
+ * POST /api/entries/[id]/enrich
+ * Enrich an entry with AI extraction (title, tags, summary, entities, etc.)
  */
 export async function POST(
   request: NextRequest,
@@ -34,8 +34,8 @@ export async function POST(
       minConfidence: body.minConfidence || 0.5,
     };
 
-    // Process the entry with AI
-    const updatedMetadata = await processEntry(entry, options);
+    // Enrich the entry with AI
+    const updatedMetadata = await enrichEntry(entry, options);
 
     // Save the updated metadata
     const updatedEntry = await updateEntry(entry.directoryPath, {
@@ -50,8 +50,8 @@ export async function POST(
       success: true,
       entry: updatedEntry,
       extraction: {
-        processed: updatedMetadata.ai.processed,
-        processedAt: updatedMetadata.ai.processedAt,
+        enriched: updatedMetadata.ai.enriched,
+        enrichedAt: updatedMetadata.ai.enrichedAt,
         title: updatedMetadata.ai.title,
         summary: updatedMetadata.ai.summary,
         tags: updatedMetadata.ai.tags,
@@ -64,17 +64,17 @@ export async function POST(
       },
     });
   } catch (error) {
-    log.error({ err: error }, 'process entry failed');
+    log.error({ err: error }, 'enrich entry failed');
     return NextResponse.json(
-      { error: 'Failed to process entry', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to enrich entry', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
 /**
- * GET /api/entries/[id]/process
- * Get the processing status for an entry
+ * GET /api/entries/[id]/enrich
+ * Get the enrichment status for an entry
  */
 export async function GET(
   request: NextRequest,
@@ -91,8 +91,8 @@ export async function GET(
 
     return NextResponse.json({
       id: entry.metadata.id,
-      processed: entry.metadata.ai.processed,
-      processedAt: entry.metadata.ai.processedAt,
+      enriched: entry.metadata.ai.enriched,
+      enrichedAt: entry.metadata.ai.enrichedAt,
       hasExtraction: {
         title: Boolean(entry.metadata.ai.title),
         summary: Boolean(entry.metadata.ai.summary),
@@ -104,9 +104,9 @@ export async function GET(
       confidence: entry.metadata.ai.confidence || 0,
     });
   } catch (error) {
-    log.error({ err: error }, 'get processing status failed');
+    log.error({ err: error }, 'get enrichment status failed');
     return NextResponse.json(
-      { error: 'Failed to get processing status' },
+      { error: 'Failed to get enrichment status' },
       { status: 500 }
     );
   }

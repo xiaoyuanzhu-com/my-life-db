@@ -407,7 +407,7 @@ CREATE TABLE inbox (
   id TEXT PRIMARY KEY,                    -- UUID (permanent, even after folder rename)
 
   -- File system
-  folder_name TEXT NOT NULL UNIQUE,       -- Current folder name (uuid initially, then slug after processing)
+  folder_name TEXT NOT NULL UNIQUE,       -- Current folder name (uuid initially, then slug after enrichment)
 
   -- Content type
   type TEXT NOT NULL CHECK(type IN ('text', 'url', 'image', 'audio', 'video', 'pdf', 'mixed')),
@@ -425,8 +425,8 @@ CREATE TABLE inbox (
   -- Conflict resolution: If user file exists, apply macOS-style deduplication (summary 2.md)
   processed_files JSON,
 
-  -- Processing state
-  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+  -- Enrichment state
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
   processed_at DATETIME,
   error TEXT,
 
@@ -674,7 +674,7 @@ MY_DATA_DIR/
 │       │   │   ├── content.md       # User's raw text input (if any)
 │       │   │   ├── photo.jpg        # User's uploaded file (if any)
 │       │   │   └── song.mp3         # Another file (if any)
-│       │   └── {slug}/              # After processing, renamed to slug
+│       │   └── {slug}/              # After enrichment, renamed to slug
 │       │       ├── content.md       # User's original text input
 │       │       ├── photo.jpg        # User's original file(s) - NEVER renamed
 │       │       ├── webpage.html     # Processed: original HTML (for URLs)
@@ -715,7 +715,7 @@ MY_DATA_DIR/
 **Design Decisions:**
 
 1. **Separate User Input vs Processed Output**
-   - **Decision:** Track user files and processed files separately in database
+   - **Decision:** Track user files and enriched files separately in database
    - **Why:** Clear separation of concerns (original vs generated), easy to identify which files to preserve vs regenerate
    - **User files:**
      - Text input: `content.md`
@@ -726,12 +726,12 @@ MY_DATA_DIR/
      - Simple, descriptive names: `webpage.html`, `webpage.png`, `summary.md`, `caption.md`, `transcript.md`
      - Stored in `processed_files` JSON array with explicit filenames
      - **NOT** determined by convention - always check DB for actual filenames
-     - **Conflict resolution:** If processed filename conflicts with user file, apply macOS-style deduplication (e.g., `summary.md` → `summary 2.md`)
+     - **Conflict resolution:** If enriched filename conflicts with user file, apply macOS-style deduplication (e.g., `summary.md` → `summary 2.md`)
    - **Alt:** Underscore prefix for processed files - rejected (unnecessary complexity, harder to read)
    - **Alt:** Single files array - rejected (can't distinguish user vs generated content)
 
 2. **UUID → Slug Workflow**
-   - **Decision:** Folders initially named with UUID, renamed to slug after AI processing
+   - **Decision:** Folders initially named with UUID, renamed to slug after AI enrichment
    - **Why:** Stable ID (UUID never changes), human-readable names (slug), clean separation
    - **Alt:** Slug-only - rejected (slug collisions, can't identify before processing)
 
@@ -750,7 +750,7 @@ MY_DATA_DIR/
    - **Implementation:** Version in DB column, schemas in metadata_schemas registry
    - **User Experience:** Badge shows outdated items, "Re-process" button upgrades
 
-**Processing Features:**
+**Enrichment Features:**
 
 | Feature | Status | User Input | Processed Output |
 |---------|--------|------------|------------------|
@@ -804,7 +804,7 @@ Traditional single `status` field is insufficient because:
 - Need to retry failures without affecting other processes
 - External services (Meilisearch, Qdrant, AI APIs) are unreliable
 
-**Design Decision: Task-Based Processing**
+**Design Decision: Task-Based Enrichment**
 
 Instead of boolean flags (`is_search_indexed`, `has_faces_detected`, etc.), use a general-purpose task queue to track all async/external operations.
 
@@ -847,7 +847,7 @@ CREATE TABLE tasks (
 
   -- Status
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK(status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+    CHECK(status IN ('pending', 'enriching', 'enriched', 'failed', 'cancelled')),
 
   -- Execution tracking
   attempts INTEGER DEFAULT 0,
@@ -1043,7 +1043,7 @@ INSERT INTO metadata_schemas (version, table_name, field_name, schema_json) VALU
       "size": {"type": "integer"},
       "mimeType": {"type": "string"},
       "type": {"type": "string", "enum": ["html", "image", "markdown", "text", "other"]},
-      "purpose": {"type": "string", "description": "What this processed file represents"}
+      "purpose": {"type": "string", "description": "What this enriched file represents"}
     }
   }
 }'),
@@ -1339,7 +1339,7 @@ async function crawlUrl(entryId: string) {
       return `${base} ${counter}${ext}`;
     };
 
-    // Save processed outputs with simple, descriptive names
+    // Save enriched outputs with simple, descriptive names
     const processedFiles = [];
 
     const htmlFile = getAvailableFilename('webpage.html');
@@ -1380,7 +1380,7 @@ async function crawlUrl(entryId: string) {
       join(MY_DATA_DIR, newInboxPath)
     );
 
-    // Update database with processed files and new folder name
+    // Update database with enriched files and new folder name
     await db.run(`
       UPDATE inbox
       SET status = 'completed',
@@ -1551,7 +1551,7 @@ Response: Entry
 DELETE /api/v1/entries/:id/spaces/:spaceId
 Response: { success: boolean }
 
-// Trigger AI processing
+// Trigger AI enrichment
 POST /api/v1/entries/:id/process
 Response: {
   tags: string[];
@@ -1658,7 +1658,7 @@ Body: {
 Response: SearchResult[]
 ```
 
-#### AI Processing
+#### AI Enrichment
 
 ```typescript
 // Generate tags
@@ -1739,7 +1739,7 @@ Response: {
 }
 
 {
-  type: 'ai:processing',
+  type: 'ai:enrichment',
   data: { entryId: string, status: 'started' | 'completed' | 'failed' }
 }
 ```
