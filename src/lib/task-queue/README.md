@@ -70,7 +70,7 @@ stateDiagram-v2
 3. [Data Models](#3-data-models)
 4. [Core Modules](#4-core-modules)
 5. [API Specification](#5-api-specification)
-6. [UI Components](#6-ui-components)
+6. [UI Page](#6-ui-page)
 7. [Reference Implementation](#7-reference-implementation)
 8. [Integration Guide](#8-integration-guide)
 
@@ -709,59 +709,25 @@ await tq.stop();               // Graceful shutdown
 
 ## 6. UI Page
 
-### Single Page Design
+### Minimal Admin UI (Repo)
 
-**Route:** `/task-queue` (or follow project conventions)
+- Location: Settings → Tasks tab (list-only view)
+- Title: “Task Queues”
+- Queues list: grouped by task type; each type is expandable
+- Queue content: recent tasks (latest first) with status, attempts, created, error
+- Task details: click a task to expand inline and show id, type, version, status, attempts, timestamps (created, updated, last_attempt_at, run_after, completed_at), payload JSON, result JSON, and full error
+- Actions: delete terminal tasks (success/failed)
+- Refresh: open queues auto-refresh every 5 seconds
+- Scope: no global stats cards or worker controls on this view
 
-**Layout:** Tabbed interface with 3 sections
+APIs used
+- GET `/api/tasks/stats` for type counts and pending_by_type
+- GET `/api/tasks?type={type}&limit=20` for recent tasks per queue
+- DELETE `/api/tasks/{id}` for terminal task deletion
 
-### Required Components
-
-#### 1. TaskTable Component
-- **Purpose:** Main task list with filtering and actions
-- **Features:**
-  - Data table with columns: ID, Type, Status, Attempts, Created, Actions
-  - Status badge (color-coded: to-do/blue, in-progress/yellow, success/green, failed/red)
-  - Type filter (dropdown)
-  - Status filter (multi-select checkboxes)
-  - Pagination controls
-  - Row actions: Retry (failed only), Delete (success/failed only)
-  - Sortable columns
-  - Real-time refresh (optional)
-
-#### 2. StatsCard Component
-- **Purpose:** Queue health overview
-- **Features:**
-  - Status count cards (to-do, in-progress, success, failed)
-  - Tasks by type breakdown (chart or table)
-  - Processing rate metric
-  - Worker status indicator
-
-#### 3. WorkerControls Component
-- **Purpose:** Worker management
-- **Features:**
-  - Pause/Resume buttons
-  - Rate limit input (tasks per second)
-  - Worker status indicator (running/paused)
-  - Poll interval display (read-only)
-
-#### 4. TaskDetailModal Component
-- **Purpose:** View full task details
-- **Features:**
-  - Metadata display (all task fields)
-  - JSON payload viewer (syntax highlighted)
-  - Result viewer (if success)
-  - Error message (if failed)
-  - Retry/Delete action buttons
-
-#### 5. StatusBadge Component
-- **Purpose:** Visual status indicator
-- **Props:** status (to-do | in-progress | success | failed)
-- **Styling:** Color-coded badge/chip
-
-#### 6. JsonViewer Component
-- **Purpose:** Display formatted JSON
-- **Features:** Syntax highlighting, collapsible sections
+Notes
+- This is a concise, local-first UI to inspect and debug queues without admin dashboards.
+- Projects needing richer controls (filters, charts, worker toggles) can layer on additional pages or tabs as needed.
 
 ---
 
