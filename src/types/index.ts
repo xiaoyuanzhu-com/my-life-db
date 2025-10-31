@@ -79,8 +79,8 @@ export interface EntryMetadata {
 export interface Entry {
   metadata: EntryMetadata;
   content: string;
-  directoryPath: string; // e.g., "inbox/2025-10-15/uuid-or-slug"
-  date: string; // YYYY-MM-DD extracted from directory path
+  directoryPath: string; // e.g., "inbox/{folderName}" (legacy Entry model)
+  date: string; // kept for legacy compatibility
 }
 
 export interface DirectoryMetadata {

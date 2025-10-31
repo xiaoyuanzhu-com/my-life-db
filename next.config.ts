@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
         protocol: 'http',
         hostname: 'localhost',
         port: '3000',
-        pathname: '/api/files/**',
+        pathname: '/api/inbox/files/**',
       },
     ],
     // For production, you would add your domain here

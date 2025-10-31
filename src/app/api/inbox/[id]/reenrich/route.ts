@@ -35,21 +35,53 @@ export async function POST(
     const actions: Array<{ stage: string; taskId: string | null; note?: string }> = [];
 
     if ((stage === 'crawl' || stage === 'all') && item.type === 'url') {
-      const urlFile = item.files.find((f) => f.filename === 'url.txt');
-      if (!urlFile) {
-        return NextResponse.json({ error: 'url.txt not found for URL item' }, { status: 400 });
-      }
-
       const storageConfig = await getStorageConfig();
-      const urlPath = path.join(
+      const baseDir = path.join(
         storageConfig.dataPath,
         '.app',
         'mylifedb',
         'inbox',
         item.folderName,
-        'url.txt'
       );
-      const url = (await fs.readFile(urlPath, 'utf-8')).trim();
+
+      async function readFileIfExists(name: string): Promise<string | null> {
+        try {
+          const p = path.join(baseDir, name);
+          const s = await fs.readFile(p, 'utf-8');
+          return s;
+        } catch {
+          return null;
+        }
+      }
+
+      function firstUrlFromText(text: string | null): string | null {
+        if (!text) return null;
+        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const urlLike = lines.find((l) => /^https?:\/\//i.test(l));
+        return urlLike || null;
+      }
+
+      // Try url.txt, then fall back to first URL-like line in text files
+      const urlTxt = await readFileIfExists('url.txt');
+      let url = (urlTxt || '').trim();
+      if (!url) {
+        const textMd = await readFileIfExists('text.md');
+        url = firstUrlFromText(textMd) || '';
+      }
+      if (!url) {
+        const contentMd = await readFileIfExists('content.md');
+        url = firstUrlFromText(contentMd) || '';
+      }
+      if (!url) {
+        const mainContent = await readFileIfExists('main-content.md');
+        url = firstUrlFromText(mainContent) || '';
+      }
+
+      if (!url) {
+        log.warn({ id: item.id, folderName: item.folderName }, 'url not found for url-type item');
+        return NextResponse.json({ error: 'url not found for URL item' }, { status: 400 });
+      }
+
       const taskId = enqueueUrlEnrichment(item.id, url);
       actions.push({ stage: 'crawl', taskId });
     }

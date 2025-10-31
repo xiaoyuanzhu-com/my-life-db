@@ -78,20 +78,32 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
     try {
       // Create FormData to support file uploads
       const formData = new FormData();
-      formData.append('content', content.trim());
+      // Align with new Inbox API (no date layer): expects `text` and `files`
+      const trimmed = content.trim();
+      if (trimmed.length > 0) {
+        formData.append('text', trimmed);
+      }
 
       // Add files to FormData
       selectedFiles.forEach((file) => {
         formData.append('files', file);
       });
 
-      const response = await fetch('/api/entries', {
+      const response = await fetch('/api/inbox', {
         method: 'POST',
         body: formData, // Send as multipart/form-data
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create entry');
+        // Try to surface server error details for easier debugging
+        let details = '';
+        try {
+          const data = await response.json();
+          details = data?.error || data?.details || '';
+        } catch {
+          // ignore
+        }
+        throw new Error(details || `HTTP ${response.status}`);
       }
 
       setContent('');
@@ -102,8 +114,9 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
       }
       onEntryCreated?.();
     } catch (err) {
-      setError('Failed to save entry. Please try again.');
-      console.error(err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg ? `Failed to save: ${msg}` : 'Failed to save entry. Please try again.');
+      console.error('Inbox save failed:', err);
     } finally {
       setIsLoading(false);
     }

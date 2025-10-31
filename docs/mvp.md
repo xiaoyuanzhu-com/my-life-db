@@ -143,20 +143,17 @@ MyLifeDB supports the following message types:
 ### 4.2 Filesystem Structure
 
 ```
-data/
-├── inbox/                      # Unsorted messages
-│   └── YYYY-MM-DD/            # Daily directories
-│       └── {uuid}/            # Message directory (UUID initially, renamed to slug)
-│           ├── text.md        # Message content (markdown)
-│           ├── metadata.json  # Message metadata
-│           └── [files]        # Attachments (images, PDFs, etc.)
-├── library/                    # Organized messages
-│   └── {space-name}/          # User-created spaces
-│       └── YYYY-MM-DD/
-│           └── {slug}/
-└── apps/                       # App-specific data
-    └── mylifedb/
-        └── config.json        # App configuration
+MY_DATA_DIR/
+├── .app/
+│   └── mylifedb/
+│       └── inbox/                  # Temporary staging (no date layer)
+│           └── {folderName}/       # UUID initially, may become AI slug
+│               ├── text.md         # Text input (if provided)
+│               └── [files]         # Uploaded and generated files (e.g., url.txt, content.html)
+└── {user-content}/                 # User-owned library (free-form structure)
+    ├── notes/
+    ├── projects/
+    └── ...
 ```
 
 ### 4.3 TypeScript Types

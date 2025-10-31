@@ -1,7 +1,6 @@
 'use client';
 
 import { Card, CardContent } from './ui/card';
-import Link from 'next/link';
 import type { Directory } from '@/types';
 
 interface DirectoryCardProps {
@@ -12,9 +11,8 @@ export function DirectoryCard({ directory }: DirectoryCardProps) {
   const { metadata, entryCount, subdirectories } = directory;
 
   return (
-    <Link href={`/library/${encodeURIComponent(directory.path.replace('library/', ''))}`}>
-      <Card className="transition-shadow hover:shadow-md">
-        <CardContent className="space-y-3">
+    <Card className="transition-shadow hover:shadow-md">
+      <CardContent className="space-y-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-2xl">
@@ -39,6 +37,5 @@ export function DirectoryCard({ directory }: DirectoryCardProps) {
           </div>
         </CardContent>
       </Card>
-    </Link>
   );
 }

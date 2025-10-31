@@ -6,6 +6,7 @@ import migration003 from './003_library';
 import migration004 from './004_schemas';
 import migration005 from './005_tasks';
 import migration006 from './006_inbox_task_state';
+import migration007 from './007_inbox_fix_schema';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -25,6 +26,7 @@ export const migrations: Migration[] = [
   migration004,
   migration005,
   migration006,
+  migration007,
 ];
 
 /**

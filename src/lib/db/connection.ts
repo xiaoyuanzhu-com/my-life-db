@@ -7,6 +7,7 @@ import { mkdirSync, existsSync } from 'fs';
 import { runMigrations } from './migrations';
 
 let db: BetterSqlite3.Database | null = null;
+let migrationsEnsured = false;
 
 /**
  * Get the database file path based on MY_DATA_DIR environment variable
@@ -39,9 +40,12 @@ export function getDatabase(): BetterSqlite3.Database {
 
     // Optimize page cache (64MB)
     db.pragma('cache_size = -64000');
+  }
 
-    // Run migrations to ensure schema is up to date
+  // Run migrations once per process to avoid noisy logs
+  if (!migrationsEnsured) {
     runMigrations(db);
+    migrationsEnsured = true;
   }
 
   return db;
