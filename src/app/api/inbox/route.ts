@@ -1,13 +1,13 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+// import { promises as fs } from 'fs';
+// import path from 'path';
 import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
 import { listInboxItems } from '@/lib/db/inbox';
 import { getInboxTaskStatesForInboxIds } from '@/lib/db/inboxTaskState';
 import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
-import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
-import { getStorageConfig } from '@/lib/config/storage';
+// import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
+// import { getStorageConfig } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
 
 // Force Node.js runtime (not Edge)
@@ -92,30 +92,30 @@ export async function POST(request: NextRequest) {
       files,
     });
 
-    // Trigger URL enrichment if inbox item type is 'url'
-    if (inboxItem.type === 'url') {
-      const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
-      if (urlFile) {
-        try {
-          // Read URL from file and enqueue processing
-          const storageConfig = await getStorageConfig();
-          const urlPath = path.join(
-            storageConfig.dataPath,
-            '.app',
-            'mylifedb',
-            'inbox',
-            inboxItem.folderName,
-            'url.txt'
-          );
-          const url = await fs.readFile(urlPath, 'utf-8');
-          const taskId = enqueueUrlEnrichment(inboxItem.id, url.trim());
-          log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url enrichment');
-        } catch (error) {
-          log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url enrichment');
-          // Don't fail the request if task enqueue fails
-        }
-      }
-    }
+    // TEMP: disable auto enqueue of URL enrichment
+    // if (inboxItem.type === 'url') {
+    //   const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
+    //   if (urlFile) {
+    //     try {
+    //       // Read URL from file and enqueue processing
+    //       const storageConfig = await getStorageConfig();
+    //       const urlPath = path.join(
+    //         storageConfig.dataPath,
+    //         '.app',
+    //         'mylifedb',
+    //         'inbox',
+    //         inboxItem.folderName,
+    //         'url.txt'
+    //       );
+    //       const url = await fs.readFile(urlPath, 'utf-8');
+    //       const taskId = enqueueUrlEnrichment(inboxItem.id, url.trim());
+    //       log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url enrichment');
+    //     } catch (error) {
+    //       log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url enrichment');
+    //       // Don't fail the request if task enqueue fails
+    //     }
+    //   }
+    // }
 
     return NextResponse.json(inboxItem, { status: 201 });
   } catch (error) {

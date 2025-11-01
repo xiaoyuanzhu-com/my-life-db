@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import Image from 'next/image';
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import type { InboxItem, InboxEnrichmentSummary } from '@/types';
+import { InboxTextPreview } from './_components/InboxTextPreview';
 
 interface GroupedItems {
   date: string;
@@ -75,120 +76,9 @@ export default function InboxPage() {
     return result;
   }, [items]);
 
-  async function handleDelete(itemId: string) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  // Actions and processing controls removed for a text-focused view
 
-    try {
-      const response = await fetch(`/api/inbox/${itemId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Reload items
-        const itemsResponse = await fetch('/api/inbox');
-        const data = await itemsResponse.json();
-        setItems(data.items as InboxItemWithEnrichment[]);
-      }
-    } catch (error) {
-      console.error('Failed to delete item:', error);
-    }
-  }
-
-  async function handleReenrich(item: InboxItemWithEnrichment) {
-    try {
-      const res = await fetch(`/api/inbox/${item.id}/reenrich?stage=crawl`, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        alert(`Failed to reenrich: ${body.error || res.statusText}`);
-        return;
-      }
-      // Refresh list
-      const itemsResponse = await fetch('/api/inbox');
-      const data = await itemsResponse.json();
-      setItems(data.items as InboxItemWithEnrichment[]);
-    } catch (e) {
-      console.error('Re-enrich failed', e);
-    }
-  }
-
-  async function handleDigest(item: InboxItemWithEnrichment) {
-    try {
-      const res = await fetch(`/api/inbox/${item.id}/digest`, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        alert(`Failed to digest: ${body.error || res.statusText}`);
-        return;
-      }
-      // Refresh list
-      const itemsResponse = await fetch('/api/inbox');
-      const data = await itemsResponse.json();
-      setItems(data.items as InboxItemWithEnrichment[]);
-    } catch (e) {
-      console.error('Digest failed', e);
-    }
-  }
-
-  function renderPreview(item: InboxItemWithEnrichment) {
-    // Prefer first image file
-    const imageFile = item.files.find(f => f.type === 'image');
-    if (imageFile) {
-      const src = `/api/inbox/files/${encodeURIComponent(item.folderName)}/${encodeURIComponent(imageFile.filename)}`;
-      return (
-        <Image
-          src={src}
-          alt={imageFile.filename}
-          width={800}
-          height={320}
-          className="w-full h-40 object-cover rounded mb-3 border"
-          priority={false}
-        />
-      );
-    }
-
-    // For URL items, if crawl completed, show a simple badge
-    if (item.type === 'url') {
-      if (item.enrichment.crawlDone) {
-        return (
-          <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-green-100 text-green-700">
-            Crawl complete
-          </div>
-        );
-      }
-      if (item.enrichment.overall === 'enriching') {
-        return (
-          <div className="mb-3 text-xs px-2 py-1 inline-block rounded bg-blue-100 text-blue-700">
-            Crawling...
-          </div>
-        );
-      }
-    }
-
-    return null;
-  }
-
-  function renderStages(item: InboxItemWithEnrichment) {
-    const stages = item.enrichment.stages;
-    if (stages.length === 0) return null;
-
-    return (
-      <div className="flex flex-wrap gap-1 mb-3">
-        {stages.map((s, idx) => {
-          const color = s.status === 'success'
-            ? 'bg-green-100 text-green-700'
-            : s.status === 'in-progress'
-              ? 'bg-blue-100 text-blue-700'
-              : s.status === 'failed'
-                ? 'bg-red-100 text-red-700'
-                : 'bg-muted text-muted-foreground';
-          return (
-            <span key={idx} className={`text-[10px] px-2 py-0.5 rounded ${color}`}>
-              {s.taskType.replace('_', ' ')}: {s.status}
-            </span>
-          );
-        })}
-      </div>
-    );
-  }
+  // Simplified UI: show text content preview only
 
   return (
     <div className="min-h-screen bg-background">
@@ -221,78 +111,13 @@ export default function InboxPage() {
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {group.items.map((item) => (
-                    <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                      <CardContent className="p-4">
-                        {renderPreview(item as InboxItemWithEnrichment)}
-                        {/* Item Type Badge */}
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                            {item.type}
-                          </span>
-                          {item.status !== 'pending' && (
-                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                              item.status === 'enriched' ? 'bg-green-100 text-green-700' :
-                              item.status === 'enriching' ? 'bg-blue-100 text-blue-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>
-                              {item.status}
-                            </span>
-                          )}
-                        </div>
-
-                        {renderStages(item as InboxItemWithEnrichment)}
-
-                        {/* Files List */}
-                        <div className="space-y-2 mb-3">
-                          {item.files.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm">
-                              <span className="text-muted-foreground">
-                                {file.type === 'text' ? '📝' :
-                                 file.type === 'image' ? '🖼️' :
-                                 file.type === 'audio' ? '🎵' :
-                                 file.type === 'video' ? '🎥' :
-                                 file.type === 'pdf' ? '📄' : '📎'}
-                              </span>
-                              <span className="truncate">{file.filename}</span>
-                              <span className="text-xs text-muted-foreground ml-auto">
-                                {(file.size / 1024).toFixed(1)} KB
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Timestamp */}
-                        <div className="text-xs text-muted-foreground mb-3">
-                          {format(new Date(item.createdAt), 'h:mm a')}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-3 items-center">
-                          <button
-                            onClick={() => handleDigest(item as InboxItemWithEnrichment)}
-                            className="text-xs text-foreground hover:opacity-80 font-medium"
-                            title="Rebuild index and trigger enrichment"
-                          >
-                            Digest
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="text-xs text-red-600 hover:text-red-700 font-medium"
-                          >
-                            Delete
-                          </button>
-
-                          {(item as InboxItemWithEnrichment).enrichment.canRetry && (
-                            <button
-                              onClick={() => handleReenrich(item as InboxItemWithEnrichment)}
-                              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                            >
-                              Re-enrich
-                            </button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <Link key={item.id} href={`/inbox/${encodeURIComponent(item.folderName)}`} className="block">
+                      <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+                        <CardContent className="p-4">
+                          <InboxTextPreview folderName={item.folderName} files={item.files} />
+                        </CardContent>
+                      </Card>
+                    </Link>
                   ))}
                 </div>
               </section>

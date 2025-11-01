@@ -143,6 +143,7 @@ All your data is stored locally in the `data/` directory as human-readable Markd
 - `POST /api/tasks/worker/pause` - Pause worker
 - `POST /api/tasks/worker/resume` - Resume worker
 
+
 ## License
 
 MIT
