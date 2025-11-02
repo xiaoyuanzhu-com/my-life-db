@@ -41,6 +41,7 @@ Example: check task queue status `curl http://localhost:3000/api/tasks/stats`.
 
 ## Agent-Specific Instructions
 - Do not auto-commit; only commit on explicit request
+- Commit permission is not persistent: every git commit requires a fresh, explicit instruction (e.g., "commit it") even within the same session after a prior commit. Do not assume ongoing consent.
 - Add shadcn components via CLI: `npx shadcn@latest add <component>`
 - Avoid deep relative imports; use `@/`
 

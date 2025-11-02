@@ -4,6 +4,7 @@ import path from 'path';
 import Link from 'next/link';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { getInboxItemByFolderName, getInboxItemById } from '@/lib/db/inbox';
+import { CrawlButton } from '../_components/CrawlButton';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +46,15 @@ export default async function InboxDetailPage({ params }: { params: { slug: stri
           </Link>
         </div>
 
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
+            {item.type}
+          </span>
+          {item.type === 'url' && (
+            <CrawlButton inboxId={item.id} />
+          )}
+        </div>
+
         <div className="bg-card rounded-lg border">
           <div className="p-6">
             <div className="text-sm whitespace-pre-wrap break-words leading-7 text-foreground">
@@ -56,4 +66,3 @@ export default async function InboxDetailPage({ params }: { params: { slug: stri
     </div>
   );
 }
-
