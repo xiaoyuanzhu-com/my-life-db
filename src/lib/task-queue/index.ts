@@ -4,7 +4,7 @@
  * Usage:
  *   // Configure task type
  *   tq('crawl')
- *     .setWorker(async (payload) => { ... })
+ *     .setWorker(async (input) => { ... })
  *     .setWorkerCount(3)
  *     .setRateLimit(10)
  *     .setTimeout(5000)
@@ -20,7 +20,7 @@
 import { createTask } from './task-manager';
 import { registerHandler } from './executor';
 import { RateLimiter } from './scheduler';
-import type { TaskHandler, TaskPayload, TaskTypeConfig } from './types';
+import type { TaskHandler, TaskInput, TaskTypeConfig } from './types';
 
 /**
  * Task type configurations (per task type)
@@ -41,7 +41,7 @@ class TaskQueueBuilder {
   /**
    * Set worker handler for this task type
    */
-  setWorker<T = TaskPayload>(handler: TaskHandler<T>): this {
+  setWorker<T = TaskInput>(handler: TaskHandler<T>): this {
     registerHandler(this.type, handler as TaskHandler);
     this.getConfig().handler = handler as TaskHandler;
     return this;
@@ -84,7 +84,7 @@ class TaskQueueBuilder {
   /**
    * Add a task to the queue
    */
-  add(payload: TaskPayload, runAfter?: number): string {
+  add(input: TaskInput, runAfter?: number): string {
     // Check rate limit
     const rateLimiter = rateLimiters.get(this.type);
     if (rateLimiter && !rateLimiter.tryConsume()) {
@@ -95,7 +95,7 @@ class TaskQueueBuilder {
 
     const task = createTask({
       type: this.type,
-      payload,
+      input,
       run_after: runAfter,
     });
 

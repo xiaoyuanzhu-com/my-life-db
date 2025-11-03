@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, payload, run_after } = body;
+    const { type, input, run_after } = body;
 
     if (!type || typeof type !== 'string') {
       return NextResponse.json(
@@ -83,16 +83,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!payload || typeof payload !== 'object') {
+    if (!input || typeof input !== 'object') {
       return NextResponse.json(
-        { error: 'Task payload is required' },
+        { error: 'Task input is required' },
         { status: 400 }
       );
     }
 
     const task = createTask({
       type,
-      payload,
+      input,
       run_after,
     });
 

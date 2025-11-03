@@ -21,13 +21,13 @@ paths:
               type: object
               required:
                 - type
-                - payload
+                - input
               properties:
                 type:
                   type: string
                   description: Task type identifier
                   example: send_email
-                payload:
+                input:
                   type: object
                   description: Task-specific data (arbitrary JSON)
                   example:
@@ -48,7 +48,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskResponse'
         '400':
-          description: Invalid request (missing type or payload)
+          description: Invalid request (missing type or input)
 
     get:
       summary: List tasks with filters
@@ -295,7 +295,7 @@ components:
         type:
           type: string
           example: send_email
-        payload:
+        input:
           type: object
           description: Task-specific data
         status:
@@ -307,10 +307,10 @@ components:
           type: integer
           nullable: true
           description: Unix timestamp
-        result:
+        output:
           type: object
           nullable: true
-          description: Success result (JSON)
+          description: Handler output (JSON). On failure, contains error message.
         error:
           type: string
           nullable: true

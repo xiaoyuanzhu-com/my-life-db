@@ -13,12 +13,12 @@ export type TaskStatus = 'to-do' | 'in-progress' | 'success' | 'failed';
 export interface Task {
   id: string;
   type: string;
-  payload: string; // JSON string
+  input: string; // JSON string
   status: TaskStatus;
   version: number;
   attempts: number;
   last_attempt_at: number | null;
-  result: string | null; // JSON string
+  output: string | null; // JSON string
   error: string | null;
   run_after: number | null;
   created_at: number;
@@ -27,14 +27,14 @@ export interface Task {
 }
 
 /**
- * Task payload (generic)
+ * Task input (generic)
  */
-export type TaskPayload = Record<string, unknown>;
+export type TaskInput = Record<string, unknown>;
 
 /**
  * Task handler function
  */
-export type TaskHandler<T = TaskPayload> = (payload: T) => Promise<unknown>;
+export type TaskHandler<T = TaskInput> = (input: T) => Promise<unknown>;
 
 /**
  * Task configuration for a specific task type

@@ -51,14 +51,14 @@ export function getRegisteredHandlers(): string[] {
 
 /**
  * Execute a task with optimistic locking
- * Returns execution result or error
+ * Returns execution output or error
  */
 export async function executeTask(
   taskId: string,
   maxAttempts: number = 3
 ): Promise<{
   success: boolean;
-  result?: unknown;
+  output?: unknown;
   error?: string;
   shouldRetry: boolean;
 }> {
@@ -76,7 +76,7 @@ export async function executeTask(
   if (task.status === 'success') {
     return {
       success: true,
-      result: task.result ? JSON.parse(task.result) : null,
+      output: task.output ? JSON.parse(task.output) : null,
       shouldRetry: false,
     };
   }
@@ -122,8 +122,8 @@ export async function executeTask(
 
   // 5.1 Update projection for inbox tasks to in-progress
   try {
-    const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
-    const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+    const inputObj = JSON.parse(task.input) as Record<string, unknown>;
+    const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
     if (inboxId) {
       upsertInboxTaskState({
         inboxId,
@@ -135,7 +135,7 @@ export async function executeTask(
       });
     }
   } catch {
-    // ignore payload parse errors for projection
+    // ignore input parse errors for projection
   }
 
   // 6. Get handler
@@ -147,14 +147,15 @@ export async function executeTask(
       {
         status: 'failed',
         error: `No handler registered for task type "${task.type}"`,
+        output: `No handler registered for task type "${task.type}"`,
       },
       claimedTask.version
     );
 
     // Update projection: failed (permanent)
     try {
-      const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
-      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      const inputObj2 = JSON.parse(task.input) as Record<string, unknown>;
+      const inboxId = typeof inputObj2?.inboxId === 'string' ? (inputObj2.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
           inboxId,
@@ -176,15 +177,15 @@ export async function executeTask(
 
   // 7. Execute handler
   try {
-    const payload = JSON.parse(task.payload);
-    const result = await handler(payload);
+    const input = JSON.parse(task.input);
+    const output = await handler(input);
 
     // 8. Mark as success
     const updated = updateTask(
       taskId,
       {
         status: 'success',
-        result: result as Record<string, unknown>,
+        output: output as Record<string, unknown>,
       },
       claimedTask.version
     );
@@ -196,8 +197,8 @@ export async function executeTask(
 
     // Update projection: success
     try {
-      const payloadObj = payload as Record<string, unknown>;
-      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      const inputObj3 = input as Record<string, unknown>;
+      const inboxId = typeof inputObj3?.inboxId === 'string' ? (inputObj3.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
           inboxId,
@@ -212,7 +213,7 @@ export async function executeTask(
 
     return {
       success: true,
-      result,
+      output,
       shouldRetry: false,
     };
   } catch (error) {
@@ -225,14 +226,16 @@ export async function executeTask(
       {
         status: shouldRetry ? 'failed' : 'failed',
         error: errorMessage,
+        // Also record the error in output as requested
+        output: errorMessage,
       },
       claimedTask.version
     );
 
     // Update projection: failed
     try {
-      const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
-      const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+      const inputObj4 = JSON.parse(task.input) as Record<string, unknown>;
+      const inboxId = typeof inputObj4?.inboxId === 'string' ? (inputObj4.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
           inboxId,
@@ -266,6 +269,7 @@ export function recoverStaleTasks(tasks: Task[]): number {
       {
         status: 'failed',
         error: 'Task timed out (stale task recovery)',
+        output: 'Task timed out (stale task recovery)',
       },
       task.version
     );
@@ -276,8 +280,8 @@ export function recoverStaleTasks(tasks: Task[]): number {
 
       // Update projection: failed due to timeout
       try {
-        const payloadObj = JSON.parse(task.payload) as Record<string, unknown>;
-        const inboxId = typeof payloadObj?.inboxId === 'string' ? (payloadObj.inboxId as string) : null;
+        const inputObj = JSON.parse(task.input) as Record<string, unknown>;
+        const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
         if (inboxId) {
           upsertInboxTaskState({
             inboxId,

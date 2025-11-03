@@ -18,8 +18,8 @@ export function enqueuePostIndex(inboxId: string): string {
 }
 
 export function registerPostIndexHandler(): void {
-  tq('post_index').setWorker(async (payload: { inboxId: string }) => {
-    const { inboxId } = payload;
+  tq('post_index').setWorker(async (input: { inboxId: string }) => {
+    const { inboxId } = input;
 
     try {
       const item = getInboxItemById(inboxId);

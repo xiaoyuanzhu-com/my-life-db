@@ -23,8 +23,8 @@ interface Task {
   updated_at: number;
   error?: string | null;
   // Optional fields available from API (DB columns)
-  payload?: string;
-  result?: string | null;
+  input?: string;
+  output?: string | null;
   version?: number;
   last_attempt_at?: number | null;
   run_after?: number | null;
@@ -213,8 +213,8 @@ export function TasksTab() {
                           ) : (
                             (tasksByType[type] || []).map((task) => {
                               const rowOpen = !!openTaskRows[type]?.[task.id];
-                              const payload = parseJson(task.payload);
-                              const result = parseJson(task.result);
+                              const inputVal = parseJson(task.input);
+                              const outputVal = parseJson(task.output);
                               return (
                                 <Fragment key={task.id}>
                                   <tr
@@ -310,22 +310,22 @@ export function TasksTab() {
                                             </div>
                                             <div className="space-y-3">
                                               <div>
-                                                <div className="text-xs text-muted-foreground">Payload</div>
+                                                <div className="text-xs text-muted-foreground">Input</div>
                                                 <pre className="text-xs whitespace-pre-wrap break-words font-mono bg-muted p-2 rounded">
-                                                  {payload != null
-                                                    ? typeof payload === 'string'
-                                                      ? payload
-                                                      : JSON.stringify(payload, null, 2)
+                                                  {inputVal != null
+                                                    ? typeof inputVal === 'string'
+                                                      ? inputVal
+                                                      : JSON.stringify(inputVal, null, 2)
                                                     : '-'}
                                                 </pre>
                                               </div>
                                               <div>
-                                                <div className="text-xs text-muted-foreground">Result</div>
+                                                <div className="text-xs text-muted-foreground">Output</div>
                                                 <pre className="text-xs whitespace-pre-wrap break-words font-mono bg-muted p-2 rounded">
-                                                  {result != null
-                                                    ? typeof result === 'string'
-                                                      ? result
-                                                      : JSON.stringify(result, null, 2)
+                                                  {outputVal != null
+                                                    ? typeof outputVal === 'string'
+                                                      ? outputVal
+                                                      : JSON.stringify(outputVal, null, 2)
                                                     : '-'}
                                                 </pre>
                                               </div>

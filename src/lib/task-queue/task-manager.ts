@@ -4,14 +4,14 @@
 
 import { getDatabase } from '../db/connection';
 import { generateUUIDv7 } from './uuid';
-import type { Task, TaskPayload, TaskStatus } from './types';
+import type { Task, TaskInput, TaskStatus } from './types';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'TaskManager' });
 
 export interface CreateTaskInput {
   type: string;
-  payload: TaskPayload;
+  input: TaskInput;
   run_after?: number; // Unix timestamp (seconds)
 }
 
@@ -19,7 +19,7 @@ export interface UpdateTaskInput {
   status?: TaskStatus;
   attempts?: number;
   last_attempt_at?: number;
-  result?: TaskPayload | null;
+  output?: unknown | null;
   error?: string | null;
   version?: number;
 }
@@ -34,7 +34,7 @@ export function createTask(input: CreateTaskInput): Task {
 
   const stmt = db.prepare(`
     INSERT INTO tasks (
-      id, type, payload, status, version, attempts,
+      id, type, input, status, version, attempts,
       run_after, created_at, updated_at
     ) VALUES (?, ?, ?, 'to-do', 0, 0, ?, ?, ?)
   `);
@@ -42,14 +42,14 @@ export function createTask(input: CreateTaskInput): Task {
   stmt.run(
     id,
     input.type,
-    JSON.stringify(input.payload),
+    JSON.stringify(input.input),
     input.run_after || null,
     now,
     now
   );
 
   const created = getTaskById(id)!;
-  // Log task enqueue with payload
+  // Log task enqueue with input
   try {
     log.info(
       {
@@ -57,7 +57,7 @@ export function createTask(input: CreateTaskInput): Task {
         taskId: created.id,
         type: created.type,
         run_after: created.run_after ?? null,
-        payload: input.payload,
+        input: input.input,
       },
       'task enqueued'
     );
@@ -182,9 +182,13 @@ export function updateTask(
     params.push(updates.last_attempt_at);
   }
 
-  if (updates.result !== undefined) {
-    setClauses.push('result = ?');
-    params.push(updates.result ? JSON.stringify(updates.result) : null);
+  if (updates.output !== undefined) {
+    setClauses.push('output = ?');
+    params.push(
+      updates.output === null || updates.output === undefined
+        ? null
+        : JSON.stringify(updates.output)
+    );
   }
 
   if (updates.error !== undefined) {
@@ -214,13 +218,13 @@ export function updateTask(
   if (updated && shouldLogOutcome) {
     try {
       const next = getTaskById(id);
-      const parsedPayload = (() => {
-        try { return prev?.payload ? JSON.parse(prev.payload) : null; } catch { return prev?.payload ?? null; }
+      const parsedInput = (() => {
+        try { return prev?.input ? JSON.parse(prev.input) : null; } catch { return prev?.input ?? null; }
       })();
-      const parsedResult = (() => {
-        // Prefer explicit update result if provided; else parse from DB
-        if (updates.result !== undefined) return updates.result;
-        try { return next?.result ? JSON.parse(next.result) : null; } catch { return next?.result ?? null; }
+      const parsedOutput = (() => {
+        // Prefer explicit update output if provided; else parse from DB
+        if (updates.output !== undefined) return updates.output;
+        try { return next?.output ? JSON.parse(next.output) : null; } catch { return next?.output ?? null; }
       })();
 
       const logBase = {
@@ -228,14 +232,14 @@ export function updateTask(
         taskId: id,
         type: prev?.type ?? next?.type ?? 'unknown',
         attempts: next?.attempts ?? prev?.attempts ?? undefined,
-        payload: parsedPayload,
+        input: parsedInput,
       } as Record<string, unknown>;
 
       if (updates.status === 'success') {
-        log.info({ ...logBase, result: parsedResult }, 'task succeeded');
+        log.info({ ...logBase, output: parsedOutput }, 'task succeeded');
       } else {
         const errorVal = updates.error ?? next?.error ?? null;
-        log.error({ ...logBase, error: errorVal }, 'task failed');
+        log.error({ ...logBase, error: errorVal, output: parsedOutput }, 'task failed');
       }
     } catch {}
   }

@@ -80,7 +80,7 @@ stateDiagram-v2
 
 ### 1.1 Core Features
 
-- ✅ **Task Enqueue**: Add tasks to queue with arbitrary JSON payload
+- ✅ **Task Enqueue**: Add tasks to queue with arbitrary JSON input
 - ✅ **Automatic Retry**: Failed tasks retry with exponential backoff
 - ✅ **Exactly-Once Execution**: Tasks executed once via optimistic locking (see 4.3)
 - ✅ **Timeout Protection**: Auto-recover stale tasks after timeout
@@ -92,7 +92,7 @@ stateDiagram-v2
 - ✅ **RPS Control**: Limit execution rate (tasks per second)
 - ✅ **Parallelism Control**: Control concurrent task execution
 - ✅ **Worker Pause/Resume**: Pause worker without stopping it
-- ✅ **Observability**: Status tracking, error logging, result storage, statistics, query API
+- ✅ **Observability**: Status tracking, error logging, output storage, statistics, query API
 
 ### 1.2 Non-Features (Out of Scope)
 
@@ -127,12 +127,12 @@ stateDiagram-v2
 - **Recommendation**: Handlers should fail fast or implement internal timeout
 
 **Why No Batch Processing?**
-- **Problem**: Batch mode changes handler interface from `worker(payload)` to `worker([payload1, payload2, ...])`
+- **Problem**: Batch mode changes handler interface from `worker(input)` to `worker([input1, input2, ...])`
 - **Conflict**: Breaks clean, unified interface - caller must handle two different patterns
 - **Alternative**: For high-performance scenarios, use purpose-built systems (Redis queues like BullMQ, message queues like RabbitMQ/SQS)
 - **Design Goal**: Our SQLite-based queue prioritizes simplicity and local processing, not extreme throughput
 - **Workaround**: Users needing batch processing can:
-  - Enqueue a single "batch job" task with array payload
+  - Enqueue a single "batch job" task with array input
   - Handler processes the array internally
   - Or migrate to a dedicated high-performance queue system
 
@@ -163,7 +163,7 @@ stateDiagram-v2
 tq(type: String): TaskTypeContext
 
 // TaskTypeContext methods (all chainable)
-.add(payload: JSON, options?: EnqueueOptions): TaskTypeContext
+.add(input: JSON, options?: EnqueueOptions): TaskTypeContext
 .setWorker(handler: Function): TaskTypeContext
 .setWorkerCount(count: Number): TaskTypeContext        // Parallelism for this type
 .setRateLimit(tasksPerSecond: Number): TaskTypeContext  // Rate limit for this type
@@ -176,9 +176,9 @@ tq(type: String): TaskTypeContext
 ```javascript
 // Setup worker
 tq('crawl')
-  .setWorker(async (payload) => {
-    console.log('Crawling', payload.url);
-    await fetch(payload.url);
+  .setWorker(async (input) => {
+    console.log('Crawling', input.url);
+    await fetch(input.url);
   })
   .setWorkerCount(3)
   .setRateLimit(10)      // 10 tasks/sec for crawl type
@@ -197,7 +197,7 @@ tq('crawl')
 
 // Different task types, different configs
 tq('email')
-  .setWorker(async (payload) => await sendEmail(payload))
+  .setWorker(async (input) => await sendEmail(input))
   .setWorkerCount(1)     // Sequential
   .setRateLimit(5);      // 5 emails/sec
 
@@ -228,9 +228,9 @@ interface CrawlPayload {
 }
 
 tq<CrawlPayload>('crawl')
-  .setWorker(async (payload) => {
-    // payload is typed as CrawlPayload
-    console.log(payload.url.toUpperCase());  // ✅ Type-safe
+  .setWorker(async (input) => {
+    // input is typed as CrawlInput
+    console.log(input.url.toUpperCase());  // ✅ Type-safe
   })
   .add({ url: 'https://example.com' });  // ✅ Type-checked
 
@@ -275,12 +275,12 @@ POST /api/tasks/rate-limit    // Set global rate limit
 |--------|------|-------------|-------------|
 | `id` | TEXT/VARCHAR(36) | PRIMARY KEY | UUID v7 (time-ordered) |
 | `type` | TEXT/VARCHAR(255) | NOT NULL | Task type identifier |
-| `payload` | TEXT/JSON | NOT NULL | Task input data (JSON) |
+| `input` | TEXT/JSON | NOT NULL | Task input data (JSON) |
 | `status` | TEXT/VARCHAR(20) | NOT NULL, DEFAULT 'to-do' | `to-do`, `in-progress`, `success`, `failed` |
 | `version` | INTEGER | NOT NULL, DEFAULT 0 | Optimistic lock version (incremented on claim) |
 | `attempts` | INTEGER | DEFAULT 0 | Execution attempt count |
 | `last_attempt_at` | INTEGER | NULL | Unix timestamp (seconds) of last execution |
-| `result` | TEXT/JSON | NULL | Success result (JSON) |
+| `output` | TEXT/JSON | NULL | Handler output (JSON). On failure, contains error message. |
 | `error` | TEXT | NULL | Error message (failure only) |
 | `run_after` | INTEGER | NULL | Don't run before this Unix timestamp (used for scheduling AND retry delays) |
 | `created_at` | INTEGER | NOT NULL | Unix timestamp (seconds) |
@@ -332,14 +332,14 @@ to-do → in-progress → failed → [attempts >= max] → failed (terminal)
 {
   "id": "01936d3f-1234-7abc-def0-123456789abc",
   "type": "send_email",
-  "payload": {
+  "input": {
     "to": "user@example.com",
     "subject": "Welcome"
   },
   "status": "success",
   "attempts": 2,
   "last_attempt_at": 1736942730,
-  "result": {
+  "output": {
     "messageId": "abc123"
   },
   "error": null,
@@ -391,20 +391,20 @@ to-do → in-progress → failed → [attempts >= max] → failed (terminal)
 **Responsibility:** CRUD operations on tasks table
 
 **Functions:**
-- `createTask(type, payload, options)` → taskId
+- `createTask(type, input, options)` → taskId
 - `getTaskById(id)` → Task | null
 - `listTasks(filters)` → Task[]
 - `updateTaskStatus(id, status, updates)` → void
 - `deleteTask(id)` → Boolean
 - `incrementAttempts(id)` → void
-- `setTaskResult(id, result)` → void
+- `setTaskOutput(id, output)` → void
 - `setTaskError(id, error)` → void
 
 **Implementation Notes:**
 - Use transactions for atomic updates
 - Generate UUID v7 for task IDs (time-ordered)
 - Store all timestamps as Unix timestamps (integers, seconds)
-- Parse/stringify JSON for payload/result fields
+- Parse/stringify JSON for input/output fields
 - Validate status transitions
 
 ### 4.2 Scheduler Module
@@ -545,9 +545,9 @@ WHERE id = ?
    - If no: log warning, skip task
    - If yes: proceed
 
-3. Call handler(task.payload)
+3. Call handler(task.input)
    - If success:
-     - UPDATE status = 'success', result, completed_at
+     - UPDATE status = 'success', output, completed_at
      - WHERE id = ? AND version = currentVersion
    - If error:
      - Calculate run_after = NOW() + retry_delay
@@ -662,16 +662,16 @@ tq.init({ db, pollInterval: 1000, batchSize: 10 });
 
 // Setup workers (per task type)
 tq('send_email')
-  .setWorker(async (payload) => {
-    await sendEmail(payload.to, payload.subject, payload.body);
+  .setWorker(async (input) => {
+    await sendEmail(input.to, input.subject, input.body);
   })
   .setWorkerCount(2)
   .setRateLimit(10)
   .setTimeout(30);
 
 tq('process_image')
-  .setWorker(async (payload) => {
-    await processImage(payload.imageUrl);
+  .setWorker(async (input) => {
+    await processImage(input.imageUrl);
   })
   .setWorkerCount(4)
   .setRateLimit(20)
@@ -715,7 +715,7 @@ await tq.stop();               // Graceful shutdown
 - Title: “Task Queues”
 - Queues list: grouped by task type; each type is expandable
 - Queue content: recent tasks (latest first) with status, attempts, created, error
-- Task details: click a task to expand inline and show id, type, version, status, attempts, timestamps (created, updated, last_attempt_at, run_after, completed_at), payload JSON, result JSON, and full error
+- Task details: click a task to expand inline and show id, type, version, status, attempts, timestamps (created, updated, last_attempt_at, run_after, completed_at), input JSON, output JSON, and full error
 - Actions: delete terminal tasks (success/failed)
 - Refresh: open queues auto-refresh every 5 seconds
 - Scope: no global stats cards or worker controls on this view
@@ -811,7 +811,7 @@ interface TaskQueueOptions {
 // Task-type scoped context (chainable)
 interface TaskTypeContext<T = any> {
   // Enqueue task
-  add(payload: T, options?: EnqueueOptions): TaskTypeContext<T>;
+  add(input: T, options?: EnqueueOptions): TaskTypeContext<T>;
 
   // Configure worker
   setWorker(handler: TaskHandler<T>): TaskTypeContext<T>;
@@ -822,7 +822,7 @@ interface TaskTypeContext<T = any> {
 }
 
 // Task handler
-type TaskHandler<T = any> = (payload: T) => Promise<any>;
+type TaskHandler<T = any> = (input: T) => Promise<any>;
 
 // Enqueue options
 interface EnqueueOptions {
@@ -840,7 +840,7 @@ tq.init({ db, pollInterval: 1000 });
 
 // Setup (chainable)
 tq<CrawlPayload>('crawl')
-  .setWorker(async (payload) => await crawl(payload.url))
+  .setWorker(async (input) => await crawl(input.url))
   .setWorkerCount(3)
   .setRateLimit(10)
   .setTimeout(300);
@@ -861,13 +861,13 @@ tq.resume();
 class TaskManager {
   constructor(db: Database);
 
-  createTask(type: string, payload: any, options: EnqueueOptions): string;
+  createTask(type: string, input: any, options: EnqueueOptions): string;
   getTaskById(id: string): Task | null;
   listTasks(filters: ListFilters): Task[];
   updateTaskStatus(id: string, status: TaskStatus, updates: Partial<Task>): void;
   deleteTask(id: string): boolean;
   incrementAttempts(id: string): void;
-  setTaskResult(id: string, result: any): void;
+  setTaskOutput(id: string, output: any): void;
   setTaskError(id: string, error: string): void;
 }
 ```
@@ -893,7 +893,7 @@ class Scheduler {
 #### Executor
 
 ```typescript
-type TaskHandler<T = any> = (payload: T) => Promise<any>;
+type TaskHandler<T = any> = (input: T) => Promise<any>;
 
 class Executor {
   constructor(taskManager: TaskManager, scheduler: Scheduler);
@@ -1035,8 +1035,8 @@ tq.init({
 });
 
 // Register handlers
-tq('send_email').setWorker(async (payload) => {
-  await sendEmail(payload);
+tq('send_email').setWorker(async (input) => {
+  await sendEmail(input);
 }).setMaxAttempts(3);
 
 // Worker starts automatically
