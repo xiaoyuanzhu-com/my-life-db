@@ -9,6 +9,8 @@ import { getSettings } from '@/lib/config/storage';
 export interface HaidCrawlOptions {
   url: string;
   timeoutMs?: number;
+  screenshot?: boolean; // default: false
+  waitForJs?: boolean;  // default: true
 }
 
 export interface HaidCrawlResponse {
@@ -34,23 +36,76 @@ export async function crawlUrlWithHaid(
   options: HaidCrawlOptions
 ): Promise<HaidCrawlResponse> {
   const settings = await getSettings();
-  const vendorConfig = settings.vendors?.homelabAi || settings.vendors?.haid;
+  const vendorConfig = settings.vendors?.homelabAi || (settings as any)?.vendors?.haid;
 
-  // Placeholder: emit minimal stub content to unblock development.
-  // When API details are available, replace this with a real HTTP call to HAID.
-  const baseUrl = vendorConfig?.baseUrl || 'http://localhost:8000';
-  void baseUrl; // reserved for future use
+  const baseUrl = (vendorConfig?.baseUrl || 'https://haid.home.iloahz.com').replace(/\/$/, '');
+  const endpoint = `${baseUrl}/api/crawl`;
 
-  return {
+  const payload = {
     url: options.url,
-    redirectedTo: null,
-    html: '<!-- haid placeholder html -->',
-    metadata: {
-      title: 'Placeholder Title',
-      description: 'Placeholder description from HAID crawl stub.',
-      siteName: 'placeholder.site',
-      domain: 'placeholder.site',
-    },
-  };
-}
+    screenshot: options.screenshot ?? false,
+    wait_for_js: options.waitForJs ?? true,
+  } as const;
 
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: '*/*',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`HAID crawl error ${resp.status}: ${text || resp.statusText}`);
+    }
+
+    // Try parse JSON; if fails, treat as text
+    let data: any;
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await resp.json();
+    } else {
+      const htmlText = await resp.text();
+      data = { html: htmlText, url: options.url };
+    }
+
+    // Normalize response fields
+    const resUrl = data.url || options.url;
+    const redirectedTo = data.redirected_to || data.redirectedTo || null;
+    const html = data.html || data.content || data.body || '';
+
+    const meta = data.metadata || data.meta || {
+      title: data.title,
+      description: data.description,
+      author: data.author,
+      publishedDate: data.publishedDate || data.published_at,
+      image: data.image,
+      siteName: data.siteName || data.site_name,
+      domain: data.domain,
+    };
+
+    // Ensure domain present
+    if (!meta?.domain) {
+      try {
+        meta.domain = new URL(resUrl).hostname;
+      } catch {
+        // ignore
+      }
+    }
+
+    return {
+      url: resUrl,
+      redirectedTo,
+      html,
+      metadata: meta,
+    };
+  } finally {
+    clearTimeout(to);
+  }
+}
