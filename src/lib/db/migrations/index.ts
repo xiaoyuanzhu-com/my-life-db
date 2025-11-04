@@ -11,6 +11,7 @@ import migration008 from './008_tasks_rename_columns';
 import migration009 from './009_tasks_rebuild_input_output';
 import migration010 from './010_tasks_force_ensure_input_output';
 import migration011 from './011_rename_process_url_to_digest';
+import migration012 from './012_normalize_inbox_status';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -35,6 +36,7 @@ export const migrations: Migration[] = [
   migration009,
   migration010,
   migration011,
+  migration012,
 ];
 
 /**

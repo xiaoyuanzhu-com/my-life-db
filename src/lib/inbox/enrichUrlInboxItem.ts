@@ -221,10 +221,7 @@ export async function enrichUrlInboxItem(
       enrichedAt: new Date().toISOString(),
     });
 
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw new Error(errorMessage);
   }
 }
 
