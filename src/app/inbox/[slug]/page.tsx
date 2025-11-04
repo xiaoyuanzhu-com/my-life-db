@@ -25,8 +25,8 @@ async function readFirstText(folderName: string): Promise<string | null> {
   return null;
 }
 
-export default async function InboxDetailPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+export default async function InboxDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
 
   // Look up by folderName first (slug defaults to uuid initially)
   let item = getInboxItemByFolderName(slug);
