@@ -6,9 +6,10 @@ import 'server-only';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
-import { crawlUrl } from '../crawl/urlCrawler';
+import { crawlUrlDigest } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { generateUrlSlug } from '../crawl/urlSlugGenerator';
+import type { CrawlResult } from '../crawl/urlCrawler';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
@@ -52,20 +53,44 @@ export async function enrichUrlInboxItem(
 
     // 3. Crawl URL
     log.info({ url }, 'crawling url');
-    const crawlResult = await crawlUrl(url, {
-      timeout: 30000,
-      followRedirects: true,
-    });
+    const crawlResult = await crawlUrlDigest({ url, timeoutMs: 30000 });
+    const html = crawlResult.html ?? '';
+    let domain = crawlResult.metadata?.domain;
+    if (!domain) {
+      try {
+        domain = new URL(crawlResult.url).hostname;
+      } catch {
+        domain = 'unknown';
+      }
+    }
+    const metadata: CrawlResult['metadata'] = {
+      title: crawlResult.metadata?.title,
+      description: crawlResult.metadata?.description,
+      author: crawlResult.metadata?.author,
+      publishedDate: crawlResult.metadata?.publishedDate,
+      image: crawlResult.metadata?.image,
+      siteName: crawlResult.metadata?.siteName,
+      domain,
+    };
 
     // 4. Enrich content
     log.info({ url }, 'enriching content');
-    const mainContent = extractMainContent(crawlResult.html);
+    const mainContent = extractMainContent(html);
     const sanitizedContent = sanitizeContent(mainContent);
     const processed = enrichHtmlContent(sanitizedContent);
 
     // 5. Generate slug
     log.info({ url }, 'generating slug');
-    const slugResult = await generateUrlSlug(crawlResult);
+    const slugSource: CrawlResult = {
+      url: crawlResult.url,
+      html,
+      metadata,
+      text: processed.cleanText,
+      contentType: 'text/html',
+      status: 200,
+      redirectedTo: crawlResult.redirectedTo ?? undefined,
+    };
+    const slugResult = await generateUrlSlug(slugSource);
 
     // 6. Get item directory
     const itemDir = path.join(INBOX_DIR, inboxItem.folderName);
@@ -76,7 +101,7 @@ export async function enrichUrlInboxItem(
     // Save original HTML
     await fs.writeFile(
       path.join(itemDir, 'content.html'),
-      crawlResult.html,
+      html,
       'utf-8'
     );
 
@@ -101,14 +126,14 @@ export async function enrichUrlInboxItem(
           ...file,
           enrichment: {
             url: crawlResult.url,
-            title: crawlResult.metadata.title,
-            description: crawlResult.metadata.description,
-            author: crawlResult.metadata.author,
-            publishedDate: crawlResult.metadata.publishedDate,
-            image: crawlResult.metadata.image,
-            siteName: crawlResult.metadata.siteName,
-            domain: crawlResult.metadata.domain,
-            redirectedTo: crawlResult.redirectedTo,
+            title: metadata.title,
+            description: metadata.description,
+            author: metadata.author,
+            publishedDate: metadata.publishedDate,
+            image: metadata.image,
+            siteName: metadata.siteName,
+            domain: metadata.domain,
+            redirectedTo: crawlResult.redirectedTo ?? null,
             wordCount: processed.wordCount,
             readingTimeMinutes: processed.readingTimeMinutes,
           },
@@ -121,7 +146,7 @@ export async function enrichUrlInboxItem(
     updatedFiles.push(
       {
         filename: 'content.html',
-        size: Buffer.byteLength(crawlResult.html, 'utf-8'),
+        size: Buffer.byteLength(html, 'utf-8'),
         mimeType: 'text/html',
         type: 'text',
         hash: '', // TODO: Calculate hash
@@ -208,7 +233,7 @@ export async function enrichUrlInboxItem(
  * This is what you call to trigger URL enrichment
  */
 export function enqueueUrlEnrichment(inboxId: string, url: string): string {
-  const taskId = tq('process_url').add({
+  const taskId = tq('digest_url_crawl').add({
     inboxId,
     url,
   });
@@ -218,7 +243,7 @@ export function enqueueUrlEnrichment(inboxId: string, url: string): string {
   // Update projection for quick status checks
   upsertInboxTaskState({
     inboxId,
-    taskType: 'process_url',
+    taskType: 'digest_url_crawl',
     status: 'to-do',
     taskId,
     attempts: 0,
@@ -232,6 +257,6 @@ export function enqueueUrlEnrichment(inboxId: string, url: string): string {
  * Register URL enrichment handler (call this on app startup)
  */
 export function registerUrlEnrichmentHandler(): void {
-  tq('process_url').setWorker(enrichUrlInboxItem);
-  log.info({}, 'url enrichment handler registered');
+  tq('digest_url_crawl').setWorker(enrichUrlInboxItem);
+  log.info({}, 'url crawl handler registered');
 }

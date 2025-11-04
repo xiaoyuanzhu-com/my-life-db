@@ -53,7 +53,7 @@ export function registerPostIndexHandler(): void {
         if (url) {
           const taskId = enqueueUrlEnrichment(inboxId, url);
           log.info({ inboxId, url, taskId }, 'url enrichment enqueued');
-          return { success: true, queued: 'process_url', taskId };
+          return { success: true, queued: 'digest_url_crawl', taskId };
         } else {
           log.warn({ inboxId }, 'url not found for url-type item');
           return { success: false, reason: 'url_missing' };

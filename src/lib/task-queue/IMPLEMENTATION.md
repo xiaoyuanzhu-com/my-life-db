@@ -27,7 +27,7 @@ The task queue system provides a robust, fault-tolerant background job execution
            ▼
 ┌─────────────────────┐
 │  Enqueue Task       │
-│  tq('process_url')  │
+│  tq('digest_url_crawl')  │
 └──────────┬──────────┘
            │
            ▼
@@ -160,7 +160,7 @@ curl -X POST http://localhost:3000/api/tasks/worker/resume
 
 ## Task Flow
 
-### URL Crawling Task (`process_url`)
+### URL Crawling Task (`digest_url_crawl`)
 
 1. **Fetch task from queue** - Worker polls for ready tasks
 2. **Claim task** - Optimistic locking prevents duplicate execution
@@ -210,7 +210,7 @@ curl -X POST http://localhost:3000/api/tasks/worker/resume
 ```sql
 CREATE TABLE tasks (
   id TEXT PRIMARY KEY,              -- UUID v7 (time-sortable)
-  type TEXT NOT NULL,               -- 'process_url', 'image_caption', etc.
+  type TEXT NOT NULL,               -- 'digest_url_crawl', 'image_caption', etc.
   payload TEXT NOT NULL,            -- JSON: { inboxId, url }
   status TEXT DEFAULT 'to-do',      -- 'to-do', 'in-progress', 'success', 'failed'
   version INTEGER DEFAULT 0,        -- Optimistic locking
@@ -342,7 +342,7 @@ curl http://localhost:3000/api/inbox
 curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "process_url",
+    "type": "digest_url_crawl",
     "payload": {
       "inboxId": "<inbox-id>",
       "url": "https://react.dev/learn"
@@ -350,7 +350,7 @@ curl -X POST http://localhost:3000/api/tasks \
   }'
 
 # 5. Monitor task status
-curl http://localhost:3000/api/tasks?type=process_url
+curl http://localhost:3000/api/tasks?type=digest_url_crawl
 
 # 6. Check processed files
 ls -la data/.app/mylifedb/inbox/
@@ -399,7 +399,7 @@ recoverStaleTasks(staleTasks);
 Check error in task:
 
 ```bash
-curl http://localhost:3000/api/tasks?status=failed&type=process_url
+curl http://localhost:3000/api/tasks?status=failed&type=digest_url_crawl
 ```
 
 Common issues:

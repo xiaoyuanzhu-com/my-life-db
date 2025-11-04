@@ -43,7 +43,7 @@ export function summarizeInboxEnrichment(
   const hasMainContent = inbox.files.some((f) => f.filename === 'main-content.md');
   const hasScreenshot = inbox.files.some((f) => f.filename === 'screenshot.png' || f.filename === 'screenshot.jpg');
 
-  const crawlStage = stages.find((s) => s.taskType === 'process_url');
+  const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
   const crawlDone = Boolean(crawlStage?.status === 'success' || hasContentMd || hasContentHtml);
   const summaryDone = Boolean(inbox.aiSlug || hasMainContent);
   const screenshotReady = Boolean(hasScreenshot);
