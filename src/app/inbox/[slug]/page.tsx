@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { getInboxItemByFolderName, getInboxItemById } from '@/lib/db/inbox';
 import { CrawlButton } from '../_components/CrawlButton';
+import { SummaryButton } from '../_components/SummaryButton';
 
 export const runtime = 'nodejs';
 
@@ -39,24 +40,6 @@ async function readFirstText(folderName: string): Promise<string | null> {
   return null;
 }
 
-async function readDigestMarkdown(folderName: string): Promise<string | null> {
-  const candidates = ['digest/content.md', 'digest/main-content.md', 'digest/summary.md'];
-  for (const name of candidates) {
-    const file = await readFileIfExists(folderName, name);
-    if (!file) continue;
-    const content = file.toString('utf-8').trim();
-    if (content.length > 0) return content;
-  }
-  return null;
-}
-
-async function readDigestHtml(folderName: string): Promise<string | null> {
-  const file = await readFileIfExists(folderName, 'digest/content.html');
-  if (!file) return null;
-  const content = file.toString('utf-8').trim();
-  return content.length > 0 ? content : null;
-}
-
 async function readScreenshot(folderName: string): Promise<{ src: string; mimeType: string; filename: string } | null> {
   const candidates: Array<{ name: string; mimeType: string }> = [
     { name: 'digest/screenshot.png', mimeType: 'image/png' },
@@ -89,10 +72,8 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
   }
   if (!item) return notFound();
 
-  const [text, digestMarkdown, digestHtml, screenshot] = await Promise.all([
+  const [text, screenshot] = await Promise.all([
     readFirstText(item.folderName),
-    readDigestMarkdown(item.folderName),
-    readDigestHtml(item.folderName),
     readScreenshot(item.folderName),
   ]);
 
@@ -105,35 +86,33 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
           </Link>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-3">
           <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
             {item.type}
           </span>
           {item.type === 'url' && (
-            <CrawlButton inboxId={item.id} />
+            <>
+              <CrawlButton inboxId={item.id} />
+              <SummaryButton inboxId={item.id} />
+            </>
           )}
         </div>
 
-        {(digestMarkdown || digestHtml) && (
-          <section className="bg-card rounded-lg border">
-            <div className="border-b border-border px-6 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Digest</h2>
-              <p className="text-xs text-muted-foreground">Markdown extracted from enrichment</p>
-            </div>
-            <div className="p-6">
-              {digestHtml ? (
-                <div
-                  className="text-sm leading-7 text-foreground"
-                  dangerouslySetInnerHTML={{ __html: digestHtml }}
-                />
+        <section className="bg-card rounded-lg border">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Original Text</h2>
+            <p className="text-xs text-muted-foreground">Raw content from inbox files</p>
+          </div>
+          <div className="p-6">
+            <div className="text-sm whitespace-pre-wrap break-words leading-7 text-foreground">
+              {text && text.trim().length > 0 ? (
+                text
               ) : (
-                <div className="text-sm whitespace-pre-wrap break-words leading-7 text-foreground">
-                  {digestMarkdown}
-                </div>
+                <span className="text-muted-foreground italic">No text content</span>
               )}
             </div>
-          </section>
-        )}
+          </div>
+        </section>
 
         {screenshot && (
           <section className="bg-card rounded-lg border">
@@ -152,21 +131,6 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
           </section>
         )}
 
-        <section className="bg-card rounded-lg border">
-          <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Original Text</h2>
-            <p className="text-xs text-muted-foreground">Raw content from inbox files</p>
-          </div>
-          <div className="p-6">
-            <div className="text-sm whitespace-pre-wrap break-words leading-7 text-foreground">
-              {text && text.trim().length > 0 ? (
-                text
-              ) : (
-                <span className="text-muted-foreground italic">No text content</span>
-              )}
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );

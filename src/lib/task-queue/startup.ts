@@ -5,6 +5,7 @@
 
 import { startWorker } from './worker';
 import { registerUrlEnrichmentHandler } from '@/lib/inbox/enrichUrlInboxItem';
+import { registerUrlSummaryHandler } from '@/lib/inbox/summarizeUrlInboxItem';
 // import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
 // import { registerPostIndexHandler } from '@/lib/inbox/postIndexEnricher';
 import { getLogger } from '@/lib/log/logger';
@@ -30,6 +31,7 @@ export function initializeTaskQueue(options?: {
 
   // Register task handlers
   registerUrlEnrichmentHandler();
+  registerUrlSummaryHandler();
 
   // Start worker unless explicitly disabled
   if (options?.startWorker !== false) {

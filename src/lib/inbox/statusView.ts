@@ -53,10 +53,16 @@ export function summarizeInboxEnrichment(
     f.filename === 'digest/screenshot.png' ||
     f.filename === 'digest/screenshot.jpg'
   );
+  const hasSummary = inbox.files.some((f) =>
+    f.filename === 'summary.md' || f.filename === 'digest/summary.md'
+  );
 
   const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
   const crawlDone = Boolean(crawlStage?.status === 'success' || hasContentMd || hasContentHtml);
-  const summaryDone = Boolean(inbox.aiSlug || hasMainContent);
+  const summaryStage = stages.find((s) => s.taskType === 'digest_url_summary');
+  const summaryDone = Boolean(
+    summaryStage?.status === 'success' || hasSummary || inbox.aiSlug || hasMainContent
+  );
   const screenshotReady = Boolean(hasScreenshot);
 
   const totalCount = stages.length;
