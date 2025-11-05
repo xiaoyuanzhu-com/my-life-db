@@ -49,6 +49,7 @@ export interface UserSettings {
     };
     homelabAi?: {
       baseUrl?: string;
+      chromeCdpUrl?: string;
     };
   };
 

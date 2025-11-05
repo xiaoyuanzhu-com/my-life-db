@@ -56,6 +56,12 @@ export async function crawlUrlWithHaid(
   const endpointPath = vendorConfig?.endpoints?.webCrawl || '/api/crawl';
   const endpoint = `${baseUrl}${endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`}`;
 
+  const chromeCdpUrl = (() => {
+    const configured = typeof vendorConfig?.chromeCdpUrl === 'string' ? vendorConfig.chromeCdpUrl.trim() : '';
+    const override = typeof options.chromeCdpUrl === 'string' ? options.chromeCdpUrl.trim() : '';
+    return override || configured || undefined;
+  })();
+
   const payload: Record<string, unknown> = {
     url: options.url,
     screenshot: options.screenshot ?? false,
@@ -70,8 +76,8 @@ export async function crawlUrlWithHaid(
   if (typeof options.pageTimeout === 'number') {
     payload.page_timeout = options.pageTimeout;
   }
-  if (options.chromeCdpUrl) {
-    payload.chrome_cdp_url = options.chromeCdpUrl;
+  if (chromeCdpUrl) {
+    payload.chrome_cdp_url = chromeCdpUrl;
   }
 
   const controller = new AbortController();

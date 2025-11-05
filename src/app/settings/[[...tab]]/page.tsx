@@ -472,6 +472,25 @@ export default function SettingsPage() {
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Homelab AI - Remote Chrome CDP</label>
+                <Input
+                  placeholder="ws://remote-chrome:9222"
+                  value={settings.vendors?.homelabAi?.chromeCdpUrl || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      vendors: {
+                        ...settings.vendors,
+                        homelabAi: {
+                          ...settings.vendors?.homelabAi,
+                          chromeCdpUrl: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+              </div>
             </CardContent>
           </Card>
         )}

@@ -71,6 +71,7 @@ export async function loadSettings(): Promise<UserSettings> {
         },
         homelabAi: {
           baseUrl: getSetting(db, 'vendors_homelab_ai_base_url') || undefined,
+          chromeCdpUrl: getSetting(db, 'vendors_homelab_ai_chrome_cdp_url') || undefined,
         },
       },
       extraction: {
@@ -130,6 +131,9 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     if (settings.vendors?.openai?.baseUrl) setSetting(db, 'vendors_openai_base_url', settings.vendors.openai.baseUrl);
     if (settings.vendors?.openai?.apiKey) setSetting(db, 'vendors_openai_api_key', settings.vendors.openai.apiKey);
     if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
+    if (settings.vendors?.homelabAi?.chromeCdpUrl) {
+      setSetting(db, 'vendors_homelab_ai_chrome_cdp_url', settings.vendors.homelabAi.chromeCdpUrl);
+    }
 
     // Extraction
     setSetting(db, 'extraction_auto_enrich', String(settings.extraction.autoEnrich));
