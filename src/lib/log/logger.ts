@@ -90,8 +90,7 @@ function createPinoLogger(): PinoLike {
 
 // Global dynamic level controlled by setLogLevel
 let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
-let baseLogger: PinoLike = createPinoLogger();
-let isPino = process.env.USE_PINO === 'true' || (process.env.NODE_ENV === 'production' && process.env.USE_PINO !== 'false');
+const baseLogger: PinoLike = createPinoLogger();
 
 function should(method: LogLevel): boolean {
   return getLevelOrder(method) >= getLevelOrder(currentLevel);

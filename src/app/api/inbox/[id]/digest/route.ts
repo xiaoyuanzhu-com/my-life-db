@@ -10,12 +10,45 @@ import type { InboxFile, MessageType, FileType } from '@/types';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
 import { isAIAvailable } from '@/lib/ai/provider';
 import { enqueuePostIndex } from '@/lib/inbox/postIndexEnricher';
+import { readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
+import { getInboxStatusView } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxDigest' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
+}
+
+export async function GET(
+  request: NextRequest,
+  context: RouteContext
+) {
+  try {
+    const { id } = await context.params;
+    const item = getInboxItemById(id);
+    if (!item) {
+      return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
+    }
+
+    const [summary, tags, screenshot, status] = await Promise.all([
+      readInboxDigestSummary(item.folderName),
+      readInboxDigestTags(item.folderName),
+      readInboxDigestScreenshot(item.folderName),
+      getInboxStatusView(item.id),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      summary,
+      tags,
+      screenshot,
+      status,
+    });
+  } catch (error) {
+    log.error({ err: error }, 'get inbox digest failed');
+    return NextResponse.json({ error: 'Failed to fetch inbox digest' }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
