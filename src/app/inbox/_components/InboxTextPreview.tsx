@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 interface Props {
   folderName: string;
   files: Array<{ filename: string; type: string }>;
   maxChars?: number;
+  className?: string;
 }
 
-export function InboxTextPreview({ folderName, files, maxChars = 500 }: Props) {
+export function InboxTextPreview({ folderName, files, maxChars = 500, className }: Props) {
   const [text, setText] = useState<string>('');
   const [loaded, setLoaded] = useState(false);
 
@@ -57,20 +59,23 @@ export function InboxTextPreview({ folderName, files, maxChars = 500 }: Props) {
   }, [folderName, files]);
 
   if (!loaded) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return <div className={cn('text-sm text-muted-foreground', className)}>Loading…</div>;
   }
 
   const display = (text || '').trim();
   if (!display) {
-    return <div className="text-sm text-muted-foreground italic">No text content</div>;
+    return (
+      <div className={cn('text-sm text-muted-foreground italic', className)}>
+        No text content
+      </div>
+    );
   }
 
   const shortened = display.length > maxChars ? display.slice(0, maxChars) + '…' : display;
 
   return (
-    <div className="text-sm whitespace-pre-wrap break-words leading-6 text-foreground">
+    <div className={cn('text-sm whitespace-pre-wrap break-words leading-6 text-foreground', className)}>
       {shortened}
     </div>
   );
 }
-

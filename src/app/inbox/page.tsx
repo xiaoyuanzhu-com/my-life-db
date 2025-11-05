@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import type { InboxItem, InboxEnrichmentSummary } from '@/types';
-import { InboxTextPreview } from './_components/InboxTextPreview';
+import { InboxItemCard } from './_components/InboxItemCard';
 
 interface GroupedItems {
   date: string;
@@ -113,12 +113,8 @@ export default function InboxPage() {
                   {group.items.map((item) => {
                     const pathSegment = encodeURIComponent(item.aiSlug ?? item.folderName);
                     return (
-                      <Link key={item.id} href={`/inbox/${pathSegment}`} className="block">
-                        <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-                          <CardContent className="p-4">
-                            <InboxTextPreview folderName={item.folderName} files={item.files} />
-                          </CardContent>
-                        </Card>
+                      <Link key={item.id} href={`/inbox/${pathSegment}`} className="group block">
+                        <InboxItemCard item={item} />
                       </Link>
                     );
                   })}
