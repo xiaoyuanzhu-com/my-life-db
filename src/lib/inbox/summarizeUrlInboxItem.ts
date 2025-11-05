@@ -14,6 +14,7 @@ import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
 const log = getLogger({ module: 'InboxSummary' });
 const SUMMARY_FILENAME = 'digest/summary.md';
 const SUMMARY_MIME = 'text/markdown';
+let handlerRegistered = false;
 
 function htmlToText(html: string): string {
   return html
@@ -83,6 +84,7 @@ async function writeSummaryFile(folderPath: string, summary: string): Promise<{ 
 }
 
 export function enqueueUrlSummary(inboxId: string): string {
+  registerUrlSummaryHandler();
   const taskId = tq('digest_url_summary').add({ inboxId });
 
   upsertInboxTaskState({
@@ -99,6 +101,11 @@ export function enqueueUrlSummary(inboxId: string): string {
 }
 
 export function registerUrlSummaryHandler(): void {
+  if (handlerRegistered) {
+    return;
+  }
+  handlerRegistered = true;
+
   tq('digest_url_summary').setWorker(async (input: { inboxId: string }) => {
     const { inboxId } = input;
 
