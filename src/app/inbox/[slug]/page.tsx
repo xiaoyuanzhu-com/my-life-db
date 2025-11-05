@@ -6,6 +6,7 @@ import { INBOX_DIR } from '@/lib/fs/storage';
 import { getInboxItemByFolderName, getInboxItemById } from '@/lib/db/inbox';
 import { CrawlButton } from '../_components/CrawlButton';
 import { SummaryButton } from '../_components/SummaryButton';
+import { TaggingButton } from '../_components/TaggingButton';
 
 export const runtime = 'nodejs';
 
@@ -40,6 +41,28 @@ async function readFirstText(folderName: string): Promise<string | null> {
   return null;
 }
 
+async function readSummary(folderName: string): Promise<string | null> {
+  const file = await readFileIfExists(folderName, 'digest/summary.md');
+  if (!file) return null;
+  const content = file.toString('utf-8').trim();
+  return content.length > 0 ? content : null;
+}
+
+async function readTags(folderName: string): Promise<string[] | null> {
+  const file = await readFileIfExists(folderName, 'digest/tags.json');
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(file.toString('utf-8')) as { tags?: unknown };
+    if (!Array.isArray(parsed.tags)) return null;
+    const cleaned = parsed.tags
+      .map(tag => (typeof tag === 'string' ? tag.trim() : ''))
+      .filter(tag => tag.length > 0);
+    return cleaned.length > 0 ? cleaned : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readScreenshot(folderName: string): Promise<{ src: string; mimeType: string; filename: string } | null> {
   const candidates: Array<{ name: string; mimeType: string }> = [
     { name: 'digest/screenshot.png', mimeType: 'image/png' },
@@ -72,8 +95,10 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
   }
   if (!item) return notFound();
 
-  const [text, screenshot] = await Promise.all([
+  const [text, summary, tags, screenshot] = await Promise.all([
     readFirstText(item.folderName),
+    readSummary(item.folderName),
+    readTags(item.folderName),
     readScreenshot(item.folderName),
   ]);
 
@@ -94,6 +119,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
             <>
               <CrawlButton inboxId={item.id} />
               <SummaryButton inboxId={item.id} />
+              <TaggingButton inboxId={item.id} />
             </>
           )}
         </div>
@@ -113,6 +139,41 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
             </div>
           </div>
         </section>
+
+        {summary && (
+          <section className="bg-card rounded-lg border">
+            <div className="border-b border-border px-6 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Summary</h2>
+              <p className="text-xs text-muted-foreground">Digest summary (AI generated)</p>
+            </div>
+            <div className="p-6">
+              <div className="text-sm whitespace-pre-wrap break-words leading-7 text-foreground">
+                {summary}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {tags && (
+          <section className="bg-card rounded-lg border">
+            <div className="border-b border-border px-6 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Tags</h2>
+              <p className="text-xs text-muted-foreground">AI generated keywords</p>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-wrap gap-2">
+                {tags.map(tag => (
+                  <span
+                    key={tag}
+                    className="text-xs font-medium px-2 py-1 rounded-full border border-border bg-muted text-muted-foreground"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {screenshot && (
           <section className="bg-card rounded-lg border">

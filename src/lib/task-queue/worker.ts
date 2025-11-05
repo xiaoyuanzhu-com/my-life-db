@@ -172,18 +172,27 @@ export class TaskWorker {
       }
 
       // Fetch ready tasks
-      const tasks = getReadyTasks(this.config.batchSize);
+      const tasks = getReadyTasks(this.config.batchSize * 2);
 
       if (tasks.length === 0) {
         this.log('No ready tasks');
         return;
       }
 
-      this.log(`Processing ${tasks.length} task(s)`);
+      const readyTasks = tasks.filter(
+        (task) => !(task.status === 'failed' && task.attempts >= this.config.maxAttempts)
+      ).slice(0, this.config.batchSize);
+
+      if (readyTasks.length === 0) {
+        this.log('No eligible tasks after filtering');
+        return;
+      }
+
+      this.log(`Processing ${readyTasks.length} task(s)`);
 
       // Execute tasks in parallel (up to batchSize)
       const results = await Promise.allSettled(
-        tasks.map(task => executeTask(task.id, this.config.maxAttempts))
+        readyTasks.map(task => executeTask(task.id, this.config.maxAttempts))
       );
 
       // Log results
@@ -191,7 +200,7 @@ export class TaskWorker {
       let failedCount = 0;
 
       results.forEach((result, index) => {
-        const task = tasks[index];
+        const task = readyTasks[index];
 
         if (result.status === 'fulfilled') {
           const { success, error } = result.value;

@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { getInboxItemById } from '@/lib/db/inbox';
 import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 import { enqueueUrlSummary } from '@/lib/inbox/summarizeUrlInboxItem';
+import { enqueueUrlTagging } from '@/lib/inbox/tagUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -104,6 +105,17 @@ export async function POST(
       } else {
         const taskId = enqueueUrlSummary(item.id);
         actions.push({ stage: 'summary', taskId });
+      }
+    }
+
+    if (stage === 'tagging' || stage === 'all') {
+      if (item.type !== 'url') {
+        if (stage === 'tagging' && actions.length === 0) {
+          return NextResponse.json({ error: 'Tagging stage only supported for URL items' }, { status: 400 });
+        }
+      } else {
+        const taskId = enqueueUrlTagging(item.id);
+        actions.push({ stage: 'tagging', taskId });
       }
     }
 

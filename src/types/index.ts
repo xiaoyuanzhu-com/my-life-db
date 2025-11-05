@@ -284,6 +284,7 @@ export interface InboxEnrichmentSummary {
   crawlDone: boolean;
   summaryDone: boolean;
   screenshotReady: boolean;
+  tagsReady: boolean;
   canRetry: boolean;
 }
 
