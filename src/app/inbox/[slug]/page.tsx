@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getInboxItemByFolderName, getInboxItemById } from '@/lib/db/inbox';
-import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
+import { getInboxItemByFolderName, getInboxItemById, getInboxItemBySlug } from '@/lib/db/inbox';
+import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
 import { getInboxStatusView } from '@/lib/inbox/statusView';
 import { CrawlButton } from '../_components/CrawlButton';
 import { SummaryButton } from '../_components/SummaryButton';
 import { TaggingButton } from '../_components/TaggingButton';
+import { SlugButton } from '../_components/SlugButton';
 import { DigestCoordinator } from './_components/DigestCoordinator';
 
 export const runtime = 'nodejs';
@@ -15,20 +16,24 @@ function isUUID(value: string): boolean {
 }
 
 export default async function InboxDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+  const { slug: slugParam } = await params;
 
   // Look up by folderName first (slug defaults to uuid initially)
-  let item = getInboxItemByFolderName(slug);
-  if (!item && isUUID(slug)) {
-    item = getInboxItemById(slug);
+  let item = getInboxItemByFolderName(slugParam);
+  if (!item) {
+    item = getInboxItemBySlug(slugParam);
+  }
+  if (!item && isUUID(slugParam)) {
+    item = getInboxItemById(slugParam);
   }
   if (!item) return notFound();
 
-  const [text, summary, tags, screenshot, statusView] = await Promise.all([
+  const [text, summary, tags, screenshot, digestSlug, statusView] = await Promise.all([
     readInboxPrimaryText(item.folderName),
     readInboxDigestSummary(item.folderName),
     readInboxDigestTags(item.folderName),
     readInboxDigestScreenshot(item.folderName),
+    readInboxDigestSlug(item.folderName),
     getInboxStatusView(item.id),
   ]);
 
@@ -52,6 +57,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
               <TaggingButton inboxId={item.id} />
             </>
           )}
+          <SlugButton inboxId={item.id} />
         </div>
 
         <section className="bg-card rounded-lg border">
@@ -76,6 +82,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
           initialSummary={summary}
           initialTags={tags}
           initialScreenshot={screenshot}
+          initialSlug={digestSlug}
           initialStatus={statusView}
         />
       </div>

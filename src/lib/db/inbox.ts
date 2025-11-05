@@ -62,6 +62,21 @@ export function getInboxItemByFolderName(folderName: string): InboxItem | null {
 }
 
 /**
+ * Get an inbox item by generated slug (ai_slug)
+ */
+export function getInboxItemBySlug(slug: string): InboxItem | null {
+  if (!slug || slug.trim().length === 0) return null;
+
+  const db = getDatabase();
+  const row = db
+    .prepare('SELECT * FROM inbox WHERE ai_slug = ?')
+    .get(slug) as unknown;
+
+  if (!row) return null;
+  return rowToInboxItem(row);
+}
+
+/**
  * List all inbox items
  */
 export function listInboxItems(options?: {

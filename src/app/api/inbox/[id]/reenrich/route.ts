@@ -5,6 +5,7 @@ import { getInboxItemById } from '@/lib/db/inbox';
 import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 import { enqueueUrlSummary } from '@/lib/inbox/summarizeUrlInboxItem';
 import { enqueueUrlTagging } from '@/lib/inbox/tagUrlInboxItem';
+import { enqueueUrlSlug } from '@/lib/inbox/slugUrlInboxItem';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -117,6 +118,11 @@ export async function POST(
         const taskId = enqueueUrlTagging(item.id);
         actions.push({ stage: 'tagging', taskId });
       }
+    }
+
+    if (stage === 'slug' || stage === 'all') {
+      const taskId = enqueueUrlSlug(item.id);
+      actions.push({ stage: 'slug', taskId });
     }
 
     if (actions.length === 0) {

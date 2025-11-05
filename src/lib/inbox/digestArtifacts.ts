@@ -66,6 +66,13 @@ export interface InboxDigestScreenshot {
   filename: string;
 }
 
+export interface InboxDigestSlug {
+  slug: string;
+  title?: string;
+  source?: string;
+  generatedAt?: string;
+}
+
 export async function readInboxDigestScreenshot(folderName: string): Promise<InboxDigestScreenshot | null> {
   const candidates: Array<{ name: string; mimeType: string }> = [
     { name: 'digest/screenshot.png', mimeType: 'image/png' },
@@ -87,4 +94,31 @@ export async function readInboxDigestScreenshot(folderName: string): Promise<Inb
   }
 
   return null;
+}
+
+export async function readInboxDigestSlug(folderName: string): Promise<InboxDigestSlug | null> {
+  const file = await readFileIfExists(folderName, 'digest/slug.json');
+  if (!file) return null;
+
+  try {
+    const payload = JSON.parse(file.toString('utf-8')) as {
+      slug?: unknown;
+      title?: unknown;
+      source?: unknown;
+      generatedAt?: unknown;
+    };
+
+    if (typeof payload.slug !== 'string' || payload.slug.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      slug: payload.slug.trim(),
+      title: typeof payload.title === 'string' ? payload.title : undefined,
+      source: typeof payload.source === 'string' ? payload.source : undefined,
+      generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
 }

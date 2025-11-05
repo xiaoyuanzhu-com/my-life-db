@@ -10,7 +10,7 @@ import type { InboxFile, MessageType, FileType } from '@/types';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
 import { isAIAvailable } from '@/lib/ai/provider';
 import { enqueuePostIndex } from '@/lib/inbox/postIndexEnricher';
-import { readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
+import { readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
 import { getInboxStatusView } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
 
@@ -31,10 +31,11 @@ export async function GET(
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }
 
-    const [summary, tags, screenshot, status] = await Promise.all([
+    const [summary, tags, screenshot, slug, status] = await Promise.all([
       readInboxDigestSummary(item.folderName),
       readInboxDigestTags(item.folderName),
       readInboxDigestScreenshot(item.folderName),
+      readInboxDigestSlug(item.folderName),
       getInboxStatusView(item.id),
     ]);
 
@@ -43,6 +44,7 @@ export async function GET(
       summary,
       tags,
       screenshot,
+      slug,
       status,
     });
   } catch (error) {

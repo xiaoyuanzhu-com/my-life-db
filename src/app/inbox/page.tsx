@@ -110,15 +110,18 @@ export default function InboxPage() {
 
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {group.items.map((item) => (
-                    <Link key={item.id} href={`/inbox/${encodeURIComponent(item.folderName)}`} className="block">
-                      <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4">
-                          <InboxTextPreview folderName={item.folderName} files={item.files} />
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
+                  {group.items.map((item) => {
+                    const pathSegment = encodeURIComponent(item.aiSlug ?? item.folderName);
+                    return (
+                      <Link key={item.id} href={`/inbox/${pathSegment}`} className="block">
+                        <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+                          <CardContent className="p-4">
+                            <InboxTextPreview folderName={item.folderName} files={item.files} />
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    );
+                  })}
                 </div>
               </section>
             ))}

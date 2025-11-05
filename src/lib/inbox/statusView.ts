@@ -23,6 +23,7 @@ export interface InboxStatusView {
   summaryDone: boolean;
   screenshotReady: boolean;
   tagsReady: boolean;
+  slugReady: boolean;
   canRetry: boolean;
 }
 
@@ -60,6 +61,7 @@ export function summarizeInboxEnrichment(
   const hasTags = inbox.files.some((f) =>
     f.filename === 'tags.json' || f.filename === 'digest/tags.json'
   );
+  const hasSlug = inbox.files.some((f) => f.filename === 'digest/slug.json');
 
   const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
   const crawlDone = Boolean(crawlStage?.status === 'success' || hasContentMd || hasContentHtml);
@@ -70,6 +72,8 @@ export function summarizeInboxEnrichment(
   const screenshotReady = Boolean(hasScreenshot);
   const taggingStage = stages.find((s) => s.taskType === 'digest_url_tagging');
   const tagsReady = Boolean(taggingStage?.status === 'success' || hasTags);
+  const slugStage = stages.find((s) => s.taskType === 'digest_url_slug');
+  const slugReady = Boolean(slugStage?.status === 'success' || hasSlug || inbox.aiSlug);
 
   const totalCount = stages.length;
   const completedCount = stages.filter((s) => s.status === 'success').length;
@@ -87,6 +91,7 @@ export function summarizeInboxEnrichment(
     summaryDone,
     screenshotReady,
     tagsReady,
+    slugReady,
     canRetry,
   };
 }

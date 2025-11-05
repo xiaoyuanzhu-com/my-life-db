@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import type { InboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
+import type { InboxDigestScreenshot, InboxDigestSlug } from '@/lib/inbox/digestArtifacts';
 import type { InboxStatusView } from '@/lib/inbox/statusView';
 import { cn } from '@/lib/utils';
 import { DigestProgress } from './DigestProgress';
@@ -13,6 +13,7 @@ const STAGES = [
   { key: 'crawl', label: 'Crawl', taskType: 'digest_url_crawl' },
   { key: 'summary', label: 'Summary', taskType: 'digest_url_summary' },
   { key: 'tagging', label: 'Tagging', taskType: 'digest_url_tagging' },
+  { key: 'slug', label: 'Slug', taskType: 'digest_url_slug' },
 ] as const;
 
 type StageName = typeof STAGES[number]['key'];
@@ -24,6 +25,7 @@ interface DigestCoordinatorProps {
   initialSummary: string | null;
   initialTags: string[] | null;
   initialScreenshot: InboxDigestScreenshot | null;
+  initialSlug: InboxDigestSlug | null;
   initialStatus: InboxStatusView | null;
 }
 
@@ -31,6 +33,7 @@ interface DigestResponse {
   summary?: string | null;
   tags?: string[] | null;
   screenshot?: InboxDigestScreenshot | null;
+  slug?: InboxDigestSlug | null;
   status?: InboxStatusView | null;
   error?: string;
 }
@@ -39,6 +42,7 @@ const createDefaultStageState = (): Record<StageName, boolean> => ({
   crawl: false,
   summary: false,
   tagging: false,
+  slug: false,
 });
 
 export function DigestCoordinator({
@@ -47,11 +51,13 @@ export function DigestCoordinator({
   initialSummary,
   initialTags,
   initialScreenshot,
+  initialSlug,
   initialStatus,
 }: DigestCoordinatorProps) {
   const [summary, setSummary] = useState<string | null>(initialSummary);
   const [tags, setTags] = useState<string[] | null>(initialTags);
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
+  const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
   const [status, setStatus] = useState<InboxStatusView | null>(initialStatus);
   const [isPipelineActive, setIsPipelineActive] = useState(false);
   const [triggeredStages, setTriggeredStages] = useState<Record<StageName, boolean>>(createDefaultStageState());
@@ -83,6 +89,7 @@ export function DigestCoordinator({
       setSummary(data.summary ?? null);
       setTags(Array.isArray(data.tags) ? data.tags : null);
       setScreenshot(data.screenshot ?? null);
+      setSlug(data.slug ?? null);
       setStatus(data.status ?? null);
       setPollError(null);
     } catch (error) {
@@ -152,9 +159,16 @@ export function DigestCoordinator({
     const crawlStatus = stageStatusMap['digest_url_crawl'];
     const summaryStatus = stageStatusMap['digest_url_summary'];
     const taggingStatus = stageStatusMap['digest_url_tagging'];
+    const slugStatus = stageStatusMap['digest_url_slug'];
 
-    if (crawlStatus === 'failed' || summaryStatus === 'failed' || taggingStatus === 'failed') {
-      const failedStage = crawlStatus === 'failed' ? 'crawl' : summaryStatus === 'failed' ? 'summary' : 'tagging';
+    if (crawlStatus === 'failed' || summaryStatus === 'failed' || taggingStatus === 'failed' || slugStatus === 'failed') {
+      const failedStage = crawlStatus === 'failed'
+        ? 'crawl'
+        : summaryStatus === 'failed'
+          ? 'summary'
+          : taggingStatus === 'failed'
+            ? 'tagging'
+            : 'slug';
       setPipelineError(`Digest failed at ${failedStage} stage. Resolve the issue and retry.`);
       setIsPipelineActive(false);
       return;
@@ -170,7 +184,12 @@ export function DigestCoordinator({
       return;
     }
 
-    if (taggingStatus === 'success') {
+    if (!triggeredStages.slug && taggingStatus === 'success') {
+      triggerStage('slug').catch(() => {});
+      return;
+    }
+
+    if (slugStatus === 'success') {
       setIsPipelineActive(false);
       setTriggeredStages(createDefaultStageState());
     }
@@ -218,7 +237,7 @@ export function DigestCoordinator({
                   ? 'opacity-70 cursor-not-allowed'
                   : 'hover:bg-accent'
               )}
-              title="Run crawl -> summary -> tagging in order"
+              title="Run crawl -> summary -> tagging -> slug in order"
             >
               {(isDigestButtonBusy || isPipelineActive) ? (
                 <span className="flex items-center gap-1">
@@ -269,6 +288,34 @@ export function DigestCoordinator({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">Tags not generated yet.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-card rounded-lg border">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-sm font-semibold text-foreground">Slug</h2>
+          <p className="text-xs text-muted-foreground">Generated handle for this URL digest</p>
+        </div>
+        <div className="p-6 space-y-2">
+          {slug?.slug ? (
+            <>
+              <code className="inline-block rounded bg-muted px-2 py-1 text-xs font-mono text-foreground">
+                {slug.slug}
+              </code>
+              {slug.title && (
+                <p className="text-xs text-muted-foreground">
+                  Title hint: <span className="text-foreground">{slug.title}</span>
+                </p>
+              )}
+              {slug.source && (
+                <p className="text-xs text-muted-foreground">
+                  Source: <span className="text-foreground">{slug.source}</span>
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">Slug not generated yet.</p>
           )}
         </div>
       </section>
