@@ -34,36 +34,59 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Inbox folder missing on disk' }, { status: 404 });
     }
 
-    // Read folder contents
-    const filenames = await fs.readdir(folderPath);
+    // Read folder contents (allow digest subdirectory)
     const inboxFiles: InboxFile[] = [];
     const textSamples: Record<string, string> = {};
     let metadataObj: unknown = undefined;
 
-    for (const filename of filenames) {
-      const filePath = path.join(folderPath, filename);
-      const stat = await fs.stat(filePath);
-      if (stat.isDirectory()) continue; // ignore subdirectories
+    const diskFiles: Array<{ relativePath: string; absolutePath: string }> = [];
+    let unsupportedSubdir = false;
 
-      const buf = await fs.readFile(filePath);
+    async function collectFiles(currentAbs: string, currentRel: string): Promise<void> {
+      const entries = await fs.readdir(currentAbs, { withFileTypes: true });
+      for (const entry of entries) {
+        const nextAbs = path.join(currentAbs, entry.name);
+        const nextRel = currentRel ? `${currentRel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          if (currentRel === '' && entry.name === 'digest') {
+            await collectFiles(nextAbs, nextRel);
+          } else {
+            unsupportedSubdir = true;
+            return;
+          }
+        } else {
+          diskFiles.push({ relativePath: nextRel, absolutePath: nextAbs });
+        }
+      }
+    }
+
+    await collectFiles(folderPath, '');
+
+    if (unsupportedSubdir) {
+      return NextResponse.json({ error: 'Unsupported folder structure' }, { status: 400 });
+    }
+
+    for (const file of diskFiles) {
+      const stat = await fs.stat(file.absolutePath);
+      const buf = await fs.readFile(file.absolutePath);
       const hash = createHash('sha256').update(buf).digest('hex');
-      const mimeType = getMimeType(filename);
+      const mimeType = getMimeType(file.relativePath);
       const fileType = getFileType(mimeType);
 
       inboxFiles.push({
-        filename,
+        filename: file.relativePath,
         size: stat.size,
         mimeType,
         type: fileType,
         hash,
       });
 
-      const lower = filename.toLowerCase();
+      const lower = file.relativePath.toLowerCase();
       if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.html') || lower.endsWith('.json')) {
         const text = buf.toString('utf-8');
-        textSamples[filename] = text.length > 1000 ? text.slice(0, 1000) : text;
+        textSamples[file.relativePath] = text.length > 1000 ? text.slice(0, 1000) : text;
       }
-      if (lower === 'metadata.json') {
+      if (lower === 'metadata.json' || lower === 'digest/metadata.json') {
         try {
           metadataObj = JSON.parse(buf.toString('utf-8'));
         } catch {}

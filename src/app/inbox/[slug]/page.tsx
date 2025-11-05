@@ -13,7 +13,15 @@ function isUUID(value: string): boolean {
 }
 
 async function readFirstText(folderName: string): Promise<string | null> {
-  const candidates = ['text.md', 'note.md', 'notes.md', 'content.md', 'url.txt'];
+  const candidates = [
+    'text.md',
+    'note.md',
+    'notes.md',
+    'content.md',
+    'digest/content.md',
+    'digest/main-content.md',
+    'url.txt',
+  ];
   for (const name of candidates) {
     try {
       const p = path.join(INBOX_DIR, folderName, name);

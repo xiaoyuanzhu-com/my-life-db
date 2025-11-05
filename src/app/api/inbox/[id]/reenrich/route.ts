@@ -45,13 +45,22 @@ export async function POST(
       );
 
       async function readFileIfExists(name: string): Promise<string | null> {
-        try {
-          const p = path.join(baseDir, name);
-          const s = await fs.readFile(p, 'utf-8');
-          return s;
-        } catch {
-          return null;
+        const variants = new Set<string>();
+        variants.add(name);
+        if (!name.includes('/') && !name.startsWith('digest/')) {
+          variants.add(`digest/${name}`);
         }
+
+        for (const variant of variants) {
+          try {
+            const p = path.join(baseDir, variant);
+            const s = await fs.readFile(p, 'utf-8');
+            return s;
+          } catch {
+            // Continue to next variant
+          }
+        }
+        return null;
       }
 
       function firstUrlFromText(text: string | null): string | null {

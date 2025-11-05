@@ -38,10 +38,21 @@ export function summarizeInboxEnrichment(
   }));
 
   // Derive booleans from files where possible
-  const hasContentMd = inbox.files.some((f) => f.filename === 'content.md');
-  const hasContentHtml = inbox.files.some((f) => f.filename === 'content.html');
-  const hasMainContent = inbox.files.some((f) => f.filename === 'main-content.md');
-  const hasScreenshot = inbox.files.some((f) => f.filename === 'screenshot.png' || f.filename === 'screenshot.jpg');
+  const hasContentMd = inbox.files.some((f) =>
+    f.filename === 'content.md' || f.filename === 'digest/content.md'
+  );
+  const hasContentHtml = inbox.files.some((f) =>
+    f.filename === 'content.html' || f.filename === 'digest/content.html'
+  );
+  const hasMainContent = inbox.files.some((f) =>
+    f.filename === 'main-content.md' || f.filename === 'digest/main-content.md'
+  );
+  const hasScreenshot = inbox.files.some((f) =>
+    f.filename === 'screenshot.png' ||
+    f.filename === 'screenshot.jpg' ||
+    f.filename === 'digest/screenshot.png' ||
+    f.filename === 'digest/screenshot.jpg'
+  );
 
   const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
   const crawlDone = Boolean(crawlStage?.status === 'success' || hasContentMd || hasContentHtml);

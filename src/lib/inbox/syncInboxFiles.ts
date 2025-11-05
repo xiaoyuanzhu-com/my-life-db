@@ -82,27 +82,36 @@ async function scanInboxFolders(): Promise<{
 
     try {
       // Read folder contents
-      const files = await fs.readdir(folderPath);
+      const diskFiles: Array<{ relativePath: string; absolutePath: string }> = [];
+      let unsupportedSubdir = false;
 
-      // Skip empty folders
-      if (files.length === 0) {
-        log.info({ folderName }, 'skipping empty folder');
-        continue;
-      }
-
-      // Check for subdirectories - skip folders with subdirectories
-      let hasSubdirs = false;
-      for (const file of files) {
-        const filePath = path.join(folderPath, file);
-        const stat = await fs.stat(filePath);
-        if (stat.isDirectory()) {
-          hasSubdirs = true;
-          break;
+      async function collectFiles(absoluteDir: string, relativeDir: string): Promise<void> {
+        const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+        for (const entry of entries) {
+          const nextAbsolute = path.join(absoluteDir, entry.name);
+          const nextRelative = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            if (relativeDir === '' && entry.name === 'digest') {
+              await collectFiles(nextAbsolute, nextRelative);
+            } else {
+              unsupportedSubdir = true;
+              return;
+            }
+          } else {
+            diskFiles.push({ relativePath: nextRelative, absolutePath: nextAbsolute });
+          }
         }
       }
 
-      if (hasSubdirs) {
-        log.info({ folderName }, 'skipping folder with subdirectories');
+      await collectFiles(folderPath, '');
+
+      if (unsupportedSubdir) {
+        log.info({ folderName }, 'skipping folder with unsupported subdirectories');
+        continue;
+      }
+
+      if (diskFiles.length === 0) {
+        log.info({ folderName }, 'no files discovered in folder');
         continue;
       }
 
@@ -111,17 +120,15 @@ async function scanInboxFolders(): Promise<{
       const textSamples: Record<string, string> = {};
       let metadataObj: unknown = undefined;
 
-      for (const filename of files) {
-        const filePath = path.join(folderPath, filename);
-
+      for (const file of diskFiles) {
         try {
-          const stat = await fs.stat(filePath);
-          const content = await fs.readFile(filePath);
+          const stat = await fs.stat(file.absolutePath);
+          const content = await fs.readFile(file.absolutePath);
           const hash = createHash('sha256').update(content).digest('hex');
-          const mimeType = getMimeType(filename);
+          const mimeType = getMimeType(file.relativePath);
 
           inboxFiles.push({
-            filename,
+            filename: file.relativePath,
             size: stat.size,
             mimeType,
             type: getFileType(mimeType),
@@ -129,10 +136,10 @@ async function scanInboxFolders(): Promise<{
           });
 
           // Capture small samples for AI (text-like files)
-          const lower = filename.toLowerCase();
+          const lower = file.relativePath.toLowerCase();
           if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.html') || lower.endsWith('.json')) {
             const text = content.toString('utf-8');
-            textSamples[filename] = text.length > 1000 ? text.slice(0, 1000) : text;
+            textSamples[file.relativePath] = text.length > 1000 ? text.slice(0, 1000) : text;
           }
 
           // Parse metadata.json if present
@@ -143,11 +150,19 @@ async function scanInboxFolders(): Promise<{
               // ignore
             }
           }
+
+          if (lower === 'digest/metadata.json') {
+            try {
+              metadataObj = JSON.parse(content.toString('utf-8'));
+            } catch {
+              // ignore
+            }
+          }
         } catch (error) {
-          log.error({ err: error, filename, folderName }, 'failed to process file');
+          log.error({ err: error, filename: file.relativePath, folderName }, 'failed to process file');
           result.errors.push({
             folder: folderName,
-            error: `Failed to process file: ${filename}`,
+            error: `Failed to process file: ${file.relativePath}`,
           });
         }
       }

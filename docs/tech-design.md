@@ -414,13 +414,13 @@ CREATE TABLE inbox (
 
   -- User input files (JSON array - original user uploads)
   -- Schema: [{ filename, size, mimeType, type, hash }]
-  -- User text saved as: content.md
+  -- User text saved as: text.md
   -- User files saved as: original filenames (photo.jpg, document.pdf, etc.)
   user_files JSON NOT NULL,
 
   -- Processed output files (JSON array - AI/system generated)
   -- Schema: [{ filename, size, mimeType, type, purpose }]
-  -- Examples: webpage.html, webpage.png, summary.md, caption.md, transcript.md
+  -- Examples: digest/content.html, digest/content.md, digest/screenshot.png
   -- All processed filenames stored explicitly in DB (not by convention)
   -- Conflict resolution: If user file exists, apply macOS-style deduplication (summary 2.md)
   processed_files JSON,
@@ -671,17 +671,16 @@ MY_DATA_DIR/
 │       ├── database.sqlite          # All metadata (inbox + library index)
 │       ├── inbox/                   # Temporary staging (app-managed)
 │       │   ├── {uuid}/              # Initially UUID-named
-│       │   │   ├── content.md       # User's raw text input (if any)
+│       │   │   ├── text.md          # User's raw text input (if any)
 │       │   │   ├── photo.jpg        # User's uploaded file (if any)
 │       │   │   └── song.mp3         # Another file (if any)
-│       │   └── {slug}/              # After enrichment, renamed to slug
-│       │       ├── content.md       # User's original text input
+│       │   └── {slug}/              # Optional manual rename to slug after review
+│       │       ├── text.md          # User's original text input
 │       │       ├── photo.jpg        # User's original file(s) - NEVER renamed
-│       │       ├── webpage.html     # Processed: original HTML (for URLs)
-│       │       ├── webpage.png      # Processed: visual capture (for URLs)
-│       │       ├── summary.md       # Processed: cleaned extraction (for URLs)
-│       │       ├── caption.md       # Processed: AI-generated caption (for images)
-│       │       └── transcript.md    # Processed: transcription (for audio)
+│       │       └── digest/          # Generated artifacts (per enrichment)
+│       │           ├── content.md   # Markdown from HAID crawler
+│       │           ├── content.html # Raw HTML from HAID crawler (if available)
+│       │           └── screenshot.png # Screenshot from HAID crawler
 │       ├── cache/
 │       │   ├── thumbnails/
 │       │   └── temp/
@@ -718,12 +717,12 @@ MY_DATA_DIR/
    - **Decision:** Track user files and enriched files separately in database
    - **Why:** Clear separation of concerns (original vs generated), easy to identify which files to preserve vs regenerate
    - **User files:**
-     - Text input: `content.md`
+     - Text input: `text.md`
      - Attachments: original filenames (`photo.jpg`, `document.pdf`)
      - **NEVER renamed or modified** - user files are sacred
      - Stored in `user_files` JSON array
    - **Processed files:**
-     - Simple, descriptive names: `webpage.html`, `webpage.png`, `summary.md`, `caption.md`, `transcript.md`
+     - Simple, descriptive names stored under `/digest`: `digest/content.md`, `digest/content.html`, `digest/screenshot.png`
      - Stored in `processed_files` JSON array with explicit filenames
      - **NOT** determined by convention - always check DB for actual filenames
      - **Conflict resolution:** If enriched filename conflicts with user file, apply macOS-style deduplication (e.g., `summary.md` → `summary 2.md`)
@@ -731,8 +730,8 @@ MY_DATA_DIR/
    - **Alt:** Single files array - rejected (can't distinguish user vs generated content)
 
 2. **UUID → Slug Workflow**
-   - **Decision:** Folders initially named with UUID, renamed to slug after AI enrichment
-   - **Why:** Stable ID (UUID never changes), human-readable names (slug), clean separation
+   - **Decision:** Folders initially named with UUID; slug rename happens as a separate manual step (not automatic on crawl)
+   - **Why:** Stable ID (UUID never changes), human-readable names (slug), clean separation once confirmed
    - **Alt:** Slug-only - rejected (slug collisions, can't identify before processing)
 
 3. **File Deduplication Strategy (macOS-style)**
@@ -754,7 +753,7 @@ MY_DATA_DIR/
 
 | Feature | Status | User Input | Processed Output |
 |---------|--------|------------|------------------|
-| **URL Crawling** | In Progress | `content.md` (URL text) | `webpage.html`, `webpage.png`, `summary.md` |
+| **URL Crawling** | In Progress | `text.md` (URL text) | `digest/content.md`, `digest/content.html`, `digest/screenshot.png` |
 | **Image Captioning** | Planned | `photo.jpg` (original) | `caption.md` |
 | **OCR Extraction** | Planned | `document.jpg` (scan) | `ocr.md` |
 | **Audio Transcription** | Planned | `recording.mp3` (original) | `transcript.md` |
@@ -1286,15 +1285,15 @@ async function addUrl(url: string, userId: string) {
   // Create staging directory
   await fs.mkdir(join(MY_DATA_DIR, inboxPath), { recursive: true });
 
-  // Save user input as content.md with the URL
-  await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'content.md'), url);
+  // Save user input as text.md with the URL
+  await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'text.md'), url);
 
   // Save to database
   await db.run(`
     INSERT INTO inbox (id, folder_name, type, user_files, status, created_at, updated_at)
     VALUES (?, ?, 'url', ?, 'pending', datetime('now'), datetime('now'))
   `, [entryId, folderName, JSON.stringify([{
-    filename: 'content.md',
+    filename: 'text.md',
     size: Buffer.byteLength(url),
     mimeType: 'text/markdown',
     type: 'text',
@@ -1312,92 +1311,50 @@ async function crawlUrl(entryId: string) {
   const entry = await db.get('SELECT * FROM inbox WHERE id = ?', [entryId]);
   const inboxPath = `.app/mylifedb/inbox/${entry.folder_name}`;
 
-  // Read URL from user's content.md
-  const url = await fs.readFile(join(MY_DATA_DIR, inboxPath, 'content.md'), 'utf-8');
+  // Read URL from user's text.md
+  const url = await fs.readFile(join(MY_DATA_DIR, inboxPath, 'text.md'), 'utf-8');
 
   try {
-    // Crawl using Playwright/Puppeteer
-    const { html, markdown, text, screenshot } = await crawlWebPage(url);
-
-    // Extract metadata
-    const metadata = extractMetadata(html);  // Title, author, date, etc.
-
-    // Generate AI summary for folder name
-    const aiSlug = await generateSlug(metadata.title || text.substring(0, 100));
-
-    // Check for conflicts with user files and deduplicate if needed
-    const userFiles = JSON.parse(entry.user_files);
-    const userFilenames = userFiles.map(f => f.filename);
-
-    const getAvailableFilename = (desiredName: string): string => {
-      if (!userFilenames.includes(desiredName)) return desiredName;
-      // Apply macOS-style deduplication
-      const ext = path.extname(desiredName);
-      const base = path.basename(desiredName, ext);
-      let counter = 2;
-      while (userFilenames.includes(`${base} ${counter}${ext}`)) counter++;
-      return `${base} ${counter}${ext}`;
-    };
-
-    // Save enriched outputs with simple, descriptive names
-    const processedFiles = [];
-
-    const htmlFile = getAvailableFilename('webpage.html');
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, htmlFile), html);
-    processedFiles.push({
-      filename: htmlFile,
-      size: Buffer.byteLength(html),
-      mimeType: 'text/html',
-      type: 'html',
-      purpose: 'Original HTML content from URL'
+    const { html, markdown, screenshotBase64 } = await haidClient.webCrawl({
+      url,
+      screenshot: true,
     });
 
-    const summaryFile = getAvailableFilename('summary.md');
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, summaryFile), text);
-    processedFiles.push({
-      filename: summaryFile,
-      size: Buffer.byteLength(text),
-      mimeType: 'text/markdown',
-      type: 'markdown',
-      purpose: 'Extracted main content (cleaned)'
-    });
+    if (!html && !markdown) {
+      throw new Error('HAID returned empty content');
+    }
 
-    const screenshotFile = getAvailableFilename('webpage.png');
-    await fs.writeFile(join(MY_DATA_DIR, inboxPath, screenshotFile), screenshot);
-    processedFiles.push({
-      filename: screenshotFile,
-      size: screenshot.length,
-      mimeType: 'image/png',
-      type: 'image',
-      purpose: 'Visual capture of the webpage'
-    });
+    const digestPath = join(MY_DATA_DIR, inboxPath, 'digest');
+    await fs.rm(digestPath, { recursive: true, force: true });
+    await fs.mkdir(digestPath, { recursive: true });
 
-    // Rename folder to human-readable slug
-    const newFolderName = aiSlug;
-    const newInboxPath = `.app/mylifedb/inbox/${newFolderName}`;
-    await fs.rename(
-      join(MY_DATA_DIR, inboxPath),
-      join(MY_DATA_DIR, newInboxPath)
-    );
+    if (html) {
+      await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'digest/content.html'), html);
+    }
+    if (markdown) {
+      await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'digest/content.md'), markdown);
+    }
+    if (screenshotBase64) {
+      const screenshotBuffer = Buffer.from(screenshotBase64, 'base64');
+      await fs.writeFile(join(MY_DATA_DIR, inboxPath, 'digest/screenshot.png'), screenshotBuffer);
+    }
 
-    // Update database with enriched files and new folder name
     await db.run(`
       UPDATE inbox
-      SET status = 'completed',
-          folder_name = ?,
-          processed_files = ?,
-          ai_slug = ?,
-          processed_at = datetime('now'),
+      SET status = 'enriched',
+          error = NULL,
           updated_at = datetime('now')
       WHERE id = ?
-    `, [newFolderName, JSON.stringify(processedFiles), aiSlug, entryId]);
-
+    `, [entryId]);
   } catch (error) {
     await db.run(`
       UPDATE inbox
-      SET status = 'failed', error = ?, updated_at = datetime('now')
+      SET status = 'failed',
+          error = ?,
+          updated_at = datetime('now')
       WHERE id = ?
-    `, [error.message, entryId]);
+    `, [String(error), entryId]);
+    throw error;
   }
 }
 

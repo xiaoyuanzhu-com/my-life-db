@@ -5,11 +5,10 @@ import 'server-only';
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
 import { crawlUrlDigest } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
-import { generateUrlSlug } from '../crawl/urlSlugGenerator';
-import type { CrawlResult } from '../crawl/urlCrawler';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
@@ -24,8 +23,6 @@ export interface UrlEnrichmentPayload {
 
 export interface UrlEnrichmentResult {
   success: boolean;
-  slug?: string;
-  title?: string;
   error?: string;
 }
 
@@ -55,6 +52,7 @@ export async function enrichUrlInboxItem(
     log.info({ url }, 'crawling url');
     const crawlResult = await crawlUrlDigest({ url, timeoutMs: 30000 });
     const html = crawlResult.html ?? '';
+    const serviceMarkdown = crawlResult.markdown ?? null;
     let domain = crawlResult.metadata?.domain;
     if (!domain) {
       try {
@@ -75,52 +73,121 @@ export async function enrichUrlInboxItem(
 
     // 4. Enrich content
     log.info({ url }, 'enriching content');
-    const mainContent = extractMainContent(html);
-    const sanitizedContent = sanitizeContent(mainContent);
-    const processed = enrichHtmlContent(sanitizedContent);
-
-    // 5. Generate slug
-    log.info({ url }, 'generating slug');
-    const slugSource: CrawlResult = {
-      url: crawlResult.url,
-      html,
-      metadata,
-      text: processed.cleanText,
-      contentType: 'text/html',
-      status: 200,
-      redirectedTo: crawlResult.redirectedTo ?? undefined,
+    let processed = {
+      markdown: serviceMarkdown ?? '',
+      cleanText: serviceMarkdown ?? '',
+      wordCount: serviceMarkdown ? countWords(serviceMarkdown) : 0,
+      readingTimeMinutes: serviceMarkdown ? estimateReadingTimeMinutes(countWords(serviceMarkdown)) : 0,
     };
-    const slugResult = await generateUrlSlug(slugSource);
 
-    // 6. Get item directory
+    if (html && html.trim().length > 0) {
+      const mainContent = extractMainContent(html);
+      const sanitizedContent = sanitizeContent(mainContent);
+      const enriched = enrichHtmlContent(sanitizedContent);
+      processed = {
+        markdown: enriched.markdown,
+        cleanText: enriched.cleanText,
+        wordCount: enriched.wordCount,
+        readingTimeMinutes: enriched.readingTimeMinutes,
+      };
+    }
+
+    const normalizedMarkdown = serviceMarkdown ?? processed.markdown ?? processed.cleanText;
+    if (normalizedMarkdown && normalizedMarkdown.trim().length > 0) {
+      processed.markdown = normalizedMarkdown;
+      if (!processed.cleanText || processed.cleanText.trim().length === 0) {
+        processed.cleanText = normalizedMarkdown;
+      }
+      if (!processed.wordCount) {
+        processed.wordCount = countWords(normalizedMarkdown);
+      }
+      if (!processed.readingTimeMinutes) {
+        processed.readingTimeMinutes = estimateReadingTimeMinutes(processed.wordCount);
+      }
+    }
+
+    // 5. Prepare filesystem paths
     const itemDir = path.join(INBOX_DIR, inboxItem.folderName);
+    const digestDir = path.join(itemDir, 'digest');
 
-    // 7. Save files
+    // 6. Save files
     log.info({ url }, 'saving files');
+    await fs.rm(digestDir, { recursive: true, force: true });
+    await fs.mkdir(digestDir, { recursive: true });
 
-    // Save original HTML
-    await fs.writeFile(
-      path.join(itemDir, 'content.html'),
-      html,
-      'utf-8'
+    const legacyArtifacts = ['content.html', 'content.md', 'main-content.md'];
+    await Promise.all(
+      legacyArtifacts.map(async (filename) => {
+        const legacyPath = path.join(itemDir, filename);
+        try {
+          await fs.rm(legacyPath);
+        } catch {
+          // ignore missing legacy file
+        }
+      })
     );
 
-    // Save markdown
-    await fs.writeFile(
-      path.join(itemDir, 'content.md'),
-      processed.markdown,
-      'utf-8'
+    const digestArtifacts: Array<{
+      filename: string;
+      mimeType: string;
+      buffer: Buffer;
+      type: 'text' | 'image';
+    }> = [];
+
+    if (processed.markdown && processed.markdown.trim().length > 0) {
+      digestArtifacts.push({
+        filename: 'content.md',
+        mimeType: 'text/markdown',
+        buffer: Buffer.from(processed.markdown, 'utf-8'),
+        type: 'text',
+      });
+    }
+
+    if (html && html.trim().length > 0) {
+      digestArtifacts.push({
+        filename: 'content.html',
+        mimeType: 'text/html',
+        buffer: Buffer.from(html, 'utf-8'),
+        type: 'text',
+      });
+    }
+
+    const screenshot = crawlResult.screenshot;
+    if (screenshot?.base64) {
+      try {
+        const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
+        if (screenshotBuffer.length > 0) {
+          const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
+          digestArtifacts.push({
+            filename: `screenshot.${screenshotExtension}`,
+            mimeType: screenshot.mimeType,
+            buffer: screenshotBuffer,
+            type: 'image',
+          });
+        }
+      } catch {
+        // ignore invalid screenshot data
+      }
+    }
+
+    await Promise.all(
+      digestArtifacts.map(async (artifact) => {
+        const artifactPath = path.join(digestDir, artifact.filename);
+        await fs.writeFile(artifactPath, artifact.buffer);
+      })
     );
 
-    // Save main content (cleaned text)
-    await fs.writeFile(
-      path.join(itemDir, 'main-content.md'),
-      processed.cleanText,
-      'utf-8'
-    );
-
-    // 8. Update files array with enrichment
-    const updatedFiles = inboxItem.files.map(file => {
+    // 7. Update files array with enrichment
+    const updatedFiles = inboxItem.files
+      .filter(file => {
+        const lower = file.filename.toLowerCase();
+        if (lower.startsWith('digest/')) return false;
+        if (lower === 'content.html' || lower === 'content.md' || lower === 'main-content.md') {
+          return false;
+        }
+        return true;
+      })
+      .map(file => {
       if (file.filename === 'url.txt') {
         return {
           ...file,
@@ -143,60 +210,20 @@ export async function enrichUrlInboxItem(
     });
 
     // Add new files to the array
-    updatedFiles.push(
-      {
-        filename: 'content.html',
-        size: Buffer.byteLength(html, 'utf-8'),
-        mimeType: 'text/html',
-        type: 'text',
-        hash: '', // TODO: Calculate hash
-      },
-      {
-        filename: 'content.md',
-        size: Buffer.byteLength(processed.markdown, 'utf-8'),
-        mimeType: 'text/markdown',
-        type: 'text',
-        hash: '', // TODO: Calculate hash
-      },
-      {
-        filename: 'main-content.md',
-        size: Buffer.byteLength(processed.cleanText, 'utf-8'),
-        mimeType: 'text/markdown',
-        type: 'text',
-        hash: '', // TODO: Calculate hash
-      }
-    );
+    digestArtifacts.forEach(artifact => {
+      const hash = createHash('sha256').update(artifact.buffer).digest('hex');
+      updatedFiles.push({
+        filename: `digest/${artifact.filename}`,
+        size: artifact.buffer.length,
+        mimeType: artifact.mimeType,
+        type: artifact.type,
+        hash,
+      });
+    });
 
-    // 9. Rename folder to slug
-    const newFolderName = slugResult.slug;
-    const newItemDir = path.join(INBOX_DIR, newFolderName);
-
-    // Check if target already exists
-    let finalFolderName = newFolderName;
-    if (await fs.access(newItemDir).then(() => true).catch(() => false)) {
-      // Add suffix to avoid collision
-      let counter = 2;
-      while (true) {
-        const testName = `${newFolderName}-${counter}`;
-        const testDir = path.join(INBOX_DIR, testName);
-        if (!(await fs.access(testDir).then(() => true).catch(() => false))) {
-          finalFolderName = testName;
-          break;
-        }
-        counter++;
-      }
-    }
-
-    const finalItemDir = path.join(INBOX_DIR, finalFolderName);
-    await fs.rename(itemDir, finalItemDir);
-
-    log.info({ from: inboxItem.folderName, to: finalFolderName }, 'renamed folder');
-
-    // 10. Update inbox item
+    // 8. Update inbox item
     updateInboxItem(inboxId, {
-      folderName: finalFolderName,
       files: updatedFiles,
-      aiSlug: slugResult.slug,
       status: 'enriched',
       enrichedAt: new Date().toISOString(),
       error: null,
@@ -204,11 +231,7 @@ export async function enrichUrlInboxItem(
 
     log.info({ url }, 'url enriched successfully');
 
-    return {
-      success: true,
-      slug: slugResult.slug,
-      title: slugResult.title,
-    };
+    return { success: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -256,4 +279,26 @@ export function enqueueUrlEnrichment(inboxId: string, url: string): string {
 export function registerUrlEnrichmentHandler(): void {
   tq('digest_url_crawl').setWorker(enrichUrlInboxItem);
   log.info({}, 'url crawl handler registered');
+}
+
+function countWords(text: string): number {
+  if (!text) return 0;
+  const words = text.trim().split(/\s+/);
+  return words.filter(Boolean).length;
+}
+
+function estimateReadingTimeMinutes(wordCount: number): number {
+  if (!wordCount) return 0;
+  const minutes = wordCount / 200; // average adult reading speed
+  return Math.max(1, Math.round(minutes));
+}
+
+function getScreenshotExtension(mimeType: string): string {
+  if (!mimeType) return 'png';
+  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
+  if (mimeType.includes('webp')) return 'webp';
+  if (mimeType.includes('gif')) return 'gif';
+  if (mimeType.includes('bmp')) return 'bmp';
+  if (mimeType.includes('tiff')) return 'tiff';
+  return 'png';
 }
