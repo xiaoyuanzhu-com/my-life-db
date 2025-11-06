@@ -11,6 +11,7 @@ import type { InboxFile } from '@/types';
 import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
 import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
+import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
 
 const log = getLogger({ module: 'ApiInboxById' });
 
@@ -40,7 +41,25 @@ export async function GET(
     // Attach enrichment summary
     const states = getInboxTaskStates(id);
     const enrichment = summarizeInboxEnrichment(item, states);
-    return NextResponse.json({ ...item, enrichment } as unknown);
+    const [primaryText, summary, tags, screenshot, slug] = await Promise.all([
+      readInboxPrimaryText(item.folderName),
+      readInboxDigestSummary(item.folderName),
+      readInboxDigestTags(item.folderName),
+      readInboxDigestScreenshot(item.folderName),
+      readInboxDigestSlug(item.folderName),
+    ]);
+
+    return NextResponse.json({
+      ...item,
+      enrichment,
+      primaryText,
+      digest: {
+        summary,
+        tags,
+        screenshot,
+        slug,
+      },
+    } as unknown);
   } catch (error) {
     log.error({ err: error }, 'fetch inbox item failed');
     return NextResponse.json(

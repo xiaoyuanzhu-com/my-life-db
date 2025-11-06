@@ -10,6 +10,9 @@ import { INBOX_DIR } from '@/lib/fs/storage';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { getLogger } from '@/lib/log/logger';
 import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
+import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
+import { enqueueUrlTagging } from './tagUrlInboxItem';
+import { enqueueUrlSlug } from './slugUrlInboxItem';
 
 const log = getLogger({ module: 'InboxSummary' });
 const SUMMARY_FILENAME = 'digest/summary.md';
@@ -83,9 +86,13 @@ async function writeSummaryFile(folderPath: string, summary: string): Promise<{ 
   return { size: buffer.length, hash };
 }
 
-export function enqueueUrlSummary(inboxId: string): string {
+export function enqueueUrlSummary(inboxId: string, options?: DigestPipelinePayload): string {
   registerUrlSummaryHandler();
-  const taskId = tq('digest_url_summary').add({ inboxId });
+  const taskId = tq('digest_url_summary').add({
+    inboxId,
+    pipeline: options?.pipeline ?? false,
+    remainingStages: options?.remainingStages ?? [],
+  });
 
   upsertInboxTaskState({
     inboxId,
@@ -106,8 +113,8 @@ export function registerUrlSummaryHandler(): void {
   }
   handlerRegistered = true;
 
-  tq('digest_url_summary').setWorker(async (input: { inboxId: string }) => {
-    const { inboxId } = input;
+  tq('digest_url_summary').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
+    const { inboxId, pipeline, remainingStages } = input;
 
     const item = getInboxItemById(inboxId);
     if (!item) {
@@ -160,6 +167,12 @@ export function registerUrlSummaryHandler(): void {
     });
 
     log.info({ inboxId, source: source.source }, 'summary generated');
+
+    if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
+      const [nextStage, ...rest] = remainingStages;
+      queueNextStage(inboxId, nextStage, rest);
+    }
+
     return {
       success: true,
       source: source.source,
@@ -168,4 +181,21 @@ export function registerUrlSummaryHandler(): void {
   });
 
   log.info({}, 'digest_url_summary handler registered');
+}
+
+function queueNextStage(
+  inboxId: string,
+  nextStage: UrlDigestPipelineStage,
+  remaining: UrlDigestPipelineStage[]
+): void {
+  switch (nextStage) {
+    case 'tagging':
+      enqueueUrlTagging(inboxId, { pipeline: true, remainingStages: remaining });
+      break;
+    case 'slug':
+      enqueueUrlSlug(inboxId, { pipeline: true, remainingStages: remaining });
+      break;
+    default:
+      log.warn({ inboxId, stage: nextStage }, 'unknown next stage after summary in url digest pipeline');
+  }
 }

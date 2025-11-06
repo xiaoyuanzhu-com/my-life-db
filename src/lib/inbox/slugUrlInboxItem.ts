@@ -10,6 +10,7 @@ import { INBOX_DIR } from '@/lib/fs/storage';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
+import type { DigestPipelinePayload } from '@/types/digest-workflow';
 
 const log = getLogger({ module: 'InboxSlug' });
 
@@ -65,10 +66,14 @@ async function writeSlugFile(folderPath: string, payload: Record<string, unknown
   return { size: buffer.length, hash };
 }
 
-export function enqueueUrlSlug(inboxId: string): string {
+export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload): string {
   registerUrlSlugHandler();
 
-  const taskId = tq('digest_url_slug').add({ inboxId });
+  const taskId = tq('digest_url_slug').add({
+    inboxId,
+    pipeline: options?.pipeline ?? false,
+    remainingStages: options?.remainingStages ?? [],
+  });
 
   upsertInboxTaskState({
     inboxId,
@@ -89,7 +94,7 @@ export function registerUrlSlugHandler(): void {
   }
   handlerRegistered = true;
 
-  tq('digest_url_slug').setWorker(async (input: { inboxId: string }) => {
+  tq('digest_url_slug').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
     const { inboxId } = input;
 
     const item = getInboxItemById(inboxId);

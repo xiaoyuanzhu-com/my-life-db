@@ -10,6 +10,8 @@ import { INBOX_DIR } from '@/lib/fs/storage';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
+import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
+import { enqueueUrlSlug } from './slugUrlInboxItem';
 
 const log = getLogger({ module: 'InboxTagging' });
 
@@ -72,10 +74,14 @@ async function writeTagsFile(folderPath: string, tags: string[]): Promise<{ size
   return { size: buffer.length, hash };
 }
 
-export function enqueueUrlTagging(inboxId: string): string {
+export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePayload): string {
   registerUrlTaggingHandler();
 
-  const taskId = tq('digest_url_tagging').add({ inboxId });
+  const taskId = tq('digest_url_tagging').add({
+    inboxId,
+    pipeline: options?.pipeline ?? false,
+    remainingStages: options?.remainingStages ?? [],
+  });
 
   upsertInboxTaskState({
     inboxId,
@@ -96,8 +102,8 @@ export function registerUrlTaggingHandler(): void {
   }
   handlerRegistered = true;
 
-  tq('digest_url_tagging').setWorker(async (input: { inboxId: string }) => {
-    const { inboxId } = input;
+  tq('digest_url_tagging').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
+    const { inboxId, pipeline, remainingStages } = input;
 
     const item = getInboxItemById(inboxId);
     if (!item) {
@@ -142,6 +148,11 @@ export function registerUrlTaggingHandler(): void {
 
     log.info({ inboxId, tags: result.tags.length, source: source.source }, 'tags generated');
 
+    if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
+      const [nextStage, ...rest] = remainingStages;
+      queueNextStage(inboxId, nextStage, rest);
+    }
+
     return {
       success: true,
       tags: result.tags,
@@ -151,4 +162,16 @@ export function registerUrlTaggingHandler(): void {
   });
 
   log.info({}, 'digest_url_tagging handler registered');
+}
+
+function queueNextStage(
+  inboxId: string,
+  nextStage: UrlDigestPipelineStage,
+  remaining: UrlDigestPipelineStage[]
+): void {
+  if (nextStage === 'slug') {
+    enqueueUrlSlug(inboxId, { pipeline: true, remainingStages: remaining });
+  } else {
+    log.warn({ inboxId, stage: nextStage }, 'unknown next stage after tagging in url digest pipeline');
+  }
 }

@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { INBOX_DIR } from '@/lib/fs/storage';
+import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
 
 async function readFileIfExists(folderName: string, relativePath: string): Promise<Buffer | null> {
   try {
@@ -60,19 +61,6 @@ export async function readInboxDigestTags(folderName: string): Promise<string[] 
   }
 }
 
-export interface InboxDigestScreenshot {
-  src: string;
-  mimeType: string;
-  filename: string;
-}
-
-export interface InboxDigestSlug {
-  slug: string;
-  title?: string;
-  source?: string;
-  generatedAt?: string;
-}
-
 export async function readInboxDigestScreenshot(folderName: string): Promise<InboxDigestScreenshot | null> {
   const candidates: Array<{ name: string; mimeType: string }> = [
     { name: 'digest/screenshot.png', mimeType: 'image/png' },
@@ -82,15 +70,18 @@ export async function readInboxDigestScreenshot(folderName: string): Promise<Inb
   ];
 
   for (const candidate of candidates) {
-    const file = await readFileIfExists(folderName, candidate.name);
-    if (!file) continue;
-
-    const base64 = file.toString('base64');
-    return {
-      filename: candidate.name,
-      mimeType: candidate.mimeType,
-      src: `data:${candidate.mimeType};base64,${base64}`,
-    };
+    const filePath = path.join(INBOX_DIR, folderName, candidate.name);
+    try {
+      const stat = await fs.stat(filePath);
+      const version = stat.mtimeMs ? `?v=${Math.floor(stat.mtimeMs)}` : '';
+      return {
+        filename: candidate.name,
+        mimeType: candidate.mimeType,
+        src: `/api/inbox/files/${encodeURIComponent(folderName)}/${encodeURIComponent(candidate.name)}${version}`,
+      };
+    } catch {
+      // Try next candidate
+    }
   }
 
   return null;

@@ -4,8 +4,8 @@ import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import type { InboxDigestScreenshot, InboxDigestSlug } from '@/lib/inbox/digestArtifacts';
-import type { InboxStatusView } from '@/lib/inbox/statusView';
+import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
+import type { InboxStatusView, InboxStageStatus } from '@/lib/inbox/statusView';
 import { cn } from '@/lib/utils';
 import { DigestProgress } from './DigestProgress';
 
@@ -15,9 +15,6 @@ const STAGES = [
   { key: 'tagging', label: 'Tagging', taskType: 'digest_url_tagging' },
   { key: 'slug', label: 'Slug', taskType: 'digest_url_slug' },
 ] as const;
-
-type StageName = typeof STAGES[number]['key'];
-type StageStatus = 'to-do' | 'in-progress' | 'success' | 'failed';
 
 interface DigestCoordinatorProps {
   inboxId: string;
@@ -29,21 +26,19 @@ interface DigestCoordinatorProps {
   initialStatus: InboxStatusView | null;
 }
 
-interface DigestResponse {
-  summary?: string | null;
-  tags?: string[] | null;
-  screenshot?: InboxDigestScreenshot | null;
-  slug?: InboxDigestSlug | null;
-  status?: InboxStatusView | null;
-  error?: string;
+interface InboxDetailResponse {
+  primaryText?: string | null;
+  digest?: {
+    summary?: string | null;
+    tags?: string[] | null;
+    screenshot?: InboxDigestScreenshot | null;
+    slug?: InboxDigestSlug | null;
+  };
 }
 
-const createDefaultStageState = (): Record<StageName, boolean> => ({
-  crawl: false,
-  summary: false,
-  tagging: false,
-  slug: false,
-});
+interface DigestStatusResponse {
+  status: InboxStatusView | null;
+}
 
 export function DigestCoordinator({
   inboxId,
@@ -59,11 +54,9 @@ export function DigestCoordinator({
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
   const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
   const [status, setStatus] = useState<InboxStatusView | null>(initialStatus);
-  const [isPipelineActive, setIsPipelineActive] = useState(false);
-  const [triggeredStages, setTriggeredStages] = useState<Record<StageName, boolean>>(createDefaultStageState());
+  const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
-  const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
 
   const isMountedRef = useRef(true);
 
@@ -73,41 +66,48 @@ export function DigestCoordinator({
     };
   }, []);
 
-  const loadDigest = useCallback(async (): Promise<DigestResponse> => {
-    const res = await fetch(`/api/inbox/${inboxId}/digest`, { cache: 'no-store' });
+  const fetchContent = useCallback(async () => {
+    const res = await fetch(`/api/inbox/${inboxId}`, { cache: 'no-store' });
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
       throw new Error((fallback as { error?: string }).error || res.statusText);
     }
-    return (await res.json()) as DigestResponse;
+    return (await res.json()) as InboxDetailResponse;
+  }, [inboxId]);
+
+  const fetchStatus = useCallback(async () => {
+    const res = await fetch(`/api/inbox/${inboxId}/digest/status`, { cache: 'no-store' });
+    if (!res.ok) {
+      const fallback = await res.json().catch(() => ({}));
+      throw new Error((fallback as { error?: string }).error || res.statusText);
+    }
+    return (await res.json()) as DigestStatusResponse;
   }, [inboxId]);
 
   const refreshDigest = useCallback(async () => {
     try {
-      const data = await loadDigest();
+      const [content, statusPayload] = await Promise.all([fetchContent(), fetchStatus()]);
       if (!isMountedRef.current) return;
-      setSummary(data.summary ?? null);
-      setTags(Array.isArray(data.tags) ? data.tags : null);
-      setScreenshot(data.screenshot ?? null);
-      setSlug(data.slug ?? null);
-      setStatus(data.status ?? null);
+
+      const digest = content.digest ?? {};
+      setSummary(digest.summary ?? null);
+      setTags(Array.isArray(digest.tags) ? digest.tags : null);
+      setScreenshot(digest.screenshot ?? null);
+      setSlug(digest.slug ?? null);
+      setStatus(statusPayload.status ?? null);
       setPollError(null);
     } catch (error) {
       if (!isMountedRef.current) return;
       setPollError(error instanceof Error ? error.message : String(error));
     }
-  }, [loadDigest]);
+  }, [fetchContent, fetchStatus]);
 
   useEffect(() => {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
-      try {
-        await refreshDigest();
-      } catch {
-        // handled inside refreshDigest
-      }
+      await refreshDigest();
       if (!cancelled) {
         pollTimer = setTimeout(poll, 5000);
       }
@@ -121,13 +121,52 @@ export function DigestCoordinator({
     };
   }, [refreshDigest]);
 
-  const triggerStage = useCallback(async (stage: StageName) => {
-    setTriggeredStages(prev => ({ ...prev, [stage]: true }));
+  const pipelineActive = useMemo(
+    () => Boolean(status?.stages?.some(stage => stage.status === 'in-progress')),
+    [status]
+  );
+
+  const hasFailures = Boolean(status?.hasFailures);
+  const failedStage = useMemo(() => status?.stages?.find(stage => stage.status === 'failed'), [status]);
+
+  const progressStages = useMemo(() => {
+    const map = new Map<string, InboxStageStatus>();
+    status?.stages?.forEach(stage => map.set(stage.taskType, stage));
+
+    return STAGES.map(stage => {
+      const stageStatus = map.get(stage.taskType);
+      return {
+        key: stage.key,
+        label: stage.label,
+        status: stageStatus?.status ?? 'to-do',
+      };
+    });
+  }, [status]);
+
+  const statusLabelMap: Record<string, string> = useMemo(() => {
+    const fromStages = Object.fromEntries(STAGES.map(stage => [stage.taskType, stage.label]));
+    return fromStages;
+  }, []);
+
+  const message = useMemo(() => {
+    if (pipelineError) return pipelineError;
+    if (pollError) return `Auto refresh issue: ${pollError}`;
+    if (hasFailures && failedStage) {
+      const label = statusLabelMap[failedStage.taskType] ?? failedStage.taskType;
+      return `Digest failed at ${label}. Resolve the issue and retry.`;
+    }
+    return null;
+  }, [failedStage, hasFailures, pipelineError, pollError, statusLabelMap]);
+
+  const handleDigestClick = useCallback(async () => {
+    setIsDigestButtonBusy(true);
     setPipelineError(null);
+    setSummary(null);
+    setTags(null);
+    setScreenshot(null);
+    setSlug(null);
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/reenrich?stage=${stage}`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/inbox/${inboxId}/digest`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || res.statusText);
@@ -136,90 +175,13 @@ export function DigestCoordinator({
     } catch (error) {
       if (!isMountedRef.current) return;
       const message = error instanceof Error ? error.message : String(error);
-      setPipelineError(`Failed to queue ${stage} stage: ${message}`);
-      setTriggeredStages(prev => ({ ...prev, [stage]: false }));
-      setIsPipelineActive(false);
-      throw error;
-    }
-  }, [inboxId, refreshDigest]);
-
-  const stageStatusMap = useMemo(() => {
-    const map: Record<string, StageStatus> = {};
-    status?.stages?.forEach(stage => {
-      map[stage.taskType] = stage.status;
-    });
-    return map;
-  }, [status]);
-
-  useEffect(() => {
-    if (!isPipelineActive) {
-      return;
-    }
-
-    const crawlStatus = stageStatusMap['digest_url_crawl'];
-    const summaryStatus = stageStatusMap['digest_url_summary'];
-    const taggingStatus = stageStatusMap['digest_url_tagging'];
-    const slugStatus = stageStatusMap['digest_url_slug'];
-
-    if (crawlStatus === 'failed' || summaryStatus === 'failed' || taggingStatus === 'failed' || slugStatus === 'failed') {
-      const failedStage = crawlStatus === 'failed'
-        ? 'crawl'
-        : summaryStatus === 'failed'
-          ? 'summary'
-          : taggingStatus === 'failed'
-            ? 'tagging'
-            : 'slug';
-      setPipelineError(`Digest failed at ${failedStage} stage. Resolve the issue and retry.`);
-      setIsPipelineActive(false);
-      return;
-    }
-
-    if (!triggeredStages.summary && crawlStatus === 'success') {
-      triggerStage('summary').catch(() => {});
-      return;
-    }
-
-    if (!triggeredStages.tagging && summaryStatus === 'success') {
-      triggerStage('tagging').catch(() => {});
-      return;
-    }
-
-    if (!triggeredStages.slug && taggingStatus === 'success') {
-      triggerStage('slug').catch(() => {});
-      return;
-    }
-
-    if (slugStatus === 'success') {
-      setIsPipelineActive(false);
-      setTriggeredStages(createDefaultStageState());
-    }
-  }, [isPipelineActive, stageStatusMap, triggeredStages, triggerStage]);
-
-  const progressStages = useMemo(
-    () =>
-      STAGES.map(stage => ({
-        key: stage.key,
-        label: stage.label,
-        status: stageStatusMap[stage.taskType] ?? 'to-do',
-      })),
-    [stageStatusMap]
-  );
-
-  const handleDigestClick = useCallback(async () => {
-    setIsDigestButtonBusy(true);
-    setPipelineError(null);
-    setTriggeredStages(createDefaultStageState());
-    setIsPipelineActive(true);
-    try {
-      await triggerStage('crawl');
-    } catch {
-      // Error already handled inside triggerStage
+      setPipelineError(`Failed to start digest workflow: ${message}`);
     } finally {
       if (isMountedRef.current) {
         setIsDigestButtonBusy(false);
       }
     }
-  }, [triggerStage]);
+  }, [inboxId, refreshDigest]);
 
   return (
     <div className="space-y-6">
@@ -230,16 +192,16 @@ export function DigestCoordinator({
             <button
               type="button"
               onClick={handleDigestClick}
-              disabled={isDigestButtonBusy || isPipelineActive}
+              disabled={isDigestButtonBusy || pipelineActive}
               className={cn(
                 'text-xs font-medium rounded px-3 py-1 border transition-colors',
-                (isDigestButtonBusy || isPipelineActive)
+                (isDigestButtonBusy || pipelineActive)
                   ? 'opacity-70 cursor-not-allowed'
                   : 'hover:bg-accent'
               )}
               title="Run crawl -> summary -> tagging -> slug in order"
             >
-              {(isDigestButtonBusy || isPipelineActive) ? (
+              {(isDigestButtonBusy || pipelineActive) ? (
                 <span className="flex items-center gap-1">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Processing...
@@ -250,7 +212,7 @@ export function DigestCoordinator({
             </button>
           ) : null
         }
-        message={pipelineError ?? (pollError ? `Auto refresh issue: ${pollError}` : null)}
+        message={message}
       />
 
       <section className="bg-card rounded-lg border">

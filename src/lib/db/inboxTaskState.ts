@@ -44,6 +44,39 @@ export function upsertInboxTaskState(input: {
   );
 }
 
+export function setInboxTaskState(input: {
+  inboxId: string;
+  taskType: string;
+  status: TaskStatus;
+  taskId?: string | null;
+  attempts?: number;
+  error?: string | null;
+}): void {
+  const db = getDatabase();
+  const now = Math.floor(Date.now() / 1000);
+
+  const stmt = db.prepare(`
+    INSERT INTO inbox_task_state (inbox_id, task_type, status, task_id, attempts, error, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(inbox_id, task_type) DO UPDATE SET
+      status = excluded.status,
+      task_id = excluded.task_id,
+      attempts = excluded.attempts,
+      error = excluded.error,
+      updated_at = excluded.updated_at
+  `);
+
+  stmt.run(
+    input.inboxId,
+    input.taskType,
+    input.status,
+    input.taskId ?? null,
+    input.attempts ?? 0,
+    input.error ?? null,
+    now
+  );
+}
+
 export function getInboxTaskStates(inboxId: string): InboxTaskState[] {
   const db = getDatabase();
   const rows = db

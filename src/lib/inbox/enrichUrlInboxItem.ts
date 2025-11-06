@@ -13,10 +13,14 @@ import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
+import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
+import { enqueueUrlSummary } from './summarizeUrlInboxItem';
+import { enqueueUrlTagging } from './tagUrlInboxItem';
+import { enqueueUrlSlug } from './slugUrlInboxItem';
 
 const log = getLogger({ module: 'URLEnricher' });
 
-export interface UrlEnrichmentPayload {
+export interface UrlEnrichmentPayload extends DigestPipelinePayload {
   inboxId: string;
   url: string;
 }
@@ -33,7 +37,7 @@ export interface UrlEnrichmentResult {
 export async function enrichUrlInboxItem(
   payload: UrlEnrichmentPayload
 ): Promise<UrlEnrichmentResult> {
-  const { inboxId, url } = payload;
+  const { inboxId, url, pipeline, remainingStages } = payload;
 
   try {
     // 1. Get inbox item
@@ -231,6 +235,11 @@ export async function enrichUrlInboxItem(
 
     log.info({ url }, 'url enriched successfully');
 
+    if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
+      const [nextStage, ...rest] = remainingStages;
+      queueNextStage(inboxId, nextStage, rest);
+    }
+
     return { success: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -252,10 +261,16 @@ export async function enrichUrlInboxItem(
  * Enqueue URL enrichment task
  * This is what you call to trigger URL enrichment
  */
-export function enqueueUrlEnrichment(inboxId: string, url: string): string {
+export function enqueueUrlEnrichment(
+  inboxId: string,
+  url: string,
+  options?: DigestPipelinePayload
+): string {
   const taskId = tq('digest_url_crawl').add({
     inboxId,
     url,
+    pipeline: options?.pipeline ?? false,
+    remainingStages: options?.remainingStages ?? [],
   });
 
   log.info({ inboxId, url, taskId }, 'url enrichment task enqueued');
@@ -279,6 +294,27 @@ export function enqueueUrlEnrichment(inboxId: string, url: string): string {
 export function registerUrlEnrichmentHandler(): void {
   tq('digest_url_crawl').setWorker(enrichUrlInboxItem);
   log.info({}, 'url crawl handler registered');
+}
+
+function queueNextStage(
+  inboxId: string,
+  nextStage: UrlDigestPipelineStage,
+  remaining: UrlDigestPipelineStage[]
+): void {
+  switch (nextStage) {
+    case 'summary':
+      enqueueUrlSummary(inboxId, { pipeline: true, remainingStages: remaining });
+      break;
+    case 'tagging':
+      // Should not happen directly after crawl, but guard anyway
+      enqueueUrlTagging(inboxId, { pipeline: true, remainingStages: remaining });
+      break;
+    case 'slug':
+      enqueueUrlSlug(inboxId, { pipeline: true, remainingStages: remaining });
+      break;
+    default:
+      log.warn({ inboxId, stage: nextStage }, 'unknown next stage in url digest pipeline');
+  }
 }
 
 function countWords(text: string): number {

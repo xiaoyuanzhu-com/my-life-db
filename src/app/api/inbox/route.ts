@@ -9,6 +9,7 @@ import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
 // import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 // import { getStorageConfig } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
+import { readInboxPrimaryText, readInboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -35,11 +36,23 @@ export async function GET(request: NextRequest) {
     // Include enrichment summaries for all items (batch query)
     const ids = items.map((i) => i.id);
     const statesByInbox = getInboxTaskStatesForInboxIds(ids);
-    const itemsWithEnrichment = items.map((item) => {
-      const states = statesByInbox[item.id] || [];
-      const enrichment = summarizeInboxEnrichment(item, states);
-      return { ...item, enrichment } as unknown;
-    });
+
+    const itemsWithEnrichment = await Promise.all(
+      items.map(async (item) => {
+        const states = statesByInbox[item.id] || [];
+        const enrichment = summarizeInboxEnrichment(item, states);
+        const [primaryText, screenshot] = await Promise.all([
+          readInboxPrimaryText(item.folderName),
+          enrichment.screenshotReady ? readInboxDigestScreenshot(item.folderName) : Promise.resolve(null),
+        ]);
+        return {
+          ...item,
+          enrichment,
+          primaryText,
+          digestScreenshot: screenshot,
+        };
+      })
+    );
 
     return NextResponse.json({
       items: itemsWithEnrichment,

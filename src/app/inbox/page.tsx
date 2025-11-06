@@ -4,19 +4,23 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import type { InboxItem, InboxEnrichmentSummary } from '@/types';
+import type { InboxItem, InboxEnrichmentSummary, InboxDigestScreenshot } from '@/types';
 import { InboxItemCard } from './_components/InboxItemCard';
 
 interface GroupedItems {
   date: string;
   displayDate: string;
-  items: InboxItem[];
+  items: InboxListItem[];
 }
 
-type InboxItemWithEnrichment = InboxItem & { enrichment: InboxEnrichmentSummary };
+type InboxListItem = InboxItem & {
+  enrichment: InboxEnrichmentSummary;
+  primaryText: string | null;
+  digestScreenshot: InboxDigestScreenshot | null;
+};
 
 export default function InboxPage() {
-  const [items, setItems] = useState<InboxItemWithEnrichment[]>([]);
+  const [items, setItems] = useState<InboxListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -24,7 +28,7 @@ export default function InboxPage() {
       try {
         const response = await fetch('/api/inbox');
         const data = await response.json();
-        setItems(data.items as InboxItemWithEnrichment[]);
+        setItems(data.items as InboxListItem[]);
       } catch (error) {
         console.error('Failed to load inbox items:', error);
       } finally {
@@ -37,7 +41,7 @@ export default function InboxPage() {
 
   // Group items by date based on client's local timezone
   const groupedItems = useMemo(() => {
-    const groups = new Map<string, InboxItem[]>();
+    const groups = new Map<string, InboxListItem[]>();
 
     items.forEach((item) => {
       const createdDate = new Date(item.createdAt);

@@ -1,83 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import Image from 'next/image';
+import { useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import type { InboxEnrichmentSummary, InboxItem } from '@/types';
+import type { InboxEnrichmentSummary, InboxItem, InboxDigestScreenshot } from '@/types';
 import { InboxTextPreview } from './InboxTextPreview';
 
-type InboxItemWithEnrichment = InboxItem & { enrichment: InboxEnrichmentSummary };
-
-interface DigestScreenshot {
-  src: string;
-  mimeType: string;
-  filename: string;
-}
-
-interface DigestResponse {
-  screenshot?: DigestScreenshot | null;
-}
-
 interface InboxItemCardProps {
-  item: InboxItemWithEnrichment;
+  item: InboxItem & {
+    enrichment: InboxEnrichmentSummary;
+    primaryText: string | null;
+    digestScreenshot: InboxDigestScreenshot | null;
+  };
 }
 
 export function InboxItemCard({ item }: InboxItemCardProps) {
-  const [screenshot, setScreenshot] = useState<DigestScreenshot | null>(null);
-  const [isLoadingScreenshot, setIsLoadingScreenshot] = useState(false);
-
-  useEffect(() => {
-    let ignore = false;
-    const controller = new AbortController();
-
-    async function loadScreenshot() {
-      if (!item.enrichment?.screenshotReady) {
-        setScreenshot(null);
-        setIsLoadingScreenshot(false);
-        return;
-      }
-
-      setIsLoadingScreenshot(true);
-
-      try {
-        const res = await fetch(`/api/inbox/${item.id}/digest`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error('Failed to load digest');
-        const json = (await res.json()) as DigestResponse;
-        if (!ignore) {
-          setScreenshot(json?.screenshot ?? null);
-        }
-      } catch {
-        if (!ignore) {
-          setScreenshot(null);
-        }
-      } finally {
-        if (!ignore) {
-          setIsLoadingScreenshot(false);
-        }
-      }
-    }
-
-    loadScreenshot();
-
-    return () => {
-      ignore = true;
-      controller.abort();
-    };
-  }, [item.id, item.enrichment?.screenshotReady]);
-
-  const backgroundStyle = useMemo(
-    () =>
-      screenshot
-        ? ({
-            backgroundImage: `url(${screenshot.src})`,
-          } satisfies CSSProperties)
-        : undefined,
-    [screenshot]
-  );
-
   const createdLabel = useMemo(() => {
     try {
       return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
@@ -93,22 +31,23 @@ export function InboxItemCard({ item }: InboxItemCardProps) {
         'group-hover:-translate-y-1 group-hover:shadow-lg'
       )}
     >
-      <div
-        className={cn(
-          'absolute inset-0 bg-cover bg-center transition-transform duration-500 ease-out',
-          screenshot ? 'opacity-100 group-hover:scale-105' : 'opacity-0'
-        )}
-        style={backgroundStyle}
-        aria-hidden="true"
-      />
+      {item.digestScreenshot && (
+        <Image
+          src={item.digestScreenshot.src}
+          alt="URL screenshot preview"
+          fill
+          sizes="(max-width: 768px) 100vw, 33vw"
+          className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+          priority={false}
+        />
+      )}
 
       <div className="absolute inset-0 bg-gradient-to-br from-background via-background/75 to-background/40" />
 
       <div className="relative z-10 flex h-full flex-col">
         <div className="p-4">
           <InboxTextPreview
-            folderName={item.folderName}
-            files={item.files}
+            text={item.primaryText}
             maxChars={220}
             className="text-base font-medium leading-7 text-foreground drop-shadow-[0_4px_18px_rgba(15,23,42,0.4)]"
           />
@@ -123,9 +62,9 @@ export function InboxItemCard({ item }: InboxItemCardProps) {
               <span className="text-[11px] font-medium">{createdLabel}</span>
             )}
           </div>
-          {(!screenshot || isLoadingScreenshot) && (
+          {!item.digestScreenshot && (
             <div className="mt-2 text-[11px] text-muted-foreground/70">
-              {isLoadingScreenshot ? 'Loading screenshot…' : 'No screenshot available yet'}
+              No screenshot available yet
             </div>
           )}
         </div>

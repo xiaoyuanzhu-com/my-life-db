@@ -289,6 +289,19 @@ export interface InboxEnrichmentSummary {
   canRetry: boolean;
 }
 
+export interface InboxDigestScreenshot {
+  src: string;
+  mimeType: string;
+  filename: string;
+}
+
+export interface InboxDigestSlug {
+  slug: string;
+  title?: string;
+  source?: string;
+  generatedAt?: string;
+}
+
 /**
  * Library file - permanent indexed file
  */
