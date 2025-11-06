@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import type { InboxStatusView, InboxStageStatus } from '@/lib/inbox/statusView';
+import type { InboxStatusView } from '@/lib/inbox/statusView';
 import { cn } from '@/lib/utils';
 import { DigestProgress } from './DigestProgress';
 
@@ -15,6 +15,99 @@ const STAGES = [
   { key: 'tagging', label: 'Tagging', taskType: 'digest_url_tagging' },
   { key: 'slug', label: 'Slug', taskType: 'digest_url_slug' },
 ] as const;
+
+type StageStatusName = 'to-do' | 'in-progress' | 'success' | 'failed';
+
+const log = (message: string, payload?: unknown) => {
+  if (payload === undefined) {
+    console.info(`[DigestCoordinator] ${message}`);
+  } else {
+    console.info(`[DigestCoordinator] ${message}: ${JSON.stringify(payload)}`);
+  }
+};
+
+function deriveStageMap(status: InboxStatusView | null): Record<string, StageStatusName> {
+  const map: Record<string, StageStatusName> = {};
+
+  // ONLY use explicit stage states from the API
+  // The done flags are for UI hints, not for determining stage status
+  status?.stages?.forEach(stage => {
+    map[stage.taskType] = stage.status;
+    log(`deriveStageMap: from stages[] ${stage.taskType} = ${stage.status}`);
+  });
+
+  // For stages not in the API response, check if they're completed via done flags
+  // But NEVER set them to 'to-do' here - let the merge logic handle that
+  STAGES.forEach(stage => {
+    if (map[stage.taskType]) {
+      // Already have explicit status from API
+      return;
+    }
+
+    // Only derive 'success' state from done flags
+    // If not done, leave it undefined so merge logic can handle it properly
+    const derivedSuccess =
+      (stage.key === 'crawl' && status?.crawlDone) ||
+      (stage.key === 'summary' && status?.summaryDone) ||
+      (stage.key === 'tagging' && status?.tagsReady) ||
+      (stage.key === 'slug' && status?.slugReady);
+
+    if (derivedSuccess) {
+      log(`deriveStageMap: derived ${stage.taskType} = success (done flag set)`);
+      map[stage.taskType] = 'success';
+    } else {
+      // Don't set anything - let merge logic preserve previous state
+      log(`deriveStageMap: ${stage.taskType} not in API response and not done, leaving undefined for merge`);
+    }
+  });
+
+  return map;
+}
+
+function mergeStageMaps(
+  previous: Record<string, StageStatusName>,
+  status: InboxStatusView | null
+): Record<string, StageStatusName> {
+  const incoming = deriveStageMap(status);
+  const merged: Record<string, StageStatusName> = { ...previous };
+
+  STAGES.forEach(stage => {
+    const taskType = stage.taskType;
+    const nextState = incoming[taskType];
+    const prevState = previous[taskType];
+
+    // If incoming doesn't have this stage, keep previous state
+    if (!nextState) {
+      log(`merge: ${taskType} not in incoming, preserving ${prevState ?? 'to-do'}`);
+      if (!prevState) {
+        merged[taskType] = 'to-do';
+      }
+      return;
+    }
+
+    // Prevent regression: never move backwards from a terminal or progress state
+    // Order: to-do < in-progress < success/failed
+    if (prevState === 'success' || prevState === 'failed') {
+      // Terminal states: never change
+      log(`merge: ${taskType} locked at terminal state ${prevState}`);
+      return;
+    }
+
+    if (prevState === 'in-progress' && nextState === 'to-do') {
+      // Don't regress from in-progress to to-do
+      log(`merge: ${taskType} prevented regression from in-progress to to-do`);
+      return;
+    }
+
+    // Allow progression: to-do -> in-progress -> success/failed
+    if (prevState !== nextState) {
+      log(`merge: ${taskType} changing from ${prevState ?? 'undefined'} to ${nextState}`);
+    }
+    merged[taskType] = nextState;
+  });
+
+  return merged;
+}
 
 interface DigestCoordinatorProps {
   inboxId: string;
@@ -54,6 +147,7 @@ export function DigestCoordinator({
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
   const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
   const [status, setStatus] = useState<InboxStatusView | null>(initialStatus);
+  const [stageStatusMap, setStageStatusMap] = useState<Record<string, StageStatusName>>(deriveStageMap(initialStatus));
   const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
@@ -66,23 +160,40 @@ export function DigestCoordinator({
     };
   }, []);
 
-  const fetchContent = useCallback(async () => {
-    const res = await fetch(`/api/inbox/${inboxId}`, { cache: 'no-store' });
-    if (!res.ok) {
-      const fallback = await res.json().catch(() => ({}));
-      throw new Error((fallback as { error?: string }).error || res.statusText);
-    }
-    return (await res.json()) as InboxDetailResponse;
+  // Use ref to store inboxId to avoid dependency issues
+  const inboxIdRef = useRef(inboxId);
+  useEffect(() => {
+    inboxIdRef.current = inboxId;
   }, [inboxId]);
 
-  const fetchStatus = useCallback(async () => {
-    const res = await fetch(`/api/inbox/${inboxId}/digest/status`, { cache: 'no-store' });
+  const fetchContent = useCallback(async () => {
+    const currentId = inboxIdRef.current;
+    log('fetchContent start', { inboxId: currentId });
+    const res = await fetch(`/api/inbox/${currentId}`, { cache: 'no-store' });
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
       throw new Error((fallback as { error?: string }).error || res.statusText);
     }
-    return (await res.json()) as DigestStatusResponse;
-  }, [inboxId]);
+    const payload = (await res.json()) as InboxDetailResponse;
+    log('fetchContent success');
+    return payload;
+  }, []);
+
+  const fetchStatus = useCallback(async () => {
+    const currentId = inboxIdRef.current;
+    log('fetchStatus start', { inboxId: currentId });
+    const res = await fetch(`/api/inbox/${currentId}/digest/status`, { cache: 'no-store' });
+    if (!res.ok) {
+      const fallback = await res.json().catch(() => ({}));
+      throw new Error((fallback as { error?: string }).error || res.statusText);
+    }
+    const payload = (await res.json()) as DigestStatusResponse;
+    log('fetchStatus success', {
+      overall: payload.status?.overall ?? null,
+      stageStatuses: payload.status?.stages?.map(stage => ({ taskType: stage.taskType, status: stage.status })) ?? [],
+    });
+    return payload;
+  }, []);
 
   const refreshDigest = useCallback(async () => {
     try {
@@ -90,11 +201,27 @@ export function DigestCoordinator({
       if (!isMountedRef.current) return;
 
       const digest = content.digest ?? {};
+      log('refreshDigest update', {
+        digestSummary: digest.summary,
+        digestTagsCount: Array.isArray(digest.tags) ? digest.tags.length : null,
+        hasScreenshot: Boolean(digest.screenshot),
+        slug: digest.slug?.slug ?? null,
+        stageCount: statusPayload.status?.stages?.length ?? 0,
+      });
       setSummary(digest.summary ?? null);
       setTags(Array.isArray(digest.tags) ? digest.tags : null);
       setScreenshot(digest.screenshot ?? null);
       setSlug(digest.slug ?? null);
-      setStatus(statusPayload.status ?? null);
+      const nextStatus = statusPayload.status ?? null;
+      setStatus(nextStatus);
+      setStageStatusMap(prev => {
+        const merged = mergeStageMaps(prev, nextStatus);
+        log(
+          'stage map merged',
+          STAGES.map(stage => `${stage.taskType}:${merged[stage.taskType] ?? 'to-do'}`).join(', ')
+        );
+        return merged;
+      });
       setPollError(null);
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -121,42 +248,42 @@ export function DigestCoordinator({
     };
   }, [refreshDigest]);
 
-  const pipelineActive = useMemo(
-    () => Boolean(status?.stages?.some(stage => stage.status === 'in-progress')),
-    [status]
-  );
+  const pipelineActive = useMemo(() => {
+    const active = Object.values(stageStatusMap).some(value => value === 'in-progress');
+    log('pipelineActive computed', `active=${active} | ${STAGES.map(stage => `${stage.taskType}:${stageStatusMap[stage.taskType] ?? 'to-do'}`).join(', ')}`);
+    return active;
+  }, [stageStatusMap]);
 
   const hasFailures = Boolean(status?.hasFailures);
   const failedStage = useMemo(() => status?.stages?.find(stage => stage.status === 'failed'), [status]);
 
   const progressStages = useMemo(() => {
-    const map = new Map<string, InboxStageStatus>();
-    status?.stages?.forEach(stage => map.set(stage.taskType, stage));
-
-    return STAGES.map(stage => {
-      const stageStatus = map.get(stage.taskType);
+    const stages = STAGES.map(stage => {
+      const taskType = stage.taskType;
+      const statusValue = stageStatusMap[taskType] ?? 'to-do';
       return {
         key: stage.key,
         label: stage.label,
-        status: stageStatus?.status ?? 'to-do',
+        status: statusValue,
       };
     });
-  }, [status]);
-
-  const statusLabelMap: Record<string, string> = useMemo(() => {
-    const fromStages = Object.fromEntries(STAGES.map(stage => [stage.taskType, stage.label]));
-    return fromStages;
-  }, []);
+    log(
+      'progressStages',
+      stages.map(stage => `${stage.key}:${stage.status}`).join(', ')
+    );
+    return stages;
+  }, [stageStatusMap]);
 
   const message = useMemo(() => {
     if (pipelineError) return pipelineError;
     if (pollError) return `Auto refresh issue: ${pollError}`;
     if (hasFailures && failedStage) {
-      const label = statusLabelMap[failedStage.taskType] ?? failedStage.taskType;
+      const stageMeta = STAGES.find(stage => stage.taskType === failedStage.taskType);
+      const label = stageMeta?.label ?? failedStage.taskType;
       return `Digest failed at ${label}. Resolve the issue and retry.`;
     }
     return null;
-  }, [failedStage, hasFailures, pipelineError, pollError, statusLabelMap]);
+  }, [failedStage, hasFailures, pipelineError, pollError]);
 
   const handleDigestClick = useCallback(async () => {
     setIsDigestButtonBusy(true);
@@ -165,12 +292,22 @@ export function DigestCoordinator({
     setTags(null);
     setScreenshot(null);
     setSlug(null);
+    setStageStatusMap({
+      digest_url_crawl: 'in-progress',
+      digest_url_summary: 'to-do',
+      digest_url_tagging: 'to-do',
+      digest_url_slug: 'to-do',
+    });
+    log('handleDigestClick triggered');
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/digest`, { method: 'POST' });
+      const res = await fetch(`/api/inbox/${inboxIdRef.current}/digest`, { method: 'POST' });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error || res.statusText);
-      }
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error || res.statusText);
+    }
+      log('workflow started, refreshing after delay');
+      // Add a small delay before refreshing to give backend time to update
+      await new Promise(resolve => setTimeout(resolve, 500));
       await refreshDigest();
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -181,7 +318,7 @@ export function DigestCoordinator({
         setIsDigestButtonBusy(false);
       }
     }
-  }, [inboxId, refreshDigest]);
+  }, [refreshDigest]);
 
   return (
     <div className="space-y-6">
