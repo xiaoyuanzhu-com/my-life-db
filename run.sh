@@ -55,13 +55,50 @@ run_meilisearch() {
     # Pull the latest image
     docker pull "getmeili/meilisearch:$MEILI_VERSION"
 
-    # Run Meilisearch
-    docker run -it --rm \
+    # Run Meilisearch in detached mode
+    docker run -d --rm \
         --name meilisearch \
         -p "$MEILI_PORT:7700" \
         -e MEILI_ENV='development' \
         -v "$MEILI_DATA_DIR:/meili_data" \
         "getmeili/meilisearch:$MEILI_VERSION"
+
+    log_info "Meilisearch started successfully"
+    log_info "View logs with: docker logs -f meilisearch"
+}
+
+run_qdrant() {
+    log_info "Starting Qdrant with Docker..."
+
+    local QDRANT_VERSION="latest"
+    local QDRANT_PORT="6333"
+    local QDRANT_DATA_DIR="$DATA_DIR/.app/mylifedb/qdrant"
+
+    # Create data directory if it doesn't exist
+    mkdir -p "$QDRANT_DATA_DIR"
+
+    log_info "Data will be persisted to: $QDRANT_DATA_DIR"
+    log_info "Qdrant will be available at: http://localhost:$QDRANT_PORT"
+
+    # Check if container is already running
+    if docker ps --format '{{.Names}}' | grep -q '^qdrant$'; then
+        log_warn "Qdrant container is already running"
+        log_info "To stop it, run: docker stop qdrant"
+        exit 0
+    fi
+
+    # Pull the latest image
+    docker pull "qdrant/qdrant:$QDRANT_VERSION"
+
+    # Run Qdrant in detached mode
+    docker run -d --rm \
+        --name qdrant \
+        -p "$QDRANT_PORT:6333" \
+        -v "$QDRANT_DATA_DIR:/qdrant/storage" \
+        "qdrant/qdrant:$QDRANT_VERSION"
+
+    log_info "Qdrant started successfully"
+    log_info "View logs with: docker logs -f qdrant"
 }
 
 # Main script logic
@@ -75,6 +112,7 @@ main() {
         echo ""
         echo "Available services:"
         echo "  meili    - Start Meilisearch search engine"
+        echo "  qdrant   - Start Qdrant vector database"
         echo ""
         exit 1
     fi
@@ -83,11 +121,15 @@ main() {
         meili|meilisearch)
             run_meilisearch
             ;;
+        qdrant)
+            run_qdrant
+            ;;
         *)
             log_error "Unknown service: $SERVICE"
             echo ""
             echo "Available services:"
             echo "  meili    - Start Meilisearch search engine"
+            echo "  qdrant   - Start Qdrant vector database"
             echo ""
             exit 1
             ;;
