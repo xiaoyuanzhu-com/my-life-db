@@ -139,5 +139,5 @@ export * from './types';
 export * from './task-manager';
 export * from './scheduler';
 export * from './executor';
-export { TaskWorker, getWorker, startWorker, stopWorker, pauseWorker, resumeWorker } from './worker';
+export { TaskWorker, getWorker, startWorker, stopWorker, pauseWorker, resumeWorker, shutdownWorker } from './worker';
 export * from './uuid';

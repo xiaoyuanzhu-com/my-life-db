@@ -31,8 +31,10 @@ export class TaskWorker {
   private config: Required<WorkerConfig>;
   private running = false;
   private paused = false;
+  private stopping = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private staleRecoveryTimer: NodeJS.Timeout | null = null;
+  private activeTasks = new Set<Promise<unknown>>();
   private logger = getLogger({ module: 'TaskQueueWorker' });
 
   constructor(config: WorkerConfig = {}) {
@@ -57,6 +59,7 @@ export class TaskWorker {
 
     this.running = true;
     this.paused = false;
+     this.stopping = false;
     this.log('Worker started');
 
     // Start polling loop
@@ -89,6 +92,40 @@ export class TaskWorker {
     }
 
     this.log('Worker stopped');
+  }
+
+  /**
+   * Gracefully stop the worker, waiting for active tasks (with timeout)
+   */
+  async shutdown(options?: { timeoutMs?: number; reason?: string }): Promise<void> {
+    if (this.stopping) {
+      return;
+    }
+
+    this.stopping = true;
+    const reason = options?.reason ? ` (${options.reason})` : '';
+    this.log(`Worker shutting down${reason}`);
+    this.stop();
+
+    const timeoutMs = options?.timeoutMs ?? 10_000;
+    const pendingBefore = this.activeTasks.size;
+    if (pendingBefore === 0) {
+      this.log('Worker shutdown complete (no pending tasks)');
+      this.stopping = false;
+      return;
+    }
+
+    await this.waitForActiveTasks(timeoutMs);
+
+    if (this.activeTasks.size === 0) {
+      this.log('Worker shutdown complete');
+    } else {
+      this.logger.warn(
+        { pending: this.activeTasks.size },
+        'worker shutdown timed out while waiting for tasks'
+      );
+    }
+    this.stopping = false;
   }
 
   /**
@@ -143,7 +180,7 @@ export class TaskWorker {
    * Schedule next poll
    */
   private schedulePoll(): void {
-    if (!this.running) return;
+    if (!this.running || this.stopping) return;
 
     this.pollTimer = setTimeout(() => {
       this.poll();
@@ -154,7 +191,7 @@ export class TaskWorker {
    * Schedule next stale recovery
    */
   private scheduleStaleRecovery(): void {
-    if (!this.running) return;
+    if (!this.running || this.stopping) return;
 
     this.staleRecoveryTimer = setTimeout(() => {
       this.recoverStale();
@@ -167,7 +204,7 @@ export class TaskWorker {
   private async poll(): Promise<void> {
     try {
       // Skip if paused
-      if (this.paused) {
+      if (this.paused || this.stopping) {
         return;
       }
 
@@ -192,7 +229,7 @@ export class TaskWorker {
 
       // Execute tasks in parallel (up to batchSize)
       const results = await Promise.allSettled(
-        readyTasks.map(task => executeTask(task.id, this.config.maxAttempts))
+        readyTasks.map(task => this.trackExecution(executeTask(task.id, this.config.maxAttempts)))
       );
 
       // Log results
@@ -231,7 +268,7 @@ export class TaskWorker {
    */
   private recoverStale(): void {
     try {
-      if (this.paused) {
+      if (this.paused || this.stopping) {
         return;
       }
 
@@ -257,6 +294,27 @@ export class TaskWorker {
       this.logger.info({}, message);
     }
   }
+
+  private trackExecution<T>(promise: Promise<T>): Promise<T> {
+    this.activeTasks.add(promise);
+    return promise.finally(() => {
+      this.activeTasks.delete(promise);
+    });
+  }
+
+  private async waitForActiveTasks(timeoutMs: number): Promise<void> {
+    if (this.activeTasks.size === 0) {
+      return;
+    }
+
+    const active = Array.from(this.activeTasks);
+    await Promise.race([
+      Promise.allSettled(active).then(() => undefined),
+      new Promise<void>(resolve => {
+        setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  }
 }
 
 /**
@@ -280,9 +338,23 @@ export function getWorker(config?: WorkerConfig): TaskWorker {
 /**
  * Start global worker
  */
-export function startWorker(config?: WorkerConfig): void {
-  const worker = getWorker(config);
+export function startWorker(config?: WorkerConfig): TaskWorker {
+  const existing = globalThis.__mylifedb_taskqueue_worker;
+  const shouldRestart = Boolean(
+    existing &&
+    process.env.NODE_ENV !== 'production'
+  );
+
+  if (shouldRestart && existing) {
+    void existing.shutdown({ reason: 'hot-reload restart', timeoutMs: 2000 });
+    globalThis.__mylifedb_taskqueue_worker = new TaskWorker(config);
+  } else if (!existing) {
+    globalThis.__mylifedb_taskqueue_worker = new TaskWorker(config);
+  }
+
+  const worker = globalThis.__mylifedb_taskqueue_worker;
   worker.start();
+  return worker;
 }
 
 /**
@@ -291,6 +363,16 @@ export function startWorker(config?: WorkerConfig): void {
 export function stopWorker(): void {
   const worker = globalThis.__mylifedb_taskqueue_worker;
   if (worker) worker.stop();
+}
+
+/**
+ * Gracefully shutdown the global worker
+ */
+export async function shutdownWorker(options?: { timeoutMs?: number; reason?: string }): Promise<void> {
+  const worker = globalThis.__mylifedb_taskqueue_worker;
+  if (worker) {
+    await worker.shutdown(options);
+  }
 }
 
 /**
