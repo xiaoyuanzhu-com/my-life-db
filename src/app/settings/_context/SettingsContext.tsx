@@ -28,29 +28,6 @@ function stripUnchangedMaskedKeys(
 ): Partial<UserSettings> {
   const cleaned = { ...updates };
 
-  // Check AI OpenAI API key
-  if (cleaned.ai?.openai?.apiKey &&
-      isMaskedApiKey(cleaned.ai.openai.apiKey) &&
-      cleaned.ai.openai.apiKey === original.ai?.openai?.apiKey) {
-    // Remove the apiKey field entirely if unchanged
-    const { apiKey: _apiKey, ...rest } = cleaned.ai.openai;
-    cleaned.ai = {
-      ...cleaned.ai,
-      openai: Object.keys(rest).length > 0 ? (rest as any) : undefined,
-    };
-  }
-
-  // Check AI Custom API key
-  if (cleaned.ai?.custom?.apiKey &&
-      isMaskedApiKey(cleaned.ai.custom.apiKey) &&
-      cleaned.ai.custom.apiKey === original.ai?.custom?.apiKey) {
-    const { apiKey: _apiKey, ...rest } = cleaned.ai.custom;
-    cleaned.ai = {
-      ...cleaned.ai,
-      custom: Object.keys(rest).length > 0 ? (rest as any) : undefined,
-    };
-  }
-
   // Check Vendor OpenAI API key
   if (cleaned.vendors?.openai?.apiKey &&
       isMaskedApiKey(cleaned.vendors.openai.apiKey) &&

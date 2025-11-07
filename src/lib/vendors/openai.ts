@@ -5,6 +5,7 @@
 
 import { getSettings } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
+import type { UserSettings } from '@/lib/config/settings';
 
 export interface OpenAICompletionOptions {
   prompt: string;
@@ -54,11 +55,15 @@ export interface OpenAICompletionResponse {
  */
 const log = getLogger({ module: 'VendorOpenAI' });
 
+function getVendorOpenAIConfig(settings: UserSettings) {
+  return settings.vendors?.openai;
+}
+
 export async function callOpenAICompletion(
   options: OpenAICompletionOptions
 ): Promise<OpenAICompletionResponse> {
   const settings = await getSettings();
-  const vendorConfig = settings.vendors?.openai;
+  const vendorConfig = getVendorOpenAIConfig(settings);
 
   if (!vendorConfig?.apiKey) {
     throw new Error('OpenAI API key not configured in settings');
@@ -146,4 +151,10 @@ export async function callOpenAICompletion(
     content,
     usage,
   };
+}
+
+export async function isOpenAIConfigured(): Promise<boolean> {
+  const settings = await getSettings();
+  const vendorConfig = getVendorOpenAIConfig(settings);
+  return Boolean(vendorConfig?.apiKey?.trim());
 }

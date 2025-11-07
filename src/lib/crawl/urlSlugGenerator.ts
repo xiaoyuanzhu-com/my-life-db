@@ -2,7 +2,7 @@
  * URL Slug Generator - Generate human-readable slugs for URLs
  */
 
-import { callAI, isAIAvailable } from '../ai/provider';
+import { callOpenAICompletion, isOpenAIConfigured } from '@/lib/vendors/openai';
 import { generateSlug } from '../utils/slug';
 import type { CrawlResult } from './urlCrawler';
 import { getLogger } from '@/lib/log/logger';
@@ -22,7 +22,7 @@ export async function generateUrlSlug(
   crawlResult: CrawlResult
 ): Promise<SlugGenerationResult> {
   // Try AI generation first (if available)
-  if (await isAIAvailable()) {
+  if (await isOpenAIConfigured()) {
     try {
       const aiResult = await generateSlugWithAI(crawlResult);
       if (aiResult) {
@@ -93,8 +93,13 @@ Instructions:
 
 Title:`;
 
-  const response = await callAI(prompt);
-  const title = response.trim();
+  const response = await callOpenAICompletion({
+    systemPrompt: 'You are a helpful assistant that creates concise, descriptive titles for saved web content.',
+    prompt,
+    temperature: 0.2,
+    maxTokens: 60,
+  });
+  const title = response.content.trim();
 
   // Validate response
   if (!title || title.length < 3 || title.length > 100) {

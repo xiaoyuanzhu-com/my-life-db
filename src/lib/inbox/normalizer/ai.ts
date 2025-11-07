@@ -4,7 +4,7 @@ import 'server-only';
 // to best-effort map legacy shapes to the current InboxItem fields.
 
 import type { FileType, MessageType } from '@/types';
-import { callAI, isAIAvailable } from '@/lib/ai/provider';
+import { callOpenAICompletion, isOpenAIConfigured } from '@/lib/vendors/openai';
 import { z } from 'zod';
 
 export interface FolderFileSummary {
@@ -119,11 +119,17 @@ function truncate(s: string, n: number): string {
 }
 
 export async function normalizeWithAI(input: NormalizeWithAIInput): Promise<NormalizedProposal | null> {
-  if (!(await isAIAvailable())) return null;
+  if (!(await isOpenAIConfigured())) return null;
 
   const prompt = buildPrompt(input);
   try {
-    const raw = await callAI(prompt);
+    const completion = await callOpenAICompletion({
+      systemPrompt: 'You are an expert data normalizer that maps legacy inbox folders into the current schema.',
+      prompt,
+      temperature: 0,
+      maxTokens: 800,
+    });
+    const raw = completion.content;
     // Expect strict JSON
     const firstBrace = raw.indexOf('{');
     const lastBrace = raw.lastIndexOf('}');

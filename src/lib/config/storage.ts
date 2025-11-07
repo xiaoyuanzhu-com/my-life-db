@@ -44,26 +44,6 @@ export async function loadSettings(): Promise<UserSettings> {
         ) as UserSettings['preferences']['digestDay'],
         logLevel: ((getSetting(db, 'preferences_log_level') as UserSettings['preferences']['logLevel']) || DEFAULT_SETTINGS.preferences.logLevel || 'info'),
       },
-      ai: {
-        provider: (getSetting(db, 'ai_provider') as UserSettings['ai']['provider']) || DEFAULT_SETTINGS.ai.provider,
-        openai: {
-          apiKey: getSetting(db, 'ai_openai_api_key') || '',
-          baseUrl: getSetting(db, 'ai_openai_base_url') || undefined,
-          model: getSetting(db, 'ai_openai_model') || undefined,
-          embeddingModel: getSetting(db, 'ai_openai_embedding_model') || undefined,
-        },
-        ollama: {
-          baseUrl: getSetting(db, 'ai_ollama_base_url') || '',
-          model: getSetting(db, 'ai_ollama_model') || '',
-          embeddingModel: getSetting(db, 'ai_ollama_embedding_model') || undefined,
-        },
-        custom: {
-          baseUrl: getSetting(db, 'ai_custom_base_url') || '',
-          apiKey: getSetting(db, 'ai_custom_api_key') || undefined,
-          headers: undefined,
-          model: getSetting(db, 'ai_custom_model') || undefined,
-        },
-      },
       vendors: {
         openai: {
           baseUrl: getSetting(db, 'vendors_openai_base_url') || undefined,
@@ -113,21 +93,6 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     setSetting(db, 'preferences_digest_day', String(settings.preferences.digestDay));
     if (settings.preferences.logLevel) setSetting(db, 'preferences_log_level', settings.preferences.logLevel);
 
-    // AI
-    setSetting(db, 'ai_provider', settings.ai.provider);
-    if (settings.ai.openai?.apiKey) setSetting(db, 'ai_openai_api_key', settings.ai.openai.apiKey);
-    if (settings.ai.openai?.baseUrl) setSetting(db, 'ai_openai_base_url', settings.ai.openai.baseUrl);
-    if (settings.ai.openai?.model) setSetting(db, 'ai_openai_model', settings.ai.openai.model);
-    if (settings.ai.openai?.embeddingModel) setSetting(db, 'ai_openai_embedding_model', settings.ai.openai.embeddingModel);
-
-    if (settings.ai.ollama?.baseUrl) setSetting(db, 'ai_ollama_base_url', settings.ai.ollama.baseUrl);
-    if (settings.ai.ollama?.model) setSetting(db, 'ai_ollama_model', settings.ai.ollama.model);
-    if (settings.ai.ollama?.embeddingModel) setSetting(db, 'ai_ollama_embedding_model', settings.ai.ollama.embeddingModel);
-
-    if (settings.ai.custom?.baseUrl) setSetting(db, 'ai_custom_base_url', settings.ai.custom.baseUrl);
-    if (settings.ai.custom?.apiKey) setSetting(db, 'ai_custom_api_key', settings.ai.custom.apiKey);
-    if (settings.ai.custom?.model) setSetting(db, 'ai_custom_model', settings.ai.custom.model);
-
     // Vendors
     if (settings.vendors?.openai?.baseUrl) setSetting(db, 'vendors_openai_base_url', settings.vendors.openai.baseUrl);
     if (settings.vendors?.openai?.apiKey) setSetting(db, 'vendors_openai_api_key', settings.vendors.openai.apiKey);
@@ -173,10 +138,6 @@ export async function updateSettings(
       ...currentSettings.preferences,
       ...updates.preferences,
     },
-    ai: {
-      ...currentSettings.ai,
-      ...updates.ai,
-    },
     vendors: {
       ...currentSettings.vendors,
       ...updates.vendors,
@@ -201,45 +162,6 @@ export async function updateSettings(
 export async function resetSettings(): Promise<UserSettings> {
   await saveSettings(DEFAULT_SETTINGS);
   return DEFAULT_SETTINGS;
-}
-
-/**
- * Get AI configuration only
- */
-export async function getAIConfig() {
-  const settings = await loadSettings();
-  const ai = { ...settings.ai };
-
-  // Use vendors.openai credentials for OpenAI if present
-  const vOpenAI = settings.vendors?.openai;
-  if (vOpenAI && (vOpenAI.apiKey || vOpenAI.baseUrl || vOpenAI.model)) {
-    ai.openai = {
-      apiKey: vOpenAI.apiKey || ai.openai?.apiKey || '',
-      baseUrl: vOpenAI.baseUrl || ai.openai?.baseUrl,
-      model: vOpenAI.model || ai.openai?.model,
-      embeddingModel: ai.openai?.embeddingModel,
-    };
-
-    // If provider is not set or 'none', treat as openai when vendor creds exist
-    if (!ai.provider || ai.provider === 'none') {
-      ai.provider = 'openai';
-    }
-  }
-
-  return ai;
-}
-
-/**
- * Update AI configuration only
- */
-export async function updateAIConfig(aiConfig: Partial<UserSettings['ai']>) {
-  const settings = await loadSettings();
-  settings.ai = {
-    ...settings.ai,
-    ...aiConfig,
-  };
-  await saveSettings(settings);
-  return settings.ai;
 }
 
 /**

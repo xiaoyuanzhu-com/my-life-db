@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getAIConfig } from '@/lib/config/storage';
+import { getSettings } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiVendorsOpenAIModels' });
 
 export async function GET() {
   try {
-    const aiConfig = await getAIConfig();
-    const apiKey = aiConfig.openai?.apiKey?.trim();
-    const baseUrl = (aiConfig.openai?.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+    const settings = await getSettings();
+    const vendorConfig = settings.vendors?.openai;
+    const apiKey = vendorConfig?.apiKey?.trim();
+    const baseUrl = ((vendorConfig?.baseUrl) || 'https://api.openai.com/v1').replace(/\/$/, '');
 
     if (!apiKey) {
       return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 400 });

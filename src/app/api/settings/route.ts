@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadSettings, saveSettings, resetSettings } from '@/lib/config/storage';
-import { validateAIConfig, sanitizeSettings } from '@/lib/config/settings';
+import { sanitizeSettings } from '@/lib/config/settings';
 import type { UserSettings } from '@/lib/config/settings';
 import { getLogger } from '@/lib/log/logger';
 
@@ -38,17 +38,6 @@ export async function PUT(request: NextRequest) {
     // Load current settings
     const currentSettings = await loadSettings();
 
-    // Validate AI config if being updated
-    if (updates.ai) {
-      const validation = validateAIConfig(updates.ai);
-      if (!validation.valid) {
-        return NextResponse.json(
-          { error: validation.error },
-          { status: 400 }
-        );
-      }
-    }
-
     // Merge updates (frontend already stripped unchanged masked keys)
     const updatedSettings: UserSettings = {
       ...currentSettings,
@@ -56,10 +45,6 @@ export async function PUT(request: NextRequest) {
       preferences: {
         ...currentSettings.preferences,
         ...updates.preferences,
-      },
-      ai: {
-        ...currentSettings.ai,
-        ...updates.ai,
       },
       vendors: {
         ...currentSettings.vendors,

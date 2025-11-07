@@ -17,7 +17,7 @@ import { tq } from '../task-queue';
 import { enqueuePostIndex } from '@/lib/inbox/postIndexEnricher';
 import { getLogger } from '@/lib/log/logger';
 import { normalizeWithAI } from '@/lib/inbox/normalizer/ai';
-import { isAIAvailable } from '@/lib/ai/provider';
+import { isOpenAIConfigured } from '@/lib/vendors/openai';
 
 const CURRENT_SCHEMA_VERSION = 1;
 const log = getLogger({ module: 'InboxSync' });
@@ -183,7 +183,7 @@ async function scanInboxFolders(): Promise<{
       let aiUpdatedAt: string | null | undefined = undefined;
 
       try {
-        if (await isAIAvailable()) {
+        if (await isOpenAIConfigured()) {
           const aiInput = {
             folderName,
             files: inboxFiles.map(f => ({ filename: f.filename, size: f.size, mimeType: f.mimeType, type: f.type })),

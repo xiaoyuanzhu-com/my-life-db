@@ -1,33 +1,5 @@
 // Settings and configuration management for MyLifeDB
 
-export interface AIConfig {
-  // AI Provider Selection
-  provider: 'openai' | 'ollama' | 'custom' | 'none';
-
-  // OpenAI Configuration
-  openai?: {
-    apiKey: string;
-    baseUrl?: string; // Optional custom base URL
-    model?: string; // e.g., "gpt-4", "gpt-3.5-turbo"
-    embeddingModel?: string; // e.g., "text-embedding-3-small"
-  };
-
-  // Ollama Configuration
-  ollama?: {
-    baseUrl: string; // e.g., "http://localhost:11434"
-    model: string; // e.g., "llama2", "mistral"
-    embeddingModel?: string; // e.g., "nomic-embed-text"
-  };
-
-  // Custom API Configuration
-  custom?: {
-    baseUrl: string;
-    apiKey?: string;
-    headers?: Record<string, string>;
-    model?: string;
-  };
-}
-
 export interface UserSettings {
   // User Preferences
   preferences: {
@@ -37,9 +9,6 @@ export interface UserSettings {
     digestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
     logLevel?: 'debug' | 'info' | 'warn' | 'error';
   };
-
-  // AI Configuration
-  ai: AIConfig;
 
   // Vendor Configuration
   vendors?: {
@@ -119,9 +88,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
     digestDay: 0, // Sunday
     logLevel: 'info',
   },
-  ai: {
-    provider: 'none',
-  },
   extraction: {
     autoEnrich: false,
     includeEntities: true,
@@ -172,32 +138,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   },
 };
 
-// Validate AI configuration
-export function validateAIConfig(config: AIConfig): { valid: boolean; error?: string } {
-  if (config.provider === 'openai') {
-    if (!config.openai?.apiKey) {
-      return { valid: false, error: 'OpenAI API key is required' };
-    }
-  }
-
-  if (config.provider === 'ollama') {
-    if (!config.ollama?.baseUrl) {
-      return { valid: false, error: 'Ollama base URL is required' };
-    }
-    if (!config.ollama?.model) {
-      return { valid: false, error: 'Ollama model is required' };
-    }
-  }
-
-  if (config.provider === 'custom') {
-    if (!config.custom?.baseUrl) {
-      return { valid: false, error: 'Custom API base URL is required' };
-    }
-  }
-
-  return { valid: true };
-}
-
 // Helper function to mask API key with asterisks of the same length
 function maskApiKey(apiKey: string | undefined): string | undefined {
   if (!apiKey) return apiKey;
@@ -208,21 +148,6 @@ function maskApiKey(apiKey: string | undefined): string | undefined {
 export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> {
   return {
     ...settings,
-    ai: {
-      ...settings.ai,
-      openai: settings.ai.openai
-        ? {
-            ...settings.ai.openai,
-            apiKey: maskApiKey(settings.ai.openai.apiKey) || '',
-          }
-        : undefined,
-      custom: settings.ai.custom
-        ? {
-            ...settings.ai.custom,
-            apiKey: maskApiKey(settings.ai.custom.apiKey),
-          }
-        : undefined,
-    },
     vendors: settings.vendors
       ? {
           ...settings.vendors,
