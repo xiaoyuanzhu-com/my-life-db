@@ -1,9 +1,10 @@
 'use client';
 
+import { useCallback, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Save, Check } from 'lucide-react';
+import { Sparkles, Save, Check, Loader2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/SettingsContext';
@@ -11,9 +12,74 @@ import { SettingsHeader } from '../_components/SettingsHeader';
 import { TasksTab } from '../_components/TasksTab';
 import type { UserSettings } from '@/lib/config/settings';
 
+interface ModelOption {
+  id: string;
+  owned_by?: string;
+}
+
 export default function SettingsPage() {
   const params = useParams();
   const { settings, setSettings, isLoading, isSaving, saveMessage, saveSettings } = useSettingsContext();
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelQuery, setModelQuery] = useState('');
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  const filteredModels = useMemo(() => {
+    if (!modelQuery) return modelOptions;
+    const query = modelQuery.toLowerCase();
+    return modelOptions.filter((model) => {
+      const matchesId = model.id.toLowerCase().includes(query);
+      const matchesOwner = model.owned_by?.toLowerCase().includes(query) ?? false;
+      return matchesId || matchesOwner;
+    });
+  }, [modelOptions, modelQuery]);
+
+  const fetchModels = useCallback(async () => {
+    setModelError(null);
+    setIsModelLoading(true);
+
+    try {
+      const response = await fetch('/api/vendors/openai/models');
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || 'Failed to fetch models';
+        throw new Error(message);
+      }
+
+      setModelOptions(Array.isArray(payload?.models) ? payload.models : []);
+    } catch (error) {
+      setModelOptions([]);
+      setModelError(error instanceof Error ? error.message : 'Failed to fetch models');
+    } finally {
+      setIsModelLoading(false);
+    }
+  }, []);
+
+  const handleOpenModelSelector = useCallback(() => {
+    setModelQuery('');
+    setIsModelModalOpen(true);
+    void fetchModels();
+  }, [fetchModels]);
+
+  const handleModelSelect = useCallback(
+    (modelId: string) => {
+      if (!settings) return;
+      setSettings({
+        ...settings,
+        vendors: {
+          ...settings.vendors,
+          openai: {
+            ...settings.vendors?.openai,
+            model: modelId,
+          },
+        },
+      });
+      setIsModelModalOpen(false);
+    },
+    [setSettings, settings]
+  );
 
   // Determine active tab from URL
   const tabParam = params.tab as string[] | undefined;
@@ -457,6 +523,33 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">OpenAI - Model</label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenModelSelector}
+                    disabled={isModelLoading}
+                  >
+                    {isModelLoading ? 'Loading...' : 'Select Model'}
+                  </Button>
+                </div>
+                <Input
+                  placeholder="gpt-4o"
+                  value={settings.vendors?.openai?.model || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      vendors: {
+                        ...settings.vendors,
+                        openai: { ...settings.vendors?.openai, model: e.target.value },
+                      },
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">Used for all LLM tasks. Leave blank to use default.</p>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Homelab AI - Base URL</label>
                 <Input
                   placeholder="https://haid.home.iloahz.com"
@@ -520,6 +613,86 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+      {isModelModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setIsModelModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-lg bg-background p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold">Select OpenAI Model</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsModelModalOpen(false)}
+              >
+                Close
+              </Button>
+            </div>
+            <div className="space-y-3">
+              <Input
+                placeholder="Filter models..."
+                value={modelQuery}
+                onChange={(event) => setModelQuery(event.target.value)}
+              />
+              {modelError && (
+                <div className="space-y-2">
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {modelError}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void fetchModels()}
+                    disabled={isModelLoading}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+              {isModelLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {filteredModels.map((model) => {
+                    const isSelected = settings?.vendors?.openai?.model === model.id;
+                    return (
+                      <button
+                        key={model.id}
+                        className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:bg-muted'
+                        }`}
+                        onClick={() => handleModelSelect(model.id)}
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{model.id}</span>
+                          {model.owned_by && (
+                            <span className="text-xs text-muted-foreground">
+                              Owner: {model.owned_by}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredModels.length === 0 && !modelError && (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No models found. Check your API key permissions.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

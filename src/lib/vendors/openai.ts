@@ -4,6 +4,7 @@
  */
 
 import { getSettings } from '@/lib/config/storage';
+import { getLogger } from '@/lib/log/logger';
 
 export interface OpenAICompletionOptions {
   prompt: string;
@@ -51,6 +52,8 @@ export interface OpenAICompletionResponse {
  * });
  * // result.content will be valid JSON: {"name": "John", "age": 30}
  */
+const log = getLogger({ module: 'VendorOpenAI' });
+
 export async function callOpenAICompletion(
   options: OpenAICompletionOptions
 ): Promise<OpenAICompletionResponse> {
@@ -62,7 +65,23 @@ export async function callOpenAICompletion(
   }
 
   const baseUrl = vendorConfig.baseUrl || 'https://api.openai.com/v1';
-  const model = options.model || 'gpt-4o-mini';
+  const optionModel = typeof options.model === 'string' ? options.model.trim() : undefined;
+  const vendorModel = typeof vendorConfig.model === 'string' ? vendorConfig.model.trim() : undefined;
+  const fallbackModel = 'gpt-4o-mini';
+  const model = optionModel || vendorModel || fallbackModel;
+
+  try {
+    log.info(
+      {
+        optionModel: optionModel || null,
+        vendorModel: vendorModel || null,
+        fallbackModel,
+        selectedModel: model,
+        baseUrl,
+      },
+      'openai completion model selection'
+    );
+  } catch {}
 
   const messages: Array<{ role: string; content: string }> = [];
 

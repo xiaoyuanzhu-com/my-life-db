@@ -68,6 +68,7 @@ export async function loadSettings(): Promise<UserSettings> {
         openai: {
           baseUrl: getSetting(db, 'vendors_openai_base_url') || undefined,
           apiKey: getSetting(db, 'vendors_openai_api_key') || undefined,
+          model: getSetting(db, 'vendors_openai_model') || undefined,
         },
         homelabAi: {
           baseUrl: getSetting(db, 'vendors_homelab_ai_base_url') || undefined,
@@ -130,6 +131,9 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     // Vendors
     if (settings.vendors?.openai?.baseUrl) setSetting(db, 'vendors_openai_base_url', settings.vendors.openai.baseUrl);
     if (settings.vendors?.openai?.apiKey) setSetting(db, 'vendors_openai_api_key', settings.vendors.openai.apiKey);
+    if (settings.vendors?.openai && 'model' in settings.vendors.openai) {
+      setSetting(db, 'vendors_openai_model', settings.vendors.openai.model ?? '');
+    }
     if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
     if (settings.vendors?.homelabAi?.chromeCdpUrl) {
       setSetting(db, 'vendors_homelab_ai_chrome_cdp_url', settings.vendors.homelabAi.chromeCdpUrl);
@@ -208,11 +212,11 @@ export async function getAIConfig() {
 
   // Use vendors.openai credentials for OpenAI if present
   const vOpenAI = settings.vendors?.openai;
-  if (vOpenAI && (vOpenAI.apiKey || vOpenAI.baseUrl)) {
+  if (vOpenAI && (vOpenAI.apiKey || vOpenAI.baseUrl || vOpenAI.model)) {
     ai.openai = {
       apiKey: vOpenAI.apiKey || ai.openai?.apiKey || '',
       baseUrl: vOpenAI.baseUrl || ai.openai?.baseUrl,
-      model: ai.openai?.model,
+      model: vOpenAI.model || ai.openai?.model,
       embeddingModel: ai.openai?.embeddingModel,
     };
 

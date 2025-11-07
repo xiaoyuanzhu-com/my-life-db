@@ -49,7 +49,17 @@ async function callOpenAI(prompt: string, config: AIConfig): Promise<string> {
 
   // Log request
   try {
-    log.info({ provider: 'openai', model, prompt }, 'llm request');
+    log.info(
+      {
+        provider: 'openai',
+        prompt,
+        selectedModel: model,
+        configuredModel: config.openai.model ?? null,
+        fallbackModel: 'gpt-4',
+        baseUrl,
+      },
+      'llm request'
+    );
   } catch {}
 
   const response = await fetch(`${baseUrl}/chat/completions`, {

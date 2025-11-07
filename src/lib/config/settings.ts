@@ -46,6 +46,7 @@ export interface UserSettings {
     openai?: {
       baseUrl?: string;
       apiKey?: string;
+      model?: string;
     };
     homelabAi?: {
       baseUrl?: string;
