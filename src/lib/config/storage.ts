@@ -54,6 +54,12 @@ export async function loadSettings(): Promise<UserSettings> {
           baseUrl: getSetting(db, 'vendors_homelab_ai_base_url') || undefined,
           chromeCdpUrl: getSetting(db, 'vendors_homelab_ai_chrome_cdp_url') || undefined,
         },
+        meilisearch: {
+          host: getSetting(db, 'vendors_meilisearch_host') || undefined,
+        },
+        qdrant: {
+          host: getSetting(db, 'vendors_qdrant_host') || undefined,
+        },
       },
       extraction: {
         autoEnrich: getSetting(db, 'extraction_auto_enrich') === 'true' || DEFAULT_SETTINGS.extraction.autoEnrich,
@@ -102,6 +108,12 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
     if (settings.vendors?.homelabAi?.chromeCdpUrl) {
       setSetting(db, 'vendors_homelab_ai_chrome_cdp_url', settings.vendors.homelabAi.chromeCdpUrl);
+    }
+    if (settings.vendors?.meilisearch?.host) {
+      setSetting(db, 'vendors_meilisearch_host', settings.vendors.meilisearch.host);
+    }
+    if (settings.vendors?.qdrant?.host) {
+      setSetting(db, 'vendors_qdrant_host', settings.vendors.qdrant.host);
     }
 
     // Extraction

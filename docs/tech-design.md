@@ -486,7 +486,7 @@ CREATE TABLE entry_spaces (
   added_at INTEGER NOT NULL,
   added_by TEXT CHECK(added_by IN ('user', 'ai')),
   PRIMARY KEY (entry_id, space_id),
-  FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (entry_id) REFERENCES inbox(id) ON DELETE CASCADE,
   FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
 );
 
@@ -1454,7 +1454,7 @@ CREATE INDEX idx_search_documents_status
   WHERE meili_status != 'indexed';
 ```
 
-2. We continue to reuse the existing `task_queue` table for background work. Meilisearch-specific jobs set `task_type` to `search.index` / `search.delete` and carry `document_id` references so handlers can join back to `search_documents`.
+2. We continue to reuse the existing `task_queue` table for background work. Meilisearch-specific jobs set `task_type` to `search_index` / `search_delete` and carry `document_id` references so handlers can join back to `search_documents`.
 
 #### 5.9.2 Meilisearch document shape
 
@@ -2499,14 +2499,14 @@ flowchart LR
   B --> C[digest/content.md + metadata]
   C --> D[Normalizer + chunker]
   D --> E[search_documents rows]
-  E --> F[search.index job]
+  E --> F[search_index job]
   F --> G[Meilisearch index url_content]
   G --> H[Search API response]
   H --> I[Result hydration (SQLite + FS)]
 ```
 
 1. `crawl-url` job writes the normalized markdown/HTML plus metadata JSON.
-2. File watcher / job completion event enqueues `search.index` with `{ entryId, variant: 'url-content-md' }`.
+2. File watcher / job completion event enqueues `search_index` with `{ entryId, variant: 'url-content-md' }`.
 3. Indexer loads the file, strips boilerplate, chunks the text (≤1,200 tokens with 200-token overlap), and writes/updates `search_documents`.
 4. Meilisearch payloads are materialized from the rows and pushed to the `url_content` index. Success/failure updates `meili_status`.
 5. Queries hit Meilisearch directly; we later hydrate each hit with SQLite + filesystem lookups for UI fidelity.
@@ -2523,11 +2523,11 @@ flowchart LR
 **Update / re-crawl**
 - Triggered when `digest/content.*` changes (fs watcher) or when the user requests a re-crawl.
 - Indexer recomputes the `content_hash`. If unchanged, it simply touches `updated_at` and skips Meilisearch.
-- If changed, existing rows for `{entryId, variant}` are marked `meili_status = 'deleting'` and dispatched to `search.delete` jobs, then recreated with the new chunks so we never serve stale hashes.
+- If changed, existing rows for `{entryId, variant}` are marked `meili_status = 'deleting'` and dispatched to `search_delete` jobs, then recreated with the new chunks so we never serve stale hashes.
 - Re-crawl events keep the same `docId` namespace so clients do not accumulate duplicates.
 
 **Deletion / archival**
-- When an inbox entry is deleted or archived, `search.delete` jobs are enqueued with all related `document_id`s.
+- When an inbox entry is deleted or archived, `search_delete` jobs are enqueued with all related `document_id`s.
 - Handler calls `index.deleteDocuments([docId...])`, waits for task completion, and flips `meili_status` to `deleted` (or retries with exponential backoff).
 - Library moves (UUID → slug) only update `source_path` in SQLite; we do not delete/reinsert unless the text changed.
 
@@ -2596,7 +2596,7 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 | **Search document repo** | `src/lib/search/search-documents.ts` | Read/write `search_documents`, version chunk metadata, expose helpers to upsert/delete rows transactionally. |
 | **Meilisearch client** | `src/lib/search/meili-client.ts` | Create configured Meili instance (host, API key, timeout), lazy-init indexes, set ranking rules and searchable/filterable attributes. |
 | **Indexer orchestrator** | `src/lib/search/indexer.ts` | Given `{ entryId, variant }`, loads digest files, calls chunker, writes `search_documents`, prepares payloads for Meili. |
-| **Task handlers** | `src/lib/task-handlers/search/index.ts` | Queue + process `search.index` and `search.delete` jobs; call Meili client, update status fields, retry with exponential backoff. |
+| **Task handlers** | `src/lib/task-handlers/search/index.ts` | Queue + process `search_index` and `search_delete` jobs; call Meili client, update status fields, retry with exponential backoff. |
 | **Hydrator** | `src/lib/search/hydrate.ts` | Join Meili hits against SQLite (`entries`, `library`, `search_documents`) + filesystem to build UI-ready `SearchResult`. |
 | **Search API** | `src/app/api/search/route.ts` (or server action) | Invoke Meili + Qdrant adapters, apply server-side fusion/dedup (Section 9.1.1), return paginated results. |
 | **CLI/maintenance** | `src/scripts/reindex-search.ts` | Backfill / reconciliation utility to rebuild Meili index from `search_documents`. |
@@ -2607,13 +2607,13 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 1. `crawl-url` job finishes → emits event (or explicit call) to `enqueueSearchIndex(entryId, 'url-content-md')`.
 2. Indexer loads `digest/content.md` (fallback `digest/content.html`), runs chunker, computes `content_hash`.
 3. Wrap DB transaction: delete existing rows for `{entryId, variant}`, insert new chunk rows, set `meili_status = 'pending'`.
-4. Enqueue `search.index` job(s) with batched `document_id`s.
+4. Enqueue `search_index` job(s) with batched `document_id`s.
 5. Worker pushes payloads to Meili (`index.addDocuments`), waits for task completion, marks status `indexed` + `last_indexed_at`.
 
 **B. Updates / re-crawls**
 1. File watcher or manual action triggers `enqueueSearchIndex`.
 2. Indexer recomputes hash. If unchanged, exit early (touch `updated_at` only).
-3. When changed, mark existing rows `meili_status = 'deleting'`, enqueue `search.delete`, then run full ingestion path from step A.
+3. When changed, mark existing rows `meili_status = 'deleting'`, enqueue `search_delete`, then run full ingestion path from step A.
 
 **C. Deletions / archives**
 1. Inbox/library deletion hooks call `enqueueSearchDelete(entryId)`.
@@ -2633,7 +2633,7 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 
 #### 9.4.4 Confirmed decisions
 
-1. **Indexing trigger:** Support both signals. The crawler dispatches `search.index` immediately after processing (low latency) while the filesystem watcher enqueues safety-net jobs for any missed/retroactive changes.
+1. **Indexing trigger:** Support both signals. The crawler dispatches `search_index` immediately after processing (low latency) while the filesystem watcher enqueues safety-net jobs for any missed/retroactive changes.
 2. **HTML variant scope:** Markdown (`digest/content.md`) is the canonical variant for Meili. HTML output stays on disk for previews/screenshots but is not indexed separately, keeping the `variant` set minimal.
 3. **Deletion retention:** We soft-delete rows (set `meili_status = 'deleted'`) and retain them for now so reconciliation/analytics can reason about historical states. A separate cleanup job can prune them later if storage becomes an issue.
 
@@ -2646,13 +2646,13 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 | **Embedding provider** | `src/lib/ai/embeddings.ts` | Call HAID `/api/text-to-embedding`, normalize vectors, expose `embedText(s)` returning Float32Array + metadata. |
 | **Qdrant client** | `src/lib/search/qdrant-client.ts` | Thin wrapper over Qdrant REST/gRPC, handles collection creation, upserts, deletes, scroll, health checks, and retries with exponential backoff. |
 | **Vector ingestor** | `src/lib/search/vector-ingestor.ts` | Reads pending `search_documents` rows (by `embedding_status`), bundles chunk text, calls embedding provider, and writes vectors to Qdrant. |
-| **Task handlers** | `src/lib/task-handlers/search/semantic.ts` | Background jobs `search.vector.index` and `search.vector.delete`; ensure ingestion is idempotent and respects concurrency limits. |
+| **Task handlers** | `src/lib/task-handlers/search/semantic.ts` | Background jobs `search_vector_index` and `search_vector_delete`; ensure ingestion is idempotent and respects concurrency limits. |
 | **Semantic search adapter** | `src/lib/search/qdrant.ts` | Implements `semanticSearch(query)` → fetch embeddings, query Qdrant, convert hits to `SearchResult` with cosine scores. |
 | **Maintenance CLI** | `src/scripts/reembed-search.ts` | Recompute embeddings when `EMBEDDING_SCHEMA_VERSION` bumps or provider changes; batches work across all chunks. |
 
 #### 9.5.2 Vector ingestion workflow
 
-1. **Triggering:** Same signals as Meili—crawler dispatch + filesystem watcher—also enqueue `search.vector.index` for `{ entryId, variant }`.
+1. **Triggering:** Same signals as Meili—crawler dispatch + filesystem watcher—also enqueue `search_vector_index` for `{ entryId, variant }`.
 2. **Chunk source:** Ingestor queries `search_documents` for rows where `embedding_status != 'indexed'` or `embedding_version < EMBEDDING_SCHEMA_VERSION`.
 3. **Embedding:** For each batch (e.g., 32 chunks), call `embedText`. Store the raw vector, provider name, dim, and checksum.
 4. **Upsert:** Use Qdrant `upsert` into collection `url_chunks` with payload fields mirroring Meili doc metadata (`entryId`, `chunkIndex`, `hostname`, `tags`, etc.). Use deterministic UUID (docId) so re-ingestion replaces existing vectors.
@@ -2660,7 +2660,7 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 6. **Backoff & retries:** Failures push the job back with exponential delay; fatal errors mark `embedding_status = 'error'` for operator visibility.
 
 **Deletions / archives**
-- `enqueueSearchDelete` also schedules `search.vector.delete`.
+- `enqueueSearchDelete` also schedules `search_vector_delete`.
 - Handler pulls doc IDs, issues `delete` on Qdrant collection, updates `embedding_status = 'deleted'`.
 - Soft-deleted rows remain in SQLite for audit just like Meili.
 

@@ -67,15 +67,15 @@ export async function POST(_request: Request, context: RouteContext) {
     if (ingestResult.documentIds.length > 0) {
       const searchTask = enqueueSearchIndex(ingestResult.documentIds);
       const vectorTask = enqueueVectorIndex(ingestResult.documentIds);
-      tasks.push({ type: 'search.index', taskId: searchTask, count: ingestResult.documentIds.length });
-      tasks.push({ type: 'search.vector.index', taskId: vectorTask, count: ingestResult.documentIds.length });
+      tasks.push({ type: 'search_index', taskId: searchTask, count: ingestResult.documentIds.length });
+      tasks.push({ type: 'search_vector_index', taskId: vectorTask, count: ingestResult.documentIds.length });
     }
 
     if (ingestResult.staleDocumentIds.length > 0) {
       const deleteTask = enqueueSearchDelete(ingestResult.staleDocumentIds);
       const vectorDeleteTask = enqueueVectorDelete(ingestResult.staleDocumentIds);
-      tasks.push({ type: 'search.delete', taskId: deleteTask, count: ingestResult.staleDocumentIds.length });
-      tasks.push({ type: 'search.vector.delete', taskId: vectorDeleteTask, count: ingestResult.staleDocumentIds.length });
+      tasks.push({ type: 'search_delete', taskId: deleteTask, count: ingestResult.staleDocumentIds.length });
+      tasks.push({ type: 'search_vector_delete', taskId: vectorDeleteTask, count: ingestResult.staleDocumentIds.length });
     }
 
     return NextResponse.json({

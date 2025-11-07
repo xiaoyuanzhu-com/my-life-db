@@ -6,52 +6,90 @@ import { indexVectorsForDocuments, deleteVectorsFromQdrant } from './vector-inge
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SearchTasks' });
+let handlersRegistered = false;
 
 type DocumentTaskInput = { documentIds: string[] };
 
+type TaskName =
+  | 'search_index'
+  | 'search_delete'
+  | 'search_vector_index'
+  | 'search_vector_delete';
+
+const TASK_TYPE_MAP: Record<TaskName, { primary: string; legacy?: string }> = {
+  search_index: { primary: 'search_index', legacy: 'search.index' },
+  search_delete: { primary: 'search_delete', legacy: 'search.delete' },
+  search_vector_index: { primary: 'search_vector_index', legacy: 'search.vector.index' },
+  search_vector_delete: { primary: 'search_vector_delete', legacy: 'search.vector.delete' },
+};
+
 export function enqueueSearchIndex(documentIds: string[]): string | null {
   if (!documentIds || documentIds.length === 0) return null;
-  return tq('search.index').add({ documentIds });
+  ensureHandlersRegistered();
+  return tq(TASK_TYPE_MAP.search_index.primary).add({ documentIds });
 }
 
 export function enqueueSearchDelete(documentIds: string[]): string | null {
   if (!documentIds || documentIds.length === 0) return null;
-  return tq('search.delete').add({ documentIds });
+  ensureHandlersRegistered();
+  return tq(TASK_TYPE_MAP.search_delete.primary).add({ documentIds });
 }
 
 export function enqueueVectorIndex(documentIds: string[]): string | null {
   if (!documentIds || documentIds.length === 0) return null;
-  return tq('search.vector.index').add({ documentIds });
+  ensureHandlersRegistered();
+  return tq(TASK_TYPE_MAP.search_vector_index.primary).add({ documentIds });
 }
 
 export function enqueueVectorDelete(documentIds: string[]): string | null {
   if (!documentIds || documentIds.length === 0) return null;
-  return tq('search.vector.delete').add({ documentIds });
+  ensureHandlersRegistered();
+  return tq(TASK_TYPE_MAP.search_vector_delete.primary).add({ documentIds });
 }
 
 export function registerSearchTaskHandlers(): void {
-  tq('search.index').setWorker(async (input: DocumentTaskInput) => {
+  ensureHandlersRegistered();
+}
+
+function ensureHandlersRegistered(): void {
+  if (handlersRegistered) return;
+  handlersRegistered = true;
+  setupHandlers();
+  log.info({}, 'search task handlers registered');
+}
+
+function setupHandlers(): void {
+  registerHandler('search_index', async (input) => {
     const docs = getDocumentsByIds(deduplicate(input.documentIds));
     await indexDocumentsInMeilisearch(docs);
     return { count: docs.length };
   });
 
-  tq('search.vector.index').setWorker(async (input: DocumentTaskInput) => {
+  registerHandler('search_vector_index', async (input) => {
     await indexVectorsForDocuments(deduplicate(input.documentIds));
     return { count: input.documentIds.length };
   });
 
-  tq('search.delete').setWorker(async (input: DocumentTaskInput) => {
+  registerHandler('search_delete', async (input) => {
     await deleteDocumentsFromMeilisearch(deduplicate(input.documentIds));
     return { count: input.documentIds.length };
   });
 
-  tq('search.vector.delete').setWorker(async (input: DocumentTaskInput) => {
+  registerHandler('search_vector_delete', async (input) => {
     await deleteVectorsFromQdrant(deduplicate(input.documentIds));
     return { count: input.documentIds.length };
   });
+}
 
-  log.info({}, 'search task handlers registered');
+function registerHandler(
+  taskName: TaskName,
+  handler: (input: DocumentTaskInput) => Promise<unknown>
+) {
+  const config = TASK_TYPE_MAP[taskName];
+  const names = [config.primary, config.legacy].filter(Boolean) as string[];
+  for (const name of names) {
+    tq(name).setWorker(handler);
+  }
 }
 
 function deduplicate(ids: string[]): string[] {

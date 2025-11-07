@@ -584,6 +584,50 @@ export default function SettingsPage() {
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Search - Meilisearch Host</label>
+                <Input
+                  placeholder="http://localhost:7700"
+                  value={settings.vendors?.meilisearch?.host || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      vendors: {
+                        ...settings.vendors,
+                        meilisearch: {
+                          ...settings.vendors?.meilisearch,
+                          host: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used by the search API to connect to your local Meilisearch instance.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Search - Qdrant Host</label>
+                <Input
+                  placeholder="http://localhost:6333"
+                  value={settings.vendors?.qdrant?.host || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      vendors: {
+                        ...settings.vendors,
+                        qdrant: {
+                          ...settings.vendors?.qdrant,
+                          host: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Base URL for the Qdrant vector service used by semantic search.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}

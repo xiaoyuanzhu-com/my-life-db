@@ -22,6 +22,12 @@ export interface UserSettings {
       baseUrl?: string;
       chromeCdpUrl?: string;
     };
+    meilisearch?: {
+      host?: string;
+    };
+    qdrant?: {
+      host?: string;
+    };
   };
 
   // Extraction Options (defaults for enrichment)
