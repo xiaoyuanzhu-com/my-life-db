@@ -37,7 +37,7 @@ run_meilisearch() {
 
     local MEILI_VERSION="v1.16"
     local MEILI_PORT="7700"
-    local MEILI_DATA_DIR="$DATA_DIR/meili_data"
+    local MEILI_DATA_DIR="$DATA_DIR/.app/mylifedb/meili"
 
     # Create data directory if it doesn't exist
     mkdir -p "$MEILI_DATA_DIR"
