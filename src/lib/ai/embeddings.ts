@@ -1,5 +1,5 @@
 import 'server-only';
-import { callOpenAIEmbedding } from '@/lib/vendors/openai';
+import { callHaidEmbedding } from '@/lib/vendors/haid';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'Embeddings' });
@@ -18,19 +18,23 @@ export async function embedText(text: string): Promise<EmbeddingVector> {
   return vector;
 }
 
-export async function embedTexts(texts: string[]): Promise<EmbeddingVector[]> {
+export async function embedTexts(texts: string[], options?: { model?: string }): Promise<EmbeddingVector[]> {
   const cleanTexts = texts.map(text => text?.trim() ?? '').filter(Boolean);
   if (cleanTexts.length === 0) return [];
 
   try {
-    const response = await callOpenAIEmbedding({ input: cleanTexts });
-    return response.embeddings.map((embedding, index) => ({
+    const response = await callHaidEmbedding({
+      texts: cleanTexts,
+      model: options?.model,
+    });
+
+    return response.embeddings.map((embedding) => ({
       vector: embedding,
       model: response.model,
-      dimensions: embedding.length,
+      dimensions: response.dimensions || embedding.length,
     }));
   } catch (error) {
-    log.error({ err: error }, 'embedding generation failed');
+    log.error({ err: error }, 'HAID embedding generation failed');
     throw error;
   }
 }

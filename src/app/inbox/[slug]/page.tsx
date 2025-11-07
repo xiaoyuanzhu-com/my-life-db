@@ -8,6 +8,7 @@ import { SummaryButton } from '../_components/SummaryButton';
 import { TaggingButton } from '../_components/TaggingButton';
 import { SlugButton } from '../_components/SlugButton';
 import { DigestCoordinator } from './_components/DigestCoordinator';
+import { IndexButton } from '../_components/IndexButton';
 
 export const runtime = 'nodejs';
 
@@ -55,6 +56,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
               <CrawlButton inboxId={item.id} />
               <SummaryButton inboxId={item.id} />
               <TaggingButton inboxId={item.id} />
+              <IndexButton inboxId={item.id} />
             </>
           )}
           <SlugButton inboxId={item.id} />

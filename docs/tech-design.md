@@ -2222,54 +2222,30 @@ export async function generateTags(
 
 ```typescript
 // lib/ai/embeddings.ts
-import { ChromaClient } from 'chromadb';
+import { callHaidEmbedding } from '@/lib/vendors/haid';
 
-const chroma = new ChromaClient({ path: './data/vectors/chroma' });
+export async function embedTexts(texts: string[]): Promise<EmbeddingVector[]> {
+  const clean = texts.map(t => t.trim()).filter(Boolean);
+  if (!clean.length) return [];
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const provider = getEmbeddingProvider();
-
-  // OpenAI: text-embedding-3-small (1536-dim)
-  // Local: all-MiniLM-L6-v2 (384-dim)
-  const embedding = await provider.embed(text);
-
-  return embedding;
-}
-
-export async function storeEmbedding(
-  entryId: string,
-  text: string,
-  metadata: Record<string, unknown>
-): Promise<void> {
-  const embedding = await generateEmbedding(text);
-  const collection = await chroma.getOrCreateCollection({ name: 'entries' });
-
-  await collection.add({
-    ids: [entryId],
-    embeddings: [embedding],
-    metadatas: [metadata],
-  });
-}
-
-export async function searchSimilar(
-  query: string,
-  limit: number = 10,
-  threshold: number = 0.7
-): Promise<Array<{ id: string; score: number }>> {
-  const queryEmbedding = await generateEmbedding(query);
-  const collection = await chroma.getCollection({ name: 'entries' });
-
-  const results = await collection.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults: limit,
+  const response = await callHaidEmbedding({
+    texts: clean,
+    model: process.env.HAID_EMBEDDING_MODEL, // optional override
   });
 
-  return results.ids[0].map((id, i) => ({
-    id: id as string,
-    score: results.distances[0][i],
-  })).filter(r => r.score >= threshold);
+  return response.embeddings.map(vector => ({
+    vector,
+    model: response.model,
+    dimensions: response.dimensions || vector.length,
+  }));
 }
 ```
+
+- **Provider:** HAID `/api/text-to-embedding`
+- **Defaults:** `Qwen/Qwen3-Embedding-0.6B` (variable dims ~1536) unless `HAID_EMBEDDING_MODEL` overrides
+- **Inputs:** Up to N markdown chunks (batched)
+- **Outputs:** Float32 vectors reused by Qdrant ingestion
+- **Auth:** Optional `HAID_API_KEY` header (Bearer)
 
 ### 8.4 Clustering Algorithm
 
@@ -2667,7 +2643,7 @@ This overlap policy gives Meilisearch richer snippets (because adjacent chunks s
 
 | Module | Path | Responsibility |
 |--------|------|----------------|
-| **Embedding provider** | `src/lib/ai/embeddings.ts` | Wrap OpenAI/Ollama embedding models, enforce token limits, expose `embedText(text, options)` returning Float32Array + metadata. |
+| **Embedding provider** | `src/lib/ai/embeddings.ts` | Call HAID `/api/text-to-embedding`, normalize vectors, expose `embedText(s)` returning Float32Array + metadata. |
 | **Qdrant client** | `src/lib/search/qdrant-client.ts` | Thin wrapper over Qdrant REST/gRPC, handles collection creation, upserts, deletes, scroll, health checks, and retries with exponential backoff. |
 | **Vector ingestor** | `src/lib/search/vector-ingestor.ts` | Reads pending `search_documents` rows (by `embedding_status`), bundles chunk text, calls embedding provider, and writes vectors to Qdrant. |
 | **Task handlers** | `src/lib/task-handlers/search/semantic.ts` | Background jobs `search.vector.index` and `search.vector.delete`; ensure ingestion is idempotent and respects concurrency limits. |
@@ -2728,6 +2704,7 @@ Results from `semanticSearch` feed into the hybrid merge described in Section 9.
 #### 9.5.4 Configuration & ops
 
 - **Environment vars:** `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_URL_CHUNKS`, `EMBEDDING_SCHEMA_VERSION`.
+- **Embedding service env:** `HAID_BASE_URL`, optional `HAID_API_KEY`, `HAID_EMBEDDING_MODEL`.
 - **Collection schema:** HNSW (cosine) with vector dim = embedding dimension (e.g., 1536). Payload schema mirrors Meili document metadata for easy hydration.
 - **Provisioning:** `scripts/setup-search.ts` (or dedicated script) ensures the Qdrant collection exists with desired optimizers (payload indexing on `entryId`, `hostname`, `tags`).
 - **Throughput controls:** Limit concurrent embedding jobs to avoid saturating GPU/remote API and Qdrant ingestion bandwidth.

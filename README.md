@@ -118,6 +118,10 @@ QDRANT_API_KEY= # optional for local dev
 QDRANT_COLLECTION_URL_CHUNKS=url_chunks
 
 EMBEDDING_SCHEMA_VERSION=1
+HAID_BASE_URL=http://172.16.2.11:12310
+HAID_API_KEY= # optional if HAID is secured
+# optional override; defaults to Qwen/Qwen3-Embedding-0.6B
+HAID_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 ```
 
 After a URL is crawled, the background search tasks chunk `digest/content.md`, push documents to Meilisearch, and store embeddings in Qdrant. You can monitor task activity with the same task queue APIs shown above.

@@ -1,192 +1,86 @@
-/**
- * HAID (Home AI Daemon) vendor wrapper
- * Placeholder interfaces for URL crawling (docs to be provided later).
- * Keep this layer business-unrelated and aligned to the external service.
- */
-
-import { getSettings } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'HaidClient' });
+const log = getLogger({ module: 'VendorHAID' });
 
-export interface HaidCrawlOptions {
-  url: string;
-  timeoutMs?: number;
-  screenshot?: boolean; // default: false
-  screenshotWidth?: number;
-  screenshotHeight?: number;
-  pageTimeout?: number;
-  chromeCdpUrl?: string;
+export interface HaidEmbeddingOptions {
+  texts: string[];
+  model?: string;
 }
 
-interface NormalizedScreenshot {
-  base64: string;
-  mimeType: string;
+const DEFAULT_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
+
+export interface HaidEmbeddingResponse {
+  embeddings: number[][];
+  model: string;
+  dimensions: number;
 }
 
-export interface HaidCrawlResponse {
-  url: string;
-  redirectedTo?: string | null;
-  html: string;
-  markdown?: string;
-  title?: string;
-  metadata?: {
-    title?: string;
-    description?: string;
-    author?: string;
-    publishedDate?: string;
-    image?: string;
-    siteName?: string;
-    domain?: string;
-  };
-  screenshot?: NormalizedScreenshot | null;
-}
-
-/**
- * Crawl a URL via HAID.
- * Placeholder implementation until HAID docs are provided.
- */
-export async function crawlUrlWithHaid(
-  options: HaidCrawlOptions
-): Promise<HaidCrawlResponse> {
-  const settings = await getSettings();
-  const vendorConfig = settings.vendors?.homelabAi || (settings as any)?.vendors?.haid;
-
-  const baseUrl = (vendorConfig?.baseUrl || 'http://172.16.2.11:12310').replace(/\/$/, '');
-  const endpointPath = vendorConfig?.endpoints?.webCrawl || '/api/crawl';
-  const endpoint = `${baseUrl}${endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`}`;
-
-  const chromeCdpUrl = (() => {
-    const configured = typeof vendorConfig?.chromeCdpUrl === 'string' ? vendorConfig.chromeCdpUrl.trim() : '';
-    const override = typeof options.chromeCdpUrl === 'string' ? options.chromeCdpUrl.trim() : '';
-    return override || configured || undefined;
-  })();
-
-  const payload: Record<string, unknown> = {
-    url: options.url,
-    screenshot: options.screenshot ?? false,
-  };
-
-  if (typeof options.screenshotWidth === 'number') {
-    payload.screenshot_width = options.screenshotWidth;
-  }
-  if (typeof options.screenshotHeight === 'number') {
-    payload.screenshot_height = options.screenshotHeight;
-  }
-  if (typeof options.pageTimeout === 'number') {
-    payload.page_timeout = options.pageTimeout;
-  }
-  if (chromeCdpUrl) {
-    payload.chrome_cdp_url = chromeCdpUrl;
+export async function callHaidEmbedding(
+  options: HaidEmbeddingOptions
+): Promise<HaidEmbeddingResponse> {
+  if (!options.texts || options.texts.length === 0) {
+    throw new Error('HAID embedding requires at least one text');
   }
 
-  const controller = new AbortController();
-  const to = setTimeout(() => controller.abort(), options.timeoutMs ?? 120_000);
+  const baseUrl = process.env.HAID_BASE_URL || 'http://172.16.2.11:12310';
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/api/text-to-embedding`;
+  const apiKey = process.env.HAID_API_KEY;
+  const model =
+    options.model ||
+    process.env.HAID_EMBEDDING_MODEL ||
+    DEFAULT_MODEL;
 
-  try {
-    log.info(
-      {
-        endpoint,
-        payload,
-      },
-      'requesting haid crawl'
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      texts: options.texts,
+      model,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `HAID embedding error (${response.status}): ${errorText || response.statusText}`
     );
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, */*',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`HAID crawl error ${resp.status}: ${text || resp.statusText}`);
-    }
-
-    const data = await parseResponse(resp, options.url);
-    const normalized = normalizeResponse(data, options.url);
-    log.info(
-      {
-        url: normalized.url,
-        hasHtml: Boolean(normalized.html && normalized.html.length > 0),
-        hasMarkdown: Boolean(normalized.markdown && normalized.markdown.length > 0),
-        hasScreenshot: Boolean(normalized.screenshot),
-      },
-      'haid crawl success'
-    );
-    return normalized;
-  } finally {
-    clearTimeout(to);
-  }
-}
-
-async function parseResponse(resp: Response, fallbackUrl: string): Promise<any> {
-  const contentType = resp.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return await resp.json();
-  }
-  const htmlText = await resp.text();
-  return { html: htmlText, url: fallbackUrl };
-}
-
-function normalizeResponse(data: any, fallbackUrl: string): HaidCrawlResponse {
-  const resUrl = data.url || fallbackUrl;
-  const html = data.html || '';
-  const markdown = data.markdown || null;
-  const title = data.title || undefined;
-
-  const metadata = {
-    title,
-    description: undefined,
-    author: undefined,
-    publishedDate: undefined,
-    image: undefined,
-    siteName: undefined,
-    domain: undefined as string | undefined,
-  };
-
-  try {
-    metadata.domain = new URL(resUrl).hostname;
-  } catch {
-    metadata.domain = undefined;
   }
 
-  const screenshot = extractScreenshot(data);
+  const data = await response.json();
+  const embeddings = extractEmbeddings(data);
+  if (!embeddings.length) {
+    throw new Error('HAID embedding response did not include embeddings');
+  }
+
+  const dimensions =
+    data.dimensions ??
+    (embeddings[0] ? embeddings[0].length : 0);
 
   return {
-    url: resUrl,
-    redirectedTo: null,
-    html,
-    markdown: markdown ?? undefined,
-    title,
-    metadata,
-    screenshot,
+    embeddings,
+    model: data.model ?? model,
+    dimensions,
   };
 }
 
-function extractScreenshot(data: any): NormalizedScreenshot | null {
-  const candidate = data.screenshot_base64;
-  if (!candidate || typeof candidate !== 'string') return null;
-  return normalizeScreenshotString(candidate, 'image/png');
-}
-
-function normalizeScreenshotString(value: string, mimeHint?: string): NormalizedScreenshot | null {
-  let base64 = value.trim();
-  let mimeType = mimeHint || 'image/png';
-
-  if (base64.startsWith('data:')) {
-    const match = /^data:([^;,]+);base64,(.+)$/.exec(base64);
-    if (match) {
-      mimeType = match[1];
-      base64 = match[2];
-    }
+function extractEmbeddings(payload: any): number[][] {
+  if (Array.isArray(payload?.embeddings)) {
+    return payload.embeddings as number[][];
   }
 
-  // ensure base64 is valid-ish
-  if (!base64 || base64.length < 16) return null;
+  if (Array.isArray(payload?.vectors)) {
+    return payload.vectors as number[][];
+  }
 
-  return { base64, mimeType };
+  if (Array.isArray(payload?.data)) {
+    return payload.data
+      .map((item: any) => item?.embedding)
+      .filter((embedding: unknown): embedding is number[] => Array.isArray(embedding));
+  }
+
+  log.warn({ payload }, 'unable to detect embeddings array in HAID response');
+  return [];
 }
