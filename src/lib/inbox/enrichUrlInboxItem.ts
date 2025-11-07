@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
 import { crawlUrlDigest } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
-import { INBOX_DIR } from '../fs/storage';
+import { DATA_ROOT, INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
@@ -17,6 +17,13 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { ingestMarkdownForSearch } from '@/lib/search/ingest-url-content';
+import {
+  enqueueSearchDelete,
+  enqueueSearchIndex,
+  enqueueVectorDelete,
+  enqueueVectorIndex,
+} from '@/lib/search/tasks';
 
 const log = getLogger({ module: 'URLEnricher' });
 
@@ -234,6 +241,48 @@ export async function enrichUrlInboxItem(
     });
 
     log.info({ url }, 'url enriched successfully');
+
+    try {
+      const markdownPath = path.join(digestDir, 'content.md');
+      const screenshotArtifact = digestArtifacts.find(artifact =>
+        artifact.filename.startsWith('screenshot.')
+      );
+
+      const searchMetadata = {
+        title: metadata.title ?? null,
+        description: metadata.description ?? null,
+        author: metadata.author ?? null,
+        tags: crawlResult.metadata?.keywords ?? [],
+        digestPath: path.relative(DATA_ROOT, digestDir),
+        screenshotPath: screenshotArtifact
+          ? path.relative(DATA_ROOT, path.join(digestDir, screenshotArtifact.filename))
+          : null,
+        url: crawlResult.url ?? url,
+        hostname: metadata.domain ?? null,
+        capturedAt: new Date().toISOString(),
+      };
+
+      const ingestResult = await ingestMarkdownForSearch({
+        entryId: inboxId,
+        libraryId: null,
+        markdownPath,
+        sourcePath: path.relative(DATA_ROOT, markdownPath),
+        sourceUrl: crawlResult.url ?? url,
+        variant: 'url-content-md',
+        metadata: searchMetadata,
+      });
+
+      if (ingestResult.documentIds.length > 0) {
+        enqueueSearchIndex(ingestResult.documentIds);
+        enqueueVectorIndex(ingestResult.documentIds);
+      }
+      if (ingestResult.staleDocumentIds.length > 0) {
+        enqueueSearchDelete(ingestResult.staleDocumentIds);
+        enqueueVectorDelete(ingestResult.staleDocumentIds);
+      }
+    } catch (err) {
+      log.error({ err, inboxId }, 'failed to ingest url digest for search');
+    }
 
     if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
       const [nextStage, ...rest] = remainingStages;

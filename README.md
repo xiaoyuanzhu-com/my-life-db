@@ -104,6 +104,24 @@ curl http://localhost:3000/api/tasks/stats
 curl http://localhost:3000/api/tasks
 ```
 
+### Search Services
+
+Keyword + semantic search rely on local Meilisearch and Qdrant instances. Configure them via environment variables:
+
+```
+MEILI_HOST=http://localhost:7700
+MEILI_API_KEY=masterKey
+MEILI_INDEX_URL_CONTENT=url_content
+
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY= # optional for local dev
+QDRANT_COLLECTION_URL_CHUNKS=url_chunks
+
+EMBEDDING_SCHEMA_VERSION=1
+```
+
+After a URL is crawled, the background search tasks chunk `digest/content.md`, push documents to Meilisearch, and store embeddings in Qdrant. You can monitor task activity with the same task queue APIs shown above.
+
 ## File Storage
 
 All entries are stored as Markdown files with frontmatter metadata. See documentation for details.

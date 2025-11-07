@@ -25,6 +25,20 @@ export interface OpenAICompletionResponse {
   };
 }
 
+export interface OpenAIEmbeddingOptions {
+  input: string | string[];
+  model?: string;
+}
+
+export interface OpenAIEmbeddingResponse {
+  embeddings: number[][];
+  model: string;
+  usage?: {
+    promptTokens?: number;
+    totalTokens?: number;
+  };
+}
+
 /**
  * Call OpenAI completion API with text input and get text or structured JSON output
  *
@@ -157,4 +171,50 @@ export async function isOpenAIConfigured(): Promise<boolean> {
   const settings = await getSettings();
   const vendorConfig = getVendorOpenAIConfig(settings);
   return Boolean(vendorConfig?.apiKey?.trim());
+}
+
+export async function callOpenAIEmbedding(
+  options: OpenAIEmbeddingOptions
+): Promise<OpenAIEmbeddingResponse> {
+  const settings = await getSettings();
+  const vendorConfig = getVendorOpenAIConfig(settings);
+
+  if (!vendorConfig?.apiKey) {
+    throw new Error('OpenAI API key not configured in settings');
+  }
+
+  const baseUrl = vendorConfig.baseUrl || 'https://api.openai.com/v1';
+  const fallbackModel = 'text-embedding-3-small';
+  const model = options.model || vendorConfig.embeddingModel || fallbackModel;
+
+  const response = await fetch(`${baseUrl}/embeddings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${vendorConfig.apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: options.input,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI embedding error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const embeddings = (data?.data ?? []).map((item: { embedding: number[] }) => item.embedding);
+
+  return {
+    embeddings,
+    model,
+    usage: data?.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens,
+          totalTokens: data.usage.total_tokens,
+        }
+      : undefined,
+  };
 }

@@ -1,0 +1,145 @@
+import 'server-only';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'QdrantClient' });
+
+interface QdrantClientConfig {
+  url: string;
+  apiKey?: string;
+  collection: string;
+  requestTimeoutMs: number;
+}
+
+interface QdrantUpsertResponse {
+  result: { operation_id?: number; status?: string };
+}
+
+interface QdrantDeleteResponse {
+  result: { status?: string };
+}
+
+interface QdrantSearchParams {
+  vector: number[];
+  limit: number;
+  scoreThreshold?: number;
+  filter?: Record<string, unknown>;
+  withPayload?: boolean;
+}
+
+export interface QdrantPoint {
+  id: string;
+  vector: number[];
+  payload: Record<string, unknown>;
+}
+
+class QdrantClient {
+  private readonly url: string;
+  private readonly apiKey?: string;
+  private readonly collection: string;
+  private readonly timeoutMs: number;
+
+  constructor(config: QdrantClientConfig) {
+    this.url = config.url.replace(/\/+$/, '');
+    this.apiKey = config.apiKey;
+    this.collection = config.collection;
+    this.timeoutMs = config.requestTimeoutMs;
+  }
+
+  async upsert(points: QdrantPoint[]): Promise<void> {
+    if (points.length === 0) return;
+
+    await this.request<QdrantUpsertResponse>(
+      `/collections/${encodeURIComponent(this.collection)}/points?wait=true`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ points }),
+      }
+    );
+  }
+
+  async delete(pointsIds: string[]): Promise<void> {
+    if (pointsIds.length === 0) return;
+
+    await this.request<QdrantDeleteResponse>(
+      `/collections/${encodeURIComponent(this.collection)}/points/delete?wait=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ points: pointsIds }),
+      }
+    );
+  }
+
+  async search(params: QdrantSearchParams): Promise<unknown> {
+    return this.request(
+      `/collections/${encodeURIComponent(this.collection)}/points/search`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          vector: params.vector,
+          limit: params.limit,
+          score_threshold: params.scoreThreshold,
+          filter: params.filter,
+          with_payload: params.withPayload ?? true,
+        }),
+      }
+    );
+  }
+
+  private async request<T>(path: string, init: RequestInit): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(`${this.url}${path}`, {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.apiKey ? { 'api-key': this.apiKey } : {}),
+          ...init.headers,
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Qdrant request failed (${response.status}): ${errorText}`);
+      }
+
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      log.error({ err: error, path }, 'qdrant request failed');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+let cachedClient: QdrantClient | null = null;
+
+export function getQdrantClient(): QdrantClient {
+  if (cachedClient) return cachedClient;
+
+  const url = process.env.QDRANT_URL;
+  if (!url) {
+    throw new Error('QDRANT_URL is not configured');
+  }
+
+  const collection = process.env.QDRANT_COLLECTION_URL_CHUNKS || 'url_chunks';
+  const apiKey = process.env.QDRANT_API_KEY;
+  const timeoutMs = Number(process.env.QDRANT_REQUEST_TIMEOUT_MS ?? 30_000);
+
+  cachedClient = new QdrantClient({
+    url,
+    apiKey,
+    collection,
+    requestTimeoutMs: timeoutMs,
+  });
+
+  log.info({ url, collection }, 'initialized Qdrant client');
+  return cachedClient;
+}

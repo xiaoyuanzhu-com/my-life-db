@@ -16,6 +16,7 @@ export interface UserSettings {
       baseUrl?: string;
       apiKey?: string;
       model?: string;
+      embeddingModel?: string;
     };
     homelabAi?: {
       baseUrl?: string;

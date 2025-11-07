@@ -1412,6 +1412,86 @@ async function learnFromUserMove(oldPath: string, newPath: string) {
 | **Readability** | Article extraction | Mozilla's algorithm |
 | **Turndown** | HTML → Markdown | Clean conversion |
 
+### 5.9 Search Index Tracking (Meilisearch)
+
+Local SQLite remains the source of truth for what was crawled, while Meilisearch acts as a read-optimized replica. We therefore keep explicit metadata describing every document that should exist in Meilisearch so we can reconcile, retry, or re-ingest deterministically.
+
+#### 5.9.1 SQLite tables
+
+1. `search_documents` — one row per Meilisearch document (post-chunking). Tracks provenance, hashes, and the latest indexing status.
+
+```sql
+CREATE TABLE search_documents (
+  document_id TEXT PRIMARY KEY,                 -- entryId:variant:chunkIndex
+  entry_id TEXT NOT NULL,                       -- inbox/library entry that produced this chunk
+  library_id TEXT,                              -- nullable until the item settles in the library
+  source_url TEXT NOT NULL,
+  source_path TEXT NOT NULL,                    -- relative path to digest/content.md etc.
+  variant TEXT NOT NULL CHECK(
+    variant IN ('url-content-md', 'url-content-html', 'url-summary')
+  ),
+  chunk_index INTEGER NOT NULL DEFAULT 0,
+  chunk_count INTEGER NOT NULL DEFAULT 1,
+  content_hash TEXT NOT NULL,                   -- sha256(text + metadata snapshot)
+  word_count INTEGER NOT NULL,
+  token_count INTEGER NOT NULL,
+  meili_status TEXT NOT NULL CHECK(
+    meili_status IN ('pending', 'indexing', 'indexed', 'deleting', 'deleted', 'error')
+  ),
+  last_indexed_at DATETIME,
+  last_deindexed_at DATETIME,
+  last_error TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (library_id) REFERENCES library(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_search_documents_entry_variant
+  ON search_documents(entry_id, variant);
+CREATE INDEX idx_search_documents_status
+  ON search_documents(meili_status)
+  WHERE meili_status != 'indexed';
+```
+
+2. We continue to reuse the existing `task_queue` table for background work. Meilisearch-specific jobs set `task_type` to `search.index` / `search.delete` and carry `document_id` references so handlers can join back to `search_documents`.
+
+#### 5.9.2 Meilisearch document shape
+
+```typescript
+interface MeiliDocument {
+  docId: string;                 // entryId:variant:chunkIndex
+  entryId: string;
+  libraryId?: string | null;
+  url: string;
+  hostname: string;
+  path: string;
+  sourcePath: string;            // digest/content.md etc.
+  variant: 'url-content-md' | 'url-content-html' | 'url-summary';
+  chunkIndex: number;
+  chunkCount: number;
+  checksum: string;              // mirrors content_hash
+  capturedAt: string;
+  text: string;                  // chunk body (<= 2k tokens)
+  metadata: {
+    title: string;
+    tags: string[];
+    digestPath: string;          // relative path for fs lookup
+    screenshotPath?: string;
+    summary?: string;
+    sourceType: 'url';
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+**Invariants**
+- `docId` is stable and derived from SQLite IDs, so Meilisearch never generates identifiers independently.
+- `entryId` + `sourcePath` are sufficient to jump back to the inbox/library row and on-disk file.
+- `checksum` tracks both text and metadata; when it changes we can diff and reindex without relying on Meilisearch state.
+- Text chunks cap at ~1,200 tokens with 200-token overlap to balance ranking quality and index size.
+
 ---
 
 ## 6. API Specifications
@@ -2326,7 +2406,7 @@ export async function hybridSearch(
   // 1. Full-text search (SQLite FTS5)
   const textResults = await fullTextSearch(query);
 
-  // 2. Vector search (ChromaDB)
+  // 2. Vector search (Qdrant)
   const vectorResults = await vectorSearch(query);
 
   // 3. Merge and re-rank
@@ -2379,6 +2459,16 @@ function mergeResults(
 }
 ```
 
+#### 9.1.1 Server-side fusion & deduplication
+
+- **Providers:** The server layers coordinate keyword hits from Meilisearch (`searchUrlContent`) and semantic hits from Qdrant (`semanticSearch`).
+- **Normalization:** Both adapters return the shared `SearchResult` shape (`id = entryId`, `chunkId = docId`, `origin = 'keyword' | 'semantic'`, `score`, `highlights`).
+- **Merge:** The API collapses hits by `entryId` first (so overlapping chunks never render as duplicates) and maintains a secondary list of chunks for highlighting purposes.
+- **Re-rank:** Scores are blended using tunable weights (default `0.45` keyword / `0.55` semantic). When both engines return the same entry, the scores are combined and the best highlight snippet wins.
+- **Filters & pagination:** Only after deduplication do we run tag/space filters, sort, and paginate—ensuring the client always receives at most one row per entry even though dozens of chunk-level docs might exist per provider.
+
+This guarantees we can freely adjust overlap size or add additional search engines later without changing the client contract; the React app simply consumes the merged list from the API.
+
 ### 9.2 Full-Text Search
 
 ```typescript
@@ -2420,6 +2510,228 @@ export async function fullTextSearch(
   }));
 }
 ```
+
+### 9.3 Meilisearch Ingestion for URL Content
+
+The URL crawler produces structured artifacts (`digest/content.md`, `digest/content.html`, screenshots) that must become searchable within Meilisearch. This section defines how the data leaves the crawler, gets normalized, lands in Meilisearch, and is linked back to the originating URL entry.
+
+#### 9.3.1 Data flow
+
+```mermaid
+flowchart LR
+  A[User adds URL] --> B[crawl-url job]
+  B --> C[digest/content.md + metadata]
+  C --> D[Normalizer + chunker]
+  D --> E[search_documents rows]
+  E --> F[search.index job]
+  F --> G[Meilisearch index url_content]
+  G --> H[Search API response]
+  H --> I[Result hydration (SQLite + FS)]
+```
+
+1. `crawl-url` job writes the normalized markdown/HTML plus metadata JSON.
+2. File watcher / job completion event enqueues `search.index` with `{ entryId, variant: 'url-content-md' }`.
+3. Indexer loads the file, strips boilerplate, chunks the text (≤1,200 tokens with 200-token overlap), and writes/updates `search_documents`.
+4. Meilisearch payloads are materialized from the rows and pushed to the `url_content` index. Success/failure updates `meili_status`.
+5. Queries hit Meilisearch directly; we later hydrate each hit with SQLite + filesystem lookups for UI fidelity.
+
+#### 9.3.2 Workflows
+
+**New crawl ingestion**
+- Trigger: crawler finishes successfully (marks inbox entry `processed`).
+- Handler reads `digest/content.md` (primary) and optional fallback `digest/content.html`.
+- Metadata collected: URL, hostname, path, crawl timestamp, title, tags/classification, digest relative path, screenshot path.
+- Each chunk becomes one `search_documents` row and one Meilisearch document whose `docId = {entryId}:{variant}:{chunkIndex}`.
+- `search_documents.meili_status` transitions `pending → indexing → indexed` when Meilisearch task completes.
+
+**Update / re-crawl**
+- Triggered when `digest/content.*` changes (fs watcher) or when the user requests a re-crawl.
+- Indexer recomputes the `content_hash`. If unchanged, it simply touches `updated_at` and skips Meilisearch.
+- If changed, existing rows for `{entryId, variant}` are marked `meili_status = 'deleting'` and dispatched to `search.delete` jobs, then recreated with the new chunks so we never serve stale hashes.
+- Re-crawl events keep the same `docId` namespace so clients do not accumulate duplicates.
+
+**Deletion / archival**
+- When an inbox entry is deleted or archived, `search.delete` jobs are enqueued with all related `document_id`s.
+- Handler calls `index.deleteDocuments([docId...])`, waits for task completion, and flips `meili_status` to `deleted` (or retries with exponential backoff).
+- Library moves (UUID → slug) only update `source_path` in SQLite; we do not delete/reinsert unless the text changed.
+
+#### 9.3.3 Search + linking behavior
+
+```typescript
+// lib/search/meilisearch.ts
+export async function searchUrlContent(
+  query: SearchQuery
+): Promise<SearchResult[]> {
+  const index = meili.index('url_content');
+  const hits = await index.search(query.text, {
+    attributesToRetrieve: [
+      'docId',
+      'entryId',
+      'sourcePath',
+      'url',
+      'metadata'
+    ],
+    filter: toMeiliFilters(query.filters),
+    limit: query.limit ?? 20,
+  });
+
+  return hydrateUrlHits(hits.hits);
+}
+```
+
+- `hydrateUrlHits` joins on `search_documents` / `entries` to pull tags, status, and file metadata, then resolves `sourcePath` to `MY_DATA_DIR` for previews.
+- Linking back to the UI happens **in the app layer**: each hit carries `entryId`, `libraryId`, and `digestPath`, so React components can open the inbox item or navigate to the library folder.
+- Meilisearch is authoritative only for ranking + highlight snippets. All final rendering (markdown preview, open-in-folder actions) fetches from SQLite/filesystem to avoid drift.
+
+#### 9.3.4 Sync & recovery
+
+- Hourly reconciliation job scans for `search_documents.meili_status != 'indexed'` and retries failed pushes/deletes.
+- `meili.index('url_content').getDocuments({ limit: 0, offset: ... })` is never trusted as the source of truth; instead, we recalc the desired document set from SQLite and issue targeted fixes.
+- Because every document stores `content_hash`, we can diff quickly during support/debug sessions and requeue only the rows whose hash differs from Meilisearch.
+
+#### 9.3.5 Chunking strategy (keyword + semantic ready)
+
+We treat chunked snippets as the atomic unit for *both* Meilisearch (keyword) and Qdrant (semantic) indexing so that we never need to re-split historical documents. The strategy balances ranking quality, storage expansion, and semantic recall.
+
+| Aspect | Recommendation | Rationale |
+|--------|----------------|-----------|
+| **Tokenizer** | `tiktoken` (gpt-4o-mini) for limits, fallback to word counts | Keeps token budgets aligned with future embedding models |
+| **Target size** | 800–1,000 tokens ideal, hard cap 1,200 tokens | Large enough for context, small enough for responsive search |
+| **Overlap** | 15% of chunk length (min 80 tokens, max 180 tokens) | Preserves context for semantic embeddings without bloating index |
+| **Structural hints** | Prefer splitting on Markdown headings, list/paragraph boundaries; collapse short siblings together | Produces semantically coherent slices and reduces unnatural breaks |
+| **Metadata per chunk** | `chunk_index`, `chunk_count`, `span_start`, `span_end`, `overlap_size`, `embedding_version` | Required for Qdrant ingestion & re-embedding |
+
+**Algorithm sketch**
+1. **Normalize**: Ensure content is Markdown, remove boilerplate (nav, ads), unify whitespace.
+2. **Primary segmentation**: Walk the Markdown AST, accumulating blocks until adding the next node would exceed 900 tokens. If a single node is oversized (e.g., giant code block), chunk within that block using sentence boundaries.
+3. **Overlap application**: When closing a chunk, clone the trailing sentences that match the overlap budget and prepend them to the next chunk. Track `span_start/span_end` offsets so we can reconstruct exact ranges later.
+4. **Metadata persistence**: Store chunk metrics in `search_documents` alongside the checksum so both Meilisearch payloads and Qdrant embeddings derive from the same source record.
+5. **Semantic readiness**: Whenever we bump `EMBEDDING_SCHEMA_VERSION`, a background job iterates over `search_documents` rows whose `embedding_version` is stale, computes embeddings for the chunk text (overlap included), and pushes `(vector, docId)` to Qdrant without rereading filesystem content.
+
+This overlap policy gives Meilisearch richer snippets (because adjacent chunks share context) while ensuring Qdrant vectors represent slightly more than one paragraph, which improves recall for concept-level queries like “resilient systems design pattern” even if the phrase straddles a chunk boundary.
+
+### 9.4 Meilisearch Implementation Plan
+
+#### 9.4.1 Modules & responsibilities
+
+| Module | Path | Responsibility |
+|--------|------|----------------|
+| **Chunker** | `src/lib/search/chunker.ts` | Normalize markdown/HTML, split into ~900-token chunks with 15% overlap, emit `ChunkDescriptor[]` (text, offsets, metadata). |
+| **Search document repo** | `src/lib/search/search-documents.ts` | Read/write `search_documents`, version chunk metadata, expose helpers to upsert/delete rows transactionally. |
+| **Meilisearch client** | `src/lib/search/meili-client.ts` | Create configured Meili instance (host, API key, timeout), lazy-init indexes, set ranking rules and searchable/filterable attributes. |
+| **Indexer orchestrator** | `src/lib/search/indexer.ts` | Given `{ entryId, variant }`, loads digest files, calls chunker, writes `search_documents`, prepares payloads for Meili. |
+| **Task handlers** | `src/lib/task-handlers/search/index.ts` | Queue + process `search.index` and `search.delete` jobs; call Meili client, update status fields, retry with exponential backoff. |
+| **Hydrator** | `src/lib/search/hydrate.ts` | Join Meili hits against SQLite (`entries`, `library`, `search_documents`) + filesystem to build UI-ready `SearchResult`. |
+| **Search API** | `src/app/api/search/route.ts` (or server action) | Invoke Meili + Qdrant adapters, apply server-side fusion/dedup (Section 9.1.1), return paginated results. |
+| **CLI/maintenance** | `src/scripts/reindex-search.ts` | Backfill / reconciliation utility to rebuild Meili index from `search_documents`. |
+
+#### 9.4.2 Workflow details
+
+**A. New crawl ingestion**
+1. `crawl-url` job finishes → emits event (or explicit call) to `enqueueSearchIndex(entryId, 'url-content-md')`.
+2. Indexer loads `digest/content.md` (fallback `digest/content.html`), runs chunker, computes `content_hash`.
+3. Wrap DB transaction: delete existing rows for `{entryId, variant}`, insert new chunk rows, set `meili_status = 'pending'`.
+4. Enqueue `search.index` job(s) with batched `document_id`s.
+5. Worker pushes payloads to Meili (`index.addDocuments`), waits for task completion, marks status `indexed` + `last_indexed_at`.
+
+**B. Updates / re-crawls**
+1. File watcher or manual action triggers `enqueueSearchIndex`.
+2. Indexer recomputes hash. If unchanged, exit early (touch `updated_at` only).
+3. When changed, mark existing rows `meili_status = 'deleting'`, enqueue `search.delete`, then run full ingestion path from step A.
+
+**C. Deletions / archives**
+1. Inbox/library deletion hooks call `enqueueSearchDelete(entryId)`.
+2. Handler fetches all `document_id`s, calls `index.deleteDocuments`, marks rows `deleted`, and (optionally) prunes rows if retention policy allows.
+
+**D. Reconciliation / backfill**
+1. Nightly cron (or manual CLI) scans for rows with stale status or `last_indexed_at` older than threshold.
+2. CLI uses `search_documents` as the source of truth, replays ingestion without parsing files again (chunk text stored in DB).
+
+#### 9.4.3 Configuration & ops
+
+- **Environment vars:** `MEILI_HOST`, `MEILI_API_KEY`, `MEILI_INDEX_URL_CONTENT`.
+- **Index bootstrap:** `scripts/setup-search.ts` ensures index exists with proper ranking rules (`words`, `typo`, `proximity`, `attribute`, `exactness`) and filterable attributes (`hostname`, `tags`, `origin`, `chunkCount`).
+- **Metrics/logging:** wrap Meili calls with tracing (duration, payload size, doc count). Emit structured logs for success/failure + document IDs to simplify audit trails.
+- **Chunk persistence:** store text + metadata in SQLite to avoid rereading large files or reproducing chunk boundaries when Qdrant ingestion runs.
+- **Back-pressure:** throttle concurrent indexing jobs (e.g., p-limit based on CPU/network) to avoid starving other workers.
+
+#### 9.4.4 Confirmed decisions
+
+1. **Indexing trigger:** Support both signals. The crawler dispatches `search.index` immediately after processing (low latency) while the filesystem watcher enqueues safety-net jobs for any missed/retroactive changes.
+2. **HTML variant scope:** Markdown (`digest/content.md`) is the canonical variant for Meili. HTML output stays on disk for previews/screenshots but is not indexed separately, keeping the `variant` set minimal.
+3. **Deletion retention:** We soft-delete rows (set `meili_status = 'deleted'`) and retain them for now so reconciliation/analytics can reason about historical states. A separate cleanup job can prune them later if storage becomes an issue.
+
+### 9.5 Qdrant Semantic Search Implementation
+
+#### 9.5.1 Modules & responsibilities
+
+| Module | Path | Responsibility |
+|--------|------|----------------|
+| **Embedding provider** | `src/lib/ai/embeddings.ts` | Wrap OpenAI/Ollama embedding models, enforce token limits, expose `embedText(text, options)` returning Float32Array + metadata. |
+| **Qdrant client** | `src/lib/search/qdrant-client.ts` | Thin wrapper over Qdrant REST/gRPC, handles collection creation, upserts, deletes, scroll, health checks, and retries with exponential backoff. |
+| **Vector ingestor** | `src/lib/search/vector-ingestor.ts` | Reads pending `search_documents` rows (by `embedding_status`), bundles chunk text, calls embedding provider, and writes vectors to Qdrant. |
+| **Task handlers** | `src/lib/task-handlers/search/semantic.ts` | Background jobs `search.vector.index` and `search.vector.delete`; ensure ingestion is idempotent and respects concurrency limits. |
+| **Semantic search adapter** | `src/lib/search/qdrant.ts` | Implements `semanticSearch(query)` → fetch embeddings, query Qdrant, convert hits to `SearchResult` with cosine scores. |
+| **Maintenance CLI** | `src/scripts/reembed-search.ts` | Recompute embeddings when `EMBEDDING_SCHEMA_VERSION` bumps or provider changes; batches work across all chunks. |
+
+#### 9.5.2 Vector ingestion workflow
+
+1. **Triggering:** Same signals as Meili—crawler dispatch + filesystem watcher—also enqueue `search.vector.index` for `{ entryId, variant }`.
+2. **Chunk source:** Ingestor queries `search_documents` for rows where `embedding_status != 'indexed'` or `embedding_version < EMBEDDING_SCHEMA_VERSION`.
+3. **Embedding:** For each batch (e.g., 32 chunks), call `embedText`. Store the raw vector, provider name, dim, and checksum.
+4. **Upsert:** Use Qdrant `upsert` into collection `url_chunks` with payload fields mirroring Meili doc metadata (`entryId`, `chunkIndex`, `hostname`, `tags`, etc.). Use deterministic UUID (docId) so re-ingestion replaces existing vectors.
+5. **Status update:** On success, update `search_documents.embedding_status = 'indexed'`, `embedding_version`, `last_embedded_at`.
+6. **Backoff & retries:** Failures push the job back with exponential delay; fatal errors mark `embedding_status = 'error'` for operator visibility.
+
+**Deletions / archives**
+- `enqueueSearchDelete` also schedules `search.vector.delete`.
+- Handler pulls doc IDs, issues `delete` on Qdrant collection, updates `embedding_status = 'deleted'`.
+- Soft-deleted rows remain in SQLite for audit just like Meili.
+
+#### 9.5.3 Query pipeline
+
+```typescript
+// lib/search/qdrant.ts
+export async function semanticSearch(
+  query: SearchQuery
+): Promise<SearchResult[]> {
+  const queryEmbedding = await embedText(query.text);
+
+  const response = await qdrant.search({
+    collectionName: 'url_chunks',
+    vector: queryEmbedding,
+    limit: query.limit ?? 50,
+    filter: toQdrantFilter(query.filters),
+    withPayload: true,
+    scoreThreshold: query.minScore ?? 0.2,
+  });
+
+  return response.map(hit => ({
+    id: hit.payload.entryId,
+    chunkId: hit.id,
+    origin: 'semantic',
+    score: hit.score,
+    snippet: hit.payload.preview ?? hit.payload.text.slice(0, 240),
+    metadata: {
+      url: hit.payload.url,
+      hostname: hit.payload.hostname,
+      digestPath: hit.payload.digestPath,
+      chunkIndex: hit.payload.chunkIndex,
+    },
+    highlights: buildSemanticHighlights(hit.payload, query.text),
+  }));
+}
+```
+
+Results from `semanticSearch` feed into the hybrid merge described in Section 9.1.1, ensuring keyword and semantic signals are fused before reaching the client.
+
+#### 9.5.4 Configuration & ops
+
+- **Environment vars:** `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_URL_CHUNKS`, `EMBEDDING_SCHEMA_VERSION`.
+- **Collection schema:** HNSW (cosine) with vector dim = embedding dimension (e.g., 1536). Payload schema mirrors Meili document metadata for easy hydration.
+- **Provisioning:** `scripts/setup-search.ts` (or dedicated script) ensures the Qdrant collection exists with desired optimizers (payload indexing on `entryId`, `hostname`, `tags`).
+- **Throughput controls:** Limit concurrent embedding jobs to avoid saturating GPU/remote API and Qdrant ingestion bandwidth.
+- **Monitoring:** Capture metrics for embedding latency, Qdrant upsert/search latency, queue depth, and error counts; expose via existing logging pipeline.
 
 ---
 
