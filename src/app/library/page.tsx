@@ -82,13 +82,19 @@ export default function LibraryPage() {
           </Link>
         </div>
 
-        {/* Create Directory Button */}
-        <div>
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Link href="/library/browse">
+            <Button variant="outline">
+              Browse Files
+            </Button>
+          </Link>
           {!showCreateForm ? (
             <Button onClick={() => setShowCreateForm(true)}>
               + New Directory
             </Button>
-          ) : (
+          ) : null}
+          {showCreateForm && (
             <Card>
               <CardContent>
                 <form onSubmit={handleCreateDirectory} className="space-y-4">
