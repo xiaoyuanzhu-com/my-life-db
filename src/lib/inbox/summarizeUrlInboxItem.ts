@@ -5,6 +5,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 
 import { tq } from '@/lib/task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
@@ -17,7 +18,6 @@ import { enqueueUrlSlug } from './slugUrlInboxItem';
 const log = getLogger({ module: 'InboxSummary' });
 const SUMMARY_FILENAME = 'digest/summary.md';
 const SUMMARY_MIME = 'text/markdown';
-let handlerRegistered = false;
 
 function htmlToText(html: string): string {
   return html
@@ -87,7 +87,7 @@ async function writeSummaryFile(folderPath: string, summary: string): Promise<{ 
 }
 
 export function enqueueUrlSummary(inboxId: string, options?: DigestPipelinePayload): string {
-  registerUrlSummaryHandler();
+  ensureTaskRuntimeReady(['digest_url_summary']);
   const taskId = tq('digest_url_summary').add({
     inboxId,
     pipeline: options?.pipeline ?? false,
@@ -107,13 +107,10 @@ export function enqueueUrlSummary(inboxId: string, options?: DigestPipelinePaylo
   return taskId;
 }
 
-export function registerUrlSummaryHandler(): void {
-  if (handlerRegistered) {
-    return;
-  }
-  handlerRegistered = true;
-
-  tq('digest_url_summary').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
+defineTaskHandler({
+  type: 'digest_url_summary',
+  module: 'InboxSummary',
+  handler: async (input: { inboxId: string } & DigestPipelinePayload) => {
     const { inboxId, pipeline, remainingStages } = input;
 
     const item = getInboxItemById(inboxId);
@@ -178,10 +175,8 @@ export function registerUrlSummaryHandler(): void {
       source: source.source,
       summaryFile: SUMMARY_FILENAME,
     };
-  });
-
-  log.info({}, 'digest_url_summary handler registered');
-}
+  },
+});
 
 function queueNextStage(
   inboxId: string,

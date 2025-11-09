@@ -5,6 +5,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 
 import { tq } from '@/lib/task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
@@ -16,7 +17,6 @@ const log = getLogger({ module: 'InboxSlug' });
 
 const SLUG_FILENAME = 'digest/slug.json';
 const SLUG_MIME = 'application/json';
-let handlerRegistered = false;
 
 async function readCandidateFile(folderPath: string, relativePath: string): Promise<string | null> {
   try {
@@ -67,7 +67,7 @@ async function writeSlugFile(folderPath: string, payload: Record<string, unknown
 }
 
 export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload): string {
-  registerUrlSlugHandler();
+  ensureTaskRuntimeReady(['digest_url_slug']);
 
   const taskId = tq('digest_url_slug').add({
     inboxId,
@@ -88,13 +88,10 @@ export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload)
   return taskId;
 }
 
-export function registerUrlSlugHandler(): void {
-  if (handlerRegistered) {
-    return;
-  }
-  handlerRegistered = true;
-
-  tq('digest_url_slug').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
+defineTaskHandler({
+  type: 'digest_url_slug',
+  module: 'InboxSlug',
+  handler: async (input: { inboxId: string } & DigestPipelinePayload) => {
     const { inboxId } = input;
 
     const item = getInboxItemById(inboxId);
@@ -152,7 +149,5 @@ export function registerUrlSlugHandler(): void {
       source,
       slugFile: SLUG_FILENAME,
     };
-  });
-
-  log.info({}, 'digest_url_slug handler registered');
-}
+  },
+});

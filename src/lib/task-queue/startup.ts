@@ -4,15 +4,13 @@
  */
 
 import { startWorker, shutdownWorker } from './worker';
-import { registerUrlEnrichmentHandler } from '@/lib/inbox/enrichUrlInboxItem';
-import { registerUrlSummaryHandler } from '@/lib/inbox/summarizeUrlInboxItem';
-import { registerUrlTaggingHandler } from '@/lib/inbox/tagUrlInboxItem';
-import { registerUrlSlugHandler } from '@/lib/inbox/slugUrlInboxItem';
-import { registerSearchTaskHandlers } from '@/lib/search/tasks';
-// import { registerInboxSyncHandler, enqueueSyncTask } from '../inbox/syncInboxFiles';
-// import { registerPostIndexHandler } from '@/lib/inbox/postIndexEnricher';
+import '@/lib/inbox/enrichUrlInboxItem';
+import '@/lib/inbox/summarizeUrlInboxItem';
+import '@/lib/inbox/tagUrlInboxItem';
+import '@/lib/inbox/slugUrlInboxItem';
+import '@/lib/search/tasks';
+import { ensureTaskHandlersRegistered } from '@/lib/task-queue/handler-registry';
 import { getLogger } from '@/lib/log/logger';
-// import { acquireProcessLock, setupLockAutoRelease } from '@/lib/utils/processLock';
 
 declare global {
   var __mylifedb_taskqueue_initialized: boolean | undefined;
@@ -48,12 +46,8 @@ export function initializeTaskQueue(options?: {
 
   log.info({}, 'initializing');
 
-  // Register task handlers
-  registerUrlEnrichmentHandler();
-  registerUrlSummaryHandler();
-  registerUrlTaggingHandler();
-  registerUrlSlugHandler();
-  registerSearchTaskHandlers();
+  // Register task handlers defined across modules
+  ensureTaskHandlersRegistered();
 
   // Start worker unless explicitly disabled
   if (options?.startWorker !== false) {

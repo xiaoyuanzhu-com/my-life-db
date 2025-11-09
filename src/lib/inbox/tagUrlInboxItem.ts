@@ -5,6 +5,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 
 import { tq } from '@/lib/task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { generateTagsDigest } from '@/lib/digest/tagging';
@@ -17,7 +18,6 @@ const log = getLogger({ module: 'InboxTagging' });
 
 const TAGS_FILENAME = 'digest/tags.json';
 const TAGS_MIME = 'application/json';
-let handlerRegistered = false;
 
 async function readCandidateFile(folderPath: string, relativePath: string): Promise<string | null> {
   try {
@@ -75,7 +75,7 @@ async function writeTagsFile(folderPath: string, tags: string[]): Promise<{ size
 }
 
 export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePayload): string {
-  registerUrlTaggingHandler();
+  ensureTaskRuntimeReady(['digest_url_tagging']);
 
   const taskId = tq('digest_url_tagging').add({
     inboxId,
@@ -96,13 +96,10 @@ export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePaylo
   return taskId;
 }
 
-export function registerUrlTaggingHandler(): void {
-  if (handlerRegistered) {
-    return;
-  }
-  handlerRegistered = true;
-
-  tq('digest_url_tagging').setWorker(async (input: { inboxId: string } & DigestPipelinePayload) => {
+defineTaskHandler({
+  type: 'digest_url_tagging',
+  module: 'InboxTagging',
+  handler: async (input: { inboxId: string } & DigestPipelinePayload) => {
     const { inboxId, pipeline, remainingStages } = input;
 
     const item = getInboxItemById(inboxId);
@@ -159,10 +156,8 @@ export function registerUrlTaggingHandler(): void {
       source: source.source,
       tagsFile: TAGS_FILENAME,
     };
-  });
-
-  log.info({}, 'digest_url_tagging handler registered');
-}
+  },
+});
 
 function queueNextStage(
   inboxId: string,

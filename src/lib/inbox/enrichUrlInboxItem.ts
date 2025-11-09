@@ -11,6 +11,7 @@ import { crawlUrlDigest } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
@@ -266,6 +267,7 @@ export function enqueueUrlEnrichment(
   url: string,
   options?: DigestPipelinePayload
 ): string {
+  ensureTaskRuntimeReady(['digest_url_crawl']);
   const taskId = tq('digest_url_crawl').add({
     inboxId,
     url,
@@ -288,13 +290,12 @@ export function enqueueUrlEnrichment(
   return taskId;
 }
 
-/**
- * Register URL enrichment handler (call this on app startup)
- */
-export function registerUrlEnrichmentHandler(): void {
-  tq('digest_url_crawl').setWorker(enrichUrlInboxItem);
-  log.info({}, 'url crawl handler registered');
-}
+// Register task handler definition
+defineTaskHandler({
+  type: 'digest_url_crawl',
+  module: 'URLEnricher',
+  handler: enrichUrlInboxItem,
+});
 
 function queueNextStage(
   inboxId: string,
