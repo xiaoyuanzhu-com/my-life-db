@@ -13,7 +13,16 @@ type TaskHandlerDefinition<TPayload = unknown> = {
 };
 
 const log = getLogger({ module: 'TaskHandlerRegistry' });
-const definitions = new Map<string, TaskHandlerDefinition>();
+
+/**
+ * Handler definitions registry (persists across HMR)
+ */
+declare global {
+  var __mylifedb_taskqueue_definitions: Map<string, TaskHandlerDefinition> | undefined;
+}
+
+const definitions = globalThis.__mylifedb_taskqueue_definitions ?? new Map<string, TaskHandlerDefinition>();
+globalThis.__mylifedb_taskqueue_definitions = definitions;
 
 export function defineTaskHandler<TPayload = unknown>(
   definition: TaskHandlerDefinition<TPayload>

@@ -10,9 +10,14 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'TaskExecutor' });
 
 /**
- * Global handler registry
+ * Global handler registry (persists across HMR)
  */
-const handlers = new Map<string, TaskHandler>();
+declare global {
+  var __mylifedb_taskqueue_handlers: Map<string, TaskHandler> | undefined;
+}
+
+const handlers = globalThis.__mylifedb_taskqueue_handlers ?? new Map<string, TaskHandler>();
+globalThis.__mylifedb_taskqueue_handlers = handlers;
 
 /**
  * Register a task handler

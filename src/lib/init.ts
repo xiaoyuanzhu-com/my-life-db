@@ -10,14 +10,13 @@ declare global {
   var __mylifedb_app_initialized: boolean | undefined;
 }
 
-let initialized = globalThis.__mylifedb_app_initialized ?? false;
-
 /**
  * Initialize application services
  * Should be called once on server startup
  */
 export function initializeApp() {
-  if (initialized) {
+  // Always check globalThis for HMR resilience
+  if (globalThis.__mylifedb_app_initialized) {
     return;
   }
 
@@ -48,7 +47,6 @@ export function initializeApp() {
       } catch {}
     })();
 
-    initialized = true;
     globalThis.__mylifedb_app_initialized = true;
     log.info({}, 'application initialization complete');
   } catch (error) {
@@ -61,5 +59,12 @@ export function initializeApp() {
  * Check if application is initialized
  */
 export function isAppInitialized(): boolean {
-  return initialized;
+  return globalThis.__mylifedb_app_initialized ?? false;
+}
+
+// Auto-initialize when this module is imported (side effect)
+// This runs when the server starts, independent of Next.js features
+if (typeof window === 'undefined') {
+  // Only run on server-side
+  initializeApp();
 }

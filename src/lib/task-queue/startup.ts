@@ -34,14 +34,8 @@ export function initializeTaskQueue(options?: {
   startWorker?: boolean;
 }) {
   if (globalState.__mylifedb_taskqueue_initialized) {
-    if (process.env.NODE_ENV !== 'production') {
-      log.info({}, 'reinitializing task queue (dev hot reload)');
-      void shutdownWorker({ reason: 'task-queue reinit', timeoutMs: 2000 });
-      globalState.__mylifedb_taskqueue_initialized = false;
-    } else {
-      log.info({}, 'already initialized');
-      return;
-    }
+    log.info({}, 'already initialized');
+    return;
   }
 
   log.info({}, 'initializing');
