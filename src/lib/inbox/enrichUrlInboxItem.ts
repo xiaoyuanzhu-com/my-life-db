@@ -163,16 +163,25 @@ export async function enrichUrlInboxItem(
         const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
         if (screenshotBuffer.length > 0) {
           const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
+          log.info({
+            bufferSize: screenshotBuffer.length,
+            extension: screenshotExtension,
+            mimeType: screenshot.mimeType
+          }, 'saving screenshot to digest folder');
           digestArtifacts.push({
             filename: `screenshot.${screenshotExtension}`,
             mimeType: screenshot.mimeType,
             buffer: screenshotBuffer,
             type: 'image',
           });
+        } else {
+          log.warn({}, 'screenshot buffer is empty');
         }
-      } catch {
-        // ignore invalid screenshot data
+      } catch (error) {
+        log.error({ err: error }, 'failed to process screenshot data');
       }
+    } else {
+      log.warn({ hasScreenshot: Boolean(screenshot), hasBase64: Boolean(screenshot?.base64) }, 'no screenshot in crawl result');
     }
 
     await Promise.all(

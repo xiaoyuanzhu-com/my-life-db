@@ -175,11 +175,13 @@ function normalizeMetadata(raw: any): HaidCrawlMetadata | undefined {
 function normalizeScreenshot(raw: any): HaidCrawlResponse['screenshot'] {
   // HAID API returns screenshot_base64 field directly
   if (typeof raw?.screenshot_base64 === 'string' && raw.screenshot_base64.length > 0) {
+    log.debug({ screenshotLength: raw.screenshot_base64.length }, 'screenshot extracted from HAID response');
     return {
       base64: raw.screenshot_base64,
       mimeType: 'image/png',
     };
   }
+  log.warn({ hasScreenshotBase64: Boolean(raw?.screenshot_base64), type: typeof raw?.screenshot_base64 }, 'no screenshot_base64 in HAID response');
   return null;
 }
 
