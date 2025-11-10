@@ -77,14 +77,14 @@ function registerShutdownHooks() {
   globalState.__mylifedb_taskqueue_shutdown_hooks = true;
   const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   signals.forEach(signal => {
-    process.on(signal, () => {
+    process.on(signal, async () => {
       log.info({ signal }, 'received shutdown signal, draining task queue');
-      void shutdownWorker({ reason: `signal:${signal}` });
+      await shutdownWorker({
+        reason: `signal:${signal}`,
+        timeoutMs: 2000  // 2 second timeout for graceful shutdown
+      });
+      log.info({ signal }, 'task queue drained, exiting');
+      process.exit(0);
     });
-  });
-
-  process.on('beforeExit', () => {
-    log.info({}, 'process beforeExit, draining task queue');
-    void shutdownWorker({ reason: 'beforeExit', timeoutMs: 2000 });
   });
 }
