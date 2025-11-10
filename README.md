@@ -10,9 +10,25 @@ what's behind:
 
 ## Conventions
 
-### .app folder
+### app folder (rebuildable data)
 
-Every app can have its own folder to store app-specific data, settings, cache, etc.
+Every app can have its own folder to store app-specific data, settings, cache, etc. in the `app/` directory:
+
+```
+data/
+├── app/              # Application-specific data (rebuildable)
+│   └── mylifedb/
+│       └── database.sqlite
+```
+
+**Important**: The `app/` folder contains only rebuildable data. You can delete it and the app will recreate indexes, search data, etc. from the source files in `inbox/` and your library folders.
+
+### Reserved Folders
+
+- **inbox/** - Unprocessed items waiting for organization
+- **app/** - Application data (rebuildable, can be deleted)
+
+All other folders at the data root are considered library content and are indexed by the application.
 
 ### README.md
 

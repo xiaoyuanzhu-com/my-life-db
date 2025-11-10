@@ -1,15 +1,9 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
-// import { promises as fs } from 'fs';
-// import path from 'path';
-import { createInboxEntry } from '@/lib/inbox/createInboxEntry';
-import { listInboxItems } from '@/lib/db/inbox';
-import { getInboxTaskStatesForInboxIds } from '@/lib/db/inboxTaskState';
-import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
-// import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
-// import { getStorageConfig } from '@/lib/config/storage';
+import { createInboxItem } from '@/lib/inbox/createItem';
+import { listItems } from '@/lib/db/items';
+import { listDigestsForItem } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
-import { readInboxPrimaryText, readInboxDigestScreenshot } from '@/lib/inbox/digestArtifacts';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -31,31 +25,20 @@ export async function GET(request: NextRequest) {
       ? parseInt(searchParams.get('offset')!)
       : 0;
 
-    const items = listInboxItems({ status, limit, offset });
+    // List items in inbox location
+    const items = listItems({ location: 'inbox', status, limit, offset });
 
-    // Include enrichment summaries for all items (batch query)
-    const ids = items.map((i) => i.id);
-    const statesByInbox = getInboxTaskStatesForInboxIds(ids);
-
-    const itemsWithEnrichment = await Promise.all(
-      items.map(async (item) => {
-        const states = statesByInbox[item.id] || [];
-        const enrichment = summarizeInboxEnrichment(item, states);
-        const [primaryText, screenshot] = await Promise.all([
-          readInboxPrimaryText(item.folderName),
-          enrichment.screenshotReady ? readInboxDigestScreenshot(item.folderName) : Promise.resolve(null),
-        ]);
-        return {
-          ...item,
-          enrichment,
-          primaryText,
-          digestScreenshot: screenshot,
-        };
-      })
-    );
+    // Include digests for each item
+    const itemsWithDigests = items.map((item) => {
+      const digests = listDigestsForItem(item.id);
+      return {
+        ...item,
+        digests,
+      };
+    });
 
     return NextResponse.json({
-      items: itemsWithEnrichment,
+      items: itemsWithDigests,
       total: items.length,
     });
   } catch (error) {
@@ -99,38 +82,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create inbox entry
-    const inboxItem = await createInboxEntry({
+    // Create inbox item
+    const item = await createInboxItem({
       text: text || undefined,
       files,
     });
 
-    // TEMP: disable auto enqueue of URL enrichment
-    // if (inboxItem.type === 'url') {
-    //   const urlFile = inboxItem.files.find(f => f.filename === 'url.txt');
-    //   if (urlFile) {
-    //     try {
-    //       // Read URL from file and enqueue processing
-    //       const storageConfig = await getStorageConfig();
-    //       const urlPath = path.join(
-    //         storageConfig.dataPath,
-    //         '.app',
-    //         'mylifedb',
-    //         'inbox',
-    //         inboxItem.folderName,
-    //         'url.txt'
-    //       );
-    //       const url = await fs.readFile(urlPath, 'utf-8');
-    //       const taskId = enqueueUrlEnrichment(inboxItem.id, url.trim());
-    //       log.info({ taskId, inboxId: inboxItem.id }, 'enqueued url enrichment');
-    //     } catch (error) {
-    //       log.error({ err: error, inboxId: inboxItem.id }, 'failed to enqueue url enrichment');
-    //       // Don't fail the request if task enqueue fails
-    //     }
-    //   }
-    // }
+    log.info({ itemId: item.id, path: item.path }, 'created inbox item');
 
-    return NextResponse.json(inboxItem, { status: 201 });
+    return NextResponse.json(item, { status: 201 });
   } catch (error) {
     log.error({ err: error }, 'create inbox item failed');
     return NextResponse.json(
@@ -142,4 +102,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 const log = getLogger({ module: 'ApiInbox' });
