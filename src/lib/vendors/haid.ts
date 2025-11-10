@@ -4,7 +4,8 @@ import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'VendorHAID' });
 const DEFAULT_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
-const DEFAULT_BASE_URL = 'http://172.16.2.11:12310';
+const DEFAULT_BASE_URL = 'http://172.16.2.11:3003';
+const DEFAULT_CHROME_CDP_URL = 'http://172.16.2.2:9223/';
 
 export interface HaidEmbeddingOptions {
   texts: string[];
@@ -54,7 +55,7 @@ export async function crawlUrlWithHaid(
   }
 
   const config = await resolveHaidConfig();
-  const endpoint = `${config.baseUrl}/api/url-crawl`;
+  const endpoint = `${config.baseUrl}/api/crawl`;
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -65,15 +66,29 @@ export async function crawlUrlWithHaid(
     body: JSON.stringify({
       url: options.url,
       screenshot: options.screenshot ?? true,
-      timeoutMs: options.timeoutMs,
-      pageTimeout: options.pageTimeout,
-      chromeCdpUrl: config.chromeCdpUrl,
+      screenshot_fullpage: false,
+      screenshot_width: 1920,
+      screenshot_height: 1080,
+      page_timeout: options.pageTimeout ?? 120000,
+      chrome_cdp_url: config.chromeCdpUrl,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`HAID crawl error (${response.status}): ${errorText || response.statusText}`);
+  }
+
+  // Check if response is actually JSON
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    const responseText = await response.text();
+    log.error({
+      endpoint,
+      contentType,
+      responsePreview: responseText.substring(0, 200)
+    }, 'HAID returned non-JSON response');
+    throw new Error(`HAID returned ${contentType || 'unknown'} instead of JSON. Response: ${responseText.substring(0, 200)}`);
   }
 
   const data = await response.json();
@@ -197,10 +212,11 @@ async function resolveHaidConfig(): Promise<{
   try {
     const settings = await getSettings();
     baseUrl = baseUrl || settings.vendors?.homelabAi?.baseUrl || DEFAULT_BASE_URL;
-    chromeCdpUrl = settings.vendors?.homelabAi?.chromeCdpUrl || undefined;
+    chromeCdpUrl = settings.vendors?.homelabAi?.chromeCdpUrl || DEFAULT_CHROME_CDP_URL;
   } catch (error) {
     log.warn({ err: error }, 'failed to load HAID base URL from settings, using defaults');
     baseUrl = baseUrl || DEFAULT_BASE_URL;
+    chromeCdpUrl = DEFAULT_CHROME_CDP_URL;
   }
 
   return {
