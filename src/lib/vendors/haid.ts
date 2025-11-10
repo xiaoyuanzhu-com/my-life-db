@@ -92,7 +92,8 @@ export async function crawlUrlWithHaid(
   }
 
   const data = await response.json();
-  return {
+
+  const result = {
     url: data.url ?? options.url,
     redirectedTo: data.redirectedTo ?? data.redirect_url ?? null,
     html: data.html ?? null,
@@ -100,6 +101,16 @@ export async function crawlUrlWithHaid(
     metadata: normalizeMetadata(data),
     screenshot: normalizeScreenshot(data),
   };
+
+  log.info({
+    url: options.url,
+    hasHtml: Boolean(result.html),
+    hasMarkdown: Boolean(result.markdown),
+    hasScreenshot: Boolean(result.screenshot),
+    screenshotKeys: data.screenshot ? Object.keys(data.screenshot) : null,
+  }, 'crawl response processed');
+
+  return result;
 }
 
 export async function callHaidEmbedding(
@@ -162,23 +173,13 @@ function normalizeMetadata(raw: any): HaidCrawlMetadata | undefined {
 }
 
 function normalizeScreenshot(raw: any): HaidCrawlResponse['screenshot'] {
-  const screenshotData = raw?.screenshot;
-  if (screenshotData && typeof screenshotData === 'object') {
-    const base64 = screenshotData.base64 || screenshotData.data || '';
-    if (!base64) return null;
+  // HAID API returns screenshot_base64 field directly
+  if (typeof raw?.screenshot_base64 === 'string' && raw.screenshot_base64.length > 0) {
     return {
-      base64,
-      mimeType: screenshotData.mimeType || screenshotData.type || 'image/png',
+      base64: raw.screenshot_base64,
+      mimeType: 'image/png',
     };
   }
-
-  if (typeof raw?.screenshotBase64 === 'string' && raw.screenshotBase64.length > 0) {
-    return {
-      base64: raw.screenshotBase64,
-      mimeType: raw.screenshotMimeType || 'image/png',
-    };
-  }
-
   return null;
 }
 
