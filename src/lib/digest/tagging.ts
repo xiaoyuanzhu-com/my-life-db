@@ -58,7 +58,7 @@ export interface TaggingOutput {
 }
 
 export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOutput> {
-  const maxTags = input.maxTags ?? 5;
+  const maxTags = input.maxTags ?? 10;
 
   const schema = {
     type: 'object',
@@ -66,7 +66,7 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
       tags: {
         type: 'array',
         items: { type: 'string' },
-        minItems: 2,
+        minItems: 5,
         maxItems: maxTags,
       },
     },
@@ -76,7 +76,7 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
 
   const systemPrompt = [
     'You are an expert knowledge organizer.',
-    'Extract 2-5 short, descriptive tags that help classify the content.',
+    'Extract 5-10 short, descriptive tags that help classify the content.',
     'Prefer single or double-word tags; no hashtags or numbering.',
   ].join(' ');
 
