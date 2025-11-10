@@ -1,171 +1,147 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DirectoryCard } from '@/components/DirectoryCard';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Link from 'next/link';
-import type { Directory } from '@/types';
+import { FileTree } from '@/components/library/FileTree';
+import { FileViewer } from '@/components/library/FileViewer';
+import { FileTabs } from '@/components/library/FileTabs';
+
+export interface OpenedFile {
+  path: string;
+  name: string;
+}
 
 export default function LibraryPage() {
-  const [directories, setDirectories] = useState<Directory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newDirName, setNewDirName] = useState('');
-  const [newDirDescription, setNewDirDescription] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
-  async function loadDirectories() {
-    try {
-      const response = await fetch('/api/directories?parent=library');
-      const data = await response.json();
-      setDirectories(data.directories);
-    } catch (error) {
-      console.error('Failed to load directories:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
+  // Load state from localStorage on mount
   useEffect(() => {
-    loadDirectories();
-  }, []);
-
-  async function handleCreateDirectory(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!newDirName.trim()) return;
-
-    setIsCreating(true);
-
     try {
-      const response = await fetch('/api/directories', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newDirName.trim(),
-          description: newDirDescription.trim() || undefined,
-          parentPath: 'library',
-        }),
-      });
+      const savedOpenedFiles = localStorage.getItem('library:openedFiles');
+      const savedActiveFile = localStorage.getItem('library:activeFile');
+      const savedExpandedFolders = localStorage.getItem('library:expandedFolders');
 
-      if (response.ok) {
-        setNewDirName('');
-        setNewDirDescription('');
-        setShowCreateForm(false);
-        await loadDirectories();
+      if (savedOpenedFiles) {
+        setOpenedFiles(JSON.parse(savedOpenedFiles));
+      }
+      if (savedActiveFile) {
+        setActiveFilePath(savedActiveFile);
+      }
+      if (savedExpandedFolders) {
+        setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
       }
     } catch (error) {
-      console.error('Failed to create directory:', error);
-    } finally {
-      setIsCreating(false);
+      console.error('Failed to load state from localStorage:', error);
     }
-  }
+  }, []);
+
+  // Save opened files to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('library:openedFiles', JSON.stringify(openedFiles));
+    } catch (error) {
+      console.error('Failed to save opened files to localStorage:', error);
+    }
+  }, [openedFiles]);
+
+  // Save active file to localStorage
+  useEffect(() => {
+    try {
+      if (activeFilePath) {
+        localStorage.setItem('library:activeFile', activeFilePath);
+      }
+    } catch (error) {
+      console.error('Failed to save active file to localStorage:', error);
+    }
+  }, [activeFilePath]);
+
+  // Save expanded folders to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('library:expandedFolders', JSON.stringify(Array.from(expandedFolders)));
+    } catch (error) {
+      console.error('Failed to save expanded folders to localStorage:', error);
+    }
+  }, [expandedFolders]);
+
+  const handleFileOpen = (path: string, name: string) => {
+    // Add to opened files if not already open
+    if (!openedFiles.some(f => f.path === path)) {
+      setOpenedFiles([...openedFiles, { path, name }]);
+    }
+    setActiveFilePath(path);
+  };
+
+  const handleFileClose = (path: string) => {
+    const newOpenedFiles = openedFiles.filter(f => f.path !== path);
+    setOpenedFiles(newOpenedFiles);
+
+    // If closing the active file, switch to the last opened file
+    if (activeFilePath === path) {
+      if (newOpenedFiles.length > 0) {
+        setActiveFilePath(newOpenedFiles[newOpenedFiles.length - 1].path);
+      } else {
+        setActiveFilePath(null);
+      }
+    }
+  };
+
+  const handleTabChange = (path: string) => {
+    setActiveFilePath(path);
+  };
+
+  const handleToggleFolder = (path: string, isExpanded: boolean) => {
+    const newExpandedFolders = new Set(expandedFolders);
+    if (isExpanded) {
+      newExpandedFolders.add(path);
+    } else {
+      newExpandedFolders.delete(path);
+    }
+    setExpandedFolders(newExpandedFolders);
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Library</h1>
-            <p className="text-muted-foreground mt-1">Your organized knowledge</p>
-          </div>
-          <Link
-            href="/"
-            className="text-primary hover:text-amber-700 text-sm font-medium"
-          >
-            ← Home
-          </Link>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <Link href="/library/browse">
-            <Button variant="outline">
-              Browse Files
-            </Button>
-          </Link>
-          {!showCreateForm ? (
-            <Button onClick={() => setShowCreateForm(true)}>
-              + New Directory
-            </Button>
-          ) : null}
-          {showCreateForm && (
-            <Card>
-              <CardContent>
-                <form onSubmit={handleCreateDirectory} className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Create New Directory</h3>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Name</label>
-                    <Input
-                      value={newDirName}
-                      onChange={(e) => setNewDirName(e.target.value)}
-                      placeholder="e.g., Work Projects, Personal Notes"
-                      disabled={isCreating}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Description (optional)</label>
-                    <Input
-                      value={newDirDescription}
-                      onChange={(e) => setNewDirDescription(e.target.value)}
-                      placeholder="What will you store here?"
-                      disabled={isCreating}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="submit" disabled={isCreating || !newDirName.trim()}>
-                      {isCreating ? 'Creating...' : 'Create'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setShowCreateForm(false);
-                        setNewDirName('');
-                        setNewDirDescription('');
-                      }}
-                      disabled={isCreating}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Directory List */}
-        <div>
-          <h2 className="text-xl font-semibold text-foreground mb-4">
-            Directories ({directories.length})
-          </h2>
-
-          {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Loading...</div>
-          ) : directories.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <p className="text-muted-foreground">
-                  No directories yet. Create your first directory to start organizing!
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {directories.map((directory) => (
-                <DirectoryCard
-                  key={directory.path}
-                  directory={directory}
-                />
-              ))}
+    <div className="flex flex-col flex-1 bg-background">
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden">
+        <div className="px-[10%] h-full">
+          <div className="flex h-full">
+            {/* Left sidebar - File tree */}
+            <div className="w-64 border-r overflow-y-auto">
+              <FileTree
+                onFileOpen={handleFileOpen}
+                expandedFolders={expandedFolders}
+                onToggleFolder={handleToggleFolder}
+              />
             </div>
-          )}
+
+            {/* Right content - File viewer with tabs */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {openedFiles.length > 0 ? (
+                <>
+                  {/* Tabs */}
+                  <FileTabs
+                    files={openedFiles}
+                    activeFile={activeFilePath}
+                    onTabChange={handleTabChange}
+                    onTabClose={handleFileClose}
+                  />
+
+                  {/* Content viewer */}
+                  <div className="flex-1 overflow-hidden">
+                    {activeFilePath && (
+                      <FileViewer filePath={activeFilePath} />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  Select a file from the tree to view
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
