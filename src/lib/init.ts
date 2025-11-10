@@ -61,10 +61,3 @@ export function initializeApp() {
 export function isAppInitialized(): boolean {
   return globalThis.__mylifedb_app_initialized ?? false;
 }
-
-// Auto-initialize when this module is imported (side effect)
-// This runs when the server starts, independent of Next.js features
-if (typeof window === 'undefined') {
-  // Only run on server-side
-  initializeApp();
-}
