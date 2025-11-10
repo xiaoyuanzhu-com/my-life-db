@@ -4,6 +4,7 @@
  */
 
 import { initializeTaskQueue } from './task-queue/startup';
+import { startPeriodicScanner } from './scanner/libraryScanner';
 import { getLogger } from '@/lib/log/logger';
 
 declare global {
@@ -73,6 +74,9 @@ export function initializeApp() {
     initializeTaskQueue({
       startWorker: true,
     });
+
+    // Start periodic library scanner
+    startPeriodicScanner();
 
     // Run async initialization tasks (database, search, settings)
     (async () => {

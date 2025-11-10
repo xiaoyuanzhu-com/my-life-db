@@ -347,3 +347,80 @@ export interface LibraryFile {
   indexedAt: string; // ISO date string
   enrichedAt: string | null; // ISO date string
 }
+
+// ============================================================================
+// New Unified Items Architecture (v2)
+// ============================================================================
+
+/**
+ * File metadata within an item
+ */
+export interface ItemFile {
+  name: string; // Filename
+  size: number; // bytes
+  type: string; // MIME type
+  hash?: string; // SHA256 hash for small files
+  modifiedAt?: string; // ISO date string
+}
+
+/**
+ * Item - unified model for inbox and library content
+ */
+export interface Item {
+  id: string; // UUID
+  name: string; // Original filename or slug
+  rawType: MessageType; // What user submitted
+  detectedType: string | null; // What AI detected (url, note, todo, etc.)
+  isFolder: boolean; // true = folder with multiple files, false = single file
+  path: string; // Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'notes/meeting.md')
+  files: ItemFile[] | null; // File list (JSON)
+  status: EnrichmentStatus; // Enrichment status
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+  schemaVersion: number;
+}
+
+/**
+ * Digest - AI-generated content for an item
+ */
+export interface Digest {
+  id: string; // UUID
+  itemId: string; // FK to items.id
+  digestType: string; // 'summary', 'tags', 'slug', 'content-md', 'content-html', 'screenshot'
+  status: EnrichmentStatus; // Processing status
+  content: string | null; // Text content (summary, tags JSON, slug JSON)
+  sqlarName: string | null; // Filename in SQLAR archive (for binary digests)
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+}
+
+/**
+ * Database row for items table
+ */
+export interface ItemRecord {
+  id: string;
+  name: string;
+  raw_type: string;
+  detected_type: string | null;
+  is_folder: number; // SQLite boolean (0 or 1)
+  path: string;
+  files: string | null; // JSON string
+  status: string;
+  created_at: string;
+  updated_at: string;
+  schema_version: number;
+}
+
+/**
+ * Database row for digests table
+ */
+export interface DigestRecord {
+  id: string;
+  item_id: string;
+  digest_type: string;
+  status: string;
+  content: string | null;
+  sqlar_name: string | null;
+  created_at: string;
+  updated_at: string;
+}

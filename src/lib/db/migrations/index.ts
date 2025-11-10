@@ -15,6 +15,7 @@ import migration012 from './012_normalize_inbox_status';
 import migration013 from './013_search_documents';
 import migration014 from './014_fix_search_documents_fk';
 import migration015 from './015_add_content_type_to_search_documents';
+import migration016 from './016_refactor_to_items';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -43,6 +44,7 @@ export const migrations: Migration[] = [
   migration013,
   migration014,
   migration015,
+  migration016,
 ];
 
 /**
@@ -50,13 +52,13 @@ export const migrations: Migration[] = [
  */
 export async function runMigrations(db: BetterSqlite3.Database): Promise<void> {
   // Ensure schema_version table exists (bootstrap)
-  db.exec(`
+  db.exec(\`
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
       applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
       description TEXT
     );
-  `);
+  \`);
 
   // Get current version
   const currentVersionRow = db
@@ -125,7 +127,7 @@ export async function rollbackLastMigration(db: BetterSqlite3.Database): Promise
   const migration = migrations.find((m) => m.version === currentVersion);
 
   if (!migration) {
-    throw new Error(`Migration v${currentVersion} not found`);
+    throw new Error(\`Migration v\${currentVersion} not found\`);
   }
 
   log.info({ version: migration.version, description: migration.description }, 'rolling back migration');

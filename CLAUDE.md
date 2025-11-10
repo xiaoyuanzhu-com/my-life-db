@@ -21,12 +21,70 @@ This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS
 
 ## Architecture
 
-### Data Storage
-- Uses SQLite for settings persistence
-- Database location: `MY_DATA_DIR/.app/mylifedb/database.sqlite`
-- `MY_DATA_DIR` environment variable sets the base data directory (defaults to `./data`)
-- Database is automatically created and initialized on first use
+### Data Storage Structure
+
+The application uses a flat, user-friendly data structure with two special folders:
+
+```
+MY_DATA_DIR/
+├── inbox/              # Unprocessed items (source of truth)
+│   ├── photo.jpg       # Single file items
+│   └── {uuid}/         # Multi-file items (renamed to slug after digest)
+│       ├── text.md
+│       └── files...
+├── notes/              # User library folders (source of truth)
+├── journal/            # User library folders (source of truth)
+├── work/               # User library folders (source of truth)
+└── app/                # Application data (rebuildable)
+    └── mylifedb/
+        └── database.sqlite
+```
+
+**Design Principles:**
+1. **inbox** and user folders (notes, journal, etc.) are the **source of truth** - plain files on disk
+2. **app/** folder contains rebuildable data - can be deleted and rebuilt from source files
+3. **Reserved folders**: `inbox`, `app` (all others are user library content)
+4. MyLifeDB is not the only app managing the data - other apps can read/write files
+5. Users can delete the app folder and rebuild search indexes, crawl results, etc.
+
+### Database (SQLite)
+
+- **Location**: `MY_DATA_DIR/app/mylifedb/database.sqlite`
+- **`MY_DATA_DIR`** environment variable sets the base data directory (defaults to `./data`)
 - Uses `better-sqlite3` for synchronous database operations
+- Database is automatically created and initialized on first use
+
+**Core Tables:**
+
+1. **items** - Unified model for inbox and library content
+   - Tracks all files and folders in inbox/ and library/
+   - Single file items: `inbox/photo.jpg` (no folder)
+   - Multi-file items: `inbox/{uuid}/` folder (renamed to slug after digest)
+   - Files list stored as JSON for performance
+
+2. **digests** - AI-generated content (rebuildable)
+   - Summary, tags, slug, etc.
+   - Foreign key to items.id
+   - Text content stored in `content` field
+   - Binary content stored in SQLAR (see below)
+
+3. **sqlar** - SQLite Archive format for binary digests
+   - Stores compressed screenshots, processed HTML, etc.
+   - Standard SQLite format with zlib compression
+   - Files named: `{item_id}/{digest_type}/filename`
+
+4. **tasks** - Background job queue
+5. **inbox_task_state** - Enrichment status tracking
+6. **settings** - Application configuration
+7. **search_documents** - Chunked content for search (TO BE UPDATED)
+
+### Library Scanner
+
+- Automatically scans `MY_DATA_DIR` every 1 hour for new/changed files
+- Creates/updates items in database for all non-reserved folders
+- Hashes small files (< 10MB) for change detection
+- Stores file metadata in items.files JSON field
+- Runs on app startup (after 10 seconds) and periodically
 
 ### App Router Structure
 - Uses Next.js App Router located in `src/app/`

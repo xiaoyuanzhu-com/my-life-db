@@ -10,14 +10,13 @@ const log = getLogger({ module: 'Storage' });
 
 // Data root directory (respects MY_DATA_DIR environment variable)
 export const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), 'data');
-export const APP_DIR = path.join(DATA_ROOT, '.app', 'mylifedb');
-export const INBOX_DIR = path.join(APP_DIR, 'inbox');
-export const LIBRARY_DIR = DATA_ROOT; // Library is at the root level, user-owned
+export const APP_DIR = path.join(DATA_ROOT, 'app', 'mylifedb');
+export const INBOX_DIR = path.join(DATA_ROOT, 'inbox');
 
 // Initialize data directories
 export async function initializeStorage(): Promise<void> {
+  await fs.mkdir(APP_DIR, { recursive: true });
   await fs.mkdir(INBOX_DIR, { recursive: true });
-  // Library dir is the DATA_ROOT itself, already exists
 }
 
 // Generate unique UUID for entries
