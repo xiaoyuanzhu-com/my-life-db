@@ -97,7 +97,7 @@ Title:`;
     systemPrompt: 'You are a helpful assistant that creates concise, descriptive titles for saved web content.',
     prompt,
     temperature: 0.2,
-    maxTokens: 60,
+    // No maxTokens - prompt is clear to return only the title
   });
   const title = response.content.trim();
 

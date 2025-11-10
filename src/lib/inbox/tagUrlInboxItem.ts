@@ -121,7 +121,13 @@ defineTaskHandler({
 
     if (!result.tags.length) {
       const message = 'Tag generation returned no tags';
-      log.warn({ inboxId }, message);
+      log.warn({
+        inboxId,
+        sourceTextLength: source.text.length,
+        clippedTextLength: clipped.length,
+        clippedTextPreview: clipped.substring(0, 200),
+        resultTags: result.tags,
+      }, message);
       throw new Error(message);
     }
 

@@ -3,6 +3,7 @@
  * Provides simple completion and structured JSON output
  */
 
+import OpenAI from 'openai';
 import { getSettings } from '@/lib/config/storage';
 import { getLogger } from '@/lib/log/logger';
 import type { UserSettings } from '@/lib/config/settings';
@@ -102,7 +103,13 @@ export async function callOpenAICompletion(
     );
   } catch {}
 
-  const messages: Array<{ role: string; content: string }> = [];
+  // Initialize OpenAI client
+  const client = new OpenAI({
+    baseURL: baseUrl,
+    apiKey: vendorConfig.apiKey,
+  });
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
   if (options.systemPrompt) {
     messages.push({
@@ -116,19 +123,22 @@ export async function callOpenAICompletion(
     content: options.prompt,
   });
 
-  const requestBody: Record<string, unknown> = {
+  const requestParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
     model,
     messages,
     temperature: options.temperature ?? 0.7,
   };
 
   if (options.maxTokens) {
-    requestBody.max_tokens = options.maxTokens;
+    requestParams.max_completion_tokens = options.maxTokens;
   }
 
   // Enable structured JSON output if schema provided
   if (options.jsonSchema) {
-    requestBody.response_format = {
+    // Try json_schema first (strict mode for OpenAI models)
+    // Some models (like MiniMax) may not support this and will ignore it
+    // or treat it like json_object mode (which doesn't enforce schema)
+    requestParams.response_format = {
       type: 'json_schema',
       json_schema: {
         name: 'response',
@@ -138,28 +148,65 @@ export async function callOpenAICompletion(
     };
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${vendorConfig.apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
+  const response = await client.chat.completions.create(requestParams);
+
+  // Log the full API response for debugging
+  console.log('[VendorOpenAI] Full API response:', {
+    fullResponse: response,
+    choices: response.choices,
+    firstChoice: response.choices?.[0],
+    message: response.choices?.[0]?.message,
+    content: response.choices?.[0]?.message?.content,
+    // @ts-expect-error - reasoning field may exist on some models
+    reasoning: response.choices?.[0]?.message?.reasoning,
+    finishReason: response.choices?.[0]?.finish_reason,
+    usage: response.usage,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+  const message = response.choices?.[0]?.message;
+  const finishReason = response.choices?.[0]?.finish_reason;
+
+  // Some models (like MiniMax reasoning models) may put content in 'reasoning' field
+  // or may use 'content' field. Try both.
+  let content = message?.content || '';
+
+  // If content is empty but reasoning exists, the model may have hit token limit during reasoning
+  // @ts-expect-error - reasoning field may exist on some models
+  if (!content && message?.reasoning) {
+    // @ts-expect-error - reasoning field may exist on some models
+    const reasoning = message.reasoning as string;
+    console.warn('[VendorOpenAI] Content is empty but reasoning field exists. This may indicate the response was truncated.', {
+      finishReason,
+      reasoningLength: reasoning.length,
+      reasoningPreview: reasoning.substring(0, 200),
+    });
+
+    // Try to extract JSON from reasoning as last resort
+    content = reasoning;
   }
 
-  const data = await response.json();
+  // Warn if response was truncated due to length
+  if (finishReason === 'length') {
+    console.warn('[VendorOpenAI] Response was truncated due to max_tokens limit', {
+      maxTokens: options.maxTokens,
+      completionTokens: response.usage?.completion_tokens,
+      finishReason,
+    });
+  }
 
-  const content = data.choices?.[0]?.message?.content || '';
-  const usage = data.usage ? {
-    promptTokens: data.usage.prompt_tokens,
-    completionTokens: data.usage.completion_tokens,
-    totalTokens: data.usage.total_tokens,
+  const usage = response.usage ? {
+    promptTokens: response.usage.prompt_tokens,
+    completionTokens: response.usage.completion_tokens,
+    totalTokens: response.usage.total_tokens,
   } : undefined;
+
+  // Log extracted values
+  console.log('[VendorOpenAI] Extracted values:', {
+    contentLength: content.length,
+    contentPreview: content.substring(0, 200),
+    content: content,
+    usage,
+  });
 
   return {
     content,

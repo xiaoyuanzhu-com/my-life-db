@@ -127,7 +127,7 @@ export async function normalizeWithAI(input: NormalizeWithAIInput): Promise<Norm
       systemPrompt: 'You are an expert data normalizer that maps legacy inbox folders into the current schema.',
       prompt,
       temperature: 0,
-      maxTokens: 800,
+      // No maxTokens - let model stop naturally after completing the JSON
     });
     const raw = completion.content;
     // Expect strict JSON

@@ -9,7 +9,6 @@ import { callOpenAICompletion } from '@/lib/vendors/openai';
 
 export interface TextSummaryInput {
   text: string;
-  maxTokens?: number;
 }
 
 export interface TextSummaryOutput {
@@ -18,7 +17,8 @@ export interface TextSummaryOutput {
 
 export async function summarizeTextDigest(input: TextSummaryInput): Promise<TextSummaryOutput> {
   const prompt = `Summarize the following text in 3-5 bullet points:\n\n${input.text}`;
-  const res = await callOpenAICompletion({ prompt, maxTokens: input.maxTokens ?? 256 });
+  // No maxTokens - "3-5 bullet points" naturally bounds the output
+  const res = await callOpenAICompletion({ prompt });
   return { summary: res.content };
 }
 

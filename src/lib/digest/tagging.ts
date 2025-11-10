@@ -2,6 +2,52 @@ import 'server-only';
 
 import { callOpenAICompletion } from '@/lib/vendors/openai';
 
+/**
+ * Attempts to extract and parse JSON from a string that may contain additional text.
+ * Handles cases where LLM returns JSON wrapped in markdown, with extra text, etc.
+ */
+function parseJsonFromResponse(content: string): unknown {
+  // Try direct parse first
+  try {
+    return JSON.parse(content);
+  } catch {
+    // If direct parse fails, try to extract JSON from the content
+
+    // Try to find JSON in markdown code blocks
+    const markdownJsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (markdownJsonMatch) {
+      try {
+        return JSON.parse(markdownJsonMatch[1]);
+      } catch {
+        // Continue to next strategy
+      }
+    }
+
+    // Try to find JSON object by looking for { ... }
+    const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonObjectMatch) {
+      try {
+        return JSON.parse(jsonObjectMatch[0]);
+      } catch {
+        // Continue to next strategy
+      }
+    }
+
+    // Try to find JSON array by looking for [ ... ]
+    const jsonArrayMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonArrayMatch) {
+      try {
+        return JSON.parse(jsonArrayMatch[0]);
+      } catch {
+        // All strategies failed
+      }
+    }
+
+    // If all strategies fail, throw the original error
+    throw new Error('Unable to parse JSON from response');
+  }
+}
+
 export interface TaggingInput {
   text: string;
   maxTags?: number;
@@ -44,29 +90,75 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
   const res = await callOpenAICompletion({
     systemPrompt,
     prompt,
-    maxTokens: 200,
+    // No maxTokens limit - let the model stop naturally after completing the JSON
+    // This is safe because jsonSchema ensures bounded, structured output
     jsonSchema: schema,
-    temperature: 0.3,
+    temperature: 0.1, // Low temperature for more consistent tags across runs
+  });
+
+  // Log raw LLM response for debugging
+  console.log('[tagging] LLM response received:', {
+    contentLength: res.content.length,
+    content: res.content,
+    usage: res.usage,
   });
 
   let tags: string[] = [];
   try {
-    const payload = JSON.parse(res.content) as { tags?: unknown };
-    if (Array.isArray(payload.tags)) {
-      tags = payload.tags
+    const payload = parseJsonFromResponse(res.content) as { tags?: unknown } | unknown[];
+    console.log('[tagging] Parsed JSON payload:', payload);
+
+    // Handle both formats:
+    // 1. Correct format: {"tags": ["tag1", "tag2"]}
+    // 2. Array format: ["tag1", "tag2"] (some models ignore schema)
+    let tagsArray: unknown[] | undefined;
+
+    if (Array.isArray(payload)) {
+      // Direct array format
+      console.log('[tagging] Payload is a direct array (schema not followed)');
+      tagsArray = payload;
+    } else if (typeof payload === 'object' && payload !== null && 'tags' in payload) {
+      // Correct object format with tags property
+      tagsArray = Array.isArray((payload as { tags?: unknown }).tags)
+        ? (payload as { tags: unknown[] }).tags
+        : undefined;
+    }
+
+    if (tagsArray) {
+      tags = tagsArray
         .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
         .filter((tag) => tag.length > 0);
+      console.log('[tagging] Extracted tags from array:', tags);
+    } else {
+      console.warn('[tagging] Could not extract tags array from payload:', {
+        payloadType: typeof payload,
+        isArray: Array.isArray(payload),
+        fullPayload: payload,
+      });
     }
-  } catch {
+  } catch (error) {
     // fall back to simple parsing if JSON schema fails unexpectedly
+    console.error('[tagging] Failed to parse JSON response from LLM:', {
+      error: error instanceof Error ? error.message : String(error),
+      rawContent: res.content,
+      contentLength: res.content.length,
+      contentPreview: res.content.substring(0, 200),
+    });
     tags = res.content
       .split(/[\n,]/)
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0);
+    console.log('[tagging] Fallback parsing produced tags:', tags);
   }
 
   // Deduplicate and limit to maxTags
   const unique = Array.from(new Set(tags.map((tag) => tag.toLowerCase()))).slice(0, maxTags);
+
+  console.log('[tagging] Final tags after deduplication:', {
+    beforeDedup: tags,
+    afterDedup: unique,
+    maxTags,
+  });
 
   return {
     tags: unique,
