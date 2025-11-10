@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
 import { chunkMarkdownContent } from './chunker';
 import { listDocumentIds, replaceSearchDocuments } from './search-documents';
-import type { SearchDocumentInsert, SearchDocumentMetadata, SearchVariant } from './types';
+import type { ContentType, SearchDocumentInsert, SearchDocumentMetadata, SearchVariant } from './types';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SearchIngest' });
@@ -14,6 +14,7 @@ export interface UrlContentIngestOptions {
   markdownPath: string;
   sourcePath: string;
   sourceUrl?: string | null;
+  contentType?: ContentType;
   variant?: SearchVariant;
   metadata?: SearchDocumentMetadata;
 }
@@ -27,7 +28,8 @@ export interface UrlContentIngestResult {
 export async function ingestMarkdownForSearch(
   options: UrlContentIngestOptions
 ): Promise<UrlContentIngestResult> {
-  const variant: SearchVariant = options.variant ?? 'url-content-md';
+  const contentType: ContentType = options.contentType ?? 'url';
+  const variant: SearchVariant = options.variant ?? 'content';
   const normalizedMetadata = options.metadata ?? {};
 
   try {
@@ -55,6 +57,7 @@ export async function ingestMarkdownForSearch(
         documentId: docId,
         entryId: options.entryId,
         libraryId: options.libraryId ?? null,
+        contentType,
         sourceUrl: options.sourceUrl ?? null,
         sourcePath: normalizeSourcePath(options.sourcePath),
         variant,

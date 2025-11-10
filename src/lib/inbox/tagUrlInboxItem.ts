@@ -140,9 +140,6 @@ defineTaskHandler({
       mimeType: TAGS_MIME,
       type: 'text',
       hash,
-      enrichment: {
-        tags: result.tags,
-      },
     });
 
     updateInboxItem(inboxId, {

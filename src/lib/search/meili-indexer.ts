@@ -13,7 +13,7 @@ export async function indexDocumentsInMeilisearch(
     return;
   }
 
-  const client = getMeiliClient();
+  const client = await getMeiliClient();
   const documentIds = documents.map(doc => doc.documentId);
   const payload = documents.map(mapToPayload);
 
@@ -54,7 +54,7 @@ export async function indexDocumentsInMeilisearch(
 
 export async function deleteDocumentsFromMeilisearch(documentIds: string[]): Promise<void> {
   if (documentIds.length === 0) return;
-  const client = getMeiliClient();
+  const client = await getMeiliClient();
 
   try {
     const taskUid = await client.deleteDocuments(documentIds);
@@ -78,16 +78,16 @@ function mapToPayload(doc: SearchDocumentRecord): MeilisearchDocumentPayload {
     docId: doc.documentId,
     entryId: doc.entryId,
     libraryId: doc.libraryId,
+    contentType: doc.contentType,
+    variant: doc.variant,
+    text: doc.chunkText,
+    sourcePath: doc.sourcePath,
     url: metadata.url ?? doc.sourceUrl ?? null,
     hostname: metadata.hostname ?? null,
-    path: metadata.path ?? metadata.digestPath ?? null,
-    sourcePath: doc.sourcePath,
-    variant: doc.variant,
     chunkIndex: doc.chunkIndex,
     chunkCount: doc.chunkCount,
     checksum: doc.contentHash,
     overlapTokens: doc.overlapTokens,
-    text: doc.chunkText,
     metadata,
     capturedAt: metadata.capturedAt ?? doc.createdAt,
     createdAt: doc.createdAt,

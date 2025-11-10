@@ -330,6 +330,9 @@ export function startWorker(config?: WorkerConfig): TaskWorker {
   }
 
   const worker = globalThis.__mylifedb_taskqueue_worker;
+  if (!worker) {
+    throw new Error('Failed to initialize task queue worker');
+  }
   worker.start();
   return worker;
 }

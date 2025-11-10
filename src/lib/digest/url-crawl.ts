@@ -47,7 +47,7 @@ export async function crawlUrlDigest(input: UrlCrawlInput): Promise<UrlCrawlOutp
   return {
     url: res.url,
     redirectedTo: res.redirectedTo ?? null,
-    html: res.html,
+    html: res.html ?? undefined,
     metadata: res.metadata,
     markdown: res.markdown ?? null,
     screenshot: res.screenshot ?? null,

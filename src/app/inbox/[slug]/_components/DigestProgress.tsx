@@ -32,7 +32,7 @@ function statusLabel(status: DigestStageStatus): string {
   }
 }
 
-function statusClasses(status: DigestStageStatus): { dot: string; icon: JSX.Element } {
+function statusClasses(status: DigestStageStatus): { dot: string; icon: React.ReactElement } {
   switch (status) {
     case 'success':
       return {

@@ -45,7 +45,7 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    const metadata = buildSearchMetadata(item, digestDir, inboxDir, dataRoot);
+    const metadata = await buildSearchMetadata(item, digestDir, inboxDir, dataRoot);
     const ingestResult = await ingestMarkdownForSearch({
       entryId: item.id,
       libraryId: null,
@@ -91,12 +91,14 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 }
 
-function buildSearchMetadata(
+async function buildSearchMetadata(
   item: InboxItem,
   digestDir: string,
   inboxDir: string,
   dataRoot: string
-): SearchDocumentMetadata {
+): Promise<SearchDocumentMetadata> {
+  const { readInboxDigestTags, readInboxDigestSlug } = await import('@/lib/inbox/digestArtifacts');
+
   const infoSource = item.files.find((file) => Boolean(file.enrichment?.url));
   const screenshotFile = findFirstFile(item.files, (file) =>
     file.filename.startsWith('digest/screenshot')
@@ -108,25 +110,32 @@ function buildSearchMetadata(
     : null;
 
   const enrichment = infoSource?.enrichment ?? {};
-  let hostname = enrichment.domain ?? null;
+  let hostname: string | null = null;
   let pathName: string | null = null;
   const url = enrichment.url ?? null;
 
   if (url) {
     try {
       const parsed = new URL(url);
-      hostname = hostname ?? parsed.hostname;
+      hostname = parsed.hostname;
       pathName = parsed.pathname;
     } catch {
       // ignore parse errors
     }
   }
 
+  // Load AI-generated tags from digest/tags.json
+  const aiTags = await readInboxDigestTags(item.folderName);
+
+  // Load AI-generated slug/title from digest/slug.json
+  const slugData = await readInboxDigestSlug(item.folderName);
+  const title = slugData?.title || enrichment.title || null;
+
   return {
-    title: enrichment.title ?? null,
-    description: enrichment.description ?? null,
+    title,
+    description: null, // TODO: Load from AI-generated summary if needed
     author: enrichment.author ?? null,
-    tags: Array.isArray(enrichment.tags) ? enrichment.tags : [],
+    tags: aiTags || [],
     digestPath,
     screenshotPath,
     url,

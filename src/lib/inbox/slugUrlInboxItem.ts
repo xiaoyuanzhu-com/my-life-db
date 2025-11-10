@@ -129,9 +129,7 @@ defineTaskHandler({
       type: 'text',
       hash,
       enrichment: {
-        slug: result.slug,
         title: result.title,
-        source,
       },
     });
 

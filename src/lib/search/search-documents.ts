@@ -1,6 +1,7 @@
 import 'server-only';
 import { getDatabase } from '@/lib/db/connection';
 import type {
+  ContentType,
   SearchDocumentInsert,
   SearchDocumentMetadata,
   SearchDocumentRecord,
@@ -41,6 +42,7 @@ export function replaceSearchDocuments(params: {
         document_id,
         entry_id,
         library_id,
+        content_type,
         source_url,
         source_path,
         variant,
@@ -61,7 +63,7 @@ export function replaceSearchDocuments(params: {
         updated_at
       ) VALUES (
         ?,?,?,?,?,?,?,?,?,?,
-        ?,?,?,?,?,?,
+        ?,?,?,?,?,?,?,
         'pending','pending',0,?,?
       );
     `);
@@ -71,6 +73,7 @@ export function replaceSearchDocuments(params: {
         doc.documentId,
         doc.entryId,
         doc.libraryId,
+        doc.contentType,
         doc.sourceUrl,
         doc.sourcePath,
         doc.variant,
@@ -199,6 +202,7 @@ function rowToRecord(row: Record<string, unknown>): SearchDocumentRecord {
     documentId: row.document_id as string,
     entryId: row.entry_id as string,
     libraryId: (row.library_id as string) ?? null,
+    contentType: (row.content_type as ContentType) ?? 'url',
     sourceUrl: (row.source_url as string) ?? null,
     sourcePath: row.source_path as string,
     variant: row.variant as SearchVariant,

@@ -114,7 +114,8 @@ export async function GET(request: NextRequest) {
         if (download) {
           headers.set('Content-Disposition', `attachment; filename="${path.basename(fullPath)}"`);
         }
-        return new NextResponse(fileBuffer, { headers });
+        // Convert Node.js Buffer to Uint8Array for NextResponse
+        return new NextResponse(new Uint8Array(fileBuffer), { headers });
       }
 
       // For text files, return as JSON with metadata

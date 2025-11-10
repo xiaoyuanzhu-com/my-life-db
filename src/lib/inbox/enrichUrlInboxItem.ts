@@ -7,7 +7,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
-import { crawlUrlDigest } from '@/lib/digest/url-crawl';
+import { crawlUrlDigest, type UrlCrawlOutput } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
@@ -66,7 +66,7 @@ export async function enrichUrlInboxItem(
         domain = 'unknown';
       }
     }
-    const metadata: CrawlResult['metadata'] = {
+    const metadata: UrlCrawlOutput['metadata'] = {
       title: crawlResult.metadata?.title,
       description: crawlResult.metadata?.description,
       author: crawlResult.metadata?.author,

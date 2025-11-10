@@ -1,5 +1,6 @@
 import 'server-only';
 import { getLogger } from '@/lib/log/logger';
+import { getSettings } from '@/lib/config/storage';
 import type { MeilisearchDocumentPayload } from './types';
 
 const log = getLogger({ module: 'MeiliClient' });
@@ -15,6 +16,21 @@ interface MeiliTask {
   taskUid: number;
   status: 'enqueued' | 'processing' | 'succeeded' | 'failed';
   error?: { message?: string } | null;
+}
+
+interface MeiliIndex {
+  uid: string;
+  primaryKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface MeiliIndexSettings {
+  rankingRules?: string[];
+  searchableAttributes?: string[];
+  filterableAttributes?: string[];
+  sortableAttributes?: string[];
+  displayedAttributes?: string[];
 }
 
 class MeiliClient {
@@ -73,6 +89,144 @@ class MeiliClient {
     }
   }
 
+  async getIndex(): Promise<MeiliIndex | null> {
+    try {
+      return await this.request<MeiliIndex>(
+        `/indexes/${encodeURIComponent(this.indexUid)}`,
+        { method: 'GET' }
+      );
+    } catch (error) {
+      // Index doesn't exist
+      if ((error as Error).message.includes('404')) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async createIndex(primaryKey: string = 'docId'): Promise<number> {
+    const response = await this.request<{ taskUid: number }>(
+      '/indexes',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          uid: this.indexUid,
+          primaryKey,
+        }),
+      }
+    );
+    return response.taskUid;
+  }
+
+  async updateIndexSettings(settings: MeiliIndexSettings): Promise<number> {
+    const response = await this.request<{ taskUid: number }>(
+      `/indexes/${encodeURIComponent(this.indexUid)}/settings`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(settings),
+      }
+    );
+    return response.taskUid;
+  }
+
+  async getIndexSettings(): Promise<MeiliIndexSettings> {
+    return await this.request<MeiliIndexSettings>(
+      `/indexes/${encodeURIComponent(this.indexUid)}/settings`,
+      { method: 'GET' }
+    );
+  }
+
+  async ensureIndex(): Promise<void> {
+    const index = await this.getIndex();
+
+    if (!index) {
+      log.info({ indexUid: this.indexUid }, 'creating Meilisearch index');
+      const taskUid = await this.createIndex('docId');
+      const task = await this.waitForTask(taskUid, { timeoutMs: 30_000 });
+
+      if (task.status !== 'succeeded') {
+        throw new Error(`Failed to create index: ${task.error?.message ?? 'unknown error'}`);
+      }
+
+      log.info({ indexUid: this.indexUid }, 'Meilisearch index created');
+    }
+
+    // Configure index settings
+    await this.configureIndexSettings();
+  }
+
+  private async configureIndexSettings(): Promise<void> {
+    const desiredSettings: MeiliIndexSettings = {
+      rankingRules: [
+        'words',
+        'typo',
+        'proximity',
+        'attribute',
+        'sort',
+        'exactness',
+      ],
+      searchableAttributes: [
+        'text', // Main searchable content (transcripts, captions, markdown, etc.)
+        'metadata.title',
+        'metadata.description',
+        'metadata.tags',
+        'metadata.author',
+        'url',
+        'hostname',
+        'sourcePath',
+      ],
+      filterableAttributes: [
+        'entryId',
+        'libraryId',
+        'contentType', // Filter by: text, url, image, audio, video, pdf, mixed
+        'variant', // Filter by: content, summary, raw
+        'hostname', // For URL content
+        'chunkCount',
+        'metadata.tags',
+        'metadata.mimeType',
+        'capturedAt',
+        'createdAt',
+      ],
+      sortableAttributes: [
+        'capturedAt',
+        'createdAt',
+        'updatedAt',
+        'metadata.durationSeconds', // For audio/video
+      ],
+    };
+
+    try {
+      const currentSettings = await this.getIndexSettings();
+
+      // Check if settings need updating
+      const needsUpdate =
+        JSON.stringify(currentSettings.rankingRules) !== JSON.stringify(desiredSettings.rankingRules) ||
+        JSON.stringify(currentSettings.searchableAttributes) !== JSON.stringify(desiredSettings.searchableAttributes) ||
+        JSON.stringify(currentSettings.filterableAttributes) !== JSON.stringify(desiredSettings.filterableAttributes) ||
+        JSON.stringify(currentSettings.sortableAttributes) !== JSON.stringify(desiredSettings.sortableAttributes);
+
+      if (needsUpdate) {
+        log.info({ indexUid: this.indexUid }, 'updating Meilisearch index settings');
+        const taskUid = await this.updateIndexSettings(desiredSettings);
+        const task = await this.waitForTask(taskUid, { timeoutMs: 30_000 });
+
+        if (task.status !== 'succeeded') {
+          log.warn(
+            { error: task.error?.message },
+            'failed to update index settings, continuing anyway'
+          );
+        } else {
+          log.info({ indexUid: this.indexUid }, 'Meilisearch index settings updated');
+        }
+      }
+    } catch (error) {
+      log.warn(
+        { err: error, indexUid: this.indexUid },
+        'failed to configure index settings, continuing anyway'
+      );
+    }
+  }
+
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -106,16 +260,28 @@ class MeiliClient {
 }
 
 let cachedClient: MeiliClient | null = null;
+let indexEnsured = false;
 
-export function getMeiliClient(): MeiliClient {
+export async function getMeiliClient(): Promise<MeiliClient> {
   if (cachedClient) return cachedClient;
 
-  const host = process.env.MEILI_HOST;
+  let host = process.env.MEILI_HOST;
+
+  // Try loading from vendor settings if not in environment
+  if (!host) {
+    try {
+      const settings = await getSettings();
+      host = settings.vendors?.meilisearch?.host;
+    } catch (error) {
+      log.warn({ err: error }, 'failed to load Meilisearch host from settings');
+    }
+  }
+
   if (!host) {
     throw new Error('MEILI_HOST is not configured');
   }
 
-  const indexUid = process.env.MEILI_INDEX_URL_CONTENT || 'url_content';
+  const indexUid = process.env.MEILI_INDEX || 'mylifedb_content';
   const apiKey = process.env.MEILI_API_KEY;
   const timeoutMs = Number(process.env.MEILI_REQUEST_TIMEOUT_MS ?? 30_000);
 
@@ -130,6 +296,17 @@ export function getMeiliClient(): MeiliClient {
     { host, indexUid },
     'initialized Meilisearch client'
   );
+
+  // Ensure index exists on first access
+  if (!indexEnsured) {
+    try {
+      await cachedClient.ensureIndex();
+      indexEnsured = true;
+    } catch (error) {
+      log.error({ err: error }, 'failed to ensure Meilisearch index exists');
+      // Don't throw - allow the client to be used, operations will fail gracefully
+    }
+  }
 
   return cachedClient;
 }
