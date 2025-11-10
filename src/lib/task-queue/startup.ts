@@ -32,11 +32,6 @@ const log = getLogger({ module: 'TaskQueueStartup' });
 export function initializeTaskQueue(options?: {
   startWorker?: boolean;
 }) {
-  if (globalState.__mylifedb_taskqueue_initialized) {
-    log.info({}, 'already initialized');
-    return;
-  }
-
   log.info({}, 'initializing');
 
   // Register task handlers defined across modules
