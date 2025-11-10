@@ -50,24 +50,30 @@ export function getNextRetryTime(task: Task): number {
 /**
  * Query ready tasks (FIFO with run_after support)
  * Returns tasks that:
- * - Status is 'to-do' or 'failed'
+ * - Status is 'to-do' or 'failed' (with attempts < maxAttempts)
  * - run_after is null or in the past
- * - Ordered by created_at ASC (oldest first)
+ * - Ordered by created_at ASC (oldest first, FIFO)
+ *
+ * @param limit Maximum number of tasks to return
+ * @param maxAttempts Maximum attempts before a failed task is considered permanently failed (default: 3)
  */
-export function getReadyTasks(limit: number = 10): Task[] {
+export function getReadyTasks(limit: number = 10, maxAttempts: number = 3): Task[] {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
   const stmt = db.prepare(`
     SELECT *
     FROM tasks
-    WHERE status IN ('to-do', 'failed')
+    WHERE (
+      (status = 'to-do')
+      OR (status = 'failed' AND attempts < ?)
+    )
       AND (run_after IS NULL OR run_after <= ?)
     ORDER BY created_at ASC
     LIMIT ?
   `);
 
-  return stmt.all(now, limit) as Task[];
+  return stmt.all(maxAttempts, now, limit) as Task[];
 }
 
 /**

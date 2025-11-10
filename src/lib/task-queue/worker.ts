@@ -22,9 +22,6 @@ export interface WorkerConfig {
 
   /** Stale task recovery interval (default: 60000ms = 1 minute) */
   staleTaskRecoveryIntervalMs?: number;
-
-  /** Enable verbose logging (default: false) */
-  verbose?: boolean;
 }
 
 export class TaskWorker {
@@ -44,7 +41,6 @@ export class TaskWorker {
       maxAttempts: config.maxAttempts ?? 3,
       staleTaskTimeoutSeconds: config.staleTaskTimeoutSeconds ?? 300, // 5 minutes
       staleTaskRecoveryIntervalMs: config.staleTaskRecoveryIntervalMs ?? 60_000,
-      verbose: config.verbose ?? false,
     };
   }
 
@@ -53,14 +49,14 @@ export class TaskWorker {
    */
   start(): void {
     if (this.running) {
-      this.log('Worker already running');
+      this.logger.debug({}, 'worker already running');
       return;
     }
 
     this.running = true;
     this.paused = false;
      this.stopping = false;
-    this.log('Worker started');
+    this.logger.info({}, 'worker started');
 
     // Start polling loop
     this.schedulePoll();
@@ -74,7 +70,7 @@ export class TaskWorker {
    */
   stop(): void {
     if (!this.running) {
-      this.log('Worker not running');
+      this.logger.debug({}, 'worker not running');
       return;
     }
 
@@ -91,7 +87,7 @@ export class TaskWorker {
       this.staleRecoveryTimer = null;
     }
 
-    this.log('Worker stopped');
+    this.logger.info({}, 'worker stopped');
   }
 
   /**
@@ -103,14 +99,13 @@ export class TaskWorker {
     }
 
     this.stopping = true;
-    const reason = options?.reason ? ` (${options.reason})` : '';
-    this.log(`Worker shutting down${reason}`);
+    this.logger.info({ reason: options?.reason }, 'worker shutting down');
     this.stop();
 
     const timeoutMs = options?.timeoutMs ?? 10_000;
     const pendingBefore = this.activeTasks.size;
     if (pendingBefore === 0) {
-      this.log('Worker shutdown complete (no pending tasks)');
+      this.logger.info({}, 'worker shutdown complete (no pending tasks)');
       this.stopping = false;
       return;
     }
@@ -118,7 +113,7 @@ export class TaskWorker {
     await this.waitForActiveTasks(timeoutMs);
 
     if (this.activeTasks.size === 0) {
-      this.log('Worker shutdown complete');
+      this.logger.info({}, 'worker shutdown complete');
     } else {
       this.logger.warn(
         { pending: this.activeTasks.size },
@@ -133,12 +128,12 @@ export class TaskWorker {
    */
   pause(): void {
     if (!this.running) {
-      this.log('Worker not running, cannot pause');
+      this.logger.debug({}, 'worker not running, cannot pause');
       return;
     }
 
     this.paused = true;
-    this.log('Worker paused');
+    this.logger.info({}, 'worker paused');
   }
 
   /**
@@ -146,17 +141,17 @@ export class TaskWorker {
    */
   resume(): void {
     if (!this.running) {
-      this.log('Worker not running, cannot resume');
+      this.logger.debug({}, 'worker not running, cannot resume');
       return;
     }
 
     if (!this.paused) {
-      this.log('Worker not paused');
+      this.logger.debug({}, 'worker not paused');
       return;
     }
 
     this.paused = false;
-    this.log('Worker resumed');
+    this.logger.info({}, 'worker resumed');
 
     // Immediately poll for tasks
     this.poll();
@@ -208,24 +203,15 @@ export class TaskWorker {
         return;
       }
 
-      // Fetch ready tasks
-      const tasks = getReadyTasks(this.config.batchSize * 2);
-
-      if (tasks.length === 0) {
-        this.log('No ready tasks');
-        return;
-      }
-
-      const readyTasks = tasks.filter(
-        (task) => !(task.status === 'failed' && task.attempts >= this.config.maxAttempts)
-      ).slice(0, this.config.batchSize);
+      // Fetch ready tasks (already filtered by SQL to exclude failed tasks with attempts >= maxAttempts)
+      const readyTasks = getReadyTasks(this.config.batchSize, this.config.maxAttempts);
 
       if (readyTasks.length === 0) {
-        this.log('No eligible tasks after filtering');
+        this.logger.debug({}, 'no ready tasks');
         return;
       }
 
-      this.log(`Processing ${readyTasks.length} task(s)`);
+      this.logger.info({ count: readyTasks.length }, 'processing tasks');
 
       // Execute tasks in parallel (up to batchSize)
       const results = await Promise.allSettled(
@@ -243,18 +229,18 @@ export class TaskWorker {
           const { success, error } = result.value;
           if (success) {
             successCount++;
-            this.log(`✓ Task ${task.id} (${task.type}) completed`);
+            this.logger.info({ taskId: task.id, type: task.type }, 'task completed');
           } else {
             failedCount++;
-            this.log(`✗ Task ${task.id} (${task.type}) failed: ${error}`);
+            this.logger.error({ taskId: task.id, type: task.type, error }, 'task failed');
           }
         } else {
           failedCount++;
-          this.log(`✗ Task ${task.id} (${task.type}) threw error: ${result.reason}`);
+          this.logger.error({ taskId: task.id, type: task.type, error: result.reason }, 'task threw error');
         }
       });
 
-      this.log(`Batch complete: ${successCount} succeeded, ${failedCount} failed`);
+      this.logger.info({ successCount, failedCount }, 'batch complete');
     } catch (error) {
       this.logger.error({ err: error }, 'worker poll error');
     } finally {
@@ -275,23 +261,14 @@ export class TaskWorker {
       const staleTasks = getStaleTasks(this.config.staleTaskTimeoutSeconds);
 
       if (staleTasks.length > 0) {
-        this.log(`Found ${staleTasks.length} stale task(s), recovering...`);
+        this.logger.info({ count: staleTasks.length }, 'recovering stale tasks');
         const recovered = recoverStaleTasks(staleTasks);
-        this.log(`Recovered ${recovered} stale task(s)`);
+        this.logger.info({ recovered }, 'stale tasks recovered');
       }
     } catch (error) {
       this.logger.error({ err: error }, 'stale recovery error');
     } finally {
       this.scheduleStaleRecovery();
-    }
-  }
-
-  /**
-   * Log message (respects verbose setting)
-   */
-  private log(message: string): void {
-    if (this.config.verbose) {
-      this.logger.info({}, message);
     }
   }
 

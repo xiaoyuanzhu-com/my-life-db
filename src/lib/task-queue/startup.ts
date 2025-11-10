@@ -30,7 +30,6 @@ const log = getLogger({ module: 'TaskQueueStartup' });
  * Call this once on app startup
  */
 export function initializeTaskQueue(options?: {
-  verbose?: boolean;
   startWorker?: boolean;
 }) {
   if (globalState.__mylifedb_taskqueue_initialized) {
@@ -46,7 +45,6 @@ export function initializeTaskQueue(options?: {
   // Start worker unless explicitly disabled
   if (options?.startWorker !== false) {
     startWorker({
-      verbose: options?.verbose ?? false,
       pollIntervalMs: 1000,
       batchSize: 5,
       maxAttempts: 3,

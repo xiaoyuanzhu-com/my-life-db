@@ -7,46 +7,29 @@
  * services (like the task queue worker) that need to start immediately when
  * the server process starts, not on first user request.
  *
+ * This file is compiled for ALL runtimes (Node.js + Edge).
+ * Runtime-specific code is in separate files (instrumentation-node.ts).
+ *
  * Timeline:
  * 1. npm run dev/start
- * 2. Next.js compiles this file
- * 3. register() → onApplicationStart() executes
+ * 2. Next.js compiles this file for all runtimes
+ * 3. register() executes, dynamically imports Node.js-specific code
  * 4. Background services initialize (task queue, etc.)
  * 5. HTTP server becomes ready
  * 6. First request can be handled
- *
- * Use this for:
- * - Background task workers
- * - Cron jobs
- * - Database connection pools
- * - Any service that must run before accepting requests
  */
-
-/**
- * Application startup hook
- * Called once when the server process starts, before accepting HTTP requests
- */
-async function onApplicationStart() {
-  const { getLogger } = await import('@/lib/log/logger');
-  const log = getLogger({ module: 'AppStart' });
-
-  log.info({}, 'application starting...');
-
-  // Initialize core application services
-  // This includes task queue worker, which must start before first request
-  const { initializeApp } = await import('./lib/init');
-  initializeApp();
-
-  log.info({}, 'application started successfully');
-}
 
 /**
  * Next.js instrumentation register hook
  * Do not rename this function - Next.js requires it to be called "register"
+ *
+ * Per Next.js docs: "Next.js calls register in all environments, so it's
+ * important to conditionally import any code that doesn't support specific runtimes."
  */
 export async function register() {
-  // Only run on Node.js runtime (not Edge runtime)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    await onApplicationStart();
+    // Dynamic import prevents Node.js modules from being bundled for Edge runtime
+    const { onNodeStartup } = await import('./instrumentation-node');
+    onNodeStartup();
   }
 }
