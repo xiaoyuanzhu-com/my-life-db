@@ -50,8 +50,17 @@ async function clearDigestArtifacts(
   folderName: string,
   files: InboxFile[]
 ): Promise<void> {
-  const digestDir = path.join(INBOX_DIR, folderName, 'digest');
-  await fs.rm(digestDir, { recursive: true, force: true }).catch(() => {});
+  // Only clear digest directory for multi-file items (folders)
+  const itemPath = path.join(INBOX_DIR, folderName);
+  try {
+    const stats = await fs.stat(itemPath);
+    if (stats.isDirectory()) {
+      const digestDir = path.join(itemPath, 'digest');
+      await fs.rm(digestDir, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch {
+    // Item doesn't exist, ignore
+  }
 
   const filteredFiles = (files ?? []).filter(file => !file.filename.toLowerCase().startsWith('digest/'));
 
@@ -77,7 +86,40 @@ function resetTaskStates(inboxId: string): void {
 }
 
 async function resolveUrlForInboxItem(folderName: string): Promise<string | null> {
-  const baseDir = path.join(INBOX_DIR, folderName);
+  // Helper function to extract URL from text content
+  function firstUrlFromText(text: string | null): string | null {
+    if (!text) return null;
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    return lines.find(line => /^https?:\/\//i.test(line)) || null;
+  }
+
+  // For single-file items, folderName is just the filename (e.g., "text.md")
+  // For multi-file items, folderName is the folder name (e.g., "uuid/")
+  const itemPath = path.join(INBOX_DIR, folderName);
+
+  // Check if this is a single file or a folder
+  let isFile = false;
+  try {
+    const stats = await fs.stat(itemPath);
+    isFile = stats.isFile();
+  } catch {
+    return null; // Path doesn't exist
+  }
+
+  if (isFile) {
+    // Single-file item: read the file directly
+    try {
+      const content = await fs.readFile(itemPath, 'utf-8');
+      const url = firstUrlFromText(content);
+      if (url) return url;
+    } catch {
+      // continue
+    }
+    return null;
+  }
+
+  // Multi-file item: search for URL in various files
+  const baseDir = itemPath;
 
   async function readFileIfExists(name: string): Promise<string | null> {
     const candidates = new Set<string>([name]);
@@ -96,12 +138,6 @@ async function resolveUrlForInboxItem(folderName: string): Promise<string | null
       }
     }
     return null;
-  }
-
-  function firstUrlFromText(text: string | null): string | null {
-    if (!text) return null;
-    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    return lines.find(line => /^https?:\/\//i.test(line)) || null;
   }
 
   const urlTxt = await readFileIfExists('url.txt');

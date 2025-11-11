@@ -219,7 +219,8 @@ export function itemNameExists(name: string, locationPrefix: string = 'inbox'): 
 }
 
 /**
- * Get a unique name by appending a counter if needed
+ * Get a unique name by appending a counter if needed (macOS-style)
+ * Examples: text.md → text 2.md → text 3.md
  */
 export function getUniqueName(baseName: string, locationPrefix: string = 'inbox'): string {
   if (!itemNameExists(baseName, locationPrefix)) {
@@ -241,9 +242,9 @@ export function getUniqueName(baseName: string, locationPrefix: string = 'inbox'
     extension = '';
   }
 
-  // Try adding counters
-  for (let i = 1; i < 1000; i++) {
-    const newName = `${nameWithoutExt}-${i}${extension}`;
+  // Try adding counters (macOS-style with space)
+  for (let i = 2; i < 1000; i++) {
+    const newName = `${nameWithoutExt} ${i}${extension}`;
     if (!itemNameExists(newName, locationPrefix)) {
       return newName;
     }

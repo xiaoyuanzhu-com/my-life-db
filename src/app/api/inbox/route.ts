@@ -57,18 +57,31 @@ async function getPrimaryText(item: Item): Promise<string | null> {
   const config = await getStorageConfig();
   const dataDir = config.dataPath;
 
-  // Check for text.md file
-  const textFile = item.files?.find(f => f.name === 'text.md');
-  if (textFile) {
-    try {
-      const filePath = path.join(dataDir, item.path, item.isFolder ? 'text.md' : '');
-      const content = await fs.readFile(
-        item.isFolder ? filePath : path.join(dataDir, item.path),
-        'utf-8'
-      );
-      return content;
-    } catch {
-      return null;
+  // For single-file items, read the file directly if it's a text file
+  if (!item.isFolder && item.files && item.files.length === 1) {
+    const file = item.files[0];
+    if (file.type.startsWith('text/') || file.type === 'application/json') {
+      try {
+        const filePath = path.join(dataDir, item.path);
+        const content = await fs.readFile(filePath, 'utf-8');
+        return content;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // For multi-file items, check for text.md file
+  if (item.isFolder) {
+    const textFile = item.files?.find(f => f.name === 'text.md');
+    if (textFile) {
+      try {
+        const filePath = path.join(dataDir, item.path, 'text.md');
+        const content = await fs.readFile(filePath, 'utf-8');
+        return content;
+      } catch {
+        return null;
+      }
     }
   }
 

@@ -448,7 +448,10 @@ CREATE TABLE items (
   -- File system location
   is_folder INTEGER NOT NULL DEFAULT 0,   -- 0=single file, 1=folder
   path TEXT NOT NULL UNIQUE,              -- Relative path from MY_DATA_DIR
-                                          -- Examples: 'inbox/photo.jpg', 'inbox/uuid-123', 'notes/meeting.md'
+                                          -- Examples: 'inbox/photo.jpg' (uploaded file)
+                                          --           'inbox/9a7f3e2c.md' (text-only, UUID initially)
+                                          --           'inbox/uuid-123' (multi-file folder)
+                                          --           'notes/meeting.md' (library item)
 
   -- File metadata (JSON array for performance)
   -- Schema: [{ name, size, type, hash?, modifiedAt? }]
@@ -717,9 +720,10 @@ export const spacesRelations = relations(spaces, ({ one, many }) => ({
 ```
 MY_DATA_DIR/
 ├── inbox/              # Unprocessed items (source of truth)
-│   ├── photo.jpg       # Single file items (no folder)
-│   ├── document.pdf    # Another single file
-│   └── article-uuid/   # Multi-file items (folder, renamed to slug later)
+│   ├── photo.jpg       # Single file item - uploaded file keeps original name
+│   ├── document.pdf    # Single file item - uploaded file keeps original name
+│   ├── 9a7f3e2c.md     # Single text-only item - uses UUID, optionally renamed to slug
+│   └── article-uuid/   # Multi-file item - folder uses UUID, optionally renamed to slug
 │       ├── text.md     # User's text input
 │       ├── audio.mp3   # User's uploaded file
 │       └── photo.jpg   # Another user file
@@ -780,9 +784,12 @@ MY_DATA_DIR/
 - **User-friendly:** Natural organization, matches file manager behavior
 - **Storage efficiency:** No empty folder overhead
 
-**Multi-file items:** Use folder (`inbox/{uuid}/` → `inbox/{slug}/`)
-- UUID initially for stable ID
-- Renamed to slug after AI generation for human readability
+**File naming patterns:**
+- **Single file with natural name** (uploaded file): Keep original name (e.g., `inbox/photo.jpg`)
+- **Single text-only item**: Use UUID initially (`inbox/{uuid}.md`), optionally rename to slug after digest (`inbox/{slug}.md`)
+- **Multi-file items**: Use folder (`inbox/{uuid}/` → `inbox/{slug}/`)
+  - UUID initially for stable ID
+  - Optionally renamed to slug after AI generation for human readability
 
 #### Decision 4: Digests Storage - Files vs Database
 

@@ -47,11 +47,14 @@ export async function createInboxItem(
   // Prepare file list
   const allFiles: Array<{ filename: string; buffer: Buffer; mimeType: string; size: number }> = [];
 
-  // Add text.md if text provided
+  // Add text as {uuid}.md if text provided
+  // Single text items will be saved as {uuid}.md (then renamed to {slug}.md after digest)
+  // Multi-file items will have text saved as text.md inside the folder
   if (text && text.trim().length > 0) {
     const textBuffer = Buffer.from(text, 'utf-8');
+    const filename = files.length === 0 ? `${id}.md` : 'text.md';
     allFiles.push({
-      filename: 'text.md',
+      filename,
       buffer: textBuffer,
       mimeType: 'text/markdown',
       size: textBuffer.length,
