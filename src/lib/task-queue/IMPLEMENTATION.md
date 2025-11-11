@@ -120,7 +120,7 @@ if (inboxItem.type === 'url') {
   if (urlFile) {
     const urlPath = path.join(
       storageConfig.dataPath,
-      '.app',
+      'app',
       'mylifedb',
       'inbox',
       inboxItem.folderName,
@@ -228,7 +228,7 @@ CREATE TABLE tasks (
 ## File Structure (After Processing)
 
 ```
-.app/mylifedb/inbox/understanding-react-hooks/
+app/mylifedb/inbox/understanding-react-hooks/
 ├── url.txt                  # Original URL
 ├── content.html             # Raw HTML (preserved)
 ├── content.md               # Markdown conversion
@@ -353,7 +353,7 @@ curl -X POST http://localhost:3000/api/tasks \
 curl http://localhost:3000/api/tasks?type=digest_url_crawl
 
 # 6. Check processed files
-ls -la data/.app/mylifedb/inbox/
+ls -la data/app/mylifedb/inbox/
 ```
 
 ## TODOs

@@ -20,7 +20,7 @@ interface CreateInboxEntryInput {
 
 /**
  * Create a new inbox entry
- * - Saves files to .app/mylifedb/inbox/{uuid}/
+ * - Saves files to app/mylifedb/inbox/{uuid}/
  * - Creates database record in inbox table
  * - Text input saved as text.md (treated as a file)
  * - Handles file deduplication

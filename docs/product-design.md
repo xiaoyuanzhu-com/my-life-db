@@ -735,7 +735,7 @@ The following features are **explicitly not included** in V1:
 
 ```
 MY_DATA_DIR/
-├── .app/
+├── app/
 │   └── mylifedb/
 │       ├── database.sqlite          # App state, index, metadata
 │       ├── inbox/                   # Temporary staging area
@@ -754,7 +754,7 @@ MY_DATA_DIR/
 ```
 
 **Key Principles:**
-1. **Inbox is app-managed:** Lives in `.app/mylifedb/inbox/` (temporary staging)
+1. **Inbox is app-managed:** Lives in `app/mylifedb/inbox/` (temporary staging)
 2. **Library is user-owned:** Lives in root directory, completely free-form structure
 3. **Multi-app compatibility:** Other apps can read/write to `MY_DATA_DIR` root
 4. **No `.meta.json` pollution:** Metadata stays in database, not scattered in user folders
@@ -802,7 +802,7 @@ CREATE TABLE indexed_files (
 ```
 1. User adds URL
    ↓
-2. Saved to inbox: .app/mylifedb/inbox/{uuid}/
+2. Saved to inbox: app/mylifedb/inbox/{uuid}/
    ↓
 3. Background: Crawl URL, extract content, take screenshot
    ↓
@@ -825,7 +825,7 @@ CREATE TABLE indexed_files (
 
 Inbox folder:
 ```
-.app/mylifedb/inbox/understanding-react-hooks/
+app/mylifedb/inbox/understanding-react-hooks/
 ├── content.md           # Main content in markdown
 ├── content.html         # Original HTML (preserved)
 ├── screenshot.png       # Visual memory
@@ -964,7 +964,7 @@ CREATE TABLE archived_files (
 );
 
 -- Physical location
-.app/mylifedb/archive/{original-path}/
+app/mylifedb/archive/{original-path}/
 ```
 
 **Why:**

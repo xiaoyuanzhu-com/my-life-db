@@ -22,7 +22,6 @@ const migration = {
 
     db.exec(`
       PRAGMA foreign_keys = OFF;
-      BEGIN TRANSACTION;
       -- Create new table with desired schema
       CREATE TABLE tasks_new (
         id TEXT PRIMARY KEY,
@@ -64,7 +63,6 @@ const migration = {
       CREATE INDEX IF NOT EXISTS idx_tasks_created
         ON tasks(created_at DESC);
 
-      COMMIT;
       PRAGMA foreign_keys = ON;
     `);
   },
@@ -77,7 +75,6 @@ const migration = {
     // Rebuild back to payload/result if needed
     db.exec(`
       PRAGMA foreign_keys = OFF;
-      BEGIN TRANSACTION;
       CREATE TABLE tasks_old (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
@@ -111,7 +108,6 @@ const migration = {
         ON tasks(type, status);
       CREATE INDEX IF NOT EXISTS idx_tasks_created
         ON tasks(created_at DESC);
-      COMMIT;
       PRAGMA foreign_keys = ON;
     `);
   },

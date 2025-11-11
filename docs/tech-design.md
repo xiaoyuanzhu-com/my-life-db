@@ -1407,7 +1407,7 @@ async function fullScan() {
 async function addUrl(url: string, userId: string) {
   const entryId = uuid();
   const folderName = entryId;
-  const inboxPath = `.app/mylifedb/inbox/${folderName}`;
+  const inboxPath = `app/mylifedb/inbox/${folderName}`;
 
   // Create staging directory
   await fs.mkdir(join(MY_DATA_DIR, inboxPath), { recursive: true });
@@ -1436,7 +1436,7 @@ async function addUrl(url: string, userId: string) {
 // 2. Background: Crawl & Process
 async function crawlUrl(entryId: string) {
   const entry = await db.get('SELECT * FROM inbox WHERE id = ?', [entryId]);
-  const inboxPath = `.app/mylifedb/inbox/${entry.folder_name}`;
+  const inboxPath = `app/mylifedb/inbox/${entry.folder_name}`;
 
   // Read URL from user's text.md
   const url = await fs.readFile(join(MY_DATA_DIR, inboxPath, 'text.md'), 'utf-8');
@@ -1486,7 +1486,7 @@ async function crawlUrl(entryId: string) {
 }
 
 // 3. User Settlement: Manual Export
-// User action: Copy .app/mylifedb/inbox/understanding-react-hooks/ to library root
+// User action: Copy app/mylifedb/inbox/understanding-react-hooks/ to library root
 // No code needed - pure file operation
 
 // 4. Learning: Detect user's organization

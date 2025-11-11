@@ -144,7 +144,7 @@ MyLifeDB supports the following message types:
 
 ```
 MY_DATA_DIR/
-├── .app/
+├── app/
 │   └── mylifedb/
 │       └── inbox/                  # Temporary staging (no date layer)
 │           └── {folderName}/       # UUID initially, may become AI slug

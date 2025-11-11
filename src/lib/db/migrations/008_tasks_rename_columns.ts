@@ -9,10 +9,8 @@ const migration = {
     // SQLite 3.25.0+ supports RENAME COLUMN
     db.exec(`
       PRAGMA foreign_keys=OFF;
-      BEGIN TRANSACTION;
       ALTER TABLE tasks RENAME COLUMN payload TO input;
       ALTER TABLE tasks RENAME COLUMN result TO output;
-      COMMIT;
       PRAGMA foreign_keys=ON;
     `);
   },
@@ -20,10 +18,8 @@ const migration = {
   async down(db: BetterSqlite3.Database) {
     db.exec(`
       PRAGMA foreign_keys=OFF;
-      BEGIN TRANSACTION;
       ALTER TABLE tasks RENAME COLUMN input TO payload;
       ALTER TABLE tasks RENAME COLUMN output TO result;
-      COMMIT;
       PRAGMA foreign_keys=ON;
     `);
   },

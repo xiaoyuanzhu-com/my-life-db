@@ -52,13 +52,13 @@ export const migrations: Migration[] = [
  */
 export async function runMigrations(db: BetterSqlite3.Database): Promise<void> {
   // Ensure schema_version table exists (bootstrap)
-  db.exec(\`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
       applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
       description TEXT
     );
-  \`);
+  `);
 
   // Get current version
   const currentVersionRow = db
@@ -127,7 +127,7 @@ export async function rollbackLastMigration(db: BetterSqlite3.Database): Promise
   const migration = migrations.find((m) => m.version === currentVersion);
 
   if (!migration) {
-    throw new Error(\`Migration v\${currentVersion} not found\`);
+    throw new Error(`Migration v${currentVersion} not found`);
   }
 
   log.info({ version: migration.version, description: migration.description }, 'rolling back migration');
