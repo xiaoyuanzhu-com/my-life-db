@@ -1,8 +1,8 @@
 # Technical Design Document: MyLifeDB
 
-**Version:** 1.1
-**Last Updated:** 2025-10-28
-**Status:** Updated - URL Crawl, File Indexing, Classification
+**Version:** 2.0
+**Last Updated:** 2025-01-11
+**Status:** Current - Flat Data Structure with Items Architecture
 **Owner:** Engineering Team
 
 ---
@@ -10,19 +10,20 @@
 ## Table of Contents
 
 1. [Overview](#1-overview)
-2. [System Architecture](#2-system-architecture)
-3. [Technology Stack](#3-technology-stack)
-4. [Data Models](#4-data-models)
-5. [Database Design](#5-database-design)
-6. [API Specifications](#6-api-specifications)
-7. [Component Architecture](#7-component-architecture)
-8. [AI/ML Pipeline](#8-aiml-pipeline)
-9. [Search Implementation](#9-search-implementation)
-10. [Security & Authentication](#10-security--authentication)
-11. [Performance Optimization](#11-performance-optimization)
-12. [Deployment Architecture](#12-deployment-architecture)
-13. [Testing Strategy](#13-testing-strategy)
-14. [Development Guidelines](#14-development-guidelines)
+2. [Design Principles](#2-design-principles)
+3. [System Architecture](#3-system-architecture)
+4. [Technology Stack](#4-technology-stack)
+5. [Data Models](#5-data-models)
+6. [Database Design](#6-database-design)
+7. [API Specifications](#7-api-specifications)
+8. [Component Architecture](#8-component-architecture)
+9. [AI/ML Pipeline](#9-aiml-pipeline)
+10. [Search Implementation](#10-search-implementation)
+11. [Security & Authentication](#11-security--authentication)
+12. [Performance Optimization](#12-performance-optimization)
+13. [Deployment Architecture](#13-deployment-architecture)
+14. [Testing Strategy](#14-testing-strategy)
+15. [Development Guidelines](#15-development-guidelines)
 
 ---
 
@@ -52,9 +53,56 @@ This document provides technical specifications for implementing MyLifeDB, a per
 
 ---
 
-## 2. System Architecture
+## 2. Design Principles
 
-### 2.1 High-Level Architecture
+### 2.1 Core Principles
+
+1. **Library and inbox are the source of truth**
+   - Plain folders and files on disk are authoritative
+   - Database contains indexes and derived data only
+   - Files can be accessed by any application
+
+2. **Durability through simplicity**
+   - No proprietary file formats
+   - Direct file system access
+   - Standard file organization
+
+3. **Multi-app compatibility**
+   - Other applications can read/write user folders
+   - No vendor lock-in
+   - Standard conventions (Markdown, JSON, etc.)
+
+4. **Rebuildable application data**
+   - `app/` folder can be deleted and rebuilt
+   - Search indexes, crawl results, digests are all regenerated
+   - Only source files (inbox + library) are irreplaceable
+
+5. **Performance through smart caching**
+   - File metadata cached in database for fast queries
+   - Binary digests compressed in SQLAR
+   - Hash-based change detection
+
+### 2.2 Data Structure Philosophy
+
+```
+MY_DATA_DIR/
+├── inbox/              # Source of truth: unprocessed items
+├── notes/              # Source of truth: user library
+├── journal/            # Source of truth: user library
+├── work/               # Source of truth: user library
+└── app/                # Rebuildable: application metadata
+    └── mylifedb/
+        └── database.sqlite
+```
+
+**Reserved folders**: `inbox`, `app`
+**Everything else**: User library content (auto-indexed)
+
+---
+
+## 3. System Architecture
+
+### 3.1 High-Level Architecture
 
 ```mermaid
 graph TB
@@ -92,7 +140,7 @@ graph TB
     style SearchLayer fill:#f3e5f5
 ```
 
-### 2.2 Architecture Principles
+### 3.2 Architecture Layers
 
 1. **Offline-First:** Core functionality works without internet
 2. **Local-First:** Data stored locally, cloud optional
@@ -100,7 +148,7 @@ graph TB
 4. **API-Driven:** Clear separation between frontend and backend
 5. **Progressive Enhancement:** Basic features work, AI enhances
 
-### 2.3 Data Flow
+### 3.3 Data Flow
 
 ```mermaid
 flowchart LR
@@ -371,25 +419,13 @@ interface SearchResult {
 
 ## 5. Database Design
 
-### 5.1 Schema (SQLite)
+### 5.1 Core Schema (SQLite)
+
+**Philosophy**: Database contains indexes and derived data. Source of truth is on disk.
 
 ```sql
 -- Enable foreign keys
 PRAGMA foreign_keys = ON;
-
--- Users
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT,             -- NULL for OAuth users
-  name TEXT,
-  avatar_url TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  settings JSON
-);
-
-CREATE INDEX idx_users_email ON users(email);
 
 -- Schema versioning (for migration tracking)
 CREATE TABLE schema_version (
@@ -398,66 +434,80 @@ CREATE TABLE schema_version (
   description TEXT
 );
 
-INSERT INTO schema_version (version, description) VALUES (1, 'Initial schema with inbox and library tables');
-
--- Inbox (temporary staging, app-managed)
--- NOTE: Metadata stored in database only, NOT in .meta.json files
-CREATE TABLE inbox (
+-- Items: Unified model for inbox and library content
+-- Replaces old 'inbox' and 'library' tables
+CREATE TABLE items (
   -- Core identity
-  id TEXT PRIMARY KEY,                    -- UUID (permanent, even after folder rename)
+  id TEXT PRIMARY KEY,                    -- UUID
+  name TEXT NOT NULL,                     -- Original filename or slug
 
-  -- File system
-  folder_name TEXT NOT NULL UNIQUE,       -- Current folder name (uuid initially, then slug after enrichment)
+  -- Type classification
+  raw_type TEXT NOT NULL,                 -- What user submitted: 'text'|'image'|'audio'|'video'|'pdf'|'mixed'
+  detected_type TEXT,                     -- What AI detected: 'url'|'note'|'todo'|'email'|etc.
 
-  -- Content type
-  type TEXT NOT NULL CHECK(type IN ('text', 'url', 'image', 'audio', 'video', 'pdf', 'mixed')),
+  -- File system location
+  is_folder INTEGER NOT NULL DEFAULT 0,   -- 0=single file, 1=folder
+  path TEXT NOT NULL UNIQUE,              -- Relative path from MY_DATA_DIR
+                                          -- Examples: 'inbox/photo.jpg', 'inbox/uuid-123', 'notes/meeting.md'
 
-  -- User input files (JSON array - original user uploads)
-  -- Schema: [{ filename, size, mimeType, type, hash }]
-  -- User text saved as: text.md
-  -- User files saved as: original filenames (photo.jpg, document.pdf, etc.)
-  user_files JSON NOT NULL,
+  -- File metadata (JSON array for performance)
+  -- Schema: [{ name, size, type, hash?, modifiedAt? }]
+  -- Small files (< 10MB): include SHA256 hash
+  -- Large files: size only
+  files TEXT,                             -- NULL for pending items
 
-  -- Processed output files (JSON array - AI/system generated)
-  -- Schema: [{ filename, size, mimeType, type, purpose }]
-  -- Examples: digest/content.html, digest/content.md, digest/screenshot.png
-  -- All processed filenames stored explicitly in DB (not by convention)
-  -- Conflict resolution: If user file exists, apply macOS-style deduplication (summary 2.md)
-  processed_files JSON,
+  -- Processing state
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
 
-  -- Enrichment state
-  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
-  processed_at DATETIME,
-  error TEXT,
-
-  -- Item-level enrichment (not file-level)
-  ai_slug TEXT,                           -- Generated slug for folder rename
-
-  -- Archive state
-  is_archived INTEGER DEFAULT 0,          -- Boolean: 0=active, 1=archived
-  archived_at DATETIME,                   -- When archived
-
-  -- Search indexing cache (updated by task handlers)
-  is_search_indexed INTEGER DEFAULT 0,    -- Boolean: 0=not indexed, 1=indexed
-
-  -- Metadata versioning (for schema evolution detection)
-  schema_version INTEGER DEFAULT 1,       -- Track which schema this record uses
-
-  -- Timestamps
-  created_at DATETIME NOT NULL,
-  updated_at DATETIME NOT NULL
+  -- Metadata
+  created_at TEXT NOT NULL,               -- ISO 8601
+  updated_at TEXT NOT NULL,               -- ISO 8601
+  schema_version INTEGER DEFAULT 1
 );
 
-CREATE INDEX idx_inbox_created_at ON inbox(created_at DESC);
-CREATE INDEX idx_inbox_status ON inbox(status);
-CREATE INDEX idx_inbox_folder_name ON inbox(folder_name);
-CREATE INDEX idx_inbox_schema_version ON inbox(schema_version);
-CREATE INDEX idx_inbox_archived ON inbox(is_archived, created_at DESC);
-CREATE INDEX idx_inbox_active ON inbox(created_at DESC) WHERE is_archived = 0;
+CREATE INDEX idx_items_path_prefix ON items(path);
+CREATE INDEX idx_items_detected_type ON items(detected_type);
+CREATE INDEX idx_items_status ON items(status);
+CREATE INDEX idx_items_raw_type ON items(raw_type);
+CREATE INDEX idx_items_created_at ON items(created_at DESC);
+
+-- Digests: AI-generated content (rebuildable)
+-- Foreign table to items
+CREATE TABLE digests (
+  id TEXT PRIMARY KEY,                    -- UUID
+  item_id TEXT NOT NULL,                  -- FK to items(id)
+  digest_type TEXT NOT NULL,              -- 'summary'|'tags'|'slug'|'content-md'|'content-html'|'screenshot'
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+
+  -- Text digests (stored directly)
+  content TEXT,                           -- Summary text, tags JSON, slug JSON
+
+  -- Binary digests (stored in SQLAR)
+  sqlar_name TEXT,                        -- Filename in SQLAR table: '{item_id}/{digest_type}/filename'
+
+  created_at TEXT NOT NULL,               -- ISO 8601
+  updated_at TEXT NOT NULL,               -- ISO 8601
+
+  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_digests_item_id ON digests(item_id);
+CREATE INDEX idx_digests_type ON digests(digest_type);
+CREATE INDEX idx_digests_status ON digests(status);
+
+-- SQLAR: SQLite Archive format for binary digests
+-- Standard format: https://www.sqlite.org/sqlar.html
+CREATE TABLE IF NOT EXISTS sqlar(
+  name TEXT PRIMARY KEY,  -- File path: '{item_id}/{digest_type}/filename.ext'
+  mode INT,               -- File permissions
+  mtime INT,              -- Modification time (Unix timestamp)
+  sz INT,                 -- Original size (before compression)
+  data BLOB               -- Compressed content (zlib)
+);
 
 -- NOTE: Full-text search moved to Meilisearch (external service)
 -- NOTE: Vector search moved to Qdrant (external service)
--- SQLite FTS5 removed per architecture decision (see section 3.5)
+-- SQLite FTS5 removed per architecture decision (see section 4.5)
 
 -- Spaces (Library)
 CREATE TABLE spaces (
@@ -660,54 +710,131 @@ export const spacesRelations = relations(spaces, ({ one, many }) => ({
 }));
 ```
 
-### 5.3 File Storage Structure (Updated)
+### 5.3 File Storage Structure
 
-**Decision:** Multi-app compatible structure with clear separation
+**Philosophy:** Flat, user-friendly structure with clear separation of source files and app data.
 
 ```
 MY_DATA_DIR/
-├── .app/
-│   └── mylifedb/
-│       ├── database.sqlite          # All metadata (inbox + library index)
-│       ├── inbox/                   # Temporary staging (app-managed)
-│       │   ├── {uuid}/              # Initially UUID-named
-│       │   │   ├── text.md          # User's raw text input (if any)
-│       │   │   ├── photo.jpg        # User's uploaded file (if any)
-│       │   │   └── song.mp3         # Another file (if any)
-│       │   └── {slug}/              # Optional manual rename to slug after review
-│       │       ├── text.md          # User's original text input
-│       │       ├── photo.jpg        # User's original file(s) - NEVER renamed
-│       │       └── digest/          # Generated artifacts (per enrichment)
-│       │           ├── content.md   # Markdown from HAID crawler
-│       │           ├── content.html # Raw HTML from HAID crawler (if available)
-│       │           └── screenshot.png # Screenshot from HAID crawler
-│       ├── cache/
-│       │   ├── thumbnails/
-│       │   └── temp/
-│       └── archive/                 # Archived content
-│           └── {original-path}/
-│
-└── {user-library}/                  # User-owned, free-form (NO metadata.json!)
-    ├── bookmarks/                   # User decides structure
-    ├── dev/
-    │   └── react/
-    ├── notes/
-    └── ...
+├── inbox/              # Unprocessed items (source of truth)
+│   ├── photo.jpg       # Single file items (no folder)
+│   ├── document.pdf    # Another single file
+│   └── article-uuid/   # Multi-file items (folder, renamed to slug later)
+│       ├── text.md     # User's text input
+│       ├── audio.mp3   # User's uploaded file
+│       └── photo.jpg   # Another user file
+├── notes/              # User library folder (source of truth)
+│   ├── meeting-notes.md
+│   └── project-ideas.md
+├── journal/            # User library folder (source of truth)
+│   └── 2025-01-11.md
+├── work/               # User library folder (source of truth)
+│   └── quarterly-review.pdf
+└── app/                # Application data (rebuildable)
+    └── mylifedb/
+        └── database.sqlite  # Contains items index, digests (inc. SQLAR), tasks
 ```
 
-**Key Design Decisions:**
+**Reserved folders**: `inbox`, `app`
+**Everything else**: User library content (auto-indexed by scanner)
 
-1. **Inbox Location:** `.app/mylifedb/inbox/` (not root)
-   - **Why:** Keeps app concepts separate from user content
-   - **Alt:** Root directory - rejected (clutters user's namespace)
+### 5.4 Technical Decisions & Rationale
 
-2. **Library Structure:** Root directory, completely free-form
-   - **Why:** User owns structure, multi-app compatible
-   - **Alt:** `library/` subfolder - rejected (unnecessary nesting)
+#### Decision 1: `app/` vs `.app/`
 
-3. **Metadata Storage:** Database only (no `.meta.json` files)
-   - **Why:** Keeps user directories clean
-   - **Alt:** Sidecar files - rejected (pollutes user structure)
+**Chosen:** `app/` (visible folder)
+
+**Rationale:**
+- **Visibility:** Users can easily see and understand what it is
+- **Generality:** Standard convention, no special meaning
+- **Multi-app:** Other apps can use `app/appname/` pattern
+- **Transparency:** Users know where app data lives
+
+**Alternative considered:** `.app/` (hidden folder)
+- **Pros:** Protected from accidental deletion, cleaner root
+- **Cons:** Hidden = mysterious, against transparency principle
+- **Decision:** Rejected - we prioritize transparency and user understanding
+
+#### Decision 2: Inbox Location - Root vs Nested
+
+**Chosen:** `data/inbox/` (flat, at root)
+
+**Rationale:**
+- **User-friendly:** Clear, obvious location
+- **Direct access:** No nested navigation required
+- **Multi-app compatible:** Other apps can read/write inbox
+- **Principle alignment:** Source of truth should be easily accessible
+
+**Alternative considered:** `data/app/mylifedb/inbox/`
+- **Pros:** Keeps app concepts contained
+- **Cons:** Nested structure, harder to access, clutters principle
+- **Decision:** Rejected - inbox is user content, not app infrastructure
+
+#### Decision 3: Single File Items - Folder vs Direct
+
+**Chosen:** Direct file (e.g., `inbox/photo.jpg`)
+
+**Rationale:**
+- **Simplicity:** No unnecessary folder wrapper
+- **Performance:** Fewer file system operations
+- **User-friendly:** Natural organization, matches file manager behavior
+- **Storage efficiency:** No empty folder overhead
+
+**Multi-file items:** Use folder (`inbox/{uuid}/` → `inbox/{slug}/`)
+- UUID initially for stable ID
+- Renamed to slug after AI generation for human readability
+
+#### Decision 4: Digests Storage - Files vs Database
+
+**Chosen:** Database with SQLAR for binary content
+
+**Rationale:**
+- **Rebuildable principle:** Digests can be regenerated from source files
+- **Clean file system:** No `digest/` folders cluttering user content
+- **Performance:** Database queries faster than file system scans
+- **Compression:** SQLAR provides automatic zlib compression
+- **Atomic operations:** Database transactions ensure consistency
+
+**Alternative considered:** `digest/` subfolder in each item
+- **Pros:** Files directly accessible, simple model
+- **Cons:** Clutters user content, violates rebuildable principle
+- **Decision:** Rejected - digests are app data, not source files
+
+#### Decision 5: SQLAR vs Direct BLOB
+
+**Chosen:** SQLAR (SQLite Archive format)
+
+**Rationale:**
+- **Standard format:** Well-documented, tooling available
+- **Compression:** Built-in zlib compression saves space
+- **Extraction:** Standard SQLite tools can extract files
+- **Versioning:** Clear naming scheme `{item_id}/{digest_type}/filename`
+- **Migration-friendly:** Easy to export/import
+
+**Alternative considered:** Direct BLOB in `digests.content`
+- **Pros:** Simpler queries, no extra table
+- **Cons:** No compression, larger database, no standard tooling
+- **Decision:** Rejected - SQLAR benefits outweigh complexity
+
+#### Decision 6: Files Field - Store vs Derive
+
+**Chosen:** Store file metadata in `items.files` JSON field
+
+**Rationale:**
+- **Performance:** No file system access for listing
+- **Self-contained:** Database has complete picture
+- **Change detection:** Hash comparison without reading files
+- **Query capability:** Can filter items by file count, size, type
+
+**Alternative considered:** Always derive from file system
+- **Pros:** Single source of truth on disk
+- **Cons:** Slow, requires file system access for every query
+- **Decision:** Rejected - performance is critical
+
+**Implementation:**
+- Small files (< 10MB): Store SHA256 hash
+- Large files: Store only size
+- Purpose: Change detection and deduplication
 
 ### 5.4 Inbox Implementation Details
 
