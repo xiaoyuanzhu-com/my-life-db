@@ -10,22 +10,13 @@ import { getInboxItemByFolderName } from '@/lib/db/inbox';
 
 /**
  * Read primary text for an inbox item
+ * ALWAYS returns original user input from files (source of truth)
+ * NEVER returns digest content - digests are rebuildable
+ *
  * For single-file items: reads the file directly
  * For multi-file items: looks for text files in the folder
- * For URLs: returns content-md digest if available
  */
 export async function readInboxPrimaryText(folderName: string): Promise<string | null> {
-  // Get the inbox item to check if it's a URL type
-  const item = getInboxItemByFolderName(folderName);
-
-  // For URL items, try to read content-md digest first
-  if (item?.type === 'url') {
-    const contentDigest = getDigestByItemAndType(item.id, 'content-md');
-    if (contentDigest?.content) {
-      return contentDigest.content;
-    }
-  }
-
   // Check if folderName is actually a single file (e.g., "text.md", "uuid.md")
   const itemPath = path.join(INBOX_DIR, folderName);
   try {
@@ -65,6 +56,18 @@ export async function readInboxPrimaryText(folderName: string): Promise<string |
   }
 
   return null;
+}
+
+/**
+ * Read crawled content (markdown) from digest
+ * This is the enriched/processed content, NOT the original user input
+ */
+export async function readInboxDigestContent(folderName: string): Promise<string | null> {
+  const item = getInboxItemByFolderName(folderName);
+  if (!item) return null;
+
+  const contentDigest = getDigestByItemAndType(item.id, 'content-md');
+  return contentDigest?.content || null;
 }
 
 /**

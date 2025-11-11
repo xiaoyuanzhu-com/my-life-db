@@ -40,7 +40,7 @@ function clampText(text: string, maxChars = 8000): string {
 export function enqueueUrlSummary(inboxId: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_summary']);
   const taskId = tq('digest_url_summary').add({
-    itemId: inboxId,
+    inboxId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });

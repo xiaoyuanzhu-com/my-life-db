@@ -46,7 +46,7 @@ export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload)
   ensureTaskRuntimeReady(['digest_url_slug']);
 
   const taskId = tq('digest_url_slug').add({
-    itemId: inboxId,
+    inboxId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });

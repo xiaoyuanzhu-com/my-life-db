@@ -37,7 +37,7 @@ export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePaylo
   ensureTaskRuntimeReady(['digest_url_tagging']);
 
   const taskId = tq('digest_url_tagging').add({
-    itemId: inboxId,
+    inboxId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
