@@ -3,13 +3,10 @@ import 'server-only';
  * URL Inbox Item Enricher - Orchestrates URL crawling and enrichment
  */
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { createHash } from 'crypto';
+import { generateId } from '../fs/storage';
 import { getInboxItemById, updateInboxItem } from '../db/inbox';
 import { crawlUrlDigest, type UrlCrawlOutput } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
-import { INBOX_DIR } from '../fs/storage';
 import { tq } from '../task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { upsertInboxTaskState } from '../db/inboxTaskState';
@@ -18,6 +15,9 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { createDigest, deleteDigestsForItem } from '../db/digests';
+import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
+import { getDatabase } from '../db/connection';
 
 const log = getLogger({ module: 'URLEnricher' });
 
@@ -111,69 +111,76 @@ export async function enrichUrlInboxItem(
       }
     }
 
-    // 5. Prepare filesystem paths
-    const itemDir = path.join(INBOX_DIR, inboxItem.folderName);
-    const digestDir = path.join(itemDir, 'digest');
+    // 5. Save digests to database
+    log.info({ url }, 'saving digests to database');
+    const db = getDatabase();
+    const now = new Date().toISOString();
 
-    // 6. Save files
-    log.info({ url }, 'saving files');
-    await fs.rm(digestDir, { recursive: true, force: true });
-    await fs.mkdir(digestDir, { recursive: true });
+    // Clear existing digests for this item
+    deleteDigestsForItem(inboxId);
+    sqlarDeletePrefix(db, `${inboxId}/`);
 
-    const legacyArtifacts = ['content.html', 'content.md', 'main-content.md'];
-    await Promise.all(
-      legacyArtifacts.map(async (filename) => {
-        const legacyPath = path.join(itemDir, filename);
-        try {
-          await fs.rm(legacyPath);
-        } catch {
-          // ignore missing legacy file
-        }
-      })
-    );
-
-    const digestArtifacts: Array<{
-      filename: string;
-      mimeType: string;
-      buffer: Buffer;
-      type: 'text' | 'image';
-    }> = [];
-
+    // Save content.md (markdown) to database as text digest
     if (processed.markdown && processed.markdown.trim().length > 0) {
-      digestArtifacts.push({
-        filename: 'content.md',
-        mimeType: 'text/markdown',
-        buffer: Buffer.from(processed.markdown, 'utf-8'),
-        type: 'text',
+      createDigest({
+        id: `${inboxId}-content-md`,
+        itemId: inboxId,
+        digestType: 'content-md',
+        status: 'completed',
+        content: processed.markdown,
+        sqlarName: null,
+        createdAt: now,
+        updatedAt: now,
       });
+      log.debug({ inboxId }, 'saved content.md digest');
     }
 
+    // Save content.html to SQLAR (binary storage with compression)
     if (html && html.trim().length > 0) {
-      digestArtifacts.push({
-        filename: 'content.html',
-        mimeType: 'text/html',
-        buffer: Buffer.from(html, 'utf-8'),
-        type: 'text',
+      const sqlarName = `${inboxId}/content-html/content.html`;
+      await sqlarStore(db, sqlarName, html);
+
+      createDigest({
+        id: `${inboxId}-content-html`,
+        itemId: inboxId,
+        digestType: 'content-html',
+        status: 'completed',
+        content: null,
+        sqlarName,
+        createdAt: now,
+        updatedAt: now,
       });
+      log.debug({ inboxId, sqlarName }, 'saved content.html digest to SQLAR');
     }
 
+    // Save screenshot to SQLAR
     const screenshot = crawlResult.screenshot;
     if (screenshot?.base64) {
       try {
         const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
         if (screenshotBuffer.length > 0) {
           const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
+          const sqlarName = `${inboxId}/screenshot/screenshot.${screenshotExtension}`;
+
+          await sqlarStore(db, sqlarName, screenshotBuffer);
+
+          createDigest({
+            id: `${inboxId}-screenshot`,
+            itemId: inboxId,
+            digestType: 'screenshot',
+            status: 'completed',
+            content: null,
+            sqlarName,
+            createdAt: now,
+            updatedAt: now,
+          });
           log.info({
+            inboxId,
+            sqlarName,
             bufferSize: screenshotBuffer.length,
             extension: screenshotExtension,
             mimeType: screenshot.mimeType
-          }, 'saving screenshot to digest folder');
-          digestArtifacts.push({
-            filename: `screenshot.${screenshotExtension}`,
-            mimeType: screenshot.mimeType,
-            buffer: screenshotBuffer,
-            type: 'image',
-          });
+          }, 'saved screenshot digest to SQLAR');
         } else {
           log.warn({}, 'screenshot buffer is empty');
         }
@@ -184,60 +191,34 @@ export async function enrichUrlInboxItem(
       log.warn({ hasScreenshot: Boolean(screenshot), hasBase64: Boolean(screenshot?.base64) }, 'no screenshot in crawl result');
     }
 
-    await Promise.all(
-      digestArtifacts.map(async (artifact) => {
-        const artifactPath = path.join(digestDir, artifact.filename);
-        await fs.writeFile(artifactPath, artifact.buffer);
-      })
-    );
+    // Save URL metadata as JSON in database (for quick access)
+    const urlMetadata = {
+      url: crawlResult.url,
+      title: metadata.title,
+      description: metadata.description,
+      author: metadata.author,
+      publishedDate: metadata.publishedDate,
+      image: metadata.image,
+      siteName: metadata.siteName,
+      domain: metadata.domain,
+      redirectedTo: crawlResult.redirectedTo ?? null,
+      wordCount: processed.wordCount,
+      readingTimeMinutes: processed.readingTimeMinutes,
+    };
 
-    // 7. Update files array with enrichment
-    const updatedFiles = inboxItem.files
-      .filter(file => {
-        const lower = file.filename.toLowerCase();
-        if (lower.startsWith('digest/')) return false;
-        if (lower === 'content.html' || lower === 'content.md' || lower === 'main-content.md') {
-          return false;
-        }
-        return true;
-      })
-      .map(file => {
-      if (file.filename === 'url.txt') {
-        return {
-          ...file,
-          enrichment: {
-            url: crawlResult.url,
-            title: metadata.title,
-            description: metadata.description,
-            author: metadata.author,
-            publishedDate: metadata.publishedDate,
-            image: metadata.image,
-            siteName: metadata.siteName,
-            domain: metadata.domain,
-            redirectedTo: crawlResult.redirectedTo ?? null,
-            wordCount: processed.wordCount,
-            readingTimeMinutes: processed.readingTimeMinutes,
-          },
-        };
-      }
-      return file;
+    createDigest({
+      id: `${inboxId}-url-metadata`,
+      itemId: inboxId,
+      digestType: 'url-metadata',
+      status: 'completed',
+      content: JSON.stringify(urlMetadata),
+      sqlarName: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
-    // Add new files to the array
-    digestArtifacts.forEach(artifact => {
-      const hash = createHash('sha256').update(artifact.buffer).digest('hex');
-      updatedFiles.push({
-        filename: `digest/${artifact.filename}`,
-        size: artifact.buffer.length,
-        mimeType: artifact.mimeType,
-        type: artifact.type,
-        hash,
-      });
-    });
-
-    // 8. Update inbox item
+    // 6. Update inbox item status
     updateInboxItem(inboxId, {
-      files: updatedFiles,
       status: 'enriched',
       enrichedAt: new Date().toISOString(),
       error: null,

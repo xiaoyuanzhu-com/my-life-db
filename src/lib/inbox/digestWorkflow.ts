@@ -9,7 +9,9 @@ import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
 import type { UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { setInboxTaskState } from '@/lib/db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
-import type { InboxFile } from '@/types';
+import { deleteDigestsForItem } from '@/lib/db/digests';
+import { sqlarDeletePrefix } from '@/lib/db/sqlar';
+import { getDatabase } from '@/lib/db/connection';
 
 const log = getLogger({ module: 'UrlDigestWorkflow' });
 
@@ -31,7 +33,7 @@ export async function startUrlDigestWorkflow(inboxId: string): Promise<{ taskId:
     throw new Error('URL not found for inbox item');
   }
 
-  await clearDigestArtifacts(item.id, item.folderName, item.files);
+  await clearDigestArtifacts(item.id, item.folderName);
 
   resetTaskStates(inboxId);
 
@@ -47,29 +49,21 @@ export async function startUrlDigestWorkflow(inboxId: string): Promise<{ taskId:
 
 async function clearDigestArtifacts(
   inboxId: string,
-  folderName: string,
-  files: InboxFile[]
+  folderName: string
 ): Promise<void> {
-  // Only clear digest directory for multi-file items (folders)
-  const itemPath = path.join(INBOX_DIR, folderName);
-  try {
-    const stats = await fs.stat(itemPath);
-    if (stats.isDirectory()) {
-      const digestDir = path.join(itemPath, 'digest');
-      await fs.rm(digestDir, { recursive: true, force: true }).catch(() => {});
-    }
-  } catch {
-    // Item doesn't exist, ignore
-  }
+  // Clear digests from database (new approach - digests stored in DB/SQLAR)
+  const db = getDatabase();
+  deleteDigestsForItem(inboxId);
+  sqlarDeletePrefix(db, `${inboxId}/`);
 
-  const filteredFiles = (files ?? []).filter(file => !file.filename.toLowerCase().startsWith('digest/'));
-
+  // Update item status
   updateInboxItem(inboxId, {
-    files: filteredFiles,
     status: 'enriching',
     enrichedAt: new Date().toISOString(),
     error: null,
   });
+
+  log.debug({ inboxId }, 'cleared digest artifacts from database');
 }
 
 function resetTaskStates(inboxId: string): void {

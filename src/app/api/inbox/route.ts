@@ -95,15 +95,26 @@ async function getPrimaryText(item: Item): Promise<string | null> {
 }
 
 /**
- * Get screenshot from digests
+ * Get screenshot from digests (stored in SQLAR)
  */
 function getDigestScreenshot(item: Item): InboxDigestScreenshot | null {
   const screenshotDigest = getDigestByItemAndType(item.id, 'screenshot');
   if (screenshotDigest?.sqlarName) {
+    // Extract extension and determine MIME type
+    const match = screenshotDigest.sqlarName.match(/\.(\w+)$/);
+    const extension = match ? match[1] : 'png';
+    const mimeTypeMap: Record<string, string> = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'webp': 'image/webp',
+    };
+    const mimeType = mimeTypeMap[extension] || 'image/png';
+
     return {
-      src: `/api/inbox/files/${encodeURIComponent(item.path)}/${encodeURIComponent('screenshot.png')}`,
-      mimeType: 'image/png',
-      filename: 'screenshot.png',
+      src: `/api/inbox/sqlar/${encodeURIComponent(screenshotDigest.sqlarName)}`,
+      mimeType,
+      filename: `screenshot.${extension}`,
     };
   }
   return null;

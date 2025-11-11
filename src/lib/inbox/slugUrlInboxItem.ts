@@ -1,49 +1,37 @@
 import 'server-only';
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { createHash } from 'crypto';
-
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
-import { INBOX_DIR } from '@/lib/fs/storage';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
+import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSlug' });
 
-const SLUG_FILENAME = 'digest/slug.json';
-const SLUG_MIME = 'application/json';
-
-async function readCandidateFile(folderPath: string, relativePath: string): Promise<string | null> {
-  try {
-    const filePath = path.join(folderPath, relativePath);
-    const buffer = await fs.readFile(filePath);
-    const text = buffer.toString('utf-8').trim();
-    return text.length > 0 ? text : null;
-  } catch {
-    return null;
+/**
+ * Load content from database for slug generation
+ * Prefers summary, falls back to content-md
+ */
+function loadSlugSource(inboxId: string): { text: string; source: string } {
+  // Try summary first (shorter, more focused)
+  const summaryDigest = getDigestByItemAndType(inboxId, 'summary');
+  if (summaryDigest?.content) {
+    return {
+      text: summaryDigest.content,
+      source: 'summary digest',
+    };
   }
-}
 
-async function loadSlugSource(folderPath: string): Promise<{ text: string; source: string }> {
-  const candidates = [
-    'digest/content.md',
-    'digest/main-content.md',
-    'digest/summary.md',
-    'content.md',
-    'main-content.md',
-    'text.md',
-  ];
-
-  for (const candidate of candidates) {
-    const text = await readCandidateFile(folderPath, candidate);
-    if (text) {
-      return { text, source: candidate };
-    }
+  // Fall back to content-md
+  const contentDigest = getDigestByItemAndType(inboxId, 'content-md');
+  if (contentDigest?.content) {
+    return {
+      text: contentDigest.content,
+      source: 'content-md digest',
+    };
   }
 
   throw new Error('No content available for slug generation');
@@ -52,18 +40,6 @@ async function loadSlugSource(folderPath: string): Promise<{ text: string; sourc
 function clampText(text: string, maxChars = 6000): string {
   if (text.length <= maxChars) return text;
   return text.slice(0, maxChars);
-}
-
-async function writeSlugFile(folderPath: string, payload: Record<string, unknown>): Promise<{ size: number; hash: string }> {
-  const digestDir = path.join(folderPath, 'digest');
-  await fs.mkdir(digestDir, { recursive: true });
-
-  const buffer = Buffer.from(JSON.stringify(payload, null, 2));
-  const slugPath = path.join(folderPath, SLUG_FILENAME);
-  await fs.writeFile(slugPath, buffer);
-
-  const hash = createHash('sha256').update(buffer).digest('hex');
-  return { size: buffer.length, hash };
 }
 
 export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload): string {
@@ -100,8 +76,8 @@ defineTaskHandler({
       return { success: false, reason: 'not_found' };
     }
 
-    const folderPath = path.join(INBOX_DIR, item.folderName);
-    const { text, source } = await loadSlugSource(folderPath);
+    // Load content from database
+    const { text, source } = loadSlugSource(inboxId);
     const clipped = clampText(text);
 
     const result = generateSlugFromContentDigest(clipped);
@@ -111,41 +87,39 @@ defineTaskHandler({
       throw new Error(message);
     }
 
+    // Save slug to database
+    const now = new Date().toISOString();
     const payload = {
       slug: result.slug,
       title: result.title,
       source,
       strategy: result.source,
-      generatedAt: new Date().toISOString(),
+      generatedAt: now,
     };
 
-    const { size, hash } = await writeSlugFile(folderPath, payload);
-
-    const updatedFiles = item.files.filter(file => file.filename !== SLUG_FILENAME);
-    updatedFiles.push({
-      filename: SLUG_FILENAME,
-      size,
-      mimeType: SLUG_MIME,
-      type: 'text',
-      hash,
-      enrichment: {
-        title: result.title,
-      },
+    createDigest({
+      id: `${inboxId}-slug`,
+      itemId: inboxId,
+      digestType: 'slug',
+      status: 'completed',
+      content: JSON.stringify(payload),
+      sqlarName: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
+    // Update aiSlug field in inbox item (for quick access)
     updateInboxItem(inboxId, {
-      files: updatedFiles,
       aiSlug: result.slug,
     });
 
-    log.info({ inboxId, slug: result.slug, source }, 'slug generated');
+    log.info({ inboxId, slug: result.slug, source }, 'slug generated and saved to database');
 
     return {
       success: true,
       slug: result.slug,
       title: result.title,
       source,
-      slugFile: SLUG_FILENAME,
     };
   },
 });

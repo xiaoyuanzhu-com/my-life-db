@@ -1,51 +1,28 @@
 import 'server-only';
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { createHash } from 'crypto';
-
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
-import { INBOX_DIR } from '@/lib/fs/storage';
+import { getInboxItemById } from '@/lib/db/inbox';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
-const TAGS_FILENAME = 'digest/tags.json';
-const TAGS_MIME = 'application/json';
+/**
+ * Load content from database for tagging
+ */
+function loadTaggingSource(inboxId: string): { text: string; source: string } | null {
+  const contentDigest = getDigestByItemAndType(inboxId, 'content-md');
 
-async function readCandidateFile(folderPath: string, relativePath: string): Promise<string | null> {
-  try {
-    const filePath = path.join(folderPath, relativePath);
-    const buffer = await fs.readFile(filePath);
-    const text = buffer.toString('utf-8').trim();
-    return text.length > 0 ? text : null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadTaggingSource(folderPath: string): Promise<{ text: string; source: string } | null> {
-  const candidates = [
-    'digest/content.md',
-    'content.md',
-    'digest/main-content.md',
-    'main-content.md',
-    'text.md',
-    'note.md',
-    'notes.md',
-  ];
-
-  for (const candidate of candidates) {
-    const text = await readCandidateFile(folderPath, candidate);
-    if (text) {
-      return { text, source: candidate };
-    }
+  if (contentDigest?.content) {
+    return {
+      text: contentDigest.content,
+      source: 'content-md digest',
+    };
   }
 
   return null;
@@ -54,24 +31,6 @@ async function loadTaggingSource(folderPath: string): Promise<{ text: string; so
 function clampText(text: string, maxChars = 6000): string {
   if (text.length <= maxChars) return text;
   return text.slice(0, maxChars);
-}
-
-async function writeTagsFile(folderPath: string, tags: string[]): Promise<{ size: number; hash: string }> {
-  const digestDir = path.join(folderPath, 'digest');
-  await fs.mkdir(digestDir, { recursive: true });
-
-  const payload = {
-    tags,
-    generatedAt: new Date().toISOString(),
-  };
-
-  const buffer = Buffer.from(JSON.stringify(payload, null, 2));
-  const tagsPath = path.join(folderPath, TAGS_FILENAME);
-  await fs.writeFile(tagsPath, buffer);
-
-  const hash = createHash('sha256').update(buffer).digest('hex');
-
-  return { size: buffer.length, hash };
 }
 
 export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePayload): string {
@@ -108,10 +67,10 @@ defineTaskHandler({
       return { success: false, reason: 'not_found' };
     }
 
-    const folderPath = path.join(INBOX_DIR, item.folderName);
-    const source = await loadTaggingSource(folderPath);
+    // Load content from database
+    const source = loadTaggingSource(inboxId);
     if (!source) {
-      const message = 'No content available for tagging';
+      const message = 'No content-md digest found for tagging';
       log.warn({ inboxId }, message);
       throw new Error(message);
     }
@@ -131,22 +90,25 @@ defineTaskHandler({
       throw new Error(message);
     }
 
-    const { size, hash } = await writeTagsFile(folderPath, result.tags);
+    // Save tags to database
+    const now = new Date().toISOString();
+    const tagsPayload = {
+      tags: result.tags,
+      generatedAt: now,
+    };
 
-    const updatedFiles = item.files.filter((file) => file.filename !== TAGS_FILENAME);
-    updatedFiles.push({
-      filename: TAGS_FILENAME,
-      size,
-      mimeType: TAGS_MIME,
-      type: 'text',
-      hash,
+    createDigest({
+      id: `${inboxId}-tags`,
+      itemId: inboxId,
+      digestType: 'tags',
+      status: 'completed',
+      content: JSON.stringify(tagsPayload),
+      sqlarName: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
-    updateInboxItem(inboxId, {
-      files: updatedFiles,
-    });
-
-    log.info({ inboxId, tags: result.tags.length, source: source.source }, 'tags generated');
+    log.info({ inboxId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
 
     if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
       const [nextStage, ...rest] = remainingStages;
@@ -157,7 +119,6 @@ defineTaskHandler({
       success: true,
       tags: result.tags,
       source: source.source,
-      tagsFile: TAGS_FILENAME,
     };
   },
 });
