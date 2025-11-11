@@ -110,7 +110,7 @@ function mergeStageMaps(
 }
 
 interface DigestCoordinatorProps {
-  inboxId: string;
+  itemId: string;
   type: string;
   initialSummary: string | null;
   initialTags: string[] | null;
@@ -134,7 +134,7 @@ interface DigestStatusResponse {
 }
 
 export function DigestCoordinator({
-  inboxId,
+  itemId,
   type,
   initialSummary,
   initialTags,
@@ -160,15 +160,15 @@ export function DigestCoordinator({
     };
   }, []);
 
-  // Use ref to store inboxId to avoid dependency issues
-  const inboxIdRef = useRef(inboxId);
+  // Use ref to store itemId to avoid dependency issues
+  const itemIdRef = useRef(itemId);
   useEffect(() => {
-    inboxIdRef.current = inboxId;
-  }, [inboxId]);
+    itemIdRef.current = itemId;
+  }, [itemId]);
 
   const fetchContent = useCallback(async () => {
-    const currentId = inboxIdRef.current;
-    log('fetchContent start', { inboxId: currentId });
+    const currentId = itemIdRef.current;
+    log('fetchContent start', { itemId: currentId });
     const res = await fetch(`/api/inbox/${currentId}`, { cache: 'no-store' });
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
@@ -180,8 +180,8 @@ export function DigestCoordinator({
   }, []);
 
   const fetchStatus = useCallback(async () => {
-    const currentId = inboxIdRef.current;
-    log('fetchStatus start', { inboxId: currentId });
+    const currentId = itemIdRef.current;
+    log('fetchStatus start', { itemId: currentId });
     const res = await fetch(`/api/inbox/${currentId}/digest/status`, { cache: 'no-store' });
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
@@ -300,7 +300,7 @@ export function DigestCoordinator({
     });
     log('handleDigestClick triggered');
     try {
-      const res = await fetch(`/api/inbox/${inboxIdRef.current}/digest`, { method: 'POST' });
+      const res = await fetch(`/api/inbox/${itemIdRef.current}/digest`, { method: 'POST' });
       if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error((body as { error?: string }).error || res.statusText);

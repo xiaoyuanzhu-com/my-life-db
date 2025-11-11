@@ -125,13 +125,13 @@ export async function executeTask(
     };
   }
 
-  // 5.1 Update projection for inbox tasks to in-progress
+  // 5.1 Update projection for item tasks to in-progress
   try {
     const inputObj = JSON.parse(task.input) as Record<string, unknown>;
-    const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
-    if (inboxId) {
+    const itemId = typeof inputObj?.itemId === 'string' ? (inputObj.itemId as string) : null;
+    if (itemId) {
       upsertInboxTaskState({
-        itemId: inboxId,
+        itemId: itemId,
         taskType: task.type,
         status: 'in-progress',
         taskId: task.id,
@@ -160,10 +160,10 @@ export async function executeTask(
     // Update projection: failed (permanent)
     try {
       const inputObj2 = JSON.parse(task.input) as Record<string, unknown>;
-      const inboxId = typeof inputObj2?.inboxId === 'string' ? (inputObj2.inboxId as string) : null;
-      if (inboxId) {
+      const itemId = typeof inputObj2?.itemId === 'string' ? (inputObj2.itemId as string) : null;
+      if (itemId) {
         upsertInboxTaskState({
-          itemId: inboxId,
+          itemId: itemId,
           taskType: task.type,
           status: 'failed',
           taskId: task.id,
@@ -203,10 +203,10 @@ export async function executeTask(
     // Update projection: success
     try {
       const inputObj3 = input as Record<string, unknown>;
-      const inboxId = typeof inputObj3?.inboxId === 'string' ? (inputObj3.inboxId as string) : null;
-      if (inboxId) {
+      const itemId = typeof inputObj3?.itemId === 'string' ? (inputObj3.itemId as string) : null;
+      if (itemId) {
         upsertInboxTaskState({
-          itemId: inboxId,
+          itemId: itemId,
           taskType: task.type,
           status: 'success',
           taskId: task.id,
@@ -240,10 +240,10 @@ export async function executeTask(
     // Update projection: failed
     try {
       const inputObj4 = JSON.parse(task.input) as Record<string, unknown>;
-      const inboxId = typeof inputObj4?.inboxId === 'string' ? (inputObj4.inboxId as string) : null;
-      if (inboxId) {
+      const itemId = typeof inputObj4?.itemId === 'string' ? (inputObj4.itemId as string) : null;
+      if (itemId) {
         upsertInboxTaskState({
-          itemId: inboxId,
+          itemId: itemId,
           taskType: task.type,
           status: 'failed',
           taskId: task.id,
@@ -286,10 +286,10 @@ export function recoverStaleTasks(tasks: Task[]): number {
       // Update projection: failed due to timeout
       try {
         const inputObj = JSON.parse(task.input) as Record<string, unknown>;
-        const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
-        if (inboxId) {
+        const itemId = typeof inputObj?.itemId === 'string' ? (inputObj.itemId as string) : null;
+        if (itemId) {
           upsertInboxTaskState({
-            itemId: inboxId,
+            itemId: itemId,
             taskType: task.type,
             status: 'failed',
             taskId: task.id,

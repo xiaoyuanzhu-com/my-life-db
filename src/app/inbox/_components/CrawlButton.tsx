@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export function CrawlButton({ inboxId }: { inboxId: string }) {
+export function CrawlButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -10,7 +10,7 @@ export function CrawlButton({ inboxId }: { inboxId: string }) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/reenrich?stage=crawl`, { method: 'POST' });
+      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=crawl`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || res.statusText);

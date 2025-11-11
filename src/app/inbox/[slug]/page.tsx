@@ -53,13 +53,13 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
           </span>
           {item.type === 'url' && (
             <>
-              <CrawlButton inboxId={item.id} />
-              <SummaryButton inboxId={item.id} />
-              <TaggingButton inboxId={item.id} />
-              <IndexButton inboxId={item.id} />
+              <CrawlButton itemId={item.id} />
+              <SummaryButton itemId={item.id} />
+              <TaggingButton itemId={item.id} />
+              <IndexButton itemId={item.id} />
             </>
           )}
-          <SlugButton inboxId={item.id} />
+          <SlugButton itemId={item.id} />
         </div>
 
         <section className="bg-card rounded-lg border">
@@ -79,7 +79,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
         </section>
 
         <DigestCoordinator
-          inboxId={item.id}
+          itemId={item.id}
           type={item.type}
           initialSummary={summary}
           initialTags={tags}

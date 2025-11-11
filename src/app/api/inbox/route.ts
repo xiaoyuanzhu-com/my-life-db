@@ -35,7 +35,7 @@ function buildEnrichmentSummary(itemId: string, itemStatus: string): InboxEnrich
   const hasFailures = stages.some(s => s.status === 'failed');
 
   return {
-    inboxId: itemId,
+    itemId: itemId,
     overall: itemStatus as any,
     stages,
     hasFailures,

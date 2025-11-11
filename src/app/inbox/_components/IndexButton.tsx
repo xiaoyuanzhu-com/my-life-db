@@ -3,10 +3,10 @@
 import { useState } from 'react';
 
 interface IndexButtonProps {
-  inboxId: string;
+  itemId: string;
 }
 
-export function IndexButton({ inboxId }: IndexButtonProps) {
+export function IndexButton({ itemId }: IndexButtonProps) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -14,7 +14,7 @@ export function IndexButton({ inboxId }: IndexButtonProps) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/search`, {
+      const res = await fetch(`/api/inbox/${itemId}/search`, {
         method: 'POST',
       });
       const body = await res.json().catch(() => ({}));

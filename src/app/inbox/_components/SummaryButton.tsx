@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export function SummaryButton({ inboxId }: { inboxId: string }) {
+export function SummaryButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -11,7 +11,7 @@ export function SummaryButton({ inboxId }: { inboxId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/reenrich?stage=summary`, {
+      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=summary`, {
         method: 'POST',
       });
 

@@ -12,7 +12,7 @@ export interface InboxStageStatus {
 }
 
 export interface InboxStatusView {
-  inboxId: string;
+  itemId: string;
   overall: EnrichmentStatus;
   stages: InboxStageStatus[];
   hasFailures: boolean;
@@ -81,7 +81,7 @@ export function summarizeInboxEnrichment(
   const canRetry = hasFailures;
 
   return {
-    inboxId: inbox.id,
+    itemId: inbox.id,
     overall: inbox.status,
     stages,
     hasFailures,
@@ -96,11 +96,11 @@ export function summarizeInboxEnrichment(
   };
 }
 
-export function getInboxStatusView(inboxId: string): InboxStatusView | null {
-  const inbox = getInboxItemById(inboxId);
+export function getInboxStatusView(itemId: string): InboxStatusView | null {
+  const inbox = getInboxItemById(itemId);
   if (!inbox) return null;
 
   // Load stage states from projection
-  const states = getInboxTaskStatesByItemId(inboxId);
+  const states = getInboxTaskStatesByItemId(itemId);
   return summarizeInboxEnrichment(inbox, states);
 }

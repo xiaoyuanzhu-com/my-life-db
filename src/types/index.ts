@@ -275,7 +275,7 @@ export interface InboxStageStatusSummary {
 }
 
 export interface InboxEnrichmentSummary {
-  inboxId: string;
+  itemId: string;
   overall: EnrichmentStatus;
   stages: InboxStageStatusSummary[];
   hasFailures: boolean;

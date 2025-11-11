@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export function TaggingButton({ inboxId }: { inboxId: string }) {
+export function TaggingButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -11,7 +11,7 @@ export function TaggingButton({ inboxId }: { inboxId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/reenrich?stage=tagging`, {
+      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=tagging`, {
         method: 'POST',
       });
 

@@ -22,7 +22,7 @@ import { getDatabase } from '../db/connection';
 const log = getLogger({ module: 'URLEnricher' });
 
 export interface UrlEnrichmentPayload extends DigestPipelinePayload {
-  inboxId: string;
+  itemId: string;
   url: string;
 }
 
@@ -32,23 +32,23 @@ export interface UrlEnrichmentResult {
 }
 
 /**
- * Enrich a URL inbox item (task handler)
+ * Enrich a URL item (task handler)
  * This function is registered as a task handler and executed by the worker
  */
 export async function enrichUrlInboxItem(
   payload: UrlEnrichmentPayload
 ): Promise<UrlEnrichmentResult> {
-  const { inboxId, url, pipeline, remainingStages } = payload;
+  const { itemId, url, pipeline, remainingStages } = payload;
 
   try {
-    // 1. Get inbox item
-    const inboxItem = getInboxItemById(inboxId);
-    if (!inboxItem) {
-      throw new Error(`Inbox item ${inboxId} not found`);
+    // 1. Get item
+    const item = getInboxItemById(itemId);
+    if (!item) {
+      throw new Error(`Item ${itemId} not found`);
     }
 
     // 2. Update status to enriching
-    updateInboxItem(inboxId, {
+    updateInboxItem(itemId, {
       status: 'enriching',
       enrichedAt: new Date().toISOString(),
     });
@@ -117,14 +117,14 @@ export async function enrichUrlInboxItem(
     const now = new Date().toISOString();
 
     // Clear existing digests for this item
-    deleteDigestsForItem(inboxId);
-    sqlarDeletePrefix(db, `${inboxId}/`);
+    deleteDigestsForItem(itemId);
+    sqlarDeletePrefix(db, `${itemId}/`);
 
     // Save content.md (markdown) to database as text digest
     if (processed.markdown && processed.markdown.trim().length > 0) {
       createDigest({
-        id: `${inboxId}-content-md`,
-        itemId: inboxId,
+        id: `${itemId}-content-md`,
+        itemId: itemId,
         digestType: 'content-md',
         status: 'completed',
         content: processed.markdown,
@@ -132,17 +132,17 @@ export async function enrichUrlInboxItem(
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ inboxId }, 'saved content.md digest');
+      log.debug({ itemId }, 'saved content.md digest');
     }
 
     // Save content.html to SQLAR (binary storage with compression)
     if (html && html.trim().length > 0) {
-      const sqlarName = `${inboxId}/content-html/content.html`;
+      const sqlarName = `${itemId}/content-html/content.html`;
       await sqlarStore(db, sqlarName, html);
 
       createDigest({
-        id: `${inboxId}-content-html`,
-        itemId: inboxId,
+        id: `${itemId}-content-html`,
+        itemId: itemId,
         digestType: 'content-html',
         status: 'completed',
         content: null,
@@ -150,7 +150,7 @@ export async function enrichUrlInboxItem(
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ inboxId, sqlarName }, 'saved content.html digest to SQLAR');
+      log.debug({ itemId, sqlarName }, 'saved content.html digest to SQLAR');
     }
 
     // Save screenshot to SQLAR
@@ -160,13 +160,13 @@ export async function enrichUrlInboxItem(
         const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
         if (screenshotBuffer.length > 0) {
           const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
-          const sqlarName = `${inboxId}/screenshot/screenshot.${screenshotExtension}`;
+          const sqlarName = `${itemId}/screenshot/screenshot.${screenshotExtension}`;
 
           await sqlarStore(db, sqlarName, screenshotBuffer);
 
           createDigest({
-            id: `${inboxId}-screenshot`,
-            itemId: inboxId,
+            id: `${itemId}-screenshot`,
+            itemId: itemId,
             digestType: 'screenshot',
             status: 'completed',
             content: null,
@@ -175,7 +175,7 @@ export async function enrichUrlInboxItem(
             updatedAt: now,
           });
           log.info({
-            inboxId,
+            itemId,
             sqlarName,
             bufferSize: screenshotBuffer.length,
             extension: screenshotExtension,
@@ -207,8 +207,8 @@ export async function enrichUrlInboxItem(
     };
 
     createDigest({
-      id: `${inboxId}-url-metadata`,
-      itemId: inboxId,
+      id: `${itemId}-url-metadata`,
+      itemId: itemId,
       digestType: 'url-metadata',
       status: 'completed',
       content: JSON.stringify(urlMetadata),
@@ -217,8 +217,8 @@ export async function enrichUrlInboxItem(
       updatedAt: now,
     });
 
-    // 6. Update inbox item status
-    updateInboxItem(inboxId, {
+    // 6. Update item status
+    updateInboxItem(itemId, {
       status: 'enriched',
       enrichedAt: new Date().toISOString(),
       error: null,
@@ -228,7 +228,7 @@ export async function enrichUrlInboxItem(
 
     if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
       const [nextStage, ...rest] = remainingStages;
-      queueNextStage(inboxId, nextStage, rest);
+      queueNextStage(itemId, nextStage, rest);
     }
 
     return { success: true };
@@ -237,8 +237,8 @@ export async function enrichUrlInboxItem(
 
     log.error({ url, error: errorMessage }, 'url enrichment failed');
 
-    // Update inbox item with error
-    updateInboxItem(inboxId, {
+    // Update item with error
+    updateInboxItem(itemId, {
       status: 'failed',
       error: errorMessage,
       enrichedAt: new Date().toISOString(),
@@ -253,23 +253,23 @@ export async function enrichUrlInboxItem(
  * This is what you call to trigger URL enrichment
  */
 export function enqueueUrlEnrichment(
-  inboxId: string,
+  itemId: string,
   url: string,
   options?: DigestPipelinePayload
 ): string {
   ensureTaskRuntimeReady(['digest_url_crawl']);
   const taskId = tq('digest_url_crawl').add({
-    inboxId,
+    itemId,
     url,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
-  log.info({ inboxId, url, taskId }, 'url enrichment task enqueued');
+  log.info({ itemId, url, taskId }, 'url enrichment task enqueued');
 
   // Update projection for quick status checks
   upsertInboxTaskState({
-    itemId: inboxId,
+    itemId: itemId,
     taskType: 'digest_url_crawl',
     status: 'to-do',
     taskId,
@@ -288,23 +288,23 @@ defineTaskHandler({
 });
 
 function queueNextStage(
-  inboxId: string,
+  itemId: string,
   nextStage: UrlDigestPipelineStage,
   remaining: UrlDigestPipelineStage[]
 ): void {
   switch (nextStage) {
     case 'summary':
-      enqueueUrlSummary(inboxId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlSummary(itemId, { pipeline: true, remainingStages: remaining });
       break;
     case 'tagging':
       // Should not happen directly after crawl, but guard anyway
-      enqueueUrlTagging(inboxId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlTagging(itemId, { pipeline: true, remainingStages: remaining });
       break;
     case 'slug':
-      enqueueUrlSlug(inboxId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlSlug(itemId, { pipeline: true, remainingStages: remaining });
       break;
     default:
-      log.warn({ inboxId, stage: nextStage }, 'unknown next stage in url digest pipeline');
+      log.warn({ itemId, stage: nextStage }, 'unknown next stage in url digest pipeline');
   }
 }
 

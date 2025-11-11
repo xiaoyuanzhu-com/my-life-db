@@ -15,9 +15,9 @@ const log = getLogger({ module: 'InboxSlug' });
  * Load content from database for slug generation
  * Prefers summary, falls back to content-md
  */
-function loadSlugSource(inboxId: string): { text: string; source: string } {
+function loadSlugSource(itemId: string): { text: string; source: string } {
   // Try summary first (shorter, more focused)
-  const summaryDigest = getDigestByItemAndType(inboxId, 'summary');
+  const summaryDigest = getDigestByItemAndType(itemId, 'summary');
   if (summaryDigest?.content) {
     return {
       text: summaryDigest.content,
@@ -26,7 +26,7 @@ function loadSlugSource(inboxId: string): { text: string; source: string } {
   }
 
   // Fall back to content-md
-  const contentDigest = getDigestByItemAndType(inboxId, 'content-md');
+  const contentDigest = getDigestByItemAndType(itemId, 'content-md');
   if (contentDigest?.content) {
     return {
       text: contentDigest.content,
@@ -42,17 +42,17 @@ function clampText(text: string, maxChars = 6000): string {
   return text.slice(0, maxChars);
 }
 
-export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload): string {
+export function enqueueUrlSlug(itemId: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_slug']);
 
   const taskId = tq('digest_url_slug').add({
-    inboxId: inboxId,
+    itemId: itemId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
   upsertInboxTaskState({
-    itemId: inboxId,
+    itemId: itemId,
     taskType: 'digest_url_slug',
     status: 'to-do',
     taskId,
@@ -60,30 +60,30 @@ export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload)
     error: null,
   });
 
-  log.info({ inboxId, taskId }, 'digest_url_slug task enqueued');
+  log.info({ itemId, taskId }, 'digest_url_slug task enqueued');
   return taskId;
 }
 
 defineTaskHandler({
   type: 'digest_url_slug',
   module: 'InboxSlug',
-  handler: async (input: { inboxId: string } & DigestPipelinePayload) => {
-    const { inboxId } = input;
+  handler: async (input: { itemId: string } & DigestPipelinePayload) => {
+    const { itemId } = input;
 
-    const item = getInboxItemById(inboxId);
+    const item = getInboxItemById(itemId);
     if (!item) {
-      log.warn({ inboxId }, 'inbox item not found for slug generation');
+      log.warn({ itemId }, 'item not found for slug generation');
       return { success: false, reason: 'not_found' };
     }
 
     // Load content from database
-    const { text, source } = loadSlugSource(inboxId);
+    const { text, source } = loadSlugSource(itemId);
     const clipped = clampText(text);
 
     const result = generateSlugFromContentDigest(clipped);
     if (!result.slug) {
       const message = 'Slug generation returned empty result';
-      log.warn({ inboxId }, message);
+      log.warn({ itemId }, message);
       throw new Error(message);
     }
 
@@ -98,8 +98,8 @@ defineTaskHandler({
     };
 
     createDigest({
-      id: `${inboxId}-slug`,
-      itemId: inboxId,
+      id: `${itemId}-slug`,
+      itemId: itemId,
       digestType: 'slug',
       status: 'completed',
       content: JSON.stringify(payload),
@@ -108,12 +108,12 @@ defineTaskHandler({
       updatedAt: now,
     });
 
-    // Update aiSlug field in inbox item (for quick access)
-    updateInboxItem(inboxId, {
+    // Update aiSlug field in item (for quick access)
+    updateInboxItem(itemId, {
       aiSlug: result.slug,
     });
 
-    log.info({ inboxId, slug: result.slug, source }, 'slug generated and saved to database');
+    log.info({ itemId, slug: result.slug, source }, 'slug generated and saved to database');
 
     return {
       success: true,

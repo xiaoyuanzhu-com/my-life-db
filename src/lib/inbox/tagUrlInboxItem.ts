@@ -15,8 +15,8 @@ const log = getLogger({ module: 'InboxTagging' });
 /**
  * Load content from database for tagging
  */
-function loadTaggingSource(inboxId: string): { text: string; source: string } | null {
-  const contentDigest = getDigestByItemAndType(inboxId, 'content-md');
+function loadTaggingSource(itemId: string): { text: string; source: string } | null {
+  const contentDigest = getDigestByItemAndType(itemId, 'content-md');
 
   if (contentDigest?.content) {
     return {
@@ -33,17 +33,17 @@ function clampText(text: string, maxChars = 6000): string {
   return text.slice(0, maxChars);
 }
 
-export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePayload): string {
+export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_tagging']);
 
   const taskId = tq('digest_url_tagging').add({
-    inboxId: inboxId,
+    itemId: itemId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
   upsertInboxTaskState({
-    itemId: inboxId,
+    itemId: itemId,
     taskType: 'digest_url_tagging',
     status: 'to-do',
     taskId,
@@ -51,27 +51,27 @@ export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePaylo
     error: null,
   });
 
-  log.info({ inboxId, taskId }, 'digest_url_tagging task enqueued');
+  log.info({ itemId, taskId }, 'digest_url_tagging task enqueued');
   return taskId;
 }
 
 defineTaskHandler({
   type: 'digest_url_tagging',
   module: 'InboxTagging',
-  handler: async (input: { inboxId: string } & DigestPipelinePayload) => {
-    const { inboxId, pipeline, remainingStages } = input;
+  handler: async (input: { itemId: string } & DigestPipelinePayload) => {
+    const { itemId, pipeline, remainingStages } = input;
 
-    const item = getInboxItemById(inboxId);
+    const item = getInboxItemById(itemId);
     if (!item) {
-      log.warn({ inboxId }, 'inbox item not found for tagging');
+      log.warn({ itemId }, 'item not found for tagging');
       return { success: false, reason: 'not_found' };
     }
 
     // Load content from database
-    const source = loadTaggingSource(inboxId);
+    const source = loadTaggingSource(itemId);
     if (!source) {
       const message = 'No content-md digest found for tagging';
-      log.warn({ inboxId }, message);
+      log.warn({ itemId }, message);
       throw new Error(message);
     }
 
@@ -81,7 +81,7 @@ defineTaskHandler({
     if (!result.tags.length) {
       const message = 'Tag generation returned no tags';
       log.warn({
-        itemId: inboxId,
+        itemId: itemId,
         sourceTextLength: source.text.length,
         clippedTextLength: clipped.length,
         clippedTextPreview: clipped.substring(0, 200),
@@ -98,8 +98,8 @@ defineTaskHandler({
     };
 
     createDigest({
-      id: `${inboxId}-tags`,
-      itemId: inboxId,
+      id: `${itemId}-tags`,
+      itemId: itemId,
       digestType: 'tags',
       status: 'completed',
       content: JSON.stringify(tagsPayload),
@@ -108,11 +108,11 @@ defineTaskHandler({
       updatedAt: now,
     });
 
-    log.info({ inboxId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
+    log.info({ itemId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
 
     if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
       const [nextStage, ...rest] = remainingStages;
-      queueNextStage(inboxId, nextStage, rest);
+      queueNextStage(itemId, nextStage, rest);
     }
 
     return {
@@ -124,13 +124,13 @@ defineTaskHandler({
 });
 
 function queueNextStage(
-  inboxId: string,
+  itemId: string,
   nextStage: UrlDigestPipelineStage,
   remaining: UrlDigestPipelineStage[]
 ): void {
   if (nextStage === 'slug') {
-    enqueueUrlSlug(inboxId, { pipeline: true, remainingStages: remaining });
+    enqueueUrlSlug(itemId, { pipeline: true, remainingStages: remaining });
   } else {
-    log.warn({ inboxId, stage: nextStage }, 'unknown next stage after tagging in url digest pipeline');
+    log.warn({ itemId, stage: nextStage }, 'unknown next stage after tagging in url digest pipeline');
   }
 }

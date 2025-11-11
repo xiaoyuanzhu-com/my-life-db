@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export function SlugButton({ inboxId }: { inboxId: string }) {
+export function SlugButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -11,7 +11,7 @@ export function SlugButton({ inboxId }: { inboxId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${inboxId}/reenrich?stage=slug`, {
+      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=slug`, {
         method: 'POST',
       });
 

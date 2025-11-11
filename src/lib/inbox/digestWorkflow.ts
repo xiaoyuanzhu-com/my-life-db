@@ -18,58 +18,58 @@ const log = getLogger({ module: 'UrlDigestWorkflow' });
 const PIPELINE_ORDER: UrlDigestPipelineStage[] = ['summary', 'tagging', 'slug'];
 const DIGEST_TASK_TYPES = ['digest_url_crawl', 'digest_url_summary', 'digest_url_tagging', 'digest_url_slug'] as const;
 
-export async function startUrlDigestWorkflow(inboxId: string): Promise<{ taskId: string }> {
-  const item = getInboxItemById(inboxId);
+export async function startUrlDigestWorkflow(itemId: string): Promise<{ taskId: string }> {
+  const item = getInboxItemById(itemId);
   if (!item) {
-    throw new Error('Inbox item not found');
+    throw new Error('Item not found');
   }
 
   if (item.type !== 'url') {
-    throw new Error('URL digest workflow only supports URL inbox items');
+    throw new Error('URL digest workflow only supports URL items');
   }
 
   const url = await resolveUrlForInboxItem(item.folderName);
   if (!url) {
-    throw new Error('URL not found for inbox item');
+    throw new Error('URL not found for item');
   }
 
   await clearDigestArtifacts(item.id, item.folderName);
 
-  resetTaskStates(inboxId);
+  resetTaskStates(itemId);
 
-  const taskId = enqueueUrlEnrichment(inboxId, url, {
+  const taskId = enqueueUrlEnrichment(itemId, url, {
     pipeline: true,
     remainingStages: [...PIPELINE_ORDER],
   });
 
-  log.info({ inboxId, taskId }, 'url digest workflow started');
+  log.info({ itemId, taskId }, 'url digest workflow started');
 
   return { taskId };
 }
 
 async function clearDigestArtifacts(
-  inboxId: string,
+  itemId: string,
   folderName: string
 ): Promise<void> {
   // Clear digests from database (new approach - digests stored in DB/SQLAR)
   const db = getDatabase();
-  deleteDigestsForItem(inboxId);
-  sqlarDeletePrefix(db, `${inboxId}/`);
+  deleteDigestsForItem(itemId);
+  sqlarDeletePrefix(db, `${itemId}/`);
 
   // Update item status
-  updateInboxItem(inboxId, {
+  updateInboxItem(itemId, {
     status: 'enriching',
     enrichedAt: new Date().toISOString(),
     error: null,
   });
 
-  log.debug({ inboxId }, 'cleared digest artifacts from database');
+  log.debug({ itemId }, 'cleared digest artifacts from database');
 }
 
-function resetTaskStates(inboxId: string): void {
+function resetTaskStates(itemId: string): void {
   DIGEST_TASK_TYPES.forEach(taskType => {
     setInboxTaskState({
-      itemId: inboxId,
+      itemId: itemId,
       taskType,
       status: 'to-do',
       taskId: null,
