@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Download, FileX } from 'lucide-react';
+import { FileX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
@@ -107,23 +107,7 @@ export function FileViewer({ filePath }: FileViewerProps) {
   const fileUrl = `/api/library/file?path=${encodeURIComponent(filePath)}`;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* File info header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">{fileData.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {formatFileSize(fileData.size)} • {new Date(fileData.modifiedAt).toLocaleString()}
-          </span>
-        </div>
-        <Button variant="ghost" size="sm" onClick={handleDownload}>
-          <Download className="w-4 h-4 mr-2" />
-          Download
-        </Button>
-      </div>
-
-      {/* File content */}
-      <div className="flex-1 overflow-auto p-4">
+    <div className="h-full overflow-auto p-4">
         {fileType === 'text' && fileData.content && (
           <pre className="text-sm font-mono whitespace-pre-wrap break-words">
             {fileData.content}
@@ -184,7 +168,6 @@ export function FileViewer({ filePath }: FileViewerProps) {
             </Button>
           </div>
         )}
-      </div>
     </div>
   );
 }

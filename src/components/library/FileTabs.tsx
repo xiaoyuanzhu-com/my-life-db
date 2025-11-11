@@ -29,29 +29,35 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
   }
 
   return (
-    <div className="flex items-center border-b bg-muted/30 overflow-x-auto">
-      {files.map((file) => (
-        <div
-          key={file.path}
-          className={`
-            group flex items-center gap-2 px-3 py-2 border-r cursor-pointer
-            hover:bg-accent transition-colors
-            ${activeFile === file.path ? 'bg-background' : ''}
-          `}
-          onClick={() => handleTabClick(file.path)}
-        >
-          <span className="text-sm truncate max-w-[150px]" title={file.name}>
-            {file.name}
-          </span>
-          <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted rounded p-0.5"
-            onClick={(e) => handleCloseClick(e, file.path)}
-            aria-label="Close tab"
+    <div className="flex items-center gap-0.5 bg-muted/30 px-1 pt-1 overflow-x-auto">
+      {files.map((file) => {
+        const isActive = activeFile === file.path;
+        return (
+          <div
+            key={file.path}
+            className={`
+              group flex items-center gap-2 px-3 py-1.5 cursor-pointer
+              rounded-t-lg transition-all duration-150 min-w-[120px] max-w-[200px]
+              ${isActive
+                ? 'bg-background shadow-sm border-t-2 border-x border-t-primary border-x-border'
+                : 'bg-muted/50 opacity-60 hover:opacity-80 hover:bg-muted'
+              }
+            `}
+            onClick={() => handleTabClick(file.path)}
           >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      ))}
+            <span className="text-sm truncate flex-1" title={file.name}>
+              {file.name}
+            </span>
+            <button
+              className="hover:bg-accent rounded p-0.5 transition-colors shrink-0"
+              onClick={(e) => handleCloseClick(e, file.path)}
+              aria-label="Close tab"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
