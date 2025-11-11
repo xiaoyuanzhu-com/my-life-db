@@ -70,13 +70,13 @@ export function enqueueUrlSlug(inboxId: string, options?: DigestPipelinePayload)
   ensureTaskRuntimeReady(['digest_url_slug']);
 
   const taskId = tq('digest_url_slug').add({
-    inboxId,
+    itemId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
   upsertInboxTaskState({
-    inboxId,
+    itemId: inboxId,
     taskType: 'digest_url_slug',
     status: 'to-do',
     taskId,

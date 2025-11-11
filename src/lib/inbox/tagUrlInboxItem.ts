@@ -78,13 +78,13 @@ export function enqueueUrlTagging(inboxId: string, options?: DigestPipelinePaylo
   ensureTaskRuntimeReady(['digest_url_tagging']);
 
   const taskId = tq('digest_url_tagging').add({
-    inboxId,
+    itemId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
   upsertInboxTaskState({
-    inboxId,
+    itemId: inboxId,
     taskType: 'digest_url_tagging',
     status: 'to-do',
     taskId,
@@ -122,7 +122,7 @@ defineTaskHandler({
     if (!result.tags.length) {
       const message = 'Tag generation returned no tags';
       log.warn({
-        inboxId,
+        itemId: inboxId,
         sourceTextLength: source.text.length,
         clippedTextLength: clipped.length,
         clippedTextPreview: clipped.substring(0, 200),

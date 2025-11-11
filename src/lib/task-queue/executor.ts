@@ -131,7 +131,7 @@ export async function executeTask(
     const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
     if (inboxId) {
       upsertInboxTaskState({
-        inboxId,
+        itemId: inboxId,
         taskType: task.type,
         status: 'in-progress',
         taskId: task.id,
@@ -163,7 +163,7 @@ export async function executeTask(
       const inboxId = typeof inputObj2?.inboxId === 'string' ? (inputObj2.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
-          inboxId,
+          itemId: inboxId,
           taskType: task.type,
           status: 'failed',
           taskId: task.id,
@@ -206,7 +206,7 @@ export async function executeTask(
       const inboxId = typeof inputObj3?.inboxId === 'string' ? (inputObj3.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
-          inboxId,
+          itemId: inboxId,
           taskType: task.type,
           status: 'success',
           taskId: task.id,
@@ -243,7 +243,7 @@ export async function executeTask(
       const inboxId = typeof inputObj4?.inboxId === 'string' ? (inputObj4.inboxId as string) : null;
       if (inboxId) {
         upsertInboxTaskState({
-          inboxId,
+          itemId: inboxId,
           taskType: task.type,
           status: 'failed',
           taskId: task.id,
@@ -289,7 +289,7 @@ export function recoverStaleTasks(tasks: Task[]): number {
         const inboxId = typeof inputObj?.inboxId === 'string' ? (inputObj.inboxId as string) : null;
         if (inboxId) {
           upsertInboxTaskState({
-            inboxId,
+            itemId: inboxId,
             taskType: task.type,
             status: 'failed',
             taskId: task.id,

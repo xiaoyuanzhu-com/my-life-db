@@ -66,7 +66,7 @@ async function clearDigestArtifacts(
 function resetTaskStates(inboxId: string): void {
   DIGEST_TASK_TYPES.forEach(taskType => {
     setInboxTaskState({
-      inboxId,
+      itemId: inboxId,
       taskType,
       status: 'to-do',
       taskId: null,

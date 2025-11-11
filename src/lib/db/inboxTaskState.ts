@@ -2,17 +2,42 @@ import { getDatabase } from './connection';
 import type { TaskStatus } from '@/lib/task-queue/types';
 
 export interface InboxTaskState {
-  inbox_id: string;
+  itemId: string;
+  taskType: string;
+  status: TaskStatus;
+  taskId: string | null;
+  attempts: number;
+  error: string | null;
+  updatedAt: number; // Unix seconds
+}
+
+interface InboxTaskStateRecord {
+  item_id: string;
   task_type: string;
   status: TaskStatus;
   task_id: string | null;
   attempts: number;
   error: string | null;
-  updated_at: number; // Unix seconds
+  updated_at: number;
+}
+
+/**
+ * Convert database record to InboxTaskState
+ */
+function recordToTaskState(record: InboxTaskStateRecord): InboxTaskState {
+  return {
+    itemId: record.item_id,
+    taskType: record.task_type,
+    status: record.status,
+    taskId: record.task_id,
+    attempts: record.attempts,
+    error: record.error,
+    updatedAt: record.updated_at,
+  };
 }
 
 export function upsertInboxTaskState(input: {
-  inboxId: string;
+  itemId: string;
   taskType: string;
   status: TaskStatus;
   taskId?: string | null;
@@ -23,9 +48,9 @@ export function upsertInboxTaskState(input: {
   const now = Math.floor(Date.now() / 1000);
 
   const stmt = db.prepare(`
-    INSERT INTO inbox_task_state (inbox_id, task_type, status, task_id, attempts, error, updated_at)
+    INSERT INTO inbox_task_state (item_id, task_type, status, task_id, attempts, error, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(inbox_id, task_type) DO UPDATE SET
+    ON CONFLICT(item_id, task_type) DO UPDATE SET
       status = excluded.status,
       task_id = COALESCE(excluded.task_id, inbox_task_state.task_id),
       attempts = COALESCE(excluded.attempts, inbox_task_state.attempts),
@@ -34,7 +59,7 @@ export function upsertInboxTaskState(input: {
   `);
 
   stmt.run(
-    input.inboxId,
+    input.itemId,
     input.taskType,
     input.status,
     input.taskId ?? null,
@@ -45,7 +70,7 @@ export function upsertInboxTaskState(input: {
 }
 
 export function setInboxTaskState(input: {
-  inboxId: string;
+  itemId: string;
   taskType: string;
   status: TaskStatus;
   taskId?: string | null;
@@ -56,9 +81,9 @@ export function setInboxTaskState(input: {
   const now = Math.floor(Date.now() / 1000);
 
   const stmt = db.prepare(`
-    INSERT INTO inbox_task_state (inbox_id, task_type, status, task_id, attempts, error, updated_at)
+    INSERT INTO inbox_task_state (item_id, task_type, status, task_id, attempts, error, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(inbox_id, task_type) DO UPDATE SET
+    ON CONFLICT(item_id, task_type) DO UPDATE SET
       status = excluded.status,
       task_id = excluded.task_id,
       attempts = excluded.attempts,
@@ -67,7 +92,7 @@ export function setInboxTaskState(input: {
   `);
 
   stmt.run(
-    input.inboxId,
+    input.itemId,
     input.taskType,
     input.status,
     input.taskId ?? null,
@@ -77,37 +102,38 @@ export function setInboxTaskState(input: {
   );
 }
 
-export function getInboxTaskStates(inboxId: string): InboxTaskState[] {
+export function getInboxTaskStatesByItemId(itemId: string): InboxTaskState[] {
   const db = getDatabase();
   const rows = db
-    .prepare('SELECT * FROM inbox_task_state WHERE inbox_id = ? ORDER BY task_type ASC')
-    .all(inboxId) as InboxTaskState[];
-  return rows;
+    .prepare('SELECT * FROM inbox_task_state WHERE item_id = ? ORDER BY task_type ASC')
+    .all(itemId) as InboxTaskStateRecord[];
+  return rows.map(recordToTaskState);
 }
 
-export function getInboxTaskState(inboxId: string, taskType: string): InboxTaskState | null {
+export function getInboxTaskState(itemId: string, taskType: string): InboxTaskState | null {
   const db = getDatabase();
   const row = db
-    .prepare('SELECT * FROM inbox_task_state WHERE inbox_id = ? AND task_type = ?')
-    .get(inboxId, taskType) as InboxTaskState | undefined;
-  return row ?? null;
+    .prepare('SELECT * FROM inbox_task_state WHERE item_id = ? AND task_type = ?')
+    .get(itemId, taskType) as InboxTaskStateRecord | undefined;
+  return row ? recordToTaskState(row) : null;
 }
 
-export function getInboxTaskStatesForInboxIds(
-  inboxIds: string[]
+export function getInboxTaskStatesForItemIds(
+  itemIds: string[]
 ): Record<string, InboxTaskState[]> {
   const db = getDatabase();
-  if (inboxIds.length === 0) return {};
+  if (itemIds.length === 0) return {};
 
-  const placeholders = inboxIds.map(() => '?').join(',');
+  const placeholders = itemIds.map(() => '?').join(',');
   const rows = db
-    .prepare(`SELECT * FROM inbox_task_state WHERE inbox_id IN (${placeholders}) ORDER BY inbox_id, task_type`)
-    .all(...inboxIds) as InboxTaskState[];
+    .prepare(`SELECT * FROM inbox_task_state WHERE item_id IN (${placeholders}) ORDER BY item_id, task_type`)
+    .all(...itemIds) as InboxTaskStateRecord[];
 
   const grouped: Record<string, InboxTaskState[]> = {};
   for (const row of rows) {
-    if (!grouped[row.inbox_id]) grouped[row.inbox_id] = [];
-    grouped[row.inbox_id].push(row);
+    const state = recordToTaskState(row);
+    if (!grouped[state.itemId]) grouped[state.itemId] = [];
+    grouped[state.itemId].push(state);
   }
   return grouped;
 }

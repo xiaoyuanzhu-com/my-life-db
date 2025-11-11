@@ -288,7 +288,7 @@ export function enqueueUrlEnrichment(
 
   // Update projection for quick status checks
   upsertInboxTaskState({
-    inboxId,
+    itemId: inboxId,
     taskType: 'digest_url_crawl',
     status: 'to-do',
     taskId,

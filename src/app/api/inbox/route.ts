@@ -2,13 +2,99 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createInboxItem } from '@/lib/inbox/createItem';
 import { listItems } from '@/lib/db/items';
-import { listDigestsForItem } from '@/lib/db/digests';
+import { listDigestsForItem, getDigestByItemAndType } from '@/lib/db/digests';
+import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
+import { getStorageConfig } from '@/lib/config/storage';
+import path from 'path';
+import fs from 'fs/promises';
+import type { Item, InboxEnrichmentSummary, InboxStageStatusSummary, InboxDigestScreenshot } from '@/types';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 
 // Note: App initialization now happens in instrumentation.ts at server startup
+
+/**
+ * Build enrichment summary from item and task states
+ */
+function buildEnrichmentSummary(itemId: string, itemStatus: string): InboxEnrichmentSummary {
+  const taskStates = getInboxTaskStatesByItemId(itemId);
+
+  const stages: InboxStageStatusSummary[] = taskStates.map(ts => ({
+    taskType: ts.taskType,
+    status: ts.status === 'success' ? 'success' :
+            ts.status === 'in-progress' ? 'in-progress' :
+            ts.status === 'failed' ? 'failed' : 'to-do',
+    attempts: ts.attempts,
+    error: ts.error,
+    updatedAt: ts.updatedAt ? ts.updatedAt * 1000 : null, // Convert from Unix seconds to milliseconds
+  }));
+
+  const completedCount = stages.filter(s => s.status === 'success').length;
+  const hasFailures = stages.some(s => s.status === 'failed');
+
+  return {
+    inboxId: itemId,
+    overall: itemStatus as any,
+    stages,
+    hasFailures,
+    completedCount,
+    totalCount: stages.length,
+    crawlDone: stages.find(s => s.taskType === 'url-crawl')?.status === 'success' || false,
+    summaryDone: stages.find(s => s.taskType === 'summary')?.status === 'success' || false,
+    screenshotReady: stages.find(s => s.taskType === 'screenshot')?.status === 'success' || false,
+    tagsReady: stages.find(s => s.taskType === 'tags')?.status === 'success' || false,
+    slugReady: stages.find(s => s.taskType === 'slug')?.status === 'success' || false,
+    canRetry: hasFailures,
+  };
+}
+
+/**
+ * Get primary text from item files
+ */
+async function getPrimaryText(item: Item): Promise<string | null> {
+  const config = await getStorageConfig();
+  const dataDir = config.dataPath;
+
+  // Check for text.md file
+  const textFile = item.files?.find(f => f.name === 'text.md');
+  if (textFile) {
+    try {
+      const filePath = path.join(dataDir, item.path, item.isFolder ? 'text.md' : '');
+      const content = await fs.readFile(
+        item.isFolder ? filePath : path.join(dataDir, item.path),
+        'utf-8'
+      );
+      return content;
+    } catch {
+      return null;
+    }
+  }
+
+  // Check for summary digest
+  const summaryDigest = getDigestByItemAndType(item.id, 'summary');
+  if (summaryDigest?.content) {
+    return summaryDigest.content;
+  }
+
+  return null;
+}
+
+/**
+ * Get screenshot from digests
+ */
+function getDigestScreenshot(item: Item): InboxDigestScreenshot | null {
+  const screenshotDigest = getDigestByItemAndType(item.id, 'screenshot');
+  if (screenshotDigest?.sqlarName) {
+    return {
+      src: `/api/inbox/files/${encodeURIComponent(item.path)}/${encodeURIComponent('screenshot.png')}`,
+      mimeType: 'image/png',
+      filename: 'screenshot.png',
+    };
+  }
+  return null;
+}
 
 /**
  * GET /api/inbox
@@ -28,17 +114,33 @@ export async function GET(request: NextRequest) {
     // List items in inbox location
     const items = listItems({ location: 'inbox', status, limit, offset });
 
-    // Include digests for each item
-    const itemsWithDigests = items.map((item) => {
-      const digests = listDigestsForItem(item.id);
+    // Build enriched items for UI
+    const enrichedItems = await Promise.all(items.map(async (item) => {
+      const enrichment = buildEnrichmentSummary(item.id, item.status);
+      const primaryText = await getPrimaryText(item);
+      const digestScreenshot = getDigestScreenshot(item);
+      const slugDigest = getDigestByItemAndType(item.id, 'slug');
+
       return {
-        ...item,
-        digests,
+        id: item.id,
+        folderName: item.name,
+        type: item.rawType,
+        files: item.files || [],
+        status: item.status,
+        enrichedAt: null,
+        error: null,
+        aiSlug: slugDigest?.content || null,
+        schemaVersion: item.schemaVersion,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        enrichment,
+        primaryText,
+        digestScreenshot,
       };
-    });
+    }));
 
     return NextResponse.json({
-      items: itemsWithDigests,
+      items: enrichedItems,
       total: items.length,
     });
   } catch (error) {

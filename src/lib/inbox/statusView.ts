@@ -1,5 +1,5 @@
 import { getInboxItemById } from '@/lib/db/inbox';
-import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
+import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
 import type { EnrichmentStatus, InboxItem } from '@/types';
 import type { InboxTaskState } from '@/lib/db/inboxTaskState';
 
@@ -32,11 +32,11 @@ export function summarizeInboxEnrichment(
   states: InboxTaskState[]
 ): InboxStatusView {
   const stages: InboxStageStatus[] = states.map((s) => ({
-    taskType: s.task_type,
+    taskType: s.taskType,
     status: s.status,
     attempts: s.attempts,
     error: s.error,
-    updatedAt: s.updated_at,
+    updatedAt: s.updatedAt,
   }));
 
   // Derive booleans from files where possible
@@ -101,6 +101,6 @@ export function getInboxStatusView(inboxId: string): InboxStatusView | null {
   if (!inbox) return null;
 
   // Load stage states from projection
-  const states = getInboxTaskStates(inboxId);
+  const states = getInboxTaskStatesByItemId(inboxId);
   return summarizeInboxEnrichment(inbox, states);
 }

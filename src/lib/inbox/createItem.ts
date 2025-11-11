@@ -64,12 +64,12 @@ export async function createInboxItem(
   // Determine message type
   const rawType = determineRawType(text, allFiles);
 
-  // Single file case (no folder)
-  if (allFiles.length === 1 && allFiles[0].filename !== 'text.md') {
+  // Single file case (no folder) - includes single text.md
+  if (allFiles.length === 1) {
     return await createSingleFileItem(id, allFiles[0], rawType, now);
   }
 
-  // Multi-file or text case (folder)
+  // Multi-file case (folder)
   return await createFolderItem(id, allFiles, rawType, now);
 }
 

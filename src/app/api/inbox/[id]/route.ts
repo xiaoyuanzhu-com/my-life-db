@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import type { InboxFile } from '@/types';
-import { getInboxTaskStates } from '@/lib/db/inboxTaskState';
+import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
 import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
 import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
@@ -39,7 +39,7 @@ export async function GET(
     }
 
     // Attach enrichment summary
-    const states = getInboxTaskStates(id);
+    const states = getInboxTaskStatesByItemId(id);
     const enrichment = summarizeInboxEnrichment(item, states);
     const [primaryText, summary, tags, screenshot, slug] = await Promise.all([
       readInboxPrimaryText(item.folderName),

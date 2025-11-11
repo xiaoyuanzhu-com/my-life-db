@@ -89,13 +89,13 @@ async function writeSummaryFile(folderPath: string, summary: string): Promise<{ 
 export function enqueueUrlSummary(inboxId: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_summary']);
   const taskId = tq('digest_url_summary').add({
-    inboxId,
+    itemId: inboxId,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
   upsertInboxTaskState({
-    inboxId,
+    itemId: inboxId,
     taskType: 'digest_url_summary',
     status: 'to-do',
     taskId,
