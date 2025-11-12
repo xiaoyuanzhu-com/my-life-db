@@ -102,7 +102,6 @@ export async function createInboxEntry(
     status: 'pending',
     enrichedAt: null,
     error: null,
-    aiSlug: null,
     schemaVersion: 1,
     createdAt: now,
     updatedAt: now,

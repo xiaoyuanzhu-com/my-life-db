@@ -254,8 +254,8 @@ export interface InboxItem {
   enrichedAt: string | null; // ISO date string
   error: string | null;
 
-  // Item-level enrichment (not file-level)
-  aiSlug: string | null; // Generated slug for folder rename
+  // Generated slug (extracted from slug digest for quick access)
+  slug?: string | null;
 
   // Schema version (for evolution tracking)
   schemaVersion: number;

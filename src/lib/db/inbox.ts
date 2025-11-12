@@ -43,7 +43,7 @@ function itemFileToInboxFile(file: ItemFile): InboxFile {
 /**
  * Convert Item to InboxItem format
  */
-function itemToInboxItem(item: Item, aiSlug: string | null = null): InboxItem {
+function itemToInboxItem(item: Item): InboxItem {
   const folderName = item.path.replace(/^inbox\//, '');
 
   return {
@@ -54,7 +54,6 @@ function itemToInboxItem(item: Item, aiSlug: string | null = null): InboxItem {
     status: item.status,
     enrichedAt: null, // No longer stored in items table
     error: null, // No longer stored in items table
-    aiSlug,
     schemaVersion: item.schemaVersion,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -81,21 +80,6 @@ export function createInboxRecord(item: InboxItem): void {
     updatedAt: item.updatedAt,
     schemaVersion: item.schemaVersion,
   });
-
-  // Store aiSlug in digests table if present
-  if (item.aiSlug) {
-    const db = getDatabase();
-    db.prepare(`
-      INSERT OR REPLACE INTO digests (id, item_id, digest_type, status, content, created_at, updated_at)
-      VALUES (?, ?, 'slug', 'completed', ?, ?, ?)
-    `).run(
-      `${item.id}-slug`,
-      item.id,
-      item.aiSlug,
-      item.createdAt,
-      item.updatedAt
-    );
-  }
 }
 
 /**
@@ -105,13 +89,7 @@ export function getInboxItemById(id: string): InboxItem | null {
   const item = getItemById(id);
   if (!item || !item.path.startsWith('inbox/')) return null;
 
-  // Get aiSlug from digests table
-  const db = getDatabase();
-  const slugDigest = db
-    .prepare('SELECT content FROM digests WHERE item_id = ? AND digest_type = ?')
-    .get(id, 'slug') as { content: string } | undefined;
-
-  return itemToInboxItem(item, slugDigest?.content || null);
+  return itemToInboxItem(item);
 }
 
 /**
@@ -121,17 +99,11 @@ export function getInboxItemByFolderName(folderName: string): InboxItem | null {
   const item = getItemByPath(`inbox/${folderName}`);
   if (!item) return null;
 
-  // Get aiSlug from digests table
-  const db = getDatabase();
-  const slugDigest = db
-    .prepare('SELECT content FROM digests WHERE item_id = ? AND digest_type = ?')
-    .get(item.id, 'slug') as { content: string } | undefined;
-
-  return itemToInboxItem(item, slugDigest?.content || null);
+  return itemToInboxItem(item);
 }
 
 /**
- * Get an inbox item by generated slug (ai_slug)
+ * Get an inbox item by generated slug from digests table
  */
 export function getInboxItemBySlug(slug: string): InboxItem | null {
   if (!slug || slug.trim().length === 0) return null;
@@ -148,7 +120,7 @@ export function getInboxItemBySlug(slug: string): InboxItem | null {
   const item = getItemById(slugDigest.item_id);
   if (!item || !item.path.startsWith('inbox/')) return null;
 
-  return itemToInboxItem(item, slug);
+  return itemToInboxItem(item);
 }
 
 /**
@@ -166,15 +138,7 @@ export function listInboxItems(options?: {
     offset: options?.offset,
   });
 
-  // Get aiSlug for each item from digests table
-  const db = getDatabase();
-  return items.map(item => {
-    const slugDigest = db
-      .prepare('SELECT content FROM digests WHERE item_id = ? AND digest_type = ?')
-      .get(item.id, 'slug') as { content: string } | undefined;
-
-    return itemToInboxItem(item, slugDigest?.content || null);
-  });
+  return items.map(item => itemToInboxItem(item));
 }
 
 /**
@@ -198,6 +162,10 @@ export function updateInboxItem(
     itemUpdates.rawType = updates.type;
   }
 
+  if (updates.detectedType !== undefined) {
+    itemUpdates.detectedType = updates.detectedType;
+  }
+
   if (updates.files !== undefined) {
     itemUpdates.files = updates.files.map(inboxFileToItemFile);
   }
@@ -215,20 +183,8 @@ export function updateInboxItem(
     updateItem(id, itemUpdates);
   }
 
-  // Update aiSlug in digests table
-  if (updates.aiSlug !== undefined) {
-    const now = new Date().toISOString();
-    if (updates.aiSlug) {
-      db.prepare(`
-        INSERT OR REPLACE INTO digests (id, item_id, digest_type, status, content, created_at, updated_at)
-        VALUES (?, ?, 'slug', 'completed', ?, ?, ?)
-      `).run(`${id}-slug`, id, updates.aiSlug, now, now);
-    } else {
-      // Delete slug digest if set to null
-      db.prepare('DELETE FROM digests WHERE item_id = ? AND digest_type = ?')
-        .run(id, 'slug');
-    }
-  }
+  // Note: Slug digest (with full JSON payload) is managed by slug handler
+  // We no longer manipulate the digests table here
 
   // Note: enrichedAt and error are no longer stored in the database
   // They were used for tracking enrichment progress, which is now handled by inbox_task_state

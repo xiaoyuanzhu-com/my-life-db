@@ -115,7 +115,7 @@ export default function InboxPage() {
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {group.items.map((item) => {
-                    const pathSegment = encodeURIComponent(item.aiSlug ?? item.folderName);
+                    const pathSegment = encodeURIComponent(item.slug ?? item.folderName);
                     return (
                       <Link key={item.id} href={`/inbox/${pathSegment}`} className="group block">
                         <InboxItemCard item={item} />

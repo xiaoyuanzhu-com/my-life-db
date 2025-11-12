@@ -184,7 +184,6 @@ curl -X POST http://localhost:3000/api/tasks/worker/resume
 8. **Rename folder** - UUID → slug
 9. **Update inbox item**
    - Set `status: 'enriched'`
-   - Set `aiSlug`
    - Update `files` array with enrichment
 10. **Mark task success**
 

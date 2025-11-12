@@ -94,14 +94,14 @@ export function summarizeInboxEnrichment(
   );
   const summaryStage = stages.find((s) => s.taskType === 'digest_url_summary');
   const summaryDone = Boolean(
-    summaryStage?.status === 'success' || summaryDigest?.status === 'completed' || inbox.aiSlug
+    summaryStage?.status === 'success' || summaryDigest?.status === 'completed'
   );
   const screenshotReady = Boolean(screenshotDigest?.status === 'completed');
   const taggingStage = stages.find((s) => s.taskType === 'digest_url_tagging');
   const tagsReady = Boolean(taggingStage?.status === 'success' || tagsDigest?.status === 'completed');
   const slugStage = stages.find((s) => s.taskType === 'digest_url_slug');
   const slugReady = Boolean(
-    slugStage?.status === 'success' || slugDigest?.status === 'completed' || inbox.aiSlug
+    slugStage?.status === 'success' || slugDigest?.status === 'completed'
   );
 
   const totalCount = stages.length;

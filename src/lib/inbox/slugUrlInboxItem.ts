@@ -2,7 +2,7 @@ import 'server-only';
 
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
+import { getInboxItemById } from '@/lib/db/inbox';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
@@ -98,11 +98,6 @@ defineTaskHandler({
         error: null,
         createdAt: now,
         updatedAt: now,
-      });
-
-      // Update aiSlug field in item (for quick access)
-      updateInboxItem(itemId, {
-        aiSlug: result.slug,
       });
 
       log.info({ itemId, slug: result.slug, source }, 'slug generated and saved to database');

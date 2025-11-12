@@ -145,6 +145,17 @@ export async function GET(request: NextRequest) {
       const digestScreenshot = getDigestScreenshot(item);
       const slugDigest = getDigestByItemAndType(item.id, 'slug');
 
+      // Extract slug from digest JSON payload
+      let slug: string | null = null;
+      if (slugDigest?.content) {
+        try {
+          const payload = JSON.parse(slugDigest.content) as { slug?: string };
+          slug = payload.slug || null;
+        } catch {
+          // Invalid JSON, ignore
+        }
+      }
+
       return {
         id: item.id,
         folderName: item.name,
@@ -153,7 +164,7 @@ export async function GET(request: NextRequest) {
         status: item.status,
         enrichedAt: null,
         error: null,
-        aiSlug: slugDigest?.content || null,
+        slug,
         schemaVersion: item.schemaVersion,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,

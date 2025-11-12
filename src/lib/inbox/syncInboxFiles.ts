@@ -237,7 +237,6 @@ async function scanInboxFolders(): Promise<{
         status: 'pending',
         enrichedAt: null,
         error: null,
-        aiSlug: null,
         schemaVersion: CURRENT_SCHEMA_VERSION,
         createdAt,
         updatedAt,
