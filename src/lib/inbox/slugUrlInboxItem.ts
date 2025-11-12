@@ -6,7 +6,7 @@ import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
-import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSlug' });
 
@@ -50,19 +50,6 @@ export function enqueueUrlSlug(itemId: string, options?: DigestPipelinePayload):
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create or reset digest to pending status
-  const now = new Date().toISOString();
-  upsertPendingDigest({
-    id: `${itemId}-slug`,
-    itemId: itemId,
-    digestType: 'slug',
-    status: 'pending',
-    content: null,
-    sqlarName: null,
-    error: null,
-    createdAt: now,
-  });
-
   log.info({ itemId, taskId }, 'digest_url_slug task enqueued');
   return taskId;
 }
@@ -72,12 +59,6 @@ defineTaskHandler({
   module: 'InboxSlug',
   handler: async (input: { itemId: string } & DigestPipelinePayload) => {
     const { itemId } = input;
-
-    // Update digest status to in-progress
-    const slugDigest = getDigestByItemAndType(itemId, 'slug');
-    if (slugDigest) {
-      updateDigest(slugDigest.id, { status: 'in-progress', error: null });
-    }
 
     try {
       const item = getInboxItemById(itemId);
@@ -97,22 +78,27 @@ defineTaskHandler({
         throw new Error(message);
       }
 
-      // Update digest with completed status and content
+      // Create completed digest
+      const now = new Date().toISOString();
       const payload = {
         slug: result.slug,
         title: result.title,
         source,
         strategy: result.source,
-        generatedAt: new Date().toISOString(),
+        generatedAt: now,
       };
 
-      if (slugDigest) {
-        updateDigest(slugDigest.id, {
-          status: 'completed',
-          content: JSON.stringify(payload),
-          error: null,
-        });
-      }
+      createDigest({
+        id: `${itemId}-slug`,
+        itemId,
+        digestType: 'slug',
+        status: 'completed',
+        content: JSON.stringify(payload),
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      });
 
       // Update aiSlug field in item (for quick access)
       updateInboxItem(itemId, {
@@ -128,11 +114,20 @@ defineTaskHandler({
         source,
       };
     } catch (error) {
-      // Update digest status to failed
+      // Create failed digest
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (slugDigest) {
-        updateDigest(slugDigest.id, { status: 'failed', error: errorMessage });
-      }
+      const now = new Date().toISOString();
+      createDigest({
+        id: `${itemId}-slug`,
+        itemId,
+        digestType: 'slug',
+        status: 'failed',
+        content: null,
+        sqlarName: null,
+        error: errorMessage,
+        createdAt: now,
+        updatedAt: now,
+      });
       throw error;
     }
   },

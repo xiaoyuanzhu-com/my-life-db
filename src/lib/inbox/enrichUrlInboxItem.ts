@@ -14,7 +14,7 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { upsertPendingDigest, createDigest, updateDigest, deleteDigestsForItem, getDigestByItemAndType } from '../db/digests';
+import { createDigest, deleteDigestsForItem } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';
 
@@ -38,12 +38,6 @@ export async function enrichUrlInboxItem(
   payload: UrlEnrichmentPayload
 ): Promise<UrlEnrichmentResult> {
   const { itemId, url, pipeline, remainingStages } = payload;
-
-  // Update digest status to in-progress
-  const contentMdDigest = getDigestByItemAndType(itemId, 'content-md');
-  if (contentMdDigest) {
-    updateDigest(contentMdDigest.id, { status: 'in-progress', error: null });
-  }
 
   try {
     // 1. Get item
@@ -246,25 +240,19 @@ export async function enrichUrlInboxItem(
 
     log.error({ url, error: errorMessage }, 'url enrichment failed');
 
-    // Update digest status to failed
-    const digest = getDigestByItemAndType(itemId, 'content-md');
-    if (digest) {
-      updateDigest(digest.id, { status: 'failed', error: errorMessage });
-    } else {
-      // Create failed digest if it doesn't exist
-      const now = new Date().toISOString();
-      createDigest({
-        id: `${itemId}-content-md`,
-        itemId: itemId,
-        digestType: 'content-md',
-        status: 'failed',
-        content: null,
-        sqlarName: null,
-        error: errorMessage,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+    // Create failed digest
+    const now = new Date().toISOString();
+    createDigest({
+      id: `${itemId}-content-md`,
+      itemId: itemId,
+      digestType: 'content-md',
+      status: 'failed',
+      content: null,
+      sqlarName: null,
+      error: errorMessage,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // Update item with error
     updateInboxItem(itemId, {
@@ -295,19 +283,6 @@ export function enqueueUrlEnrichment(
   });
 
   log.info({ itemId, url, taskId }, 'url enrichment task enqueued');
-
-  // Create or reset digest to pending status
-  const now = new Date().toISOString();
-  upsertPendingDigest({
-    id: `${itemId}-content-md`,
-    itemId: itemId,
-    digestType: 'content-md',
-    status: 'pending',
-    content: null,
-    sqlarName: null,
-    error: null,
-    createdAt: now,
-  });
 
   return taskId;
 }

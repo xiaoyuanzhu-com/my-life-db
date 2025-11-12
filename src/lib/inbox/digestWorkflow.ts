@@ -6,41 +6,115 @@ import { promises as fs } from 'fs';
 import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
-import type { UrlDigestPipelineStage } from '@/types/digest-workflow';
+import type { UrlDigestPipelineStage, MessageType } from '@/types/digest-workflow';
 import { getLogger } from '@/lib/log/logger';
-import { deleteDigestsForItem, createDigest } from '@/lib/db/digests';
+import { deleteDigestsForItem } from '@/lib/db/digests';
 import { sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getDatabase } from '@/lib/db/connection';
 
-const log = getLogger({ module: 'UrlDigestWorkflow' });
+const log = getLogger({ module: 'DigestWorkflow' });
 
-const PIPELINE_ORDER: UrlDigestPipelineStage[] = ['summary', 'tagging', 'slug'];
+const URL_PIPELINE_ORDER: UrlDigestPipelineStage[] = ['summary', 'tagging', 'slug'];
 
-// Map of digest types
-const DIGEST_TYPES = ['content-md', 'summary', 'tags', 'slug'] as const;
-
-export async function startUrlDigestWorkflow(itemId: string): Promise<{ taskId: string }> {
+/**
+ * Generic digest workflow - detects type and routes to appropriate workflow
+ */
+export async function startDigestWorkflow(itemId: string): Promise<{ taskId: string }> {
   const item = getInboxItemById(itemId);
   if (!item) {
     throw new Error('Item not found');
   }
 
-  if (item.type !== 'url') {
-    throw new Error('URL digest workflow only supports URL items');
+  // Race condition protection: reject if already processing
+  if (item.status === 'enriching') {
+    throw new Error('Workflow already in progress for this item');
   }
 
-  const url = await resolveUrlForInboxItem(item.folderName);
+  // Detect type if not already detected
+  let detectedType = item.detectedType;
+  if (!detectedType) {
+    detectedType = await detectItemType(item.id, item.folderName);
+
+    // Update item with detected type
+    updateInboxItem(item.id, { detectedType });
+    log.info({ itemId: item.id, detectedType }, 'detected item type');
+  }
+
+  // Route to appropriate workflow based on type
+  switch (detectedType) {
+    case 'url':
+      return await startUrlDigestWorkflow(item.id, item.folderName);
+    default:
+      throw new Error(`No digest workflow available for type: ${detectedType}`);
+  }
+}
+
+/**
+ * Detect item type by reading content
+ */
+async function detectItemType(itemId: string, folderName: string): Promise<MessageType> {
+  // Read content from file
+  const content = await readItemContent(folderName);
+  if (!content) {
+    return 'text'; // Default
+  }
+
+  // Check for URL pattern (matches frontend)
+  const urlPattern = /^(https?:\/\/)/i;
+  if (urlPattern.test(content.trim())) {
+    return 'url';
+  }
+
+  return 'text';
+}
+
+/**
+ * Read text content from item
+ */
+async function readItemContent(folderName: string): Promise<string | null> {
+  const itemPath = path.join(INBOX_DIR, folderName);
+
+  // Check if this is a single file or a folder
+  let isFile = false;
+  try {
+    const stats = await fs.stat(itemPath);
+    isFile = stats.isFile();
+  } catch {
+    return null; // Path doesn't exist
+  }
+
+  if (isFile) {
+    // Single-file item: read the file directly
+    try {
+      return await fs.readFile(itemPath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  // Multi-file item: try reading text.md
+  try {
+    const textPath = path.join(itemPath, 'text.md');
+    return await fs.readFile(textPath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * URL-specific digest workflow
+ */
+async function startUrlDigestWorkflow(itemId: string, folderName: string): Promise<{ taskId: string }> {
+  const url = await resolveUrlForInboxItem(folderName);
   if (!url) {
     throw new Error('URL not found for item');
   }
 
-  await clearDigestArtifacts(item.id, item.folderName);
-
-  resetTaskStates(itemId);
+  await clearDigestArtifacts(itemId, folderName);
 
   const taskId = enqueueUrlEnrichment(itemId, url, {
     pipeline: true,
-    remainingStages: [...PIPELINE_ORDER],
+    remainingStages: [...URL_PIPELINE_ORDER],
   });
 
   log.info({ itemId, taskId }, 'url digest workflow started');
@@ -65,13 +139,6 @@ async function clearDigestArtifacts(
   });
 
   log.debug({ itemId }, 'cleared digest artifacts from database');
-}
-
-function resetTaskStates(itemId: string): void {
-  // Note: Individual enqueue functions will create pending digests
-  // This function is now a no-op since digest creation happens in enqueue functions
-  // Keeping it for backward compatibility
-  log.debug({ itemId }, 'resetTaskStates called (no-op - digests created by enqueue functions)');
 }
 
 async function resolveUrlForInboxItem(folderName: string): Promise<string | null> {

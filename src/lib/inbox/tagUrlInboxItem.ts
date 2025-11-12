@@ -7,7 +7,7 @@ import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
@@ -41,19 +41,6 @@ export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create or reset digest to pending status
-  const now = new Date().toISOString();
-  upsertPendingDigest({
-    id: `${itemId}-tags`,
-    itemId: itemId,
-    digestType: 'tags',
-    status: 'pending',
-    content: null,
-    sqlarName: null,
-    error: null,
-    createdAt: now,
-  });
-
   log.info({ itemId, taskId }, 'digest_url_tagging task enqueued');
   return taskId;
 }
@@ -63,12 +50,6 @@ defineTaskHandler({
   module: 'InboxTagging',
   handler: async (input: { itemId: string } & DigestPipelinePayload) => {
     const { itemId, pipeline, remainingStages } = input;
-
-    // Update digest status to in-progress
-    const tagsDigest = getDigestByItemAndType(itemId, 'tags');
-    if (tagsDigest) {
-      updateDigest(tagsDigest.id, { status: 'in-progress', error: null });
-    }
 
     try {
       const item = getInboxItemById(itemId);
@@ -100,19 +81,24 @@ defineTaskHandler({
         throw new Error(message);
       }
 
-      // Update digest with completed status and content
+      // Create completed digest
+      const now = new Date().toISOString();
       const tagsPayload = {
         tags: result.tags,
-        generatedAt: new Date().toISOString(),
+        generatedAt: now,
       };
 
-      if (tagsDigest) {
-        updateDigest(tagsDigest.id, {
-          status: 'completed',
-          content: JSON.stringify(tagsPayload),
-          error: null,
-        });
-      }
+      createDigest({
+        id: `${itemId}-tags`,
+        itemId,
+        digestType: 'tags',
+        status: 'completed',
+        content: JSON.stringify(tagsPayload),
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      });
 
       log.info({ itemId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
 
@@ -127,11 +113,20 @@ defineTaskHandler({
         source: source.source,
       };
     } catch (error) {
-      // Update digest status to failed
+      // Create failed digest
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (tagsDigest) {
-        updateDigest(tagsDigest.id, { status: 'failed', error: errorMessage });
-      }
+      const now = new Date().toISOString();
+      createDigest({
+        id: `${itemId}-tags`,
+        itemId,
+        digestType: 'tags',
+        status: 'failed',
+        content: null,
+        sqlarName: null,
+        error: errorMessage,
+        createdAt: now,
+        updatedAt: now,
+      });
       throw error;
     }
   },

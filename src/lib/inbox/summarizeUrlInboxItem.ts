@@ -8,7 +8,7 @@ import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });
 
@@ -43,19 +43,6 @@ export function enqueueUrlSummary(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create or reset digest to pending status
-  const now = new Date().toISOString();
-  upsertPendingDigest({
-    id: `${itemId}-summary`,
-    itemId: itemId,
-    digestType: 'summary',
-    status: 'pending',
-    content: null,
-    sqlarName: null,
-    error: null,
-    createdAt: now,
-  });
-
   log.info({ itemId, taskId }, 'digest_url_summary task enqueued');
   return taskId;
 }
@@ -65,12 +52,6 @@ defineTaskHandler({
   module: 'InboxSummary',
   handler: async (input: { itemId: string } & DigestPipelinePayload) => {
     const { itemId, pipeline, remainingStages } = input;
-
-    // Update digest status to in-progress
-    const summaryDigest = getDigestByItemAndType(itemId, 'summary');
-    if (summaryDigest) {
-      updateDigest(summaryDigest.id, { status: 'in-progress', error: null });
-    }
 
     try {
       const item = getInboxItemById(itemId);
@@ -105,14 +86,19 @@ defineTaskHandler({
         throw new Error(message);
       }
 
-      // Update digest with completed status and content
-      if (summaryDigest) {
-        updateDigest(summaryDigest.id, {
-          status: 'completed',
-          content: summary,
-          error: null,
-        });
-      }
+      // Create completed digest
+      const now = new Date().toISOString();
+      createDigest({
+        id: `${itemId}-summary`,
+        itemId,
+        digestType: 'summary',
+        status: 'completed',
+        content: summary,
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      });
 
       log.info({ itemId, source: source.source }, 'summary generated and saved to database');
 
@@ -126,11 +112,20 @@ defineTaskHandler({
         source: source.source,
       };
     } catch (error) {
-      // Update digest status to failed
+      // Create failed digest
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (summaryDigest) {
-        updateDigest(summaryDigest.id, { status: 'failed', error: errorMessage });
-      }
+      const now = new Date().toISOString();
+      createDigest({
+        id: `${itemId}-summary`,
+        itemId,
+        digestType: 'summary',
+        status: 'failed',
+        content: null,
+        sqlarName: null,
+        error: errorMessage,
+        createdAt: now,
+        updatedAt: now,
+      });
       throw error;
     }
   },

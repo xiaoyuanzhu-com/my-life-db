@@ -64,8 +64,11 @@ export async function createInboxItem(
   // Add user files
   allFiles.push(...files);
 
-  // Determine message type
+  // Determine raw type (MIME-based only)
   const rawType = determineRawType(text, allFiles);
+
+  // Note: detected_type is set to null on creation
+  // Type detection happens later in digest workflow
 
   // Single file case (no folder) - includes single text.md
   if (allFiles.length === 1) {
@@ -115,7 +118,7 @@ async function createSingleFileItem(
     id,
     name: uniqueName,
     rawType,
-    detectedType: null,
+    detectedType: null, // Set during digest workflow
     isFolder: false,
     path: relativePath,
     files: [itemFile],
@@ -186,7 +189,7 @@ async function createFolderItem(
     id,
     name: folderName,
     rawType,
-    detectedType: null,
+    detectedType: null, // Set during digest workflow
     isFolder: true,
     path: relativePath,
     files: itemFiles,
@@ -203,8 +206,9 @@ async function createFolderItem(
 }
 
 /**
- * Determine raw type based on content and files
- * Note: detected_type will be set later by AI (e.g., 'url', 'note', 'todo')
+ * Determine raw type based on content and files (MIME-based types only)
+ * This should return physical/MIME types: text, image, audio, video, pdf, mixed
+ * Semantic types (url, note, todo) belong in detected_type
  */
 function determineRawType(
   text: string | undefined,
@@ -219,13 +223,9 @@ function determineRawType(
     return 'text'; // Default
   }
 
-  // Only text, no files
+  // Only text, no files - always return 'text' (not 'url')
+  // URL detection belongs in detected_type
   if (hasText && !hasFiles) {
-    // Check if it's a URL
-    const urlPattern = /^https?:\/\//i;
-    if (urlPattern.test(text!.trim())) {
-      return 'url';
-    }
     return 'text';
   }
 

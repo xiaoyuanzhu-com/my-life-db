@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { startUrlDigestWorkflow } from '@/lib/inbox/digestWorkflow';
+import { startDigestWorkflow } from '@/lib/inbox/digestWorkflow';
 import { getInboxItemById } from '@/lib/db/inbox';
 import { getLogger } from '@/lib/log/logger';
 
@@ -23,16 +23,14 @@ export async function POST(
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }
 
-    if (item.type !== 'url') {
-      return NextResponse.json({ error: 'Digest workflow not available for this item type' }, { status: 400 });
-    }
-
-    const { taskId } = await startUrlDigestWorkflow(id);
+    // Start digest workflow (type detection happens inside)
+    const { taskId } = await startDigestWorkflow(id);
 
     return NextResponse.json({ success: true, taskId });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     log.error({ err: error }, 'failed to start digest workflow');
-    return NextResponse.json({ error: 'Failed to start digest workflow' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
