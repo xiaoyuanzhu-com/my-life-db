@@ -5,7 +5,8 @@ import { promises as fs } from 'fs';
 
 import { DATA_ROOT } from '@/lib/fs/storage';
 import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
-import type { UrlDigestPipelineStage, MessageType } from '@/types/digest-workflow';
+import type { UrlDigestPipelineStage } from '@/types/digest-workflow';
+import type { MessageType } from '@/types';
 import { getLogger } from '@/lib/log/logger';
 import { deleteDigestsForPath } from '@/lib/db/digests';
 import { sqlarDeletePrefix } from '@/lib/db/sqlar';

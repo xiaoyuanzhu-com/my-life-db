@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileX } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { FileX, Download } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 
 interface FileViewerProps {
   filePath: string;

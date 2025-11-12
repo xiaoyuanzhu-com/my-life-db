@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { FileTree } from '@/components/library/FileTree';
 import { FileViewer } from '@/components/library/FileViewer';
 import { FileTabs } from '@/components/library/FileTabs';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 
 export interface OpenedFile {
   path: string;
