@@ -17,6 +17,7 @@ import migration014 from './014_fix_search_documents_fk';
 import migration015 from './015_add_content_type_to_search_documents';
 import migration016 from './016_refactor_to_items';
 import migration017 from './017_add_error_to_digests';
+import migration018 from './018_refactor_to_file_centric';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -47,6 +48,7 @@ export const migrations: Migration[] = [
   migration015,
   migration016,
   migration017,
+  migration018,
 ];
 
 /**

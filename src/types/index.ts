@@ -381,11 +381,11 @@ export interface Item {
 }
 
 /**
- * Digest - AI-generated content for an item
+ * Digest - AI-generated content for a file
  */
 export interface Digest {
-  id: string; // UUID
-  itemId: string; // FK to items.id
+  id: string; // Digest ID
+  filePath: string; // Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder')
   digestType: string; // 'summary', 'tags', 'slug', 'content-md', 'content-html', 'screenshot'
   status: EnrichmentStatus; // Processing status
   content: string | null; // Text content (summary, tags JSON, slug JSON)
@@ -396,28 +396,11 @@ export interface Digest {
 }
 
 /**
- * Database row for items table
- */
-export interface ItemRecord {
-  id: string;
-  name: string;
-  raw_type: string;
-  detected_type: string | null;
-  is_folder: number; // SQLite boolean (0 or 1)
-  path: string;
-  files: string | null; // JSON string
-  status: string;
-  created_at: string;
-  updated_at: string;
-  schema_version: number;
-}
-
-/**
  * Database row for digests table
  */
 export interface DigestRecord {
   id: string;
-  item_id: string;
+  file_path: string;
   digest_type: string;
   status: string;
   content: string | null;
