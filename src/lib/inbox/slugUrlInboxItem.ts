@@ -6,7 +6,7 @@ import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
-import { createDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSlug' });
 
@@ -50,9 +50,9 @@ export function enqueueUrlSlug(itemId: string, options?: DigestPipelinePayload):
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create pending digest for status tracking
+  // Create or reset digest to pending status
   const now = new Date().toISOString();
-  createDigest({
+  upsertPendingDigest({
     id: `${itemId}-slug`,
     itemId: itemId,
     digestType: 'slug',
@@ -61,7 +61,6 @@ export function enqueueUrlSlug(itemId: string, options?: DigestPipelinePayload):
     sqlarName: null,
     error: null,
     createdAt: now,
-    updatedAt: now,
   });
 
   log.info({ itemId, taskId }, 'digest_url_slug task enqueued');

@@ -8,7 +8,7 @@ import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });
 
@@ -43,9 +43,9 @@ export function enqueueUrlSummary(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create pending digest for status tracking
+  // Create or reset digest to pending status
   const now = new Date().toISOString();
-  createDigest({
+  upsertPendingDigest({
     id: `${itemId}-summary`,
     itemId: itemId,
     digestType: 'summary',
@@ -54,7 +54,6 @@ export function enqueueUrlSummary(itemId: string, options?: DigestPipelinePayloa
     sqlarName: null,
     error: null,
     createdAt: now,
-    updatedAt: now,
   });
 
   log.info({ itemId, taskId }, 'digest_url_summary task enqueued');

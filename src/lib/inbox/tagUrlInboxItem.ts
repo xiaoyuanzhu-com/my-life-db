@@ -7,7 +7,7 @@ import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { upsertPendingDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
@@ -41,9 +41,9 @@ export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  // Create pending digest for status tracking
+  // Create or reset digest to pending status
   const now = new Date().toISOString();
-  createDigest({
+  upsertPendingDigest({
     id: `${itemId}-tags`,
     itemId: itemId,
     digestType: 'tags',
@@ -52,7 +52,6 @@ export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayloa
     sqlarName: null,
     error: null,
     createdAt: now,
-    updatedAt: now,
   });
 
   log.info({ itemId, taskId }, 'digest_url_tagging task enqueued');

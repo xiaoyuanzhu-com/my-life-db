@@ -29,6 +29,39 @@ export function createDigest(digest: Digest): void {
 }
 
 /**
+ * Create or reset a digest to pending status (for enqueue operations)
+ * If digest exists, resets it to pending state. If not, creates it.
+ */
+export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
+  const db = getDatabase();
+
+  const stmt = db.prepare(`
+    INSERT INTO digests (
+      id, item_id, digest_type, status, content, sqlar_name, error,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = 'pending',
+      error = NULL,
+      updated_at = ?
+  `);
+
+  const now = new Date().toISOString();
+  stmt.run(
+    digest.id,
+    digest.itemId,
+    digest.digestType,
+    digest.status,
+    digest.content,
+    digest.sqlarName,
+    digest.error,
+    digest.createdAt,
+    now,
+    now  // updated_at for the UPDATE clause
+  );
+}
+
+/**
  * Get a digest by ID
  */
 export function getDigestById(id: string): Digest | null {

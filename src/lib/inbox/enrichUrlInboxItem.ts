@@ -14,7 +14,7 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, updateDigest, deleteDigestsForItem, getDigestByItemAndType } from '../db/digests';
+import { upsertPendingDigest, createDigest, updateDigest, deleteDigestsForItem, getDigestByItemAndType } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';
 
@@ -296,9 +296,9 @@ export function enqueueUrlEnrichment(
 
   log.info({ itemId, url, taskId }, 'url enrichment task enqueued');
 
-  // Create pending digest for status tracking
+  // Create or reset digest to pending status
   const now = new Date().toISOString();
-  createDigest({
+  upsertPendingDigest({
     id: `${itemId}-content-md`,
     itemId: itemId,
     digestType: 'content-md',
@@ -307,7 +307,6 @@ export function enqueueUrlEnrichment(
     sqlarName: null,
     error: null,
     createdAt: now,
-    updatedAt: now,
   });
 
   return taskId;
