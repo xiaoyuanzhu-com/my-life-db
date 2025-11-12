@@ -1,6 +1,6 @@
-import { getInboxItemById } from '@/lib/db/inbox';
-import { listDigestsForItem } from '@/lib/db/digests';
-import type { EnrichmentStatus, InboxItem, Digest } from '@/types';
+import { getFileByPath } from '@/lib/db/files';
+import { listDigestsForPath } from '@/lib/db/digests';
+import type { EnrichmentStatus, Digest } from '@/types';
 
 export interface InboxStageStatus {
   taskType: string;
@@ -9,8 +9,8 @@ export interface InboxStageStatus {
   updatedAt: string | null;
 }
 
-export interface InboxStatusView {
-  itemId: string;
+export interface DigestStatusView {
+  filePath: string;
   overall: EnrichmentStatus;
   stages: InboxStageStatus[];
   hasFailures: boolean;
@@ -38,9 +38,9 @@ function mapDigestStatus(status: Digest['status']): InboxStageStatus['status'] {
   switch (status) {
     case 'pending':
       return 'to-do';
-    case 'in-progress':
+    case 'enriching':
       return 'in-progress';
-    case 'completed':
+    case 'enriched':
       return 'success';
     case 'failed':
       return 'failed';
@@ -49,10 +49,32 @@ function mapDigestStatus(status: Digest['status']): InboxStageStatus['status'] {
   }
 }
 
-export function summarizeInboxEnrichment(
-  inbox: InboxItem,
+/**
+ * Derive overall enrichment status from digest statuses
+ */
+function deriveOverallStatus(digests: Digest[]): EnrichmentStatus {
+  if (digests.length === 0) return 'pending';
+
+  const hasInProgress = digests.some(d => d.status === 'enriching');
+  const hasFailed = digests.some(d => d.status === 'failed');
+  const allEnriched = digests.every(d => d.status === 'enriched');
+
+  if (hasFailed) return 'failed';
+  if (hasInProgress) return 'enriching';
+  if (allEnriched) return 'enriched';
+  return 'pending';
+}
+
+/**
+ * Summarize digest enrichment status for a file
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
+ * @param digests - List of digests for this file
+ */
+export function summarizeDigestEnrichment(
+  filePath: string,
   digests: Digest[]
-): InboxStatusView {
+): DigestStatusView {
   // Convert digests to stages
   const stages: InboxStageStatus[] = digests
     .filter((d) => DIGEST_TYPE_TO_TASK_TYPE[d.digestType])
@@ -90,18 +112,18 @@ export function summarizeInboxEnrichment(
 
   const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
   const crawlDone = Boolean(
-    crawlStage?.status === 'success' || contentMdDigest?.status === 'completed'
+    crawlStage?.status === 'success' || contentMdDigest?.status === 'enriched'
   );
   const summaryStage = stages.find((s) => s.taskType === 'digest_url_summary');
   const summaryDone = Boolean(
-    summaryStage?.status === 'success' || summaryDigest?.status === 'completed'
+    summaryStage?.status === 'success' || summaryDigest?.status === 'enriched'
   );
-  const screenshotReady = Boolean(screenshotDigest?.status === 'completed');
+  const screenshotReady = Boolean(screenshotDigest?.status === 'enriched');
   const taggingStage = stages.find((s) => s.taskType === 'digest_url_tagging');
-  const tagsReady = Boolean(taggingStage?.status === 'success' || tagsDigest?.status === 'completed');
+  const tagsReady = Boolean(taggingStage?.status === 'success' || tagsDigest?.status === 'enriched');
   const slugStage = stages.find((s) => s.taskType === 'digest_url_slug');
   const slugReady = Boolean(
-    slugStage?.status === 'success' || slugDigest?.status === 'completed'
+    slugStage?.status === 'success' || slugDigest?.status === 'enriched'
   );
 
   const totalCount = stages.length;
@@ -110,8 +132,8 @@ export function summarizeInboxEnrichment(
   const canRetry = hasFailures;
 
   return {
-    itemId: inbox.id,
-    overall: inbox.status,
+    filePath,
+    overall: deriveOverallStatus(digests),
     stages,
     hasFailures,
     completedCount,
@@ -125,11 +147,16 @@ export function summarizeInboxEnrichment(
   };
 }
 
-export function getInboxStatusView(itemId: string): InboxStatusView | null {
-  const inbox = getInboxItemById(itemId);
-  if (!inbox) return null;
+/**
+ * Get digest status view for a file path
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
+ */
+export function getDigestStatusView(filePath: string): DigestStatusView | null {
+  const file = getFileByPath(filePath);
+  if (!file) return null;
 
-  // Load digests directly from digests table
-  const digests = listDigestsForItem(itemId);
-  return summarizeInboxEnrichment(inbox, digests);
+  // Load digests for this file
+  const digests = listDigestsForPath(filePath);
+  return summarizeDigestEnrichment(filePath, digests);
 }
