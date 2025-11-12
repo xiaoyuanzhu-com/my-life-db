@@ -1,10 +1,8 @@
 import 'server-only';
 /**
- * URL Inbox Item Enricher - Orchestrates URL crawling and enrichment
+ * URL Enricher - Orchestrates URL crawling and enrichment
  */
 
-import { generateId } from '../fs/storage';
-import { getInboxItemById, updateInboxItem } from '../db/inbox';
 import { crawlUrlDigest, type UrlCrawlOutput } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { tq } from '../task-queue';
@@ -14,14 +12,15 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, deleteDigestsForItem } from '../db/digests';
+import { createDigest, deleteDigestsForPath, generateDigestId } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';
+import { getFileByPath } from '../db/files';
 
 const log = getLogger({ module: 'URLEnricher' });
 
 export interface UrlEnrichmentPayload extends DigestPipelinePayload {
-  itemId: string;
+  filePath: string;
   url: string;
 }
 
@@ -31,26 +30,20 @@ export interface UrlEnrichmentResult {
 }
 
 /**
- * Enrich a URL item (task handler)
+ * Enrich a URL file (task handler)
  * This function is registered as a task handler and executed by the worker
  */
-export async function enrichUrlInboxItem(
+export async function enrichUrlFile(
   payload: UrlEnrichmentPayload
 ): Promise<UrlEnrichmentResult> {
-  const { itemId, url, pipeline, remainingStages } = payload;
+  const { filePath, url, pipeline, remainingStages } = payload;
 
   try {
-    // 1. Get item
-    const item = getInboxItemById(itemId);
-    if (!item) {
-      throw new Error(`Item ${itemId} not found`);
+    // 1. Verify file exists
+    const file = getFileByPath(filePath);
+    if (!file) {
+      throw new Error(`File ${filePath} not found`);
     }
-
-    // 2. Update status to enriching
-    updateInboxItem(itemId, {
-      status: 'enriching',
-      enrichedAt: new Date().toISOString(),
-    });
 
     // 3. Crawl URL
     log.info({ url }, 'crawling url');
@@ -115,43 +108,44 @@ export async function enrichUrlInboxItem(
     const db = getDatabase();
     const now = new Date().toISOString();
 
-    // Clear existing digests for this item
-    deleteDigestsForItem(itemId);
-    sqlarDeletePrefix(db, `${itemId}/`);
+    // Clear existing digests for this file
+    deleteDigestsForPath(filePath);
+    const pathHash = Buffer.from(filePath).toString('base64url').slice(0, 12);
+    sqlarDeletePrefix(db, `${pathHash}/`);
 
     // Save content.md (markdown) to database as text digest
     if (processed.markdown && processed.markdown.trim().length > 0) {
       createDigest({
-        id: `${itemId}-content-md`,
-        itemId: itemId,
+        id: generateDigestId(filePath, 'content-md'),
+        filePath,
         digestType: 'content-md',
-        status: 'completed',
+        status: 'enriched',
         content: processed.markdown,
         sqlarName: null,
         error: null,
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ itemId }, 'saved content.md digest');
+      log.debug({ filePath }, 'saved content.md digest');
     }
 
     // Save content.html to SQLAR (binary storage with compression)
     if (html && html.trim().length > 0) {
-      const sqlarName = `${itemId}/content-html/content.html`;
+      const sqlarName = `${pathHash}/content-html/content.html`;
       await sqlarStore(db, sqlarName, html);
 
       createDigest({
-        id: `${itemId}-content-html`,
-        itemId: itemId,
+        id: generateDigestId(filePath, 'content-html'),
+        filePath,
         digestType: 'content-html',
-        status: 'completed',
+        status: 'enriched',
         content: null,
         sqlarName,
         error: null,
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ itemId, sqlarName }, 'saved content.html digest to SQLAR');
+      log.debug({ filePath, sqlarName }, 'saved content.html digest to SQLAR');
     }
 
     // Save screenshot to SQLAR
@@ -161,15 +155,15 @@ export async function enrichUrlInboxItem(
         const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
         if (screenshotBuffer.length > 0) {
           const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
-          const sqlarName = `${itemId}/screenshot/screenshot.${screenshotExtension}`;
+          const sqlarName = `${pathHash}/screenshot/screenshot.${screenshotExtension}`;
 
           await sqlarStore(db, sqlarName, screenshotBuffer);
 
           createDigest({
-            id: `${itemId}-screenshot`,
-            itemId: itemId,
+            id: generateDigestId(filePath, 'screenshot'),
+            filePath,
             digestType: 'screenshot',
-            status: 'completed',
+            status: 'enriched',
             content: null,
             sqlarName,
             error: null,
@@ -177,7 +171,7 @@ export async function enrichUrlInboxItem(
             updatedAt: now,
           });
           log.info({
-            itemId,
+            filePath,
             sqlarName,
             bufferSize: screenshotBuffer.length,
             extension: screenshotExtension,
@@ -209,10 +203,10 @@ export async function enrichUrlInboxItem(
     };
 
     createDigest({
-      id: `${itemId}-url-metadata`,
-      itemId: itemId,
+      id: generateDigestId(filePath, 'url-metadata'),
+      filePath,
       digestType: 'url-metadata',
-      status: 'completed',
+      status: 'enriched',
       content: JSON.stringify(urlMetadata),
       sqlarName: null,
       error: null,
@@ -220,31 +214,24 @@ export async function enrichUrlInboxItem(
       updatedAt: now,
     });
 
-    // 6. Update item status
-    updateInboxItem(itemId, {
-      status: 'enriched',
-      enrichedAt: new Date().toISOString(),
-      error: null,
-    });
-
-    log.info({ url }, 'url enriched successfully');
+    log.info({ url, filePath }, 'url enriched successfully');
 
     if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
       const [nextStage, ...rest] = remainingStages;
-      queueNextStage(itemId, nextStage, rest);
+      queueNextStage(filePath, nextStage, rest);
     }
 
     return { success: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    log.error({ url, error: errorMessage }, 'url enrichment failed');
+    log.error({ url, filePath, error: errorMessage }, 'url enrichment failed');
 
     // Create failed digest
     const now = new Date().toISOString();
     createDigest({
-      id: `${itemId}-content-md`,
-      itemId: itemId,
+      id: generateDigestId(filePath, 'content-md'),
+      filePath,
       digestType: 'content-md',
       status: 'failed',
       content: null,
@@ -254,13 +241,6 @@ export async function enrichUrlInboxItem(
       updatedAt: now,
     });
 
-    // Update item with error
-    updateInboxItem(itemId, {
-      status: 'failed',
-      error: errorMessage,
-      enrichedAt: new Date().toISOString(),
-    });
-
     throw new Error(errorMessage);
   }
 }
@@ -268,21 +248,23 @@ export async function enrichUrlInboxItem(
 /**
  * Enqueue URL enrichment task
  * This is what you call to trigger URL enrichment
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export function enqueueUrlEnrichment(
-  itemId: string,
+  filePath: string,
   url: string,
   options?: DigestPipelinePayload
 ): string {
   ensureTaskRuntimeReady(['digest_url_crawl']);
   const taskId = tq('digest_url_crawl').add({
-    itemId,
+    filePath,
     url,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
-  log.info({ itemId, url, taskId }, 'url enrichment task enqueued');
+  log.info({ filePath, url, taskId }, 'url enrichment task enqueued');
 
   return taskId;
 }
@@ -291,27 +273,27 @@ export function enqueueUrlEnrichment(
 defineTaskHandler({
   type: 'digest_url_crawl',
   module: 'URLEnricher',
-  handler: enrichUrlInboxItem,
+  handler: enrichUrlFile,
 });
 
 function queueNextStage(
-  itemId: string,
+  filePath: string,
   nextStage: UrlDigestPipelineStage,
   remaining: UrlDigestPipelineStage[]
 ): void {
   switch (nextStage) {
     case 'summary':
-      enqueueUrlSummary(itemId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlSummary(filePath, { pipeline: true, remainingStages: remaining });
       break;
     case 'tagging':
       // Should not happen directly after crawl, but guard anyway
-      enqueueUrlTagging(itemId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlTagging(filePath, { pipeline: true, remainingStages: remaining });
       break;
     case 'slug':
-      enqueueUrlSlug(itemId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlSlug(filePath, { pipeline: true, remainingStages: remaining });
       break;
     default:
-      log.warn({ itemId, stage: nextStage }, 'unknown next stage in url digest pipeline');
+      log.warn({ filePath, stage: nextStage }, 'unknown next stage in url digest pipeline');
   }
 }
 
