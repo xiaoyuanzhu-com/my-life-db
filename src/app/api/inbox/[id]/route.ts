@@ -1,17 +1,16 @@
 // API route for individual inbox item operations
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
-import { getInboxItemById, deleteInboxItem, updateInboxItem } from '@/lib/db/inbox';
-import { INBOX_DIR } from '@/lib/fs/storage';
+import { getFileByPath, upsertFileRecord, deleteFileRecord } from '@/lib/db/files';
+import { deleteDigestsForPath, listDigestsForPath } from '@/lib/db/digests';
+import { getStorageConfig } from '@/lib/config/storage';
 import { getUniqueFilename } from '@/lib/fs/fileDeduplication';
 import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import type { InboxFile } from '@/types';
-import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
-import { summarizeInboxEnrichment } from '@/lib/inbox/statusView';
+import { getDigestStatusView } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
-import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
+import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digestArtifacts';
 
 const log = getLogger({ module: 'ApiInboxById' });
 
@@ -21,7 +20,7 @@ interface RouteContext {
 
 /**
  * GET /api/inbox/[id]
- * Get a single inbox item by ID
+ * Get a single inbox item by path
  */
 export async function GET(
   request: NextRequest,
@@ -29,28 +28,33 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const item = getInboxItemById(id);
+    const filePath = `inbox/${id}`;
+    const file = getFileByPath(filePath);
 
-    if (!item) {
+    if (!file) {
       return NextResponse.json(
         { error: 'Inbox item not found' },
         { status: 404 }
       );
     }
 
-    // Attach enrichment summary
-    const states = getInboxTaskStatesByItemId(id);
-    const enrichment = summarizeInboxEnrichment(item, states);
+    // Attach enrichment summary and digest artifacts
+    const enrichment = getDigestStatusView(filePath);
     const [primaryText, summary, tags, screenshot, slug] = await Promise.all([
-      readInboxPrimaryText(item.folderName),
-      readInboxDigestSummary(item.folderName),
-      readInboxDigestTags(item.folderName),
-      readInboxDigestScreenshot(item.folderName),
-      readInboxDigestSlug(item.folderName),
+      readPrimaryText(filePath),
+      readDigestSummary(filePath),
+      readDigestTags(filePath),
+      readDigestScreenshot(filePath),
+      readDigestSlug(filePath),
     ]);
 
     return NextResponse.json({
-      ...item,
+      path: file.path,
+      name: file.name,
+      isFolder: file.isFolder,
+      files: [], // Files are on disk
+      createdAt: file.createdAt,
+      updatedAt: file.modifiedAt,
       enrichment,
       primaryText,
       digest: {
@@ -59,7 +63,7 @@ export async function GET(
         screenshot,
         slug,
       },
-    } as unknown);
+    });
   } catch (error) {
     log.error({ err: error }, 'fetch inbox item failed');
     return NextResponse.json(
@@ -79,22 +83,23 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    const item = getInboxItemById(id);
+    const filePath = `inbox/${id}`;
+    const file = getFileByPath(filePath);
 
-    if (!item) {
+    if (!file) {
       return NextResponse.json(
         { error: 'Inbox item not found' },
         { status: 404 }
       );
     }
 
+    const config = await getStorageConfig();
     const formData = await request.formData();
     const text = formData.get('text') as string | null;
     const removeFiles = formData.getAll('removeFiles') as string[];
     const newFileEntries = formData.getAll('files') as File[];
 
-    const itemDir = path.join(INBOX_DIR, item.folderName);
-    let updatedFiles = [...item.files];
+    const itemDir = path.join(config.dataPath, filePath);
 
     // 1. Handle text update
     if (text !== null) {
@@ -103,85 +108,52 @@ export async function PUT(
       if (text.trim().length === 0) {
         // Remove text.md if text is empty
         await fs.rm(textFilePath, { force: true });
-        updatedFiles = updatedFiles.filter(f => f.filename !== 'text.md');
       } else {
         // Update or create text.md
         const textBuffer = Buffer.from(text, 'utf-8');
         await fs.writeFile(textFilePath, textBuffer);
-
-        const hash = createHash('sha256').update(textBuffer).digest('hex');
-        const existingTextFile = updatedFiles.find(f => f.filename === 'text.md');
-
-        if (existingTextFile) {
-          // Update existing
-          existingTextFile.size = textBuffer.length;
-          existingTextFile.hash = hash;
-        } else {
-          // Add new
-          updatedFiles.push({
-            filename: 'text.md',
-            size: textBuffer.length,
-            mimeType: 'text/markdown',
-            type: 'text',
-            hash,
-          });
-        }
       }
     }
 
     // 2. Handle file removal
     if (removeFiles.length > 0) {
       for (const filename of removeFiles) {
-        const filePath = path.join(itemDir, filename);
-        await fs.rm(filePath, { force: true });
-        updatedFiles = updatedFiles.filter(f => f.filename !== filename);
+        const filePathToRemove = path.join(itemDir, filename);
+        await fs.rm(filePathToRemove, { force: true });
       }
     }
 
     // 3. Handle new file additions
     if (newFileEntries.length > 0) {
-      for (const file of newFileEntries) {
-        if (file.size === 0) continue;
+      for (const fileEntry of newFileEntries) {
+        if (fileEntry.size === 0) continue;
 
-        const buffer = Buffer.from(await file.arrayBuffer());
+        const buffer = Buffer.from(await fileEntry.arrayBuffer());
 
         // Get unique filename
-        const uniqueFilename = await getUniqueFilename(itemDir, file.name);
-        const filePath = path.join(itemDir, uniqueFilename);
+        const uniqueFilename = await getUniqueFilename(itemDir, fileEntry.name);
+        const filePathToWrite = path.join(itemDir, uniqueFilename);
 
         // Save file
-        await fs.writeFile(filePath, buffer);
-
-        // Compute hash
-        const hash = createHash('sha256').update(buffer).digest('hex');
-
-        // Determine file type
-        let fileType: InboxFile['type'] = 'other';
-        if (file.type.startsWith('image/')) fileType = 'image';
-        else if (file.type.startsWith('audio/')) fileType = 'audio';
-        else if (file.type.startsWith('video/')) fileType = 'video';
-        else if (file.type === 'application/pdf') fileType = 'pdf';
-
-        // Add to files array
-        updatedFiles.push({
-          filename: uniqueFilename,
-          size: buffer.length,
-          mimeType: file.type,
-          type: fileType,
-          hash,
-        });
+        await fs.writeFile(filePathToWrite, buffer);
       }
     }
 
-    // 4. Update database
-    updateInboxItem(id, {
-      files: updatedFiles,
-      updatedAt: new Date().toISOString(),
+    // 4. Update database file record with new modified time
+    const stats = await fs.stat(itemDir);
+    upsertFileRecord({
+      path: filePath,
+      name: file.name,
+      isFolder: file.isFolder,
+      mimeType: file.mimeType,
+      size: file.size,
+      hash: file.hash,
+      modifiedAt: stats.mtime.toISOString(),
     });
 
-    // 5. Return updated item
-    const updatedItem = getInboxItemById(id);
-    return NextResponse.json(updatedItem);
+    // 5. Return updated file
+    const updatedFile = getFileByPath(filePath);
+    return NextResponse.json(updatedFile);
 
   } catch (error) {
     log.error({ err: error }, 'update inbox item failed');
@@ -202,21 +174,25 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const item = getInboxItemById(id);
+    const filePath = `inbox/${id}`;
+    const file = getFileByPath(filePath);
 
-    if (!item) {
+    if (!file) {
       return NextResponse.json(
         { error: 'Inbox item not found' },
         { status: 404 }
       );
     }
 
-    // Delete files from filesystem
-    const itemDir = path.join(INBOX_DIR, item.folderName);
-    await fs.rm(itemDir, { recursive: true, force: true });
+    const config = await getStorageConfig();
 
-    // Delete database record
-    deleteInboxItem(id);
+    // Delete files from filesystem
+    const itemPath = path.join(config.dataPath, filePath);
+    await fs.rm(itemPath, { recursive: true, force: true });
+
+    // Delete database records (file and digests)
+    deleteFileRecord(filePath);
+    deleteDigestsForPath(filePath);
 
     return NextResponse.json({ success: true });
   } catch (error) {

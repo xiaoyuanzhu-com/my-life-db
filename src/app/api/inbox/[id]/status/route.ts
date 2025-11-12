@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { getInboxStatusView } from '@/lib/inbox/statusView';
+import { getDigestStatusView } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxStatus' });
@@ -16,7 +16,8 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const view = getInboxStatusView(id);
+    const filePath = `inbox/${id}`;
+    const view = getDigestStatusView(filePath);
     if (!view) {
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }

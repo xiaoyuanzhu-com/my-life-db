@@ -14,6 +14,7 @@ interface GroupedItems {
 }
 
 type InboxListItem = InboxItem & {
+  path?: string; // File path from file-centric model
   enrichment: InboxEnrichmentSummary;
   primaryText: string | null;
   digestScreenshot: InboxDigestScreenshot | null;
@@ -115,9 +116,10 @@ export default function InboxPage() {
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {group.items.map((item) => {
-                    const pathSegment = encodeURIComponent(item.slug ?? item.folderName);
+                    // Extract the relative path part after 'inbox/'
+                    const pathSegment = item.path?.replace('inbox/', '') || item.folderName;
                     return (
-                      <Link key={item.id} href={`/inbox/${pathSegment}`} className="group block">
+                      <Link key={item.path || item.id} href={`/inbox/${encodeURIComponent(pathSegment)}`} className="group block">
                         <InboxItemCard item={item} />
                       </Link>
                     );

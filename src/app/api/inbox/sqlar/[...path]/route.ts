@@ -38,7 +38,7 @@ export async function GET(
     const extension = sqlarName.split('.').pop()?.toLowerCase() || '';
     const contentType = getContentType(extension);
 
-    return new NextResponse(data, {
+    return new Response(data as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': contentType,
