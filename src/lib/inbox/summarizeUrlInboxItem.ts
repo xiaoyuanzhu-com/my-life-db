@@ -2,13 +2,13 @@ import 'server-only';
 
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { getInboxItemById } from '@/lib/db/inbox';
+import { getFileByPath } from '@/lib/db/files';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });
 
@@ -16,9 +16,9 @@ const log = getLogger({ module: 'InboxSummary' });
  * Load content from database for summarization
  * Reads content-md digest created by the crawl step
  */
-function loadSummarySource(itemId: string): { text: string; source: string } | null {
+function loadSummarySource(filePath: string): { text: string; source: string } | null {
   // Read content-md digest from database
-  const contentDigest = getDigestByItemAndType(itemId, 'content-md');
+  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
 
   if (contentDigest?.content) {
     return {
@@ -35,36 +35,36 @@ function clampText(text: string, maxChars = 8000): string {
   return text.slice(0, maxChars);
 }
 
-export function enqueueUrlSummary(itemId: string, options?: DigestPipelinePayload): string {
+export function enqueueUrlSummary(filePath: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_summary']);
   const taskId = tq('digest_url_summary').add({
-    itemId: itemId,
+    filePath: filePath,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
-  log.info({ itemId, taskId }, 'digest_url_summary task enqueued');
+  log.info({ filePath, taskId }, 'digest_url_summary task enqueued');
   return taskId;
 }
 
 defineTaskHandler({
   type: 'digest_url_summary',
   module: 'InboxSummary',
-  handler: async (input: { itemId: string } & DigestPipelinePayload) => {
-    const { itemId, pipeline, remainingStages } = input;
+  handler: async (input: { filePath: string } & DigestPipelinePayload) => {
+    const { filePath, pipeline, remainingStages } = input;
 
     try {
-      const item = getInboxItemById(itemId);
-      if (!item) {
-        log.warn({ itemId }, 'item not found for summary');
+      const file = getFileByPath(filePath);
+      if (!file) {
+        log.warn({ filePath }, 'file not found for summary');
         return { success: false, reason: 'not_found' };
       }
 
       // Load content from database
-      const source = loadSummarySource(itemId);
+      const source = loadSummarySource(filePath);
       if (!source) {
         const message = 'No content-md digest found for summary (crawl step may have failed)';
-        log.warn({ itemId }, message);
+        log.warn({ filePath }, message);
         throw new Error(message);
       }
 
@@ -76,23 +76,23 @@ defineTaskHandler({
         summary = result.summary.trim();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        log.error({ itemId, err: message }, 'summary generation failed');
+        log.error({ filePath, err: message }, 'summary generation failed');
         throw new Error(message);
       }
 
       if (!summary) {
         const message = 'Summary generation returned empty result';
-        log.warn({ itemId }, message);
+        log.warn({ filePath }, message);
         throw new Error(message);
       }
 
-      // Create completed digest
+      // Create enriched digest
       const now = new Date().toISOString();
       createDigest({
-        id: `${itemId}-summary`,
-        itemId,
+        id: generateDigestId(filePath, 'summary'),
+        filePath,
         digestType: 'summary',
-        status: 'completed',
+        status: 'enriched',
         content: summary,
         sqlarName: null,
         error: null,
@@ -100,11 +100,11 @@ defineTaskHandler({
         updatedAt: now,
       });
 
-      log.info({ itemId, source: source.source }, 'summary generated and saved to database');
+      log.info({ filePath, source: source.source }, 'summary generated and saved to database');
 
       if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
         const [nextStage, ...rest] = remainingStages;
-        queueNextStage(itemId, nextStage, rest);
+        queueNextStage(filePath, nextStage, rest);
       }
 
       return {
@@ -116,8 +116,8 @@ defineTaskHandler({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const now = new Date().toISOString();
       createDigest({
-        id: `${itemId}-summary`,
-        itemId,
+        id: generateDigestId(filePath, 'summary'),
+        filePath,
         digestType: 'summary',
         status: 'failed',
         content: null,
@@ -132,18 +132,18 @@ defineTaskHandler({
 });
 
 function queueNextStage(
-  itemId: string,
+  filePath: string,
   nextStage: UrlDigestPipelineStage,
   remaining: UrlDigestPipelineStage[]
 ): void {
   switch (nextStage) {
     case 'tagging':
-      enqueueUrlTagging(itemId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlTagging(filePath, { pipeline: true, remainingStages: remaining });
       break;
     case 'slug':
-      enqueueUrlSlug(itemId, { pipeline: true, remainingStages: remaining });
+      enqueueUrlSlug(filePath, { pipeline: true, remainingStages: remaining });
       break;
     default:
-      log.warn({ itemId, stage: nextStage }, 'unknown next stage after summary in url digest pipeline');
+      log.warn({ filePath, stage: nextStage }, 'unknown next stage after summary in url digest pipeline');
   }
 }
