@@ -107,6 +107,10 @@ export async function callOpenAICompletion(
   const client = new OpenAI({
     baseURL: baseUrl,
     apiKey: vendorConfig.apiKey,
+    defaultHeaders: {
+      'X-Title': 'MyLifeDB',
+      'HTTP-Referer': 'https://github.com/xiaoyuanzhu-com/my-life-db',
+    },
   });
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -239,6 +243,8 @@ export async function callOpenAIEmbedding(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${vendorConfig.apiKey}`,
+      'X-Title': 'MyLifeDB',
+      'HTTP-Referer': 'https://github.com/xiaoyuanzhu-com/my-life-db',
     },
     body: JSON.stringify({
       model,
