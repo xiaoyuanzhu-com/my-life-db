@@ -476,17 +476,24 @@ CREATE INDEX idx_items_created_at ON items(created_at DESC);
 
 -- Digests: AI-generated content (rebuildable)
 -- Foreign table to items
+-- Also serves as status tracking for digest tasks (no separate projection table needed)
 CREATE TABLE digests (
   id TEXT PRIMARY KEY,                    -- UUID
   item_id TEXT NOT NULL,                  -- FK to items(id)
   digest_type TEXT NOT NULL,              -- 'summary'|'tags'|'slug'|'content-md'|'content-html'|'screenshot'
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+
+  -- Status tracking (replaces inbox_task_state projection)
+  -- Lifecycle: pending → in-progress → completed/failed
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in-progress', 'completed', 'failed')),
 
   -- Text digests (stored directly)
   content TEXT,                           -- Summary text, tags JSON, slug JSON
 
   -- Binary digests (stored in SQLAR)
   sqlar_name TEXT,                        -- Filename in SQLAR table: '{item_id}/{digest_type}/filename'
+
+  -- Error tracking
+  error TEXT,                             -- Error message if status='failed'
 
   created_at TEXT NOT NULL,               -- ISO 8601
   updated_at TEXT NOT NULL,               -- ISO 8601
@@ -1100,7 +1107,128 @@ Attempt 5+: Fail → Retry in ~6hr (capped)
 
 See `src/lib/task-queue/` for application-agnostic task queue library.
 
-### 5.6 File System Indexing
+### 5.6 Digest Status Tracking
+
+**Design Decision: Use Digests Table as Single Source of Truth**
+
+Instead of maintaining a separate `inbox_task_state` projection table, the `digests` table directly tracks both the digest content AND the task execution status. This eliminates the need for synchronization between two tables and provides a simpler, more reliable architecture.
+
+**Status Lifecycle:**
+
+```
+pending → in-progress → completed/failed
+   ↓           ↓              ↓
+Created by   Handler      Handler
+enqueue()    starts       completes/fails
+```
+
+**Implementation Pattern:**
+
+```typescript
+// 1. Enqueue function: Create pending digest
+export function enqueueUrlSummary(itemId: string): string {
+  const taskId = tq('digest_url_summary').add({ itemId });
+
+  // Create pending digest for status tracking
+  createDigest({
+    id: `${itemId}-summary`,
+    itemId: itemId,
+    digestType: 'summary',
+    status: 'pending',
+    content: null,
+    sqlarName: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return taskId;
+}
+
+// 2. Handler: Update status throughout lifecycle
+defineTaskHandler({
+  type: 'digest_url_summary',
+  handler: async (input: { itemId: string }) => {
+    const { itemId } = input;
+
+    // Update to in-progress at start
+    const digest = getDigestByItemAndType(itemId, 'summary');
+    if (digest) {
+      updateDigest(digest.id, { status: 'in-progress', error: null });
+    }
+
+    try {
+      // ... generate summary ...
+
+      // Update to completed on success
+      if (digest) {
+        updateDigest(digest.id, {
+          status: 'completed',
+          content: summary,
+          error: null,
+        });
+      }
+
+      return { success: true };
+    } catch (error) {
+      // Update to failed on error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (digest) {
+        updateDigest(digest.id, { status: 'failed', error: errorMessage });
+      }
+      throw error;
+    }
+  },
+});
+```
+
+**UI Status View:**
+
+The `statusView` module queries digests directly to build the UI status display:
+
+```typescript
+export function getInboxStatusView(itemId: string): InboxStatusView | null {
+  const inbox = getInboxItemById(itemId);
+  if (!inbox) return null;
+
+  // Load digests directly from digests table (no projection needed)
+  const digests = listDigestsForItem(itemId);
+
+  // Map digest status to UI status
+  const stages = digests.map(d => ({
+    taskType: DIGEST_TYPE_TO_TASK_TYPE[d.digestType],
+    status: mapDigestStatus(d.status), // pending→to-do, completed→success, etc.
+    error: d.error,
+    updatedAt: d.updatedAt,
+  }));
+
+  return { itemId, stages, ... };
+}
+```
+
+**Benefits:**
+
+1. ✅ **Single source of truth**: No projection table to synchronize
+2. ✅ **Natural fit**: Digest creation IS the status update
+3. ✅ **Error tracking**: Failure messages stored with digest
+4. ✅ **Simpler architecture**: Fewer tables, less complexity
+5. ✅ **Rebuildable**: Digests (including status) can be regenerated from source files
+
+**Digest Types:**
+
+| Digest Type | Task Type | Content Storage | Status Tracking |
+|-------------|-----------|-----------------|-----------------|
+| `content-md` | `digest_url_crawl` | `digests.content` (text) | Yes |
+| `screenshot` | `digest_url_crawl` | `sqlar` (binary) | Yes |
+| `summary` | `digest_url_summary` | `digests.content` (text) | Yes |
+| `tags` | `digest_url_tagging` | `digests.content` (JSON) | Yes |
+| `slug` | `digest_url_slug` | `digests.content` (JSON) | Yes |
+
+**Migration from inbox_task_state:**
+
+The `inbox_task_state` projection table has been removed (deprecated in migration 017). All status tracking now happens through the `digests` table with its `status` and `error` fields.
+
+### 5.7 File System Indexing
 
 **Full directory/file index for semantic search across all content**
 
