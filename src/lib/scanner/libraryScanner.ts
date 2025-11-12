@@ -1,12 +1,11 @@
 import 'server-only';
 // Periodic scanner for library folders
-// Scans DATA_ROOT for folders and files, creates/updates items in database
+// Scans DATA_ROOT for folders and files, updates files table cache
 import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
-import { DATA_ROOT, generateId } from '@/lib/fs/storage';
-import { createItem, getItemByPath, updateItem } from '@/lib/db/items';
-import type { Item, ItemFile, MessageType } from '@/types';
+import { DATA_ROOT } from '@/lib/fs/storage';
+import { upsertFileRecord, getFileByPath } from '@/lib/db/files';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'LibraryScanner' });
@@ -87,77 +86,48 @@ async function scanDirectory(
 ): Promise<void> {
   stats.scanned++;
 
+  // Get directory stats
+  const dirStats = await fs.stat(fullPath);
+
+  // Upsert folder record in files table
+  const existing = getFileByPath(relativePath);
+  if (!existing) {
+    upsertFileRecord({
+      path: relativePath,
+      name: path.basename(relativePath),
+      isFolder: true,
+      modifiedAt: dirStats.mtime.toISOString(),
+    });
+    stats.created++;
+    log.debug({ path: relativePath }, 'indexed folder');
+  } else if (force) {
+    upsertFileRecord({
+      path: relativePath,
+      name: path.basename(relativePath),
+      isFolder: true,
+      modifiedAt: dirStats.mtime.toISOString(),
+    });
+    stats.updated++;
+  }
+
   // Get directory contents
   const items = await fs.readdir(fullPath, { withFileTypes: true });
-  const files: ItemFile[] = [];
 
-  // Process files in directory
+  // Process each item
   for (const item of items) {
     // Skip hidden files
     if (item.name.startsWith('.')) {
       continue;
     }
 
-    if (item.isFile()) {
-      const fileStats = await fs.stat(path.join(fullPath, item.name));
-      const mimeType = getMimeType(item.name);
-
-      // Hash small files
-      let hash: string | undefined;
-      if (fileStats.size < HASH_SIZE_THRESHOLD) {
-        const buffer = await fs.readFile(path.join(fullPath, item.name));
-        hash = createHash('sha256').update(buffer).digest('hex');
-      }
-
-      files.push({
-        name: item.name,
-        size: fileStats.size,
-        type: mimeType,
-        hash,
-        modifiedAt: fileStats.mtime.toISOString(),
-      });
-    }
-  }
-
-  // Check if item exists in database
-  const existing = getItemByPath(relativePath);
-  const now = new Date().toISOString();
-
-  if (!existing) {
-    // Create new item
-    const item: Item = {
-      id: generateId(),
-      name: path.basename(relativePath),
-      rawType: 'mixed', // Folders are always mixed
-      detectedType: null,
-      isFolder: true,
-      path: relativePath,
-      files: files.length > 0 ? files : null,
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: 1,
-    };
-
-    createItem(item);
-    stats.created++;
-    log.debug({ path: relativePath, fileCount: files.length }, 'created folder item');
-  } else if (force || hasFilesChanged(existing.files, files)) {
-    // Update existing item
-    updateItem(existing.id, {
-      files: files.length > 0 ? files : null,
-      updatedAt: now,
-    });
-    stats.updated++;
-    log.debug({ path: relativePath }, 'updated folder item');
-  }
-
-  // Recursively scan subdirectories
-  for (const item of items) {
-    if (item.isDirectory() && !item.name.startsWith('.')) {
+    if (item.isDirectory()) {
       const subPath = path.join(relativePath, item.name);
       const subFullPath = path.join(fullPath, item.name);
       await scanDirectory(subPath, subFullPath, stats, force);
+    } else if (item.isFile()) {
+      const filePath = path.join(relativePath, item.name);
+      const fileFullPath = path.join(fullPath, item.name);
+      await scanFile(filePath, fileFullPath, stats, force);
     }
   }
 }
@@ -176,7 +146,6 @@ async function scanFile(
   const fileStats = await fs.stat(fullPath);
   const filename = path.basename(relativePath);
   const mimeType = getMimeType(filename);
-  const rawType = getRawTypeFromMime(mimeType);
 
   // Hash small files
   let hash: string | undefined;
@@ -185,86 +154,60 @@ async function scanFile(
     hash = createHash('sha256').update(buffer).digest('hex');
   }
 
-  const itemFile: ItemFile = {
-    name: filename,
+  // Check if file exists in database
+  const existing = getFileByPath(relativePath);
+
+  // Determine if we need to update
+  const shouldUpdate = force || !existing || hasFileChanged(existing, {
     size: fileStats.size,
-    type: mimeType,
     hash,
     modifiedAt: fileStats.mtime.toISOString(),
-  };
+  });
 
-  // Check if item exists
-  const existing = getItemByPath(relativePath);
-  const now = new Date().toISOString();
-
-  if (!existing) {
-    // Create new item
-    const item: Item = {
-      id: generateId(),
-      name: filename,
-      rawType,
-      detectedType: null,
-      isFolder: false,
+  if (shouldUpdate) {
+    upsertFileRecord({
       path: relativePath,
-      files: [itemFile],
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: 1,
-    };
-
-    createItem(item);
-    stats.created++;
-    log.debug({ path: relativePath, size: fileStats.size }, 'created file item');
-  } else if (force || hasFileChanged(existing.files?.[0], itemFile)) {
-    // Update existing item
-    updateItem(existing.id, {
-      files: [itemFile],
-      updatedAt: now,
+      name: filename,
+      isFolder: false,
+      size: fileStats.size,
+      mimeType,
+      hash,
+      modifiedAt: fileStats.mtime.toISOString(),
     });
-    stats.updated++;
-    log.debug({ path: relativePath }, 'updated file item');
-  }
-}
 
-/**
- * Check if files list has changed
- */
-function hasFilesChanged(oldFiles: ItemFile[] | null, newFiles: ItemFile[]): boolean {
-  if (!oldFiles) return true;
-  if (oldFiles.length !== newFiles.length) return true;
-
-  // Check if any file has different hash or size
-  const oldMap = new Map(oldFiles.map(f => [f.name, f]));
-
-  for (const newFile of newFiles) {
-    const oldFile = oldMap.get(newFile.name);
-    if (!oldFile) return true;
-
-    // Compare hash if available, otherwise compare size
-    if (newFile.hash && oldFile.hash) {
-      if (newFile.hash !== oldFile.hash) return true;
-    } else if (newFile.size !== oldFile.size) {
-      return true;
+    if (!existing) {
+      stats.created++;
+      log.debug({ path: relativePath, size: fileStats.size }, 'indexed file');
+    } else {
+      stats.updated++;
+      log.debug({ path: relativePath }, 'updated file');
     }
   }
-
-  return false;
 }
 
 /**
- * Check if a single file has changed
+ * Check if a file has changed
  */
-function hasFileChanged(oldFile: ItemFile | undefined, newFile: ItemFile): boolean {
-  if (!oldFile) return true;
-
+function hasFileChanged(
+  existingFile: { size?: number | null; hash?: string | null; modifiedAt?: string },
+  newFile: { size: number; hash?: string; modifiedAt: string }
+): boolean {
   // Compare hash if available
-  if (newFile.hash && oldFile.hash) {
-    return newFile.hash !== oldFile.hash;
+  if (newFile.hash && existingFile.hash) {
+    return newFile.hash !== existingFile.hash;
   }
 
   // Compare size
-  return newFile.size !== oldFile.size;
+  if (existingFile.size !== null && existingFile.size !== undefined) {
+    if (newFile.size !== existingFile.size) return true;
+  }
+
+  // Compare modification time as fallback
+  if (existingFile.modifiedAt) {
+    return newFile.modifiedAt !== existingFile.modifiedAt;
+  }
+
+  return false;
 }
 
 /**
@@ -306,18 +249,6 @@ function getMimeType(filename: string): string {
   };
 
   return mimeTypes[ext] || 'application/octet-stream';
-}
-
-/**
- * Get raw type from MIME type
- */
-function getRawTypeFromMime(mimeType: string): MessageType {
-  if (mimeType.startsWith('text/')) return 'text';
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType.startsWith('audio/')) return 'audio';
-  if (mimeType.startsWith('video/')) return 'video';
-  if (mimeType === 'application/pdf') return 'pdf';
-  return 'mixed';
 }
 
 /**
