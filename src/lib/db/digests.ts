@@ -196,6 +196,15 @@ export function deleteDigestsForPath(filePath: string): number {
 }
 
 /**
+ * Delete all digests matching path prefix (for folder deletions)
+ */
+export function deleteDigestsByPrefix(pathPrefix: string): number {
+  const db = getDatabase();
+  const result = db.prepare('DELETE FROM digests WHERE file_path LIKE ?').run(`${pathPrefix}%`);
+  return result.changes;
+}
+
+/**
  * Update all digest file paths (for folder renames)
  */
 export function updateDigestPaths(oldPath: string, newPath: string): void {

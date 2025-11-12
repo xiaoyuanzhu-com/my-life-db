@@ -27,7 +27,17 @@ export async function GET(request: NextRequest) {
       : 0;
 
     // List files in inbox directory
-    const files = listFiles('inbox/', { orderBy: 'created_at', ascending: false, limit, offset });
+    const allFiles = listFiles('inbox/', { orderBy: 'created_at', ascending: false });
+
+    // Filter to only top-level entries (inbox/foo.jpg or inbox/folder, NOT inbox/folder/file.jpg)
+    const topLevelFiles = allFiles.filter(file => {
+      const relativePath = file.path.replace(/^inbox\//, '');
+      // Top-level if: no slashes (file) OR is a folder with no additional path segments
+      return !relativePath.includes('/') || (file.isFolder && relativePath.split('/').length === 1);
+    });
+
+    // Apply pagination after filtering
+    const files = topLevelFiles.slice(offset, offset + limit);
 
     // Build enriched items for UI
     const enrichedItems = await Promise.all(files.map(async (file) => {
@@ -55,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       items: enrichedItems,
-      total: files.length,
+      total: topLevelFiles.length,
     });
   } catch (error) {
     log.error({ err: error }, 'list inbox items failed');
