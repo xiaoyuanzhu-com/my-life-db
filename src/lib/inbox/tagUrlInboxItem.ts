@@ -5,10 +5,9 @@ import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/hand
 import { getInboxItemById } from '@/lib/db/inbox';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
-import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
@@ -42,13 +41,18 @@ export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  upsertInboxTaskState({
+  // Create pending digest for status tracking
+  const now = new Date().toISOString();
+  createDigest({
+    id: `${itemId}-tags`,
     itemId: itemId,
-    taskType: 'digest_url_tagging',
-    status: 'to-do',
-    taskId,
-    attempts: 0,
+    digestType: 'tags',
+    status: 'pending',
+    content: null,
+    sqlarName: null,
     error: null,
+    createdAt: now,
+    updatedAt: now,
   });
 
   log.info({ itemId, taskId }, 'digest_url_tagging task enqueued');
@@ -61,65 +65,76 @@ defineTaskHandler({
   handler: async (input: { itemId: string } & DigestPipelinePayload) => {
     const { itemId, pipeline, remainingStages } = input;
 
-    const item = getInboxItemById(itemId);
-    if (!item) {
-      log.warn({ itemId }, 'item not found for tagging');
-      return { success: false, reason: 'not_found' };
+    // Update digest status to in-progress
+    const tagsDigest = getDigestByItemAndType(itemId, 'tags');
+    if (tagsDigest) {
+      updateDigest(tagsDigest.id, { status: 'in-progress', error: null });
     }
 
-    // Load content from database
-    const source = loadTaggingSource(itemId);
-    if (!source) {
-      const message = 'No content-md digest found for tagging';
-      log.warn({ itemId }, message);
-      throw new Error(message);
+    try {
+      const item = getInboxItemById(itemId);
+      if (!item) {
+        log.warn({ itemId }, 'item not found for tagging');
+        return { success: false, reason: 'not_found' };
+      }
+
+      // Load content from database
+      const source = loadTaggingSource(itemId);
+      if (!source) {
+        const message = 'No content-md digest found for tagging';
+        log.warn({ itemId }, message);
+        throw new Error(message);
+      }
+
+      const clipped = clampText(source.text);
+      const result = await generateTagsDigest({ text: clipped });
+
+      if (!result.tags.length) {
+        const message = 'Tag generation returned no tags';
+        log.warn({
+          itemId: itemId,
+          sourceTextLength: source.text.length,
+          clippedTextLength: clipped.length,
+          clippedTextPreview: clipped.substring(0, 200),
+          resultTags: result.tags,
+        }, message);
+        throw new Error(message);
+      }
+
+      // Update digest with completed status and content
+      const tagsPayload = {
+        tags: result.tags,
+        generatedAt: new Date().toISOString(),
+      };
+
+      if (tagsDigest) {
+        updateDigest(tagsDigest.id, {
+          status: 'completed',
+          content: JSON.stringify(tagsPayload),
+          error: null,
+        });
+      }
+
+      log.info({ itemId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
+
+      if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
+        const [nextStage, ...rest] = remainingStages;
+        queueNextStage(itemId, nextStage, rest);
+      }
+
+      return {
+        success: true,
+        tags: result.tags,
+        source: source.source,
+      };
+    } catch (error) {
+      // Update digest status to failed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (tagsDigest) {
+        updateDigest(tagsDigest.id, { status: 'failed', error: errorMessage });
+      }
+      throw error;
     }
-
-    const clipped = clampText(source.text);
-    const result = await generateTagsDigest({ text: clipped });
-
-    if (!result.tags.length) {
-      const message = 'Tag generation returned no tags';
-      log.warn({
-        itemId: itemId,
-        sourceTextLength: source.text.length,
-        clippedTextLength: clipped.length,
-        clippedTextPreview: clipped.substring(0, 200),
-        resultTags: result.tags,
-      }, message);
-      throw new Error(message);
-    }
-
-    // Save tags to database
-    const now = new Date().toISOString();
-    const tagsPayload = {
-      tags: result.tags,
-      generatedAt: now,
-    };
-
-    createDigest({
-      id: `${itemId}-tags`,
-      itemId: itemId,
-      digestType: 'tags',
-      status: 'completed',
-      content: JSON.stringify(tagsPayload),
-      sqlarName: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    log.info({ itemId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
-
-    if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
-      const [nextStage, ...rest] = remainingStages;
-      queueNextStage(itemId, nextStage, rest);
-    }
-
-    return {
-      success: true,
-      tags: result.tags,
-      source: source.source,
-    };
   },
 });
 

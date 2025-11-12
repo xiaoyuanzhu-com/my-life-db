@@ -10,9 +10,9 @@ export function createDigest(digest: Digest): void {
 
   const stmt = db.prepare(`
     INSERT INTO digests (
-      id, item_id, digest_type, status, content, sqlar_name,
+      id, item_id, digest_type, status, content, sqlar_name, error,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -22,6 +22,7 @@ export function createDigest(digest: Digest): void {
     digest.status,
     digest.content,
     digest.sqlarName,
+    digest.error,
     digest.createdAt,
     digest.updatedAt
   );
@@ -121,6 +122,11 @@ export function updateDigest(
     values.push(updates.sqlarName);
   }
 
+  if (updates.error !== undefined) {
+    fields.push('error = ?');
+    values.push(updates.error);
+  }
+
   // Always update updated_at
   fields.push('updated_at = ?');
   values.push(new Date().toISOString());
@@ -172,6 +178,7 @@ function recordToDigest(record: DigestRecord): Digest {
     status: record.status as Digest['status'],
     content: record.content,
     sqlarName: record.sqlar_name,
+    error: record.error,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };

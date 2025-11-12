@@ -7,16 +7,17 @@ import { getInboxItemById, updateInboxItem } from '@/lib/db/inbox';
 import { INBOX_DIR } from '@/lib/fs/storage';
 import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
 import type { UrlDigestPipelineStage } from '@/types/digest-workflow';
-import { setInboxTaskState } from '@/lib/db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
-import { deleteDigestsForItem } from '@/lib/db/digests';
+import { deleteDigestsForItem, createDigest } from '@/lib/db/digests';
 import { sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getDatabase } from '@/lib/db/connection';
 
 const log = getLogger({ module: 'UrlDigestWorkflow' });
 
 const PIPELINE_ORDER: UrlDigestPipelineStage[] = ['summary', 'tagging', 'slug'];
-const DIGEST_TASK_TYPES = ['digest_url_crawl', 'digest_url_summary', 'digest_url_tagging', 'digest_url_slug'] as const;
+
+// Map of digest types
+const DIGEST_TYPES = ['content-md', 'summary', 'tags', 'slug'] as const;
 
 export async function startUrlDigestWorkflow(itemId: string): Promise<{ taskId: string }> {
   const item = getInboxItemById(itemId);
@@ -67,16 +68,10 @@ async function clearDigestArtifacts(
 }
 
 function resetTaskStates(itemId: string): void {
-  DIGEST_TASK_TYPES.forEach(taskType => {
-    setInboxTaskState({
-      itemId: itemId,
-      taskType,
-      status: 'to-do',
-      taskId: null,
-      attempts: 0,
-      error: null,
-    });
-  });
+  // Note: Individual enqueue functions will create pending digests
+  // This function is now a no-op since digest creation happens in enqueue functions
+  // Keeping it for backward compatibility
+  log.debug({ itemId }, 'resetTaskStates called (no-op - digests created by enqueue functions)');
 }
 
 async function resolveUrlForInboxItem(folderName: string): Promise<string | null> {

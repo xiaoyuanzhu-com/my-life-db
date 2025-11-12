@@ -4,7 +4,6 @@
 
 import { getTaskById, updateTask } from './task-manager';
 import type { Task, TaskHandler } from './types';
-import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'TaskExecutor' });
@@ -125,23 +124,7 @@ export async function executeTask(
     };
   }
 
-  // 5.1 Update projection for item tasks to in-progress
-  try {
-    const inputObj = JSON.parse(task.input) as Record<string, unknown>;
-    const itemId = typeof inputObj?.itemId === 'string' ? (inputObj.itemId as string) : null;
-    if (itemId) {
-      upsertInboxTaskState({
-        itemId: itemId,
-        taskType: task.type,
-        status: 'in-progress',
-        taskId: task.id,
-        attempts: claimedTask.attempts,
-        error: null,
-      });
-    }
-  } catch {
-    // ignore input parse errors for projection
-  }
+  // Note: Digest status updates now happen in handlers themselves
 
   // 6. Get handler
   const handler = getHandler(task.type);
@@ -157,21 +140,8 @@ export async function executeTask(
       claimedTask.version
     );
 
-    // Update projection: failed (permanent)
-    try {
-      const inputObj2 = JSON.parse(task.input) as Record<string, unknown>;
-      const itemId = typeof inputObj2?.itemId === 'string' ? (inputObj2.itemId as string) : null;
-      if (itemId) {
-        upsertInboxTaskState({
-          itemId: itemId,
-          taskType: task.type,
-          status: 'failed',
-          taskId: task.id,
-          attempts: claimedTask.attempts,
-          error: `No handler registered for task type "${task.type}"`,
-        });
-      }
-    } catch {}
+    // Note: Digest failure tracking happens in handlers
+    // This case is a system error (no handler), not a digest failure
 
     return {
       success: false,
@@ -200,21 +170,7 @@ export async function executeTask(
       log.warn({ taskId }, 'version conflict after executing task');
     }
 
-    // Update projection: success
-    try {
-      const inputObj3 = input as Record<string, unknown>;
-      const itemId = typeof inputObj3?.itemId === 'string' ? (inputObj3.itemId as string) : null;
-      if (itemId) {
-        upsertInboxTaskState({
-          itemId: itemId,
-          taskType: task.type,
-          status: 'success',
-          taskId: task.id,
-          attempts: claimedTask.attempts,
-          error: null,
-        });
-      }
-    } catch {}
+    // Note: Digest status updates now happen in handlers themselves
 
     return {
       success: true,
@@ -237,21 +193,7 @@ export async function executeTask(
       claimedTask.version
     );
 
-    // Update projection: failed
-    try {
-      const inputObj4 = JSON.parse(task.input) as Record<string, unknown>;
-      const itemId = typeof inputObj4?.itemId === 'string' ? (inputObj4.itemId as string) : null;
-      if (itemId) {
-        upsertInboxTaskState({
-          itemId: itemId,
-          taskType: task.type,
-          status: 'failed',
-          taskId: task.id,
-          attempts: claimedTask.attempts,
-          error: errorMessage,
-        });
-      }
-    } catch {}
+    // Note: Digest status updates now happen in handlers themselves
 
     return {
       success: false,
@@ -283,21 +225,9 @@ export function recoverStaleTasks(tasks: Task[]): number {
       recovered++;
       log.info({ taskId: task.id, type: task.type }, 'recovered stale task');
 
-      // Update projection: failed due to timeout
-      try {
-        const inputObj = JSON.parse(task.input) as Record<string, unknown>;
-        const itemId = typeof inputObj?.itemId === 'string' ? (inputObj.itemId as string) : null;
-        if (itemId) {
-          upsertInboxTaskState({
-            itemId: itemId,
-            taskType: task.type,
-            status: 'failed',
-            taskId: task.id,
-            attempts: task.attempts,
-            error: 'Task timed out (stale task recovery)',
-          });
-        }
-      } catch {}
+      // Note: Digest status updates now happen in handlers themselves
+      // For stale tasks, handlers never completed, so digest status remains 'in-progress'
+      // This will be visible in the UI and can be retried
     }
   }
 

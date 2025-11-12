@@ -390,6 +390,7 @@ export interface Digest {
   status: EnrichmentStatus; // Processing status
   content: string | null; // Text content (summary, tags JSON, slug JSON)
   sqlarName: string | null; // Filename in SQLAR archive (for binary digests)
+  error: string | null; // Error message if status is 'failed'
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
@@ -421,6 +422,7 @@ export interface DigestRecord {
   status: string;
   content: string | null;
   sqlar_name: string | null;
+  error: string | null;
   created_at: string;
   updated_at: string;
 }

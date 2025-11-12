@@ -9,13 +9,12 @@ import { crawlUrlDigest, type UrlCrawlOutput } from '@/lib/digest/url-crawl';
 import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
 import { tq } from '../task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { upsertInboxTaskState } from '../db/inboxTaskState';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSummary } from './summarizeUrlInboxItem';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, deleteDigestsForItem } from '../db/digests';
+import { createDigest, updateDigest, deleteDigestsForItem, getDigestByItemAndType } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';
 
@@ -39,6 +38,12 @@ export async function enrichUrlInboxItem(
   payload: UrlEnrichmentPayload
 ): Promise<UrlEnrichmentResult> {
   const { itemId, url, pipeline, remainingStages } = payload;
+
+  // Update digest status to in-progress
+  const contentMdDigest = getDigestByItemAndType(itemId, 'content-md');
+  if (contentMdDigest) {
+    updateDigest(contentMdDigest.id, { status: 'in-progress', error: null });
+  }
 
   try {
     // 1. Get item
@@ -129,6 +134,7 @@ export async function enrichUrlInboxItem(
         status: 'completed',
         content: processed.markdown,
         sqlarName: null,
+        error: null,
         createdAt: now,
         updatedAt: now,
       });
@@ -147,6 +153,7 @@ export async function enrichUrlInboxItem(
         status: 'completed',
         content: null,
         sqlarName,
+        error: null,
         createdAt: now,
         updatedAt: now,
       });
@@ -171,6 +178,7 @@ export async function enrichUrlInboxItem(
             status: 'completed',
             content: null,
             sqlarName,
+            error: null,
             createdAt: now,
             updatedAt: now,
           });
@@ -213,6 +221,7 @@ export async function enrichUrlInboxItem(
       status: 'completed',
       content: JSON.stringify(urlMetadata),
       sqlarName: null,
+      error: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -236,6 +245,26 @@ export async function enrichUrlInboxItem(
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     log.error({ url, error: errorMessage }, 'url enrichment failed');
+
+    // Update digest status to failed
+    const digest = getDigestByItemAndType(itemId, 'content-md');
+    if (digest) {
+      updateDigest(digest.id, { status: 'failed', error: errorMessage });
+    } else {
+      // Create failed digest if it doesn't exist
+      const now = new Date().toISOString();
+      createDigest({
+        id: `${itemId}-content-md`,
+        itemId: itemId,
+        digestType: 'content-md',
+        status: 'failed',
+        content: null,
+        sqlarName: null,
+        error: errorMessage,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
     // Update item with error
     updateInboxItem(itemId, {
@@ -267,14 +296,18 @@ export function enqueueUrlEnrichment(
 
   log.info({ itemId, url, taskId }, 'url enrichment task enqueued');
 
-  // Update projection for quick status checks
-  upsertInboxTaskState({
+  // Create pending digest for status tracking
+  const now = new Date().toISOString();
+  createDigest({
+    id: `${itemId}-content-md`,
     itemId: itemId,
-    taskType: 'digest_url_crawl',
-    status: 'to-do',
-    taskId,
-    attempts: 0,
+    digestType: 'content-md',
+    status: 'pending',
+    content: null,
+    sqlarName: null,
     error: null,
+    createdAt: now,
+    updatedAt: now,
   });
 
   return taskId;

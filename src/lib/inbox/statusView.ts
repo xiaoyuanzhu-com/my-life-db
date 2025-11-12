@@ -1,14 +1,12 @@
 import { getInboxItemById } from '@/lib/db/inbox';
-import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
-import type { EnrichmentStatus, InboxItem } from '@/types';
-import type { InboxTaskState } from '@/lib/db/inboxTaskState';
+import { listDigestsForItem } from '@/lib/db/digests';
+import type { EnrichmentStatus, InboxItem, Digest } from '@/types';
 
 export interface InboxStageStatus {
   taskType: string;
   status: 'to-do' | 'in-progress' | 'success' | 'failed';
-  attempts: number;
   error: string | null;
-  updatedAt: number | null;
+  updatedAt: string | null;
 }
 
 export interface InboxStatusView {
@@ -27,53 +25,84 @@ export interface InboxStatusView {
   canRetry: boolean;
 }
 
+// Map digest types to task types
+const DIGEST_TYPE_TO_TASK_TYPE: Record<string, string> = {
+  'content-md': 'digest_url_crawl',
+  'summary': 'digest_url_summary',
+  'tags': 'digest_url_tagging',
+  'slug': 'digest_url_slug',
+};
+
+// Map digest status to task status
+function mapDigestStatus(status: Digest['status']): InboxStageStatus['status'] {
+  switch (status) {
+    case 'pending':
+      return 'to-do';
+    case 'in-progress':
+      return 'in-progress';
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    default:
+      return 'to-do';
+  }
+}
+
 export function summarizeInboxEnrichment(
   inbox: InboxItem,
-  states: InboxTaskState[]
+  digests: Digest[]
 ): InboxStatusView {
-  const stages: InboxStageStatus[] = states.map((s) => ({
-    taskType: s.taskType,
-    status: s.status,
-    attempts: s.attempts,
-    error: s.error,
-    updatedAt: s.updatedAt,
-  }));
+  // Convert digests to stages
+  const stages: InboxStageStatus[] = digests
+    .filter((d) => DIGEST_TYPE_TO_TASK_TYPE[d.digestType])
+    .map((d) => ({
+      taskType: DIGEST_TYPE_TO_TASK_TYPE[d.digestType],
+      status: mapDigestStatus(d.status),
+      error: d.error,
+      updatedAt: d.updatedAt,
+    }));
 
-  // Derive booleans from files where possible
-  const hasContentMd = inbox.files.some((f) =>
-    f.filename === 'content.md' || f.filename === 'digest/content.md'
-  );
-  const hasContentHtml = inbox.files.some((f) =>
-    f.filename === 'content.html' || f.filename === 'digest/content.html'
-  );
-  const hasMainContent = inbox.files.some((f) =>
-    f.filename === 'main-content.md' || f.filename === 'digest/main-content.md'
-  );
-  const hasScreenshot = inbox.files.some((f) =>
-    f.filename === 'screenshot.png' ||
-    f.filename === 'screenshot.jpg' ||
-    f.filename === 'digest/screenshot.png' ||
-    f.filename === 'digest/screenshot.jpg'
-  );
-  const hasSummary = inbox.files.some((f) =>
-    f.filename === 'summary.md' || f.filename === 'digest/summary.md'
-  );
-  const hasTags = inbox.files.some((f) =>
-    f.filename === 'tags.json' || f.filename === 'digest/tags.json'
-  );
-  const hasSlug = inbox.files.some((f) => f.filename === 'digest/slug.json');
+  // Ensure all 4 digest types are present (create to-do placeholders for missing)
+  const EXPECTED_DIGEST_TYPES = ['content-md', 'summary', 'tags', 'slug'];
+  for (const digestType of EXPECTED_DIGEST_TYPES) {
+    const taskType = DIGEST_TYPE_TO_TASK_TYPE[digestType];
+    if (!stages.find((s) => s.taskType === taskType)) {
+      stages.push({
+        taskType,
+        status: 'to-do',
+        error: null,
+        updatedAt: null,
+      });
+    }
+  }
+
+  // Sort stages in expected order
+  const stageOrder = ['digest_url_crawl', 'digest_url_summary', 'digest_url_tagging', 'digest_url_slug'];
+  stages.sort((a, b) => stageOrder.indexOf(a.taskType) - stageOrder.indexOf(b.taskType));
+
+  // Derive booleans from digests
+  const contentMdDigest = digests.find((d) => d.digestType === 'content-md');
+  const summaryDigest = digests.find((d) => d.digestType === 'summary');
+  const tagsDigest = digests.find((d) => d.digestType === 'tags');
+  const slugDigest = digests.find((d) => d.digestType === 'slug');
+  const screenshotDigest = digests.find((d) => d.digestType === 'screenshot');
 
   const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
-  const crawlDone = Boolean(crawlStage?.status === 'success' || hasContentMd || hasContentHtml);
+  const crawlDone = Boolean(
+    crawlStage?.status === 'success' || contentMdDigest?.status === 'completed'
+  );
   const summaryStage = stages.find((s) => s.taskType === 'digest_url_summary');
   const summaryDone = Boolean(
-    summaryStage?.status === 'success' || hasSummary || inbox.aiSlug || hasMainContent
+    summaryStage?.status === 'success' || summaryDigest?.status === 'completed' || inbox.aiSlug
   );
-  const screenshotReady = Boolean(hasScreenshot);
+  const screenshotReady = Boolean(screenshotDigest?.status === 'completed');
   const taggingStage = stages.find((s) => s.taskType === 'digest_url_tagging');
-  const tagsReady = Boolean(taggingStage?.status === 'success' || hasTags);
+  const tagsReady = Boolean(taggingStage?.status === 'success' || tagsDigest?.status === 'completed');
   const slugStage = stages.find((s) => s.taskType === 'digest_url_slug');
-  const slugReady = Boolean(slugStage?.status === 'success' || hasSlug || inbox.aiSlug);
+  const slugReady = Boolean(
+    slugStage?.status === 'success' || slugDigest?.status === 'completed' || inbox.aiSlug
+  );
 
   const totalCount = stages.length;
   const completedCount = stages.filter((s) => s.status === 'success').length;
@@ -100,7 +129,7 @@ export function getInboxStatusView(itemId: string): InboxStatusView | null {
   const inbox = getInboxItemById(itemId);
   if (!inbox) return null;
 
-  // Load stage states from projection
-  const states = getInboxTaskStatesByItemId(itemId);
-  return summarizeInboxEnrichment(inbox, states);
+  // Load digests directly from digests table
+  const digests = listDigestsForItem(itemId);
+  return summarizeInboxEnrichment(inbox, digests);
 }

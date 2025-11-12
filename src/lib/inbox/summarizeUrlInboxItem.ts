@@ -5,12 +5,10 @@ import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/hand
 import { getInboxItemById } from '@/lib/db/inbox';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { getLogger } from '@/lib/log/logger';
-import { upsertInboxTaskState } from '@/lib/db/inboxTaskState';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlTagging } from './tagUrlInboxItem';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
-import { generateId } from '@/lib/fs/storage';
+import { createDigest, updateDigest, getDigestByItemAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });
 
@@ -45,13 +43,18 @@ export function enqueueUrlSummary(itemId: string, options?: DigestPipelinePayloa
     remainingStages: options?.remainingStages ?? [],
   });
 
-  upsertInboxTaskState({
+  // Create pending digest for status tracking
+  const now = new Date().toISOString();
+  createDigest({
+    id: `${itemId}-summary`,
     itemId: itemId,
-    taskType: 'digest_url_summary',
-    status: 'to-do',
-    taskId,
-    attempts: 0,
+    digestType: 'summary',
+    status: 'pending',
+    content: null,
+    sqlarName: null,
     error: null,
+    createdAt: now,
+    updatedAt: now,
   });
 
   log.info({ itemId, taskId }, 'digest_url_summary task enqueued');
@@ -64,62 +67,73 @@ defineTaskHandler({
   handler: async (input: { itemId: string } & DigestPipelinePayload) => {
     const { itemId, pipeline, remainingStages } = input;
 
-    const item = getInboxItemById(itemId);
-    if (!item) {
-      log.warn({ itemId }, 'item not found for summary');
-      return { success: false, reason: 'not_found' };
+    // Update digest status to in-progress
+    const summaryDigest = getDigestByItemAndType(itemId, 'summary');
+    if (summaryDigest) {
+      updateDigest(summaryDigest.id, { status: 'in-progress', error: null });
     }
-
-    // Load content from database
-    const source = loadSummarySource(itemId);
-    if (!source) {
-      const message = 'No content-md digest found for summary (crawl step may have failed)';
-      log.warn({ itemId }, message);
-      throw new Error(message);
-    }
-
-    const clipped = clampText(source.text);
-    let summary: string;
 
     try {
-      const result = await summarizeTextDigest({ text: clipped });
-      summary = result.summary.trim();
+      const item = getInboxItemById(itemId);
+      if (!item) {
+        log.warn({ itemId }, 'item not found for summary');
+        return { success: false, reason: 'not_found' };
+      }
+
+      // Load content from database
+      const source = loadSummarySource(itemId);
+      if (!source) {
+        const message = 'No content-md digest found for summary (crawl step may have failed)';
+        log.warn({ itemId }, message);
+        throw new Error(message);
+      }
+
+      const clipped = clampText(source.text);
+      let summary: string;
+
+      try {
+        const result = await summarizeTextDigest({ text: clipped });
+        summary = result.summary.trim();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.error({ itemId, err: message }, 'summary generation failed');
+        throw new Error(message);
+      }
+
+      if (!summary) {
+        const message = 'Summary generation returned empty result';
+        log.warn({ itemId }, message);
+        throw new Error(message);
+      }
+
+      // Update digest with completed status and content
+      if (summaryDigest) {
+        updateDigest(summaryDigest.id, {
+          status: 'completed',
+          content: summary,
+          error: null,
+        });
+      }
+
+      log.info({ itemId, source: source.source }, 'summary generated and saved to database');
+
+      if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
+        const [nextStage, ...rest] = remainingStages;
+        queueNextStage(itemId, nextStage, rest);
+      }
+
+      return {
+        success: true,
+        source: source.source,
+      };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log.error({ itemId, err: message }, 'summary generation failed');
-      throw new Error(message);
+      // Update digest status to failed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (summaryDigest) {
+        updateDigest(summaryDigest.id, { status: 'failed', error: errorMessage });
+      }
+      throw error;
     }
-
-    if (!summary) {
-      const message = 'Summary generation returned empty result';
-      log.warn({ itemId }, message);
-      throw new Error(message);
-    }
-
-    // Save summary to database
-    const now = new Date().toISOString();
-    createDigest({
-      id: `${itemId}-summary`,
-      itemId: itemId,
-      digestType: 'summary',
-      status: 'completed',
-      content: summary,
-      sqlarName: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    log.info({ itemId, source: source.source }, 'summary generated and saved to database');
-
-    if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
-      const [nextStage, ...rest] = remainingStages;
-      queueNextStage(itemId, nextStage, rest);
-    }
-
-    return {
-      success: true,
-      source: source.source,
-    };
   },
 });
 
