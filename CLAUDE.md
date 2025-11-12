@@ -56,40 +56,64 @@ MY_DATA_DIR/
 
 **Core Tables:**
 
-1. **items** - Unified model for inbox and library content
-   - Tracks all files and folders in inbox/ and library/
-   - Single file items: `inbox/photo.jpg` (no folder)
-   - Multi-file items: `inbox/{uuid}/` folder (renamed to slug after digest)
-   - Files list stored as JSON for performance
+1. **files** - Rebuildable cache of file metadata
+   - Tracks all files and folders in DATA_ROOT for fast queries
+   - Primary key: relative path from DATA_ROOT (e.g., 'inbox/photo.jpg', 'inbox/uuid-folder')
+   - Stores: name, size, MIME type, SHA256 hash (for <10MB files), timestamps
+   - Can be deleted and rebuilt from filesystem at any time
+   - Updated by library scanner on schedule
 
 2. **digests** - AI-generated content (rebuildable)
-   - Summary, tags, slug, etc.
-   - Foreign key to items.id
+   - Summary, tags, slug, screenshots, crawled content, etc.
+   - References files by path (file_path field)
    - Text content stored in `content` field
    - Binary content stored in SQLAR (see below)
+   - Status field: 'pending', 'enriching', 'enriched', 'failed'
+   - Overall enrichment status derived from digest statuses
 
 3. **sqlar** - SQLite Archive format for binary digests
    - Stores compressed screenshots, processed HTML, etc.
    - Standard SQLite format with zlib compression
-   - Files named: `{item_id}/{digest_type}/filename`
+   - Files named using path hash: `{path_hash}/{digest_type}/filename`
 
 4. **tasks** - Background job queue
-5. **inbox_task_state** - Enrichment status tracking
-6. **settings** - Application configuration
-7. **search_documents** - Chunked content for search (TO BE UPDATED)
+5. **settings** - Application configuration
+6. **search_documents** - Chunked content for search (TO BE UPDATED)
 
 ### Library Scanner
 
 - Automatically scans `MY_DATA_DIR` every 1 hour for new/changed files
-- Creates/updates items in database for all non-reserved folders
+- Updates files table cache for all non-reserved folders (inbox/, app/ are skipped)
 - Hashes small files (< 10MB) for change detection
-- Stores file metadata in items.files JSON field
+- Stores file metadata: path, name, size, MIME type, hash, timestamps
 - Runs on app startup (after 10 seconds) and periodically
+- Files table is purely a cache - can be deleted and rebuilt
+
+### File-Centric Architecture
+
+**No "Items" Abstraction:**
+- Files are the primary abstraction - referenced by relative paths
+- No synthetic item IDs or items table
+- Digests reference files by path (e.g., 'inbox/photo.jpg', 'inbox/uuid-folder')
+- Status derived from digest table, not stored separately
+- Maximum simplicity and durability - works with any file browser
+
+**Inbox Handling:**
+- Single file: saved as `inbox/{unique-filename}` (no folder)
+- Multiple files or text+files: saved as `inbox/{uuid}/` folder
+- UUID folders renamed to friendly slug after digest generation
+- Slug generation only for UUID-named files/folders (not user-uploaded names)
+
+**Digest Workflow:**
+- Each file path can have multiple digest types (summary, tags, slug, screenshot, content-md)
+- Digests created on-demand via `/api/inbox/{id}/digest` endpoint
+- Status tracked in digest.status field: pending → enriching → enriched (or failed)
+- Digest IDs generated from file path hash + digest type for stability
 
 ### App Router Structure
 - Uses Next.js App Router located in `src/app/`
 - Root layout in `src/app/layout.tsx` handles:
-  - Geist font loading (sans and mono variants)
+  - Font loading (system fonts used in constrained build environments)
   - Global CSS imports
   - HTML structure with font CSS variables
 - Main page is `src/app/page.tsx`
