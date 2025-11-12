@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 import { Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 
 type TaskStatus = 'to-do' | 'in-progress' | 'success' | 'failed';

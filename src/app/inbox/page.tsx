@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import type { InboxItem, InboxEnrichmentSummary, InboxDigestScreenshot } from '@/types';
 import { InboxItemCard } from './_components/InboxItemCard';

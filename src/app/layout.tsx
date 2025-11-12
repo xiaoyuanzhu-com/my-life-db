@@ -1,19 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/Header";
 import { BottomNav } from "@/components/BottomNav";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
 
-const geistSans = Geist({
+// Temporarily using system fonts due to build environment network restrictions
+// TODO: Re-enable Google Fonts (Geist, Geist_Mono) when building in environment with network access
+const geistSans = {
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+};
 
-const geistMono = Geist_Mono({
+const geistMono = {
   variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+};
 
 export const metadata: Metadata = {
   title: "MyLifeDB - Your Personal Knowledge Management System",
