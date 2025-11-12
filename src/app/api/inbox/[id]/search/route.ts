@@ -97,7 +97,7 @@ async function buildSearchMetadata(
   inboxDir: string,
   dataRoot: string
 ): Promise<SearchDocumentMetadata> {
-  const { readInboxDigestTags, readInboxDigestSlug } = await import('@/lib/inbox/digestArtifacts');
+  const { readDigestTags, readDigestSlug } = await import('@/lib/inbox/digestArtifacts');
 
   const infoSource = item.files.find((file) => Boolean(file.enrichment?.url));
   const screenshotFile = findFirstFile(item.files, (file) =>
@@ -125,10 +125,10 @@ async function buildSearchMetadata(
   }
 
   // Load AI-generated tags from digest/tags.json
-  const aiTags = await readInboxDigestTags(item.folderName);
+  const aiTags = await readDigestTags(item.folderName);
 
   // Load AI-generated slug/title from digest/slug.json
-  const slugData = await readInboxDigestSlug(item.folderName);
+  const slugData = await readDigestSlug(item.folderName);
   const title = slugData?.title || enrichment.title || null;
 
   return {

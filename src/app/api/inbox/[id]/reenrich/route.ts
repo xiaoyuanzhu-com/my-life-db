@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { getInboxItemById } from '@/lib/db/inbox';
+import { getFileByPath } from '@/lib/db/files';
 import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
 import { enqueueUrlSummary } from '@/lib/inbox/summarizeUrlInboxItem';
 import { enqueueUrlTagging } from '@/lib/inbox/tagUrlInboxItem';
@@ -19,7 +19,7 @@ interface RouteContext {
 
 /**
  * POST /api/inbox/[id]/reenrich?stage=crawl|summary|all
- * For now only supports URL crawl re-enrichment (stage=crawl or all) when type='url'.
+ * Re-enrich an inbox item with AI digests
  */
 export async function POST(
   request: NextRequest,
@@ -27,52 +27,49 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
+    const filePath = `inbox/${id}`;
     const searchParams = request.nextUrl.searchParams;
     const stage = (searchParams.get('stage') || 'all').toLowerCase();
 
-    const item = getInboxItemById(id);
-    if (!item) {
+    const file = getFileByPath(filePath);
+    if (!file) {
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }
 
     const actions: Array<{ stage: string; taskId: string | null; note?: string }> = [];
 
-    if ((stage === 'crawl' || stage === 'all') && item.type === 'url') {
-      const storageConfig = await getStorageConfig();
-      const baseDir = path.join(
-        storageConfig.dataPath,
-        '.app',
-        'mylifedb',
-        'inbox',
-        item.folderName,
-      );
+    // Helper to read files from inbox item directory
+    const storageConfig = await getStorageConfig();
+    const baseDir = path.join(storageConfig.dataPath, filePath);
 
-      async function readFileIfExists(name: string): Promise<string | null> {
-        const variants = new Set<string>();
-        variants.add(name);
-        if (!name.includes('/') && !name.startsWith('digest/')) {
-          variants.add(`digest/${name}`);
-        }
-
-        for (const variant of variants) {
-          try {
-            const p = path.join(baseDir, variant);
-            const s = await fs.readFile(p, 'utf-8');
-            return s;
-          } catch {
-            // Continue to next variant
-          }
-        }
-        return null;
+    async function readFileIfExists(name: string): Promise<string | null> {
+      const variants = new Set<string>();
+      variants.add(name);
+      if (!name.includes('/') && !name.startsWith('digest/')) {
+        variants.add(`digest/${name}`);
       }
 
-      function firstUrlFromText(text: string | null): string | null {
-        if (!text) return null;
-        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        const urlLike = lines.find((l) => /^https?:\/\//i.test(l));
-        return urlLike || null;
+      for (const variant of variants) {
+        try {
+          const p = path.join(baseDir, variant);
+          const s = await fs.readFile(p, 'utf-8');
+          return s;
+        } catch {
+          // Continue to next variant
+        }
       }
+      return null;
+    }
 
+    function firstUrlFromText(text: string | null): string | null {
+      if (!text) return null;
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const urlLike = lines.find((l) => /^https?:\/\//i.test(l));
+      return urlLike || null;
+    }
+
+    // Try to find URL for crawl stage
+    if (stage === 'crawl' || stage === 'all') {
       // Try url.txt, then fall back to first URL-like line in text files
       const urlTxt = await readFileIfExists('url.txt');
       let url = (urlTxt || '').trim();
@@ -89,39 +86,30 @@ export async function POST(
         url = firstUrlFromText(mainContent) || '';
       }
 
-      if (!url) {
-        log.warn({ id: item.id, folderName: item.folderName }, 'url not found for url-type item');
-        return NextResponse.json({ error: 'url not found for URL item' }, { status: 400 });
+      if (url) {
+        const taskId = enqueueUrlEnrichment(filePath, url);
+        actions.push({ stage: 'crawl', taskId });
+      } else if (stage === 'crawl') {
+        log.warn({ filePath }, 'url not found for crawl stage');
+        return NextResponse.json({ error: 'URL not found for crawl stage' }, { status: 400 });
       }
-
-      const taskId = enqueueUrlEnrichment(item.id, url);
-      actions.push({ stage: 'crawl', taskId });
     }
 
+    // Summary stage (requires URL content to exist)
     if (stage === 'summary' || stage === 'all') {
-      if (item.type !== 'url') {
-        if (stage === 'summary' && actions.length === 0) {
-          return NextResponse.json({ error: 'Summary stage only supported for URL items' }, { status: 400 });
-        }
-      } else {
-        const taskId = enqueueUrlSummary(item.id);
-        actions.push({ stage: 'summary', taskId });
-      }
+      const taskId = enqueueUrlSummary(filePath);
+      actions.push({ stage: 'summary', taskId });
     }
 
+    // Tagging stage
     if (stage === 'tagging' || stage === 'all') {
-      if (item.type !== 'url') {
-        if (stage === 'tagging' && actions.length === 0) {
-          return NextResponse.json({ error: 'Tagging stage only supported for URL items' }, { status: 400 });
-        }
-      } else {
-        const taskId = enqueueUrlTagging(item.id);
-        actions.push({ stage: 'tagging', taskId });
-      }
+      const taskId = enqueueUrlTagging(filePath);
+      actions.push({ stage: 'tagging', taskId });
     }
 
+    // Slug stage
     if (stage === 'slug' || stage === 'all') {
-      const taskId = enqueueUrlSlug(item.id);
+      const taskId = enqueueUrlSlug(filePath);
       actions.push({ stage: 'slug', taskId });
     }
 

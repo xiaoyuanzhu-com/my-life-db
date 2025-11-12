@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import type { InboxStatusView } from '@/lib/inbox/statusView';
+import type { DigestStatusView } from '@/lib/inbox/statusView';
 import { cn } from '@/lib/utils';
 import { DigestProgress } from './DigestProgress';
 
@@ -26,7 +26,7 @@ const log = (message: string, payload?: unknown) => {
   }
 };
 
-function deriveStageMap(status: InboxStatusView | null): Record<string, StageStatusName> {
+function deriveStageMap(status: DigestStatusView | null): Record<string, StageStatusName> {
   const map: Record<string, StageStatusName> = {};
 
   // ONLY use explicit stage states from the API
@@ -66,7 +66,7 @@ function deriveStageMap(status: InboxStatusView | null): Record<string, StageSta
 
 function mergeStageMaps(
   previous: Record<string, StageStatusName>,
-  status: InboxStatusView | null
+  status: DigestStatusView | null
 ): Record<string, StageStatusName> {
   const incoming = deriveStageMap(status);
   const merged: Record<string, StageStatusName> = { ...previous };
@@ -116,7 +116,7 @@ interface DigestCoordinatorProps {
   initialTags: string[] | null;
   initialScreenshot: InboxDigestScreenshot | null;
   initialSlug: InboxDigestSlug | null;
-  initialStatus: InboxStatusView | null;
+  initialStatus: DigestStatusView | null;
 }
 
 interface InboxDetailResponse {
@@ -130,7 +130,7 @@ interface InboxDetailResponse {
 }
 
 interface DigestStatusResponse {
-  status: InboxStatusView | null;
+  status: DigestStatusView | null;
 }
 
 export function DigestCoordinator({
@@ -146,7 +146,7 @@ export function DigestCoordinator({
   const [tags, setTags] = useState<string[] | null>(initialTags);
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
   const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
-  const [status, setStatus] = useState<InboxStatusView | null>(initialStatus);
+  const [status, setStatus] = useState<DigestStatusView | null>(initialStatus);
   const [stageStatusMap, setStageStatusMap] = useState<Record<string, StageStatusName>>(deriveStageMap(initialStatus));
   const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);

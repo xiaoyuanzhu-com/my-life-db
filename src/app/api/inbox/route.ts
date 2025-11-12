@@ -1,124 +1,16 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
-import { createInboxItem } from '@/lib/inbox/createItem';
-import { listItems } from '@/lib/db/items';
-import { listDigestsForItem, getDigestByItemAndType } from '@/lib/db/digests';
-import { getInboxTaskStatesByItemId } from '@/lib/db/inboxTaskState';
+import { saveToInbox } from '@/lib/inbox/saveToInbox';
+import { listFiles, getFileByPath } from '@/lib/db/files';
+import { readPrimaryText, readDigestSlug, readDigestScreenshot } from '@/lib/inbox/digestArtifacts';
+import { getDigestStatusView } from '@/lib/inbox/statusView';
 import { getLogger } from '@/lib/log/logger';
-import { getStorageConfig } from '@/lib/config/storage';
-import path from 'path';
-import fs from 'fs/promises';
-import type { Item, InboxEnrichmentSummary, InboxStageStatusSummary, InboxDigestScreenshot } from '@/types';
+import type { InboxDigestScreenshot } from '@/types';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 
 // Note: App initialization now happens in instrumentation.ts at server startup
-
-/**
- * Build enrichment summary from item and task states
- */
-function buildEnrichmentSummary(itemId: string, itemStatus: string): InboxEnrichmentSummary {
-  const taskStates = getInboxTaskStatesByItemId(itemId);
-
-  const stages: InboxStageStatusSummary[] = taskStates.map(ts => ({
-    taskType: ts.taskType,
-    status: ts.status === 'success' ? 'success' :
-            ts.status === 'in-progress' ? 'in-progress' :
-            ts.status === 'failed' ? 'failed' : 'to-do',
-    attempts: ts.attempts,
-    error: ts.error,
-    updatedAt: ts.updatedAt ? ts.updatedAt * 1000 : null, // Convert from Unix seconds to milliseconds
-  }));
-
-  const completedCount = stages.filter(s => s.status === 'success').length;
-  const hasFailures = stages.some(s => s.status === 'failed');
-
-  return {
-    itemId: itemId,
-    overall: itemStatus as any,
-    stages,
-    hasFailures,
-    completedCount,
-    totalCount: stages.length,
-    crawlDone: stages.find(s => s.taskType === 'url-crawl')?.status === 'success' || false,
-    summaryDone: stages.find(s => s.taskType === 'summary')?.status === 'success' || false,
-    screenshotReady: stages.find(s => s.taskType === 'screenshot')?.status === 'success' || false,
-    tagsReady: stages.find(s => s.taskType === 'tags')?.status === 'success' || false,
-    slugReady: stages.find(s => s.taskType === 'slug')?.status === 'success' || false,
-    canRetry: hasFailures,
-  };
-}
-
-/**
- * Get primary text from item files
- */
-async function getPrimaryText(item: Item): Promise<string | null> {
-  const config = await getStorageConfig();
-  const dataDir = config.dataPath;
-
-  // For single-file items, read the file directly if it's a text file
-  if (!item.isFolder && item.files && item.files.length === 1) {
-    const file = item.files[0];
-    if (file.type.startsWith('text/') || file.type === 'application/json') {
-      try {
-        const filePath = path.join(dataDir, item.path);
-        const content = await fs.readFile(filePath, 'utf-8');
-        return content;
-      } catch {
-        return null;
-      }
-    }
-  }
-
-  // For multi-file items, check for text.md file
-  if (item.isFolder) {
-    const textFile = item.files?.find(f => f.name === 'text.md');
-    if (textFile) {
-      try {
-        const filePath = path.join(dataDir, item.path, 'text.md');
-        const content = await fs.readFile(filePath, 'utf-8');
-        return content;
-      } catch {
-        return null;
-      }
-    }
-  }
-
-  // Check for summary digest
-  const summaryDigest = getDigestByItemAndType(item.id, 'summary');
-  if (summaryDigest?.content) {
-    return summaryDigest.content;
-  }
-
-  return null;
-}
-
-/**
- * Get screenshot from digests (stored in SQLAR)
- */
-function getDigestScreenshot(item: Item): InboxDigestScreenshot | null {
-  const screenshotDigest = getDigestByItemAndType(item.id, 'screenshot');
-  if (screenshotDigest?.sqlarName) {
-    // Extract extension and determine MIME type
-    const match = screenshotDigest.sqlarName.match(/\.(\w+)$/);
-    const extension = match ? match[1] : 'png';
-    const mimeTypeMap: Record<string, string> = {
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'webp': 'image/webp',
-    };
-    const mimeType = mimeTypeMap[extension] || 'image/png';
-
-    return {
-      src: `/api/inbox/sqlar/${encodeURIComponent(screenshotDigest.sqlarName)}`,
-      mimeType,
-      filename: `screenshot.${extension}`,
-    };
-  }
-  return null;
-}
 
 /**
  * GET /api/inbox
@@ -127,7 +19,6 @@ function getDigestScreenshot(item: Item): InboxDigestScreenshot | null {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status') || undefined;
     const limit = searchParams.get('limit')
       ? parseInt(searchParams.get('limit')!)
       : 50;
@@ -135,39 +26,27 @@ export async function GET(request: NextRequest) {
       ? parseInt(searchParams.get('offset')!)
       : 0;
 
-    // List items in inbox location
-    const items = listItems({ location: 'inbox', status, limit, offset });
+    // List files in inbox directory
+    const files = listFiles('inbox/', { orderBy: 'created_at', ascending: false, limit, offset });
 
     // Build enriched items for UI
-    const enrichedItems = await Promise.all(items.map(async (item) => {
-      const enrichment = buildEnrichmentSummary(item.id, item.status);
-      const primaryText = await getPrimaryText(item);
-      const digestScreenshot = getDigestScreenshot(item);
-      const slugDigest = getDigestByItemAndType(item.id, 'slug');
-
-      // Extract slug from digest JSON payload
-      let slug: string | null = null;
-      if (slugDigest?.content) {
-        try {
-          const payload = JSON.parse(slugDigest.content) as { slug?: string };
-          slug = payload.slug || null;
-        } catch {
-          // Invalid JSON, ignore
-        }
-      }
+    const enrichedItems = await Promise.all(files.map(async (file) => {
+      const enrichment = getDigestStatusView(file.path);
+      const primaryText = await readPrimaryText(file.path);
+      const digestScreenshot = await readDigestScreenshot(file.path);
+      const slugData = await readDigestSlug(file.path);
 
       return {
-        id: item.id,
-        folderName: item.name,
-        type: item.rawType,
-        files: item.files || [],
-        status: item.status,
+        path: file.path,
+        folderName: file.name,
+        type: file.mimeType || 'unknown',
+        files: [], // Files are on disk, not in database
+        status: enrichment?.overall || 'pending',
         enrichedAt: null,
         error: null,
-        slug,
-        schemaVersion: item.schemaVersion,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
+        slug: slugData?.slug || null,
+        createdAt: file.createdAt,
+        updatedAt: file.modifiedAt,
         enrichment,
         primaryText,
         digestScreenshot,
@@ -176,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       items: enrichedItems,
-      total: items.length,
+      total: files.length,
     });
   } catch (error) {
     log.error({ err: error }, 'list inbox items failed');
@@ -219,15 +98,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create inbox item
-    const item = await createInboxItem({
+    // Save to inbox
+    const result = await saveToInbox({
       text: text || undefined,
       files,
     });
 
-    log.info({ itemId: item.id, path: item.path }, 'created inbox item');
+    log.info({ path: result.path }, 'created inbox item');
 
-    return NextResponse.json(item, { status: 201 });
+    return NextResponse.json({ path: result.path }, { status: 201 });
   } catch (error) {
     log.error({ err: error }, 'create inbox item failed');
     return NextResponse.json(

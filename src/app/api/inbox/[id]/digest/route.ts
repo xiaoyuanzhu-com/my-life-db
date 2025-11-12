@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 import { startDigestWorkflow } from '@/lib/inbox/digestWorkflow';
-import { getInboxItemById } from '@/lib/db/inbox';
+import { getFileByPath } from '@/lib/db/files';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxDigestWorkflow' });
@@ -17,14 +17,15 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
+    const filePath = `inbox/${id}`;
 
-    const item = getInboxItemById(id);
-    if (!item) {
+    const file = getFileByPath(filePath);
+    if (!file) {
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }
 
     // Start digest workflow (type detection happens inside)
-    const { taskId } = await startDigestWorkflow(id);
+    const { taskId } = await startDigestWorkflow(filePath);
 
     return NextResponse.json({ success: true, taskId });
   } catch (error) {

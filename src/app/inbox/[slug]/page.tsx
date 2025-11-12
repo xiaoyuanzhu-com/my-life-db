@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getInboxItemByFolderName, getInboxItemById, getInboxItemBySlug } from '@/lib/db/inbox';
-import { readInboxPrimaryText, readInboxDigestSummary, readInboxDigestTags, readInboxDigestScreenshot, readInboxDigestSlug } from '@/lib/inbox/digestArtifacts';
-import { getInboxStatusView } from '@/lib/inbox/statusView';
+import { getFileByPath } from '@/lib/db/files';
+import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digestArtifacts';
+import { getDigestStatusView } from '@/lib/inbox/statusView';
 import { CrawlButton } from '../_components/CrawlButton';
 import { SummaryButton } from '../_components/SummaryButton';
 import { TaggingButton } from '../_components/TaggingButton';
@@ -12,31 +12,25 @@ import { IndexButton } from '../_components/IndexButton';
 
 export const runtime = 'nodejs';
 
-function isUUID(value: string): boolean {
-  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
-}
-
 export default async function InboxDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: slugParam } = await params;
+  const filePath = `inbox/${decodeURIComponent(slugParam)}`;
 
-  // Look up by folderName first (slug defaults to uuid initially)
-  let item = getInboxItemByFolderName(slugParam);
-  if (!item) {
-    item = getInboxItemBySlug(slugParam);
-  }
-  if (!item && isUUID(slugParam)) {
-    item = getInboxItemById(slugParam);
-  }
-  if (!item) return notFound();
+  // Look up file by path
+  const file = getFileByPath(filePath);
+  if (!file) return notFound();
 
   const [text, summary, tags, screenshot, digestSlug, statusView] = await Promise.all([
-    readInboxPrimaryText(item.folderName),
-    readInboxDigestSummary(item.folderName),
-    readInboxDigestTags(item.folderName),
-    readInboxDigestScreenshot(item.folderName),
-    readInboxDigestSlug(item.folderName),
-    getInboxStatusView(item.id),
+    readPrimaryText(filePath),
+    readDigestSummary(filePath),
+    readDigestTags(filePath),
+    readDigestScreenshot(filePath),
+    readDigestSlug(filePath),
+    getDigestStatusView(filePath),
   ]);
+
+  // Determine if this is a URL type (check if url.txt exists or text contains URL)
+  const isUrlType = text && /^https?:\/\//i.test(text.trim().split('\n')[0]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -49,17 +43,17 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
 
         <div className="flex items-center flex-wrap gap-3">
           <span className="text-xs font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
-            {item.type}
+            {file.mimeType || 'unknown'}
           </span>
-          {item.type === 'url' && (
+          {isUrlType && (
             <>
-              <CrawlButton itemId={item.id} />
-              <SummaryButton itemId={item.id} />
-              <TaggingButton itemId={item.id} />
-              <IndexButton itemId={item.id} />
+              <CrawlButton itemId={slugParam} />
+              <SummaryButton itemId={slugParam} />
+              <TaggingButton itemId={slugParam} />
+              <IndexButton itemId={slugParam} />
             </>
           )}
-          <SlugButton itemId={item.id} />
+          <SlugButton itemId={slugParam} />
         </div>
 
         <section className="bg-card rounded-lg border">
@@ -79,8 +73,8 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
         </section>
 
         <DigestCoordinator
-          itemId={item.id}
-          type={item.type}
+          itemId={slugParam}
+          type={isUrlType ? 'url' : 'text'}
           initialSummary={summary}
           initialTags={tags}
           initialScreenshot={screenshot}

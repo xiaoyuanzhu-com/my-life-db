@@ -6,7 +6,7 @@
  * Can be deleted and rebuilt from filesystem at any time.
  */
 
-import { getDb } from './connection';
+import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBFiles' });
@@ -53,7 +53,7 @@ function rowToFileRecord(row: FileRecordRow): FileRecord {
  * Get file record by path
  */
 export function getFileByPath(path: string): FileRecord | null {
-  const db = getDb();
+  const db = getDatabase();
   const row = db
     .prepare('SELECT * FROM files WHERE path = ?')
     .get(path) as FileRecordRow | undefined;
@@ -77,7 +77,7 @@ export function listFiles(
     offset?: number;
   }
 ): FileRecord[] {
-  const db = getDb();
+  const db = getDatabase();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -122,7 +122,7 @@ export function upsertFileRecord(file: {
   hash?: string | null;
   modifiedAt: string;
 }): FileRecord {
-  const db = getDb();
+  const db = getDatabase();
   const now = new Date().toISOString();
 
   const existing = getFileByPath(file.path);
@@ -180,7 +180,7 @@ export function upsertFileRecord(file: {
  * Update file path (for renames)
  */
 export function updateFilePath(oldPath: string, newPath: string): void {
-  const db = getDb();
+  const db = getDatabase();
 
   db.prepare('UPDATE files SET path = ?, name = ? WHERE path = ?').run(
     newPath,
@@ -195,7 +195,7 @@ export function updateFilePath(oldPath: string, newPath: string): void {
  * Delete file record
  */
 export function deleteFileRecord(path: string): void {
-  const db = getDb();
+  const db = getDatabase();
   db.prepare('DELETE FROM files WHERE path = ?').run(path);
   log.debug({ path }, 'deleted file record');
 }
@@ -204,7 +204,7 @@ export function deleteFileRecord(path: string): void {
  * Delete all file records matching path prefix
  */
 export function deleteFilesByPrefix(pathPrefix: string): void {
-  const db = getDb();
+  const db = getDatabase();
   const result = db.prepare('DELETE FROM files WHERE path LIKE ?').run(`${pathPrefix}%`);
   log.info({ pathPrefix, deleted: result.changes }, 'deleted files by prefix');
 }
@@ -213,7 +213,7 @@ export function deleteFilesByPrefix(pathPrefix: string): void {
  * Count files matching path prefix
  */
 export function countFiles(pathPrefix?: string, isFolder?: boolean): number {
-  const db = getDb();
+  const db = getDatabase();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -238,7 +238,7 @@ export function countFiles(pathPrefix?: string, isFolder?: boolean): number {
  * Clear all file records (for full rebuild)
  */
 export function clearAllFiles(): void {
-  const db = getDb();
+  const db = getDatabase();
   db.prepare('DELETE FROM files').run();
   log.info({}, 'cleared all file records');
 }
