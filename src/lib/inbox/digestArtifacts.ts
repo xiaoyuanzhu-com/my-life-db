@@ -3,34 +3,36 @@ import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { INBOX_DIR } from '@/lib/fs/storage';
+import { DATA_ROOT } from '@/lib/fs/storage';
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import { getDigestByItemAndType } from '@/lib/db/digests';
-import { getInboxItemByFolderName } from '@/lib/db/inbox';
+import { getDigestByPathAndType } from '@/lib/db/digests';
+import { getFileByPath } from '@/lib/db/files';
 
 /**
- * Read primary text for an inbox item
+ * Read primary text for a file
  * ALWAYS returns original user input from files (source of truth)
  * NEVER returns digest content - digests are rebuildable
  *
- * For single-file items: reads the file directly
- * For multi-file items: looks for text files in the folder
+ * For single files: reads the file directly
+ * For folders: looks for text files in the folder
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder')
  */
-export async function readInboxPrimaryText(folderName: string): Promise<string | null> {
-  // Check if folderName is actually a single file (e.g., "text.md", "uuid.md")
-  const itemPath = path.join(INBOX_DIR, folderName);
+export async function readPrimaryText(filePath: string): Promise<string | null> {
+  const absolutePath = path.join(DATA_ROOT, filePath);
+
   try {
-    const stats = await fs.stat(itemPath);
+    const stats = await fs.stat(absolutePath);
     if (stats.isFile()) {
-      // Single-file item: read the file directly
-      const content = await fs.readFile(itemPath, 'utf-8');
+      // Single file: read directly
+      const content = await fs.readFile(absolutePath, 'utf-8');
       return content.trim().length > 0 ? content.trim() : null;
     }
   } catch {
     // Not a file, try as folder below
   }
 
-  // Multi-file item: search for text files in the folder
+  // Folder: search for text files
   const candidates = [
     'text.md',
     'note.md',
@@ -42,8 +44,8 @@ export async function readInboxPrimaryText(folderName: string): Promise<string |
 
   async function readFileIfExists(name: string): Promise<string | null> {
     try {
-      const filePath = path.join(itemPath, name);
-      const content = await fs.readFile(filePath, 'utf-8');
+      const candidatePath = path.join(absolutePath, name);
+      const content = await fs.readFile(candidatePath, 'utf-8');
       return content.trim().length > 0 ? content.trim() : null;
     } catch {
       return null;
@@ -61,34 +63,31 @@ export async function readInboxPrimaryText(folderName: string): Promise<string |
 /**
  * Read crawled content (markdown) from digest
  * This is the enriched/processed content, NOT the original user input
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
-export async function readInboxDigestContent(folderName: string): Promise<string | null> {
-  const item = getInboxItemByFolderName(folderName);
-  if (!item) return null;
-
-  const contentDigest = getDigestByItemAndType(item.id, 'content-md');
+export async function readDigestContent(filePath: string): Promise<string | null> {
+  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
   return contentDigest?.content || null;
 }
 
 /**
  * Read summary digest from database
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
-export async function readInboxDigestSummary(folderName: string): Promise<string | null> {
-  const item = getInboxItemByFolderName(folderName);
-  if (!item) return null;
-
-  const summaryDigest = getDigestByItemAndType(item.id, 'summary');
+export async function readDigestSummary(filePath: string): Promise<string | null> {
+  const summaryDigest = getDigestByPathAndType(filePath, 'summary');
   return summaryDigest?.content || null;
 }
 
 /**
  * Read tags digest from database
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
-export async function readInboxDigestTags(folderName: string): Promise<string[] | null> {
-  const item = getInboxItemByFolderName(folderName);
-  if (!item) return null;
-
-  const tagsDigest = getDigestByItemAndType(item.id, 'tags');
+export async function readDigestTags(filePath: string): Promise<string[] | null> {
+  const tagsDigest = getDigestByPathAndType(filePath, 'tags');
   if (!tagsDigest?.content) return null;
 
   try {
@@ -108,15 +107,14 @@ export async function readInboxDigestTags(folderName: string): Promise<string[] 
 /**
  * Read screenshot digest from SQLAR
  * Returns metadata for serving via API
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
-export async function readInboxDigestScreenshot(folderName: string): Promise<InboxDigestScreenshot | null> {
-  const item = getInboxItemByFolderName(folderName);
-  if (!item) return null;
-
-  const screenshotDigest = getDigestByItemAndType(item.id, 'screenshot');
+export async function readDigestScreenshot(filePath: string): Promise<InboxDigestScreenshot | null> {
+  const screenshotDigest = getDigestByPathAndType(filePath, 'screenshot');
   if (!screenshotDigest?.sqlarName) return null;
 
-  // Extract extension from sqlarName (e.g., "{id}/screenshot/screenshot.png" -> "png")
+  // Extract extension from sqlarName (e.g., "screenshot.png" -> "png")
   const match = screenshotDigest.sqlarName.match(/\.(\w+)$/);
   const extension = match ? match[1] : 'png';
   const mimeType = extensionToMimeType(extension);
@@ -126,18 +124,17 @@ export async function readInboxDigestScreenshot(folderName: string): Promise<Inb
   return {
     filename: `screenshot.${extension}`,
     mimeType,
-    src: `/api/inbox/sqlar/${encodeURIComponent(screenshotDigest.sqlarName)}`,
+    src: `/api/sqlar/${encodeURIComponent(screenshotDigest.sqlarName)}`,
   };
 }
 
 /**
  * Read slug digest from database
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
-export async function readInboxDigestSlug(folderName: string): Promise<InboxDigestSlug | null> {
-  const item = getInboxItemByFolderName(folderName);
-  if (!item) return null;
-
-  const slugDigest = getDigestByItemAndType(item.id, 'slug');
+export async function readDigestSlug(filePath: string): Promise<InboxDigestSlug | null> {
+  const slugDigest = getDigestByPathAndType(filePath, 'slug');
   if (!slugDigest?.content) return null;
 
   try {
