@@ -2,11 +2,11 @@ import 'server-only';
 
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { getInboxItemById } from '@/lib/db/inbox';
+import { getFileByPath } from '@/lib/db/files';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
-import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSlug' });
 
@@ -14,9 +14,9 @@ const log = getLogger({ module: 'InboxSlug' });
  * Load content from database for slug generation
  * Prefers summary, falls back to content-md
  */
-function loadSlugSource(itemId: string): { text: string; source: string } {
+function loadSlugSource(filePath: string): { text: string; source: string } {
   // Try summary first (shorter, more focused)
-  const summaryDigest = getDigestByItemAndType(itemId, 'summary');
+  const summaryDigest = getDigestByPathAndType(filePath, 'summary');
   if (summaryDigest?.content) {
     return {
       text: summaryDigest.content,
@@ -25,7 +25,7 @@ function loadSlugSource(itemId: string): { text: string; source: string } {
   }
 
   // Fall back to content-md
-  const contentDigest = getDigestByItemAndType(itemId, 'content-md');
+  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
   if (contentDigest?.content) {
     return {
       text: contentDigest.content,
@@ -41,44 +41,44 @@ function clampText(text: string, maxChars = 6000): string {
   return text.slice(0, maxChars);
 }
 
-export function enqueueUrlSlug(itemId: string, options?: DigestPipelinePayload): string {
+export function enqueueUrlSlug(filePath: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_slug']);
 
   const taskId = tq('digest_url_slug').add({
-    itemId: itemId,
+    filePath: filePath,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
-  log.info({ itemId, taskId }, 'digest_url_slug task enqueued');
+  log.info({ filePath, taskId }, 'digest_url_slug task enqueued');
   return taskId;
 }
 
 defineTaskHandler({
   type: 'digest_url_slug',
   module: 'InboxSlug',
-  handler: async (input: { itemId: string } & DigestPipelinePayload) => {
-    const { itemId } = input;
+  handler: async (input: { filePath: string } & DigestPipelinePayload) => {
+    const { filePath } = input;
 
     try {
-      const item = getInboxItemById(itemId);
-      if (!item) {
-        log.warn({ itemId }, 'item not found for slug generation');
+      const file = getFileByPath(filePath);
+      if (!file) {
+        log.warn({ filePath }, 'file not found for slug generation');
         return { success: false, reason: 'not_found' };
       }
 
       // Load content from database
-      const { text, source } = loadSlugSource(itemId);
+      const { text, source } = loadSlugSource(filePath);
       const clipped = clampText(text);
 
       const result = generateSlugFromContentDigest(clipped);
       if (!result.slug) {
         const message = 'Slug generation returned empty result';
-        log.warn({ itemId }, message);
+        log.warn({ filePath }, message);
         throw new Error(message);
       }
 
-      // Create completed digest
+      // Create enriched digest
       const now = new Date().toISOString();
       const payload = {
         slug: result.slug,
@@ -89,10 +89,10 @@ defineTaskHandler({
       };
 
       createDigest({
-        id: `${itemId}-slug`,
-        itemId,
+        id: generateDigestId(filePath, 'slug'),
+        filePath,
         digestType: 'slug',
-        status: 'completed',
+        status: 'enriched',
         content: JSON.stringify(payload),
         sqlarName: null,
         error: null,
@@ -100,7 +100,7 @@ defineTaskHandler({
         updatedAt: now,
       });
 
-      log.info({ itemId, slug: result.slug, source }, 'slug generated and saved to database');
+      log.info({ filePath, slug: result.slug, source }, 'slug generated and saved to database');
 
       return {
         success: true,
@@ -113,8 +113,8 @@ defineTaskHandler({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const now = new Date().toISOString();
       createDigest({
-        id: `${itemId}-slug`,
-        itemId,
+        id: generateDigestId(filePath, 'slug'),
+        filePath,
         digestType: 'slug',
         status: 'failed',
         content: null,

@@ -2,20 +2,20 @@ import 'server-only';
 
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
-import { getInboxItemById } from '@/lib/db/inbox';
+import { getFileByPath } from '@/lib/db/files';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slugUrlInboxItem';
-import { createDigest, getDigestByItemAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
 /**
  * Load content from database for tagging
  */
-function loadTaggingSource(itemId: string): { text: string; source: string } | null {
-  const contentDigest = getDigestByItemAndType(itemId, 'content-md');
+function loadTaggingSource(filePath: string): { text: string; source: string } | null {
+  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
 
   if (contentDigest?.content) {
     return {
@@ -32,37 +32,37 @@ function clampText(text: string, maxChars = 6000): string {
   return text.slice(0, maxChars);
 }
 
-export function enqueueUrlTagging(itemId: string, options?: DigestPipelinePayload): string {
+export function enqueueUrlTagging(filePath: string, options?: DigestPipelinePayload): string {
   ensureTaskRuntimeReady(['digest_url_tagging']);
 
   const taskId = tq('digest_url_tagging').add({
-    itemId: itemId,
+    filePath: filePath,
     pipeline: options?.pipeline ?? false,
     remainingStages: options?.remainingStages ?? [],
   });
 
-  log.info({ itemId, taskId }, 'digest_url_tagging task enqueued');
+  log.info({ filePath, taskId }, 'digest_url_tagging task enqueued');
   return taskId;
 }
 
 defineTaskHandler({
   type: 'digest_url_tagging',
   module: 'InboxTagging',
-  handler: async (input: { itemId: string } & DigestPipelinePayload) => {
-    const { itemId, pipeline, remainingStages } = input;
+  handler: async (input: { filePath: string } & DigestPipelinePayload) => {
+    const { filePath, pipeline, remainingStages } = input;
 
     try {
-      const item = getInboxItemById(itemId);
-      if (!item) {
-        log.warn({ itemId }, 'item not found for tagging');
+      const file = getFileByPath(filePath);
+      if (!file) {
+        log.warn({ filePath }, 'file not found for tagging');
         return { success: false, reason: 'not_found' };
       }
 
       // Load content from database
-      const source = loadTaggingSource(itemId);
+      const source = loadTaggingSource(filePath);
       if (!source) {
         const message = 'No content-md digest found for tagging';
-        log.warn({ itemId }, message);
+        log.warn({ filePath }, message);
         throw new Error(message);
       }
 
@@ -72,7 +72,7 @@ defineTaskHandler({
       if (!result.tags.length) {
         const message = 'Tag generation returned no tags';
         log.warn({
-          itemId: itemId,
+          filePath: filePath,
           sourceTextLength: source.text.length,
           clippedTextLength: clipped.length,
           clippedTextPreview: clipped.substring(0, 200),
@@ -81,7 +81,7 @@ defineTaskHandler({
         throw new Error(message);
       }
 
-      // Create completed digest
+      // Create enriched digest
       const now = new Date().toISOString();
       const tagsPayload = {
         tags: result.tags,
@@ -89,10 +89,10 @@ defineTaskHandler({
       };
 
       createDigest({
-        id: `${itemId}-tags`,
-        itemId,
+        id: generateDigestId(filePath, 'tags'),
+        filePath,
         digestType: 'tags',
-        status: 'completed',
+        status: 'enriched',
         content: JSON.stringify(tagsPayload),
         sqlarName: null,
         error: null,
@@ -100,11 +100,11 @@ defineTaskHandler({
         updatedAt: now,
       });
 
-      log.info({ itemId, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
+      log.info({ filePath, tags: result.tags.length, source: source.source }, 'tags generated and saved to database');
 
       if (pipeline && Array.isArray(remainingStages) && remainingStages.length > 0) {
         const [nextStage, ...rest] = remainingStages;
-        queueNextStage(itemId, nextStage, rest);
+        queueNextStage(filePath, nextStage, rest);
       }
 
       return {
@@ -117,8 +117,8 @@ defineTaskHandler({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const now = new Date().toISOString();
       createDigest({
-        id: `${itemId}-tags`,
-        itemId,
+        id: generateDigestId(filePath, 'tags'),
+        filePath,
         digestType: 'tags',
         status: 'failed',
         content: null,
@@ -133,13 +133,13 @@ defineTaskHandler({
 });
 
 function queueNextStage(
-  itemId: string,
+  filePath: string,
   nextStage: UrlDigestPipelineStage,
   remaining: UrlDigestPipelineStage[]
 ): void {
   if (nextStage === 'slug') {
-    enqueueUrlSlug(itemId, { pipeline: true, remainingStages: remaining });
+    enqueueUrlSlug(filePath, { pipeline: true, remainingStages: remaining });
   } else {
-    log.warn({ itemId, stage: nextStage }, 'unknown next stage after tagging in url digest pipeline');
+    log.warn({ filePath, stage: nextStage }, 'unknown next stage after tagging in url digest pipeline');
   }
 }
