@@ -1,8 +1,8 @@
 // API route for individual inbox item operations
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
-import { getFileByPath, upsertFileRecord, deleteFileRecord } from '@/lib/db/files';
-import { deleteDigestsForPath, listDigestsForPath } from '@/lib/db/digests';
+import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from '@/lib/db/files';
+import { deleteDigestsForPath, deleteDigestsByPrefix, listDigestsForPath } from '@/lib/db/digests';
 import { getStorageConfig } from '@/lib/config/storage';
 import { getUniqueFilename } from '@/lib/fs/fileDeduplication';
 import { createHash } from 'crypto';
@@ -99,7 +99,36 @@ export async function PUT(
     const removeFiles = formData.getAll('removeFiles') as string[];
     const newFileEntries = formData.getAll('files') as File[];
 
-    const itemDir = path.join(config.dataPath, filePath);
+    const itemPath = path.join(config.dataPath, filePath);
+
+    // Handle single-file items - convert to folder if needed
+    if (!file.isFolder && (text !== null || newFileEntries.length > 0)) {
+      // Need to convert single file to folder to accommodate text or additional files
+      const tempPath = `${itemPath}.tmp`;
+
+      // Read existing file
+      const existingContent = await fs.readFile(itemPath);
+      const originalName = path.basename(filePath);
+
+      // Rename file to folder
+      await fs.rename(itemPath, tempPath);
+      await fs.mkdir(itemPath);
+      await fs.writeFile(path.join(itemPath, originalName), existingContent);
+      await fs.rm(tempPath, { force: true });
+
+      // Update database record to folder
+      upsertFileRecord({
+        path: filePath,
+        name: file.name,
+        isFolder: true,
+        modifiedAt: new Date().toISOString(),
+      });
+
+      // Reload file record
+      file.isFolder = true;
+    }
+
+    const itemDir = file.isFolder ? itemPath : path.dirname(itemPath);
 
     // 1. Handle text update
     if (text !== null) {
@@ -140,7 +169,7 @@ export async function PUT(
     }
 
     // 4. Update database file record with new modified time
-    const stats = await fs.stat(itemDir);
+    const stats = await fs.stat(itemPath);
     upsertFileRecord({
       path: filePath,
       name: file.name,
@@ -191,6 +220,12 @@ export async function DELETE(
     await fs.rm(itemPath, { recursive: true, force: true });
 
     // Delete database records (file and digests)
+    if (file.isFolder) {
+      // For folders, delete all children first
+      deleteFilesByPrefix(`${filePath}/`);
+      deleteDigestsByPrefix(`${filePath}/`);
+    }
+    // Delete the folder/file record itself
     deleteFileRecord(filePath);
     deleteDigestsForPath(filePath);
 
