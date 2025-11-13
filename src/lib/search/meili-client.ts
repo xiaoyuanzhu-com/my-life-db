@@ -69,6 +69,57 @@ class MeiliClient {
     return response.taskUid;
   }
 
+  async search<T = unknown>(
+    query: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      filter?: string;
+      sort?: string[];
+      attributesToRetrieve?: string[];
+      attributesToHighlight?: string[];
+      attributesToCrop?: string[];
+      cropLength?: number;
+      highlightPreTag?: string;
+      highlightPostTag?: string;
+    }
+  ): Promise<{
+    hits: T[];
+    query: string;
+    processingTimeMs: number;
+    limit: number;
+    offset: number;
+    estimatedTotalHits: number;
+  }> {
+    const response = await this.request<{
+      hits: T[];
+      query: string;
+      processingTimeMs: number;
+      limit: number;
+      offset: number;
+      estimatedTotalHits: number;
+    }>(
+      `/indexes/${encodeURIComponent(this.indexUid)}/search`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          q: query,
+          limit: options?.limit ?? 20,
+          offset: options?.offset ?? 0,
+          filter: options?.filter,
+          sort: options?.sort,
+          attributesToRetrieve: options?.attributesToRetrieve ?? ['*'],
+          attributesToHighlight: options?.attributesToHighlight,
+          attributesToCrop: options?.attributesToCrop,
+          cropLength: options?.cropLength ?? 200,
+          highlightPreTag: options?.highlightPreTag ?? '<em>',
+          highlightPostTag: options?.highlightPostTag ?? '</em>',
+        }),
+      }
+    );
+    return response;
+  }
+
   async waitForTask(taskUid: number, options?: { timeoutMs?: number; intervalMs?: number }): Promise<MeiliTask> {
     const timeoutMs = options?.timeoutMs ?? 60_000;
     const intervalMs = options?.intervalMs ?? 1_000;
