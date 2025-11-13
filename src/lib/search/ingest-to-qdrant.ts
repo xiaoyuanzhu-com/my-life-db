@@ -1,0 +1,433 @@
+import 'server-only';
+import path from 'path';
+import fs from 'fs/promises';
+import crypto from 'crypto';
+import {
+  upsertQdrantDocument,
+  deleteQdrantDocumentsByFile,
+  type SourceType,
+  type ContentType,
+} from '@/lib/db/qdrant-documents';
+import { getFileByPath } from '@/lib/db/files';
+import { listDigestsForPath, getDigestByPathAndType } from '@/lib/db/digests';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'IngestQdrant' });
+
+const DATA_DIR = process.env.MY_DATA_DIR || './data';
+
+export interface QdrantIngestResult {
+  filePath: string;
+  sources: {
+    content?: { chunkCount: number };
+    summary?: { chunkCount: number };
+    tags?: { chunkCount: number };
+  };
+  totalChunks: number;
+}
+
+export interface ChunkResult {
+  chunkIndex: number;
+  chunkCount: number;
+  chunkText: string;
+  spanStart: number;
+  spanEnd: number;
+  overlapTokens: number;
+  wordCount: number;
+  tokenCount: number;
+}
+
+/**
+ * Ingest a file to Qdrant (chunked documents for vector search)
+ *
+ * This function:
+ * 1. Gets file metadata from the files table
+ * 2. Chunks main content (from URL digest or filesystem)
+ * 3. Chunks summary from digest (if available)
+ * 4. Chunks tags from digest (if available)
+ * 5. Creates qdrant_documents entries for each chunk
+ *
+ * Each file+source can generate multiple chunks (800-1000 tokens with overlap)
+ */
+export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResult> {
+  log.info({ filePath }, 'starting Qdrant ingestion');
+
+  // 1. Get file metadata
+  const fileRecord = getFileByPath(filePath);
+  if (!fileRecord) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const contentType = detectContentType(filePath, fileRecord.mimeType);
+  const digests = listDigestsForPath(filePath);
+
+  const result: QdrantIngestResult = {
+    filePath,
+    sources: {},
+    totalChunks: 0,
+  };
+
+  // 2. Index main content (URL digest or filesystem file)
+  const contentText = await getFileContent(filePath, fileRecord.isFolder);
+  if (contentText && contentText.trim().length > 0) {
+    const chunks = chunkText(contentText, { targetTokens: 900, overlapPercent: 0.15 });
+
+    for (const chunk of chunks) {
+      const documentId = `${filePath}:content:${chunk.chunkIndex}`;
+      const contentHash = hashString(chunk.chunkText);
+
+      upsertQdrantDocument({
+        documentId,
+        filePath,
+        sourceType: 'content',
+        chunkIndex: chunk.chunkIndex,
+        chunkCount: chunk.chunkCount,
+        chunkText: chunk.chunkText,
+        spanStart: chunk.spanStart,
+        spanEnd: chunk.spanEnd,
+        overlapTokens: chunk.overlapTokens,
+        wordCount: chunk.wordCount,
+        tokenCount: chunk.tokenCount,
+        contentHash,
+        contentType,
+        embeddingVersion: 0,
+      });
+    }
+
+    result.sources.content = { chunkCount: chunks.length };
+    result.totalChunks += chunks.length;
+
+    log.info(
+      { filePath, sourceType: 'content', chunkCount: chunks.length },
+      'indexed content chunks'
+    );
+  }
+
+  // 3. Index summary from digest
+  const summaryDigest = digests.find(d => d.digestType === 'summary' && d.status === 'enriched');
+  if (summaryDigest?.content) {
+    const chunks = chunkText(summaryDigest.content, { targetTokens: 900, overlapPercent: 0.15 });
+
+    for (const chunk of chunks) {
+      const documentId = `${filePath}:summary:${chunk.chunkIndex}`;
+      const contentHash = hashString(chunk.chunkText);
+
+      upsertQdrantDocument({
+        documentId,
+        filePath,
+        sourceType: 'summary',
+        chunkIndex: chunk.chunkIndex,
+        chunkCount: chunk.chunkCount,
+        chunkText: chunk.chunkText,
+        spanStart: chunk.spanStart,
+        spanEnd: chunk.spanEnd,
+        overlapTokens: chunk.overlapTokens,
+        wordCount: chunk.wordCount,
+        tokenCount: chunk.tokenCount,
+        contentHash,
+        contentType,
+        embeddingVersion: 0,
+      });
+    }
+
+    result.sources.summary = { chunkCount: chunks.length };
+    result.totalChunks += chunks.length;
+
+    log.info(
+      { filePath, sourceType: 'summary', chunkCount: chunks.length },
+      'indexed summary chunks'
+    );
+  }
+
+  // 4. Index tags from digest (usually single chunk)
+  const tagsDigest = digests.find(d => d.digestType === 'tags' && d.status === 'enriched');
+  if (tagsDigest?.content) {
+    try {
+      const tags = JSON.parse(tagsDigest.content);
+      const tagText = Array.isArray(tags) ? tags.join(', ') : String(tags);
+
+      if (tagText.trim().length > 0) {
+        const chunks = chunkText(tagText, { targetTokens: 900, overlapPercent: 0.15 });
+
+        for (const chunk of chunks) {
+          const documentId = `${filePath}:tags:${chunk.chunkIndex}`;
+          const contentHash = hashString(chunk.chunkText);
+
+          upsertQdrantDocument({
+            documentId,
+            filePath,
+            sourceType: 'tags',
+            chunkIndex: chunk.chunkIndex,
+            chunkCount: chunk.chunkCount,
+            chunkText: chunk.chunkText,
+            spanStart: chunk.spanStart,
+            spanEnd: chunk.spanEnd,
+            overlapTokens: chunk.overlapTokens,
+            wordCount: chunk.wordCount,
+            tokenCount: chunk.tokenCount,
+            contentHash,
+            contentType,
+            embeddingVersion: 0,
+          });
+        }
+
+        result.sources.tags = { chunkCount: chunks.length };
+        result.totalChunks += chunks.length;
+
+        log.info(
+          { filePath, sourceType: 'tags', chunkCount: chunks.length },
+          'indexed tag chunks'
+        );
+      }
+    } catch (error) {
+      log.warn({ filePath, error }, 'failed to parse tags digest');
+    }
+  }
+
+  log.info(
+    { filePath, totalChunks: result.totalChunks },
+    'completed Qdrant ingestion'
+  );
+
+  return result;
+}
+
+/**
+ * Delete all Qdrant chunks for a file
+ */
+export function deleteFromQdrant(filePath: string): number {
+  const deletedCount = deleteQdrantDocumentsByFile(filePath);
+  log.info({ filePath, deletedCount }, 'deleted Qdrant chunks');
+  return deletedCount;
+}
+
+/**
+ * Re-index a file (delete + ingest)
+ */
+export async function reindexQdrant(filePath: string): Promise<QdrantIngestResult> {
+  deleteFromQdrant(filePath);
+  return await ingestToQdrant(filePath);
+}
+
+/**
+ * Get file content for indexing
+ * Priority: 1) URL digest, 2) Filesystem file, 3) Folder text.md
+ */
+async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
+  const dataDir = DATA_DIR;
+
+  // 1. Check for URL content digest (content-md)
+  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
+  if (contentDigest?.content && contentDigest.status === 'enriched') {
+    return contentDigest.content;
+  }
+
+  // 2. Try reading from filesystem (markdown or text files)
+  if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
+    try {
+      const fullPath = path.join(dataDir, filePath);
+      const content = await fs.readFile(fullPath, 'utf-8');
+      return content;
+    } catch (error) {
+      log.debug({ filePath, error }, 'failed to read file');
+    }
+  }
+
+  // 3. Try folder's text.md
+  if (isFolder) {
+    try {
+      const textMdPath = path.join(dataDir, filePath, 'text.md');
+      const content = await fs.readFile(textMdPath, 'utf-8');
+      return content;
+    } catch (error) {
+      log.debug({ filePath, error }, 'failed to read text.md from folder');
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Detect content type from file path and MIME type
+ */
+function detectContentType(filePath: string, mimeType: string | null): ContentType {
+  // Check file extension
+  if (filePath.endsWith('.pdf')) return 'pdf';
+  if (filePath.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
+  if (filePath.match(/\.(mp3|wav|m4a|ogg|flac)$/i)) return 'audio';
+  if (filePath.match(/\.(mp4|webm|mov|avi|mkv)$/i)) return 'video';
+  if (filePath.match(/\.(md|txt)$/i)) return 'text';
+
+  // Check MIME type
+  if (mimeType?.startsWith('image/')) return 'image';
+  if (mimeType?.startsWith('audio/')) return 'audio';
+  if (mimeType?.startsWith('video/')) return 'video';
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType?.startsWith('text/')) return 'text';
+
+  // Check for URL files (contain http:// or https://)
+  if (filePath.match(/^inbox\/[^/]+$/) || filePath.includes('url')) {
+    return 'url';
+  }
+
+  // Default to mixed for folders or unknown types
+  return 'mixed';
+}
+
+/**
+ * Chunk text into overlapping segments for vector embeddings
+ *
+ * Strategy:
+ * - Target: 800-1000 tokens per chunk
+ * - Overlap: 15% (80-180 tokens) to preserve context at boundaries
+ * - Boundaries: Prefer markdown headings, then paragraphs, then sentences
+ *
+ * @param text - Text to chunk
+ * @param options - Chunking options
+ * @returns Array of chunks with metadata
+ */
+function chunkText(
+  text: string,
+  options: {
+    targetTokens?: number;
+    overlapPercent?: number;
+  } = {}
+): ChunkResult[] {
+  const targetTokens = options.targetTokens ?? 900;
+  const overlapPercent = options.overlapPercent ?? 0.15;
+  const overlapTokens = Math.floor(targetTokens * overlapPercent);
+
+  // Simple token estimation: ~4 chars per token (rough approximation)
+  const charsPerToken = 4;
+  const targetChars = targetTokens * charsPerToken;
+  const overlapChars = overlapTokens * charsPerToken;
+
+  // If text is short enough for single chunk, return it as-is
+  if (text.length <= targetChars) {
+    const tokenCount = estimateTokens(text);
+    return [
+      {
+        chunkIndex: 0,
+        chunkCount: 1,
+        chunkText: text,
+        spanStart: 0,
+        spanEnd: text.length,
+        overlapTokens: 0,
+        wordCount: countWords(text),
+        tokenCount,
+      },
+    ];
+  }
+
+  // Split into chunks with overlap
+  const chunks: ChunkResult[] = [];
+  let currentPosition = 0;
+  let chunkIndex = 0;
+
+  while (currentPosition < text.length) {
+    const isLastChunk = currentPosition + targetChars >= text.length;
+    const chunkEnd = isLastChunk
+      ? text.length
+      : findBoundary(text, currentPosition + targetChars);
+
+    const chunkText = text.slice(currentPosition, chunkEnd);
+    const tokenCount = estimateTokens(chunkText);
+
+    chunks.push({
+      chunkIndex,
+      chunkCount: 0, // Will be set after all chunks are created
+      chunkText,
+      spanStart: currentPosition,
+      spanEnd: chunkEnd,
+      overlapTokens: chunkIndex > 0 ? overlapTokens : 0,
+      wordCount: countWords(chunkText),
+      tokenCount,
+    });
+
+    if (isLastChunk) break;
+
+    // Move position forward (accounting for overlap with previous chunk)
+    currentPosition = chunkEnd - overlapChars;
+    chunkIndex++;
+  }
+
+  // Set chunk count on all chunks
+  const chunkCount = chunks.length;
+  chunks.forEach(chunk => {
+    chunk.chunkCount = chunkCount;
+  });
+
+  return chunks;
+}
+
+/**
+ * Find optimal boundary for chunk split
+ * Priority: markdown heading > double newline (paragraph) > sentence > any whitespace
+ */
+function findBoundary(text: string, targetPosition: number): number {
+  const searchWindow = 200; // Look 200 chars before/after target
+  const start = Math.max(0, targetPosition - searchWindow);
+  const end = Math.min(text.length, targetPosition + searchWindow);
+  const searchText = text.slice(start, end);
+
+  // 1. Try to find markdown heading
+  const headingMatch = searchText.match(/\n#{1,6}\s+/g);
+  if (headingMatch) {
+    const lastHeading = searchText.lastIndexOf(headingMatch[headingMatch.length - 1]);
+    if (lastHeading > searchWindow / 2) {
+      return start + lastHeading + 1; // +1 to skip the newline
+    }
+  }
+
+  // 2. Try to find paragraph break (double newline)
+  const paragraphMatch = searchText.match(/\n\n+/g);
+  if (paragraphMatch) {
+    const lastParagraph = searchText.lastIndexOf(paragraphMatch[paragraphMatch.length - 1]);
+    if (lastParagraph > searchWindow / 2) {
+      return start + lastParagraph + 2; // +2 to skip both newlines
+    }
+  }
+
+  // 3. Try to find sentence ending
+  const sentenceMatch = searchText.match(/[.!?]\s+/g);
+  if (sentenceMatch) {
+    const lastSentence = searchText.lastIndexOf(sentenceMatch[sentenceMatch.length - 1]);
+    if (lastSentence > searchWindow / 2) {
+      return start + lastSentence + 2; // +2 for punctuation + space
+    }
+  }
+
+  // 4. Fall back to any whitespace
+  const whitespaceMatch = searchText.match(/\s+/g);
+  if (whitespaceMatch) {
+    const lastWhitespace = searchText.lastIndexOf(whitespaceMatch[whitespaceMatch.length - 1]);
+    if (lastWhitespace > searchWindow / 2) {
+      return start + lastWhitespace + 1;
+    }
+  }
+
+  // 5. No good boundary found, just split at target
+  return targetPosition;
+}
+
+/**
+ * Count words in text (simple whitespace-based count)
+ */
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Estimate token count (rough approximation: 4 chars per token)
+ * This is a simplification - actual tokenization depends on the model
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Generate SHA256 hash of a string
+ */
+function hashString(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf-8').digest('hex');
+}
