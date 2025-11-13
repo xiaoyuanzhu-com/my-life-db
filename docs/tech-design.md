@@ -2634,346 +2634,1029 @@ export async function generateInsights(space: Space): Promise<Insight[]> {
 
 ## 9. Search Implementation
 
-### 9.1 Hybrid Search Strategy
-
-```typescript
-// lib/search/index.ts
-export async function hybridSearch(
-  query: SearchQuery
-): Promise<SearchResult[]> {
-  // 1. Full-text search (SQLite FTS5)
-  const textResults = await fullTextSearch(query);
-
-  // 2. Vector search (Qdrant)
-  const vectorResults = await vectorSearch(query);
-
-  // 3. Merge and re-rank
-  const merged = mergeResults(textResults, vectorResults);
-
-  // 4. Apply filters
-  const filtered = applyFilters(merged, query.filters);
-
-  // 5. Sort
-  const sorted = sortResults(filtered, query.sort || 'relevance');
-
-  // 6. Paginate
-  const paginated = sorted.slice(
-    query.offset || 0,
-    (query.offset || 0) + (query.limit || 20)
-  );
-
-  return paginated;
-}
-
-function mergeResults(
-  textResults: SearchResult[],
-  vectorResults: SearchResult[]
-): SearchResult[] {
-  const scoreMap = new Map<string, number>();
-
-  // Combine scores with weights
-  const TEXT_WEIGHT = 0.4;
-  const VECTOR_WEIGHT = 0.6;
-
-  for (const result of textResults) {
-    scoreMap.set(result.id, result.score * TEXT_WEIGHT);
-  }
-
-  for (const result of vectorResults) {
-    const current = scoreMap.get(result.id) || 0;
-    scoreMap.set(result.id, current + result.score * VECTOR_WEIGHT);
-  }
-
-  // Get all unique results
-  const allResults = [
-    ...new Map([...textResults, ...vectorResults].map(r => [r.id, r])).values()
-  ];
-
-  // Update scores
-  return allResults.map(r => ({
-    ...r,
-    score: scoreMap.get(r.id) || 0,
-  }));
-}
-```
-
-#### 9.1.1 Server-side fusion & deduplication
-
-- **Providers:** The server layers coordinate keyword hits from Meilisearch (`searchUrlContent`) and semantic hits from Qdrant (`semanticSearch`).
-- **Normalization:** Both adapters return the shared `SearchResult` shape (`id = entryId`, `chunkId = docId`, `origin = 'keyword' | 'semantic'`, `score`, `highlights`).
-- **Merge:** The API collapses hits by `entryId` first (so overlapping chunks never render as duplicates) and maintains a secondary list of chunks for highlighting purposes.
-- **Re-rank:** Scores are blended using tunable weights (default `0.45` keyword / `0.55` semantic). When both engines return the same entry, the scores are combined and the best highlight snippet wins.
-- **Filters & pagination:** Only after deduplication do we run tag/space filters, sort, and paginate—ensuring the client always receives at most one row per entry even though dozens of chunk-level docs might exist per provider.
-
-This guarantees we can freely adjust overlap size or add additional search engines later without changing the client contract; the React app simply consumes the merged list from the API.
-
-### 9.2 Full-Text Search
-
-```typescript
-// lib/search/fulltext.ts
-import { db } from '@/lib/db/client';
-
-export async function fullTextSearch(
-  query: SearchQuery
-): Promise<SearchResult[]> {
-  const sql = `
-    SELECT
-      e.id,
-      e.content,
-      e.metadata,
-      e.created_at,
-      e.tags,
-      bm25(entries_fts) as score,
-      highlight(entries_fts, 0, '<mark>', '</mark>') as highlighted
-    FROM entries_fts
-    JOIN entries e ON entries_fts.rowid = e.rowid
-    WHERE entries_fts MATCH ?
-    ORDER BY score
-    LIMIT ?
-  `;
-
-  const results = await db.prepare(sql).all(query.query, query.limit || 20);
-
-  return results.map(row => ({
-    type: 'entry',
-    id: row.id,
-    title: extractTitle(row.content),
-    snippet: extractSnippet(row.content, 200),
-    highlights: extractHighlights(row.highlighted),
-    score: row.score,
-    metadata: {
-      createdAt: new Date(row.created_at * 1000),
-      tags: JSON.parse(row.tags || '[]'),
-    },
-  }));
-}
-```
-
-### 9.3 Meilisearch Ingestion for URL Content
-
-The URL crawler produces structured artifacts (`digest/content.md`, `digest/content.html`, screenshots) that must become searchable within Meilisearch. This section defines how the data leaves the crawler, gets normalized, lands in Meilisearch, and is linked back to the originating URL entry.
-
-#### 9.3.1 Data flow
-
-```mermaid
-flowchart LR
-  A[User adds URL] --> B[crawl-url job]
-  B --> C[digest/content.md + metadata]
-  C --> D[Normalizer + chunker]
-  D --> E[search_documents rows]
-  E --> F[search_index job]
-  F --> G[Meilisearch index url_content]
-  G --> H[Search API response]
-  H --> I[Result hydration (SQLite + FS)]
-```
-
-1. `crawl-url` job writes the normalized markdown/HTML plus metadata JSON.
-2. File watcher / job completion event enqueues `search_index` with `{ entryId, variant: 'url-content-md' }`.
-3. Indexer loads the file, strips boilerplate, chunks the text (≤1,200 tokens with 200-token overlap), and writes/updates `search_documents`.
-4. Meilisearch payloads are materialized from the rows and pushed to the `url_content` index. Success/failure updates `meili_status`.
-5. Queries hit Meilisearch directly; we later hydrate each hit with SQLite + filesystem lookups for UI fidelity.
-
-#### 9.3.2 Workflows
-
-**New crawl ingestion**
-- Trigger: crawler finishes successfully (marks inbox entry `processed`).
-- Handler reads `digest/content.md` (primary) and optional fallback `digest/content.html`.
-- Metadata collected: URL, hostname, path, crawl timestamp, title, tags/classification, digest relative path, screenshot path.
-- Each chunk becomes one `search_documents` row and one Meilisearch document whose `docId = {entryId}:{variant}:{chunkIndex}`.
-- `search_documents.meili_status` transitions `pending → indexing → indexed` when Meilisearch task completes.
-
-**Update / re-crawl**
-- Triggered when `digest/content.*` changes (fs watcher) or when the user requests a re-crawl.
-- Indexer recomputes the `content_hash`. If unchanged, it simply touches `updated_at` and skips Meilisearch.
-- If changed, existing rows for `{entryId, variant}` are marked `meili_status = 'deleting'` and dispatched to `search_delete` jobs, then recreated with the new chunks so we never serve stale hashes.
-- Re-crawl events keep the same `docId` namespace so clients do not accumulate duplicates.
-
-**Deletion / archival**
-- When an inbox entry is deleted or archived, `search_delete` jobs are enqueued with all related `document_id`s.
-- Handler calls `index.deleteDocuments([docId...])`, waits for task completion, and flips `meili_status` to `deleted` (or retries with exponential backoff).
-- Library moves (UUID → slug) only update `source_path` in SQLite; we do not delete/reinsert unless the text changed.
-
-#### 9.3.3 Search + linking behavior
-
-```typescript
-// lib/search/meilisearch.ts
-export async function searchUrlContent(
-  query: SearchQuery
-): Promise<SearchResult[]> {
-  const index = meili.index('url_content');
-  const hits = await index.search(query.text, {
-    attributesToRetrieve: [
-      'docId',
-      'entryId',
-      'sourcePath',
-      'url',
-      'metadata'
-    ],
-    filter: toMeiliFilters(query.filters),
-    limit: query.limit ?? 20,
-  });
-
-  return hydrateUrlHits(hits.hits);
-}
-```
-
-- `hydrateUrlHits` joins on `search_documents` / `entries` to pull tags, status, and file metadata, then resolves `sourcePath` to `MY_DATA_DIR` for previews.
-- Linking back to the UI happens **in the app layer**: each hit carries `entryId`, `libraryId`, and `digestPath`, so React components can open the inbox item or navigate to the library folder.
-- Meilisearch is authoritative only for ranking + highlight snippets. All final rendering (markdown preview, open-in-folder actions) fetches from SQLite/filesystem to avoid drift.
-
-#### 9.3.4 Sync & recovery
-
-- Hourly reconciliation job scans for `search_documents.meili_status != 'indexed'` and retries failed pushes/deletes.
-- `meili.index('url_content').getDocuments({ limit: 0, offset: ... })` is never trusted as the source of truth; instead, we recalc the desired document set from SQLite and issue targeted fixes.
-- Because every document stores `content_hash`, we can diff quickly during support/debug sessions and requeue only the rows whose hash differs from Meilisearch.
-
-#### 9.3.5 Chunking strategy (keyword + semantic ready)
-
-We treat chunked snippets as the atomic unit for *both* Meilisearch (keyword) and Qdrant (semantic) indexing so that we never need to re-split historical documents. The strategy balances ranking quality, storage expansion, and semantic recall.
-
-| Aspect | Recommendation | Rationale |
-|--------|----------------|-----------|
-| **Tokenizer** | `tiktoken` (gpt-4o-mini) for limits, fallback to word counts | Keeps token budgets aligned with future embedding models |
-| **Target size** | 800–1,000 tokens ideal, hard cap 1,200 tokens | Large enough for context, small enough for responsive search |
-| **Overlap** | 15% of chunk length (min 80 tokens, max 180 tokens) | Preserves context for semantic embeddings without bloating index |
-| **Structural hints** | Prefer splitting on Markdown headings, list/paragraph boundaries; collapse short siblings together | Produces semantically coherent slices and reduces unnatural breaks |
-| **Metadata per chunk** | `chunk_index`, `chunk_count`, `span_start`, `span_end`, `overlap_size`, `embedding_version` | Required for Qdrant ingestion & re-embedding |
-
-**Algorithm sketch**
-1. **Normalize**: Ensure content is Markdown, remove boilerplate (nav, ads), unify whitespace.
-2. **Primary segmentation**: Walk the Markdown AST, accumulating blocks until adding the next node would exceed 900 tokens. If a single node is oversized (e.g., giant code block), chunk within that block using sentence boundaries.
-3. **Overlap application**: When closing a chunk, clone the trailing sentences that match the overlap budget and prepend them to the next chunk. Track `span_start/span_end` offsets so we can reconstruct exact ranges later.
-4. **Metadata persistence**: Store chunk metrics in `search_documents` alongside the checksum so both Meilisearch payloads and Qdrant embeddings derive from the same source record.
-5. **Semantic readiness**: Whenever we bump `EMBEDDING_SCHEMA_VERSION`, a background job iterates over `search_documents` rows whose `embedding_version` is stale, computes embeddings for the chunk text (overlap included), and pushes `(vector, docId)` to Qdrant without rereading filesystem content.
-
-This overlap policy gives Meilisearch richer snippets (because adjacent chunks share context) while ensuring Qdrant vectors represent slightly more than one paragraph, which improves recall for concept-level queries like “resilient systems design pattern” even if the phrase straddles a chunk boundary.
-
-### 9.4 Meilisearch Implementation Plan
-
-#### 9.4.1 Modules & responsibilities
-
-| Module | Path | Responsibility |
-|--------|------|----------------|
-| **Chunker** | `src/lib/search/chunker.ts` | Normalize markdown/HTML, split into ~900-token chunks with 15% overlap, emit `ChunkDescriptor[]` (text, offsets, metadata). |
-| **Search document repo** | `src/lib/search/search-documents.ts` | Read/write `search_documents`, version chunk metadata, expose helpers to upsert/delete rows transactionally. |
-| **Meilisearch client** | `src/lib/search/meili-client.ts` | Create configured Meili instance (host, API key, timeout), lazy-init indexes, set ranking rules and searchable/filterable attributes. |
-| **Indexer orchestrator** | `src/lib/search/indexer.ts` | Given `{ entryId, variant }`, loads digest files, calls chunker, writes `search_documents`, prepares payloads for Meili. |
-| **Task handlers** | `src/lib/task-handlers/search/index.ts` | Queue + process `search_index` and `search_delete` jobs; call Meili client, update status fields, retry with exponential backoff. |
-| **Hydrator** | `src/lib/search/hydrate.ts` | Join Meili hits against SQLite (`entries`, `library`, `search_documents`) + filesystem to build UI-ready `SearchResult`. |
-| **Search API** | `src/app/api/search/route.ts` (or server action) | Invoke Meili + Qdrant adapters, apply server-side fusion/dedup (Section 9.1.1), return paginated results. |
-| **CLI/maintenance** | `src/scripts/reindex-search.ts` | Backfill / reconciliation utility to rebuild Meili index from `search_documents`. |
-
-#### 9.4.2 Workflow details
-
-**A. New crawl ingestion**
-1. `crawl-url` job finishes → emits event (or explicit call) to `enqueueSearchIndex(entryId, 'url-content-md')`.
-2. Indexer loads `digest/content.md` (fallback `digest/content.html`), runs chunker, computes `content_hash`.
-3. Wrap DB transaction: delete existing rows for `{entryId, variant}`, insert new chunk rows, set `meili_status = 'pending'`.
-4. Enqueue `search_index` job(s) with batched `document_id`s.
-5. Worker pushes payloads to Meili (`index.addDocuments`), waits for task completion, marks status `indexed` + `last_indexed_at`.
-
-**B. Updates / re-crawls**
-1. File watcher or manual action triggers `enqueueSearchIndex`.
-2. Indexer recomputes hash. If unchanged, exit early (touch `updated_at` only).
-3. When changed, mark existing rows `meili_status = 'deleting'`, enqueue `search_delete`, then run full ingestion path from step A.
-
-**C. Deletions / archives**
-1. Inbox/library deletion hooks call `enqueueSearchDelete(entryId)`.
-2. Handler fetches all `document_id`s, calls `index.deleteDocuments`, marks rows `deleted`, and (optionally) prunes rows if retention policy allows.
-
-**D. Reconciliation / backfill**
-1. Nightly cron (or manual CLI) scans for rows with stale status or `last_indexed_at` older than threshold.
-2. CLI uses `search_documents` as the source of truth, replays ingestion without parsing files again (chunk text stored in DB).
-
-#### 9.4.3 Configuration & ops
-
-- **Environment vars:** `MEILI_HOST`, `MEILI_API_KEY`, `MEILI_INDEX_URL_CONTENT`.
-- **Index bootstrap:** `scripts/setup-search.ts` ensures index exists with proper ranking rules (`words`, `typo`, `proximity`, `attribute`, `exactness`) and filterable attributes (`hostname`, `tags`, `origin`, `chunkCount`).
-- **Metrics/logging:** wrap Meili calls with tracing (duration, payload size, doc count). Emit structured logs for success/failure + document IDs to simplify audit trails.
-- **Chunk persistence:** store text + metadata in SQLite to avoid rereading large files or reproducing chunk boundaries when Qdrant ingestion runs.
-- **Back-pressure:** throttle concurrent indexing jobs (e.g., p-limit based on CPU/network) to avoid starving other workers.
-
-#### 9.4.4 Confirmed decisions
-
-1. **Indexing trigger:** Support both signals. The crawler dispatches `search_index` immediately after processing (low latency) while the filesystem watcher enqueues safety-net jobs for any missed/retroactive changes.
-2. **HTML variant scope:** Markdown (`digest/content.md`) is the canonical variant for Meili. HTML output stays on disk for previews/screenshots but is not indexed separately, keeping the `variant` set minimal.
-3. **Deletion retention:** We soft-delete rows (set `meili_status = 'deleted'`) and retain them for now so reconciliation/analytics can reason about historical states. A separate cleanup job can prune them later if storage becomes an issue.
-
-### 9.5 Qdrant Semantic Search Implementation
-
-#### 9.5.1 Modules & responsibilities
-
-| Module | Path | Responsibility |
-|--------|------|----------------|
-| **Embedding provider** | `src/lib/ai/embeddings.ts` | Call HAID `/api/text-to-embedding`, normalize vectors, expose `embedText(s)` returning Float32Array + metadata. |
-| **Qdrant client** | `src/lib/search/qdrant-client.ts` | Thin wrapper over Qdrant REST/gRPC, handles collection creation, upserts, deletes, scroll, health checks, and retries with exponential backoff. |
-| **Vector ingestor** | `src/lib/search/vector-ingestor.ts` | Reads pending `search_documents` rows (by `embedding_status`), bundles chunk text, calls embedding provider, and writes vectors to Qdrant. |
-| **Task handlers** | `src/lib/task-handlers/search/semantic.ts` | Background jobs `search_vector_index` and `search_vector_delete`; ensure ingestion is idempotent and respects concurrency limits. |
-| **Semantic search adapter** | `src/lib/search/qdrant.ts` | Implements `semanticSearch(query)` → fetch embeddings, query Qdrant, convert hits to `SearchResult` with cosine scores. |
-| **Maintenance CLI** | `src/scripts/reembed-search.ts` | Recompute embeddings when `EMBEDDING_SCHEMA_VERSION` bumps or provider changes; batches work across all chunks. |
-
-#### 9.5.2 Vector ingestion workflow
-
-1. **Triggering:** Same signals as Meili—crawler dispatch + filesystem watcher—also enqueue `search_vector_index` for `{ entryId, variant }`.
-2. **Chunk source:** Ingestor queries `search_documents` for rows where `embedding_status != 'indexed'` or `embedding_version < EMBEDDING_SCHEMA_VERSION`.
-3. **Embedding:** For each batch (e.g., 32 chunks), call `embedText`. Store the raw vector, provider name, dim, and checksum.
-4. **Upsert:** Use Qdrant `upsert` into collection `url_chunks` with payload fields mirroring Meili doc metadata (`entryId`, `chunkIndex`, `hostname`, `tags`, etc.). Use deterministic UUID (docId) so re-ingestion replaces existing vectors.
-5. **Status update:** On success, update `search_documents.embedding_status = 'indexed'`, `embedding_version`, `last_embedded_at`.
-6. **Backoff & retries:** Failures push the job back with exponential delay; fatal errors mark `embedding_status = 'error'` for operator visibility.
-
-**Deletions / archives**
-- `enqueueSearchDelete` also schedules `search_vector_delete`.
-- Handler pulls doc IDs, issues `delete` on Qdrant collection, updates `embedding_status = 'deleted'`.
-- Soft-deleted rows remain in SQLite for audit just like Meili.
-
-#### 9.5.3 Query pipeline
-
-```typescript
-// lib/search/qdrant.ts
-export async function semanticSearch(
-  query: SearchQuery
-): Promise<SearchResult[]> {
-  const queryEmbedding = await embedText(query.text);
-
-  const response = await qdrant.search({
-    collectionName: 'url_chunks',
-    vector: queryEmbedding,
-    limit: query.limit ?? 50,
-    filter: toQdrantFilter(query.filters),
-    withPayload: true,
-    scoreThreshold: query.minScore ?? 0.2,
-  });
-
-  return response.map(hit => ({
-    id: hit.payload.entryId,
-    chunkId: hit.id,
-    origin: 'semantic',
-    score: hit.score,
-    snippet: hit.payload.preview ?? hit.payload.text.slice(0, 240),
-    metadata: {
-      url: hit.payload.url,
-      hostname: hit.payload.hostname,
-      digestPath: hit.payload.digestPath,
-      chunkIndex: hit.payload.chunkIndex,
-    },
-    highlights: buildSemanticHighlights(hit.payload, query.text),
-  }));
-}
-```
-
-Results from `semanticSearch` feed into the hybrid merge described in Section 9.1.1, ensuring keyword and semantic signals are fused before reaching the client.
-
-#### 9.5.4 Configuration & ops
-
-- **Environment vars:** `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_URL_CHUNKS`, `EMBEDDING_SCHEMA_VERSION`.
-- **Embedding service env:** `HAID_BASE_URL`, optional `HAID_API_KEY`, `HAID_EMBEDDING_MODEL`.
-- **Collection schema:** HNSW (cosine) with vector dim = embedding dimension (e.g., 1536). Payload schema mirrors Meili document metadata for easy hydration.
-- **Provisioning:** `scripts/setup-search.ts` (or dedicated script) ensures the Qdrant collection exists with desired optimizers (payload indexing on `entryId`, `hostname`, `tags`).
-- **Throughput controls:** Limit concurrent embedding jobs to avoid saturating GPU/remote API and Qdrant ingestion bandwidth.
-- **Monitoring:** Capture metrics for embedding latency, Qdrant upsert/search latency, queue depth, and error counts; expose via existing logging pipeline.
+### 9.1 Goals
+
+**Primary Objectives:**
+
+1. **Unified Search Across All Content**
+   - Search inbox files (`inbox/photo.jpg`, `inbox/{uuid}/text.md`)
+   - Search library files (`notes/my-note.md`, `journal/2024-01-15.md`)
+   - Search URL digests (crawled markdown content)
+   - Search AI-generated metadata (tags, summaries)
+
+2. **File-Centric Architecture**
+   - Everything references file paths (no synthetic IDs)
+   - Works with any file browser
+   - Rebuildable from filesystem
+   - Inbox treated as just another folder (no special status)
+
+3. **Hybrid Search Quality**
+   - **Keyword search:** Fast, typo-tolerant, exact phrase matching (Meilisearch)
+   - **Semantic search:** Conceptual similarity, finds related ideas (Qdrant)
+   - **Hybrid:** Best of both worlds with intelligent merging
+
+4. **Independent Search Systems**
+   - Meilisearch and Qdrant operate independently
+   - Each can function without the other
+   - Separate APIs, workflows, and status tracking
+   - Hybrid API wraps both for unified experience
+
+5. **Performance & Scalability**
+   - Fast indexing via background tasks
+   - Change detection using file hashes
+   - Efficient chunking strategy optimized per system
+   - <500ms search latency for 10k+ files
 
 ---
 
+### 9.2 Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ FILESYSTEM (Source of Truth)                                │
+│  inbox/photo.jpg, inbox/{uuid}/text.md                      │
+│  notes/my-note.md, journal/2024-01-15.md                    │
+└─────────────────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ FILES TABLE (Rebuildable Cache)                             │
+│  path, name, is_folder, size, mime_type, hash, modified_at  │
+└─────────────────────────────────────────────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+┌──────────────────┐       ┌──────────────────┐
+│ DIGESTS TABLE    │       │ LIBRARY SCANNER  │
+│  file_path       │       │ (hourly sync)    │
+│  digest_type     │       └──────────────────┘
+│  content         │
+└──────────────────┘
+        │
+        └─────────────┬─────────────┐
+                      ▼             ▼
+         ┌─────────────────┐  ┌─────────────────┐
+         │ meili_documents │  │ qdrant_documents│
+         │ (full text)     │  │ (chunks)        │
+         └─────────────────┘  └─────────────────┘
+                 │                     │
+                 ▼                     ▼
+         ┌─────────────────┐  ┌─────────────────┐
+         │ MEILISEARCH     │  │ QDRANT          │
+         │ (keyword index) │  │ (vector index)  │
+         └─────────────────┘  └─────────────────┘
+                 │                     │
+                 └──────────┬──────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │ HYBRID SEARCH API   │
+                 │ (merge + rerank)    │
+                 └─────────────────────┘
+```
+
+**Three Independent API Endpoints:**
+
+```typescript
+// 1. Keyword-only search
+POST /api/search/keyword
+→ Returns: Meilisearch results only
+
+// 2. Semantic-only search
+POST /api/search/semantic
+→ Returns: Qdrant results only (chunks grouped by file)
+
+// 3. Hybrid search
+POST /api/search/hybrid
+→ Returns: Merged results using RRF (Reciprocal Rank Fusion)
+```
+
+---
+
+### 9.3 Data Models
+
+#### 9.3.1 meili_documents Table (Keyword Search)
+
+**Purpose:** Store full-text documents for Meilisearch indexing
+
+```sql
+CREATE TABLE meili_documents (
+  document_id TEXT PRIMARY KEY,        -- '{filePath}:{sourceType}'
+  file_path TEXT NOT NULL,             -- 'inbox/article.md' or 'notes/my-note.md'
+  source_type TEXT NOT NULL,           -- 'content' | 'summary' | 'tags'
+
+  -- Full text (no chunking)
+  full_text TEXT NOT NULL,             -- Complete document text
+  content_hash TEXT NOT NULL,          -- SHA256 for change detection
+  word_count INTEGER NOT NULL,
+
+  -- Metadata
+  content_type TEXT NOT NULL,          -- 'url' | 'text' | 'pdf' | 'image'
+  metadata_json TEXT,                  -- Additional context
+
+  -- Meilisearch status
+  meili_status TEXT NOT NULL DEFAULT 'pending',
+  meili_task_id TEXT,
+  meili_indexed_at TEXT,
+  meili_error TEXT,
+
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_meili_file_path ON meili_documents(file_path);
+CREATE INDEX idx_meili_file_source ON meili_documents(file_path, source_type);
+CREATE INDEX idx_meili_status ON meili_documents(meili_status)
+  WHERE meili_status != 'indexed';
+```
+
+**Example Documents:**
+
+```typescript
+// Full article content
+{
+  document_id: 'inbox/article.md:content',
+  file_path: 'inbox/article.md',
+  source_type: 'content',
+  full_text: '... entire 10,000 word article ...',
+  content_type: 'url',
+  meili_status: 'indexed'
+}
+
+// Summary (from digest)
+{
+  document_id: 'inbox/article.md:summary',
+  file_path: 'inbox/article.md',
+  source_type: 'summary',
+  full_text: 'This article discusses React hooks...',
+  content_type: 'url',
+  meili_status: 'indexed'
+}
+
+// Tags (from digest)
+{
+  document_id: 'inbox/article.md:tags',
+  file_path: 'inbox/article.md',
+  source_type: 'tags',
+  full_text: 'react, javascript, hooks, frontend, state-management',
+  content_type: 'url',
+  meili_status: 'indexed'
+}
+```
+
+#### 9.3.2 qdrant_documents Table (Semantic Search)
+
+**Purpose:** Store chunked documents for Qdrant vector indexing
+
+```sql
+CREATE TABLE qdrant_documents (
+  document_id TEXT PRIMARY KEY,        -- '{filePath}:{sourceType}:{chunkIndex}'
+  file_path TEXT NOT NULL,             -- 'inbox/article.md'
+  source_type TEXT NOT NULL,           -- 'content' | 'summary' | 'tags'
+
+  -- Chunking metadata
+  chunk_index INTEGER NOT NULL,
+  chunk_count INTEGER NOT NULL,
+  chunk_text TEXT NOT NULL,            -- 800-1000 tokens
+
+  -- Span tracking (character positions in original)
+  span_start INTEGER NOT NULL,
+  span_end INTEGER NOT NULL,
+  overlap_tokens INTEGER NOT NULL,
+
+  -- Chunk statistics
+  word_count INTEGER NOT NULL,
+  token_count INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+
+  -- Metadata
+  content_type TEXT NOT NULL,
+  metadata_json TEXT,
+
+  -- Qdrant status
+  embedding_status TEXT NOT NULL DEFAULT 'pending',
+  embedding_version INTEGER NOT NULL DEFAULT 0,
+  qdrant_point_id TEXT,                -- UUID in Qdrant collection
+  qdrant_indexed_at TEXT,
+  qdrant_error TEXT,
+
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_qdrant_file_path ON qdrant_documents(file_path);
+CREATE INDEX idx_qdrant_file_source ON qdrant_documents(file_path, source_type);
+CREATE INDEX idx_qdrant_embedding_status ON qdrant_documents(embedding_status)
+  WHERE embedding_status != 'indexed';
+```
+
+**Example Documents:**
+
+```typescript
+// Chunk 0 of article
+{
+  document_id: 'inbox/article.md:content:0',
+  file_path: 'inbox/article.md',
+  source_type: 'content',
+  chunk_index: 0,
+  chunk_count: 12,
+  chunk_text: '... first 900 tokens of article ...',
+  span_start: 0,
+  span_end: 4521,
+  overlap_tokens: 0,
+  embedding_status: 'indexed'
+}
+
+// Chunk 1 of article (with overlap from chunk 0)
+{
+  document_id: 'inbox/article.md:content:1',
+  file_path: 'inbox/article.md',
+  source_type: 'content',
+  chunk_index: 1,
+  chunk_count: 12,
+  chunk_text: '... next 900 tokens (includes 135 token overlap) ...',
+  span_start: 4200,  // Overlap with previous chunk
+  span_end: 9103,
+  overlap_tokens: 135,
+  embedding_status: 'indexed'
+}
+```
+
+#### 9.3.3 Chunking Strategy
+
+| Aspect | Meilisearch | Qdrant |
+|--------|-------------|--------|
+| **Strategy** | Full text | Chunked |
+| **Size** | Entire document | 800-1000 tokens |
+| **Overlap** | N/A | 15% (80-180 tokens) |
+| **Boundaries** | N/A | Markdown headings, paragraphs |
+| **Rationale** | BM25 works better on full context | Embeddings need bounded context |
+
+**Why Different Strategies?**
+
+1. **Meilisearch (Full Text):**
+   - BM25 algorithm benefits from full document context for TF-IDF
+   - No risk of phrase splits across chunk boundaries
+   - Built-in snippet extraction
+   - 10x less storage (1 doc vs 10 chunks)
+
+2. **Qdrant (Chunked):**
+   - Embedding models have fixed context windows (512-8192 tokens)
+   - Single vector for 10k words loses semantic detail
+   - Chunking preserves local semantic meaning
+   - Industry standard for vector search
+
+---
+
+### 9.4 Workflows
+
+#### 9.4.1 Indexing Workflow (New File)
+
+```
+
+**Trigger:** File added/changed (URL digest, library file, inbox text)
+
+```typescript
+// src/lib/search/ingest.ts
+
+export async function ingestFileForSearch(filePath: string) {
+  const content = await getFileContent(filePath);
+  const digests = await getDigestsForFile(filePath);
+
+  // Parallel ingestion to both systems
+  await Promise.all([
+    ingestToMeilisearch(filePath, content, digests),
+    ingestToQdrant(filePath, content, digests),
+  ]);
+}
+
+// MEILISEARCH: Full text indexing
+async function ingestToMeilisearch(
+  filePath: string,
+  content: string,
+  digests: Digest[]
+) {
+  const documents: MeiliDocument[] = [];
+
+  // 1. Index content (full text)
+  if (content) {
+    documents.push({
+      document_id: `${filePath}:content`,
+      file_path: filePath,
+      source_type: 'content',
+      full_text: content,  // No chunking!
+      content_hash: hashContent(content),
+    });
+  }
+
+  // 2. Index summary (if exists)
+  const summaryDigest = digests.find(d => d.digestType === 'summary');
+  if (summaryDigest?.content) {
+    documents.push({
+      document_id: `${filePath}:summary`,
+      file_path: filePath,
+      source_type: 'summary',
+      full_text: summaryDigest.content,
+    });
+  }
+
+  // 3. Index tags (if exists)
+  const tagsDigest = digests.find(d => d.digestType === 'tags');
+  if (tagsDigest?.content) {
+    const tags = JSON.parse(tagsDigest.content);
+    documents.push({
+      document_id: `${filePath}:tags`,
+      file_path: filePath,
+      source_type: 'tags',
+      full_text: tags.join(', '),
+    });
+  }
+
+  // Save to meili_documents table
+  await db.insert(meili_documents, documents);
+
+  // Enqueue Meilisearch indexing task
+  await enqueueTask({
+    type: 'meili_index',
+    filePath,
+    documentIds: documents.map(d => d.document_id),
+  });
+}
+
+// QDRANT: Chunked indexing
+async function ingestToQdrant(
+  filePath: string,
+  content: string,
+  digests: Digest[]
+) {
+  const allDocuments: QdrantDocument[] = [];
+
+  // 1. Chunk content
+  if (content) {
+    const chunks = chunkMarkdownContent(content);
+    const chunkDocs = chunks.map((chunk, i) => ({
+      document_id: `${filePath}:content:${i}`,
+      file_path: filePath,
+      source_type: 'content',
+      chunk_index: i,
+      chunk_count: chunks.length,
+      chunk_text: chunk.text,
+      span_start: chunk.spanStart,
+      span_end: chunk.spanEnd,
+      overlap_tokens: chunk.overlapTokens,
+      token_count: chunk.tokenCount,
+      word_count: chunk.wordCount,
+      content_hash: hashContent(chunk.text),
+    }));
+    allDocuments.push(...chunkDocs);
+  }
+
+  // 2. Summary (as single chunk)
+  const summaryDigest = digests.find(d => d.digestType === 'summary');
+  if (summaryDigest?.content) {
+    allDocuments.push({
+      document_id: `${filePath}:summary:0`,
+      file_path: filePath,
+      source_type: 'summary',
+      chunk_index: 0,
+      chunk_count: 1,
+      chunk_text: summaryDigest.content,
+      span_start: 0,
+      span_end: summaryDigest.content.length,
+    });
+  }
+
+  // 3. Tags (as single chunk)
+  const tagsDigest = digests.find(d => d.digestType === 'tags');
+  if (tagsDigest?.content) {
+    const tags = JSON.parse(tagsDigest.content);
+    const tagText = tags.join(', ');
+    allDocuments.push({
+      document_id: `${filePath}:tags:0`,
+      file_path: filePath,
+      source_type: 'tags',
+      chunk_index: 0,
+      chunk_count: 1,
+      chunk_text: tagText,
+      span_start: 0,
+      span_end: tagText.length,
+    });
+  }
+
+  // Save to qdrant_documents table
+  await db.insert(qdrant_documents, allDocuments);
+
+  // Enqueue Qdrant indexing task (embeddings + vector upsert)
+  await enqueueTask({
+    type: 'qdrant_index',
+    filePath,
+    documentIds: allDocuments.map(d => d.document_id),
+  });
+}
+```
+
+**Content Source Resolution:**
+
+| File Path | Content Source | Notes |
+|-----------|---------------|-------|
+| `inbox/{uuid}/` (URL) | `digest/content-md` | Crawled markdown |
+| `inbox/{uuid}/text.md` | Read from filesystem | User text |
+| `notes/my-note.md` | Read from filesystem | Library file |
+| `journal/2024-01-15.md` | Read from filesystem | Library file |
+
+---
+
+#### 9.4.2 Re-indexing Workflow (File Changed)
+
+**Trigger:** File hash changed (detected by library scanner)
+
+```typescript
+async function reindexFile(filePath: string) {
+  // 1. Calculate new content hash
+  const newContent = await getFileContent(filePath);
+  const newHash = hashContent(newContent);
+
+  // 2. Check existing hash
+  const existing = await db
+    .select()
+    .from(meili_documents)
+    .where(eq(meili_documents.file_path, filePath))
+    .limit(1);
+
+  if (existing && existing.content_hash === newHash) {
+    // No change, skip
+    return;
+  }
+
+  // 3. Delete old documents
+  await Promise.all([
+    deleteMeiliDocuments(filePath),
+    deleteQdrantDocuments(filePath),
+  ]);
+
+  // 4. Re-ingest (same as new file)
+  await ingestFileForSearch(filePath);
+}
+
+async function deleteMeiliDocuments(filePath: string) {
+  const docs = await db
+    .select()
+    .from(meili_documents)
+    .where(eq(meili_documents.file_path, filePath));
+
+  // Mark for deletion
+  await db
+    .update(meili_documents)
+    .set({ meili_status: 'deleting' })
+    .where(eq(meili_documents.file_path, filePath));
+
+  // Enqueue delete task
+  await enqueueTask({
+    type: 'meili_delete',
+    documentIds: docs.map(d => d.document_id),
+  });
+}
+
+async function deleteQdrantDocuments(filePath: string) {
+  const docs = await db
+    .select()
+    .from(qdrant_documents)
+    .where(eq(qdrant_documents.file_path, filePath));
+
+  // Mark for deletion
+  await db
+    .update(qdrant_documents)
+    .set({ embedding_status: 'deleting' })
+    .where(eq(qdrant_documents.file_path, filePath));
+
+  // Enqueue delete task
+  await enqueueTask({
+    type: 'qdrant_delete',
+    documentIds: docs.map(d => d.document_id),
+  });
+}
+```
+
+---
+
+#### 9.4.3 Deletion Workflow (File Removed)
+
+**Trigger:** File deleted from filesystem (detected by scanner or explicit delete)
+
+```typescript
+async function deleteFileFromSearch(filePath: string) {
+  // Parallel deletion from both systems
+  await Promise.all([
+    deleteMeiliDocuments(filePath),
+    deleteQdrantDocuments(filePath),
+  ]);
+
+  // Prune rows after deletion completes (optional)
+  setTimeout(async () => {
+    await db.delete(meili_documents)
+      .where(and(
+        eq(meili_documents.file_path, filePath),
+        eq(meili_documents.meili_status, 'deleted')
+      ));
+
+    await db.delete(qdrant_documents)
+      .where(and(
+        eq(qdrant_documents.file_path, filePath),
+        eq(qdrant_documents.embedding_status, 'deleted')
+      ));
+  }, 24 * 60 * 60 * 1000); // Keep for 24 hours for audit
+}
+```
+
+---
+
+#### 9.4.4 Keyword Search Workflow (Meilisearch)
+
+**API:** `POST /api/search/keyword`
+
+```typescript
+// src/app/api/search/keyword/route.ts
+
+export async function POST(request: Request) {
+  const { query, filters, limit = 20 } = await request.json();
+
+  // 1. Query Meilisearch
+  const meili = getMeilisearchClient();
+  const index = meili.index('files');
+
+  const results = await index.search(query, {
+    filter: buildMeiliFilter(filters),
+    limit,
+    attributesToHighlight: ['full_text'],
+    highlightPreTag: '<mark>',
+    highlightPostTag: '</mark>',
+  });
+
+  // 2. Already at file level (no chunking)
+  const filePaths = results.hits.map(hit => hit.file_path);
+
+  // 3. Hydrate with metadata
+  const files = await db
+    .select()
+    .from(files_table)
+    .where(inArray(files_table.path, filePaths));
+
+  const digests = await db
+    .select()
+    .from(digests_table)
+    .where(inArray(digests_table.file_path, filePaths));
+
+  // 4. Build response
+  return NextResponse.json({
+    results: results.hits.map(hit => ({
+      filePath: hit.file_path,
+      sourceType: hit.source_type,
+      snippet: hit._formatted.full_text,
+      score: hit._rankingScore,
+      metadata: {
+        name: files.find(f => f.path === hit.file_path)?.name,
+        tags: getTagsForFile(hit.file_path, digests),
+        summary: getSummaryForFile(hit.file_path, digests),
+      },
+    })),
+    total: results.estimatedTotalHits,
+  });
+}
+
+function buildMeiliFilter(filters: SearchFilters) {
+  const conditions = [];
+
+  if (filters.location) {
+    // Filter by folder prefix (inbox/, notes/, journal/)
+    conditions.push(`file_path STARTS WITH "${filters.location}/"`);
+  }
+
+  if (filters.contentType) {
+    conditions.push(`content_type = "${filters.contentType}"`);
+  }
+
+  return conditions.join(' AND ');
+}
+```
+
+---
+
+#### 9.4.5 Semantic Search Workflow (Qdrant)
+
+**API:** `POST /api/search/semantic`
+
+```typescript
+// src/app/api/search/semantic/route.ts
+
+export async function POST(request: Request) {
+  const { query, filters, limit = 20 } = await request.json();
+
+  // 1. Generate query embedding
+  const queryVector = await embedText(query);
+
+  // 2. Query Qdrant
+  const qdrant = getQdrantClient();
+  const results = await qdrant.search('files', {
+    vector: queryVector,
+    filter: buildQdrantFilter(filters),
+    limit: limit * 3,  // Get more chunks, will group by file
+    with_payload: true,
+  });
+
+  // 3. Group chunks by file_path
+  const fileScores = new Map<string, {
+    bestScore: number,
+    bestChunk: any,
+    matchedChunks: number
+  }>();
+
+  results.forEach(hit => {
+    const filePath = hit.payload.file_path;
+    const existing = fileScores.get(filePath);
+
+    if (!existing || hit.score > existing.bestScore) {
+      fileScores.set(filePath, {
+        bestScore: hit.score,
+        bestChunk: hit,
+        matchedChunks: (existing?.matchedChunks || 0) + 1,
+      });
+    }
+  });
+
+  // 4. Sort by best score and limit
+  const topFiles = Array.from(fileScores.entries())
+    .sort((a, b) => b[1].bestScore - a[1].bestScore)
+    .slice(0, limit);
+
+  // 5. Hydrate with metadata
+  const filePaths = topFiles.map(([path]) => path);
+  const files = await db
+    .select()
+    .from(files_table)
+    .where(inArray(files_table.path, filePaths));
+
+  const digests = await db
+    .select()
+    .from(digests_table)
+    .where(inArray(digests_table.file_path, filePaths));
+
+  // 6. Build response
+  return NextResponse.json({
+    results: topFiles.map(([filePath, data]) => ({
+      filePath,
+      sourceType: data.bestChunk.payload.source_type,
+      snippet: data.bestChunk.payload.chunk_text,
+      score: data.bestScore,
+      matchedChunks: data.matchedChunks,
+      chunkIndex: data.bestChunk.payload.chunk_index,
+      metadata: {
+        name: files.find(f => f.path === filePath)?.name,
+        tags: getTagsForFile(filePath, digests),
+        summary: getSummaryForFile(filePath, digests),
+      },
+    })),
+  });
+}
+```
+
+---
+
+#### 9.4.6 Hybrid Search Workflow (RRF Merge)
+
+**API:** `POST /api/search/hybrid`
+
+```typescript
+// src/app/api/search/hybrid/route.ts
+
+export async function POST(request: Request) {
+  const { query, filters, limit = 20 } = await request.json();
+
+  // 1. Query both systems in parallel
+  const [keywordResults, semanticResults] = await Promise.all([
+    fetch('/api/search/keyword', {
+      method: 'POST',
+      body: JSON.stringify({ query, filters, limit: limit * 2 }),
+    }).then(r => r.json()),
+    fetch('/api/search/semantic', {
+      method: 'POST',
+      body: JSON.stringify({ query, filters, limit: limit * 2 }),
+    }).then(r => r.json()),
+  ]);
+
+  // 2. Reciprocal Rank Fusion (RRF)
+  const merged = reciprocalRankFusion(
+    keywordResults.results,
+    semanticResults.results,
+    60  // k constant
+  );
+
+  // 3. Take top N
+  const topResults = merged.slice(0, limit);
+
+  return NextResponse.json({
+    results: topResults,
+    debug: {
+      keyword_count: keywordResults.results.length,
+      semantic_count: semanticResults.results.length,
+      merged_count: merged.length,
+    },
+  });
+}
+
+function reciprocalRankFusion(
+  keywordResults: SearchResult[],
+  semanticResults: SearchResult[],
+  k = 60
+) {
+  const scores = new Map<string, {
+    filePath: string,
+    score: number,
+    sources: string[],
+    keywordSnippet?: string,
+    semanticSnippet?: string,
+    metadata: any
+  }>();
+
+  // Add keyword scores
+  keywordResults.forEach((result, rank) => {
+    const score = 1 / (k + rank + 1);
+    scores.set(result.filePath, {
+      filePath: result.filePath,
+      score,
+      sources: ['keyword'],
+      keywordSnippet: result.snippet,
+      metadata: result.metadata,
+    });
+  });
+
+  // Add semantic scores
+  semanticResults.forEach((result, rank) => {
+    const score = 1 / (k + rank + 1);
+    const existing = scores.get(result.filePath);
+
+    if (existing) {
+      existing.score += score;
+      existing.sources.push('semantic');
+      existing.semanticSnippet = result.snippet;
+    } else {
+      scores.set(result.filePath, {
+        filePath: result.filePath,
+        score,
+        sources: ['semantic'],
+        semanticSnippet: result.snippet,
+        metadata: result.metadata,
+      });
+    }
+  });
+
+  // Sort by combined score
+  return Array.from(scores.values())
+    .sort((a, b) => b.score - a.score)
+    .map(item => ({
+      filePath: item.filePath,
+      snippet: item.keywordSnippet || item.semanticSnippet,
+      score: item.score,
+      matchedIn: {
+        keyword: item.sources.includes('keyword'),
+        semantic: item.sources.includes('semantic'),
+      },
+      metadata: item.metadata,
+    }));
+}
+```
+
+---
+
+### 9.5 Design Comparison: Shared vs Independent Tables
+
+#### Option A: Single search_documents Table (Rejected)
+
+```sql
+CREATE TABLE search_documents (
+  document_id TEXT PRIMARY KEY,
+  file_path TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+
+  -- Chunking fields (nullable for Meili docs)
+  chunk_index INTEGER,
+  chunk_count INTEGER,
+  chunk_text TEXT,
+
+  -- Full text field (nullable for Qdrant chunks)
+  full_text TEXT,
+
+  -- Both systems' status
+  meili_status TEXT,
+  embedding_status TEXT,
+  ...
+);
+```
+
+**Problems:**
+- ❌ Mixed purposes (full text vs chunks)
+- ❌ Many nullable fields
+- ❌ Complex queries (WHERE chunk_index IS NULL for Meili)
+- ❌ Confusing schema
+- ❌ Coupled evolution
+
+#### Option B: Separate Tables (Chosen) ✅
+
+```sql
+CREATE TABLE meili_documents (
+  document_id TEXT PRIMARY KEY,
+  file_path TEXT NOT NULL,
+  full_text TEXT NOT NULL,  -- No nullable chunking fields
+  meili_status TEXT NOT NULL,
+  ...
+);
+
+CREATE TABLE qdrant_documents (
+  document_id TEXT PRIMARY KEY,
+  file_path TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,  -- No nullable full_text
+  chunk_text TEXT NOT NULL,
+  embedding_status TEXT NOT NULL,
+  ...
+);
+```
+
+**Benefits:**
+- ✅ Clear separation of concerns
+- ✅ No nullable fields
+- ✅ Optimized schemas for each system
+- ✅ Independent evolution
+- ✅ Simple queries
+- ✅ Easy to understand
+
+#### Comparison Table
+
+| Aspect | Single Table | Two Tables ✅ |
+|--------|--------------|---------------|
+| **Clarity** | Mixed (full text + chunks) | Clear (each has one purpose) |
+| **Nullable Fields** | Many (chunk_*, full_text) | None |
+| **Query Complexity** | High (WHERE clause filters) | Low (direct queries) |
+| **Schema Evolution** | Coupled (both systems affected) | Independent |
+| **Storage Efficiency** | Wasted (nulls) | Optimized |
+| **Understanding** | "Why nullable?" | Obvious from table name |
+| **Independence** | Tightly coupled | Fully independent |
+
+---
+
+### 9.6 Task Queue Integration
+
+```typescript
+// Task types
+type SearchTask =
+  | { type: 'meili_index'; filePath: string; documentIds: string[] }
+  | { type: 'meili_delete'; documentIds: string[] }
+  | { type: 'qdrant_index'; filePath: string; documentIds: string[] }
+  | { type: 'qdrant_delete'; documentIds: string[] };
+
+// Handlers (run independently)
+async function handleMeiliIndex(task: MeiliIndexTask) {
+  const docs = await db
+    .select()
+    .from(meili_documents)
+    .where(inArray(meili_documents.document_id, task.documentIds));
+
+  // Transform to Meilisearch format
+  const meiliDocs = docs.map(doc => ({
+    id: doc.document_id,
+    file_path: doc.file_path,
+    source_type: doc.source_type,
+    text: doc.full_text,
+    content_type: doc.content_type,
+  }));
+
+  // Index to Meilisearch
+  const meili = getMeilisearchClient();
+  const result = await meili.index('files').addDocuments(meiliDocs);
+
+  // Update status
+  await db
+    .update(meili_documents)
+    .set({
+      meili_status: 'indexed',
+      meili_task_id: result.taskUid.toString(),
+      meili_indexed_at: new Date().toISOString(),
+    })
+    .where(inArray(meili_documents.document_id, task.documentIds));
+}
+
+async function handleQdrantIndex(task: QdrantIndexTask) {
+  const docs = await db
+    .select()
+    .from(qdrant_documents)
+    .where(inArray(qdrant_documents.document_id, task.documentIds));
+
+  // Generate embeddings (batch)
+  const texts = docs.map(doc => doc.chunk_text);
+  const vectors = await embedTexts(texts);
+
+  // Upsert to Qdrant
+  const qdrant = getQdrantClient();
+  const points = docs.map((doc, i) => ({
+    id: doc.document_id,
+    vector: vectors[i],
+    payload: {
+      file_path: doc.file_path,
+      source_type: doc.source_type,
+      chunk_index: doc.chunk_index,
+      chunk_count: doc.chunk_count,
+      text: doc.chunk_text,
+      content_type: doc.content_type,
+    },
+  }));
+
+  await qdrant.upsert('files', { points });
+
+  // Update status
+  await db
+    .update(qdrant_documents)
+    .set({
+      embedding_status: 'indexed',
+      qdrant_indexed_at: new Date().toISOString(),
+      embedding_version: CURRENT_EMBEDDING_VERSION,
+    })
+    .where(inArray(qdrant_documents.document_id, task.documentIds));
+}
+```
+
+---
+
+### 9.7 Triggers & Integration Points
+
+**Trigger 1: URL Digest Completes**
+
+```typescript
+// src/lib/inbox/digestWorkflow.ts
+
+async function handleDigestComplete(filePath: string, digestType: string) {
+  if (digestType === 'content-md') {
+    // URL crawl finished, index the content
+    await ingestFileForSearch(filePath);
+  }
+}
+```
+
+**Trigger 2: Library File Changed**
+
+```typescript
+// src/lib/scanner/libraryScanner.ts
+
+async function handleFileChanged(file: FileRecord) {
+  if (file.mimeType?.startsWith('text/') || file.name.endsWith('.md')) {
+    // Markdown file changed, reindex
+    await reindexFile(file.path);
+  }
+}
+```
+
+**Trigger 3: Inbox Text Saved**
+
+```typescript
+// src/lib/inbox/saveToInbox.ts
+
+async function saveTextToInbox(text: string) {
+  const filePath = `inbox/${uuid()}.md`;
+  await fs.writeFile(filePath, text);
+
+  // Update files table
+  await upsertFile(filePath);
+
+  // Index immediately
+  await ingestFileForSearch(filePath);
+}
+```
+
+---
+
+### 9.8 Summary
+
+**Architecture:**
+- ✅ Two independent search systems (Meilisearch + Qdrant)
+- ✅ Separate tables, workflows, APIs
+- ✅ Hybrid API wraps both with RRF merging
+- ✅ File-path-based (no synthetic IDs)
+
+**Data Strategy:**
+- ✅ Meilisearch: Full text documents (better keyword search)
+- ✅ Qdrant: Chunked documents (required for embeddings)
+- ✅ Independent status tracking
+- ✅ Rebuildable from filesystem + digests
+
+**Workflows:**
+- ✅ Index: Parallel ingestion to both systems
+- ✅ Re-index: Hash-based change detection
+- ✅ Delete: Cascade from file deletion
+- ✅ Search: Independent or hybrid (RRF)
+
+**Benefits:**
+- ✅ Clear separation of concerns
+- ✅ Easy to test and debug
+- ✅ Can evolve independently
+- ✅ Optimized for each system's strengths
+
+---
 ## 10. Security & Authentication
 
 ### 10.1 Authentication Flow
