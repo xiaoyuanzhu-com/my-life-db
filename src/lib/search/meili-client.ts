@@ -104,7 +104,7 @@ class MeiliClient {
     }
   }
 
-  async createIndex(primaryKey: string = 'docId'): Promise<number> {
+  async createIndex(primaryKey: string = 'documentId'): Promise<number> {
     const response = await this.request<{ taskUid: number }>(
       '/indexes',
       {
@@ -141,7 +141,7 @@ class MeiliClient {
 
     if (!index) {
       log.info({ indexUid: this.indexUid }, 'creating Meilisearch index');
-      const taskUid = await this.createIndex('docId');
+      const taskUid = await this.createIndex('documentId');
       const task = await this.waitForTask(taskUid, { timeoutMs: 30_000 });
 
       if (task.status !== 'succeeded') {
@@ -166,31 +166,30 @@ class MeiliClient {
         'exactness',
       ],
       searchableAttributes: [
-        'text', // Main searchable content (transcripts, captions, markdown, etc.)
+        'fullText', // Main searchable content (full text, no chunking)
+        'filePath', // File path for exact matches
         'metadata.title',
         'metadata.description',
         'metadata.tags',
         'metadata.author',
-        'url',
-        'hostname',
-        'sourcePath',
+        'metadata.url',
+        'metadata.hostname',
       ],
       filterableAttributes: [
-        'entryId',
-        'libraryId',
-        'contentType', // Filter by: text, url, image, audio, video, pdf, mixed
-        'variant', // Filter by: content, summary, raw
-        'hostname', // For URL content
-        'chunkCount',
+        'filePath', // Filter by file path
+        'sourceType', // Filter by: content, summary, tags
+        'contentType', // Filter by: url, text, pdf, image, audio, video, mixed
+        'contentHash', // For deduplication
         'metadata.tags',
         'metadata.mimeType',
-        'capturedAt',
-        'createdAt',
-      ],
-      sortableAttributes: [
-        'capturedAt',
+        'metadata.hostname',
         'createdAt',
         'updatedAt',
+      ],
+      sortableAttributes: [
+        'createdAt',
+        'updatedAt',
+        'wordCount',
         'metadata.durationSeconds', // For audio/video
       ],
     };
