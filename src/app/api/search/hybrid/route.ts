@@ -8,6 +8,15 @@ import type { SemanticSearchHit } from '../semantic/route';
 
 const log = getLogger({ module: 'HybridSearchAPI' });
 
+/**
+ * Escape special characters in Meilisearch filter values
+ * Prevents filter injection attacks
+ */
+function escapeFilterValue(value: string): string {
+  // Escape double quotes and backslashes
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export interface HybridSearchRequest {
   query: string;
   limit?: number;
@@ -184,23 +193,23 @@ async function fetchKeywordResults(
     if (filters.contentType) {
       const types = Array.isArray(filters.contentType) ? filters.contentType : [filters.contentType];
       if (types.length === 1) {
-        filterParts.push(`contentType = "${types[0]}"`);
+        filterParts.push(`contentType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filterParts.push(`contentType IN [${types.map(t => `"${t}"`).join(', ')}]`);
+        filterParts.push(`contentType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
     if (filters.sourceType) {
       const types = Array.isArray(filters.sourceType) ? filters.sourceType : [filters.sourceType];
       if (types.length === 1) {
-        filterParts.push(`sourceType = "${types[0]}"`);
+        filterParts.push(`sourceType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filterParts.push(`sourceType IN [${types.map(t => `"${t}"`).join(', ')}]`);
+        filterParts.push(`sourceType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
     if (filters.filePath) {
-      filterParts.push(`filePath = "${filters.filePath}"`);
+      filterParts.push(`filePath = "${escapeFilterValue(filters.filePath)}"`);
     }
 
     const filter = filterParts.length > 0 ? filterParts.join(' AND ') : undefined;
@@ -236,40 +245,20 @@ async function fetchSemanticResults(
 
     if (filters.contentType) {
       const types = Array.isArray(filters.contentType) ? filters.contentType : [filters.contentType];
-      if (types.length === 1) {
-        filter.must = filter.must || [];
-        (filter.must as Array<unknown>).push({
-          key: 'contentType',
-          match: { value: types[0] },
-        });
-      } else if (types.length > 1) {
-        filter.should = filter.should || [];
-        for (const type of types) {
-          (filter.should as Array<unknown>).push({
-            key: 'contentType',
-            match: { value: type },
-          });
-        }
-      }
+      filter.must = filter.must || [];
+      (filter.must as Array<unknown>).push({
+        key: 'contentType',
+        match: types.length === 1 ? { value: types[0] } : { any: types },
+      });
     }
 
     if (filters.sourceType) {
       const types = Array.isArray(filters.sourceType) ? filters.sourceType : [filters.sourceType];
-      if (types.length === 1) {
-        filter.must = filter.must || [];
-        (filter.must as Array<unknown>).push({
-          key: 'sourceType',
-          match: { value: types[0] },
-        });
-      } else if (types.length > 1) {
-        filter.should = filter.should || [];
-        for (const type of types) {
-          (filter.should as Array<unknown>).push({
-            key: 'sourceType',
-            match: { value: type },
-          });
-        }
-      }
+      filter.must = filter.must || [];
+      (filter.must as Array<unknown>).push({
+        key: 'sourceType',
+        match: types.length === 1 ? { value: types[0] } : { any: types },
+      });
     }
 
     if (filters.filePath) {

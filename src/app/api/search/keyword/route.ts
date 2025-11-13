@@ -5,6 +5,15 @@ import type { MeiliSearchPayload } from '@/lib/search/meili-tasks';
 
 const log = getLogger({ module: 'KeywordSearchAPI' });
 
+/**
+ * Escape special characters in Meilisearch filter values
+ * Prevents filter injection attacks
+ */
+function escapeFilterValue(value: string): string {
+  // Escape double quotes and backslashes
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export interface KeywordSearchRequest {
   query: string;
   limit?: number;
@@ -94,9 +103,9 @@ export async function POST(request: NextRequest) {
     if (body.contentType) {
       const types = Array.isArray(body.contentType) ? body.contentType : [body.contentType];
       if (types.length === 1) {
-        filters.push(`contentType = "${types[0]}"`);
+        filters.push(`contentType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filters.push(`contentType IN [${types.map(t => `"${t}"`).join(', ')}]`);
+        filters.push(`contentType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
@@ -104,15 +113,15 @@ export async function POST(request: NextRequest) {
     if (body.sourceType) {
       const types = Array.isArray(body.sourceType) ? body.sourceType : [body.sourceType];
       if (types.length === 1) {
-        filters.push(`sourceType = "${types[0]}"`);
+        filters.push(`sourceType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filters.push(`sourceType IN [${types.map(t => `"${t}"`).join(', ')}]`);
+        filters.push(`sourceType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
     // File path filter (exact match)
     if (body.filePath) {
-      filters.push(`filePath = "${body.filePath}"`);
+      filters.push(`filePath = "${escapeFilterValue(body.filePath)}"`);
     }
 
     const filter = filters.length > 0 ? filters.join(' AND ') : undefined;
