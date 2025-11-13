@@ -129,7 +129,7 @@ export function getQdrantClient(): QdrantClient {
     throw new Error('QDRANT_URL is not configured');
   }
 
-  const collection = process.env.QDRANT_COLLECTION_URL_CHUNKS || 'url_chunks';
+  const collection = process.env.QDRANT_COLLECTION || 'mylifedb_vectors';
   const apiKey = process.env.QDRANT_API_KEY;
   const timeoutMs = Number(process.env.QDRANT_REQUEST_TIMEOUT_MS ?? 30_000);
 
