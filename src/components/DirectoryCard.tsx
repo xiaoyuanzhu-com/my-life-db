@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent } from './ui/Card';
+import { Card, CardContent } from './ui/card';
 import type { Directory } from '@/types';
 
 interface DirectoryCardProps {

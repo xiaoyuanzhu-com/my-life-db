@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Textarea } from './ui/Textarea';
-import { Button } from './ui/Button';
+import { Textarea } from './ui/textarea';
+import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InputTypeTag } from './InputTypeTag';

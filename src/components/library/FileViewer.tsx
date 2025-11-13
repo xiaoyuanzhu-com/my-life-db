@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FileX, Download } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
   filePath: string;
