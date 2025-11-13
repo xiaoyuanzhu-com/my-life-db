@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import {
   upsertQdrantDocument,
   deleteQdrantDocumentsByFile,
+  getQdrantDocumentIdsByFile,
   type SourceType,
   type ContentType,
 } from '@/lib/db/qdrant-documents';
@@ -194,10 +195,27 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
 
 /**
  * Delete all Qdrant chunks for a file
+ * This deletes both database records AND vectors from Qdrant collection
  */
-export function deleteFromQdrant(filePath: string): number {
+export async function deleteFromQdrant(filePath: string): Promise<number> {
+  // Get document IDs before deletion
+  const documentIds = getQdrantDocumentIdsByFile(filePath);
+
+  // Delete from database
   const deletedCount = deleteQdrantDocumentsByFile(filePath);
-  log.info({ filePath, deletedCount }, 'deleted Qdrant chunks');
+
+  // Enqueue Qdrant deletion task to remove vectors from collection
+  if (documentIds.length > 0) {
+    const { enqueueQdrantDelete } = await import('./qdrant-tasks');
+    enqueueQdrantDelete(documentIds);
+    log.info(
+      { filePath, deletedCount, queuedForQdrantDeletion: documentIds.length },
+      'deleted Qdrant chunks and queued vector deletion'
+    );
+  } else {
+    log.info({ filePath, deletedCount }, 'deleted Qdrant chunks (no vectors to delete)');
+  }
+
   return deletedCount;
 }
 

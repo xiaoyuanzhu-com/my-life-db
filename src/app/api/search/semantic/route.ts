@@ -102,41 +102,21 @@ export async function POST(request: NextRequest) {
     // Content type filter
     if (body.contentType) {
       const types = Array.isArray(body.contentType) ? body.contentType : [body.contentType];
-      if (types.length === 1) {
-        filter.must = filter.must || [];
-        (filter.must as Array<unknown>).push({
-          key: 'contentType',
-          match: { value: types[0] },
-        });
-      } else if (types.length > 1) {
-        filter.should = filter.should || [];
-        for (const type of types) {
-          (filter.should as Array<unknown>).push({
-            key: 'contentType',
-            match: { value: type },
-          });
-        }
-      }
+      filter.must = filter.must || [];
+      (filter.must as Array<unknown>).push({
+        key: 'contentType',
+        match: types.length === 1 ? { value: types[0] } : { any: types },
+      });
     }
 
     // Source type filter
     if (body.sourceType) {
       const types = Array.isArray(body.sourceType) ? body.sourceType : [body.sourceType];
-      if (types.length === 1) {
-        filter.must = filter.must || [];
-        (filter.must as Array<unknown>).push({
-          key: 'sourceType',
-          match: { value: types[0] },
-        });
-      } else if (types.length > 1) {
-        filter.should = filter.should || [];
-        for (const type of types) {
-          (filter.should as Array<unknown>).push({
-            key: 'sourceType',
-            match: { value: type },
-          });
-        }
-      }
+      filter.must = filter.must || [];
+      (filter.must as Array<unknown>).push({
+        key: 'sourceType',
+        match: types.length === 1 ? { value: types[0] } : { any: types },
+      });
     }
 
     // File path filter (exact match)
