@@ -10,14 +10,12 @@ export function CrawlButton({ itemId }: { itemId: string }) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=crawl`, { method: 'POST' });
+      const res = await fetch(`/api/inbox/${itemId}/digest?step=crawl`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || res.statusText);
       }
-      const data = await res.json();
-      const taskId = data?.actions?.[0]?.taskId;
-      setMessage(taskId ? `Crawl queued (task ${taskId})` : 'Crawl queued');
+      setMessage('Crawl queued');
     } catch (e: any) {
       setMessage(`Failed: ${e?.message || 'Unknown error'}`);
     } finally {

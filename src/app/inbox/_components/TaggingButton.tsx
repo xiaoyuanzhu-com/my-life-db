@@ -11,7 +11,7 @@ export function TaggingButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=tagging`, {
+      const res = await fetch(`/api/inbox/${itemId}/digest?step=tagging`, {
         method: 'POST',
       });
 
@@ -20,12 +20,7 @@ export function TaggingButton({ itemId }: { itemId: string }) {
         throw new Error(body.error || res.statusText);
       }
 
-      const data = await res.json();
-      const action = Array.isArray(data?.actions)
-        ? data.actions.find((entry: any) => entry?.stage === 'tagging')
-        : null;
-      const taskId = action?.taskId ?? data?.taskId;
-      setMessage(taskId ? `Tagging queued (task ${taskId})` : 'Tagging queued');
+      setMessage('Tagging queued');
     } catch (error: any) {
       setMessage(`Failed: ${error?.message || 'Unknown error'}`);
     } finally {

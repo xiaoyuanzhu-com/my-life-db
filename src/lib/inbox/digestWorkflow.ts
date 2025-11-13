@@ -13,6 +13,9 @@ import { sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getDatabase } from '@/lib/db/connection';
 import { getFileByPath } from '@/lib/db/files';
 import { readPrimaryText } from './digestArtifacts';
+import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
+import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
+import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
 
 const log = getLogger({ module: 'DigestWorkflow' });
 
@@ -175,4 +178,66 @@ async function resolveUrlFromFile(filePath: string): Promise<string | null> {
   }
 
   return url || null;
+}
+
+/**
+ * Start a specific digest step
+ *
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
+ * @param step - Digest step to run ('index', 'summary', 'tagging', 'slug', 'crawl')
+ * @returns Task ID for the step
+ */
+export async function startDigestStep(filePath: string, step: string): Promise<{ taskId: string }> {
+  const file = getFileByPath(filePath);
+  if (!file) {
+    throw new Error('File not found');
+  }
+
+  log.info({ filePath, step }, 'starting digest step');
+
+  switch (step) {
+    case 'index': {
+      // Ingest to Meilisearch and enqueue indexing
+      await ingestToMeilisearch(filePath);
+      const documentId = getMeiliDocumentIdForFile(filePath);
+      const taskId = enqueueMeiliIndex([documentId]);
+      if (!taskId) {
+        throw new Error('Failed to enqueue indexing task');
+      }
+      log.info({ filePath, taskId, documentId }, 'index step enqueued');
+      return { taskId };
+    }
+
+    case 'summary':
+    case 'tagging':
+    case 'slug':
+    case 'crawl': {
+      // Get URL from file
+      const url = await resolveUrlFromFile(filePath);
+      if (!url) {
+        throw new Error('URL not found in file');
+      }
+
+      // Map step to pipeline stage
+      const stageMap: Record<string, UrlDigestPipelineStage> = {
+        summary: 'summary',
+        tagging: 'tagging',
+        slug: 'slug',
+      };
+
+      const stage = step === 'crawl' ? undefined : stageMap[step];
+
+      // Enqueue URL enrichment for this step only
+      const taskId = enqueueUrlEnrichment(filePath, url, {
+        pipeline: false,
+        remainingStages: stage ? [stage] : [],
+      });
+
+      log.info({ filePath, taskId, step }, 'digest step enqueued');
+      return { taskId };
+    }
+
+    default:
+      throw new Error(`Unknown digest step: ${step}`);
+  }
 }

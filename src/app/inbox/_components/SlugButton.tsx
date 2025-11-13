@@ -11,7 +11,7 @@ export function SlugButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${itemId}/reenrich?stage=slug`, {
+      const res = await fetch(`/api/inbox/${itemId}/digest?step=slug`, {
         method: 'POST',
       });
 
@@ -20,12 +20,7 @@ export function SlugButton({ itemId }: { itemId: string }) {
         throw new Error((body as { error?: string }).error || res.statusText);
       }
 
-      const data = await res.json();
-      const action = Array.isArray(data?.actions)
-        ? data.actions.find((entry: any) => entry?.stage === 'slug')
-        : null;
-      const taskId = action?.taskId ?? data?.taskId;
-      setMessage(taskId ? `Slug queued (task ${taskId})` : 'Slug queued');
+      setMessage('Slug queued');
     } catch (error: any) {
       setMessage(`Failed: ${error?.message || 'Unknown error'}`);
     } finally {

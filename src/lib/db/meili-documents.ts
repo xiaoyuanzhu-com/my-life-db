@@ -2,10 +2,11 @@
  * Meilisearch document operations
  *
  * The meili_documents table stores full-text documents for Meilisearch indexing.
- * Each file can have multiple documents (content, summary, tags).
+ * 1:1 file-to-document mapping (one document per file).
  * Documents are rebuildable from filesystem + digests.
  */
 
+import { randomUUID } from 'crypto';
 import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
 
@@ -14,8 +15,8 @@ const log = getLogger({ module: 'DBMeiliDocuments' });
 export type MeiliStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 'deleted' | 'error';
 
 export interface MeiliDocument {
-  documentId: string;        // Same as filePath (1:1 mapping)
-  filePath: string;          // e.g., 'inbox/article.md'
+  documentId: string;        // UUID (simple, unique identifier for Meilisearch)
+  filePath: string;          // File path (e.g., 'inbox/article.md')
   content: string;           // Main file content
   summary: string | null;    // AI-generated summary (from digest)
   tags: string | null;       // Comma-separated tags (from digest)
@@ -85,7 +86,12 @@ export function getMeiliDocumentById(documentId: string): MeiliDocument | null {
  * Get document by file path
  */
 export function getMeiliDocumentByFilePath(filePath: string): MeiliDocument | null {
-  return getMeiliDocumentById(filePath);
+  const db = getDatabase();
+  const row = db
+    .prepare('SELECT * FROM meili_documents WHERE file_path = ?')
+    .get(filePath) as MeiliDocumentRow | undefined;
+
+  return row ? rowToMeiliDocument(row) : null;
 }
 
 /**
@@ -122,7 +128,8 @@ export function upsertMeiliDocument(doc: {
   const db = getDatabase();
   const now = new Date().toISOString();
 
-  const existing = getMeiliDocumentById(doc.filePath);
+  // Check if document already exists for this file path
+  const existing = getMeiliDocumentByFilePath(doc.filePath);
 
   if (existing) {
     // Update existing document
@@ -148,12 +155,14 @@ export function upsertMeiliDocument(doc: {
       doc.mimeType ?? null,
       doc.metadataJson ?? null,
       now,
-      doc.filePath
+      existing.documentId
     );
 
-    log.debug({ documentId: doc.filePath }, 'updated meili document');
+    log.debug({ documentId: existing.documentId, filePath: doc.filePath }, 'updated meili document');
+    return getMeiliDocumentById(existing.documentId)!;
   } else {
-    // Insert new document
+    // Insert new document with a fresh UUID
+    const documentId = randomUUID();
     db.prepare(
       `INSERT INTO meili_documents (
         document_id, file_path, content, summary, tags, content_hash,
@@ -161,7 +170,7 @@ export function upsertMeiliDocument(doc: {
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(
-      doc.filePath,
+      documentId,
       doc.filePath,
       doc.content,
       doc.summary ?? null,
@@ -174,10 +183,9 @@ export function upsertMeiliDocument(doc: {
       now
     );
 
-    log.debug({ documentId: doc.filePath }, 'created meili document');
+    log.debug({ documentId, filePath: doc.filePath }, 'created meili document');
+    return getMeiliDocumentById(documentId)!;
   }
-
-  return getMeiliDocumentById(doc.filePath)!;
 }
 
 /**
@@ -250,8 +258,11 @@ export function batchUpdateMeiliStatus(
  * Delete document for a file
  */
 export function deleteMeiliDocumentByFilePath(filePath: string): void {
-  deleteMeiliDocument(filePath);
-  log.debug({ filePath }, 'deleted meili document for file');
+  const doc = getMeiliDocumentByFilePath(filePath);
+  if (doc) {
+    deleteMeiliDocument(doc.documentId);
+    log.debug({ documentId: doc.documentId, filePath }, 'deleted meili document for file');
+  }
 }
 
 /**
@@ -277,8 +288,15 @@ export function countMeiliDocumentsByStatus(status: MeiliStatus): number {
 }
 
 /**
- * Get document ID for a file (1:1 mapping, so just returns filePath)
+ * Get document ID for a file path
+ *
+ * @param filePath - Relative file path (e.g., 'inbox/article.md')
+ * @returns Document ID (UUID) if document exists, or throws error
  */
 export function getMeiliDocumentIdForFile(filePath: string): string {
-  return filePath;
+  const doc = getMeiliDocumentByFilePath(filePath);
+  if (!doc) {
+    throw new Error(`No Meilisearch document found for file: ${filePath}`);
+  }
+  return doc.documentId;
 }

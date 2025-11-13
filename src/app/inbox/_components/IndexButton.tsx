@@ -14,15 +14,14 @@ export function IndexButton({ itemId }: IndexButtonProps) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/inbox/${itemId}/search`, {
+      const res = await fetch(`/api/inbox/${itemId}/digest?step=index`, {
         method: 'POST',
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(body.error || res.statusText);
       }
-      const chunks = body?.chunks ?? 0;
-      setMessage(chunks ? `Queued indexing for ${chunks} chunk${chunks === 1 ? '' : 's'}` : 'Indexing queued');
+      setMessage('Indexing queued');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessage(`Failed: ${message}`);

@@ -50,9 +50,9 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
               <CrawlButton itemId={slugParam} />
               <SummaryButton itemId={slugParam} />
               <TaggingButton itemId={slugParam} />
-              <IndexButton itemId={slugParam} />
             </>
           )}
+          <IndexButton itemId={slugParam} />
           <SlugButton itemId={slugParam} />
         </div>
 
