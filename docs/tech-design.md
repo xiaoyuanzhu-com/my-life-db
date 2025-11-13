@@ -441,10 +441,6 @@ CREATE TABLE items (
   id TEXT PRIMARY KEY,                    -- UUID
   name TEXT NOT NULL,                     -- Original filename or slug
 
-  -- Type classification
-  raw_type TEXT NOT NULL,                 -- What user submitted: 'text'|'image'|'audio'|'video'|'pdf'|'mixed'
-  detected_type TEXT,                     -- What AI detected: 'url'|'note'|'todo'|'email'|etc.
-
   -- File system location
   is_folder INTEGER NOT NULL DEFAULT 0,   -- 0=single file, 1=folder
   path TEXT NOT NULL UNIQUE,              -- Relative path from MY_DATA_DIR
@@ -469,9 +465,7 @@ CREATE TABLE items (
 );
 
 CREATE INDEX idx_items_path_prefix ON items(path);
-CREATE INDEX idx_items_detected_type ON items(detected_type);
 CREATE INDEX idx_items_status ON items(status);
-CREATE INDEX idx_items_raw_type ON items(raw_type);
 CREATE INDEX idx_items_created_at ON items(created_at DESC);
 
 -- Digests: AI-generated content (rebuildable)
@@ -2740,7 +2734,7 @@ POST /api/search/hybrid
 
 ```sql
 CREATE TABLE meili_documents (
-  document_id TEXT PRIMARY KEY,        -- Same as file_path (1:1 mapping)
+  document_id TEXT PRIMARY KEY,        -- UUID (unique identifier for Meilisearch)
   file_path TEXT NOT NULL,             -- 'inbox/article.md' or 'notes/my-note.md'
 
   -- Full text (no chunking)
@@ -2751,7 +2745,7 @@ CREATE TABLE meili_documents (
   word_count INTEGER NOT NULL,
 
   -- Metadata
-  content_type TEXT NOT NULL,          -- 'url' | 'text' | 'pdf' | 'image'
+  mime_type TEXT,                      -- MIME type from filesystem (e.g., 'text/markdown', 'application/pdf')
   metadata_json TEXT,                  -- Additional context (title, author, etc.)
 
   -- Meilisearch status
@@ -2767,6 +2761,7 @@ CREATE TABLE meili_documents (
 CREATE INDEX idx_meili_file_path ON meili_documents(file_path);
 CREATE INDEX idx_meili_status ON meili_documents(meili_status)
   WHERE meili_status != 'indexed';
+CREATE INDEX idx_meili_mime_type ON meili_documents(mime_type);
 ```
 
 **Design Rationale:**
@@ -2780,12 +2775,12 @@ CREATE INDEX idx_meili_status ON meili_documents(meili_status)
 ```typescript
 // Single document for article with all content
 {
-  document_id: 'inbox/article.md',
+  document_id: '550e8400-e29b-41d4-a716-446655440000', // UUID
   file_path: 'inbox/article.md',
   content: '... entire 10,000 word article ...',
   summary: 'This article discusses React hooks...',
   tags: 'react, javascript, hooks, frontend, state-management',
-  content_type: 'url',
+  mime_type: 'text/markdown',
   metadata_json: '{"title":"React Hooks Guide","author":"..."}',
   meili_status: 'indexed'
 }
@@ -2817,7 +2812,6 @@ CREATE TABLE qdrant_documents (
   content_hash TEXT NOT NULL,
 
   -- Metadata
-  content_type TEXT NOT NULL,
   metadata_json TEXT,
 
   -- Qdrant status

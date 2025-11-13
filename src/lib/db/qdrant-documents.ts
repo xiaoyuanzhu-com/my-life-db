@@ -13,7 +13,6 @@ const log = getLogger({ module: 'DBQdrantDocuments' });
 
 export type EmbeddingStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 'deleted' | 'error';
 export type SourceType = 'content' | 'summary' | 'tags';
-export type ContentType = 'url' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'mixed';
 
 export interface QdrantDocument {
   documentId: string;        // e.g., 'inbox/article.md:content:0'
@@ -28,7 +27,6 @@ export interface QdrantDocument {
   wordCount: number;         // Word count for stats
   tokenCount: number;        // Token count for stats
   contentHash: string;       // SHA256 for change detection
-  contentType: ContentType;  // 'url' | 'text' | 'pdf' | etc.
   metadataJson: string | null; // Additional context
   embeddingStatus: EmbeddingStatus; // Sync status
   embeddingVersion: number;  // Embedding model version
@@ -52,7 +50,6 @@ interface QdrantDocumentRow {
   word_count: number;
   token_count: number;
   content_hash: string;
-  content_type: ContentType;
   metadata_json: string | null;
   embedding_status: EmbeddingStatus;
   embedding_version: number;
@@ -77,7 +74,6 @@ function rowToQdrantDocument(row: QdrantDocumentRow): QdrantDocument {
     wordCount: row.word_count,
     tokenCount: row.token_count,
     contentHash: row.content_hash,
-    contentType: row.content_type,
     metadataJson: row.metadata_json,
     embeddingStatus: row.embedding_status,
     embeddingVersion: row.embedding_version,
@@ -162,7 +158,6 @@ export function upsertQdrantDocument(doc: {
   wordCount: number;
   tokenCount: number;
   contentHash: string;
-  contentType: ContentType;
   metadataJson?: string | null;
   embeddingVersion?: number;
 }): QdrantDocument {
@@ -186,7 +181,6 @@ export function upsertQdrantDocument(doc: {
         word_count = ?,
         token_count = ?,
         content_hash = ?,
-        content_type = ?,
         metadata_json = ?,
         embedding_status = 'pending',
         embedding_version = ?,
@@ -205,7 +199,6 @@ export function upsertQdrantDocument(doc: {
       doc.wordCount,
       doc.tokenCount,
       doc.contentHash,
-      doc.contentType,
       doc.metadataJson ?? null,
       doc.embeddingVersion ?? 0,
       now,
@@ -219,9 +212,9 @@ export function upsertQdrantDocument(doc: {
       `INSERT INTO qdrant_documents (
         document_id, file_path, source_type, chunk_index, chunk_count,
         chunk_text, span_start, span_end, overlap_tokens, word_count,
-        token_count, content_hash, content_type, metadata_json,
+        token_count, content_hash, metadata_json,
         embedding_status, embedding_version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
     ).run(
       doc.documentId,
       doc.filePath,
@@ -235,7 +228,6 @@ export function upsertQdrantDocument(doc: {
       doc.wordCount,
       doc.tokenCount,
       doc.contentHash,
-      doc.contentType,
       doc.metadataJson ?? null,
       doc.embeddingVersion ?? 0,
       now,

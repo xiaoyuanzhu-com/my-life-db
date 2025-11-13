@@ -7,7 +7,6 @@ import {
   deleteQdrantDocumentsByFile,
   getQdrantDocumentIdsByFile,
   type SourceType,
-  type ContentType,
 } from '@/lib/db/qdrant-documents';
 import { getFileByPath } from '@/lib/db/files';
 import { listDigestsForPath, getDigestByPathAndType } from '@/lib/db/digests';
@@ -59,7 +58,6 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const contentType = detectContentType(filePath, fileRecord.mimeType);
   const digests = listDigestsForPath(filePath);
 
   const result: QdrantIngestResult = {
@@ -90,7 +88,6 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
         wordCount: chunk.wordCount,
         tokenCount: chunk.tokenCount,
         contentHash,
-        contentType,
         embeddingVersion: 0,
       });
     }
@@ -126,7 +123,6 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
         wordCount: chunk.wordCount,
         tokenCount: chunk.tokenCount,
         contentHash,
-        contentType,
         embeddingVersion: 0,
       });
     }
@@ -167,7 +163,6 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
             wordCount: chunk.wordCount,
             tokenCount: chunk.tokenCount,
             contentHash,
-            contentType,
             embeddingVersion: 0,
           });
         }
@@ -263,33 +258,6 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
   }
 
   return null;
-}
-
-/**
- * Detect content type from file path and MIME type
- */
-function detectContentType(filePath: string, mimeType: string | null): ContentType {
-  // Check file extension
-  if (filePath.endsWith('.pdf')) return 'pdf';
-  if (filePath.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
-  if (filePath.match(/\.(mp3|wav|m4a|ogg|flac)$/i)) return 'audio';
-  if (filePath.match(/\.(mp4|webm|mov|avi|mkv)$/i)) return 'video';
-  if (filePath.match(/\.(md|txt)$/i)) return 'text';
-
-  // Check MIME type
-  if (mimeType?.startsWith('image/')) return 'image';
-  if (mimeType?.startsWith('audio/')) return 'audio';
-  if (mimeType?.startsWith('video/')) return 'video';
-  if (mimeType === 'application/pdf') return 'pdf';
-  if (mimeType?.startsWith('text/')) return 'text';
-
-  // Check for URL files (contain http:// or https://)
-  if (filePath.match(/^inbox\/[^/]+$/) || filePath.includes('url')) {
-    return 'url';
-  }
-
-  // Default to mixed for folders or unknown types
-  return 'mixed';
 }
 
 /**

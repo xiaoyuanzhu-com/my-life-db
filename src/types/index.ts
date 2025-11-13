@@ -169,7 +169,6 @@ export interface LinkExtractionResult {
   description: string | null;
   previewImage: string | null;
   domain: string;
-  contentType: 'article' | 'video' | 'product' | 'tool' | 'other';
   author?: string;
   publishedDate?: string;
   tags: string[];
@@ -318,7 +317,6 @@ export interface LibraryFile {
   contentHash: string | null; // Only for text files
 
   // Content classification
-  contentType: FileType | null;
   searchableText: string | null; // Extracted content for search
 
   // Enrichment (JSON, extensible)

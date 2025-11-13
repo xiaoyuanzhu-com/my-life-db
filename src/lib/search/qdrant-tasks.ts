@@ -224,7 +224,6 @@ function buildQdrantPayload(doc: QdrantDocument): Record<string, unknown> {
     // File reference (file-centric)
     filePath: doc.filePath,
     sourceType: doc.sourceType,
-    contentType: doc.contentType,
 
     // Chunking metadata
     chunkIndex: doc.chunkIndex,
