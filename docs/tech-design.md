@@ -2736,22 +2736,23 @@ POST /api/search/hybrid
 
 #### 9.3.1 meili_documents Table (Keyword Search)
 
-**Purpose:** Store full-text documents for Meilisearch indexing
+**Purpose:** Store full-text documents for Meilisearch indexing (1:1 file-to-document mapping)
 
 ```sql
 CREATE TABLE meili_documents (
-  document_id TEXT PRIMARY KEY,        -- '{filePath}:{sourceType}'
+  document_id TEXT PRIMARY KEY,        -- Same as file_path (1:1 mapping)
   file_path TEXT NOT NULL,             -- 'inbox/article.md' or 'notes/my-note.md'
-  source_type TEXT NOT NULL,           -- 'content' | 'summary' | 'tags'
 
   -- Full text (no chunking)
-  full_text TEXT NOT NULL,             -- Complete document text
+  content TEXT NOT NULL,               -- Main file content
+  summary TEXT,                        -- AI-generated summary (from digest)
+  tags TEXT,                           -- Comma-separated tags (from digest)
   content_hash TEXT NOT NULL,          -- SHA256 for change detection
   word_count INTEGER NOT NULL,
 
   -- Metadata
   content_type TEXT NOT NULL,          -- 'url' | 'text' | 'pdf' | 'image'
-  metadata_json TEXT,                  -- Additional context
+  metadata_json TEXT,                  -- Additional context (title, author, etc.)
 
   -- Meilisearch status
   meili_status TEXT NOT NULL DEFAULT 'pending',
@@ -2764,41 +2765,28 @@ CREATE TABLE meili_documents (
 );
 
 CREATE INDEX idx_meili_file_path ON meili_documents(file_path);
-CREATE INDEX idx_meili_file_source ON meili_documents(file_path, source_type);
 CREATE INDEX idx_meili_status ON meili_documents(meili_status)
   WHERE meili_status != 'indexed';
 ```
 
-**Example Documents:**
+**Design Rationale:**
+- **1:1 mapping**: Each file creates exactly one document in Meilisearch
+- **Embedded digests**: Summary and tags from digests are stored as separate fields
+- **Simpler mental model**: One file = one search result
+- **Flexible querying**: Use `attributesToSearchIn` to search specific fields (content, summary, or tags)
+
+**Example Document:**
 
 ```typescript
-// Full article content
+// Single document for article with all content
 {
-  document_id: 'inbox/article.md:content',
+  document_id: 'inbox/article.md',
   file_path: 'inbox/article.md',
-  source_type: 'content',
-  full_text: '... entire 10,000 word article ...',
+  content: '... entire 10,000 word article ...',
+  summary: 'This article discusses React hooks...',
+  tags: 'react, javascript, hooks, frontend, state-management',
   content_type: 'url',
-  meili_status: 'indexed'
-}
-
-// Summary (from digest)
-{
-  document_id: 'inbox/article.md:summary',
-  file_path: 'inbox/article.md',
-  source_type: 'summary',
-  full_text: 'This article discusses React hooks...',
-  content_type: 'url',
-  meili_status: 'indexed'
-}
-
-// Tags (from digest)
-{
-  document_id: 'inbox/article.md:tags',
-  file_path: 'inbox/article.md',
-  source_type: 'tags',
-  full_text: 'react, javascript, hooks, frontend, state-management',
-  content_type: 'url',
+  metadata_json: '{"title":"React Hooks Guide","author":"..."}',
   meili_status: 'indexed'
 }
 ```

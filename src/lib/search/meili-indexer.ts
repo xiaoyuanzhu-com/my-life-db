@@ -73,23 +73,20 @@ export async function deleteDocumentsFromMeilisearch(documentIds: string[]): Pro
 }
 
 function mapToPayload(doc: SearchDocumentRecord): MeilisearchDocumentPayload {
+  // Note: This mapper is for the old search_documents table structure
+  // The new system uses meili-tasks.ts with the meili_documents table
+  // This code is kept for backward compatibility during migration
   const metadata = doc.metadata ?? {};
   return {
-    docId: doc.documentId,
-    entryId: doc.entryId,
-    libraryId: doc.libraryId,
-    contentType: doc.contentType,
-    variant: doc.variant,
-    text: doc.chunkText,
-    sourcePath: doc.sourcePath,
-    url: metadata.url ?? doc.sourceUrl ?? null,
-    hostname: metadata.hostname ?? null,
-    chunkIndex: doc.chunkIndex,
-    chunkCount: doc.chunkCount,
-    checksum: doc.contentHash,
-    overlapTokens: doc.overlapTokens,
+    documentId: doc.documentId,
+    filePath: doc.sourcePath,
+    mimeType: metadata.mimeType as string | null ?? null,
+    content: doc.chunkText,
+    summary: null,
+    tags: null,
+    contentHash: doc.contentHash,
+    wordCount: doc.wordCount,
     metadata,
-    capturedAt: metadata.capturedAt ?? doc.createdAt,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

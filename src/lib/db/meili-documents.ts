@@ -12,17 +12,16 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'DBMeiliDocuments' });
 
 export type MeiliStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 'deleted' | 'error';
-export type SourceType = 'content' | 'summary' | 'tags';
-export type ContentType = 'url' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'mixed';
 
 export interface MeiliDocument {
-  documentId: string;        // e.g., 'inbox/article.md:content'
+  documentId: string;        // Same as filePath (1:1 mapping)
   filePath: string;          // e.g., 'inbox/article.md'
-  sourceType: SourceType;    // 'content' | 'summary' | 'tags'
-  fullText: string;          // Complete document text (no chunking)
+  content: string;           // Main file content
+  summary: string | null;    // AI-generated summary (from digest)
+  tags: string | null;       // Comma-separated tags (from digest)
   contentHash: string;       // SHA256 for change detection
   wordCount: number;         // Word count for stats
-  contentType: ContentType;  // 'url' | 'text' | 'pdf' | etc.
+  mimeType: string | null;   // MIME type from filesystem
   metadataJson: string | null; // Additional context
   meiliStatus: MeiliStatus;  // Sync status
   meiliTaskId: string | null; // Meilisearch task ID
@@ -35,11 +34,12 @@ export interface MeiliDocument {
 interface MeiliDocumentRow {
   document_id: string;
   file_path: string;
-  source_type: SourceType;
-  full_text: string;
+  content: string;
+  summary: string | null;
+  tags: string | null;
   content_hash: string;
   word_count: number;
-  content_type: ContentType;
+  mime_type: string | null;
   metadata_json: string | null;
   meili_status: MeiliStatus;
   meili_task_id: string | null;
@@ -53,11 +53,12 @@ function rowToMeiliDocument(row: MeiliDocumentRow): MeiliDocument {
   return {
     documentId: row.document_id,
     filePath: row.file_path,
-    sourceType: row.source_type,
-    fullText: row.full_text,
+    content: row.content,
+    summary: row.summary,
+    tags: row.tags,
     contentHash: row.content_hash,
     wordCount: row.word_count,
-    contentType: row.content_type,
+    mimeType: row.mime_type,
     metadataJson: row.metadata_json,
     meiliStatus: row.meili_status,
     meiliTaskId: row.meili_task_id,
@@ -81,15 +82,10 @@ export function getMeiliDocumentById(documentId: string): MeiliDocument | null {
 }
 
 /**
- * List documents for a file
+ * Get document by file path
  */
-export function listMeiliDocumentsByFile(filePath: string): MeiliDocument[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT * FROM meili_documents WHERE file_path = ? ORDER BY source_type')
-    .all(filePath) as MeiliDocumentRow[];
-
-  return rows.map(rowToMeiliDocument);
+export function getMeiliDocumentByFilePath(filePath: string): MeiliDocument | null {
+  return getMeiliDocumentById(filePath);
 }
 
 /**
@@ -114,73 +110,74 @@ export function listMeiliDocumentsByStatus(
  * Create or update meili document
  */
 export function upsertMeiliDocument(doc: {
-  documentId: string;
   filePath: string;
-  sourceType: SourceType;
-  fullText: string;
+  content: string;
+  summary?: string | null;
+  tags?: string | null;
   contentHash: string;
   wordCount: number;
-  contentType: ContentType;
+  mimeType?: string | null;
   metadataJson?: string | null;
 }): MeiliDocument {
   const db = getDatabase();
   const now = new Date().toISOString();
 
-  const existing = getMeiliDocumentById(doc.documentId);
+  const existing = getMeiliDocumentById(doc.filePath);
 
   if (existing) {
     // Update existing document
     db.prepare(
       `UPDATE meili_documents SET
-        file_path = ?,
-        source_type = ?,
-        full_text = ?,
+        content = ?,
+        summary = ?,
+        tags = ?,
         content_hash = ?,
         word_count = ?,
-        content_type = ?,
+        mime_type = ?,
         metadata_json = ?,
         meili_status = 'pending',
         meili_error = NULL,
         updated_at = ?
       WHERE document_id = ?`
     ).run(
-      doc.filePath,
-      doc.sourceType,
-      doc.fullText,
+      doc.content,
+      doc.summary ?? null,
+      doc.tags ?? null,
       doc.contentHash,
       doc.wordCount,
-      doc.contentType,
+      doc.mimeType ?? null,
       doc.metadataJson ?? null,
       now,
-      doc.documentId
+      doc.filePath
     );
 
-    log.debug({ documentId: doc.documentId }, 'updated meili document');
+    log.debug({ documentId: doc.filePath }, 'updated meili document');
   } else {
     // Insert new document
     db.prepare(
       `INSERT INTO meili_documents (
-        document_id, file_path, source_type, full_text, content_hash,
-        word_count, content_type, metadata_json, meili_status,
+        document_id, file_path, content, summary, tags, content_hash,
+        word_count, mime_type, metadata_json, meili_status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(
-      doc.documentId,
       doc.filePath,
-      doc.sourceType,
-      doc.fullText,
+      doc.filePath,
+      doc.content,
+      doc.summary ?? null,
+      doc.tags ?? null,
       doc.contentHash,
       doc.wordCount,
-      doc.contentType,
+      doc.mimeType ?? null,
       doc.metadataJson ?? null,
       now,
       now
     );
 
-    log.debug({ documentId: doc.documentId }, 'created meili document');
+    log.debug({ documentId: doc.filePath }, 'created meili document');
   }
 
-  return getMeiliDocumentById(doc.documentId)!;
+  return getMeiliDocumentById(doc.filePath)!;
 }
 
 /**
@@ -250,16 +247,11 @@ export function batchUpdateMeiliStatus(
 }
 
 /**
- * Delete documents for a file
+ * Delete document for a file
  */
-export function deleteMeiliDocumentsByFile(filePath: string): number {
-  const db = getDatabase();
-  const result = db
-    .prepare('DELETE FROM meili_documents WHERE file_path = ?')
-    .run(filePath);
-
-  log.debug({ filePath, count: result.changes }, 'deleted meili documents for file');
-  return result.changes;
+export function deleteMeiliDocumentByFilePath(filePath: string): void {
+  deleteMeiliDocument(filePath);
+  log.debug({ filePath }, 'deleted meili document for file');
 }
 
 /**
@@ -285,13 +277,8 @@ export function countMeiliDocumentsByStatus(status: MeiliStatus): number {
 }
 
 /**
- * Get all document IDs for a file
+ * Get document ID for a file (1:1 mapping, so just returns filePath)
  */
-export function getMeiliDocumentIdsByFile(filePath: string): string[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT document_id FROM meili_documents WHERE file_path = ?')
-    .all(filePath) as { document_id: string }[];
-
-  return rows.map(r => r.document_id);
+export function getMeiliDocumentIdForFile(filePath: string): string {
+  return filePath;
 }

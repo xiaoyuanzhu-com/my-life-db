@@ -217,22 +217,21 @@ class MeiliClient {
         'exactness',
       ],
       searchableAttributes: [
-        'fullText', // Main searchable content (full text, no chunking)
-        'filePath', // File path for exact matches
+        'content',   // Main file content (highest priority)
+        'summary',   // AI-generated summary
+        'tags',      // Tags from digest
+        'filePath',  // File path for exact matches
         'metadata.title',
         'metadata.description',
-        'metadata.tags',
         'metadata.author',
         'metadata.url',
         'metadata.hostname',
       ],
       filterableAttributes: [
-        'filePath', // Filter by file path
-        'sourceType', // Filter by: content, summary, tags
-        'contentType', // Filter by: url, text, pdf, image, audio, video, mixed
-        'contentHash', // For deduplication
+        'filePath',     // Filter by file path
+        'mimeType',     // Filter by MIME type (e.g., text/markdown, image/jpeg)
+        'contentHash',  // For deduplication
         'metadata.tags',
-        'metadata.mimeType',
         'metadata.hostname',
         'createdAt',
         'updatedAt',
@@ -331,7 +330,7 @@ export async function getMeiliClient(): Promise<MeiliClient> {
     throw new Error('MEILI_HOST is not configured');
   }
 
-  const indexUid = process.env.MEILI_INDEX || 'mylifedb_content';
+  const indexUid = process.env.MEILI_INDEX || 'mylifedb_files';
   const apiKey = process.env.MEILI_API_KEY;
   const timeoutMs = Number(process.env.MEILI_REQUEST_TIMEOUT_MS ?? 30_000);
 

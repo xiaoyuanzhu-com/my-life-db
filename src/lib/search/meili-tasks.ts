@@ -14,23 +14,22 @@ const log = getLogger({ module: 'MeiliTasks' });
 
 /**
  * Meilisearch document payload for indexing
- * File-centric design with full text (no chunking)
+ * 1:1 file-to-document mapping with embedded digests
  */
 export interface MeiliSearchPayload {
-  // Primary key in Meilisearch
+  // Primary key in Meilisearch (same as filePath)
   documentId: string;
 
   // File reference (file-centric architecture)
   filePath: string;
 
-  // Source type (content, summary, tags)
-  sourceType: 'content' | 'summary' | 'tags';
+  // MIME type from filesystem
+  mimeType: string | null;
 
-  // Content classification
-  contentType: 'url' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'mixed';
-
-  // Full searchable text (no chunking for Meilisearch)
-  fullText: string;
+  // Searchable content fields
+  content: string;           // Main file content
+  summary: string | null;    // AI-generated summary
+  tags: string | null;       // Comma-separated tags
 
   // Content hash for deduplication
   contentHash: string;
@@ -100,7 +99,7 @@ defineTaskHandler({
     }
 
     // Update status to 'indexing'
-    batchUpdateMeiliStatus(documentIds, 'indexing', { error: null });
+    batchUpdateMeiliStatus(documentIds, 'indexing');
 
     try {
       // Get Meilisearch client
@@ -123,8 +122,6 @@ defineTaskHandler({
         // Update status to 'indexed'
         batchUpdateMeiliStatus(documentIds, 'indexed', {
           taskId: String(taskUid),
-          indexedAt: new Date().toISOString(),
-          error: null,
         });
 
         log.info(
@@ -176,7 +173,7 @@ defineTaskHandler({
     }
 
     // Update status to 'deleting'
-    batchUpdateMeiliStatus(documentIds, 'deleting', { error: null });
+    batchUpdateMeiliStatus(documentIds, 'deleting');
 
     try {
       // Get Meilisearch client
@@ -187,9 +184,7 @@ defineTaskHandler({
 
       if (taskUid === 0) {
         // No task created (empty batch)
-        batchUpdateMeiliStatus(documentIds, 'deleted', {
-          error: null,
-        });
+        batchUpdateMeiliStatus(documentIds, 'deleted');
         return { count: 0, message: 'no documents deleted (empty batch)' };
       }
 
@@ -205,7 +200,6 @@ defineTaskHandler({
         // Update status to 'deleted'
         batchUpdateMeiliStatus(documentIds, 'deleted', {
           taskId: String(taskUid),
-          error: null,
         });
 
         log.info(
@@ -263,9 +257,10 @@ function mapToMeiliPayload(doc: MeiliDocument): MeiliSearchPayload {
   return {
     documentId: doc.documentId,
     filePath: doc.filePath,
-    sourceType: doc.sourceType,
-    contentType: doc.contentType,
-    fullText: doc.fullText,
+    mimeType: doc.mimeType,
+    content: doc.content,
+    summary: doc.summary,
+    tags: doc.tags,
     contentHash: doc.contentHash,
     wordCount: doc.wordCount,
     metadata,

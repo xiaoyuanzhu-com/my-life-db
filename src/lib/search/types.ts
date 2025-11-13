@@ -133,39 +133,33 @@ export interface SearchDocumentInsert {
 
 /**
  * Unified document payload for Meilisearch
- * Works for all content types: URL, audio transcript, image caption, text notes, etc.
+ * 1:1 file-to-document mapping with embedded digests
  */
 export interface MeilisearchDocumentPayload {
-  // Primary key
-  docId: string;
+  // Primary key (same as filePath)
+  documentId: string;
 
-  // References
-  entryId: string;
-  libraryId?: string | null;
+  // File reference
+  filePath: string;
 
-  // Content classification
-  contentType: ContentType;
-  variant: SearchVariant;
+  // MIME type from filesystem
+  mimeType: string | null;
 
-  // Searchable text content
-  text: string;
+  // Searchable content fields (no chunking)
+  content: string;        // Main file content
+  summary: string | null; // AI-generated summary
+  tags: string | null;    // Comma-separated tags
 
-  // Source information (for all types)
-  sourcePath: string;
-  url: string | null;
-  hostname: string | null; // URL hostname or null for non-URL content
+  // Content hash for deduplication
+  contentHash: string;
 
-  // Chunking metadata
-  chunkIndex: number;
-  chunkCount: number;
-  checksum: string;
-  overlapTokens: number;
+  // Word count
+  wordCount: number;
 
   // Type-specific metadata
-  metadata: SearchDocumentMetadata;
+  metadata?: Record<string, unknown>;
 
   // Timestamps
-  capturedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

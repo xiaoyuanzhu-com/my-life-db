@@ -20,6 +20,7 @@ import migration017 from './017_add_error_to_digests';
 import migration018 from './018_refactor_to_file_centric';
 import migration019 from './019_create_meili_documents';
 import migration020 from './020_create_qdrant_documents';
+import migration021 from './021_meili_1to1_mapping';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -53,6 +54,7 @@ export const migrations: Migration[] = [
   migration018,
   migration019,
   migration020,
+  migration021,
 ];
 
 /**

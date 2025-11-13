@@ -18,17 +18,17 @@ export interface KeywordSearchRequest {
   query: string;
   limit?: number;
   offset?: number;
-  contentType?: string | string[];
-  sourceType?: string | string[];
+  mimeType?: string | string[];
   filePath?: string;
 }
 
 export interface KeywordSearchResult {
   documentId: string;
   filePath: string;
-  sourceType: 'content' | 'summary' | 'tags';
-  contentType: 'url' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'mixed';
-  fullText: string;
+  mimeType: string | null;
+  content: string;
+  summary: string | null;
+  tags: string | null;
   contentHash: string;
   wordCount: number;
   metadata?: Record<string, unknown>;
@@ -57,8 +57,7 @@ export interface KeywordSearchResponse {
  *   "query": "search terms",
  *   "limit": 20,
  *   "offset": 0,
- *   "contentType": "url" | ["url", "text"],
- *   "sourceType": "content" | ["content", "summary"],
+ *   "mimeType": "text/markdown" | ["text/markdown", "text/plain"],
  *   "filePath": "inbox/article.md"
  * }
  *
@@ -99,23 +98,13 @@ export async function POST(request: NextRequest) {
     // Build filter expression
     const filters: string[] = [];
 
-    // Content type filter
-    if (body.contentType) {
-      const types = Array.isArray(body.contentType) ? body.contentType : [body.contentType];
+    // MIME type filter
+    if (body.mimeType) {
+      const types = Array.isArray(body.mimeType) ? body.mimeType : [body.mimeType];
       if (types.length === 1) {
-        filters.push(`contentType = "${escapeFilterValue(types[0])}"`);
+        filters.push(`mimeType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filters.push(`contentType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
-      }
-    }
-
-    // Source type filter
-    if (body.sourceType) {
-      const types = Array.isArray(body.sourceType) ? body.sourceType : [body.sourceType];
-      if (types.length === 1) {
-        filters.push(`sourceType = "${escapeFilterValue(types[0])}"`);
-      } else if (types.length > 1) {
-        filters.push(`sourceType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
+        filters.push(`mimeType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
@@ -134,8 +123,8 @@ export async function POST(request: NextRequest) {
       limit,
       offset,
       filter,
-      attributesToHighlight: ['fullText'],
-      attributesToCrop: ['fullText'],
+      attributesToHighlight: ['content', 'summary', 'tags'],
+      attributesToCrop: ['content'],
       cropLength: 300,
     });
 

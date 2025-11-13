@@ -6,123 +6,94 @@ import { getDigestByPathAndType, listDigestsForPath } from '@/lib/db/digests';
 import { getFileByPath } from '@/lib/db/files';
 import {
   upsertMeiliDocument,
-  deleteMeiliDocumentsByFile,
-  getMeiliDocumentIdsByFile,
-  type ContentType,
-  type SourceType,
+  deleteMeiliDocumentByFilePath,
+  getMeiliDocumentIdForFile,
 } from '@/lib/db/meili-documents';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'MeiliIngest' });
 
 export interface MeiliIngestResult {
-  documentIds: string[];
-  counts: {
-    content: number;
-    summary: number;
-    tags: number;
-  };
+  documentId: string;
+  hasContent: boolean;
+  hasSummary: boolean;
+  hasTags: boolean;
 }
 
 /**
  * Ingest file content for Meilisearch indexing
  *
- * Creates full-text documents (no chunking) for keyword search.
- * Handles URL digests, library files, and inbox text.
+ * Creates a single full-text document (no chunking) for keyword search.
+ * Embeds summary and tags from digests into the document.
  *
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/article.md')
- * @returns Document IDs created for task queue
+ * @returns Document ID created for task queue
  */
 export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngestResult> {
-  const documentIds: string[] = [];
-  const counts = { content: 0, summary: 0, tags: 0 };
-
   try {
     // Get file metadata
     const fileRecord = getFileByPath(filePath);
     if (!fileRecord) {
       log.warn({ filePath }, 'file not found in files table');
-      return { documentIds: [], counts };
+      return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
     }
-
-    // Determine content type
-    const contentType = detectContentType(filePath, fileRecord.mimeType);
 
     // Get all digests for this file
     const digests = listDigestsForPath(filePath);
 
-    // 1. Index main content
+    // 1. Get main content
     const contentText = await getFileContent(filePath);
-    if (contentText) {
-      const docId = `${filePath}:content`;
-      upsertMeiliDocument({
-        documentId: docId,
-        filePath,
-        sourceType: 'content',
-        fullText: contentText,
-        contentHash: hashString(contentText),
-        wordCount: countWords(contentText),
-        contentType,
-      });
-      documentIds.push(docId);
-      counts.content++;
-      log.debug({ filePath, docId }, 'indexed content');
+    if (!contentText) {
+      log.warn({ filePath }, 'no content found for file');
+      return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
     }
 
-    // 2. Index summary (if exists from digest)
+    // 2. Get summary (if exists from digest)
     const summaryDigest = digests.find(d => d.digestType === 'summary' && d.status === 'enriched');
-    if (summaryDigest?.content) {
-      const docId = `${filePath}:summary`;
-      upsertMeiliDocument({
-        documentId: docId,
-        filePath,
-        sourceType: 'summary',
-        fullText: summaryDigest.content,
-        contentHash: hashString(summaryDigest.content),
-        wordCount: countWords(summaryDigest.content),
-        contentType,
-      });
-      documentIds.push(docId);
-      counts.summary++;
-      log.debug({ filePath, docId }, 'indexed summary');
-    }
+    const summaryText = summaryDigest?.content || null;
 
-    // 3. Index tags (if exists from digest)
+    // 3. Get tags (if exists from digest)
     const tagsDigest = digests.find(d => d.digestType === 'tags' && d.status === 'enriched');
+    let tagsText: string | null = null;
     if (tagsDigest?.content) {
       try {
         const tags = JSON.parse(tagsDigest.content);
         if (Array.isArray(tags) && tags.length > 0) {
-          const tagText = tags.join(', ');
-          const docId = `${filePath}:tags`;
-          upsertMeiliDocument({
-            documentId: docId,
-            filePath,
-            sourceType: 'tags',
-            fullText: tagText,
-            contentHash: hashString(tagText),
-            wordCount: tags.length,
-            contentType,
-          });
-          documentIds.push(docId);
-          counts.tags++;
-          log.debug({ filePath, docId, tagCount: tags.length }, 'indexed tags');
+          tagsText = tags.join(', ');
         }
       } catch (error) {
         log.warn({ filePath, error }, 'failed to parse tags digest');
       }
     }
 
+    // Create single document with all content
+    const allText = [contentText, summaryText, tagsText].filter(Boolean).join(' ');
+    upsertMeiliDocument({
+      filePath,
+      content: contentText,
+      summary: summaryText,
+      tags: tagsText,
+      contentHash: hashString(allText),
+      wordCount: countWords(contentText),
+      mimeType: fileRecord.mimeType,
+    });
+
     log.info(
       {
         filePath,
-        documentCount: documentIds.length,
-        counts,
+        hasContent: true,
+        hasSummary: !!summaryText,
+        hasTags: !!tagsText,
       },
       'ingested file to meilisearch'
     );
 
-    return { documentIds, counts };
+    return {
+      documentId: filePath,
+      hasContent: true,
+      hasSummary: !!summaryText,
+      hasTags: !!tagsText,
+    };
   } catch (error) {
     log.error(
       {
@@ -131,7 +102,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
       },
       'failed to ingest file to meilisearch'
     );
-    return { documentIds: [], counts };
+    return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
   }
 }
 
@@ -180,67 +151,22 @@ async function getFileContent(filePath: string): Promise<string | null> {
 }
 
 /**
- * Detect content type from file path and MIME type
+ * Delete Meilisearch document for a file
  */
-function detectContentType(filePath: string, mimeType: string | null): ContentType {
-  // Check for URL digest
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
-  if (contentDigest) {
-    return 'url';
-  }
+export function deleteMeiliDocument(filePath: string): string {
+  const documentId = getMeiliDocumentIdForFile(filePath);
+  deleteMeiliDocumentByFilePath(filePath);
 
-  // Check MIME type
-  if (mimeType) {
-    if (mimeType.startsWith('text/')) return 'text';
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType === 'application/pdf') return 'pdf';
-  }
+  log.info({ filePath, documentId }, 'deleted meilisearch document for file');
 
-  // Check file extension
-  if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
-    return 'text';
-  }
-  if (filePath.endsWith('.pdf')) {
-    return 'pdf';
-  }
-  if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(filePath)) {
-    return 'image';
-  }
-  if (/\.(mp3|wav|ogg|m4a)$/i.test(filePath)) {
-    return 'audio';
-  }
-  if (/\.(mp4|webm|mov|avi)$/i.test(filePath)) {
-    return 'video';
-  }
-
-  return 'mixed';
-}
-
-/**
- * Delete all Meilisearch documents for a file
- */
-export function deleteMeiliDocuments(filePath: string): string[] {
-  const documentIds = getMeiliDocumentIdsByFile(filePath);
-  deleteMeiliDocumentsByFile(filePath);
-
-  log.info(
-    {
-      filePath,
-      documentCount: documentIds.length,
-    },
-    'deleted meilisearch documents for file'
-  );
-
-  return documentIds;
+  return documentId;
 }
 
 /**
  * Re-index file (delete old, create new)
  */
 export async function reindexMeilisearch(filePath: string): Promise<MeiliIngestResult> {
-  deleteMeiliDocuments(filePath);
+  deleteMeiliDocument(filePath);
   return ingestToMeilisearch(filePath);
 }
 

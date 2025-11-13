@@ -23,20 +23,20 @@ export interface HybridSearchRequest {
   keywordWeight?: number; // 0-1, default 0.5
   semanticWeight?: number; // 0-1, default 0.5
   scoreThreshold?: number; // For semantic search, default 0.7
-  contentType?: string | string[];
-  sourceType?: string | string[];
+  mimeType?: string | string[];
   filePath?: string;
 }
 
 export interface HybridSearchResult {
-  // Combined document ID (could be from either meili or qdrant)
+  // Combined document ID (1:1 with file path)
   documentId: string;
   filePath: string;
-  sourceType: 'content' | 'summary' | 'tags';
-  contentType: 'url' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'mixed';
+  mimeType: string | null;
 
   // Text content
-  text: string;
+  content: string;
+  summary: string | null;
+  tags: string | null;
 
   // Hybrid score (RRF)
   score: number;
@@ -75,8 +75,7 @@ export interface HybridSearchResponse {
  *   "keywordWeight": 0.5,
  *   "semanticWeight": 0.5,
  *   "scoreThreshold": 0.7,
- *   "contentType": "url" | ["url", "text"],
- *   "sourceType": "content" | ["content", "summary"],
+ *   "mimeType": "text/markdown" | ["text/markdown", "text/plain"],
  *   "filePath": "inbox/article.md"
  * }
  *
@@ -190,23 +189,15 @@ async function fetchKeywordResults(
     // Build filter expression
     const filterParts: string[] = [];
 
-    if (filters.contentType) {
-      const types = Array.isArray(filters.contentType) ? filters.contentType : [filters.contentType];
+    if (filters.mimeType) {
+      const types = Array.isArray(filters.mimeType) ? filters.mimeType : [filters.mimeType];
       if (types.length === 1) {
-        filterParts.push(`contentType = "${escapeFilterValue(types[0])}"`);
+        filterParts.push(`mimeType = "${escapeFilterValue(types[0])}"`);
       } else if (types.length > 1) {
-        filterParts.push(`contentType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
+        filterParts.push(`mimeType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
       }
     }
 
-    if (filters.sourceType) {
-      const types = Array.isArray(filters.sourceType) ? filters.sourceType : [filters.sourceType];
-      if (types.length === 1) {
-        filterParts.push(`sourceType = "${escapeFilterValue(types[0])}"`);
-      } else if (types.length > 1) {
-        filterParts.push(`sourceType IN [${types.map(t => `"${escapeFilterValue(t)}"`).join(', ')}]`);
-      }
-    }
 
     if (filters.filePath) {
       filterParts.push(`filePath = "${escapeFilterValue(filters.filePath)}"`);
@@ -243,23 +234,15 @@ async function fetchSemanticResults(
     // Build Qdrant filter
     const filter: Record<string, unknown> = {};
 
-    if (filters.contentType) {
-      const types = Array.isArray(filters.contentType) ? filters.contentType : [filters.contentType];
+    if (filters.mimeType) {
+      const types = Array.isArray(filters.mimeType) ? filters.mimeType : [filters.mimeType];
       filter.must = filter.must || [];
       (filter.must as Array<unknown>).push({
-        key: 'contentType',
+        key: 'mimeType',
         match: types.length === 1 ? { value: types[0] } : { any: types },
       });
     }
 
-    if (filters.sourceType) {
-      const types = Array.isArray(filters.sourceType) ? filters.sourceType : [filters.sourceType];
-      filter.must = filter.must || [];
-      (filter.must as Array<unknown>).push({
-        key: 'sourceType',
-        match: types.length === 1 ? { value: types[0] } : { any: types },
-      });
-    }
 
     if (filters.filePath) {
       filter.must = filter.must || [];
@@ -315,9 +298,10 @@ function reciprocalRankFusion(
     scoreMap.set(key, {
       documentId: result.documentId,
       filePath: result.filePath,
-      sourceType: result.sourceType,
-      contentType: result.contentType,
-      text: result.fullText,
+      mimeType: result.mimeType,
+      content: result.content,
+      summary: result.summary,
+      tags: result.tags,
       score: rrfScore,
       keywordScore: rrfScore,
       fromKeyword: true,
@@ -342,9 +326,10 @@ function reciprocalRankFusion(
       scoreMap.set(key, {
         documentId: result.id,
         filePath: result.payload.filePath,
-        sourceType: result.payload.sourceType,
-        contentType: result.payload.contentType,
-        text: result.payload.text,
+        mimeType: (result.payload.mimeType as string | null) ?? null,
+        content: result.payload.text,
+        summary: null,
+        tags: null,
         score: rrfScore,
         semanticScore: rrfScore,
         fromKeyword: false,
