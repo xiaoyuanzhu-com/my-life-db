@@ -22,14 +22,9 @@ export function FileCard({
   className,
   highlight,
 }: FileCardProps) {
-  // Derive href from file path
+  // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
-    // TODO: Implement proper library routing when library page is ready
-    // For now, use placeholder URL
-    const pathSegment = file.path.startsWith('inbox/')
-      ? file.path.replace('inbox/', '')
-      : file.path;
-    return `/inbox/${encodeURIComponent(pathSegment)}`;
+    return `/library?open=${encodeURIComponent(file.path)}`;
   }, [file.path]);
 
   // Compute primary text from digests

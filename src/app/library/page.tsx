@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FileTree } from '@/components/library/FileTree';
 import { FileViewer } from '@/components/library/FileViewer';
 import { FileTabs } from '@/components/library/FileTabs';
@@ -11,6 +12,8 @@ export interface OpenedFile {
 }
 
 export default function LibraryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -64,6 +67,34 @@ export default function LibraryPage() {
       console.error('Failed to save expanded folders to localStorage:', error);
     }
   }, [expandedFolders]);
+
+  // Handle ?open query parameter(s) - open files from URL
+  useEffect(() => {
+    const openParams = searchParams.getAll('open');
+    if (openParams.length === 0) return;
+
+    // Process each file path to open
+    openParams.forEach(filePath => {
+      if (!filePath) return;
+
+      // Extract file name from path
+      const fileName = filePath.split('/').pop() || filePath;
+
+      // Check if file is already open
+      const isAlreadyOpen = openedFiles.some(f => f.path === filePath);
+
+      if (!isAlreadyOpen) {
+        // Add to opened files
+        setOpenedFiles(prev => [...prev, { path: filePath, name: fileName }]);
+      }
+
+      // Set as active file (the last one in the list will be active)
+      setActiveFilePath(filePath);
+    });
+
+    // Clean up URL by removing ?open parameters
+    router.replace('/library', { scroll: false });
+  }, [searchParams, router]); // Intentionally excluding openedFiles to avoid infinite loop
 
   const handleFileOpen = (path: string, name: string) => {
     // Add to opened files if not already open
