@@ -80,24 +80,14 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
         </div>
 
         {/* Result cards */}
-        <div className="space-y-2">
-          {results.results.map((result) => {
-            // Generate href for the file
-            // Remove 'inbox/' prefix if present for consistent routing
-            const pathSegment = result.path.startsWith('inbox/')
-              ? result.path.replace('inbox/', '')
-              : result.path;
-
-            return (
-              <FileCard
-                key={result.path}
-                file={result}
-                variant="list"
-                snippet={result.snippet}
-                href={`/inbox/${encodeURIComponent(pathSegment)}`}
-              />
-            );
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {results.results.map((result) => (
+            <FileCard
+              key={result.path}
+              file={result}
+              highlight={result.snippet}
+            />
+          ))}
         </div>
 
         {/* Load more button */}

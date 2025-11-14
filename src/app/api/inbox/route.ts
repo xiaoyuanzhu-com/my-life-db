@@ -52,12 +52,29 @@ export async function GET(request: NextRequest) {
     // Apply pagination after filtering
     const paginatedFiles = topLevelFiles.slice(offset, offset + limit);
 
-    // Enrich with primary text
+    // Enrich with primary text (add to digests array)
     const items: InboxItemWithText[] = await Promise.all(
       paginatedFiles.map(async (file) => {
         const primaryText = await readPrimaryText(file.path);
+
+        // Add primaryText as a synthetic digest if it exists
+        const enrichedDigests = primaryText
+          ? [
+              ...file.digests,
+              {
+                type: 'primary-text',
+                status: 'enriched' as const,
+                content: primaryText,
+                sqlarName: null,
+                error: null,
+                updatedAt: file.createdAt, // Use file creation time
+              },
+            ]
+          : file.digests;
+
         return {
           ...file,
+          digests: enrichedDigests,
           primaryText,
         };
       })

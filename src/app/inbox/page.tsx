@@ -107,19 +107,12 @@ export default function InboxPage() {
 
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {group.items.map((item) => {
-                    // Extract the relative path part after 'inbox/'
-                    const pathSegment = item.path.replace('inbox/', '');
-                    return (
-                      <FileCard
-                        key={item.path}
-                        file={item}
-                        variant="card"
-                        primaryText={item.primaryText || undefined}
-                        href={`/inbox/${encodeURIComponent(pathSegment)}`}
-                      />
-                    );
-                  })}
+                  {group.items.map((item) => (
+                    <FileCard
+                      key={item.path}
+                      file={item}
+                    />
+                  ))}
                 </div>
               </section>
             ))}
