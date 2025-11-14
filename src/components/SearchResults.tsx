@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { SearchResultCard } from './SearchResultCard';
 import type { SearchResponse } from '@/app/api/search/route';
 
@@ -9,12 +10,60 @@ interface SearchResultsProps {
   error: string | null;
 }
 
+function SearchingIndicator() {
+  const [dots, setDots] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots((prev) => (prev + 1) % 4);
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="mt-4 w-full">
+      <p className="text-sm text-muted-foreground">
+        Searching{'.'.repeat(dots)}
+      </p>
+    </div>
+  );
+}
+
 export function SearchResults({ results, isSearching, error }: SearchResultsProps) {
-  // Only show if we have actual results (non-empty)
-  if (!results || results.results.length === 0 || isSearching || error) {
+  // Show searching indicator
+  if (isSearching) {
+    return <SearchingIndicator />;
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="mt-4 w-full">
+        <p className="text-sm text-destructive">
+          Failed to search related files, got error: {error}
+        </p>
+      </div>
+    );
+  }
+
+  // Show empty state
+  if (results && results.results.length === 0) {
+    return (
+      <div className="mt-4 w-full">
+        <p className="text-sm text-muted-foreground">
+          No related files
+        </p>
+      </div>
+    );
+  }
+
+  // Don't show anything if no results yet
+  if (!results) {
     return null;
   }
 
+  // Show results
   return (
     <div className="mt-4 w-full">
       <div className="space-y-3">
