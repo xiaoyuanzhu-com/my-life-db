@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { FileText, File, Image as ImageIcon, Video, Music, Archive } from 'lucide-react';
@@ -12,7 +13,7 @@ export interface FileCardProps {
   variant?: 'card' | 'list';
   onClick?: () => void;
   className?: string;
-  asChild?: boolean;         // If true, renders as div (for use inside Link)
+  href?: string;             // If provided, wraps content in Link
 
   // Optional context-specific content
   primaryText?: string;      // For inbox: user input text
@@ -28,7 +29,7 @@ export function FileCard({
   variant = 'card',
   onClick,
   className,
-  asChild = false,
+  href,
   primaryText,
   snippet,
 }: FileCardProps) {
@@ -75,16 +76,11 @@ export function FileCard({
   }, [file.createdAt]);
 
   if (variant === 'card') {
-    const Component = asChild ? 'div' : 'button';
-    const interactiveProps = asChild ? {} : { type: 'button' as const, onClick };
-
-    return (
-      <Component
-        {...interactiveProps}
+    const cardContent = (
+      <div
         className={cn(
           'group relative h-64 w-full overflow-hidden rounded-2xl border border-border bg-muted shadow-sm transition-all duration-300',
           'hover:-translate-y-1 hover:shadow-lg',
-          !asChild && 'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
           className
         )}
       >
@@ -143,7 +139,26 @@ export function FileCard({
             )}
           </div>
         </div>
-      </Component>
+      </div>
+    );
+
+    // Wrap with Link if href provided, otherwise use button with onClick
+    if (href) {
+      return (
+        <Link href={href} className="block">
+          {cardContent}
+        </Link>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+      >
+        {cardContent}
+      </button>
     );
   }
 
@@ -151,16 +166,12 @@ export function FileCard({
   const Icon = getFileIcon(file.mimeType);
   const parentFolder = getParentFolder(file.path);
   const fileSize = formatFileSize(file.size);
-  const ListComponent = asChild ? 'div' : 'button';
-  const listInteractiveProps = asChild ? {} : { type: 'button' as const, onClick };
 
-  return (
-    <ListComponent
-      {...listInteractiveProps}
+  const listContent = (
+    <div
       className={cn(
         'w-full text-left rounded-lg p-4 transition-colors',
         'bg-muted/30 hover:bg-muted/60',
-        !asChild && 'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
         className
       )}
     >
@@ -226,7 +237,26 @@ export function FileCard({
           </div>
         </div>
       </div>
-    </ListComponent>
+    </div>
+  );
+
+  // Wrap with Link if href provided, otherwise use button with onClick
+  if (href) {
+    return (
+      <Link href={href} className="block">
+        {listContent}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+    >
+      {listContent}
+    </button>
   );
 }
 

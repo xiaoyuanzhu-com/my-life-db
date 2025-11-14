@@ -81,14 +81,23 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
 
         {/* Result cards */}
         <div className="space-y-2">
-          {results.results.map((result) => (
-            <FileCard
-              key={result.path}
-              file={result}
-              variant="list"
-              snippet={result.snippet}
-            />
-          ))}
+          {results.results.map((result) => {
+            // Generate href for the file
+            // Remove 'inbox/' prefix if present for consistent routing
+            const pathSegment = result.path.startsWith('inbox/')
+              ? result.path.replace('inbox/', '')
+              : result.path;
+
+            return (
+              <FileCard
+                key={result.path}
+                file={result}
+                variant="list"
+                snippet={result.snippet}
+                href={`/inbox/${encodeURIComponent(pathSegment)}`}
+              />
+            );
+          })}
         </div>
 
         {/* Load more button */}

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { FileCard } from '@/components/FileCard';
@@ -112,14 +111,13 @@ export default function InboxPage() {
                     // Extract the relative path part after 'inbox/'
                     const pathSegment = item.path.replace('inbox/', '');
                     return (
-                      <Link key={item.path} href={`/inbox/${encodeURIComponent(pathSegment)}`} className="group block">
-                        <FileCard
-                          file={item}
-                          variant="card"
-                          primaryText={item.primaryText || undefined}
-                          asChild
-                        />
-                      </Link>
+                      <FileCard
+                        key={item.path}
+                        file={item}
+                        variant="card"
+                        primaryText={item.primaryText || undefined}
+                        href={`/inbox/${encodeURIComponent(pathSegment)}`}
+                      />
                     );
                   })}
                 </div>
