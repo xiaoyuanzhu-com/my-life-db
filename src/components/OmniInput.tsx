@@ -7,6 +7,8 @@ import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InputTypeTag } from './InputTypeTag';
 import { detectInputType, InputType } from '@/lib/utils/inputTypeDetector';
+import { SearchResults } from './SearchResults';
+import type { SearchResponse } from '@/app/api/search/route';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
@@ -22,6 +24,13 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
   const [isDetecting, setIsDetecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Search state
+  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
 
   // Debounced input type detection
   const performDetection = useCallback(async () => {
@@ -63,6 +72,98 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
       }
     };
   }, [performDetection]);
+
+  // Adaptive debounce for search
+  const getSearchDebounceDelay = useCallback((queryLength: number): number => {
+    if (queryLength === 0) return 0; // No search for empty input
+    if (queryLength === 1) return 1000; // Long wait for single char
+    if (queryLength === 2) return 500; // Medium wait for two chars
+    return 100; // Fast for 3+ chars
+  }, []);
+
+  // Perform search
+  const performSearch = useCallback(async (query: string) => {
+    if (!query || query.length < 2) {
+      setSearchResults(null);
+      setSearchError(null);
+      return;
+    }
+
+    // Cancel previous search
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    const abortController = new AbortController();
+    searchAbortControllerRef.current = abortController;
+
+    try {
+      const params = new URLSearchParams({ q: query, limit: '20' });
+      const response = await fetch(`/api/search?${params}`, {
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data: SearchResponse = await response.json();
+
+      // Only update if this search wasn't cancelled
+      if (!abortController.signal.aborted) {
+        setSearchResults(data);
+      }
+    } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+
+      console.error('Search error:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Search failed';
+      setSearchError(errorMsg);
+      setSearchResults(null);
+    } finally {
+      if (!abortController.signal.aborted) {
+        setIsSearching(false);
+      }
+    }
+  }, []);
+
+  // Effect to trigger adaptive debounced search
+  useEffect(() => {
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    const query = content.trim();
+    const delay = getSearchDebounceDelay(query.length);
+
+    // Clear results immediately if empty
+    if (!query) {
+      setSearchResults(null);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+
+    // Set new timeout for search with adaptive delay
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(query);
+    }, delay);
+
+    // Cleanup
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [content, getSearchDebounceDelay, performSearch]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +210,8 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
       setContent('');
       setSelectedFiles([]);
       setDetectedType(null);
+      setSearchResults(null); // Clear search results on submit
+      setSearchError(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -266,6 +369,13 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
         onChange={handleFileSelect}
         multiple
         accept="image/*,application/pdf,.doc,.docx,.txt,.md"
+      />
+
+      {/* Search Results */}
+      <SearchResults
+        results={searchResults}
+        isSearching={isSearching}
+        error={searchError}
       />
     </form>
   );
