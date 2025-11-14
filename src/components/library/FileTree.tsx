@@ -16,6 +16,7 @@ interface FileTreeProps {
   onFileOpen: (path: string, name: string) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (path: string, isExpanded: boolean) => void;
+  selectedFilePath?: string | null;
 }
 
 interface TreeNodeProps {
@@ -24,6 +25,7 @@ interface TreeNodeProps {
   onFileOpen: (path: string, name: string) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (path: string, isExpanded: boolean) => void;
+  selectedFilePath?: string | null;
 }
 
 function getFileIcon(filename: string) {
@@ -42,10 +44,11 @@ function getFileIcon(filename: string) {
   return File;
 }
 
-function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder }: TreeNodeProps) {
+function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder, selectedFilePath }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const isExpanded = expandedFolders.has(node.path);
+  const isSelected = node.type === 'file' && node.path === selectedFilePath;
 
   useEffect(() => {
     // Load children when folder is expanded
@@ -89,7 +92,9 @@ function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder }: 
   return (
     <div>
       <div
-        className="flex items-center gap-1 px-2 py-1 hover:bg-accent cursor-pointer group"
+        className={`flex items-center gap-1 px-2 py-1 hover:bg-accent cursor-pointer group ${
+          isSelected ? 'bg-accent' : ''
+        }`}
         style={{ paddingLeft: `${paddingLeft}px` }}
         onClick={handleClick}
       >
@@ -125,6 +130,7 @@ function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder }: 
                 onFileOpen={onFileOpen}
                 expandedFolders={expandedFolders}
                 onToggleFolder={onToggleFolder}
+                selectedFilePath={selectedFilePath}
               />
             ))
           )}
@@ -134,7 +140,7 @@ function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder }: 
   );
 }
 
-export function FileTree({ onFileOpen, expandedFolders, onToggleFolder }: FileTreeProps) {
+export function FileTree({ onFileOpen, expandedFolders, onToggleFolder, selectedFilePath }: FileTreeProps) {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -180,6 +186,7 @@ export function FileTree({ onFileOpen, expandedFolders, onToggleFolder }: FileTr
           onFileOpen={onFileOpen}
           expandedFolders={expandedFolders}
           onToggleFolder={onToggleFolder}
+          selectedFilePath={selectedFilePath}
         />
       ))}
     </div>

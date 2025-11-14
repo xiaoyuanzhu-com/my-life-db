@@ -90,11 +90,41 @@ export default function LibraryPage() {
 
       // Set as active file (the last one in the list will be active)
       setActiveFilePath(filePath);
+
+      // Auto-expand parent folders to reveal the file
+      expandParentFolders(filePath);
     });
 
     // Clean up URL by removing ?open parameters
     router.replace('/library', { scroll: false });
   }, [searchParams, router]); // Intentionally excluding openedFiles to avoid infinite loop
+
+  // Helper function to expand all parent folders of a file path
+  const expandParentFolders = (filePath: string) => {
+    const pathParts = filePath.split('/');
+
+    setExpandedFolders(prev => {
+      const newExpandedFolders = new Set(prev);
+
+      // Build up parent folder paths and add them to expanded set
+      // The tree API returns paths with './' prefix at root level (e.g., './inbox')
+      // So we need to normalize paths to match
+      // e.g., "notes/2024/journal.md" -> expand "./notes" and "./notes/2024"
+      // e.g., "inbox/file.md" -> expand "./inbox"
+      let currentPath = '';
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        if (i === 0) {
+          // First segment gets ./ prefix
+          currentPath = './' + pathParts[i];
+        } else {
+          currentPath += '/' + pathParts[i];
+        }
+        newExpandedFolders.add(currentPath);
+      }
+
+      return newExpandedFolders;
+    });
+  };
 
   const handleFileOpen = (path: string, name: string) => {
     // Add to opened files if not already open
@@ -102,6 +132,9 @@ export default function LibraryPage() {
       setOpenedFiles([...openedFiles, { path, name }]);
     }
     setActiveFilePath(path);
+
+    // Auto-expand parent folders to keep the file visible
+    expandParentFolders(path);
   };
 
   const handleFileClose = (path: string) => {
@@ -144,6 +177,7 @@ export default function LibraryPage() {
                 onFileOpen={handleFileOpen}
                 expandedFolders={expandedFolders}
                 onToggleFolder={handleToggleFolder}
+                selectedFilePath={activeFilePath}
               />
             </div>
 
