@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeiliClient } from '@/lib/search/meili-client';
-import { getFileByPath } from '@/lib/db/files';
-import { listDigestsForPath } from '@/lib/db/digests';
+import { getFileWithDigests } from '@/lib/db/files-with-digests';
 import { getLogger } from '@/lib/log/logger';
+import type { FileWithDigests } from '@/types/file-card';
 
 const log = getLogger({ module: 'SearchAPI' });
 
@@ -15,21 +15,14 @@ function escapeFilterValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-export interface SearchResultItem {
-  // File identification (from files table)
-  path: string;
-  name: string;
-  mimeType: string | null;
-  size: number | null;
-  modifiedAt: string;
-
-  // Digest data (from digests table, if available)
-  summary: string | null;
-  tags: string | null;
-
+export interface SearchResultItem extends FileWithDigests {
   // Search metadata
   score: number;
   snippet: string;
+  highlights?: {
+    content?: string;
+    summary?: string;
+  };
 }
 
 export interface SearchResponse {
@@ -153,50 +146,28 @@ export async function GET(request: NextRequest) {
 
     const searchMs = Date.now() - searchStart;
 
-    // Enrich results with file metadata
+    // Enrich results with file metadata and digests
     const enrichStart = Date.now();
     const results: SearchResultItem[] = [];
 
     for (const hit of searchResult.hits) {
-      // Get file metadata from files table
-      const fileRecord = getFileByPath(hit.filePath);
+      // Get file with digests
+      const fileWithDigests = getFileWithDigests(hit.filePath);
 
-      if (!fileRecord) {
+      if (!fileWithDigests) {
         // File not in files table (might have been deleted)
         log.warn({ filePath: hit.filePath }, 'search result not found in files table');
         continue;
-      }
-
-      // Get digest data if we don't have it from Meilisearch
-      let summary = hit.summary;
-      let tags = hit.tags;
-
-      if (!summary || !tags) {
-        const digests = listDigestsForPath(hit.filePath);
-        const summaryDigest = digests.find(d => d.digestType === 'summary');
-        const tagsDigest = digests.find(d => d.digestType === 'tags');
-
-        if (!summary && summaryDigest?.content) {
-          summary = summaryDigest.content;
-        }
-        if (!tags && tagsDigest?.content) {
-          tags = tagsDigest.content;
-        }
       }
 
       // Generate snippet from highlighted content or original content
       const snippet = hit._formatted?.content || hit.content.slice(0, 200) + '...';
 
       results.push({
-        path: fileRecord.path,
-        name: fileRecord.name,
-        mimeType: fileRecord.mimeType,
-        size: fileRecord.size,
-        modifiedAt: fileRecord.modifiedAt,
-        summary,
-        tags,
+        ...fileWithDigests,
         score: 1.0, // Meilisearch doesn't provide a normalized score, so we use 1.0
         snippet,
+        highlights: hit._formatted,
       });
     }
 

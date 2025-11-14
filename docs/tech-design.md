@@ -423,6 +423,10 @@ interface SearchResult {
 
 **Philosophy**: Database contains indexes and derived data. Source of truth is on disk.
 
+**Current Architecture (v18+)**: File-centric design with two core tables:
+- `files`: Rebuildable cache of file metadata (source of truth for fast queries)
+- `digests`: AI-generated content and status tracking (rebuildable from source files)
+
 ```sql
 -- Enable foreign keys
 PRAGMA foreign_keys = ON;
@@ -434,84 +438,97 @@ CREATE TABLE schema_version (
   description TEXT
 );
 
--- Items: Unified model for inbox and library content
--- Replaces old 'inbox' and 'library' tables
-CREATE TABLE items (
-  -- Core identity
-  id TEXT PRIMARY KEY,                    -- UUID
-  name TEXT NOT NULL,                     -- Original filename or slug
-
-  -- File system location
-  is_folder INTEGER NOT NULL DEFAULT 0,   -- 0=single file, 1=folder
-  path TEXT NOT NULL UNIQUE,              -- Relative path from MY_DATA_DIR
-                                          -- Examples: 'inbox/photo.jpg' (uploaded file)
-                                          --           'inbox/9a7f3e2c.md' (text-only, UUID initially)
-                                          --           'inbox/uuid-123' (multi-file folder)
-                                          --           'notes/meeting.md' (library item)
-
-  -- File metadata (JSON array for performance)
-  -- Schema: [{ name, size, type, hash?, modifiedAt? }]
-  -- Small files (< 10MB): include SHA256 hash
-  -- Large files: size only
-  files TEXT,                             -- NULL for pending items
-
-  -- Processing state
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
-
-  -- Metadata
-  created_at TEXT NOT NULL,               -- ISO 8601
-  updated_at TEXT NOT NULL,               -- ISO 8601
-  schema_version INTEGER DEFAULT 1
+-- Files: Rebuildable cache of file metadata
+-- Tracks all files and folders in DATA_ROOT for fast queries
+-- Can be deleted and rebuilt from filesystem at any time
+CREATE TABLE files (
+  path TEXT PRIMARY KEY,              -- Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg')
+  name TEXT NOT NULL,                 -- Filename or folder name only
+  is_folder INTEGER NOT NULL DEFAULT 0,
+  size INTEGER,                       -- File size in bytes (null for folders)
+  mime_type TEXT,                     -- MIME type (null for folders)
+  hash TEXT,                          -- SHA256 hash for small files (<10MB)
+  modified_at TEXT NOT NULL,          -- ISO timestamp from file mtime
+  created_at TEXT NOT NULL,           -- ISO timestamp when first indexed
+  last_scanned_at TEXT NOT NULL       -- ISO timestamp of last scan
 );
 
-CREATE INDEX idx_items_path_prefix ON items(path);
-CREATE INDEX idx_items_status ON items(status);
-CREATE INDEX idx_items_created_at ON items(created_at DESC);
+CREATE INDEX idx_files_path_prefix ON files(path);
+CREATE INDEX idx_files_is_folder ON files(is_folder);
+CREATE INDEX idx_files_modified_at ON files(modified_at);
+CREATE INDEX idx_files_created_at ON files(created_at);
 
 -- Digests: AI-generated content (rebuildable)
--- Foreign table to items
--- Also serves as status tracking for digest tasks (no separate projection table needed)
+-- References files by path instead of synthetic item IDs
+-- Status tracking built-in (no separate projection table needed)
 CREATE TABLE digests (
-  id TEXT PRIMARY KEY,                    -- UUID
-  item_id TEXT NOT NULL,                  -- FK to items(id)
-  digest_type TEXT NOT NULL,              -- 'summary'|'tags'|'slug'|'content-md'|'content-html'|'screenshot'
+  id TEXT PRIMARY KEY,                    -- Digest ID (hash-based)
+  file_path TEXT NOT NULL,                -- Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder')
+  digest_type TEXT NOT NULL,              -- 'summary'|'tags'|'slug'|'content-md'|'screenshot'
 
-  -- Status tracking (replaces inbox_task_state projection)
-  -- Lifecycle: pending → in-progress → completed/failed
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in-progress', 'completed', 'failed')),
+  -- Status tracking
+  -- Lifecycle: pending → enriching → enriched/failed
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
 
   -- Text digests (stored directly)
   content TEXT,                           -- Summary text, tags JSON, slug JSON
 
   -- Binary digests (stored in SQLAR)
-  sqlar_name TEXT,                        -- Filename in SQLAR table: '{item_id}/{digest_type}/filename'
+  sqlar_name TEXT,                        -- Filename in SQLAR table: '{path_hash}/{digest_type}/filename'
 
   -- Error tracking
   error TEXT,                             -- Error message if status='failed'
 
   created_at TEXT NOT NULL,               -- ISO 8601
-  updated_at TEXT NOT NULL,               -- ISO 8601
-
-  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+  updated_at TEXT NOT NULL                -- ISO 8601
 );
 
-CREATE INDEX idx_digests_item_id ON digests(item_id);
+CREATE INDEX idx_digests_file_path ON digests(file_path);
 CREATE INDEX idx_digests_type ON digests(digest_type);
 CREATE INDEX idx_digests_status ON digests(status);
 
 -- SQLAR: SQLite Archive format for binary digests
 -- Standard format: https://www.sqlite.org/sqlar.html
 CREATE TABLE IF NOT EXISTS sqlar(
-  name TEXT PRIMARY KEY,  -- File path: '{item_id}/{digest_type}/filename.ext'
+  name TEXT PRIMARY KEY,  -- File path: '{path_hash}/{digest_type}/filename.ext'
   mode INT,               -- File permissions
   mtime INT,              -- Modification time (Unix timestamp)
   sz INT,                 -- Original size (before compression)
   data BLOB               -- Compressed content (zlib)
 );
 
+-- Tasks: Background job queue
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,                 -- JSON
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed', 'cancelled')),
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 3,
+  last_attempt_at TEXT,
+  next_retry_at TEXT,
+  result TEXT,
+  error TEXT,
+  priority INTEGER DEFAULT 5 CHECK(priority >= 1 AND priority <= 10),
+  run_after TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE INDEX idx_tasks_pending ON tasks(status, priority, next_retry_at) WHERE status IN ('pending', 'failed');
+CREATE INDEX idx_tasks_type ON tasks(type, status);
+
+-- Settings: Application configuration
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- NOTE: Full-text search moved to Meilisearch (external service)
 -- NOTE: Vector search moved to Qdrant (external service)
--- SQLite FTS5 removed per architecture decision (see section 4.5)
+-- SQLite FTS5 removed per architecture decision (see section 10)
 
 -- Spaces (Library)
 CREATE TABLE spaces (
@@ -627,7 +644,80 @@ CREATE TABLE activity_log (
 CREATE INDEX idx_activity_user_created ON activity_log(user_id, created_at DESC);
 ```
 
-### 5.2 Drizzle ORM Schema
+### 5.2 Database Helper Library
+
+**File-Centric Query Layer**: The `files-with-digests` module provides a unified query interface that combines file metadata with digest data.
+
+```typescript
+// src/lib/db/files-with-digests.ts
+
+/**
+ * Get file with all digests
+ * Returns unified model for UI components
+ */
+export function getFileWithDigests(path: string): FileWithDigests | null;
+
+/**
+ * List files with digests (for inbox/search)
+ * Supports pagination, filtering, and ordering
+ */
+export function listFilesWithDigests(
+  pathPrefix?: string,
+  options?: {
+    isFolder?: boolean;
+    orderBy?: 'path' | 'modified_at' | 'created_at';
+    ascending?: boolean;
+    limit?: number;
+    offset?: number;
+  }
+): FileWithDigests[];
+
+/**
+ * Count files matching criteria
+ */
+export function countFilesWithDigests(
+  pathPrefix?: string,
+  isFolder?: boolean
+): number;
+```
+
+**Usage Example:**
+
+```typescript
+// Inbox API: List all inbox files with digests
+const inboxFiles = listFilesWithDigests('inbox/', {
+  orderBy: 'created_at',
+  ascending: false,
+  limit: 50,
+});
+
+// For each file, enrich with primary text from filesystem
+const inboxItems = await Promise.all(
+  inboxFiles.map(async (file) => ({
+    ...file,
+    primaryText: await readPrimaryText(file.path),
+  }))
+);
+
+// Search API: Get single file with digests
+const searchHits = await meilisearch.search(query);
+const results = searchHits.map(hit => {
+  const file = getFileWithDigests(hit.filePath);
+  return {
+    ...file,
+    snippet: hit._formatted?.content,
+    highlights: hit._formatted,
+  };
+});
+```
+
+**Benefits:**
+- ✅ Single query retrieves file + all digests (no N+1 problem)
+- ✅ Type-safe with FileWithDigests interface
+- ✅ Consistent data shape across inbox and search
+- ✅ Easy to add new digest types without changing queries
+
+### 5.3 Legacy ORM Schema (Drizzle)
 
 ```typescript
 // lib/db/schema.ts
@@ -1750,9 +1840,43 @@ interface MeiliDocument {
 
 ## 6. API Specifications
 
-### 6.1 REST API Endpoints
+### 6.1 Unified File Model
 
-**Base URL:** `/api/v1`
+**Design Philosophy:** Both inbox and search APIs use the same `FileWithDigests` data model, enabling code reuse and consistent UI rendering.
+
+```typescript
+/**
+ * Unified file model - ground truth from database
+ * Pure data with no computed fields
+ */
+interface FileWithDigests {
+  // From files table (core metadata)
+  path: string;              // e.g., 'inbox/uuid-folder' or 'notes/meeting.md'
+  name: string;              // Filename or folder name
+  isFolder: boolean;
+  size: number | null;       // null for folders
+  mimeType: string | null;   // null for folders
+  hash: string | null;       // SHA256 for small files
+  modifiedAt: string;        // ISO date
+  createdAt: string;         // ISO date
+
+  // Digests array (from digests table)
+  digests: DigestSummary[];
+}
+
+interface DigestSummary {
+  type: string;              // 'summary', 'tags', 'slug', 'screenshot', 'content-md'
+  status: 'pending' | 'enriching' | 'enriched' | 'failed';
+  content: string | null;    // Text content (summary, JSON for tags/slug)
+  sqlarName: string | null;  // Filename in SQLAR (for binary digests)
+  error: string | null;
+  updatedAt: string;
+}
+```
+
+### 6.2 REST API Endpoints
+
+**Base URL:** `/api`
 
 #### Inbox
 
@@ -1763,32 +1887,36 @@ Body: FormData {
   text?: string;           // Optional text content
   files?: File[];          // Optional file attachments
 }
-Response: InboxItem
+Response: { path: string }
 Notes:
   - Must provide either text or files (or both)
   - Text saved as text.md file
   - Files saved with original names (auto-deduplicated if needed)
-  - Returns full InboxItem with all metadata
+  - Returns path to created item
 
 // List inbox items
-GET /api/inbox?status=pending&limit=50&offset=0
+GET /api/inbox?limit=50&offset=0
 Response: {
-  items: InboxItem[];
+  items: InboxItemWithText[];   // FileWithDigests + primaryText
   total: number;
+}
+
+// InboxItemWithText extends FileWithDigests with context-specific field
+interface InboxItemWithText extends FileWithDigests {
+  primaryText?: string | null;  // User's original text input from filesystem
 }
 
 // Get inbox item by ID
 GET /api/inbox/:id
-Response: InboxItem
-
-// Update inbox item
-PUT /api/inbox/:id
-Body: FormData {
-  text?: string;           // Replace text content
-  files?: File[];          // Add new files
-  removeFiles?: string[];  // Filenames to remove
+Response: InboxItemWithText & {
+  enrichment: InboxEnrichmentSummary;  // Detailed status view
+  digest: {
+    summary?: string;
+    tags?: string[];
+    slug?: { slug: string; title?: string };
+    screenshot?: { src: string; mimeType: string };
+  };
 }
-Response: InboxItem
 
 // Delete inbox item (removes files too)
 DELETE /api/inbox/:id
@@ -1925,28 +2053,77 @@ Response: Cluster[]
 #### Search
 
 ```typescript
-// Universal search
-POST /api/v1/search
-Body: SearchQuery
+// Keyword search (Meilisearch)
+GET /api/search?q=meeting%20notes&limit=20&offset=0&path=notes/&type=text/
+Query Parameters:
+  - q: Query string (required, 2-200 chars)
+  - limit: Results per page (default 20, max 100)
+  - offset: Pagination offset (default 0)
+  - type: Filter by MIME type prefix (e.g., "text/")
+  - path: Filter by path prefix (e.g., "notes/")
+
 Response: {
-  results: SearchResult[];
-  total: number;
-  queryTime: number; // ms
-  facets?: {
-    contentTypes: Record<string, number>;
-    tags: Record<string, number>;
-    spaces: Record<string, number>;
+  results: SearchResultItem[];      // FileWithDigests + search metadata
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+  query: string;
+  timing: {
+    totalMs: number;
+    searchMs: number;
+    enrichMs: number;
+  };
+}
+
+// SearchResultItem extends FileWithDigests with search-specific fields
+interface SearchResultItem extends FileWithDigests {
+  score: number;                    // Relevance score
+  snippet: string;                  // Highlighted excerpt
+  highlights?: {                    // Meilisearch highlights
+    content?: string;
+    summary?: string;
   };
 }
 
 // Semantic search (vector)
-POST /api/v1/search/semantic
+POST /api/search/semantic
 Body: {
   query: string;
   limit?: number;
-  threshold?: number; // similarity threshold
+  scoreThreshold?: number;          // Default 0.7
+  contentType?: string | string[];
+  sourceType?: string | string[];   // 'content' | 'summary' | 'tags'
+  filePath?: string;
 }
-Response: SearchResult[]
+Response: {
+  results: SemanticSearchHit[];
+  query: string;
+  limit: number;
+  scoreThreshold: number;
+}
+
+// Hybrid search (keyword + semantic)
+POST /api/search/hybrid
+Body: {
+  query: string;
+  limit?: number;
+  keywordWeight?: number;           // 0-1, default 0.5
+  semanticWeight?: number;          // 0-1, default 0.5
+  scoreThreshold?: number;
+  mimeType?: string | string[];
+  filePath?: string;
+}
+Response: {
+  results: HybridSearchResult[];
+  query: string;
+  limit: number;
+  keywordCount: number;
+  semanticCount: number;
+  hybridCount: number;
+}
 ```
 
 #### AI Enrichment
@@ -1992,7 +2169,64 @@ Response: {
 }
 ```
 
-### 6.2 WebSocket Events
+### 6.3 Unified UI Component Architecture
+
+**Design Principle:** Single FileCard component renders both inbox and search results using the same `FileWithDigests` data model.
+
+```typescript
+// Unified FileCard component
+interface FileCardProps {
+  file: FileWithDigests;              // Core data (required)
+  variant?: 'card' | 'list';          // Layout style
+  onClick?: () => void;               // Click handler
+
+  // Context-specific content (optional)
+  primaryText?: string;               // For inbox: user input text
+  snippet?: string;                   // For search: highlighted excerpt
+}
+
+// Usage in Inbox
+<FileCard
+  file={inboxItem}
+  variant="card"                      // Visual card with screenshot
+  primaryText={inboxItem.primaryText} // User's original input
+  onClick={() => navigate(inboxItem.path)}
+/>
+
+// Usage in Search
+<FileCard
+  file={searchResult}
+  variant="list"                      // Compact list item
+  snippet={searchResult.snippet}      // Search highlight
+  onClick={() => navigate(searchResult.path)}
+/>
+```
+
+**Component Features:**
+
+1. **Computed in Render Layer** (from digests array):
+   - Summary: `digests.find(d => d.type === 'summary').content`
+   - Tags: `JSON.parse(digests.find(d => d.type === 'tags').content)`
+   - Screenshot URL: Generated from `digests.find(d => d.type === 'screenshot').sqlarName`
+   - Slug: `JSON.parse(digests.find(d => d.type === 'slug').content)`
+
+2. **Variant Differences**:
+   - `variant="card"`: Screenshot background, gradient overlay, primary text/summary display
+   - `variant="list"`: File icon, parent folder, summary/snippet, metadata row
+
+3. **Smart Fallbacks**:
+   - Shows primary text if available, otherwise summary, otherwise filename
+   - Shows snippet for search results, summary for inbox
+   - Displays screenshot if available, otherwise solid background
+
+**Benefits:**
+- ✅ Single source of truth for file rendering
+- ✅ Type-safe props with strong TypeScript interfaces
+- ✅ No data duplication between inbox and search
+- ✅ Easy to add new digest types without UI changes
+- ✅ Consistent UX across different contexts
+
+### 6.4 WebSocket Events
 
 **Connection:** `ws://localhost:3000/api/ws`
 

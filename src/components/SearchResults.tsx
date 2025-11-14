@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SearchResultCard } from './SearchResultCard';
+import { FileCard } from './FileCard';
 import type { SearchResponse } from '@/app/api/search/route';
 
 interface SearchResultsProps {
@@ -82,7 +82,12 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
         {/* Result cards */}
         <div className="space-y-2">
           {results.results.map((result) => (
-            <SearchResultCard key={result.path} result={result} />
+            <FileCard
+              key={result.path}
+              file={result}
+              variant="list"
+              snippet={result.snippet}
+            />
           ))}
         </div>
 

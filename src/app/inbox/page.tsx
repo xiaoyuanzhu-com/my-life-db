@@ -4,24 +4,17 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import type { InboxItem, InboxEnrichmentSummary, InboxDigestScreenshot } from '@/types';
-import { InboxItemCard } from './_components/InboxItemCard';
+import { FileCard } from '@/components/FileCard';
+import type { InboxItemWithText } from '@/app/api/inbox/route';
 
 interface GroupedItems {
   date: string;
   displayDate: string;
-  items: InboxListItem[];
+  items: InboxItemWithText[];
 }
 
-type InboxListItem = InboxItem & {
-  path?: string; // File path from file-centric model
-  enrichment: InboxEnrichmentSummary;
-  primaryText: string | null;
-  digestScreenshot: InboxDigestScreenshot | null;
-};
-
 export default function InboxPage() {
-  const [items, setItems] = useState<InboxListItem[]>([]);
+  const [items, setItems] = useState<InboxItemWithText[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -29,7 +22,7 @@ export default function InboxPage() {
       try {
         const response = await fetch('/api/inbox');
         const data = await response.json();
-        setItems(data.items as InboxListItem[]);
+        setItems(data.items as InboxItemWithText[]);
       } catch (error) {
         console.error('Failed to load inbox items:', error);
       } finally {
@@ -42,7 +35,7 @@ export default function InboxPage() {
 
   // Group items by date based on client's local timezone
   const groupedItems = useMemo(() => {
-    const groups = new Map<string, InboxListItem[]>();
+    const groups = new Map<string, InboxItemWithText[]>();
 
     items.forEach((item) => {
       const createdDate = new Date(item.createdAt);
@@ -117,10 +110,15 @@ export default function InboxPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {group.items.map((item) => {
                     // Extract the relative path part after 'inbox/'
-                    const pathSegment = item.path?.replace('inbox/', '') || item.folderName;
+                    const pathSegment = item.path.replace('inbox/', '');
                     return (
-                      <Link key={item.path || item.id} href={`/inbox/${encodeURIComponent(pathSegment)}`} className="group block">
-                        <InboxItemCard item={item} />
+                      <Link key={item.path} href={`/inbox/${encodeURIComponent(pathSegment)}`} className="group block">
+                        <FileCard
+                          file={item}
+                          variant="card"
+                          primaryText={item.primaryText || undefined}
+                          asChild
+                        />
                       </Link>
                     );
                   })}

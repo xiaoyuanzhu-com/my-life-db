@@ -1,16 +1,26 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
 import { saveToInbox } from '@/lib/inbox/saveToInbox';
-import { listFiles, getFileByPath } from '@/lib/db/files';
-import { readPrimaryText, readDigestSlug, readDigestScreenshot } from '@/lib/inbox/digestArtifacts';
-import { getDigestStatusView } from '@/lib/inbox/statusView';
+import { listFilesWithDigests, countFilesWithDigests } from '@/lib/db/files-with-digests';
+import { readPrimaryText } from '@/lib/inbox/digestArtifacts';
 import { getLogger } from '@/lib/log/logger';
-import type { InboxDigestScreenshot } from '@/types';
+import type { FileWithDigests } from '@/types/file-card';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 
+const log = getLogger({ module: 'ApiInbox' });
+
 // Note: App initialization now happens in instrumentation.ts at server startup
+
+export interface InboxItemWithText extends FileWithDigests {
+  primaryText?: string | null;
+}
+
+export interface InboxResponse {
+  items: InboxItemWithText[];
+  total: number;
+}
 
 /**
  * GET /api/inbox
@@ -26,8 +36,11 @@ export async function GET(request: NextRequest) {
       ? parseInt(searchParams.get('offset')!)
       : 0;
 
-    // List files in inbox directory
-    const allFiles = listFiles('inbox/', { orderBy: 'created_at', ascending: false });
+    // List files with digests in inbox directory
+    const allFiles = listFilesWithDigests('inbox/', {
+      orderBy: 'created_at',
+      ascending: false
+    });
 
     // Filter to only top-level entries (inbox/foo.jpg or inbox/folder, NOT inbox/folder/file.jpg)
     const topLevelFiles = allFiles.filter(file => {
@@ -37,36 +50,25 @@ export async function GET(request: NextRequest) {
     });
 
     // Apply pagination after filtering
-    const files = topLevelFiles.slice(offset, offset + limit);
+    const paginatedFiles = topLevelFiles.slice(offset, offset + limit);
 
-    // Build enriched items for UI
-    const enrichedItems = await Promise.all(files.map(async (file) => {
-      const enrichment = getDigestStatusView(file.path);
-      const primaryText = await readPrimaryText(file.path);
-      const digestScreenshot = await readDigestScreenshot(file.path);
-      const slugData = await readDigestSlug(file.path);
+    // Enrich with primary text
+    const items: InboxItemWithText[] = await Promise.all(
+      paginatedFiles.map(async (file) => {
+        const primaryText = await readPrimaryText(file.path);
+        return {
+          ...file,
+          primaryText,
+        };
+      })
+    );
 
-      return {
-        path: file.path,
-        folderName: file.name,
-        type: file.mimeType || 'unknown',
-        files: [], // Files are on disk, not in database
-        status: enrichment?.overall || 'pending',
-        enrichedAt: null,
-        error: null,
-        slug: slugData?.slug || null,
-        createdAt: file.createdAt,
-        updatedAt: file.modifiedAt,
-        enrichment,
-        primaryText,
-        digestScreenshot,
-      };
-    }));
-
-    return NextResponse.json({
-      items: enrichedItems,
+    const response: InboxResponse = {
+      items,
       total: topLevelFiles.length,
-    });
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     log.error({ err: error }, 'list inbox items failed');
     return NextResponse.json(
@@ -128,5 +130,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-const log = getLogger({ module: 'ApiInbox' });
