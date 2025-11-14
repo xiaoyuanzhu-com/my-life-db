@@ -1242,7 +1242,6 @@ CREATE TABLE library (
   content_hash TEXT,                      -- Only for text files (performance)
 
   -- Content classification
-  content_type TEXT,                      -- 'url' | 'text' | 'image' | 'pdf' | 'audio' | 'video'
   searchable_text TEXT,                   -- Extracted content for search engines
 
   -- Enrichment (JSON, extensible for schema evolution)
@@ -1259,7 +1258,6 @@ CREATE TABLE library (
 
 CREATE INDEX idx_library_path_prefix ON library(path);
 CREATE INDEX idx_library_modified ON library(modified_at);
-CREATE INDEX idx_library_content_type ON library(content_type);
 CREATE INDEX idx_library_schema_version ON library(schema_version);
 
 -- Metadata schema registry (track expected schemas for validation)
@@ -3212,9 +3210,7 @@ function buildMeiliFilter(filters: SearchFilters) {
     conditions.push(`file_path STARTS WITH "${filters.location}/"`);
   }
 
-  if (filters.contentType) {
-    conditions.push(`content_type = "${filters.contentType}"`);
-  }
+  // content_type filter removed - use mimeType from files table if needed
 
   return conditions.join(' AND ');
 }
@@ -3506,7 +3502,6 @@ async function handleMeiliIndex(task: MeiliIndexTask) {
     file_path: doc.file_path,
     source_type: doc.source_type,
     text: doc.full_text,
-    content_type: doc.content_type,
   }));
 
   // Index to Meilisearch
@@ -3545,7 +3540,6 @@ async function handleQdrantIndex(task: QdrantIndexTask) {
       chunk_index: doc.chunk_index,
       chunk_count: doc.chunk_count,
       text: doc.chunk_text,
-      content_type: doc.content_type,
     },
   }));
 
