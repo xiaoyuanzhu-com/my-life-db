@@ -267,21 +267,22 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full">
-      <div
-        className={cn(
-          'relative rounded-xl border transition-all overflow-hidden',
-          'bg-muted',
-          isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-border',
-          'hover:border-primary/50 focus-within:border-primary'
-        )}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
+    <div className="w-full">
+      <form onSubmit={handleSubmit} className="w-full">
+        <div
+          className={cn(
+            'relative rounded-xl border transition-all overflow-hidden',
+            'bg-muted',
+            isDragging
+              ? 'border-primary bg-primary/5'
+              : 'border-border',
+            'hover:border-primary/50 focus-within:border-primary'
+          )}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
         {/* Textarea with regular placeholder */}
         <Textarea
           value={content}
@@ -358,25 +359,26 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
         )}
       </div>
 
-      {error && (
-        <p className="text-sm text-destructive mt-2">{error}</p>
-      )}
+        {error && (
+          <p className="text-sm text-destructive mt-2">{error}</p>
+        )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleFileSelect}
-        multiple
-        accept="image/*,application/pdf,.doc,.docx,.txt,.md"
-      />
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileSelect}
+          multiple
+          accept="image/*,application/pdf,.doc,.docx,.txt,.md"
+        />
+      </form>
 
-      {/* Search Results */}
+      {/* Search Results - positioned below the form */}
       <SearchResults
         results={searchResults}
         isSearching={isSearching}
         error={searchError}
       />
-    </form>
+    </div>
   );
 }

@@ -4,12 +4,10 @@ import { OmniInput } from '@/components/OmniInput';
 
 export default function HomePage() {
   return (
-    <div className="flex-1 flex flex-col justify-start px-4">
-      <div className="flex-[0.4]" />
-      <div className="w-full max-w-3xl mx-auto">
+    <div className="flex-1 relative">
+      <div className="fixed top-[30vh] left-1/2 -translate-x-1/2 w-full max-w-3xl px-4">
         <OmniInput />
       </div>
-      <div className="flex-[0.6]" />
     </div>
   );
 }
