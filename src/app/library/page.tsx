@@ -91,13 +91,19 @@ function LibraryContent() {
       // Extract file name from path
       const fileName = filePath.split('/').pop() || filePath;
 
-      // Check if file is already open
-      const isAlreadyOpen = openedFiles.some(f => f.path === filePath);
+      // Use setOpenedFiles with updater function to get the latest state
+      setOpenedFiles(prev => {
+        // Check if file is already open using the latest state
+        const isAlreadyOpen = prev.some(f => f.path === filePath);
 
-      if (!isAlreadyOpen) {
+        if (isAlreadyOpen) {
+          // File already open, just switch to it
+          return prev;
+        }
+
         // Add to opened files
-        setOpenedFiles(prev => [...prev, { path: filePath, name: fileName }]);
-      }
+        return [...prev, { path: filePath, name: fileName }];
+      });
 
       // Set as active file (the last one in the list will be active)
       setActiveFilePath(filePath);
