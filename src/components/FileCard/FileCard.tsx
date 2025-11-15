@@ -24,6 +24,8 @@ export function FileCard({ file, className }: FileCardProps) {
   // Determine content type and data
   const content = useMemo(() => {
     const isImage = file.mimeType?.startsWith('image/');
+    const isVideo = file.mimeType?.startsWith('video/');
+    const isAudio = file.mimeType?.startsWith('audio/');
     const isText = file.mimeType?.startsWith('text/') ||
                    file.mimeType === 'application/json' ||
                    file.mimeType === 'application/javascript';
@@ -40,6 +42,19 @@ export function FileCard({ file, className }: FileCardProps) {
     const contentMdDigest = file.digests.find(d => d.type === 'content-md');
     const contentMd = contentMdDigest?.content;
 
+    // Handle video files
+    if (isVideo) {
+      const src = `/api/files/content?path=${encodeURIComponent(file.path)}`;
+      return { type: 'video' as const, src, mimeType: file.mimeType };
+    }
+
+    // Handle audio files
+    if (isAudio) {
+      const src = `/api/files/content?path=${encodeURIComponent(file.path)}`;
+      return { type: 'audio' as const, src, mimeType: file.mimeType };
+    }
+
+    // Handle images (prefer screenshot for URLs, actual image for files)
     if (isImage || hasScreenshot) {
       // Generate image/screenshot URL
       const pathHash = btoa(file.path)
@@ -86,6 +101,33 @@ export function FileCard({ file, className }: FileCardProps) {
               className="object-cover"
               priority={false}
             />
+          </div>
+        ) : content.type === 'video' ? (
+          <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+            <video
+              src={content.src}
+              controls
+              className="w-full h-full object-contain bg-black"
+              preload="metadata"
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        ) : content.type === 'audio' ? (
+          <div className="p-6 flex items-center justify-center min-h-[120px]">
+            <div className="w-full">
+              <div className="text-sm font-medium text-foreground/80 mb-4 text-center break-all">
+                {file.name}
+              </div>
+              <audio
+                src={content.src}
+                controls
+                className="w-full"
+                preload="metadata"
+              >
+                Your browser does not support the audio tag.
+              </audio>
+            </div>
           </div>
         ) : content.type === 'text' ? (
           <div className="p-4">
