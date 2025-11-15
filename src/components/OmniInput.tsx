@@ -32,6 +32,35 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
 
+  // SessionStorage key for persisting text
+  const STORAGE_KEY = 'omni-input:text';
+
+  // Restore content from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedContent = sessionStorage.getItem(STORAGE_KEY);
+      if (savedContent) {
+        setContent(savedContent);
+        // Search will be triggered automatically by the search effect when content changes
+      }
+    } catch (error) {
+      console.error('Failed to restore content from sessionStorage:', error);
+    }
+  }, []); // Only run on mount
+
+  // Save content to sessionStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (content) {
+        sessionStorage.setItem(STORAGE_KEY, content);
+      } else {
+        sessionStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (error) {
+      console.error('Failed to save content to sessionStorage:', error);
+    }
+  }, [content]);
+
   // Debounced input type detection
   const performDetection = useCallback(async () => {
     if (!content.trim() && selectedFiles.length === 0) {
@@ -207,6 +236,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
         throw new Error(details || `HTTP ${response.status}`);
       }
 
+      // Clear state (will also clear sessionStorage via the effect)
       setContent('');
       setSelectedFiles([]);
       setDetectedType(null);
