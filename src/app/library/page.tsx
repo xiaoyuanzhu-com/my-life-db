@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FileTree } from '@/components/library/FileTree';
 import { FileViewer } from '@/components/library/FileViewer';
@@ -11,7 +11,7 @@ export interface OpenedFile {
   name: string;
 }
 
-export default function LibraryPage() {
+function LibraryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
@@ -221,5 +221,13 @@ export default function LibraryPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <LibraryContent />
+    </Suspense>
   );
 }

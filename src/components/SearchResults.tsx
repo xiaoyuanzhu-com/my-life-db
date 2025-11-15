@@ -85,7 +85,6 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
             <FileCard
               key={result.path}
               file={result}
-              highlight={result.snippet}
             />
           ))}
         </div>
