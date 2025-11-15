@@ -11,7 +11,7 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'LibraryScanner' });
 
 // Reserved folder names that should not be indexed
-const RESERVED_FOLDERS = ['inbox', 'app', '.app', '.git', '.mylifedb', 'node_modules'];
+const RESERVED_FOLDERS = ['app', '.app', '.git', '.mylifedb', 'node_modules'];
 
 // Hash files smaller than 10MB
 const HASH_SIZE_THRESHOLD = 10 * 1024 * 1024; // 10MB
