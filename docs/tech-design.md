@@ -659,7 +659,7 @@ export function getFileWithDigests(path: string): FileWithDigests | null;
 
 /**
  * List files with digests (for inbox/search)
- * Supports pagination, filtering, and ordering
+ * Supports pagination, filtering, ordering, and digest type filtering
  */
 export function listFilesWithDigests(
   pathPrefix?: string,
@@ -669,6 +669,8 @@ export function listFilesWithDigests(
     ascending?: boolean;
     limit?: number;
     offset?: number;
+    digestTypes?: string[];        // Only include these digest types
+    excludeDigestTypes?: string[]; // Exclude these digest types
   }
 ): FileWithDigests[];
 
@@ -684,20 +686,24 @@ export function countFilesWithDigests(
 **Usage Example:**
 
 ```typescript
-// Inbox API: List all inbox files with digests
+// Inbox API: List with selective digest fetching for performance
 const inboxFiles = listFilesWithDigests('inbox/', {
   orderBy: 'created_at',
   ascending: false,
   limit: 50,
+  digestTypes: ['screenshot'],  // Only screenshot for image preview
 });
 
-// For each file, enrich with primary text from filesystem
+// Enrich with truncated text preview
 const inboxItems = await Promise.all(
   inboxFiles.map(async (file) => ({
     ...file,
-    primaryText: await readPrimaryText(file.path),
+    textPreview: (await readPrimaryText(file.path))?.slice(0, 500),
   }))
 );
+
+// Detail view: Get single file with ALL digests
+const detailFile = getFileWithDigests(filePath);  // Fetches all digest types
 
 // Search API: Get single file with digests
 const searchHits = await meilisearch.search(query);
@@ -716,6 +722,8 @@ const results = searchHits.map(hit => {
 - ✅ Type-safe with FileWithDigests interface
 - ✅ Consistent data shape across inbox and search
 - ✅ Easy to add new digest types without changing queries
+- ✅ Selective digest fetching for performance optimization (95-98% reduction)
+- ✅ Flexible filtering with `digestTypes` and `excludeDigestTypes` options
 
 ### 5.3 Legacy ORM Schema (Drizzle)
 
@@ -1862,6 +1870,9 @@ interface FileWithDigests {
 
   // Digests array (from digests table)
   digests: DigestSummary[];
+
+  // Optional text preview (truncated, for inbox/search list views)
+  textPreview?: string;
 }
 
 interface DigestSummary {
@@ -1897,18 +1908,23 @@ Notes:
 // List inbox items
 GET /api/inbox?limit=50&offset=0
 Response: {
-  items: InboxItemWithText[];   // FileWithDigests + primaryText
+  items: InboxItem[];   // FileWithDigests + textPreview
   total: number;
 }
 
-// InboxItemWithText extends FileWithDigests with context-specific field
-interface InboxItemWithText extends FileWithDigests {
-  primaryText?: string | null;  // User's original text input from filesystem
+// InboxItem extends FileWithDigests with truncated text preview
+interface InboxItem extends FileWithDigests {
+  textPreview?: string;  // Truncated to ~500 chars for performance
 }
+
+Performance notes:
+- Only fetches 'screenshot' digests (excludes content-md, summary, tags, slug)
+- Text preview truncated to 500 chars (~15 lines) from filesystem
+- Typical response size: 500KB-1MB for 50 items (95-98% reduction from 23MB)
 
 // Get inbox item by ID
 GET /api/inbox/:id
-Response: InboxItemWithText & {
+Response: InboxItem & {
   enrichment: InboxEnrichmentSummary;  // Detailed status view
   digest: {
     summary?: string;
@@ -1918,9 +1934,84 @@ Response: InboxItemWithText & {
   };
 }
 
+Note: Detail view includes ALL digest types (not filtered like list view)
+
 // Delete inbox item (removes files too)
 DELETE /api/inbox/:id
 Response: { success: boolean }
+```
+
+### 6.3 API Response Optimization
+
+**Problem:** The `/api/inbox` endpoint was returning 23MB for 50 items due to including full digest content.
+
+**Solution:** Selective digest fetching and text truncation
+
+**Implementation:**
+
+1. **Digest Filtering:**
+   - Only fetch `screenshot` digest type in list views
+   - Exclude `content-md`, `summary`, `tags`, `slug` from API response
+   - These digests remain in database for search indexing and digest pipeline
+   - Fetched on-demand for detail views only
+
+2. **Text Preview:**
+   - Replace synthetic `primary-text` digest with `textPreview` field
+   - Read from filesystem and truncate to 500 chars
+   - Sufficient for 15-line preview in FileCard component
+   - Full content loaded on-demand when viewing item details
+
+3. **Database Query Optimization:**
+   ```typescript
+   // List view: minimal digest fetching
+   listFilesWithDigests('inbox/', {
+     orderBy: 'created_at',
+     ascending: false,
+     digestTypes: ['screenshot'],  // Only screenshot for image preview
+   });
+
+   // Detail view: fetch all digests
+   getFileWithDigests(filePath);  // Fetches all digest types
+   ```
+
+4. **Performance Impact:**
+   - Before: 23MB for 50 items (~460KB per item)
+   - After: 500KB-1MB for 50 items (~10-20KB per item)
+   - **95-98% reduction in payload size**
+
+5. **UI Rendering:**
+   - FileCard component simplified to use only:
+     - Video/audio files: direct file path
+     - Images: screenshot digest (if exists) or file path
+     - Text: `textPreview` field
+     - Fallback: filename + mimeType
+   - Removed fallback to `content-md` digest in list views
+
+**Database Layer Changes:**
+
+```typescript
+// Enhanced listDigestsForPath with filtering options
+export function listDigestsForPath(
+  filePath: string,
+  options?: {
+    types?: string[];         // Only include these digest types
+    excludeTypes?: string[];  // Exclude these digest types
+  }
+): Digest[];
+
+// Enhanced listFilesWithDigests with digest filtering
+export function listFilesWithDigests(
+  pathPrefix?: string,
+  options?: {
+    isFolder?: boolean;
+    orderBy?: 'path' | 'modified_at' | 'created_at';
+    ascending?: boolean;
+    limit?: number;
+    offset?: number;
+    digestTypes?: string[];        // NEW: Filter digest types
+    excludeDigestTypes?: string[]; // NEW: Exclude digest types
+  }
+): FileWithDigests[];
 ```
 
 #### Entries
