@@ -3,187 +3,127 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo } from 'react';
-import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { FileWithDigests } from '@/types/file-card';
 
 export interface FileCardProps {
   file: FileWithDigests;
   className?: string;
-  highlight?: string;        // Optional highlight text (TODO: implement highlight UI per type)
 }
 
 /**
- * Unified file card component
- * Used by both inbox and search results
+ * Content-focused file card component with adaptive sizing
+ * Displays text content, images, or filename based on file type
  */
-export function FileCard({
-  file,
-  className,
-  highlight,
-}: FileCardProps) {
+export function FileCard({ file, className }: FileCardProps) {
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
   }, [file.path]);
 
-  // Compute primary text from digests
-  const primaryText = useMemo(() => {
-    // Look for primary-text digest (user's original input)
+  // Determine content type and data
+  const content = useMemo(() => {
+    const isImage = file.mimeType?.startsWith('image/');
+    const isText = file.mimeType?.startsWith('text/') ||
+                   file.mimeType === 'application/json' ||
+                   file.mimeType === 'application/javascript';
+
+    // Check for primary text (user's original input)
     const primaryTextDigest = file.digests.find(d => d.type === 'primary-text');
-    return primaryTextDigest?.content || null;
-  }, [file.digests]);
+    const primaryText = primaryTextDigest?.content;
 
-  // Compute summary from digests
-  const summary = useMemo(() => {
-    const summaryDigest = file.digests.find(d => d.type === 'summary');
-    return summaryDigest?.content || null;
-  }, [file.digests]);
-
-  // Compute screenshot from digests
-  const screenshot = useMemo(() => {
+    // Check for screenshot
     const screenshotDigest = file.digests.find(d => d.type === 'screenshot');
-    if (!screenshotDigest?.sqlarName) return null;
+    const hasScreenshot = !!screenshotDigest?.sqlarName;
 
-    // Generate SQLAR API URL
-    // Use simple base64 encoding and replace URL-unsafe characters (browser-compatible)
-    const pathHash = btoa(file.path)
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '')
-      .slice(0, 12);
+    // Get content-md digest for text files
+    const contentMdDigest = file.digests.find(d => d.type === 'content-md');
+    const contentMd = contentMdDigest?.content;
 
-    return {
-      src: `/api/inbox/sqlar/${pathHash}/screenshot/screenshot.png`,
-      alt: 'Preview screenshot',
-    };
-  }, [file.digests, file.path]);
+    if (isImage || hasScreenshot) {
+      // Generate image/screenshot URL
+      const pathHash = btoa(file.path)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+        .slice(0, 12);
 
-  const timeAgo = useMemo(() => {
-    try {
-      return formatDistanceToNow(new Date(file.createdAt), { addSuffix: true });
-    } catch {
-      return '';
+      const src = hasScreenshot
+        ? `/api/inbox/sqlar/${pathHash}/screenshot/screenshot.png`
+        : `/api/files/content?path=${encodeURIComponent(file.path)}`;
+
+      return { type: 'image' as const, src, alt: file.name };
     }
-  }, [file.createdAt]);
 
-  // Determine display content priority:
-  // 1. highlight (if provided)
-  // 2. primaryText (user's original input)
-  // 3. summary (AI-generated)
-  // 4. file.name (fallback)
-  const displayContent = useMemo(() => {
-    // TODO: Implement highlight UI per type
-    if (highlight) {
-      return { text: highlight, type: 'highlight' as const };
-    }
     if (primaryText) {
-      return { text: primaryText, type: 'primary' as const };
+      return { type: 'text' as const, text: primaryText };
     }
-    if (summary) {
-      return { text: summary, type: 'summary' as const };
+
+    if (isText && contentMd) {
+      return { type: 'text' as const, text: contentMd };
     }
-    return { text: file.name, type: 'filename' as const };
-  }, [highlight, primaryText, summary, file.name]);
 
-  const cardContent = (
-    <div
-      className={cn(
-        'group relative h-64 w-full overflow-hidden rounded-2xl border border-border bg-muted shadow-sm transition-all duration-300',
-        'hover:-translate-y-1 hover:shadow-lg',
-        className
-      )}
-    >
-      {/* Screenshot background */}
-      {screenshot && (
-        <Image
-          src={screenshot.src}
-          alt={screenshot.alt}
-          fill
-          sizes="(max-width: 768px) 100vw, 33vw"
-          className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-          priority={false}
-        />
-      )}
-
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-background/75 to-background/40" />
-
-      {/* Content */}
-      <div className="relative z-10 flex h-full flex-col">
-        <div className="p-4">
-          {/* Display content based on priority */}
-          {displayContent.type === 'primary' || displayContent.type === 'highlight' ? (
-            <TextPreview
-              text={displayContent.text}
-              maxChars={220}
-              className="text-base font-medium leading-7 text-foreground drop-shadow-[0_4px_18px_rgba(15,23,42,0.4)]"
-            />
-          ) : displayContent.type === 'summary' ? (
-            <TextPreview
-              text={displayContent.text}
-              maxChars={220}
-              className="text-sm leading-6 text-foreground/90"
-            />
-          ) : (
-            <div className="text-sm text-muted-foreground/70 italic">
-              {displayContent.text}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-auto px-4 pb-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground/90">
-            <span className="rounded-full bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-sm">
-              {file.mimeType || 'folder'}
-            </span>
-            {timeAgo && (
-              <span className="text-[11px] font-medium">{timeAgo}</span>
-            )}
-          </div>
-          {!screenshot && (
-            <div className="mt-2 text-[11px] text-muted-foreground/70">
-              No screenshot available
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+    // Fallback to filename
+    return { type: 'filename' as const, name: file.name };
+  }, [file]);
 
   return (
     <Link href={href} className="block">
-      {cardContent}
+      <div
+        className={cn(
+          'group relative w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200',
+          'hover:shadow-md hover:border-foreground/20',
+          className
+        )}
+      >
+        {content.type === 'image' ? (
+          <div className="relative w-full" style={{ aspectRatio: '4/3' }}>
+            <Image
+              src={content.src}
+              alt={content.alt}
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              className="object-cover"
+              priority={false}
+            />
+          </div>
+        ) : content.type === 'text' ? (
+          <div className="p-4">
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <TextContent text={content.text} />
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 flex items-center justify-center min-h-[120px]">
+            <div className="text-center">
+              <div className="text-sm font-medium text-foreground/80 break-all">
+                {content.name}
+              </div>
+              {file.mimeType && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {file.mimeType}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </Link>
   );
 }
 
 /**
- * Text preview component with truncation
+ * Text content display with line limiting
  */
-function TextPreview({
-  text,
-  maxChars,
-  className,
-}: {
-  text: string | null;
-  maxChars: number;
-  className?: string;
-}) {
-  const display = (text ?? '').trim();
-
-  if (!display) {
-    return null;
-  }
-
-  const shortened = display.length > maxChars
-    ? `${display.slice(0, maxChars).trimEnd()}…`
-    : display;
+function TextContent({ text }: { text: string }) {
+  const lines = text.split('\n').slice(0, 15); // Max 15 lines
+  const displayText = lines.join('\n');
+  const truncated = lines.length < text.split('\n').length;
 
   return (
-    <div className={cn('whitespace-pre-wrap break-words', className)}>
-      {shortened}
+    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+      {displayText}
+      {truncated && <span className="text-muted-foreground">...</span>}
     </div>
   );
 }
