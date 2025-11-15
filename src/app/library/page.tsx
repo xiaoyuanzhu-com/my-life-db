@@ -21,46 +21,27 @@ export default function LibraryPage() {
 
   // Load state from localStorage on mount
   useEffect(() => {
-    console.log('[Library] Loading state from localStorage...');
     try {
       const savedOpenedFiles = localStorage.getItem('library:openedFiles');
       const savedActiveFile = localStorage.getItem('library:activeFile');
       const savedExpandedFolders = localStorage.getItem('library:expandedFolders');
 
-      console.log('[Library] Raw localStorage values:', {
-        savedOpenedFiles,
-        savedActiveFile,
-        savedExpandedFolders,
-      });
-
       if (savedOpenedFiles) {
-        const files = JSON.parse(savedOpenedFiles);
-        console.log('[Library] Restoring opened files:', files);
-        setOpenedFiles(files);
-      } else {
-        console.log('[Library] No saved opened files found');
+        setOpenedFiles(JSON.parse(savedOpenedFiles));
       }
 
       if (savedActiveFile) {
-        console.log('[Library] Restoring active file:', savedActiveFile);
         setActiveFilePath(savedActiveFile);
-      } else {
-        console.log('[Library] No saved active file found');
       }
 
       if (savedExpandedFolders) {
-        const folders = new Set(JSON.parse(savedExpandedFolders));
-        console.log('[Library] Restoring expanded folders:', Array.from(folders));
-        setExpandedFolders(folders);
-      } else {
-        console.log('[Library] No saved expanded folders found');
+        setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
       }
     } catch (error) {
-      console.error('[Library] Failed to load state from localStorage:', error);
+      console.error('Failed to load state from localStorage:', error);
     } finally {
       // Mark as initialized after loading from localStorage
       setIsInitialized(true);
-      console.log('[Library] Initialization complete');
     }
   }, []);
 
@@ -68,10 +49,9 @@ export default function LibraryPage() {
   useEffect(() => {
     if (!isInitialized) return;
     try {
-      console.log('[Library] Saving opened files to localStorage:', openedFiles);
       localStorage.setItem('library:openedFiles', JSON.stringify(openedFiles));
     } catch (error) {
-      console.error('[Library] Failed to save opened files to localStorage:', error);
+      console.error('Failed to save opened files to localStorage:', error);
     }
   }, [openedFiles, isInitialized]);
 
@@ -80,14 +60,12 @@ export default function LibraryPage() {
     if (!isInitialized) return;
     try {
       if (activeFilePath) {
-        console.log('[Library] Saving active file to localStorage:', activeFilePath);
         localStorage.setItem('library:activeFile', activeFilePath);
       } else {
-        console.log('[Library] Removing active file from localStorage');
         localStorage.removeItem('library:activeFile');
       }
     } catch (error) {
-      console.error('[Library] Failed to save active file to localStorage:', error);
+      console.error('Failed to save active file to localStorage:', error);
     }
   }, [activeFilePath, isInitialized]);
 
@@ -95,11 +73,9 @@ export default function LibraryPage() {
   useEffect(() => {
     if (!isInitialized) return;
     try {
-      const foldersArray = Array.from(expandedFolders);
-      console.log('[Library] Saving expanded folders to localStorage:', foldersArray);
-      localStorage.setItem('library:expandedFolders', JSON.stringify(foldersArray));
+      localStorage.setItem('library:expandedFolders', JSON.stringify(Array.from(expandedFolders)));
     } catch (error) {
-      console.error('[Library] Failed to save expanded folders to localStorage:', error);
+      console.error('Failed to save expanded folders to localStorage:', error);
     }
   }, [expandedFolders, isInitialized]);
 
@@ -162,14 +138,9 @@ export default function LibraryPage() {
   };
 
   const handleFileOpen = (path: string, name: string) => {
-    console.log('[Library] Opening file:', { path, name });
     // Add to opened files if not already open
     if (!openedFiles.some(f => f.path === path)) {
-      const newOpenedFiles = [...openedFiles, { path, name }];
-      console.log('[Library] Adding to opened files. New list:', newOpenedFiles);
-      setOpenedFiles(newOpenedFiles);
-    } else {
-      console.log('[Library] File already open, just switching to it');
+      setOpenedFiles([...openedFiles, { path, name }]);
     }
     setActiveFilePath(path);
 
@@ -178,38 +149,30 @@ export default function LibraryPage() {
   };
 
   const handleFileClose = (path: string) => {
-    console.log('[Library] Closing file:', path);
     const newOpenedFiles = openedFiles.filter(f => f.path !== path);
-    console.log('[Library] New opened files after close:', newOpenedFiles);
     setOpenedFiles(newOpenedFiles);
 
     // If closing the active file, switch to the last opened file
     if (activeFilePath === path) {
       if (newOpenedFiles.length > 0) {
-        const newActive = newOpenedFiles[newOpenedFiles.length - 1].path;
-        console.log('[Library] Switching active file to:', newActive);
-        setActiveFilePath(newActive);
+        setActiveFilePath(newOpenedFiles[newOpenedFiles.length - 1].path);
       } else {
-        console.log('[Library] No files left, clearing active file');
         setActiveFilePath(null);
       }
     }
   };
 
   const handleTabChange = (path: string) => {
-    console.log('[Library] Changing active tab to:', path);
     setActiveFilePath(path);
   };
 
   const handleToggleFolder = (path: string, isExpanded: boolean) => {
-    console.log('[Library] Toggling folder:', { path, isExpanded });
     const newExpandedFolders = new Set(expandedFolders);
     if (isExpanded) {
       newExpandedFolders.add(path);
     } else {
       newExpandedFolders.delete(path);
     }
-    console.log('[Library] New expanded folders:', Array.from(newExpandedFolders));
     setExpandedFolders(newExpandedFolders);
   };
 
