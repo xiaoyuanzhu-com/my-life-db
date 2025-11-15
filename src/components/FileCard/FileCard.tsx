@@ -26,21 +26,10 @@ export function FileCard({ file, className }: FileCardProps) {
     const isImage = file.mimeType?.startsWith('image/');
     const isVideo = file.mimeType?.startsWith('video/');
     const isAudio = file.mimeType?.startsWith('audio/');
-    const isText = file.mimeType?.startsWith('text/') ||
-                   file.mimeType === 'application/json' ||
-                   file.mimeType === 'application/javascript';
-
-    // Check for primary text (user's original input)
-    const primaryTextDigest = file.digests.find(d => d.type === 'primary-text');
-    const primaryText = primaryTextDigest?.content;
 
     // Check for screenshot
     const screenshotDigest = file.digests.find(d => d.type === 'screenshot');
     const hasScreenshot = !!screenshotDigest?.sqlarName;
-
-    // Get content-md digest for text files
-    const contentMdDigest = file.digests.find(d => d.type === 'content-md');
-    const contentMd = contentMdDigest?.content;
 
     // Handle video files
     if (isVideo) {
@@ -70,12 +59,9 @@ export function FileCard({ file, className }: FileCardProps) {
       return { type: 'image' as const, src, alt: file.name };
     }
 
-    if (primaryText) {
-      return { type: 'text' as const, text: primaryText };
-    }
-
-    if (isText && contentMd) {
-      return { type: 'text' as const, text: contentMd };
+    // Show text preview if available
+    if (file.textPreview) {
+      return { type: 'text' as const, text: file.textPreview };
     }
 
     // Fallback to filename

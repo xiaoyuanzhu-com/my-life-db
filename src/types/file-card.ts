@@ -32,4 +32,7 @@ export interface FileWithDigests {
 
   // Digests array (from digests table)
   digests: DigestSummary[];
+
+  // Optional text preview (truncated, for inbox/search list views)
+  textPreview?: string;
 }

@@ -13,12 +13,12 @@ const log = getLogger({ module: 'ApiInbox' });
 
 // Note: App initialization now happens in instrumentation.ts at server startup
 
-export interface InboxItemWithText extends FileWithDigests {
-  primaryText?: string | null;
+export interface InboxItem extends FileWithDigests {
+  textPreview?: string;
 }
 
 export interface InboxResponse {
-  items: InboxItemWithText[];
+  items: InboxItem[];
   total: number;
 }
 
@@ -37,9 +37,11 @@ export async function GET(request: NextRequest) {
       : 0;
 
     // List files with digests in inbox directory
+    // Only fetch screenshot digests (exclude content-md, summary, tags, slug)
     const allFiles = listFilesWithDigests('inbox/', {
       orderBy: 'created_at',
-      ascending: false
+      ascending: false,
+      digestTypes: ['screenshot'],  // Only include screenshot for image preview
     });
 
     // Filter to only top-level entries (inbox/foo.jpg or inbox/folder, NOT inbox/folder/file.jpg)
@@ -52,30 +54,19 @@ export async function GET(request: NextRequest) {
     // Apply pagination after filtering
     const paginatedFiles = topLevelFiles.slice(offset, offset + limit);
 
-    // Enrich with primary text (add to digests array)
-    const items: InboxItemWithText[] = await Promise.all(
+    // Enrich with text preview (truncated for performance)
+    const items = await Promise.all(
       paginatedFiles.map(async (file) => {
         const primaryText = await readPrimaryText(file.path);
 
-        // Add primaryText as a synthetic digest if it exists
-        const enrichedDigests = primaryText
-          ? [
-              ...file.digests,
-              {
-                type: 'primary-text',
-                status: 'enriched' as const,
-                content: primaryText,
-                sqlarName: null,
-                error: null,
-                updatedAt: file.createdAt, // Use file creation time
-              },
-            ]
-          : file.digests;
+        // Truncate to ~500 chars (approximately 15 lines) for preview
+        const textPreview = primaryText
+          ? primaryText.slice(0, 500)
+          : undefined;
 
         return {
           ...file,
-          digests: enrichedDigests,
-          primaryText,
+          textPreview,
         };
       })
     );

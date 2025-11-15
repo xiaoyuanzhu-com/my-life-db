@@ -94,12 +94,35 @@ export function getDigestByPathAndType(filePath: string, digestType: string): Di
 /**
  * List all digests for a file
  */
-export function listDigestsForPath(filePath: string): Digest[] {
+export function listDigestsForPath(
+  filePath: string,
+  options?: {
+    types?: string[];  // Only include these digest types
+    excludeTypes?: string[];  // Exclude these digest types
+  }
+): Digest[] {
   const db = getDatabase();
 
+  let sql = 'SELECT * FROM digests WHERE file_path = ?';
+  const params: (string | string[])[] = [filePath];
+
+  if (options?.types && options.types.length > 0) {
+    const placeholders = options.types.map(() => '?').join(', ');
+    sql += ` AND digest_type IN (${placeholders})`;
+    params.push(...options.types);
+  }
+
+  if (options?.excludeTypes && options.excludeTypes.length > 0) {
+    const placeholders = options.excludeTypes.map(() => '?').join(', ');
+    sql += ` AND digest_type NOT IN (${placeholders})`;
+    params.push(...options.excludeTypes);
+  }
+
+  sql += ' ORDER BY created_at DESC';
+
   const rows = db
-    .prepare('SELECT * FROM digests WHERE file_path = ? ORDER BY created_at DESC')
-    .all(filePath) as DigestRecord[];
+    .prepare(sql)
+    .all(...params) as DigestRecord[];
 
   return rows.map(recordToDigest);
 }

@@ -4,16 +4,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { FileCard } from '@/components/FileCard';
-import type { InboxItemWithText } from '@/app/api/inbox/route';
+import type { InboxItem } from '@/app/api/inbox/route';
 
 interface GroupedItems {
   date: string;
   displayDate: string;
-  items: InboxItemWithText[];
+  items: InboxItem[];
 }
 
 export default function InboxPage() {
-  const [items, setItems] = useState<InboxItemWithText[]>([]);
+  const [items, setItems] = useState<InboxItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function InboxPage() {
       try {
         const response = await fetch('/api/inbox');
         const data = await response.json();
-        setItems(data.items as InboxItemWithText[]);
+        setItems(data.items as InboxItem[]);
       } catch (error) {
         console.error('Failed to load inbox items:', error);
       } finally {
@@ -34,7 +34,7 @@ export default function InboxPage() {
 
   // Group items by date based on client's local timezone
   const groupedItems = useMemo(() => {
-    const groups = new Map<string, InboxItemWithText[]>();
+    const groups = new Map<string, InboxItem[]>();
 
     items.forEach((item) => {
       const createdDate = new Date(item.createdAt);
