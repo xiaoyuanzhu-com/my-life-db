@@ -195,7 +195,7 @@ export type FileType = 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'other';
 /**
  * Enrichment status for inbox items
  */
-export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed';
+export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed' | 'skipped';
 
 /**
  * Individual file in an inbox item

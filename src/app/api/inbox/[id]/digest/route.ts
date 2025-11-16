@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { startDigestWorkflow, startDigestStep } from '@/lib/inbox/digestWorkflow';
+import { DigestCoordinator } from '@/lib/digest/coordinator';
+import { getDatabase } from '@/lib/db/connection';
 import { getFileByPath } from '@/lib/db/files';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiInboxDigestWorkflow' });
+const log = getLogger({ module: 'ApiInboxDigest' });
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -14,16 +15,11 @@ interface RouteContext {
 /**
  * POST /api/inbox/[id]/digest
  *
- * Start digest workflow or individual digest step
- *
- * Query params:
- * - step: Optional digest step to run (e.g., 'index', 'summary', 'tagging', 'slug')
- *         If not provided, runs the full digest workflow
+ * Process file through digest system
+ * Runs all applicable digesters on the file
  *
  * Examples:
- * - POST /api/inbox/foo.md/digest → full workflow
- * - POST /api/inbox/foo.md/digest?step=index → index step only
- * - POST /api/inbox/foo.md/digest?step=summary → summary step only
+ * - POST /api/inbox/foo.txt/digest → process file through all digesters
  */
 export async function POST(
   request: NextRequest,
@@ -38,22 +34,22 @@ export async function POST(
       return NextResponse.json({ error: 'Inbox item not found' }, { status: 404 });
     }
 
-    // Check if user wants to run a specific step
-    const { searchParams } = new URL(request.url);
-    const step = searchParams.get('step');
+    log.info({ filePath }, 'starting digest processing');
 
-    if (step) {
-      // Run individual step
-      const { taskId } = await startDigestStep(filePath, step);
-      return NextResponse.json({ success: true, taskId, step });
-    }
+    // Create coordinator and process file
+    const db = getDatabase();
+    const coordinator = new DigestCoordinator(db);
 
-    // Run full workflow (type detection happens inside)
-    const { taskId } = await startDigestWorkflow(filePath);
-    return NextResponse.json({ success: true, taskId });
+    // Process file (runs synchronously but returns void)
+    await coordinator.processFile(filePath);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Digest processing started. Check logs for progress.'
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error({ err: error }, 'failed to start digest workflow');
+    log.error({ err: error, filePath: `inbox/${(await context.params).id}` }, 'failed to process file');
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

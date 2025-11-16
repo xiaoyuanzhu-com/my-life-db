@@ -5,6 +5,7 @@
 
 import { initializeTaskQueue } from './task-queue/startup';
 import { startPeriodicScanner } from './scanner/libraryScanner';
+import { initializeDigesters } from './digest/initialization';
 import { getLogger } from '@/lib/log/logger';
 
 declare global {
@@ -70,6 +71,9 @@ export function initializeApp() {
   log.info({}, 'initializing application services');
 
   try {
+    // Initialize digest system (register digesters, sync records)
+    initializeDigesters();
+
     // Initialize task queue and start worker
     initializeTaskQueue({
       startWorker: true,

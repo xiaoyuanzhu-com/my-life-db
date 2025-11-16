@@ -22,6 +22,7 @@ import migration019 from './019_create_meili_documents';
 import migration020 from './020_create_qdrant_documents';
 import migration021 from './021_meili_1to1_mapping';
 import migration022 from './022_drop_content_type';
+import migration023 from './023_add_skipped_status';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -57,6 +58,7 @@ export const migrations: Migration[] = [
   migration020,
   migration021,
   migration022,
+  migration023,
 ];
 
 /**
