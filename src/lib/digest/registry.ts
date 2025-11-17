@@ -8,6 +8,10 @@ import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigesterRegistry' });
 
+declare global {
+  var __mylifedb_digester_registry: DigesterRegistry | undefined;
+}
+
 /**
  * Registry for digesters
  * Maintains ordered list - first registered = first executed
@@ -63,6 +67,10 @@ export class DigesterRegistry {
 }
 
 /**
- * Global singleton registry
+ * Global singleton registry (stored on globalThis to survive HMR/module reloads)
  */
-export const globalDigesterRegistry = new DigesterRegistry();
+if (!globalThis.__mylifedb_digester_registry) {
+  globalThis.__mylifedb_digester_registry = new DigesterRegistry();
+}
+
+export const globalDigesterRegistry = globalThis.__mylifedb_digester_registry;
