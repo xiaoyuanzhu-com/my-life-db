@@ -2301,7 +2301,60 @@ interface DigestSummary {
 }
 ```
 
-### 6.2 REST API Endpoints
+### 6.2 Application Routes
+
+#### UI Routes (Pages)
+
+| Route | Purpose | Component |
+|-------|---------|-----------|
+| `/` | Homepage / dashboard | `src/app/page.tsx` |
+| `/inbox` | Inbox list view | `src/app/inbox/page.tsx` |
+| `/inbox/[slug]` | Inbox item detail view | `src/app/inbox/[slug]/page.tsx` |
+| `/library` | Library root view | `src/app/library/page.tsx` |
+| `/library/browse` | Library file browser | `src/app/library/browse/page.tsx` |
+| `/file/[...path]` | File detail view (any path) | `src/app/file/[...path]/page.tsx` |
+| `/settings/[[...tab]]` | Settings with optional tab | `src/app/settings/[[...tab]]/page.tsx` |
+
+#### API Routes
+
+**Base URL:** `/api`
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| **Inbox** |||
+| `/api/inbox` | GET, POST | List inbox items / Create new inbox item |
+| `/api/inbox/[id]` | GET, DELETE | Get/delete inbox item by ID |
+| `/api/inbox/[id]/status` | GET | Get enrichment status for item |
+| `/api/inbox/[id]/reenrich` | POST | Trigger re-enrichment for item |
+| `/api/inbox/files/[folder]/[filename]` | GET | Retrieve raw file from inbox folder |
+| `/api/inbox/sqlar/[...path]` | GET | Retrieve binary digest from SQLAR |
+| **Library** |||
+| `/api/library/tree` | GET | Get library folder tree structure |
+| `/api/library/file` | GET | Get file metadata and digests |
+| `/api/library/file-info` | GET | Get detailed file information |
+| **Digest** |||
+| `/api/digest/[...path]` | POST | Trigger digest generation for any file path |
+| **Search** |||
+| `/api/search` | GET | Unified search (keyword + semantic) |
+| `/api/search/keyword` | GET | Keyword-only search (Meilisearch) |
+| `/api/search/semantic` | GET | Semantic-only search (Qdrant) |
+| `/api/search/hybrid` | GET | Hybrid search (both engines) |
+| **Files** |||
+| `/api/files/content` | GET | Get raw file content by path |
+| `/api/directories` | GET | List directories in data root |
+| **Tasks** |||
+| `/api/tasks` | GET, POST | List tasks / Create new task |
+| `/api/tasks/[id]` | GET, PATCH, DELETE | Get/update/delete task by ID |
+| `/api/tasks/stats` | GET | Get task queue statistics |
+| `/api/tasks/worker/status` | GET | Get worker status |
+| `/api/tasks/worker/pause` | POST | Pause task worker |
+| `/api/tasks/worker/resume` | POST | Resume task worker |
+| **Settings** |||
+| `/api/settings` | GET, PUT | Get/update application settings |
+| **Vendors** |||
+| `/api/vendors/openai/models` | GET | List available OpenAI models |
+
+### 6.3 REST API Endpoints
 
 **Base URL:** `/api`
 
