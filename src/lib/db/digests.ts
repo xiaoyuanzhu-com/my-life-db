@@ -1,6 +1,6 @@
 // Database operations for digests table
 import { getDatabase } from './connection';
-import type { Digest, DigestRecord } from '@/types';
+import type { Digest, DigestRecordRow } from '@/types';
 
 /**
  * Create a new digest in the database
@@ -69,7 +69,7 @@ export function getDigestById(id: string): Digest | null {
 
   const row = db
     .prepare('SELECT * FROM digests WHERE id = ?')
-    .get(id) as DigestRecord | undefined;
+    .get(id) as DigestRecordRow | undefined;
 
   if (!row) return null;
 
@@ -84,7 +84,7 @@ export function getDigestByPathAndType(filePath: string, digestType: string): Di
 
   const row = db
     .prepare('SELECT * FROM digests WHERE file_path = ? AND digest_type = ?')
-    .get(filePath, digestType) as DigestRecord | undefined;
+    .get(filePath, digestType) as DigestRecordRow | undefined;
 
   if (!row) return null;
 
@@ -122,7 +122,7 @@ export function listDigestsForPath(
 
   const rows = db
     .prepare(sql)
-    .all(...params) as DigestRecord[];
+    .all(...params) as DigestRecordRow[];
 
   return rows.map(recordToDigest);
 }
@@ -141,7 +141,7 @@ export function listDigestsByType(digestType: string, limit?: number): Digest[] 
     params.push(limit);
   }
 
-  const rows = db.prepare(sql).all(...params) as DigestRecord[];
+  const rows = db.prepare(sql).all(...params) as DigestRecordRow[];
 
   return rows.map(recordToDigest);
 }
@@ -285,7 +285,7 @@ export function generateDigestId(filePath: string, digestType: string): string {
 /**
  * Convert database record to Digest
  */
-function recordToDigest(record: DigestRecord): Digest {
+function recordToDigest(record: DigestRecordRow): Digest {
   return {
     id: record.id,
     filePath: record.file_path,

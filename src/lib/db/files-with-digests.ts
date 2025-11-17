@@ -7,7 +7,7 @@ import { getDatabase } from './connection';
 import { getFileByPath, listFiles, type FileRecord } from './files';
 import { listDigestsForPath } from './digests';
 import type { FileWithDigests, DigestSummary } from '@/types/file-card';
-import type { DigestRecord } from '@/types';
+import type { DigestRecordRow } from '@/types';
 
 /**
  * Get file with all digests

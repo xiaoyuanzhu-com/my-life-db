@@ -1,16 +1,47 @@
 // Core types for MyLifeDB
 
-/**
- * Message Type - what kind of content the user sent
- */
-export type MessageType =
-  | 'text'      // Plain text only
-  | 'url'       // Web link
-  | 'image'     // Single image (no text)
-  | 'audio'     // Audio recording
-  | 'video'     // Video file
-  | 'pdf'       // PDF document
-  | 'mixed';    // Text + attachments
+// ============================================================================
+// Core Data Models - Re-exported from central models file
+// ============================================================================
+
+// Import for use within this file
+import type {
+  MessageType as MessageTypeModel,
+  EnrichmentStatus as EnrichmentStatusModel,
+  FileType as FileTypeModel,
+  Digest as DigestModel,
+  DigestRecordRow as DigestRecordRowModel,
+} from './models';
+
+// Re-export for external consumers
+export type {
+  // Enums & Constants
+  MessageType,
+  EnrichmentStatus,
+  DigestType,
+  TaskStatus,
+  FileType,
+  // Files Table
+  FileRecord,
+  FileRecordRow,
+  // Digests Table
+  Digest,
+  DigestRecordRow,
+  // Tasks Table
+  Task,
+  TaskRecordRow,
+  // Settings Table
+  Setting,
+  SettingRecordRow,
+  // Conversion Helpers
+} from './models';
+
+export {
+  rowToFileRecord,
+  rowToDigest,
+  rowToTask,
+  rowToSetting,
+} from './models';
 
 /**
  * Attachment Type - categorized file type
@@ -19,7 +50,7 @@ export type AttachmentType = 'image' | 'audio' | 'video' | 'pdf' | 'other';
 
 export interface EntryMetadata {
   id: string; // UUID v4
-  type: MessageType; // Type of message
+  type: MessageTypeModel; // Type of message
   slug: string | null; // URL-safe slug from AI-generated title, initially null
   title: string | null; // AI-generated title, initially null
   createdAt: string; // ISO date string
@@ -187,25 +218,18 @@ export interface ExtractionOptions {
 // New Inbox Database Types (file-based approach)
 // ============================================================================
 
-/**
- * File type categorization
- */
-export type FileType = 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'other';
-
-/**
- * Enrichment status for inbox items
- */
-export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed' | 'skipped';
+// Note: FileType and EnrichmentStatus are now imported from models.ts above
 
 /**
  * Individual file in an inbox item
  * Includes both user uploads and generated files (e.g., content.html for URLs)
+ * @deprecated Legacy type - use FileRecord from models.ts instead
  */
 export interface InboxFile {
   filename: string;
   size: number; // bytes
   mimeType: string;
-  type: FileType;
+  type: FileTypeModel;
   hash?: string; // Content hash for deduplication
   enrichment?: {
     // Image enrichment
@@ -236,6 +260,7 @@ export interface InboxFile {
 /**
  * Inbox item - temporary staging before moving to library
  * Stored in database (no metadata.json file)
+ * @deprecated Legacy type - use FileRecord from models.ts instead
  */
 export interface InboxItem {
   // Core identity
@@ -243,13 +268,13 @@ export interface InboxItem {
   folderName: string; // Current folder name (uuid initially, then slug)
 
   // Content type
-  type: MessageType;
+  type: MessageTypeModel;
 
   // Files (text.md is just another file in this array)
   files: InboxFile[];
 
   // Enrichment state
-  status: EnrichmentStatus;
+  status: EnrichmentStatusModel;
   enrichedAt: string | null; // ISO date string
   error: string | null;
 
@@ -275,7 +300,7 @@ export interface InboxStageStatusSummary {
 
 export interface InboxEnrichmentSummary {
   itemId: string;
-  overall: EnrichmentStatus;
+  overall: EnrichmentStatusModel;
   stages: InboxStageStatusSummary[];
   hasFailures: boolean;
   completedCount: number;
@@ -303,6 +328,7 @@ export interface InboxDigestSlug {
 
 /**
  * Library file - permanent indexed file
+ * @deprecated Legacy type - use FileRecord from models.ts instead
  */
 export interface LibraryFile {
   // Core identity
@@ -352,6 +378,7 @@ export interface LibraryFile {
 
 /**
  * File metadata within an item
+ * @deprecated Legacy type - use FileRecord from models.ts instead
  */
 export interface ItemFile {
   name: string; // Filename
@@ -363,47 +390,20 @@ export interface ItemFile {
 
 /**
  * Item - unified model for inbox and library content
+ * @deprecated Legacy type - use FileRecord from models.ts instead
  */
 export interface Item {
   id: string; // UUID
   name: string; // Original filename or slug
-  rawType: MessageType; // What user submitted
+  rawType: MessageTypeModel; // What user submitted
   detectedType: string | null; // What AI detected (url, note, todo, etc.)
   isFolder: boolean; // true = folder with multiple files, false = single file
   path: string; // Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'notes/meeting.md')
   files: ItemFile[] | null; // File list (JSON)
-  status: EnrichmentStatus; // Enrichment status
+  status: EnrichmentStatusModel; // Enrichment status
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
   schemaVersion: number;
 }
 
-/**
- * Digest - AI-generated content for a file
- */
-export interface Digest {
-  id: string; // Digest ID
-  filePath: string; // Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder')
-  digestType: string; // 'summary', 'tags', 'slug', 'content-md', 'content-html', 'screenshot'
-  status: EnrichmentStatus; // Processing status
-  content: string | null; // Text content (summary, tags JSON, slug JSON)
-  sqlarName: string | null; // Filename in SQLAR archive (for binary digests)
-  error: string | null; // Error message if status is 'failed'
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
-}
-
-/**
- * Database row for digests table
- */
-export interface DigestRecord {
-  id: string;
-  file_path: string;
-  digest_type: string;
-  status: string;
-  content: string | null;
-  sqlar_name: string | null;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-}
+// Note: Digest and DigestRecord are now imported from models.ts at the top of this file

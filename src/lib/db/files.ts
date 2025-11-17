@@ -8,46 +8,13 @@
 
 import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
+import type { FileRecord, FileRecordRow } from '@/types/models';
+import { rowToFileRecord } from '@/types/models';
+
+// Re-export types for convenience
+export type { FileRecord, FileRecordRow };
 
 const log = getLogger({ module: 'DBFiles' });
-
-export interface FileRecord {
-  path: string;              // Primary key: relative path from DATA_ROOT
-  name: string;              // Filename or folder name only
-  isFolder: boolean;         // true for folders, false for files
-  size: number | null;       // File size in bytes (null for folders)
-  mimeType: string | null;   // MIME type (null for folders)
-  hash: string | null;       // SHA256 hash for small files (<10MB)
-  modifiedAt: string;        // ISO timestamp from file mtime
-  createdAt: string;         // ISO timestamp when first indexed
-  lastScannedAt: string;     // ISO timestamp of last scan
-}
-
-interface FileRecordRow {
-  path: string;
-  name: string;
-  is_folder: number;
-  size: number | null;
-  mime_type: string | null;
-  hash: string | null;
-  modified_at: string;
-  created_at: string;
-  last_scanned_at: string;
-}
-
-function rowToFileRecord(row: FileRecordRow): FileRecord {
-  return {
-    path: row.path,
-    name: row.name,
-    isFolder: row.is_folder === 1,
-    size: row.size,
-    mimeType: row.mime_type,
-    hash: row.hash,
-    modifiedAt: row.modified_at,
-    createdAt: row.created_at,
-    lastScannedAt: row.last_scanned_at,
-  };
-}
 
 /**
  * Get file record by path

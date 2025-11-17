@@ -2,23 +2,14 @@
  * Core types for the digest registry system
  */
 
-import type { Digest } from '@/types';
+import type { Digest, FileRecordRow } from '@/types/models';
 import type BetterSqlite3 from 'better-sqlite3';
 
 /**
  * File metadata from files table
+ * @deprecated Use FileRecordRow from @/types/models instead
  */
-export interface FileRow {
-  path: string;
-  name: string;
-  is_folder: number;
-  size: number | null;
-  mime_type: string | null;
-  hash: string | null;
-  modified_at: string;
-  created_at: string;
-  last_scanned_at: string;
-}
+export type FileRow = FileRecordRow;
 
 /**
  * Digester interface - processes files and produces digest outputs
@@ -42,7 +33,7 @@ export interface Digester {
    */
   canDigest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean>;
@@ -53,7 +44,7 @@ export interface Digester {
    */
   digest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null>;
