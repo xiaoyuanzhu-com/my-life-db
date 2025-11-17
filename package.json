@@ -25,6 +25,7 @@
     "pino": "^9.4.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-resizable-panels": "^3.0.6",
     "simple-icons": "^15.17.0",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.1.12"

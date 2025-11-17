@@ -6,6 +6,7 @@ import { FileTree } from '@/components/library/file-tree';
 import { FileViewer } from '@/components/library/file-viewer';
 import { FileTabs } from '@/components/library/file-tabs';
 import { FileFooterBar } from '@/components/library/file-footer-bar';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 export interface OpenedFile {
   path: string;
@@ -184,50 +185,45 @@ function LibraryContent() {
   };
 
   return (
-    <div className="flex flex-col flex-1 bg-background">
+    <div className="flex flex-col flex-1 bg-background h-full min-h-0 overflow-hidden">
       {/* Main content */}
-      <div className="flex-1 overflow-hidden">
-        <div className="px-[10%] h-full">
-          <div className="flex h-full">
-            {/* Left sidebar - File tree */}
-            <div className="w-64 border-r overflow-y-auto">
-              <FileTree
-                onFileOpen={handleFileOpen}
-                expandedFolders={expandedFolders}
-                onToggleFolder={handleToggleFolder}
-                selectedFilePath={activeFilePath}
-              />
-            </div>
-
-            {/* Right content - File viewer with tabs */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {openedFiles.length > 0 ? (
-                <>
-                  {/* Tabs - fixed at top */}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <div className="px-[10%] h-full min-h-0 flex flex-col">
+          <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
+            <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
+                <FileTree
+                  onFileOpen={handleFileOpen}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={handleToggleFolder}
+                  selectedFilePath={activeFilePath}
+                />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={75} minSize={30} className="flex h-full flex-col overflow-hidden">
+              {openedFiles.length > 0 && (
+                <div className="shrink-0 border-b">
                   <FileTabs
                     files={openedFiles}
                     activeFile={activeFilePath}
                     onTabChange={handleTabChange}
                     onTabClose={handleFileClose}
                   />
-
-                  {/* Content viewer - flexible middle with scroll */}
-                  <div className="flex-1 overflow-hidden">
-                    {activeFilePath && (
-                      <FileViewer filePath={activeFilePath} />
-                    )}
-                  </div>
-
-                  {/* File-specific footer bar - fixed at bottom */}
-                  <FileFooterBar filePath={activeFilePath} />
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Select a file from the tree to view
                 </div>
               )}
-            </div>
-          </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {openedFiles.length > 0 && activeFilePath ? (
+                  <FileViewer filePath={activeFilePath} />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                    Select a file from the tree to view
+                  </div>
+                )}
+              </div>
+              <FileFooterBar filePath={activeFilePath} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       </div>
     </div>
