@@ -54,10 +54,20 @@ export class TaggingDigester implements Digester {
       return null; // Should not happen if canDigest returned true
     }
 
+    // Parse JSON content to get markdown
+    let markdown: string;
+    try {
+      const contentData = JSON.parse(contentDigest.content);
+      markdown = contentData.markdown;
+    } catch {
+      // Fallback for old format (plain markdown)
+      markdown = contentDigest.content;
+    }
+
     log.info({ filePath }, 'generating tags');
 
     // Generate tags
-    const result = await generateTagsDigest({ text: contentDigest.content });
+    const result = await generateTagsDigest({ text: markdown });
 
     const now = new Date().toISOString();
 

@@ -50,14 +50,24 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
 
     // 2. Get summary (if exists from digest)
     const summaryDigest = digests.find(d => d.digester === 'summarize' && d.status === 'completed');
-    const summaryText = summaryDigest?.content || null;
+    let summaryText: string | null = null;
+    if (summaryDigest?.content) {
+      try {
+        const summaryData = JSON.parse(summaryDigest.content);
+        summaryText = summaryData.summary || summaryDigest.content; // Fallback for old format
+      } catch {
+        // Fallback for old format (plain text)
+        summaryText = summaryDigest.content;
+      }
+    }
 
     // 3. Get tags (if exists from digest)
     const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
     let tagsText: string | null = null;
     if (tagsDigest?.content) {
       try {
-        const tags = JSON.parse(tagsDigest.content);
+        const tagsData = JSON.parse(tagsDigest.content);
+        const tags = tagsData.tags || tagsData; // Handle both {tags: [...]} and plain [...]
         if (Array.isArray(tags) && tags.length > 0) {
           tagsText = tags.join(', ');
         }
@@ -117,7 +127,14 @@ async function getFileContent(filePath: string): Promise<string | null> {
   // Check for URL digest first
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
-    return contentDigest.content;
+    // Parse JSON to get markdown
+    try {
+      const contentData = JSON.parse(contentDigest.content);
+      return contentData.markdown || contentDigest.content; // Fallback for old format
+    } catch {
+      // Fallback for old format (plain markdown)
+      return contentDigest.content;
+    }
   }
 
   // Read from filesystem for markdown/text files

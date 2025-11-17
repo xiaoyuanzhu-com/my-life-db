@@ -59,13 +59,13 @@ function getStatusColor(status: string): string {
 function DigestCard({ digest }: { digest: Digest }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Parse JSON content for tags and slug
+  // Parse JSON content (all digesters now use JSON except binary ones)
   let parsedContent: any = null;
-  if (digest.content && (digest.digester === 'tagging' || digest.digester === 'slug')) {
+  if (digest.content) {
     try {
       parsedContent = JSON.parse(digest.content);
     } catch {
-      // Invalid JSON, show raw content
+      // Invalid JSON, show raw content (shouldn't happen with new format)
     }
   }
 
@@ -93,9 +93,50 @@ function DigestCard({ digest }: { digest: Digest }) {
           {digest.content && (
             <div>
               <div className="text-xs text-muted-foreground mb-1">Content:</div>
-              {digest.digester === 'tagging' && parsedContent && Array.isArray(parsedContent) ? (
+              {digest.digester === 'url-crawl-content' && parsedContent ? (
+                <div className="space-y-2">
+                  {parsedContent.title && (
+                    <div>
+                      <span className="text-xs text-muted-foreground">Title: </span>
+                      <span className="font-medium">{parsedContent.title}</span>
+                    </div>
+                  )}
+                  {parsedContent.url && (
+                    <div>
+                      <span className="text-xs text-muted-foreground">URL: </span>
+                      <a href={parsedContent.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                        {parsedContent.url}
+                      </a>
+                    </div>
+                  )}
+                  {parsedContent.description && (
+                    <div>
+                      <span className="text-xs text-muted-foreground">Description: </span>
+                      <span className="text-xs">{parsedContent.description}</span>
+                    </div>
+                  )}
+                  {parsedContent.wordCount && (
+                    <div>
+                      <span className="text-xs text-muted-foreground">Word Count: </span>
+                      <span className="text-xs">{parsedContent.wordCount} ({parsedContent.readingTimeMinutes} min read)</span>
+                    </div>
+                  )}
+                  {parsedContent.markdown && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Markdown:</div>
+                      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                        {parsedContent.markdown.slice(0, 500)}...
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : digest.digester === 'summarize' && parsedContent?.summary ? (
+                <div className="p-2 bg-muted rounded text-sm whitespace-pre-wrap">
+                  {parsedContent.summary}
+                </div>
+              ) : digest.digester === 'tagging' && parsedContent?.tags && Array.isArray(parsedContent.tags) ? (
                 <div className="flex flex-wrap gap-1">
-                  {parsedContent.map((tag: string, idx: number) => (
+                  {parsedContent.tags.map((tag: string, idx: number) => (
                     <span
                       key={idx}
                       className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
@@ -118,6 +159,10 @@ function DigestCard({ digest }: { digest: Digest }) {
                       <code className="px-1 py-0.5 bg-muted rounded text-xs">{parsedContent.slug}</code>
                     </div>
                   )}
+                </div>
+              ) : parsedContent ? (
+                <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                  {JSON.stringify(parsedContent, null, 2)}
                 </div>
               ) : (
                 <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">

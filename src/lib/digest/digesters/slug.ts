@@ -46,16 +46,36 @@ export class SlugDigester implements Digester {
     const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
-    const sourceText =
-      summaryDigest?.content && summaryDigest.status === 'completed'
-        ? summaryDigest.content
-        : contentDigest?.content;
+    let sourceText: string | undefined;
+    let sourceType: string = 'url-crawl-content'; // Default value
+
+    // Try to get summary first
+    if (summaryDigest?.content && summaryDigest.status === 'completed') {
+      try {
+        const summaryData = JSON.parse(summaryDigest.content);
+        sourceText = summaryData.summary;
+        sourceType = 'summarize';
+      } catch {
+        // Fallback for old format
+        sourceText = summaryDigest.content;
+        sourceType = 'summarize';
+      }
+    } else if (contentDigest?.content) {
+      // Fallback to url-crawl-content
+      try {
+        const contentData = JSON.parse(contentDigest.content);
+        sourceText = contentData.markdown;
+        sourceType = 'url-crawl-content';
+      } catch {
+        // Fallback for old format
+        sourceText = contentDigest.content;
+        sourceType = 'url-crawl-content';
+      }
+    }
 
     if (!sourceText) {
       return null; // Should not happen if canDigest returned true
     }
-
-    const sourceType = summaryDigest?.content ? 'summarize' : 'url-crawl-content';
 
     log.info({ filePath, sourceType }, 'generating slug');
 

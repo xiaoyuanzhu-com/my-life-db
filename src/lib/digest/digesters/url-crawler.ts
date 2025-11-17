@@ -136,14 +136,28 @@ export class UrlCrawlerDigester implements Digester {
     const now = new Date().toISOString();
     const pathHash = hashPath(filePath);
 
-    // 1. url-crawl-content digest
+    // 1. url-crawl-content digest (JSON format with markdown + metadata)
     if (processed.markdown && processed.markdown.trim().length > 0) {
+      const contentData = {
+        markdown: processed.markdown,
+        url: crawlResult.url,
+        title: crawlResult.metadata?.title,
+        description: crawlResult.metadata?.description,
+        author: crawlResult.metadata?.author,
+        publishedDate: crawlResult.metadata?.publishedDate,
+        image: crawlResult.metadata?.image,
+        siteName: crawlResult.metadata?.siteName,
+        domain,
+        wordCount: processed.wordCount,
+        readingTimeMinutes: processed.readingTimeMinutes,
+      };
+
       digests.push({
         id: generateDigestId(filePath, 'url-crawl-content'),
         filePath,
         digester: 'url-crawl-content',
         status: 'completed',
-        content: processed.markdown,
+        content: JSON.stringify(contentData),
         sqlarName: null,
         error: null,
         createdAt: now,
@@ -152,26 +166,7 @@ export class UrlCrawlerDigester implements Digester {
       log.debug({ filePath }, 'created url-crawl-content digest');
     }
 
-    // 2. url-crawl-html digest (stored in SQLAR)
-    if (html && html.trim().length > 0) {
-      const sqlarName = `${pathHash}/url-crawl-html/content.html`;
-      await sqlarStore(db, sqlarName, html);
-
-      digests.push({
-        id: generateDigestId(filePath, 'url-crawl-html'),
-        filePath,
-        digester: 'url-crawl-html',
-        status: 'completed',
-        content: null,
-        sqlarName,
-        error: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-      log.debug({ filePath, sqlarName }, 'created url-crawl-html digest');
-    }
-
-    // 3. url-crawl-screenshot digest (stored in SQLAR)
+    // 2. url-crawl-screenshot digest (stored in SQLAR)
     const screenshot = crawlResult.screenshot;
     if (screenshot?.base64) {
       try {
@@ -199,33 +194,6 @@ export class UrlCrawlerDigester implements Digester {
         log.error({ error }, 'failed to process screenshot');
       }
     }
-
-    // 4. url-crawl-metadata digest
-    const urlMetadata = {
-      url: crawlResult.url,
-      title: crawlResult.metadata?.title,
-      description: crawlResult.metadata?.description,
-      author: crawlResult.metadata?.author,
-      publishedDate: crawlResult.metadata?.publishedDate,
-      image: crawlResult.metadata?.image,
-      siteName: crawlResult.metadata?.siteName,
-      domain,
-      wordCount: processed.wordCount,
-      readingTimeMinutes: processed.readingTimeMinutes,
-    };
-
-    digests.push({
-      id: generateDigestId(filePath, 'url-crawl-metadata'),
-      filePath,
-      digester: 'url-crawl-metadata',
-      status: 'completed',
-      content: JSON.stringify(urlMetadata),
-      sqlarName: null,
-      error: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    log.debug({ filePath }, 'created url-crawl-metadata digest');
 
     log.info({ filePath, digestCount: digests.length }, 'url crawl complete');
 

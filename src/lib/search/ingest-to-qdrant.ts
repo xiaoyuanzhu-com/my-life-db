@@ -103,7 +103,17 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   // 3. Index summary from digest
   const summaryDigest = digests.find(d => d.digester === 'summarize' && d.status === 'completed');
   if (summaryDigest?.content) {
-    const chunks = chunkText(summaryDigest.content, { targetTokens: 900, overlapPercent: 0.15 });
+    // Parse JSON to get summary text
+    let summaryText: string;
+    try {
+      const summaryData = JSON.parse(summaryDigest.content);
+      summaryText = summaryData.summary || summaryDigest.content; // Fallback for old format
+    } catch {
+      // Fallback for old format (plain text)
+      summaryText = summaryDigest.content;
+    }
+
+    const chunks = chunkText(summaryText, { targetTokens: 900, overlapPercent: 0.15 });
 
     for (const chunk of chunks) {
       const documentId = `${filePath}:summary:${chunk.chunkIndex}`;
@@ -139,7 +149,8 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
   if (tagsDigest?.content) {
     try {
-      const tags = JSON.parse(tagsDigest.content);
+      const tagsData = JSON.parse(tagsDigest.content);
+      const tags = tagsData.tags || tagsData; // Handle both {tags: [...]} and plain [...]
       const tagText = Array.isArray(tags) ? tags.join(', ') : String(tags);
 
       if (tagText.trim().length > 0) {
@@ -231,7 +242,14 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
   // 1. Check for URL content digest (url-crawl-content)
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
-    return contentDigest.content;
+    // Parse JSON to get markdown
+    try {
+      const contentData = JSON.parse(contentDigest.content);
+      return contentData.markdown || contentDigest.content; // Fallback for old format
+    } catch {
+      // Fallback for old format (plain markdown)
+      return contentDigest.content;
+    }
   }
 
   // 2. Try reading from filesystem (markdown or text files)

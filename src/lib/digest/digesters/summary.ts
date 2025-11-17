@@ -54,10 +54,20 @@ export class SummaryDigester implements Digester {
       return null; // Should not happen if canDigest returned true
     }
 
+    // Parse JSON content to get markdown
+    let markdown: string;
+    try {
+      const contentData = JSON.parse(contentDigest.content);
+      markdown = contentData.markdown;
+    } catch {
+      // Fallback for old format (plain markdown)
+      markdown = contentDigest.content;
+    }
+
     log.info({ filePath }, 'generating summary');
 
     // Generate summary (uses default settings from summarizeTextDigest)
-    const result = await summarizeTextDigest({ text: contentDigest.content });
+    const result = await summarizeTextDigest({ text: markdown });
 
     const now = new Date().toISOString();
 
@@ -67,7 +77,7 @@ export class SummaryDigester implements Digester {
         filePath,
         digester: 'summarize',
         status: 'completed',
-        content: result.summary,
+        content: JSON.stringify({ summary: result.summary }),
         sqlarName: null,
         error: null,
         createdAt: now,
