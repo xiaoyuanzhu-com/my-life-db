@@ -13,7 +13,7 @@ export function FileFooterBar({ filePath }: FileFooterBarProps) {
   }
 
   // Encode the file path for URL
-  const infoUrl = `/library/${filePath}`;
+  const infoUrl = `/file/${filePath}`;
 
   return (
     <div className="flex items-center h-6 px-2 bg-muted/30 border-t text-xs text-muted-foreground shrink-0">
