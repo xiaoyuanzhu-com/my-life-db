@@ -11,7 +11,7 @@ export function TaggingButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${itemId}/digest?step=tagging`, {
+      const res = await fetch(`/api/digest/inbox/${itemId}?step=tagging`, {
         method: 'POST',
       });
 

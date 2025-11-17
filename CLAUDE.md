@@ -106,7 +106,7 @@ MY_DATA_DIR/
 
 **Digest Workflow:**
 - Each file path can have multiple digest types (summary, tags, slug, screenshot, content-md)
-- Digests created on-demand via `/api/inbox/{id}/digest` endpoint
+- Digests created on-demand via `/api/digest/{...path}` endpoint (works for any file)
 - Status tracked in digest.status field: pending → enriching → enriched (or failed)
 - Digest IDs generated from file path hash + digest type for stability
 

@@ -11,7 +11,7 @@ export function SlugButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${itemId}/digest?step=slug`, {
+      const res = await fetch(`/api/digest/inbox/${itemId}?step=slug`, {
         method: 'POST',
       });
 

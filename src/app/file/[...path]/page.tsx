@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
 
 interface FileInfoData {
@@ -11,7 +10,8 @@ interface FileInfoData {
   digests: Digest[];
 }
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null) return 'N/A';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -170,9 +170,11 @@ export default function FileInfoPage() {
   const [fileInfo, setFileInfo] = useState<FileInfoData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDigesting, setIsDigesting] = useState(false);
+  const [digestMessage, setDigestMessage] = useState<string | null>(null);
 
   // Reconstruct file path from params
-  const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path;
+  const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path ?? '';
 
   useEffect(() => {
     if (!filePath) return;
@@ -204,6 +206,35 @@ export default function FileInfoPage() {
   const handleBack = () => {
     // Navigate back to library with the file open
     router.push(`/library?open=${encodeURIComponent(filePath)}`);
+  };
+
+  const handleDigest = async () => {
+    setIsDigesting(true);
+    setDigestMessage(null);
+
+    try {
+      const response = await fetch(`/api/digest/${filePath}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to trigger digest');
+      }
+
+      const data = await response.json();
+      setDigestMessage(data.message || 'Digest processing started');
+
+      // Reload file info after a short delay to show updated digests
+      setTimeout(() => {
+        loadFileInfo();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to trigger digest:', err);
+      setDigestMessage(err instanceof Error ? err.message : 'Failed to trigger digest');
+    } finally {
+      setIsDigesting(false);
+    }
   };
 
   if (isLoading) {
@@ -317,9 +348,25 @@ export default function FileInfoPage() {
 
         {/* Digests */}
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-            Digests ({digests.length})
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Digests ({digests.length})
+            </h2>
+            <div className="flex items-center gap-3">
+              {digestMessage && (
+                <span className="text-xs text-muted-foreground">{digestMessage}</span>
+              )}
+              <button
+                onClick={handleDigest}
+                disabled={isDigesting}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Trigger AI digest processing for this file"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {isDigesting ? 'Processing...' : 'Generate Digest'}
+              </button>
+            </div>
+          </div>
           {digests.length > 0 ? (
             <div className="space-y-3">
               {digests.map((digest) => (

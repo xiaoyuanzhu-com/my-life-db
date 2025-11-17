@@ -182,7 +182,7 @@ export function DigestCoordinator({
   const fetchStatus = useCallback(async () => {
     const currentId = itemIdRef.current;
     log('fetchStatus start', { itemId: currentId });
-    const res = await fetch(`/api/inbox/${currentId}/digest/status`, { cache: 'no-store' });
+    const res = await fetch(`/api/digest/inbox/${currentId}`, { cache: 'no-store' });
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
       throw new Error((fallback as { error?: string }).error || res.statusText);
@@ -300,7 +300,7 @@ export function DigestCoordinator({
     });
     log('handleDigestClick triggered');
     try {
-      const res = await fetch(`/api/inbox/${itemIdRef.current}/digest`, { method: 'POST' });
+      const res = await fetch(`/api/digest/inbox/${itemIdRef.current}`, { method: 'POST' });
       if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error((body as { error?: string }).error || res.statusText);

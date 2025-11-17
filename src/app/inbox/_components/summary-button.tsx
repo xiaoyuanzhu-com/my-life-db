@@ -11,7 +11,7 @@ export function SummaryButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/inbox/${itemId}/digest?step=summary`, {
+      const res = await fetch(`/api/digest/inbox/${itemId}?step=summary`, {
         method: 'POST',
       });
 
