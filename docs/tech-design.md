@@ -1,29 +1,26 @@
 # Technical Design Document: MyLifeDB
 
-**Version:** 3.0
-**Last Updated:** 2025-11-17
-**Status:** File-centric local-first implementation
-**Owner:** Engineering Team
-
----
-
 ## Table of Contents
 
-1. [Design Principles](#1-design-principles)
-2. [System Architecture](#2-system-architecture)
-3. [Technology Stack](#3-technology-stack)
-4. [Data Models](#4-data-models)
-5. [API Specifications](#5-api-specifications)
-6. [Design Decisions](#6-design-decisions)
-7. [Feature Designs](#7-feature-designs)
-    - [Inbox](#71-inbox)
-    - [Library](#72-library)
-    - [Digesters](#73-digesters)
-    - [Search](#74-search)
-    - [File System Scan](#75-file-system-scan)
-    - [Task Queue](#76-task-queue)
-    - [Misc](#77-misc)
-8. [UI Overview](#8-ui-overview)
+- [Technical Design Document: MyLifeDB](#technical-design-document-mylifedb)
+  - [Table of Contents](#table-of-contents)
+  - [1. Design Principles](#1-design-principles)
+  - [2. System Architecture](#2-system-architecture)
+    - [2.1 Layered Flow](#21-layered-flow)
+    - [2.2 Module Responsibilities](#22-module-responsibilities)
+  - [3. Technology Stack](#3-technology-stack)
+  - [4. Data Models](#4-data-models)
+  - [5. API Specifications](#5-api-specifications)
+  - [6. Design Decisions](#6-design-decisions)
+  - [7. Feature Designs](#7-feature-designs)
+    - [7.1 Inbox](#71-inbox)
+    - [7.2 Library](#72-library)
+    - [7.3 Digesters](#73-digesters)
+    - [7.4 Search](#74-search)
+    - [7.5 File System Scan](#75-file-system-scan)
+    - [7.6 Task Queue](#76-task-queue)
+    - [7.7 Misc](#77-misc)
+  - [8. UI Overview](#8-ui-overview)
 
 ---
 
