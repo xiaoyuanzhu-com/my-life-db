@@ -79,6 +79,12 @@ export function upsertMeiliDocument(doc: {
   const existing = getMeiliDocumentByFilePath(doc.filePath);
 
   if (existing) {
+    // Check if content actually changed
+    if (existing.contentHash === doc.contentHash) {
+      log.debug({ documentId: existing.documentId, filePath: doc.filePath }, 'content unchanged, skipping update');
+      return existing;
+    }
+
     // Update existing document
     db.prepare(
       `UPDATE meili_documents SET

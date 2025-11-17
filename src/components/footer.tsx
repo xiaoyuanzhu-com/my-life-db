@@ -7,10 +7,10 @@ import { Settings } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 
 export function Footer() {
-  const pathname = usePathname();
+  const currentPath = usePathname();
 
   // Only show footer on homepage
-  if (pathname !== '/') {
+  if (currentPath !== '/') {
     return null;
   }
 
@@ -56,9 +56,7 @@ export function Footer() {
 
           <Link
             href="/settings"
-            className={`flex items-center hover:text-foreground transition-colors ${
-              pathname === '/settings' ? 'text-foreground' : ''
-            }`}
+            className="flex items-center hover:text-foreground transition-colors"
             title="Settings"
           >
             <Settings className="h-3.5 w-3.5" />

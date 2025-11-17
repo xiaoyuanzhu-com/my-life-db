@@ -8,6 +8,8 @@ import { UrlCrawlerDigester } from './digesters/url-crawler';
 import { SummaryDigester } from './digesters/summary';
 import { TaggingDigester } from './digesters/tagging';
 import { SlugDigester } from './digesters/slug';
+import { MeiliSearchDigester } from './digesters/search-meili';
+import { QdrantSearchDigester } from './digesters/search-qdrant';
 import { syncNewDigestTypes } from './sync';
 import { digestFileHandler, digestBatchHandler } from './task-handler';
 import { getDatabase } from '@/lib/db/connection';
@@ -50,6 +52,14 @@ export function initializeDigesters(): void {
   // 4. SlugDigester (prefers summary, falls back to content-md)
   //    Produces: slug
   globalDigesterRegistry.register(new SlugDigester());
+
+  // 5. MeiliSearchDigester (depends on content-md, uses summary + tags if available)
+  //    Produces: search-meili
+  globalDigesterRegistry.register(new MeiliSearchDigester());
+
+  // 6. QdrantSearchDigester (depends on content-md, uses summary + tags if available)
+  //    Produces: search-qdrant
+  globalDigesterRegistry.register(new QdrantSearchDigester());
 
   log.info({ count: globalDigesterRegistry.count() }, 'digesters registered');
 

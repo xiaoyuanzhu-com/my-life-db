@@ -1,0 +1,143 @@
+/**
+ * Meilisearch Indexing Digester
+ * Indexes file content for keyword search
+ */
+
+import type { Digester } from '../types';
+import type { Digest, FileRecordRow } from '@/types';
+import type BetterSqlite3 from 'better-sqlite3';
+import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
+import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
+import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
+import { generateDigestId } from '@/lib/db/digests';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'MeiliSearchDigester' });
+
+/**
+ * Meilisearch Indexing Digester
+ * Indexes content for full-text keyword search
+ * Produces: search-meili
+ */
+export class MeiliSearchDigester implements Digester {
+  readonly id = 'search-meili';
+  readonly name = 'Meilisearch Indexer';
+  readonly produces = ['search-meili'];
+  readonly requires = ['content-md']; // Needs content to index
+
+  async canDigest(
+    filePath: string,
+    _file: FileRecordRow,
+    existingDigests: Digest[],
+    _db: BetterSqlite3.Database
+  ): Promise<boolean> {
+    // Check if content-md digest exists and is enriched
+    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+
+    if (!contentDigest || contentDigest.status !== 'enriched') {
+      return false; // No content to index yet
+    }
+
+    // Check if we need to re-index (dependencies changed)
+    const existingSearch = existingDigests.find((d) => d.digestType === 'search-meili');
+
+    if (!existingSearch) {
+      return true; // Never indexed
+    }
+
+    if (existingSearch.status === 'failed') {
+      return true; // Retry failed indexing
+    }
+
+    // Check if dependencies were updated after we last indexed
+    const summaryDigest = existingDigests.find((d) => d.digestType === 'summary');
+    const tagsDigest = existingDigests.find((d) => d.digestType === 'tags');
+
+    // Re-index if content changed
+    if (contentDigest.updatedAt > existingSearch.updatedAt) {
+      log.info({ filePath }, 'content-md updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if summary changed (and exists)
+    if (summaryDigest && summaryDigest.status === 'enriched' && summaryDigest.updatedAt > existingSearch.updatedAt) {
+      log.info({ filePath }, 'summary updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if tags changed (and exists)
+    if (tagsDigest && tagsDigest.status === 'enriched' && tagsDigest.updatedAt > existingSearch.updatedAt) {
+      log.info({ filePath }, 'tags updated, re-indexing');
+      return true;
+    }
+
+    return false; // Already indexed and up to date
+  }
+
+  async digest(
+    filePath: string,
+    _file: FileRecordRow,
+    _existingDigests: Digest[],
+    _db: BetterSqlite3.Database
+  ): Promise<Digest[] | null> {
+    log.info({ filePath }, 'indexing for meilisearch');
+
+    try {
+      // Ingest to meili_documents table (creates/updates cache)
+      const result = await ingestToMeilisearch(filePath);
+
+      if (!result.hasContent) {
+        log.warn({ filePath }, 'no content to index');
+        return null; // Skip this file
+      }
+
+      // Get document ID
+      const documentId = getMeiliDocumentIdForFile(filePath);
+
+      // Enqueue background task to push to Meilisearch
+      const taskId = enqueueMeiliIndex([documentId]);
+
+      if (!taskId) {
+        throw new Error('Failed to enqueue Meilisearch indexing task');
+      }
+
+      // Wait for indexing to complete (check meili_documents status)
+      // Note: We return immediately here (fire-and-forget)
+      // The meili_documents table tracks actual sync status
+      const now = new Date().toISOString();
+
+      // Store metadata about indexing
+      const metadata = {
+        documentId,
+        taskId,
+        hasContent: result.hasContent,
+        hasSummary: result.hasSummary,
+        hasTags: result.hasTags,
+        enqueuedAt: now,
+      };
+
+      log.info(
+        { filePath, ...metadata },
+        'meilisearch indexing enqueued'
+      );
+
+      return [
+        {
+          id: generateDigestId(filePath, 'search-meili'),
+          filePath,
+          digestType: 'search-meili',
+          status: 'enriched',
+          content: JSON.stringify(metadata),
+          sqlarName: null,
+          error: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error({ filePath, error: errorMsg }, 'meilisearch indexing failed');
+      throw error; // Let coordinator handle error
+    }
+  }
+}
