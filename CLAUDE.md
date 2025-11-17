@@ -151,6 +151,37 @@ MY_DATA_DIR/
 - Uses flat config format (eslint.config.mjs)
 - Ignores: `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`
 
+## Naming Conventions
+
+| Category | Convention | Examples |
+|----------|-----------|----------|
+| **Files** | `kebab-case.ts/tsx` | `file-card.tsx`, `url-crawler.ts`, `layout.tsx` |
+| **Types/Interfaces** | `PascalCase` | `FileRecord`, `Digest`, `MessageType` |
+| **Functions/Variables** | `camelCase` | `getFileByPath()`, `filePath`, `itemId` |
+| **Constants** | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
+| **DB columns** | `snake_case` | `file_path`, `created_at` |
+
+### Type System Organization
+
+**Directory Structure:**
+```
+src/types/
+├── models/                     # Core database models
+│   ├── enums/                 # kebab-case.ts files
+│   │   ├── message-type.ts
+│   │   ├── enrichment-status.ts
+│   │   └── digest-type.ts
+│   ├── database/              # kebab-case.ts files
+│   │   ├── file-record.ts     # Contains: FileRecordRow, FileRecord, rowToFileRecord
+│   │   ├── digest.ts
+│   │   └── task.ts
+│   └── index.ts               # Aggregates exports
+├── models.ts                   # Re-exports from models/
+├── file-card.ts                # UI-specific types
+├── digest-workflow.ts          # Workflow types
+└── index.ts                    # Main entry point
+```
+
 ## Development Server
 
 **IMPORTANT:** Do NOT run `npm run dev` in the terminal. The user already has a development server running. Assume the server is always running at http://localhost:3000.
