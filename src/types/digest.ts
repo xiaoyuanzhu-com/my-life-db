@@ -6,7 +6,7 @@
  * field, binary content in SQLAR archive.
  */
 
-import type { EnrichmentStatus } from '../enums/enrichment-status';
+import type { EnrichmentStatus } from './enrichment-status';
 
 /**
  * Digest record row (snake_case - matches SQLite schema exactly)

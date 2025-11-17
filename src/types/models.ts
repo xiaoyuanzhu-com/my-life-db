@@ -10,32 +10,32 @@
  */
 
 // Enums
-export type { MessageType } from './models/enums/message-type';
-export type { EnrichmentStatus } from './models/enums/enrichment-status';
-export type { DigestType } from './models/enums/digest-type';
-export type { TaskStatus } from './models/enums/task-status';
-export type { FileType } from './models/enums/file-type';
+export type { MessageType } from './message-type';
+export type { EnrichmentStatus } from './enrichment-status';
+export type { DigestType } from './digest-type';
+export type { TaskStatus } from './task-status';
+export type { FileType } from './file-type';
 
 // Database Models - Files
-export type { FileRecord, FileRecordRow } from './models/database/file-record';
-export { rowToFileRecord } from './models/database/file-record';
+export type { FileRecord, FileRecordRow } from './file-record';
+export { rowToFileRecord } from './file-record';
 
 // Database Models - Digests
-export type { Digest, DigestRecordRow } from './models/database/digest';
-export { rowToDigest } from './models/database/digest';
+export type { Digest, DigestRecordRow } from './digest';
+export { rowToDigest } from './digest';
 
 // Database Models - Tasks
-export type { Task, TaskRecordRow } from './models/database/task';
-export { rowToTask } from './models/database/task';
+export type { Task, TaskRecordRow } from './task';
+export { rowToTask } from './task';
 
 // Database Models - Settings
-export type { Setting, SettingRecordRow } from './models/database/setting';
-export { rowToSetting } from './models/database/setting';
+export type { Setting, SettingRecordRow } from './setting';
+export { rowToSetting } from './setting';
 
 // Database Models - Meilisearch Documents
-export type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from './models/database/meili-document';
-export { rowToMeiliDocument } from './models/database/meili-document';
+export type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from './meili-document';
+export { rowToMeiliDocument } from './meili-document';
 
 // Database Models - Qdrant Documents
-export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from './models/database/qdrant-document';
-export { rowToQdrantDocument } from './models/database/qdrant-document';
+export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from './qdrant-document';
+export { rowToQdrantDocument } from './qdrant-document';
