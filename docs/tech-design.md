@@ -467,8 +467,8 @@ CREATE TABLE digests (
   digest_type TEXT NOT NULL,              -- 'summary'|'tags'|'slug'|'content-md'|'screenshot'
 
   -- Status tracking
-  -- Lifecycle: pending → enriching → enriched/failed
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed')),
+  -- Lifecycle: pending → enriching → enriched/failed/skipped
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'enriching', 'enriched', 'failed', 'skipped')),
 
   -- Text digests (stored directly)
   content TEXT,                           -- Summary text, tags JSON, slug JSON
@@ -1843,6 +1843,422 @@ interface MeiliDocument {
 - `entryId` + `sourcePath` are sufficient to jump back to the inbox/library row and on-disk file.
 - `checksum` tracks both text and metadata; when it changes we can diff and reindex without relying on Meilisearch state.
 - Text chunks cap at ~1,200 tokens with 200-token overlap to balance ranking quality and index size.
+
+### 5.10 Digest Registry Architecture
+
+**Design Decision: Extensible Digester Registry with Sequential Execution**
+
+The digest system uses a registry pattern where multiple digesters process files sequentially. Each digester is self-contained, stateless, and determines its own applicability via a `canDigest()` method.
+
+**Core Concepts:**
+
+1. **Digester Interface**: Standard contract for all digest generators
+2. **Global Registry**: Ordered collection of registered digesters
+3. **DigestCoordinator**: Orchestrates execution through all digesters
+4. **Lazy Insert**: Digest records created on first run, not pre-inserted
+5. **Self-Filtering**: Each digester decides if it applies to a file
+
+**Digester Interface:**
+
+```typescript
+export interface Digester {
+  readonly id: string;              // Unique identifier (e.g., 'url-crawl', 'summarize')
+  readonly name: string;            // Human-readable name
+  readonly produces: string[];      // Digest types this digester creates
+  readonly requires?: string[];     // Optional digest types needed as input
+
+  // Returns true if this digester can process the file
+  canDigest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<boolean>;
+
+  // Process file and return digest outputs (or null if skipped)
+  digest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<Digest[] | null>;
+}
+```
+
+**Registry Pattern:**
+
+```typescript
+// Global singleton registry
+export class DigesterRegistry {
+  private digesters: Digester[] = [];
+
+  register(digester: Digester): void {
+    this.digesters.push(digester);
+  }
+
+  getAll(): Digester[] {
+    return [...this.digesters];
+  }
+
+  getAllDigestTypes(): string[] {
+    return this.digesters.flatMap(d => d.produces);
+  }
+}
+
+export const globalDigesterRegistry = new DigesterRegistry();
+```
+
+**Initialization (src/lib/digest/initialization.ts):**
+
+```typescript
+export function initializeDigesters(): void {
+  // Register digesters in dependency order
+  // Order matters! Digesters execute in registration order.
+
+  // 1. UrlCrawlerDigester (no dependencies)
+  //    Produces: content-md, content-html, screenshot, url-metadata
+  globalDigesterRegistry.register(new UrlCrawlerDigester());
+
+  // 2. SummaryDigester (depends on content-md)
+  //    Produces: summary
+  globalDigesterRegistry.register(new SummaryDigester());
+
+  // 3. TaggingDigester (depends on content-md)
+  //    Produces: tags
+  globalDigesterRegistry.register(new TaggingDigester());
+
+  // 4. SlugDigester (prefers summary, falls back to content-md)
+  //    Produces: slug
+  globalDigesterRegistry.register(new SlugDigester());
+
+  // Sync digest records for files processed before new digesters added
+  syncNewDigestTypes(getDatabase());
+}
+```
+
+**DigestCoordinator (src/lib/digest/coordinator.ts):**
+
+The coordinator orchestrates execution through all registered digesters:
+
+```typescript
+export class DigestCoordinator {
+  async processFile(filePath: string): Promise<void> {
+    // 1. Load file metadata
+    const file = getFileByPath(filePath);
+    if (!file) {
+      log.error({ filePath }, 'file not found');
+      return;
+    }
+
+    // 2. Load existing digests
+    const existingDigests = listDigestsForFile(filePath);
+
+    // 3. Get all digesters in registration order
+    const digesters = this.registry.getAll();
+
+    // 4. Process each digester sequentially
+    for (const digester of digesters) {
+      for (const digestType of digester.produces) {
+        // Skip if already enriched
+        const existing = existingDigests.find(d => d.digestType === digestType);
+        if (existing?.status === 'enriched') {
+          continue;
+        }
+
+        // Check if digester can process this file
+        const canProcess = await digester.canDigest(filePath, file, existingDigests, this.db);
+
+        if (!canProcess) {
+          // Mark as skipped (not applicable to this file)
+          await this.upsertDigest(filePath, digestType, { status: 'skipped' });
+          continue;
+        }
+
+        // Mark as enriching
+        await this.upsertDigest(filePath, digestType, { status: 'enriching' });
+
+        try {
+          // Execute digester
+          const outputs = await digester.digest(filePath, file, existingDigests, this.db);
+
+          if (!outputs || outputs.length === 0) {
+            await this.upsertDigest(filePath, digestType, { status: 'skipped' });
+            continue;
+          }
+
+          // Save outputs immediately (partial progress preserved)
+          for (const output of outputs) {
+            await this.saveDigestOutput(filePath, output);
+          }
+        } catch (error) {
+          // Mark as failed, continue to next digester
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          await this.upsertDigest(filePath, digestType, {
+            status: 'failed',
+            error: errorMessage
+          });
+        }
+      }
+    }
+  }
+}
+```
+
+**Status Lifecycle:**
+
+```
+pending → enriching → enriched/failed/skipped
+   ↓           ↓              ↓
+Lazy       Digester       Digester
+insert     starts         completes
+```
+
+**Status Meanings:**
+
+- **pending**: Digest record exists but not yet attempted
+- **enriching**: Digester currently processing
+- **enriched**: Successfully completed with content
+- **failed**: Error during processing (stored in `error` field)
+- **skipped**: Digester not applicable to this file (e.g., URL crawler skipped non-URL files)
+
+**Lazy Insert Approach:**
+
+Digest records are NOT pre-inserted for all files. Instead:
+
+1. **First run**: When a file is first processed, digesters create digest records as needed
+2. **Sync function**: When new digesters are added, `syncNewDigestTypes()` creates pending records for existing files
+3. **File selection**: `findFilesNeedingDigestion()` finds files with missing, pending, or failed digests
+
+```typescript
+export function syncNewDigestTypes(db: BetterSqlite3.Database): void {
+  const allDigestTypes = globalDigesterRegistry.getAllDigestTypes();
+
+  // Find files with existing digests
+  const filesWithDigests = db.prepare(`
+    SELECT DISTINCT file_path FROM digests
+  `).all() as { file_path: string }[];
+
+  // For each file, check for missing digest types
+  for (const { file_path } of filesWithDigests) {
+    const existingTypes = db.prepare(`
+      SELECT digest_type FROM digests WHERE file_path = ?
+    `).all(file_path) as { digest_type: string }[];
+
+    const existingSet = new Set(existingTypes.map(t => t.digest_type));
+
+    // Create pending records for new digest types
+    for (const digestType of allDigestTypes) {
+      if (!existingSet.has(digestType)) {
+        createDigest({
+          id: generateDigestId(file_path, digestType),
+          filePath: file_path,
+          digestType,
+          status: 'pending',
+          content: null,
+          sqlarName: null,
+          error: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+  }
+}
+```
+
+**File Selection Logic:**
+
+```typescript
+export function findFilesNeedingDigestion(
+  db: BetterSqlite3.Database,
+  limit: number = 100
+): string[] {
+  // Find files where ANY digest is missing, pending, or failed
+  // Skips files with all digests enriched or skipped
+  const result = db.prepare(`
+    SELECT DISTINCT file_path
+    FROM digests
+    WHERE status IN ('pending', 'failed')
+    ORDER BY updated_at ASC
+    LIMIT ?
+  `).all(limit) as { file_path: string }[];
+
+  return result.map(row => row.file_path);
+}
+```
+
+**Task Queue Integration:**
+
+The digest system integrates with the task queue for background processing:
+
+```typescript
+// Process single file
+export const digestFileHandler = defineTaskHandler<DigestFilePayload>({
+  type: 'digest_file',
+  module: 'digest/task-handler',
+  handler: async (payload) => {
+    const coordinator = new DigestCoordinator(db);
+    await coordinator.processFile(payload.filePath);
+  },
+});
+
+// Process batch of files
+export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
+  type: 'digest_batch',
+  module: 'digest/task-handler',
+  handler: async (payload) => {
+    const filesToProcess = findFilesNeedingDigestion(db, payload.limit ?? 50);
+    const coordinator = new DigestCoordinator(db);
+
+    for (const filePath of filesToProcess) {
+      await coordinator.processFile(filePath);
+    }
+  },
+});
+```
+
+**Example Digester: URL Crawler**
+
+```typescript
+export class UrlCrawlerDigester implements Digester {
+  readonly id = 'url-crawl';
+  readonly name = 'URL Crawler';
+  readonly produces = ['content-md', 'content-html', 'screenshot', 'url-metadata'];
+
+  async canDigest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<boolean> {
+    // Only process text files containing URLs
+    if (!file.mime_type?.startsWith('text/')) {
+      return false;
+    }
+
+    const fullPath = path.join(getDataRoot(), filePath);
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const url = content.trim();
+
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  async digest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<Digest[] | null> {
+    const fullPath = path.join(getDataRoot(), filePath);
+    const url = (await fs.readFile(fullPath, 'utf-8')).trim();
+
+    // Call existing crawl logic
+    const result = await crawlUrlDigest({ url });
+
+    // Map to Digest objects
+    const now = new Date().toISOString();
+    const digests: Digest[] = [];
+
+    if (result.markdown) {
+      digests.push({
+        id: generateDigestId(filePath, 'content-md'),
+        filePath,
+        digestType: 'content-md',
+        status: 'enriched',
+        content: result.markdown,
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // ... create digests for screenshot, metadata, etc.
+
+    return digests;
+  }
+}
+```
+
+**Example Digester: Summary Generator**
+
+```typescript
+export class SummaryDigester implements Digester {
+  readonly id = 'summarize';
+  readonly name = 'Summarizer';
+  readonly produces = ['summary'];
+  readonly requires = ['content-md'];
+
+  async canDigest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<boolean> {
+    // Requires content-md digest to exist and be enriched
+    const contentDigest = existingDigests.find(d => d.digestType === 'content-md');
+
+    if (!contentDigest || contentDigest.status !== 'enriched') {
+      return false;
+    }
+
+    // Only summarize substantial content
+    const content = contentDigest.content;
+    return !!content && content.length >= 100;
+  }
+
+  async digest(
+    filePath: string,
+    file: FileRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<Digest[] | null> {
+    const contentDigest = existingDigests.find(d => d.digestType === 'content-md');
+    if (!contentDigest?.content) {
+      return null;
+    }
+
+    const result = await summarizeTextDigest({ text: contentDigest.content });
+
+    const now = new Date().toISOString();
+    return [{
+      id: generateDigestId(filePath, 'summary'),
+      filePath,
+      digestType: 'summary',
+      status: 'enriched',
+      content: result.summary,
+      sqlarName: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+    }];
+  }
+}
+```
+
+**Benefits:**
+
+1. ✅ **Extensibility**: Add new digesters by registering them (no coordinator changes)
+2. ✅ **Self-contained**: Each digester is stateless and independent
+3. ✅ **Dependency management**: Sequential execution respects digest dependencies
+4. ✅ **Partial progress**: Each digest saves immediately (fault tolerant)
+5. ✅ **Clear status**: 5 states track full lifecycle including "not applicable"
+6. ✅ **Simple sync**: New digesters automatically process existing files
+7. ✅ **Task integration**: Background processing via task queue handlers
+
+**Key Files:**
+
+- [src/lib/digest/types.ts](../src/lib/digest/types.ts) - Core Digester interface
+- [src/lib/digest/registry.ts](../src/lib/digest/registry.ts) - DigesterRegistry class
+- [src/lib/digest/coordinator.ts](../src/lib/digest/coordinator.ts) - DigestCoordinator orchestration
+- [src/lib/digest/initialization.ts](../src/lib/digest/initialization.ts) - Register all digesters
+- [src/lib/digest/sync.ts](../src/lib/digest/sync.ts) - Sync new digest types
+- [src/lib/digest/file-selection.ts](../src/lib/digest/file-selection.ts) - Find files needing digests
+- [src/lib/digest/task-handler.ts](../src/lib/digest/task-handler.ts) - Task queue integration
+- [src/lib/digest/digesters/url-crawler.ts](../src/lib/digest/digesters/url-crawler.ts) - URL crawl digester
+- [src/lib/digest/digesters/summary.ts](../src/lib/digest/digesters/summary.ts) - Summary digester
+- [src/lib/digest/digesters/tagging.ts](../src/lib/digest/digesters/tagging.ts) - Tagging digester
+- [src/lib/digest/digesters/slug.ts](../src/lib/digest/digesters/slug.ts) - Slug digester
 
 ---
 
