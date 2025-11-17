@@ -5,9 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import type { DigestStatusView } from '@/lib/inbox/statusView';
+import type { DigestStatusView } from '@/lib/inbox/status-view';
 import { cn } from '@/lib/utils';
-import { DigestProgress } from './DigestProgress';
+import { DigestProgress } from './digest-progress';
 
 const STAGES = [
   { key: 'crawl', label: 'Crawl', taskType: 'digest_url_crawl' },

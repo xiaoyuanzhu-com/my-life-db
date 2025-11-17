@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { getDigestStatusView } from '@/lib/inbox/statusView';
+import { getDigestStatusView } from '@/lib/inbox/status-view';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiInboxStatus' });

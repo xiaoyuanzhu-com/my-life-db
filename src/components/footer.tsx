@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { siGithub, siDiscord } from 'simple-icons';
 import { Settings } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
+import { ThemeToggle } from './theme-toggle';
 
 export function Footer() {
   const pathname = usePathname();

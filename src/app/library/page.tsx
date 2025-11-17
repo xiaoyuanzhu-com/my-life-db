@@ -2,9 +2,9 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FileTree } from '@/components/library/FileTree';
-import { FileViewer } from '@/components/library/FileViewer';
-import { FileTabs } from '@/components/library/FileTabs';
+import { FileTree } from '@/components/library/file-tree';
+import { FileViewer } from '@/components/library/file-viewer';
+import { FileTabs } from '@/components/library/file-tabs';
 
 export interface OpenedFile {
   path: string;

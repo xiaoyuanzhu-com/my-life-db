@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 import { getFileByPath } from '@/lib/db/files';
-import { enqueueUrlEnrichment } from '@/lib/inbox/enrichUrlInboxItem';
-import { enqueueUrlSummary } from '@/lib/inbox/summarizeUrlInboxItem';
-import { enqueueUrlTagging } from '@/lib/inbox/tagUrlInboxItem';
-import { enqueueUrlSlug } from '@/lib/inbox/slugUrlInboxItem';
+import { enqueueUrlEnrichment } from '@/lib/inbox/enrich-url-inbox-item';
+import { enqueueUrlSummary } from '@/lib/inbox/summarize-url-inbox-item';
+import { enqueueUrlTagging } from '@/lib/inbox/tag-url-inbox-item';
+import { enqueueUrlSlug } from '@/lib/inbox/slug-url-inbox-item';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { promises as fs } from 'fs';

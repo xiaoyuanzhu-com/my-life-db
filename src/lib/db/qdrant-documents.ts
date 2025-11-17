@@ -8,82 +8,13 @@
 
 import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
+import type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from '@/types/models';
+import { rowToQdrantDocument } from '@/types/models';
 
 const log = getLogger({ module: 'DBQdrantDocuments' });
 
-export type EmbeddingStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 'deleted' | 'error';
-export type SourceType = 'content' | 'summary' | 'tags';
-
-export interface QdrantDocument {
-  documentId: string;        // e.g., 'inbox/article.md:content:0'
-  filePath: string;          // e.g., 'inbox/article.md'
-  sourceType: SourceType;    // 'content' | 'summary' | 'tags'
-  chunkIndex: number;        // 0-based chunk index
-  chunkCount: number;        // Total chunks for this file+source
-  chunkText: string;         // 800-1000 tokens of text
-  spanStart: number;         // Character position start in original
-  spanEnd: number;           // Character position end in original
-  overlapTokens: number;     // Number of overlapping tokens from previous chunk
-  wordCount: number;         // Word count for stats
-  tokenCount: number;        // Token count for stats
-  contentHash: string;       // SHA256 for change detection
-  metadataJson: string | null; // Additional context
-  embeddingStatus: EmbeddingStatus; // Sync status
-  embeddingVersion: number;  // Embedding model version
-  qdrantPointId: string | null; // UUID in Qdrant collection
-  qdrantIndexedAt: string | null; // ISO timestamp
-  qdrantError: string | null; // Error message if failed
-  createdAt: string;         // ISO timestamp
-  updatedAt: string;         // ISO timestamp
-}
-
-interface QdrantDocumentRow {
-  document_id: string;
-  file_path: string;
-  source_type: SourceType;
-  chunk_index: number;
-  chunk_count: number;
-  chunk_text: string;
-  span_start: number;
-  span_end: number;
-  overlap_tokens: number;
-  word_count: number;
-  token_count: number;
-  content_hash: string;
-  metadata_json: string | null;
-  embedding_status: EmbeddingStatus;
-  embedding_version: number;
-  qdrant_point_id: string | null;
-  qdrant_indexed_at: string | null;
-  qdrant_error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function rowToQdrantDocument(row: QdrantDocumentRow): QdrantDocument {
-  return {
-    documentId: row.document_id,
-    filePath: row.file_path,
-    sourceType: row.source_type,
-    chunkIndex: row.chunk_index,
-    chunkCount: row.chunk_count,
-    chunkText: row.chunk_text,
-    spanStart: row.span_start,
-    spanEnd: row.span_end,
-    overlapTokens: row.overlap_tokens,
-    wordCount: row.word_count,
-    tokenCount: row.token_count,
-    contentHash: row.content_hash,
-    metadataJson: row.metadata_json,
-    embeddingStatus: row.embedding_status,
-    embeddingVersion: row.embedding_version,
-    qdrantPointId: row.qdrant_point_id,
-    qdrantIndexedAt: row.qdrant_indexed_at,
-    qdrantError: row.qdrant_error,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
+// Re-export types for convenience
+export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType };
 
 /**
  * Get document by ID

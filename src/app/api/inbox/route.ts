@@ -1,8 +1,8 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
-import { saveToInbox } from '@/lib/inbox/saveToInbox';
+import { saveToInbox } from '@/lib/inbox/save-to-inbox';
 import { listFilesWithDigests, countFilesWithDigests } from '@/lib/db/files-with-digests';
-import { readPrimaryText } from '@/lib/inbox/digestArtifacts';
+import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
 import { getLogger } from '@/lib/log/logger';
 import type { FileWithDigests } from '@/types/file-card';
 

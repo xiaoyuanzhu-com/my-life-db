@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Header } from "@/components/Header";
-import { BottomNav } from "@/components/BottomNav";
-import { Footer } from "@/components/Footer";
+import { Header } from "@/components/header";
+import { BottomNav } from "@/components/bottom-nav";
+import { Footer } from "@/components/footer";
 import "./globals.css";
 
 // Temporarily using system fonts due to build environment network restrictions

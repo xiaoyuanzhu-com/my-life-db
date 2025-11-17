@@ -1,4 +1,4 @@
-import { SettingsProvider } from './_context/SettingsContext';
+import { SettingsProvider } from './_context/settings-context';
 import { ReactNode } from 'react';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {

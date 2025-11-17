@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
 import { INBOX_DIR, generateId } from '@/lib/fs/storage';
-import { getUniqueFilenames } from '@/lib/fs/fileDeduplication';
+import { getUniqueFilenames } from '@/lib/fs/file-deduplication';
 import { upsertFileRecord } from '@/lib/db/files';
 import { getLogger } from '@/lib/log/logger';
 

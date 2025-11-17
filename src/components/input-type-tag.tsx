@@ -1,4 +1,4 @@
-import { InputType } from '@/lib/utils/inputTypeDetector';
+import { InputType } from '@/lib/utils/input-type-detector';
 import { Loader2, FileText, Link, Image, Music, Video, FileIcon, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

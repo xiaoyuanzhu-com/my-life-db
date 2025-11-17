@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { FileTree } from '@/components/library/FileTree';
-import { FileViewer } from '@/components/library/FileViewer';
-import { FileTabs } from '@/components/library/FileTabs';
+import { FileTree } from '@/components/library/file-tree';
+import { FileViewer } from '@/components/library/file-viewer';
+import { FileTabs } from '@/components/library/file-tabs';
 import { Button } from '@/components/ui/button';
 
 export interface OpenedFile {

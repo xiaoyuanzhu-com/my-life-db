@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Sparkles, Save, Check, Loader2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSettingsContext } from '../_context/SettingsContext';
-import { SettingsHeader } from '../_components/SettingsHeader';
-import { TasksTab } from '../_components/TasksTab';
+import { useSettingsContext } from '../_context/settings-context';
+import { SettingsHeader } from '../_components/settings-header';
+import { TasksTab } from '../_components/tasks-tab';
 import type { UserSettings } from '@/lib/config/settings';
 
 interface ModelOption {

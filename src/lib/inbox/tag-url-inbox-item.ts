@@ -6,7 +6,7 @@ import { getFileByPath } from '@/lib/db/files';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
-import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { enqueueUrlSlug } from './slug-url-inbox-item';
 import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });

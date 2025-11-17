@@ -1,6 +1,6 @@
 'use client';
 
-import { OmniInput } from '@/components/OmniInput';
+import { OmniInput } from '@/components/omni-input';
 
 export default function HomePage() {
   return (

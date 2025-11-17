@@ -9,66 +9,13 @@
 import { randomUUID } from 'crypto';
 import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
+import type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from '@/types/models';
+import { rowToMeiliDocument } from '@/types/models';
 
 const log = getLogger({ module: 'DBMeiliDocuments' });
 
-export type MeiliStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 'deleted' | 'error';
-
-export interface MeiliDocument {
-  documentId: string;        // UUID (simple, unique identifier for Meilisearch)
-  filePath: string;          // File path (e.g., 'inbox/article.md')
-  content: string;           // Main file content
-  summary: string | null;    // AI-generated summary (from digest)
-  tags: string | null;       // Comma-separated tags (from digest)
-  contentHash: string;       // SHA256 for change detection
-  wordCount: number;         // Word count for stats
-  mimeType: string | null;   // MIME type from filesystem
-  metadataJson: string | null; // Additional context
-  meiliStatus: MeiliStatus;  // Sync status
-  meiliTaskId: string | null; // Meilisearch task ID
-  meiliIndexedAt: string | null; // ISO timestamp
-  meiliError: string | null; // Error message if failed
-  createdAt: string;         // ISO timestamp
-  updatedAt: string;         // ISO timestamp
-}
-
-interface MeiliDocumentRow {
-  document_id: string;
-  file_path: string;
-  content: string;
-  summary: string | null;
-  tags: string | null;
-  content_hash: string;
-  word_count: number;
-  mime_type: string | null;
-  metadata_json: string | null;
-  meili_status: MeiliStatus;
-  meili_task_id: string | null;
-  meili_indexed_at: string | null;
-  meili_error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function rowToMeiliDocument(row: MeiliDocumentRow): MeiliDocument {
-  return {
-    documentId: row.document_id,
-    filePath: row.file_path,
-    content: row.content,
-    summary: row.summary,
-    tags: row.tags,
-    contentHash: row.content_hash,
-    wordCount: row.word_count,
-    mimeType: row.mime_type,
-    metadataJson: row.metadata_json,
-    meiliStatus: row.meili_status,
-    meiliTaskId: row.meili_task_id,
-    meiliIndexedAt: row.meili_indexed_at,
-    meiliError: row.meili_error,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
+// Re-export types for convenience
+export type { MeiliDocument, MeiliDocumentRow, MeiliStatus };
 
 /**
  * Get document by ID

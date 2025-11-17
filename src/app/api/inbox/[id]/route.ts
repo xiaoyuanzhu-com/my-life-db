@@ -4,13 +4,13 @@ export const runtime = 'nodejs';
 import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from '@/lib/db/files';
 import { deleteDigestsForPath, deleteDigestsByPrefix, listDigestsForPath } from '@/lib/db/digests';
 import { getStorageConfig } from '@/lib/config/storage';
-import { getUniqueFilename } from '@/lib/fs/fileDeduplication';
+import { getUniqueFilename } from '@/lib/fs/file-deduplication';
 import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import { getDigestStatusView } from '@/lib/inbox/statusView';
+import { getDigestStatusView } from '@/lib/inbox/status-view';
 import { getLogger } from '@/lib/log/logger';
-import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digestArtifacts';
+import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digest-artifacts';
 
 const log = getLogger({ module: 'ApiInboxById' });
 

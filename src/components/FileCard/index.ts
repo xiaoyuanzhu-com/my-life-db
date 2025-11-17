@@ -1,2 +1,2 @@
-export { FileCard } from './FileCard';
-export type { FileCardProps } from './FileCard';
+export { FileCard } from './file-card';
+export type { FileCardProps } from './file-card';

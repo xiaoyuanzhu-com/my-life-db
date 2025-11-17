@@ -4,7 +4,7 @@
  */
 
 import { initializeTaskQueue } from './task-queue/startup';
-import { startPeriodicScanner } from './scanner/libraryScanner';
+import { startPeriodicScanner } from './scanner/library-scanner';
 import { initializeDigesters } from './digest/initialization';
 import { getLogger } from '@/lib/log/logger';
 

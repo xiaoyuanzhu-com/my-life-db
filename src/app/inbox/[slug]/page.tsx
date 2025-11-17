@@ -1,14 +1,14 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getFileByPath } from '@/lib/db/files';
-import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digestArtifacts';
-import { getDigestStatusView } from '@/lib/inbox/statusView';
-import { CrawlButton } from '../_components/CrawlButton';
-import { SummaryButton } from '../_components/SummaryButton';
-import { TaggingButton } from '../_components/TaggingButton';
-import { SlugButton } from '../_components/SlugButton';
-import { DigestCoordinator } from './_components/DigestCoordinator';
-import { IndexButton } from '../_components/IndexButton';
+import { readPrimaryText, readDigestSummary, readDigestTags, readDigestScreenshot, readDigestSlug } from '@/lib/inbox/digest-artifacts';
+import { getDigestStatusView } from '@/lib/inbox/status-view';
+import { CrawlButton } from '../_components/crawl-button';
+import { SummaryButton } from '../_components/summary-button';
+import { TaggingButton } from '../_components/tagging-button';
+import { SlugButton } from '../_components/slug-button';
+import { DigestCoordinator } from './_components/digest-coordinator';
+import { IndexButton } from '../_components/index-button';
 
 export const runtime = 'nodejs';
 

@@ -73,7 +73,7 @@ export function getDigestById(id: string): Digest | null {
 
   if (!row) return null;
 
-  return recordToDigest(row);
+  return rowToDigest(row);
 }
 
 /**
@@ -88,7 +88,7 @@ export function getDigestByPathAndType(filePath: string, digestType: string): Di
 
   if (!row) return null;
 
-  return recordToDigest(row);
+  return rowToDigest(row);
 }
 
 /**
@@ -124,7 +124,7 @@ export function listDigestsForPath(
     .prepare(sql)
     .all(...params) as DigestRecordRow[];
 
-  return rows.map(recordToDigest);
+  return rows.map(rowToDigest);
 }
 
 /**
@@ -143,7 +143,7 @@ export function listDigestsByType(digestType: string, limit?: number): Digest[] 
 
   const rows = db.prepare(sql).all(...params) as DigestRecordRow[];
 
-  return rows.map(recordToDigest);
+  return rows.map(rowToDigest);
 }
 
 /**
@@ -285,7 +285,7 @@ export function generateDigestId(filePath: string, digestType: string): string {
 /**
  * Convert database record to Digest
  */
-function recordToDigest(record: DigestRecordRow): Digest {
+function rowToDigest(record: DigestRecordRow): Digest {
   return {
     id: record.id,
     filePath: record.file_path,

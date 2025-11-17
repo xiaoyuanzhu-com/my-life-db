@@ -6,8 +6,8 @@ import { getFileByPath } from '@/lib/db/files';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
-import { enqueueUrlTagging } from './tagUrlInboxItem';
-import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { enqueueUrlTagging } from './tag-url-inbox-item';
+import { enqueueUrlSlug } from './slug-url-inbox-item';
 import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });

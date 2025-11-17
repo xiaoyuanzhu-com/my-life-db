@@ -4,7 +4,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 
 import { DATA_ROOT } from '@/lib/fs/storage';
-import { enqueueUrlEnrichment } from './enrichUrlInboxItem';
+import { enqueueUrlEnrichment } from './enrich-url-inbox-item';
 import type { UrlDigestPipelineStage } from '@/types/digest-workflow';
 import type { MessageType } from '@/types';
 import { getLogger } from '@/lib/log/logger';
@@ -12,7 +12,7 @@ import { deleteDigestsForPath } from '@/lib/db/digests';
 import { sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getDatabase } from '@/lib/db/connection';
 import { getFileByPath } from '@/lib/db/files';
-import { readPrimaryText } from './digestArtifacts';
+import { readPrimaryText } from './digest-artifacts';
 import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
 import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
 import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';

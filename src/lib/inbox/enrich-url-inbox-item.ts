@@ -4,14 +4,14 @@ import 'server-only';
  */
 
 import { crawlUrlDigest, type UrlCrawlOutput } from '@/lib/digest/url-crawl';
-import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/contentEnricher';
+import { processHtmlContent as enrichHtmlContent, extractMainContent, sanitizeContent } from '../crawl/content-enricher';
 import { tq } from '../task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
-import { enqueueUrlSummary } from './summarizeUrlInboxItem';
-import { enqueueUrlTagging } from './tagUrlInboxItem';
-import { enqueueUrlSlug } from './slugUrlInboxItem';
+import { enqueueUrlSummary } from './summarize-url-inbox-item';
+import { enqueueUrlTagging } from './tag-url-inbox-item';
+import { enqueueUrlSlug } from './slug-url-inbox-item';
 import { createDigest, deleteDigestsForPath, generateDigestId } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';

@@ -5,7 +5,7 @@
  * Workers poll this table and execute jobs based on type.
  */
 
-import type { TaskStatus } from '../enums/TaskStatus';
+import type { TaskStatus } from '../enums/task-status';
 
 /**
  * Task record row (snake_case - matches SQLite schema exactly)

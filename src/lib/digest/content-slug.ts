@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { generateSlug } from '@/lib/utils/slug';
-import { extractKeywordsForSlug } from '@/lib/crawl/urlSlugGenerator';
+import { extractKeywordsForSlug } from '@/lib/crawl/url-slug-generator';
 
 export type ContentSlugSource = 'heading' | 'line' | 'keywords';
 
