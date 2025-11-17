@@ -3,8 +3,8 @@
  * Generates AI summaries of content
  */
 
-import type { Digester, FileRow } from '../types';
-import type { Digest } from '@/types';
+import type { Digester } from '../types';
+import type { Digest, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { generateDigestId } from '@/lib/db/digests';
@@ -25,7 +25,7 @@ export class SummaryDigester implements Digester {
 
   async canDigest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean> {
@@ -47,7 +47,7 @@ export class SummaryDigester implements Digester {
 
   async digest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {

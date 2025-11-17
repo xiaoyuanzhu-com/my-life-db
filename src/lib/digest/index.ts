@@ -11,7 +11,7 @@ export { findFilesNeedingDigestion } from './file-selection';
 export { syncNewDigestTypes } from './sync';
 
 // Types
-export type { Digester, FileRow } from './types';
+export type { Digester } from './types';
 
 // Task handlers (for integration)
 export { digestFileHandler, digestBatchHandler } from './task-handler';

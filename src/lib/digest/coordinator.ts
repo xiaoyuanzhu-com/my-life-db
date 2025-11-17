@@ -4,8 +4,7 @@
  */
 
 import type BetterSqlite3 from 'better-sqlite3';
-import type { Digest } from '@/types';
-import type { FileRow } from './types';
+import type { Digest, FileRecordRow } from '@/types';
 import { globalDigesterRegistry } from './registry';
 import { getFileByPath } from '@/lib/db/files';
 import {
@@ -50,8 +49,8 @@ export class DigestCoordinator {
       return;
     }
 
-    // Convert to FileRow (DB format)
-    const file: FileRow = {
+    // Convert to FileRecordRow (DB format)
+    const file: FileRecordRow = {
       path: fileRecord.path,
       name: fileRecord.name,
       is_folder: fileRecord.isFolder ? 1 : 0,

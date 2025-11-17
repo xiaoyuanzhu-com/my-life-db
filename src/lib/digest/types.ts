@@ -6,12 +6,6 @@ import type { Digest, FileRecordRow } from '@/types/models';
 import type BetterSqlite3 from 'better-sqlite3';
 
 /**
- * File metadata from files table
- * @deprecated Use FileRecordRow from @/types/models instead
- */
-export type FileRow = FileRecordRow;
-
-/**
  * Digester interface - processes files and produces digest outputs
  */
 export interface Digester {

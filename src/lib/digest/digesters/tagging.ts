@@ -3,8 +3,8 @@
  * Generates AI tags for content
  */
 
-import type { Digester, FileRow } from '../types';
-import type { Digest } from '@/types';
+import type { Digester } from '../types';
+import type { Digest, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { generateTagsDigest } from '@/lib/digest/tagging';
 import { generateDigestId } from '@/lib/db/digests';
@@ -25,7 +25,7 @@ export class TaggingDigester implements Digester {
 
   async canDigest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean> {
@@ -47,7 +47,7 @@ export class TaggingDigester implements Digester {
 
   async digest(
     filePath: string,
-    file: FileRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {

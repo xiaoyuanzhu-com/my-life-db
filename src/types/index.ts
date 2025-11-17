@@ -4,13 +4,10 @@
 // Core Data Models - Re-exported from central models file
 // ============================================================================
 
-// Import for use within this file
+// Import for use within this file (for types defined in this file)
 import type {
   MessageType as MessageTypeModel,
-  EnrichmentStatus as EnrichmentStatusModel,
-  FileType as FileTypeModel,
-  Digest as DigestModel,
-  DigestRecordRow as DigestRecordRowModel,
+  EnrichmentStatus,
 } from './models';
 
 // Re-export for external consumers
@@ -215,79 +212,8 @@ export interface ExtractionOptions {
 }
 
 // ============================================================================
-// New Inbox Database Types (file-based approach)
+// Inbox enrichment status (for API responses)
 // ============================================================================
-
-// Note: FileType and EnrichmentStatus are now imported from models.ts above
-
-/**
- * Individual file in an inbox item
- * Includes both user uploads and generated files (e.g., content.html for URLs)
- * @deprecated Legacy type - use FileRecord from models.ts instead
- */
-export interface InboxFile {
-  filename: string;
-  size: number; // bytes
-  mimeType: string;
-  type: FileTypeModel;
-  hash?: string; // Content hash for deduplication
-  enrichment?: {
-    // Image enrichment
-    caption?: string;
-    ocr?: string;
-    faces?: Array<{
-      name?: string;
-      confidence: number;
-      boundingBox?: { x: number; y: number; width: number; height: number };
-    }>;
-
-    // Audio/Video enrichment
-    transcription?: string;
-    duration?: number; // seconds
-
-    // Document enrichment
-    extractedText?: string;
-    pageCount?: number;
-
-    // URL enrichment (for content.html files)
-    url?: string;
-    title?: string;
-    author?: string;
-    publishedDate?: string;
-  };
-}
-
-/**
- * Inbox item - temporary staging before moving to library
- * Stored in database (no metadata.json file)
- * @deprecated Legacy type - use FileRecord from models.ts instead
- */
-export interface InboxItem {
-  // Core identity
-  id: string; // UUID (permanent)
-  folderName: string; // Current folder name (uuid initially, then slug)
-
-  // Content type
-  type: MessageTypeModel;
-
-  // Files (text.md is just another file in this array)
-  files: InboxFile[];
-
-  // Enrichment state
-  status: EnrichmentStatusModel;
-  enrichedAt: string | null; // ISO date string
-  error: string | null;
-
-  // Generated slug (extracted from slug digest for quick access)
-  slug?: string | null;
-
-  // Schema version (for evolution tracking)
-  schemaVersion: number;
-
-  // Timestamps
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
-}
 
 // Enrichment summary included in API responses for inbox items
 export interface InboxStageStatusSummary {
@@ -300,7 +226,7 @@ export interface InboxStageStatusSummary {
 
 export interface InboxEnrichmentSummary {
   itemId: string;
-  overall: EnrichmentStatusModel;
+  overall: EnrichmentStatus;
   stages: InboxStageStatusSummary[];
   hasFailures: boolean;
   completedCount: number;
@@ -326,84 +252,3 @@ export interface InboxDigestSlug {
   generatedAt?: string;
 }
 
-/**
- * Library file - permanent indexed file
- * @deprecated Legacy type - use FileRecord from models.ts instead
- */
-export interface LibraryFile {
-  // Core identity
-  id: string; // UUID (permanent)
-  path: string; // Relative from MY_DATA_DIR
-
-  // File attributes
-  fileName: string;
-  isFolder: boolean;
-  fileSize: number | null; // NULL for folders
-  modifiedAt: string; // ISO date string
-  contentHash: string | null; // Only for text files
-
-  // Content classification
-  searchableText: string | null; // Extracted content for search
-
-  // Enrichment (JSON, extensible)
-  enrichment: {
-    caption?: string;
-    ocr?: string;
-    summary?: string;
-    tags?: string[];
-    faces?: Array<{
-      name?: string;
-      confidence: number;
-    }>;
-    entities?: {
-      people?: string[];
-      places?: string[];
-      organizations?: string[];
-      concepts?: string[];
-    };
-    [key: string]: unknown; // Allow future enrichment fields
-  } | null;
-
-  // Schema version
-  schemaVersion: number;
-
-  // Timestamps
-  indexedAt: string; // ISO date string
-  enrichedAt: string | null; // ISO date string
-}
-
-// ============================================================================
-// New Unified Items Architecture (v2)
-// ============================================================================
-
-/**
- * File metadata within an item
- * @deprecated Legacy type - use FileRecord from models.ts instead
- */
-export interface ItemFile {
-  name: string; // Filename
-  size: number; // bytes
-  type: string; // MIME type
-  hash?: string; // SHA256 hash for small files
-  modifiedAt?: string; // ISO date string
-}
-
-/**
- * Item - unified model for inbox and library content
- * @deprecated Legacy type - use FileRecord from models.ts instead
- */
-export interface Item {
-  id: string; // UUID
-  name: string; // Original filename or slug
-  rawType: MessageTypeModel; // What user submitted
-  detectedType: string | null; // What AI detected (url, note, todo, etc.)
-  isFolder: boolean; // true = folder with multiple files, false = single file
-  path: string; // Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'notes/meeting.md')
-  files: ItemFile[] | null; // File list (JSON)
-  status: EnrichmentStatusModel; // Enrichment status
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
-  schemaVersion: number;
-}
-
-// Note: Digest and DigestRecord are now imported from models.ts at the top of this file
