@@ -3,7 +3,6 @@ import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import {
   getMeiliDocumentById,
-  updateMeiliStatus,
   batchUpdateMeiliStatus,
   type MeiliDocument,
 } from '@/lib/db/meili-documents';

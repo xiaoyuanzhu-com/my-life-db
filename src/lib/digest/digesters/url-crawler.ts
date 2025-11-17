@@ -54,8 +54,8 @@ export class UrlCrawlerDigester implements Digester {
   async canDigest(
     filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _existingDigests: Digest[],
+    _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Only process text files
     if (file.mime_type && !file.mime_type.startsWith('text/')) {
@@ -77,8 +77,8 @@ export class UrlCrawlerDigester implements Digester {
 
   async digest(
     filePath: string,
-    file: FileRecordRow,
-    existingDigests: Digest[],
+    _file: FileRecordRow,
+    _existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
     // Read URL from file

@@ -6,7 +6,6 @@ import {
   upsertQdrantDocument,
   deleteQdrantDocumentsByFile,
   getQdrantDocumentIdsByFile,
-  type SourceType,
 } from '@/lib/db/qdrant-documents';
 import { getFileByPath } from '@/lib/db/files';
 import { listDigestsForPath, getDigestByPathAndDigester } from '@/lib/db/digests';

@@ -24,7 +24,7 @@ export class SlugDigester implements Digester {
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Need either summarize or url-crawl-content
     const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
@@ -40,7 +40,7 @@ export class SlugDigester implements Digester {
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
     // Prefer summary, fallback to url-crawl-content
     const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');

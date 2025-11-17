@@ -2,10 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from '@/lib/db/files';
-import { deleteDigestsForPath, deleteDigestsByPrefix, listDigestsForPath } from '@/lib/db/digests';
+import { deleteDigestsForPath, deleteDigestsByPrefix } from '@/lib/db/digests';
 import { getStorageConfig } from '@/lib/config/storage';
 import { getUniqueFilename } from '@/lib/fs/file-deduplication';
-import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { getDigestStatusView } from '@/lib/inbox/status-view';

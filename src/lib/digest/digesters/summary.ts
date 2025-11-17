@@ -24,7 +24,7 @@ export class SummaryDigester implements Digester {
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if url-crawl-content digest exists and is completed
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
@@ -46,7 +46,7 @@ export class SummaryDigester implements Digester {
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
     // Get url-crawl-content digest
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode } from 'lucide-react';
 
 interface FileNode {
@@ -50,14 +50,7 @@ function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder, se
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = node.type === 'file' && node.path === selectedFilePath;
 
-  useEffect(() => {
-    // Load children when folder is expanded
-    if (node.type === 'folder' && isExpanded && children.length === 0) {
-      loadChildren();
-    }
-  }, [isExpanded, node.path]);
-
-  const loadChildren = async () => {
+  const loadChildren = useCallback(async () => {
     if (isLoading) return;
 
     setIsLoading(true);
@@ -70,7 +63,14 @@ function TreeNode({ node, level, onFileOpen, expandedFolders, onToggleFolder, se
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading, node.path]);
+
+  useEffect(() => {
+    // Load children when folder is expanded
+    if (node.type === 'folder' && isExpanded && children.length === 0) {
+      loadChildren();
+    }
+  }, [isExpanded, node.type, children.length, loadChildren]);
 
   const handleToggle = () => {
     if (node.type === 'folder') {

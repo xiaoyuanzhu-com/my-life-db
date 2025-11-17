@@ -19,6 +19,8 @@ const log = getLogger({ module: 'MeiliSearchDigester' });
  * Indexes content for full-text keyword search
  */
 export class MeiliSearchDigester implements Digester {
+  readonly name = 'search-meili';
+
   async canDigest(
     filePath: string,
     _file: FileRecordRow,

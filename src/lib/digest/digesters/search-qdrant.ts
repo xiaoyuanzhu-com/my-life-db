@@ -19,6 +19,8 @@ const log = getLogger({ module: 'QdrantSearchDigester' });
  * Indexes content for semantic vector search
  */
 export class QdrantSearchDigester implements Digester {
+  readonly name = 'search-qdrant';
+
   async canDigest(
     filePath: string,
     _file: FileRecordRow,

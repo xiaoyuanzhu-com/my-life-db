@@ -91,8 +91,8 @@ defineTaskHandler({
       createDigest({
         id: generateDigestId(filePath, 'tags'),
         filePath,
-        digestType: 'tags',
-        status: 'enriched',
+        digester: 'tags',
+        status: 'completed',
         content: JSON.stringify(tagsPayload),
         sqlarName: null,
         error: null,
@@ -119,7 +119,7 @@ defineTaskHandler({
       createDigest({
         id: generateDigestId(filePath, 'tags'),
         filePath,
-        digestType: 'tags',
+        digester: 'tags',
         status: 'failed',
         content: null,
         sqlarName: null,

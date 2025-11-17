@@ -5,7 +5,7 @@ const migration = {
   version: 23,
   description: 'Add skipped status to digests table',
 
-  async up(db: BetterSqlite3.Database) {
+  async up(_db: BetterSqlite3.Database) {
     // Note: SQLite doesn't support ALTER TYPE for enums
     // Status is stored as TEXT, so 'skipped' can be used immediately
     // No schema changes needed - just update type definitions

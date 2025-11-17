@@ -6,7 +6,6 @@ import path from 'path';
 import { DATA_ROOT } from '@/lib/fs/storage';
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
 import { getDigestByPathAndDigester } from '@/lib/db/digests';
-import { getFileByPath } from '@/lib/db/files';
 
 /**
  * Read primary text for a file

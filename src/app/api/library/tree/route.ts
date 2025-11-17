@@ -26,21 +26,6 @@ function shouldExclude(name: string): boolean {
   return false;
 }
 
-// Helper to get file type from extension
-function getFileType(filename: string): string {
-  const ext = path.extname(filename).toLowerCase();
-  const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
-  const videoExts = ['.mp4', '.webm', '.mov', '.avi'];
-  const audioExts = ['.mp3', '.wav', '.ogg', '.m4a'];
-
-  if (ext === '.pdf') return 'pdf';
-  if (imageExts.includes(ext)) return 'image';
-  if (videoExts.includes(ext)) return 'video';
-  if (audioExts.includes(ext)) return 'audio';
-  if (ext === '.md') return 'markdown';
-  return 'text';
-}
-
 // Recursively read directory structure
 async function readDirectoryTree(dirPath: string, relativePath: string = '', maxDepth: number = 5, currentDepth: number = 0): Promise<FileNode[]> {
   if (currentDepth >= maxDepth) {

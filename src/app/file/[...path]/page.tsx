@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
@@ -64,7 +64,7 @@ function DigestCard({ digest }: { digest: Digest }) {
   if (digest.content && (digest.digester === 'tagging' || digest.digester === 'slug')) {
     try {
       parsedContent = JSON.parse(digest.content);
-    } catch (e) {
+    } catch {
       // Invalid JSON, show raw content
     }
   }
@@ -180,13 +180,7 @@ export default function FileInfoPage() {
   // Reconstruct file path from params
   const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path ?? '';
 
-  useEffect(() => {
-    if (!filePath) return;
-
-    loadFileInfo();
-  }, [filePath]);
-
-  const loadFileInfo = async () => {
+  const loadFileInfo = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -205,7 +199,12 @@ export default function FileInfoPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filePath]);
+
+  useEffect(() => {
+    if (!filePath) return;
+    loadFileInfo();
+  }, [filePath, loadFileInfo]);
 
   const handleBack = () => {
     // Navigate back to library with the file open

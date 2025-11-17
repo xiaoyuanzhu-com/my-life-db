@@ -91,8 +91,8 @@ defineTaskHandler({
       createDigest({
         id: generateDigestId(filePath, 'summary'),
         filePath,
-        digestType: 'summary',
-        status: 'enriched',
+        digester: 'summary',
+        status: 'completed',
         content: summary,
         sqlarName: null,
         error: null,
@@ -118,7 +118,7 @@ defineTaskHandler({
       createDigest({
         id: generateDigestId(filePath, 'summary'),
         filePath,
-        digestType: 'summary',
+        digester: 'summary',
         status: 'failed',
         content: null,
         sqlarName: null,

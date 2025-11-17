@@ -141,7 +141,7 @@ async function getFileContent(filePath: string): Promise<string | null> {
       const textMdPath = path.join(dataDir, filePath, 'text.md');
       const content = await fs.readFile(textMdPath, 'utf-8');
       return content;
-    } catch (error) {
+    } catch {
       // text.md doesn't exist, that's ok
       return null;
     }

@@ -118,8 +118,8 @@ export async function enrichUrlFile(
       createDigest({
         id: generateDigestId(filePath, 'content-md'),
         filePath,
-        digestType: 'content-md',
-        status: 'enriched',
+        digester: 'content-md',
+        status: 'completed',
         content: processed.markdown,
         sqlarName: null,
         error: null,
@@ -137,8 +137,8 @@ export async function enrichUrlFile(
       createDigest({
         id: generateDigestId(filePath, 'content-html'),
         filePath,
-        digestType: 'content-html',
-        status: 'enriched',
+        digester: 'content-html',
+        status: 'completed',
         content: null,
         sqlarName,
         error: null,
@@ -162,8 +162,8 @@ export async function enrichUrlFile(
           createDigest({
             id: generateDigestId(filePath, 'screenshot'),
             filePath,
-            digestType: 'screenshot',
-            status: 'enriched',
+            digester: 'screenshot',
+            status: 'completed',
             content: null,
             sqlarName,
             error: null,
@@ -205,8 +205,8 @@ export async function enrichUrlFile(
     createDigest({
       id: generateDigestId(filePath, 'url-metadata'),
       filePath,
-      digestType: 'url-metadata',
-      status: 'enriched',
+      digester: 'url-metadata',
+      status: 'completed',
       content: JSON.stringify(urlMetadata),
       sqlarName: null,
       error: null,
@@ -232,7 +232,7 @@ export async function enrichUrlFile(
     createDigest({
       id: generateDigestId(filePath, 'content-md'),
       filePath,
-      digestType: 'content-md',
+      digester: 'content-md',
       status: 'failed',
       content: null,
       sqlarName: null,

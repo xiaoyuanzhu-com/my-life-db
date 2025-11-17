@@ -20,20 +20,15 @@ export class DigesterRegistry {
    * Order matters! Digesters execute in registration order.
    */
   register(digester: Digester): void {
-    // Check for duplicate IDs
-    const existing = this.digesters.find((d) => d.id === digester.id);
+    // Check for duplicate names
+    const existing = this.digesters.find((d) => d.name === digester.name);
     if (existing) {
-      throw new Error(`Digester with id '${digester.id}' already registered`);
-    }
-
-    // Validate produces array
-    if (!digester.produces || digester.produces.length === 0) {
-      throw new Error(`Digester '${digester.id}' must produce at least one digest type`);
+      throw new Error(`Digester with name '${digester.name}' already registered`);
     }
 
     this.digesters.push(digester);
     log.info(
-      { id: digester.id, name: digester.name, produces: digester.produces },
+      { name: digester.name },
       'digester registered'
     );
   }
@@ -46,23 +41,17 @@ export class DigesterRegistry {
   }
 
   /**
-   * Get digester by ID
+   * Get digester by name
    */
-  getById(id: string): Digester | undefined {
-    return this.digesters.find((d) => d.id === id);
+  getByName(name: string): Digester | undefined {
+    return this.digesters.find((d) => d.name === name);
   }
 
   /**
    * Get all digest types that could be produced by all digesters
    */
   getAllDigestTypes(): string[] {
-    const types = new Set<string>();
-    for (const digester of this.digesters) {
-      for (const type of digester.produces) {
-        types.add(type);
-      }
-    }
-    return Array.from(types);
+    return this.digesters.map((d) => d.name);
   }
 
   /**

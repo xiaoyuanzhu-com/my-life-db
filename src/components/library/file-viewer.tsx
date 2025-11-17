@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -17,13 +17,6 @@ interface FileData {
   modifiedAt: string;
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
 function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' | 'pdf' | 'unknown' {
   if (contentType.startsWith('text/') || contentType === 'application/json') return 'text';
   if (contentType.startsWith('image/')) return 'image';
@@ -38,11 +31,7 @@ export function FileViewer({ filePath }: FileViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadFile();
-  }, [filePath]);
-
-  const loadFile = async () => {
+  const loadFile = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -80,7 +69,11 @@ export function FileViewer({ filePath }: FileViewerProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filePath]);
+
+  useEffect(() => {
+    loadFile();
+  }, [loadFile]);
 
   const handleDownload = () => {
     window.open(`/api/library/file?path=${encodeURIComponent(filePath)}&download=true`, '_blank');

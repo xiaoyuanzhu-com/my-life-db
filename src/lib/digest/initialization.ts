@@ -11,7 +11,6 @@ import { SlugDigester } from './digesters/slug';
 import { MeiliSearchDigester } from './digesters/search-meili';
 import { QdrantSearchDigester } from './digesters/search-qdrant';
 import { syncNewDigestTypes } from './sync';
-import { digestFileHandler, digestBatchHandler } from './task-handler';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
