@@ -9,6 +9,11 @@ import { ThemeToggle } from './theme-toggle';
 export function Footer() {
   const pathname = usePathname();
 
+  // Only show footer on homepage
+  if (pathname !== '/') {
+    return null;
+  }
+
   return (
     <footer className="bg-card mt-auto">
       <div className="max-w-7xl mx-auto px-4 py-2">

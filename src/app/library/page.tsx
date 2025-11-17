@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FileTree } from '@/components/library/file-tree';
 import { FileViewer } from '@/components/library/file-viewer';
 import { FileTabs } from '@/components/library/file-tabs';
+import { FileFooterBar } from '@/components/library/file-footer-bar';
 
 export interface OpenedFile {
   path: string;
@@ -202,7 +203,7 @@ function LibraryContent() {
             <div className="flex-1 flex flex-col overflow-hidden">
               {openedFiles.length > 0 ? (
                 <>
-                  {/* Tabs */}
+                  {/* Tabs - fixed at top */}
                   <FileTabs
                     files={openedFiles}
                     activeFile={activeFilePath}
@@ -210,12 +211,15 @@ function LibraryContent() {
                     onTabClose={handleFileClose}
                   />
 
-                  {/* Content viewer */}
+                  {/* Content viewer - flexible middle with scroll */}
                   <div className="flex-1 overflow-hidden">
                     {activeFilePath && (
                       <FileViewer filePath={activeFilePath} />
                     )}
                   </div>
+
+                  {/* File-specific footer bar - fixed at bottom */}
+                  <FileFooterBar filePath={activeFilePath} />
                 </>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
