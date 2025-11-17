@@ -32,16 +32,16 @@ export function listFilesWithDigests(
     ascending?: boolean;
     limit?: number;
     offset?: number;
-    digestTypes?: string[];  // Only include these digesters
-    excludeDigestTypes?: string[];  // Exclude these digesters
+    digesters?: string[];  // Only include these digesters
+    excludeDigesters?: string[];  // Exclude these digesters
   }
 ): FileWithDigests[] {
   const files = listFiles(pathPrefix, options);
 
   return files.map((file) => {
     const digests = listDigestsForPath(file.path, {
-      digesters: options?.digestTypes,
-      excludeDigesters: options?.excludeDigestTypes,
+      digesters: options?.digesters,
+      excludeDigesters: options?.excludeDigesters,
     });
     return enrichFileWithDigests(file, digests);
   });

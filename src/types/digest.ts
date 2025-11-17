@@ -11,10 +11,10 @@ import type { DigestStatus } from './digest-status';
 /**
  * Digest record row (snake_case - matches SQLite schema exactly)
  *
- * Primary key: id (hash of file_path + digest_type)
+ * Primary key: id (hash of file_path + digester)
  */
 export interface DigestRecordRow {
-  /** Digest ID (hash-based from file_path + digest_type) */
+  /** Digest ID (hash-based from file_path + digester) */
   id: string;
 
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
@@ -49,7 +49,7 @@ export interface DigestRecordRow {
  * of different types (summary, tags, slug, screenshot, etc.).
  */
 export interface Digest {
-  /** Digest ID (hash-based from filePath + digestType) */
+  /** Digest ID (hash-based from filePath + digester) */
   id: string;
 
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */

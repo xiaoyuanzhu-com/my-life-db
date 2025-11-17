@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const allFiles = listFilesWithDigests('inbox/', {
       orderBy: 'created_at',
       ascending: false,
-      digestTypes: ['screenshot'],  // Only include screenshot for image preview
+      digesters: ['screenshot'],  // Only include screenshot for image preview
     });
 
     // Filter to only top-level entries (inbox/foo.jpg or inbox/folder, NOT inbox/folder/file.jpg)

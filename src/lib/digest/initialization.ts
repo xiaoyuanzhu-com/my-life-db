@@ -10,7 +10,7 @@ import { TaggingDigester } from './digesters/tagging';
 import { SlugDigester } from './digesters/slug';
 import { MeiliSearchDigester } from './digesters/search-meili';
 import { QdrantSearchDigester } from './digesters/search-qdrant';
-import { syncNewDigestTypes } from './sync';
+import { syncNewDigesters } from './sync';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
@@ -69,7 +69,7 @@ export function initializeDigesters(): void {
   // Sync digest records for files that were processed before new digesters were added
   try {
     const db = getDatabase();
-    syncNewDigestTypes(db);
+    syncNewDigesters(db);
   } catch (error) {
     log.error({ error }, 'failed to sync digest records');
     // Don't throw - allow initialization to continue

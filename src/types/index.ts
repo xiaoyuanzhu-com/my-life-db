@@ -15,7 +15,6 @@ export type {
   // Enums & Constants
   MessageType,
   DigestStatus,
-  DigestType,
   TaskStatus,
   FileType,
   // Files Table

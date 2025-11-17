@@ -1,6 +1,6 @@
 /**
  * Sync function for digest records
- * Creates digest records for new digest types when digesters are added
+ * Creates digest records for new digesters when they are added
  */
 
 import type BetterSqlite3 from 'better-sqlite3';
@@ -12,15 +12,15 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'DigestSync' });
 
 /**
- * Sync new digest types for files that have been processed before.
+ * Sync new digesters for files that have been processed before.
  * Call this when new digesters are registered to ensure existing files
- * get digest records for the new types.
+ * get digest records for the new digesters.
  *
  * This function is idempotent - safe to run multiple times.
  *
  * @param db Database instance
  */
-export function syncNewDigestTypes(db: BetterSqlite3.Database): void {
+export function syncNewDigesters(db: BetterSqlite3.Database): void {
   const allDigestTypes = globalDigesterRegistry.getAllDigestTypes();
 
   if (allDigestTypes.length === 0) {
@@ -44,7 +44,7 @@ export function syncNewDigestTypes(db: BetterSqlite3.Database): void {
   }
 
   log.info(
-    { count: processedFiles.length, digestTypes: allDigestTypes },
+    { count: processedFiles.length, digesters: allDigestTypes },
     'syncing digest records for processed files'
   );
 

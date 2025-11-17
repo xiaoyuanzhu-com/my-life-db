@@ -8,7 +8,7 @@ export { DigestCoordinator } from './coordinator';
 export { globalDigesterRegistry, DigesterRegistry } from './registry';
 export { initializeDigesters } from './initialization';
 export { findFilesNeedingDigestion } from './file-selection';
-export { syncNewDigestTypes } from './sync';
+export { syncNewDigesters } from './sync';
 
 // Types
 export type { Digester } from './types';
