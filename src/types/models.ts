@@ -11,7 +11,7 @@
 
 // Enums
 export type { MessageType } from './message-type';
-export type { EnrichmentStatus } from './enrichment-status';
+export type { DigestStatus } from './digest-status';
 export type { DigestType } from './digest-type';
 export type { TaskStatus } from './task-status';
 export type { FileType } from './file-type';

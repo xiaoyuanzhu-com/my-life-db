@@ -6,7 +6,7 @@ import { getFileByPath } from '@/lib/db/files';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload } from '@/types/digest-workflow';
-import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndDigester } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSlug' });
 
@@ -16,7 +16,7 @@ const log = getLogger({ module: 'InboxSlug' });
  */
 function loadSlugSource(filePath: string): { text: string; source: string } {
   // Try summary first (shorter, more focused)
-  const summaryDigest = getDigestByPathAndType(filePath, 'summary');
+  const summaryDigest = getDigestByPathAndDigester(filePath, 'summary');
   if (summaryDigest?.content) {
     return {
       text: summaryDigest.content,
@@ -25,7 +25,7 @@ function loadSlugSource(filePath: string): { text: string; source: string } {
   }
 
   // Fall back to content-md
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
+  const contentDigest = getDigestByPathAndDigester(filePath, 'content-md');
   if (contentDigest?.content) {
     return {
       text: contentDigest.content,

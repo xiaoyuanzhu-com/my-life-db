@@ -6,7 +6,7 @@
  * field, binary content in SQLAR archive.
  */
 
-import type { EnrichmentStatus } from './enrichment-status';
+import type { DigestStatus } from './digest-status';
 
 /**
  * Digest record row (snake_case - matches SQLite schema exactly)
@@ -20,10 +20,10 @@ export interface DigestRecordRow {
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
   file_path: string;
 
-  /** Type of digest (see DigestType enum) */
-  digest_type: string;
+  /** Digester name (e.g., 'url-crawl-content', 'summarize') */
+  digester: string;
 
-  /** Processing status (see EnrichmentStatus enum) */
+  /** Processing status (see DigestStatus enum) */
   status: string;
 
   /** Text content (summary text, JSON for tags/slug) - null for binary digests */
@@ -55,11 +55,11 @@ export interface Digest {
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
   filePath: string;
 
-  /** Type of digest (see DigestType enum) */
-  digestType: string;
+  /** Digester name (e.g., 'url-crawl-content', 'summarize') */
+  digester: string;
 
-  /** Processing status (see EnrichmentStatus enum) */
-  status: EnrichmentStatus;
+  /** Processing status (see DigestStatus enum) */
+  status: DigestStatus;
 
   /** Text content (summary text, JSON for tags/slug) - null for binary digests */
   content: string | null;
@@ -84,8 +84,8 @@ export function rowToDigest(row: DigestRecordRow): Digest {
   return {
     id: row.id,
     filePath: row.file_path,
-    digestType: row.digest_type,
-    status: row.status as EnrichmentStatus,
+    digester: row.digester,
+    status: row.status as DigestStatus,
     content: row.content,
     sqlarName: row.sqlar_name,
     error: row.error,

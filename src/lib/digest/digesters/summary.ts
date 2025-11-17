@@ -18,10 +18,7 @@ const log = getLogger({ module: 'SummaryDigester' });
  * Produces: summary
  */
 export class SummaryDigester implements Digester {
-  readonly id = 'summarize';
-  readonly name = 'Summarizer';
-  readonly produces = ['summary'];
-  readonly requires = ['content-md']; // Needs content first
+  readonly name = 'summarize';
 
   async canDigest(
     filePath: string,
@@ -29,10 +26,10 @@ export class SummaryDigester implements Digester {
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Check if content-md digest exists and is enriched
-    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+    // Check if url-crawl-content digest exists and is completed
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
-    if (!contentDigest || contentDigest.status !== 'enriched') {
+    if (!contentDigest || contentDigest.status !== 'completed') {
       return false; // Skip this time, will retry next run
     }
 
@@ -51,8 +48,8 @@ export class SummaryDigester implements Digester {
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    // Get content-md digest
-    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+    // Get url-crawl-content digest
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
     if (!contentDigest || !contentDigest.content) {
       return null; // Should not happen if canDigest returned true
     }
@@ -66,10 +63,10 @@ export class SummaryDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'summary'),
+        id: generateDigestId(filePath, 'summarize'),
         filePath,
-        digestType: 'summary',
-        status: 'enriched',
+        digester: 'summarize',
+        status: 'completed',
         content: result.summary,
         sqlarName: null,
         error: null,

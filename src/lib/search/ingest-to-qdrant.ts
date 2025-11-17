@@ -9,7 +9,7 @@ import {
   type SourceType,
 } from '@/lib/db/qdrant-documents';
 import { getFileByPath } from '@/lib/db/files';
-import { listDigestsForPath, getDigestByPathAndType } from '@/lib/db/digests';
+import { listDigestsForPath, getDigestByPathAndDigester } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'IngestQdrant' });
@@ -102,7 +102,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   }
 
   // 3. Index summary from digest
-  const summaryDigest = digests.find(d => d.digestType === 'summary' && d.status === 'enriched');
+  const summaryDigest = digests.find(d => d.digester === 'summarize' && d.status === 'completed');
   if (summaryDigest?.content) {
     const chunks = chunkText(summaryDigest.content, { targetTokens: 900, overlapPercent: 0.15 });
 
@@ -137,7 +137,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   }
 
   // 4. Index tags from digest (usually single chunk)
-  const tagsDigest = digests.find(d => d.digestType === 'tags' && d.status === 'enriched');
+  const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
   if (tagsDigest?.content) {
     try {
       const tags = JSON.parse(tagsDigest.content);
@@ -229,9 +229,9 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
 async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
   const dataDir = DATA_DIR;
 
-  // 1. Check for URL content digest (content-md)
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
-  if (contentDigest?.content && contentDigest.status === 'enriched') {
+  // 1. Check for URL content digest (url-crawl-content)
+  const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
+  if (contentDigest?.content && contentDigest.status === 'completed') {
     return contentDigest.content;
   }
 

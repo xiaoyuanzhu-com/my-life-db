@@ -52,7 +52,7 @@ export function findFilesNeedingDigestion(
     if (needsWork.length >= limit) break;
 
     const digests = listDigestsForPath(path);
-    const digestMap = new Map(digests.map((d) => [d.digestType, d]));
+    const digestMap = new Map(digests.map((d) => [d.digester, d]));
 
     let fileNeedsWork = false;
 
@@ -65,9 +65,9 @@ export function findFilesNeedingDigestion(
         break;
       }
 
-      if (digest.status === 'pending') {
-        // Pending (not skipped) = needs work
-        // Note: skipped digests have status='skipped', not 'pending'
+      if (digest.status === 'todo') {
+        // Todo (not skipped) = needs work
+        // Note: skipped digests have status='skipped', not 'todo'
         fileNeedsWork = true;
         break;
       }
@@ -78,9 +78,9 @@ export function findFilesNeedingDigestion(
         break;
       }
 
-      // status='enriched' → done, continue to next type
+      // status='completed' → done, continue to next type
       // status='skipped' → not applicable, continue to next type
-      // status='enriching' → in progress, skip for now (let it finish)
+      // status='in-progress' → in progress, skip for now (let it finish)
     }
 
     if (fileNeedsWork) {

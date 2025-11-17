@@ -17,29 +17,23 @@ const log = getLogger({ module: 'MeiliSearchDigester' });
 /**
  * Meilisearch Indexing Digester
  * Indexes content for full-text keyword search
- * Produces: search-meili
  */
 export class MeiliSearchDigester implements Digester {
-  readonly id = 'search-meili';
-  readonly name = 'Meilisearch Indexer';
-  readonly produces = ['search-meili'];
-  readonly requires = ['content-md']; // Needs content to index
-
   async canDigest(
     filePath: string,
     _file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Check if content-md digest exists and is enriched
-    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+    // Check if url-crawl-content digest exists and is completed
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
-    if (!contentDigest || contentDigest.status !== 'enriched') {
+    if (!contentDigest || contentDigest.status !== 'completed') {
       return false; // No content to index yet
     }
 
     // Check if we need to re-index (dependencies changed)
-    const existingSearch = existingDigests.find((d) => d.digestType === 'search-meili');
+    const existingSearch = existingDigests.find((d) => d.digester === 'search-meili');
 
     if (!existingSearch) {
       return true; // Never indexed
@@ -50,23 +44,23 @@ export class MeiliSearchDigester implements Digester {
     }
 
     // Check if dependencies were updated after we last indexed
-    const summaryDigest = existingDigests.find((d) => d.digestType === 'summary');
-    const tagsDigest = existingDigests.find((d) => d.digestType === 'tags');
+    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
+    const tagsDigest = existingDigests.find((d) => d.digester === 'tagging');
 
     // Re-index if content changed
     if (contentDigest.updatedAt > existingSearch.updatedAt) {
-      log.info({ filePath }, 'content-md updated, re-indexing');
+      log.info({ filePath }, 'url-crawl-content updated, re-indexing');
       return true;
     }
 
     // Re-index if summary changed (and exists)
-    if (summaryDigest && summaryDigest.status === 'enriched' && summaryDigest.updatedAt > existingSearch.updatedAt) {
+    if (summaryDigest && summaryDigest.status === 'completed' && summaryDigest.updatedAt > existingSearch.updatedAt) {
       log.info({ filePath }, 'summary updated, re-indexing');
       return true;
     }
 
     // Re-index if tags changed (and exists)
-    if (tagsDigest && tagsDigest.status === 'enriched' && tagsDigest.updatedAt > existingSearch.updatedAt) {
+    if (tagsDigest && tagsDigest.status === 'completed' && tagsDigest.updatedAt > existingSearch.updatedAt) {
       log.info({ filePath }, 'tags updated, re-indexing');
       return true;
     }
@@ -125,8 +119,8 @@ export class MeiliSearchDigester implements Digester {
         {
           id: generateDigestId(filePath, 'search-meili'),
           filePath,
-          digestType: 'search-meili',
-          status: 'enriched',
+          digester: 'search-meili',
+          status: 'completed',
           content: JSON.stringify(metadata),
           sqlarName: null,
           error: null,

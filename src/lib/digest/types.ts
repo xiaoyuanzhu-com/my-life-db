@@ -7,19 +7,16 @@ import type BetterSqlite3 from 'better-sqlite3';
 
 /**
  * Digester interface - processes files and produces digest outputs
+ *
+ * A digester represents a processing implementation that can create one or more
+ * digest outputs. Each output will have a unique digester name in the database.
+ *
+ * Example: 'url-crawl' digester creates multiple digests with names like
+ * 'url-crawl-content', 'url-crawl-screenshot', etc.
  */
 export interface Digester {
-  /** Unique identifier (e.g., 'url-crawl', 'summarize') */
-  readonly id: string;
-
-  /** Human-readable name for logging/UI */
+  /** Unique digester name (e.g., 'url-crawl', 'summarize') */
   readonly name: string;
-
-  /** Digest types this digester produces (e.g., ['content-md', 'screenshot']) */
-  readonly produces: string[];
-
-  /** Optional: Digest types this digester requires (e.g., ['content-md']) */
-  readonly requires?: string[];
 
   /**
    * Check if this digester can process the given file.
@@ -34,7 +31,7 @@ export interface Digester {
 
   /**
    * Execute digest operation.
-   * @returns Array of digests created, or null to skip
+   * @returns Array of digests created (each with their own unique digester name), or null to skip
    */
   digest(
     filePath: string,

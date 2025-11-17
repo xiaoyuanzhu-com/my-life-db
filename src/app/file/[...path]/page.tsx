@@ -24,14 +24,16 @@ function formatDate(isoString: string): string {
 
 function getStatusIcon(status: string) {
   switch (status) {
-    case 'enriched':
+    case 'completed':
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    case 'enriching':
+    case 'in-progress':
       return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
     case 'failed':
       return <XCircle className="w-4 h-4 text-red-500" />;
-    case 'pending':
+    case 'todo':
       return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+    case 'skipped':
+      return <AlertCircle className="w-4 h-4 text-gray-400" />;
     default:
       return <AlertCircle className="w-4 h-4 text-muted-foreground" />;
   }
@@ -39,14 +41,16 @@ function getStatusIcon(status: string) {
 
 function getStatusColor(status: string): string {
   switch (status) {
-    case 'enriched':
+    case 'completed':
       return 'text-green-600 dark:text-green-400';
-    case 'enriching':
+    case 'in-progress':
       return 'text-blue-600 dark:text-blue-400';
     case 'failed':
       return 'text-red-600 dark:text-red-400';
-    case 'pending':
+    case 'todo':
       return 'text-yellow-600 dark:text-yellow-400';
+    case 'skipped':
+      return 'text-gray-600 dark:text-gray-400';
     default:
       return 'text-muted-foreground';
   }
@@ -57,7 +61,7 @@ function DigestCard({ digest }: { digest: Digest }) {
 
   // Parse JSON content for tags and slug
   let parsedContent: any = null;
-  if (digest.content && (digest.digestType === 'tags' || digest.digestType === 'slug')) {
+  if (digest.content && (digest.digester === 'tagging' || digest.digester === 'slug')) {
     try {
       parsedContent = JSON.parse(digest.content);
     } catch (e) {
@@ -69,7 +73,7 @@ function DigestCard({ digest }: { digest: Digest }) {
     <div className="border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">{digest.digestType}</span>
+          <span className="font-semibold text-sm">{digest.digester}</span>
           {getStatusIcon(digest.status)}
           <span className={`text-xs ${getStatusColor(digest.status)}`}>
             {digest.status}
@@ -89,7 +93,7 @@ function DigestCard({ digest }: { digest: Digest }) {
           {digest.content && (
             <div>
               <div className="text-xs text-muted-foreground mb-1">Content:</div>
-              {digest.digestType === 'tags' && parsedContent && Array.isArray(parsedContent) ? (
+              {digest.digester === 'tagging' && parsedContent && Array.isArray(parsedContent) ? (
                 <div className="flex flex-wrap gap-1">
                   {parsedContent.map((tag: string, idx: number) => (
                     <span
@@ -100,7 +104,7 @@ function DigestCard({ digest }: { digest: Digest }) {
                     </span>
                   ))}
                 </div>
-              ) : digest.digestType === 'slug' && parsedContent ? (
+              ) : digest.digester === 'slug' && parsedContent ? (
                 <div className="space-y-1">
                   {parsedContent.title && (
                     <div>

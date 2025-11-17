@@ -33,16 +33,16 @@ export function listFilesWithDigests(
     ascending?: boolean;
     limit?: number;
     offset?: number;
-    digestTypes?: string[];  // Only include these digest types
-    excludeDigestTypes?: string[];  // Exclude these digest types
+    digestTypes?: string[];  // Only include these digesters
+    excludeDigestTypes?: string[];  // Exclude these digesters
   }
 ): FileWithDigests[] {
   const files = listFiles(pathPrefix, options);
 
   return files.map((file) => {
     const digests = listDigestsForPath(file.path, {
-      types: options?.digestTypes,
-      excludeTypes: options?.excludeDigestTypes,
+      digesters: options?.digestTypes,
+      excludeDigesters: options?.excludeDigestTypes,
     });
     return enrichFileWithDigests(file, digests);
   });
@@ -81,7 +81,7 @@ function enrichFileWithDigests(
   digests: Array<{
     id: string;
     filePath: string;
-    digestType: string;
+    digester: string;
     status: string;
     content: string | null;
     sqlarName: string | null;
@@ -91,7 +91,7 @@ function enrichFileWithDigests(
   }>
 ): FileWithDigests {
   const digestSummaries: DigestSummary[] = digests.map((d) => ({
-    type: d.digestType,
+    type: d.digester,
     status: d.status as DigestSummary['status'],
     content: d.content,
     sqlarName: d.sqlarName,

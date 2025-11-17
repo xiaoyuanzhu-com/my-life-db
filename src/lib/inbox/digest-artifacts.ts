@@ -5,7 +5,7 @@ import path from 'path';
 
 import { DATA_ROOT } from '@/lib/fs/storage';
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import { getDigestByPathAndType } from '@/lib/db/digests';
+import { getDigestByPathAndDigester } from '@/lib/db/digests';
 import { getFileByPath } from '@/lib/db/files';
 
 /**
@@ -67,7 +67,7 @@ export async function readPrimaryText(filePath: string): Promise<string | null> 
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export async function readDigestContent(filePath: string): Promise<string | null> {
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
+  const contentDigest = getDigestByPathAndDigester(filePath, 'content-md');
   return contentDigest?.content || null;
 }
 
@@ -77,7 +77,7 @@ export async function readDigestContent(filePath: string): Promise<string | null
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export async function readDigestSummary(filePath: string): Promise<string | null> {
-  const summaryDigest = getDigestByPathAndType(filePath, 'summary');
+  const summaryDigest = getDigestByPathAndDigester(filePath, 'summary');
   return summaryDigest?.content || null;
 }
 
@@ -87,7 +87,7 @@ export async function readDigestSummary(filePath: string): Promise<string | null
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export async function readDigestTags(filePath: string): Promise<string[] | null> {
-  const tagsDigest = getDigestByPathAndType(filePath, 'tags');
+  const tagsDigest = getDigestByPathAndDigester(filePath, 'tags');
   if (!tagsDigest?.content) return null;
 
   try {
@@ -111,7 +111,7 @@ export async function readDigestTags(filePath: string): Promise<string[] | null>
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export async function readDigestScreenshot(filePath: string): Promise<InboxDigestScreenshot | null> {
-  const screenshotDigest = getDigestByPathAndType(filePath, 'screenshot');
+  const screenshotDigest = getDigestByPathAndDigester(filePath, 'screenshot');
   if (!screenshotDigest?.sqlarName) return null;
 
   // Extract extension from sqlarName (e.g., "screenshot.png" -> "png")
@@ -134,7 +134,7 @@ export async function readDigestScreenshot(filePath: string): Promise<InboxDiges
  * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
  */
 export async function readDigestSlug(filePath: string): Promise<InboxDigestSlug | null> {
-  const slugDigest = getDigestByPathAndType(filePath, 'slug');
+  const slugDigest = getDigestByPathAndDigester(filePath, 'slug');
   if (!slugDigest?.content) return null;
 
   try {

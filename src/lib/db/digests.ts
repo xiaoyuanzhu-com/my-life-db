@@ -10,7 +10,7 @@ export function createDigest(digest: Digest): void {
 
   const stmt = db.prepare(`
     INSERT INTO digests (
-      id, file_path, digest_type, status, content, sqlar_name, error,
+      id, file_path, digester, status, content, sqlar_name, error,
       created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -18,7 +18,7 @@ export function createDigest(digest: Digest): void {
   stmt.run(
     digest.id,
     digest.filePath,
-    digest.digestType,
+    digest.digester,
     digest.status,
     digest.content,
     digest.sqlarName,
@@ -37,11 +37,11 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
 
   const stmt = db.prepare(`
     INSERT INTO digests (
-      id, file_path, digest_type, status, content, sqlar_name, error,
+      id, file_path, digester, status, content, sqlar_name, error,
       created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
-      status = 'pending',
+      status = 'todo',
       error = NULL,
       updated_at = ?
   `);
@@ -50,7 +50,7 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
   stmt.run(
     digest.id,
     digest.filePath,
-    digest.digestType,
+    digest.digester,
     digest.status,
     digest.content,
     digest.sqlarName,
@@ -77,14 +77,14 @@ export function getDigestById(id: string): Digest | null {
 }
 
 /**
- * Get a digest by file path and type
+ * Get a digest by file path and digester name
  */
-export function getDigestByPathAndType(filePath: string, digestType: string): Digest | null {
+export function getDigestByPathAndDigester(filePath: string, digester: string): Digest | null {
   const db = getDatabase();
 
   const row = db
-    .prepare('SELECT * FROM digests WHERE file_path = ? AND digest_type = ?')
-    .get(filePath, digestType) as DigestRecordRow | undefined;
+    .prepare('SELECT * FROM digests WHERE file_path = ? AND digester = ?')
+    .get(filePath, digester) as DigestRecordRow | undefined;
 
   if (!row) return null;
 
@@ -97,8 +97,8 @@ export function getDigestByPathAndType(filePath: string, digestType: string): Di
 export function listDigestsForPath(
   filePath: string,
   options?: {
-    types?: string[];  // Only include these digest types
-    excludeTypes?: string[];  // Exclude these digest types
+    digesters?: string[];  // Only include these digesters
+    excludeDigesters?: string[];  // Exclude these digesters
   }
 ): Digest[] {
   const db = getDatabase();
@@ -106,16 +106,16 @@ export function listDigestsForPath(
   let sql = 'SELECT * FROM digests WHERE file_path = ?';
   const params: (string | string[])[] = [filePath];
 
-  if (options?.types && options.types.length > 0) {
-    const placeholders = options.types.map(() => '?').join(', ');
-    sql += ` AND digest_type IN (${placeholders})`;
-    params.push(...options.types);
+  if (options?.digesters && options.digesters.length > 0) {
+    const placeholders = options.digesters.map(() => '?').join(', ');
+    sql += ` AND digester IN (${placeholders})`;
+    params.push(...options.digesters);
   }
 
-  if (options?.excludeTypes && options.excludeTypes.length > 0) {
-    const placeholders = options.excludeTypes.map(() => '?').join(', ');
-    sql += ` AND digest_type NOT IN (${placeholders})`;
-    params.push(...options.excludeTypes);
+  if (options?.excludeDigesters && options.excludeDigesters.length > 0) {
+    const placeholders = options.excludeDigesters.map(() => '?').join(', ');
+    sql += ` AND digester NOT IN (${placeholders})`;
+    params.push(...options.excludeDigesters);
   }
 
   sql += ' ORDER BY created_at DESC';
@@ -128,13 +128,13 @@ export function listDigestsForPath(
 }
 
 /**
- * List digests by type (across all items)
+ * List digests by digester name (across all files)
  */
-export function listDigestsByType(digestType: string, limit?: number): Digest[] {
+export function listDigestsByDigester(digester: string, limit?: number): Digest[] {
   const db = getDatabase();
 
-  let sql = 'SELECT * FROM digests WHERE digest_type = ? ORDER BY created_at DESC';
-  const params: (string | number)[] = [digestType];
+  let sql = 'SELECT * FROM digests WHERE digester = ? ORDER BY created_at DESC';
+  const params: (string | number)[] = [digester];
 
   if (limit) {
     sql += ' LIMIT ?';
@@ -158,9 +158,9 @@ export function updateDigest(
   const fields: string[] = [];
   const values: (string | null)[] = [];
 
-  if (updates.digestType !== undefined) {
-    fields.push('digest_type = ?');
-    values.push(updates.digestType);
+  if (updates.digester !== undefined) {
+    fields.push('digester = ?');
+    values.push(updates.digester);
   }
 
   if (updates.status !== undefined) {
@@ -202,11 +202,11 @@ export function deleteDigest(id: string): void {
 }
 
 /**
- * Delete a specific digest by file path and type
+ * Delete a specific digest by file path and digester
  */
-export function deleteDigestByPathAndType(filePath: string, digestType: string): void {
+export function deleteDigestByPathAndDigester(filePath: string, digester: string): void {
   const db = getDatabase();
-  db.prepare('DELETE FROM digests WHERE file_path = ? AND digest_type = ?').run(filePath, digestType);
+  db.prepare('DELETE FROM digests WHERE file_path = ? AND digester = ?').run(filePath, digester);
 }
 
 /**
@@ -236,31 +236,31 @@ export function updateDigestPaths(oldPath: string, newPath: string): void {
 }
 
 /**
- * Check if a digest exists for a file path and type
+ * Check if a digest exists for a file path and digester
  */
-export function digestExists(filePath: string, digestType: string): boolean {
+export function digestExists(filePath: string, digester: string): boolean {
   const db = getDatabase();
 
   const row = db
-    .prepare('SELECT 1 FROM digests WHERE file_path = ? AND digest_type = ? LIMIT 1')
-    .get(filePath, digestType);
+    .prepare('SELECT 1 FROM digests WHERE file_path = ? AND digester = ? LIMIT 1')
+    .get(filePath, digester);
 
   return row !== undefined;
 }
 
 /**
- * Start a digest (create with pending status)
+ * Start a digest (create with todo status)
  * This is the preferred way to initiate digest processing
  */
-export function startDigest(filePath: string, digestType: string): Digest {
-  const id = generateDigestId(filePath, digestType);
+export function startDigest(filePath: string, digester: string): Digest {
+  const id = generateDigestId(filePath, digester);
   const now = new Date().toISOString();
 
   const digest: Digest = {
     id,
     filePath,
-    digestType,
-    status: 'pending',
+    digester,
+    status: 'todo',
     content: null,
     sqlarName: null,
     error: null,
@@ -273,13 +273,13 @@ export function startDigest(filePath: string, digestType: string): Digest {
 }
 
 /**
- * Generate a digest ID from file path and digest type
- * Format: {hash(filePath)}-{digestType}
+ * Generate a digest ID from file path and digester name
+ * Format: {hash(filePath)}-{digester}
  */
-export function generateDigestId(filePath: string, digestType: string): string {
+export function generateDigestId(filePath: string, digester: string): string {
   // Simple hash of file path for shorter IDs
   const pathHash = Buffer.from(filePath).toString('base64url').slice(0, 12);
-  return `${pathHash}-${digestType}`;
+  return `${pathHash}-${digester}`;
 }
 
 /**
@@ -289,7 +289,7 @@ function rowToDigest(record: DigestRecordRow): Digest {
   return {
     id: record.id,
     filePath: record.file_path,
-    digestType: record.digest_type,
+    digester: record.digester,
     status: record.status as Digest['status'],
     content: record.content,
     sqlarName: record.sqlar_name,

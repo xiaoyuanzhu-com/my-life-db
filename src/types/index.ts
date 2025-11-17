@@ -7,14 +7,14 @@
 // Import for use within this file (for types defined in this file)
 import type {
   MessageType as MessageTypeModel,
-  EnrichmentStatus,
+  DigestStatus,
 } from './models';
 
 // Re-export for external consumers
 export type {
   // Enums & Constants
   MessageType,
-  EnrichmentStatus,
+  DigestStatus,
   DigestType,
   TaskStatus,
   FileType,
@@ -237,7 +237,7 @@ export interface InboxStageStatusSummary {
 
 export interface InboxEnrichmentSummary {
   itemId: string;
-  overall: EnrichmentStatus;
+  overall: DigestStatus;
   stages: InboxStageStatusSummary[];
   hasFailures: boolean;
   completedCount: number;

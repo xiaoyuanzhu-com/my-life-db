@@ -18,10 +18,7 @@ const log = getLogger({ module: 'SlugDigester' });
  * Produces: slug
  */
 export class SlugDigester implements Digester {
-  readonly id = 'slug';
-  readonly name = 'Slug Generator';
-  readonly produces = ['slug'];
-  readonly requires = ['summary', 'content-md']; // Prefers summary, falls back to content
+  readonly name = 'slug';
 
   async canDigest(
     filePath: string,
@@ -29,12 +26,12 @@ export class SlugDigester implements Digester {
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Need either summary or content-md
-    const summaryDigest = existingDigests.find((d) => d.digestType === 'summary');
-    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+    // Need either summarize or url-crawl-content
+    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
-    const hasSummary = summaryDigest?.status === 'enriched' && !!summaryDigest.content;
-    const hasContent = contentDigest?.status === 'enriched' && !!contentDigest.content;
+    const hasSummary = summaryDigest?.status === 'completed' && !!summaryDigest.content;
+    const hasContent = contentDigest?.status === 'completed' && !!contentDigest.content;
 
     return hasSummary || hasContent;
   }
@@ -45,12 +42,12 @@ export class SlugDigester implements Digester {
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    // Prefer summary, fallback to content-md
-    const summaryDigest = existingDigests.find((d) => d.digestType === 'summary');
-    const contentDigest = existingDigests.find((d) => d.digestType === 'content-md');
+    // Prefer summary, fallback to url-crawl-content
+    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
     const sourceText =
-      summaryDigest?.content && summaryDigest.status === 'enriched'
+      summaryDigest?.content && summaryDigest.status === 'completed'
         ? summaryDigest.content
         : contentDigest?.content;
 
@@ -58,7 +55,7 @@ export class SlugDigester implements Digester {
       return null; // Should not happen if canDigest returned true
     }
 
-    const sourceType = summaryDigest?.content ? 'summary' : 'content-md';
+    const sourceType = summaryDigest?.content ? 'summarize' : 'url-crawl-content';
 
     log.info({ filePath, sourceType }, 'generating slug');
 
@@ -80,8 +77,8 @@ export class SlugDigester implements Digester {
       {
         id: generateDigestId(filePath, 'slug'),
         filePath,
-        digestType: 'slug',
-        status: 'enriched',
+        digester: 'slug',
+        status: 'completed',
         content: JSON.stringify(slugData),
         sqlarName: null,
         error: null,

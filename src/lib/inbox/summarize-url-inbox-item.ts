@@ -8,7 +8,7 @@ import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlTagging } from './tag-url-inbox-item';
 import { enqueueUrlSlug } from './slug-url-inbox-item';
-import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndDigester } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxSummary' });
 
@@ -18,7 +18,7 @@ const log = getLogger({ module: 'InboxSummary' });
  */
 function loadSummarySource(filePath: string): { text: string; source: string } | null {
   // Read content-md digest from database
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
+  const contentDigest = getDigestByPathAndDigester(filePath, 'content-md');
 
   if (contentDigest?.content) {
     return {

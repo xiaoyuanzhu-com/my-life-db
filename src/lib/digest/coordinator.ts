@@ -75,14 +75,18 @@ export class DigestCoordinator {
         // Load fresh digest state for this iteration
         const existingDigests = listDigestsForPath(filePath);
 
-        // Check if already enriched
-        const alreadyDone = digester.produces.every((type) => {
-          const existing = existingDigests.find((d) => d.digestType === type);
-          return existing?.status === 'enriched';
-        });
+        // Get digester name from constructor
+        const digesterName = digester.constructor.name
+          .replace('Digester', '')
+          .replace(/([A-Z])/g, '-$1')
+          .toLowerCase()
+          .slice(1);
 
-        if (alreadyDone) {
-          log.debug({ filePath, digester: digester.id }, 'already enriched, skipping');
+        // Check if already completed
+        const existing = existingDigests.find((d) => d.digester === digesterName);
+
+        if (existing?.status === 'completed') {
+          log.debug({ filePath, digester: digesterName }, 'already completed, skipping');
           skipped++;
           continue;
         }
@@ -92,36 +96,30 @@ export class DigestCoordinator {
 
         if (!can) {
           // Mark as skipped (not applicable)
-          for (const type of digester.produces) {
-            await this.upsertDigest(filePath, type, {
-              status: 'skipped',
-              error: 'Not applicable',
-            });
-          }
-          log.debug({ filePath, digester: digester.id }, 'not applicable, skipped');
+          await this.upsertDigest(filePath, digesterName, {
+            status: 'skipped',
+            error: 'Not applicable',
+          });
+          log.debug({ filePath, digester: digesterName }, 'not applicable, skipped');
           skipped++;
           continue;
         }
 
-        // Mark as enriching (in progress)
-        for (const type of digester.produces) {
-          await this.upsertDigest(filePath, type, { status: 'enriching' });
-        }
+        // Mark as in-progress
+        await this.upsertDigest(filePath, digesterName, { status: 'in-progress' });
 
-        log.info({ filePath, digester: digester.name }, 'running digester');
+        log.info({ filePath, digester: digesterName }, 'running digester');
 
         // Execute digester
         const outputs = await digester.digest(filePath, file, existingDigests, this.db);
 
         if (outputs === null) {
           // Digester decided to skip
-          for (const type of digester.produces) {
-            await this.upsertDigest(filePath, type, {
-              status: 'skipped',
-              error: 'Digester returned null',
-            });
-          }
-          log.debug({ filePath, digester: digester.id }, 'digester returned null, skipped');
+          await this.upsertDigest(filePath, digesterName, {
+            status: 'skipped',
+            error: 'Digester returned null',
+          });
+          log.debug({ filePath, digester: digesterName }, 'digester returned null, skipped');
           skipped++;
           continue;
         }
@@ -132,18 +130,22 @@ export class DigestCoordinator {
         }
 
         processed++;
-        log.info({ filePath, digester: digester.name }, 'digester completed');
+        log.info({ filePath, digester: digesterName }, 'digester completed');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        log.error({ filePath, digester: digester.id, error: errorMsg }, 'digester failed');
+        const digesterName = digester.constructor.name
+          .replace('Digester', '')
+          .replace(/([A-Z])/g, '-$1')
+          .toLowerCase()
+          .slice(1);
+
+        log.error({ filePath, digester: digesterName, error: errorMsg }, 'digester failed');
 
         // Mark as failed
-        for (const type of digester.produces) {
-          await this.upsertDigest(filePath, type, {
-            status: 'failed',
-            error: errorMsg,
-          });
-        }
+        await this.upsertDigest(filePath, digesterName, {
+          status: 'failed',
+          error: errorMsg,
+        });
 
         failed++;
       }
@@ -160,10 +162,10 @@ export class DigestCoordinator {
    */
   private async upsertDigest(
     filePath: string,
-    digestType: string,
+    digester: string,
     updates: Partial<Digest>
   ): Promise<void> {
-    const id = generateDigestId(filePath, digestType);
+    const id = generateDigestId(filePath, digester);
     const existing = getDigestById(id);
 
     if (existing) {
@@ -177,8 +179,8 @@ export class DigestCoordinator {
       const digest: Digest = {
         id,
         filePath,
-        digestType,
-        status: updates.status || 'pending',
+        digester,
+        status: updates.status || 'todo',
         content: updates.content ?? null,
         sqlarName: updates.sqlarName ?? null,
         error: updates.error ?? null,
@@ -193,7 +195,7 @@ export class DigestCoordinator {
    * Save digest output (text content + binary artifacts)
    */
   private async saveDigestOutput(filePath: string, output: Digest): Promise<void> {
-    const id = generateDigestId(filePath, output.digestType);
+    const id = generateDigestId(filePath, output.digester);
 
     // Check if digest has binary artifacts in sqlar
     // (we need to extract sqlarName from existing digest if present)
@@ -210,7 +212,7 @@ export class DigestCoordinator {
     if (existing) {
       // Update
       updateDigest(id, {
-        status: 'enriched',
+        status: 'completed',
         content: output.content,
         sqlarName: sqlarName || existing.sqlarName,
         error: null,
@@ -221,8 +223,8 @@ export class DigestCoordinator {
       const digest: Digest = {
         id,
         filePath: output.filePath,
-        digestType: output.digestType,
-        status: 'enriched',
+        digester: output.digester,
+        status: 'completed',
         content: output.content,
         sqlarName,
         error: null,
@@ -232,7 +234,7 @@ export class DigestCoordinator {
       createDigest(digest);
     }
 
-    log.debug({ filePath, digestType: output.digestType }, 'digest saved');
+    log.debug({ filePath, digester: output.digester }, 'digest saved');
   }
 
   /**
@@ -241,23 +243,23 @@ export class DigestCoordinator {
    */
   async saveBinaryArtifact(
     filePath: string,
-    digestType: string,
+    digester: string,
     filename: string,
     data: Buffer
   ): Promise<void> {
     const pathHash = hashPath(filePath);
-    const sqlarName = `${pathHash}/${digestType}/${filename}`;
+    const sqlarName = `${pathHash}/${digester}/${filename}`;
 
     // Store in SQLAR
     await sqlarStore(this.db, sqlarName, data);
 
     // Update digest with sqlar_name
-    const id = generateDigestId(filePath, digestType);
+    const id = generateDigestId(filePath, digester);
     updateDigest(id, {
       sqlarName,
       updatedAt: new Date().toISOString(),
     });
 
-    log.debug({ filePath, digestType, sqlarName }, 'binary artifact saved');
+    log.debug({ filePath, digester, sqlarName }, 'binary artifact saved');
   }
 }

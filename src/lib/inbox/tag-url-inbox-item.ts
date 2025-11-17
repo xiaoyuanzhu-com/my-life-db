@@ -7,7 +7,7 @@ import { generateTagsDigest } from '@/lib/digest/tagging';
 import { getLogger } from '@/lib/log/logger';
 import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/digest-workflow';
 import { enqueueUrlSlug } from './slug-url-inbox-item';
-import { createDigest, generateDigestId, getDigestByPathAndType } from '@/lib/db/digests';
+import { createDigest, generateDigestId, getDigestByPathAndDigester } from '@/lib/db/digests';
 
 const log = getLogger({ module: 'InboxTagging' });
 
@@ -15,7 +15,7 @@ const log = getLogger({ module: 'InboxTagging' });
  * Load content from database for tagging
  */
 function loadTaggingSource(filePath: string): { text: string; source: string } | null {
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
+  const contentDigest = getDigestByPathAndDigester(filePath, 'content-md');
 
   if (contentDigest?.content) {
     return {

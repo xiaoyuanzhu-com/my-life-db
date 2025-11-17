@@ -52,17 +52,17 @@ export function syncNewDigestTypes(db: BetterSqlite3.Database): void {
 
   for (const { file_path } of processedFiles) {
     const existing = listDigestsForPath(file_path);
-    const existingTypes = new Set(existing.map((d) => d.digestType));
+    const existingTypes = new Set(existing.map((d) => d.digester));
 
     for (const type of allDigestTypes) {
       if (!existingTypes.has(type)) {
-        // New digest type for this file - create pending record
+        // New digest type for this file - create todo record
         try {
           createDigest({
             id: generateDigestId(file_path, type),
             filePath: file_path,
-            digestType: type,
-            status: 'pending',
+            digester: type,
+            status: 'todo',
             content: null,
             sqlarName: null,
             error: null,

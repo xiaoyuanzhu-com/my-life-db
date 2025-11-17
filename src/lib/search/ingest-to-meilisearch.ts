@@ -2,7 +2,7 @@ import 'server-only';
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
 import path from 'path';
-import { getDigestByPathAndType, listDigestsForPath } from '@/lib/db/digests';
+import { getDigestByPathAndDigester, listDigestsForPath } from '@/lib/db/digests';
 import { getFileByPath } from '@/lib/db/files';
 import {
   upsertMeiliDocument,
@@ -49,11 +49,11 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     }
 
     // 2. Get summary (if exists from digest)
-    const summaryDigest = digests.find(d => d.digestType === 'summary' && d.status === 'enriched');
+    const summaryDigest = digests.find(d => d.digester === 'summarize' && d.status === 'completed');
     const summaryText = summaryDigest?.content || null;
 
     // 3. Get tags (if exists from digest)
-    const tagsDigest = digests.find(d => d.digestType === 'tags' && d.status === 'enriched');
+    const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
     let tagsText: string | null = null;
     if (tagsDigest?.content) {
       try {
@@ -115,8 +115,8 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
  */
 async function getFileContent(filePath: string): Promise<string | null> {
   // Check for URL digest first
-  const contentDigest = getDigestByPathAndType(filePath, 'content-md');
-  if (contentDigest?.content && contentDigest.status === 'enriched') {
+  const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
+  if (contentDigest?.content && contentDigest.status === 'completed') {
     return contentDigest.content;
   }
 

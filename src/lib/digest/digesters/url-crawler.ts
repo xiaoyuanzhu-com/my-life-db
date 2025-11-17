@@ -49,10 +49,7 @@ function hashPath(filePath: string): string {
  * - url-metadata (title, description, etc.)
  */
 export class UrlCrawlerDigester implements Digester {
-  readonly id = 'url-crawl';
-  readonly name = 'URL Crawler';
-  readonly produces = ['content-md', 'content-html', 'screenshot', 'url-metadata'];
-  readonly requires = undefined; // No dependencies
+  readonly name = 'url-crawl';
 
   async canDigest(
     filePath: string,
@@ -139,71 +136,71 @@ export class UrlCrawlerDigester implements Digester {
     const now = new Date().toISOString();
     const pathHash = hashPath(filePath);
 
-    // 1. content-md digest
+    // 1. url-crawl-content digest
     if (processed.markdown && processed.markdown.trim().length > 0) {
       digests.push({
-        id: generateDigestId(filePath, 'content-md'),
+        id: generateDigestId(filePath, 'url-crawl-content'),
         filePath,
-        digestType: 'content-md',
-        status: 'enriched',
+        digester: 'url-crawl-content',
+        status: 'completed',
         content: processed.markdown,
         sqlarName: null,
         error: null,
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ filePath }, 'created content-md digest');
+      log.debug({ filePath }, 'created url-crawl-content digest');
     }
 
-    // 2. content-html digest (stored in SQLAR)
+    // 2. url-crawl-html digest (stored in SQLAR)
     if (html && html.trim().length > 0) {
-      const sqlarName = `${pathHash}/content-html/content.html`;
+      const sqlarName = `${pathHash}/url-crawl-html/content.html`;
       await sqlarStore(db, sqlarName, html);
 
       digests.push({
-        id: generateDigestId(filePath, 'content-html'),
+        id: generateDigestId(filePath, 'url-crawl-html'),
         filePath,
-        digestType: 'content-html',
-        status: 'enriched',
+        digester: 'url-crawl-html',
+        status: 'completed',
         content: null,
         sqlarName,
         error: null,
         createdAt: now,
         updatedAt: now,
       });
-      log.debug({ filePath, sqlarName }, 'created content-html digest');
+      log.debug({ filePath, sqlarName }, 'created url-crawl-html digest');
     }
 
-    // 3. screenshot digest (stored in SQLAR)
+    // 3. url-crawl-screenshot digest (stored in SQLAR)
     const screenshot = crawlResult.screenshot;
     if (screenshot?.base64) {
       try {
         const screenshotBuffer = Buffer.from(screenshot.base64, 'base64');
         if (screenshotBuffer.length > 0) {
           const screenshotExtension = getScreenshotExtension(screenshot.mimeType);
-          const sqlarName = `${pathHash}/screenshot/screenshot.${screenshotExtension}`;
+          const sqlarName = `${pathHash}/url-crawl-screenshot/screenshot.${screenshotExtension}`;
 
           await sqlarStore(db, sqlarName, screenshotBuffer);
 
           digests.push({
-            id: generateDigestId(filePath, 'screenshot'),
+            id: generateDigestId(filePath, 'url-crawl-screenshot'),
             filePath,
-            digestType: 'screenshot',
-            status: 'enriched',
+            digester: 'url-crawl-screenshot',
+            status: 'completed',
             content: null,
             sqlarName,
             error: null,
             createdAt: now,
             updatedAt: now,
           });
-          log.info({ filePath, sqlarName }, 'created screenshot digest');
+          log.info({ filePath, sqlarName }, 'created url-crawl-screenshot digest');
         }
       } catch (error) {
         log.error({ error }, 'failed to process screenshot');
       }
     }
 
-    // 4. url-metadata digest
+    // 4. url-crawl-metadata digest
     const urlMetadata = {
       url: crawlResult.url,
       title: crawlResult.metadata?.title,
@@ -218,17 +215,17 @@ export class UrlCrawlerDigester implements Digester {
     };
 
     digests.push({
-      id: generateDigestId(filePath, 'url-metadata'),
+      id: generateDigestId(filePath, 'url-crawl-metadata'),
       filePath,
-      digestType: 'url-metadata',
-      status: 'enriched',
+      digester: 'url-crawl-metadata',
+      status: 'completed',
       content: JSON.stringify(urlMetadata),
       sqlarName: null,
       error: null,
       createdAt: now,
       updatedAt: now,
     });
-    log.debug({ filePath }, 'created url-metadata digest');
+    log.debug({ filePath }, 'created url-crawl-metadata digest');
 
     log.info({ filePath, digestCount: digests.length }, 'url crawl complete');
 
