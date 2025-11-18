@@ -8,7 +8,7 @@ interface InboxFeedProps {
   onRefresh?: number; // Trigger refresh when this value changes
 }
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 50;
 
 export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const [items, setItems] = useState<InboxResponse['items']>([]);
@@ -120,7 +120,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 overflow-y-auto px-4 pb-4"
+      className="flex-1 h-full overflow-y-auto px-4 pb-4"
     >
       {/* Loading indicator at top */}
       {isLoading && items.length > 0 && (

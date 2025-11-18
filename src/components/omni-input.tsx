@@ -18,6 +18,8 @@ interface OmniInputProps {
   }) => void;
 }
 
+const SEARCH_BATCH_SIZE = 50;
+
 export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -134,7 +136,7 @@ export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProp
     searchAbortControllerRef.current = abortController;
 
     try {
-      const params = new URLSearchParams({ q: query, limit: '20' });
+      const params = new URLSearchParams({ q: query, limit: String(SEARCH_BATCH_SIZE) });
       const response = await fetch(`/api/search?${params}`, {
         signal: abortController.signal,
       });

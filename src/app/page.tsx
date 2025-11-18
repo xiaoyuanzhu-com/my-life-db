@@ -27,9 +27,9 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
       {/* Scrollable feed area - shows either InboxFeed or SearchResults */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {isSearchActive ? (
           <SearchResults
             results={searchState.results}
