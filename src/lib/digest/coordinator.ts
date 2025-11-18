@@ -256,7 +256,8 @@ export class DigestCoordinator {
   private ensureDigestPlaceholders(filePath: string, digesters: Digester[]): void {
     const existing = listDigestsForPath(filePath, { order: 'asc' });
     const existingTypes = new Set(existing.map((d) => d.digester));
-    const now = new Date().toISOString();
+    const baseTime = Date.now();
+    let offset = 0;
 
     for (const digester of digesters) {
       const outputs = this.getOutputNames(digester);
@@ -264,6 +265,9 @@ export class DigestCoordinator {
         if (existingTypes.has(outputName)) {
           continue;
         }
+
+        const timestamp = new Date(baseTime + offset).toISOString();
+        offset++;
 
         const digest: Digest = {
           id: generateDigestId(filePath, outputName),
@@ -273,8 +277,8 @@ export class DigestCoordinator {
           content: null,
           sqlarName: null,
           error: null,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
 
         try {
