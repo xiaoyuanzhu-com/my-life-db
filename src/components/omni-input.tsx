@@ -7,14 +7,18 @@ import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InputTypeTag } from './input-type-tag';
 import { detectInputType, InputType } from '@/lib/utils/input-type-detector';
-import { SearchResults } from './search-results';
 import type { SearchResponse } from '@/app/api/search/route';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
+  onSearchStateChange?: (state: {
+    results: SearchResponse | null;
+    isSearching: boolean;
+    error: string | null;
+  }) => void;
 }
 
-export function OmniInput({ onEntryCreated }: OmniInputProps) {
+export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -162,6 +166,15 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
       }
     }
   }, []);
+
+  // Notify parent of search state changes
+  useEffect(() => {
+    onSearchStateChange?.({
+      results: searchResults,
+      isSearching,
+      error: searchError,
+    });
+  }, [searchResults, isSearching, searchError, onSearchStateChange]);
 
   // Effect to trigger adaptive debounced search
   useEffect(() => {
@@ -322,7 +335,7 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
           className={cn(
             'border-0 bg-transparent shadow-none text-base resize-none cursor-text',
             'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
-            'placeholder:text-muted-foreground/50 min-h-[120px] px-4 pt-4 pb-2'
+            'placeholder:text-muted-foreground/50 min-h-[40px] px-4 pt-3 pb-2'
           )}
           aria-invalid={!!error}
         />
@@ -402,13 +415,6 @@ export function OmniInput({ onEntryCreated }: OmniInputProps) {
           accept="image/*,application/pdf,.doc,.docx,.txt,.md"
         />
       </form>
-
-      {/* Search Results - positioned below the form */}
-      <SearchResults
-        results={searchResults}
-        isSearching={isSearching}
-        error={searchError}
-      />
     </div>
   );
 }

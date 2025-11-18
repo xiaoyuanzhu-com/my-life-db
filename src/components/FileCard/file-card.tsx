@@ -4,18 +4,20 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
 
 export interface FileCardProps {
   file: FileWithDigests;
   className?: string;
+  showTimestamp?: boolean;
 }
 
 /**
  * Content-focused file card component with adaptive sizing
  * Displays text content, images, or filename based on file type
  */
-export function FileCard({ file, className }: FileCardProps) {
+export function FileCard({ file, className, showTimestamp = false }: FileCardProps) {
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
@@ -69,23 +71,27 @@ export function FileCard({ file, className }: FileCardProps) {
   }, [file]);
 
   return (
-    <div
-      className={cn(
-        'group relative w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm',
-        className
-      )}
-    >
-      {content.type === 'image' ? (
-        <div className="relative w-full" style={{ aspectRatio: '4/3' }}>
-          <Image
-            src={content.src}
-            alt={content.alt}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            className="object-cover"
-            priority={false}
-          />
+    <div className={cn('w-full', className)}>
+      {/* Timestamp - centered horizontally above card */}
+      {showTimestamp && (
+        <div className="text-xs text-muted-foreground text-center mb-2">
+          {formatTimestamp(file.createdAt)}
         </div>
+      )}
+
+      <div className="group relative w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+        {content.type === 'image' ? (
+          <div className="relative w-full">
+            <Image
+              src={content.src}
+              alt={content.alt}
+              width={800}
+              height={600}
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              className="w-full h-auto object-contain"
+              priority={false}
+            />
+          </div>
       ) : content.type === 'video' ? (
         <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
           <video
@@ -134,13 +140,14 @@ export function FileCard({ file, className }: FileCardProps) {
         </div>
       )}
 
-      {/* Hover open button */}
-      <Link
-        href={href}
-        className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-      >
-        Open
-      </Link>
+        {/* Hover open button */}
+        <Link
+          href={href}
+          className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          Open
+        </Link>
+      </div>
     </div>
   );
 }

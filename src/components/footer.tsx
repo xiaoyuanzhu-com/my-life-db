@@ -9,8 +9,8 @@ import { ThemeToggle } from './theme-toggle';
 export function Footer() {
   const currentPath = usePathname();
 
-  // Only show footer on homepage
-  if (currentPath !== '/') {
+  // Hide footer on homepage (show on all other pages)
+  if (currentPath === '/') {
     return null;
   }
 

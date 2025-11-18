@@ -22,7 +22,7 @@ function SearchingIndicator() {
   }, []);
 
   return (
-    <div className="mt-4 w-full">
+    <div className="flex-1 flex items-center justify-center">
       <p className="text-sm text-muted-foreground">
         Searching{'.'.repeat(dots)}
       </p>
@@ -39,7 +39,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   // Show error state
   if (error) {
     return (
-      <div className="mt-4 w-full">
+      <div className="flex-1 flex items-center justify-center px-4">
         <p className="text-sm text-destructive">
           Failed to search related files, got error: {error}
         </p>
@@ -50,7 +50,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   // Show empty state
   if (results && results.results.length === 0) {
     return (
-      <div className="mt-4 w-full">
+      <div className="flex-1 flex items-center justify-center px-4">
         <p className="text-sm text-muted-foreground">
           No related files
         </p>
@@ -65,10 +65,10 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
 
   // Show results
   return (
-    <div className="mt-4 w-full">
-      <div className="space-y-3">
+    <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="space-y-4 max-w-3xl mx-auto">
         {/* Results header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-4">
           <p className="text-sm text-muted-foreground">
             Related files
           </p>
@@ -80,14 +80,13 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
         </div>
 
         {/* Result cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {results.results.map((result) => (
-            <FileCard
-              key={result.path}
-              file={result}
-            />
-          ))}
-        </div>
+        {results.results.map((result) => (
+          <FileCard
+            key={result.path}
+            file={result}
+            showTimestamp={true}
+          />
+        ))}
 
         {/* Load more button */}
         {results.pagination.hasMore && (
