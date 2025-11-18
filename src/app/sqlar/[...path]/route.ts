@@ -5,16 +5,16 @@ import { sqlarGet } from '@/lib/db/sqlar';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiInboxSqlar' });
+const log = getLogger({ module: 'SqlarAPI' });
 
 interface RouteContext {
   params: Promise<{ path: string[] }>;
 }
 
 /**
- * GET /api/inbox/sqlar/[...path]
+ * GET /sqlar/[...path]
  * Serve files from SQLAR storage
- * Example: /api/inbox/sqlar/item-id-123/screenshot/screenshot.png
+ * Example: /sqlar/{path-hash}/{digest-type}/filename.ext
  */
 export async function GET(
   request: NextRequest,

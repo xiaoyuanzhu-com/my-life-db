@@ -37,41 +37,50 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/library/file?path=${encodeURIComponent(filePath)}`);
+      const response = await fetch(`/raw/${filePath}`);
 
       if (!response.ok) {
         throw new Error('Failed to load file');
       }
 
-      const contentType = response.headers.get('content-type');
-      const fileType = getFileType(contentType || '');
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const fileType = getFileType(contentType);
 
-      // For text files, we get JSON response
+      // Extract filename from path
+      const filenameMatch = filePath.match(/[^/]+$/);
+      const filename = filenameMatch ? filenameMatch[0] : 'file';
+
+      // For text files, decode the binary response as UTF-8
       if (fileType === 'text') {
-        const data = await response.json();
-        setFileData(data);
-
-        // Notify parent component with the actual file's content type from the response
-        if (data.contentType && onFileDataLoad) {
-          onFileDataLoad(data.contentType);
-        }
-      } else {
-        // Notify parent component of content type for binary files
-        if (contentType && onFileDataLoad) {
-          onFileDataLoad(contentType);
-        }
-        // For binary files (images, videos, etc.), we need to create a blob URL
-        // But first we need to get file metadata
-        const filenameMatch = filePath.match(/[^/]+$/);
-        const filename = filenameMatch ? filenameMatch[0] : 'file';
+        const text = await response.text();
 
         setFileData({
           path: filePath,
           name: filename,
-          contentType: contentType || 'application/octet-stream',
+          content: text,
+          contentType,
           size: parseInt(response.headers.get('content-length') || '0'),
           modifiedAt: new Date().toISOString(),
         });
+
+        // Notify parent component
+        if (onFileDataLoad) {
+          onFileDataLoad(contentType);
+        }
+      } else {
+        // For binary files (images, videos, etc.)
+        setFileData({
+          path: filePath,
+          name: filename,
+          contentType,
+          size: parseInt(response.headers.get('content-length') || '0'),
+          modifiedAt: new Date().toISOString(),
+        });
+
+        // Notify parent component
+        if (onFileDataLoad) {
+          onFileDataLoad(contentType);
+        }
       }
     } catch (err) {
       console.error('Failed to load file:', err);
@@ -79,14 +88,20 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [filePath]);
+  }, [filePath, onFileDataLoad]);
 
   useEffect(() => {
     loadFile();
   }, [loadFile]);
 
   const handleDownload = () => {
-    window.open(`/api/library/file?path=${encodeURIComponent(filePath)}&download=true`, '_blank');
+    // Create a link element and trigger download
+    const link = document.createElement('a');
+    link.href = `/raw/${filePath}`;
+    link.download = fileData?.name || 'file';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (isLoading) {
@@ -107,7 +122,7 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
   }
 
   const fileType = getFileType(fileData.contentType);
-  const fileUrl = `/api/library/file?path=${encodeURIComponent(filePath)}`;
+  const fileUrl = `/raw/${filePath}`;
 
   return (
     <div className="h-full overflow-auto p-4">
