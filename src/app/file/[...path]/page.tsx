@@ -221,6 +221,10 @@ export default function FileInfoPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDigesting, setIsDigesting] = useState(false);
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [fileContentType, setFileContentType] = useState<string | null>(null);
+  const [isContentLoading, setIsContentLoading] = useState(true);
+  const [fileContentError, setFileContentError] = useState<string | null>(null);
 
   // Reconstruct file path from params
   const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path ?? '';
@@ -246,10 +250,53 @@ export default function FileInfoPage() {
     }
   }, [filePath]);
 
+  const loadFileContent = useCallback(async () => {
+    if (!filePath) return;
+
+    setIsContentLoading(true);
+    setFileContent(null);
+    setFileContentType(null);
+    setFileContentError(null);
+
+    try {
+      const response = await fetch(`/api/library/file?path=${encodeURIComponent(filePath)}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to load file content');
+      }
+
+      const responseContentType = response.headers.get('content-type') || '';
+
+      if (!responseContentType.startsWith('application/json')) {
+        setFileContentType(responseContentType || null);
+        setFileContentError(
+          responseContentType
+            ? `Preview not available for ${responseContentType} files`
+            : 'Preview not available for this file type'
+        );
+        return;
+      }
+
+      const data = await response.json();
+      setFileContent(data.content ?? '');
+      setFileContentType(data.contentType ?? null);
+    } catch (err) {
+      console.error('Failed to load file content:', err);
+      setFileContentError(err instanceof Error ? err.message : 'Failed to load file content');
+    } finally {
+      setIsContentLoading(false);
+    }
+  }, [filePath]);
+
   useEffect(() => {
     if (!filePath) return;
     loadFileInfo();
   }, [filePath, loadFileInfo]);
+
+  useEffect(() => {
+    if (!filePath) return;
+    loadFileContent();
+  }, [filePath, loadFileContent]);
 
   const handleBack = () => {
     // Navigate back to library with the file open
@@ -310,30 +357,58 @@ export default function FileInfoPage() {
   }
 
   const { file, digests } = fileInfo;
+  const displayContentType = fileContentType || file.mimeType || null;
+
+  let fileContentBody;
+  if (isContentLoading) {
+    fileContentBody = (
+      <div className="flex items-center gap-2 px-6 py-16 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading content...
+      </div>
+    );
+  } else if (fileContentError) {
+    fileContentBody = (
+      <div className="px-6 py-8 text-sm text-muted-foreground">{fileContentError}</div>
+    );
+  } else if (fileContent !== null) {
+    fileContentBody = fileContent.length > 0 ? (
+      <div className="px-6 py-4 bg-muted/50 max-h-[32rem] overflow-auto">
+        <pre className="text-sm font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
+      </div>
+    ) : (
+      <div className="px-6 py-8 text-sm text-muted-foreground">File is empty.</div>
+    );
+  } else {
+    fileContentBody = (
+      <div className="px-6 py-8 text-sm text-muted-foreground">
+        Preview not available for this file type.
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b sticky top-0 bg-background z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleBack}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </button>
-            <div className="flex items-center gap-2 flex-1">
-              <FileText className="w-5 h-5 text-muted-foreground" />
-              <h1 className="text-lg font-semibold truncate">{file.name}</h1>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Content */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        {/* File Content */}
+        <section>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-muted-foreground tracking-wide normal-case">
+              {file.name}
+            </h2>
+            {displayContentType && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {displayContentType}
+              </p>
+            )}
+          </div>
+          <div className="border rounded-lg overflow-hidden">
+            {fileContentBody}
+          </div>
+        </section>
+
         {/* File Metadata */}
         <section>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
