@@ -1,4 +1,3 @@
-// Serve files from the data directory
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import fs from 'fs/promises';
@@ -6,16 +5,24 @@ import path from 'path';
 import { DATA_ROOT } from '@/lib/fs/storage';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'ApiFilesContent' });
+const log = getLogger({ module: 'RawFileAPI' });
 
-export async function GET(request: NextRequest) {
+interface RouteContext {
+  params: Promise<{ path: string[] }>;
+}
+
+/**
+ * GET /raw/[...path]
+ * Serve raw binary content from DATA_ROOT
+ * Always returns raw bytes with proper Content-Type header
+ */
+export async function GET(
+  request: NextRequest,
+  context: RouteContext
+) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const relativePath = searchParams.get('path');
-
-    if (!relativePath) {
-      return NextResponse.json({ error: 'Missing path parameter' }, { status: 400 });
-    }
+    const { path: pathSegments } = await context.params;
+    const relativePath = pathSegments.join('/');
 
     // Security: prevent path traversal attacks
     const normalizedPath = path.normalize(relativePath);

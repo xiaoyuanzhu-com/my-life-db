@@ -123,7 +123,7 @@ export async function readDigestScreenshot(filePath: string): Promise<InboxDiges
   return {
     filename: `screenshot.${extension}`,
     mimeType,
-    src: `/api/inbox/sqlar/${screenshotDigest.sqlarName}`,
+    src: `/sqlar/${screenshotDigest.sqlarName}`,
   };
 }
 

@@ -33,13 +33,13 @@ export function FileCard({ file, className }: FileCardProps) {
 
     // Handle video files
     if (isVideo) {
-      const src = `/api/files/content?path=${encodeURIComponent(file.path)}`;
+      const src = `/raw/${file.path}`;
       return { type: 'video' as const, src, mimeType: file.mimeType };
     }
 
     // Handle audio files
     if (isAudio) {
-      const src = `/api/files/content?path=${encodeURIComponent(file.path)}`;
+      const src = `/raw/${file.path}`;
       return { type: 'audio' as const, src, mimeType: file.mimeType };
     }
 
@@ -53,8 +53,8 @@ export function FileCard({ file, className }: FileCardProps) {
         .slice(0, 12);
 
       const src = hasScreenshot
-        ? `/api/inbox/sqlar/${pathHash}/screenshot/screenshot.png`
-        : `/api/files/content?path=${encodeURIComponent(file.path)}`;
+        ? `/sqlar/${pathHash}/screenshot/screenshot.png`
+        : `/raw/${file.path}`;
 
       return { type: 'image' as const, src, alt: file.name };
     }
