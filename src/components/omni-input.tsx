@@ -18,7 +18,7 @@ interface OmniInputProps {
   }) => void;
 }
 
-const SEARCH_BATCH_SIZE = 50;
+const SEARCH_BATCH_SIZE = 30;
 
 export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProps) {
   const [content, setContent] = useState('');

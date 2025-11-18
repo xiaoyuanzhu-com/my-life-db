@@ -8,7 +8,7 @@ interface InboxFeedProps {
   onRefresh?: number; // Trigger refresh when this value changes
 }
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 30;
 
 export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const [items, setItems] = useState<InboxResponse['items']>([]);
@@ -18,6 +18,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const autoScrollRef = useRef(true);
+  const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
 
   // Load initial batch
   const loadInitialBatch = useCallback(async () => {
@@ -52,6 +53,14 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     autoScrollRef.current = false;
 
     try {
+      const container = scrollContainerRef.current;
+      if (container) {
+        scrollAdjustmentRef.current = {
+          prevHeight: container.scrollHeight,
+          prevTop: container.scrollTop,
+        };
+      }
+
       const offset = items.length;
       const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}&offset=${offset}`);
       if (!response.ok) {
@@ -105,6 +114,17 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
   // Auto-scroll to bottom when freshly loaded/refreshed
   useEffect(() => {
+    const adjustment = scrollAdjustmentRef.current;
+    if (adjustment) {
+      const container = scrollContainerRef.current;
+      if (container) {
+        const heightDiff = container.scrollHeight - adjustment.prevHeight;
+        container.scrollTop = adjustment.prevTop + heightDiff;
+      }
+      scrollAdjustmentRef.current = null;
+      return;
+    }
+
     if (!autoScrollRef.current) {
       return;
     }

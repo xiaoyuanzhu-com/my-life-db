@@ -10,7 +10,7 @@ interface SearchResultsProps {
   error: string | null;
 }
 
-const SEARCH_BATCH_SIZE = 50;
+const SEARCH_BATCH_SIZE = 30;
 
 export function SearchResults({ results, isSearching, error }: SearchResultsProps) {
   const [mergedResults, setMergedResults] = useState<SearchResultItem[]>([]);
