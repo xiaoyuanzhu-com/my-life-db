@@ -189,12 +189,17 @@ export async function GET(request: NextRequest) {
 
       // Generate snippet from highlighted content or original content
       const snippet = hit._formatted?.content || hit.content.slice(0, 200) + '...';
-      const matchContext = buildDigestMatchContext({
-        hit,
-        file: fileWithDigests,
-        terms: highlightTerms,
-        primaryText,
-      });
+      const primaryContainsTerm = primaryText
+        ? containsAnyTerm(primaryText, highlightTerms)
+        : false;
+      const matchContext = primaryContainsTerm
+        ? undefined
+        : buildDigestMatchContext({
+            hit,
+            file: fileWithDigests,
+            terms: highlightTerms,
+            primaryContainsTerm,
+          });
 
       results.push({
         ...fileWithDigests,
@@ -317,17 +322,16 @@ function buildDigestMatchContext({
   hit,
   file,
   terms,
-  primaryText,
+  primaryContainsTerm,
 }: {
   hit: SearchHit;
   file: FileWithDigests;
   terms: string[];
-  primaryText: string | null;
+  primaryContainsTerm: boolean;
 }): SearchResultItem['matchContext'] | undefined {
   if (terms.length === 0) {
     return undefined;
   }
-  const primaryContainsTerm = primaryText ? containsAnyTerm(primaryText, terms) : false;
 
   for (const config of DIGEST_FIELD_CONFIG) {
     const formattedValue = hit._formatted?.[config.field];
