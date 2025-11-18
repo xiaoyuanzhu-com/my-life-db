@@ -79,7 +79,7 @@ export function FileCard({ file, className, showTimestamp = false }: FileCardPro
         </div>
       )}
 
-      <div className="group relative w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <div className="group relative w-full overflow-hidden rounded-lg border border-border bg-muted">
         {content.type === 'image' ? (
           <div className="relative w-full">
             <Image

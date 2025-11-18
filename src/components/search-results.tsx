@@ -137,7 +137,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     <div className="flex-1 flex flex-col min-h-0 h-full">
       <div
         ref={scrollContainerRef}
-        className="flex-1 h-full min-h-0 overflow-y-auto px-4 pb-4"
+        className="flex-1 h-full min-h-0 overflow-y-auto pb-4"
       >
         {!hasResults && isSearching && (
           <div className="flex flex-1 items-center justify-center min-h-full">
@@ -160,7 +160,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
         )}
 
         {hasResults && (
-          <div className="space-y-4 max-w-3xl mx-auto pt-4">
+          <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto pt-4 px-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">Related files</p>
               {timing && (

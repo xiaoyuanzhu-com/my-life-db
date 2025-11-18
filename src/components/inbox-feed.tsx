@@ -161,7 +161,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 h-full overflow-y-auto px-4 pb-4"
+      className="flex-1 h-full overflow-y-auto pb-4"
     >
       {/* Loading indicator at top */}
       {isLoading && items.length > 0 && (
@@ -171,7 +171,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       )}
 
       {/* Inbox items - displayed in reverse order (oldest first, newest last) */}
-      <div className="space-y-4 max-w-3xl mx-auto">
+      <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
         {items.slice().reverse().map((item) => (
           <FileCard
             key={item.path}
