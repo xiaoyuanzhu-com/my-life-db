@@ -83,6 +83,32 @@ A filesystem-based personal knowledge management system built with Next.js 15, R
 
 ### Installation
 
+#### Option 1: Docker (Recommended)
+
+```bash
+# Create docker-compose.yml
+cat > docker-compose.yml << 'EOF'
+services:
+  mylifedb:
+    image: ghcr.io/xiaoyuanzhu-com/my-life-db:latest
+    container_name: mylifedb
+    ports:
+      - 3000:3000
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - MY_DATA_DIR=/app/data
+EOF
+
+# Start the container
+docker-compose up -d
+```
+
+Visit [http://localhost:3000](http://localhost:3000) to see the app.
+
+#### Option 2: Local Development
+
 ```bash
 # Install dependencies
 npm install
