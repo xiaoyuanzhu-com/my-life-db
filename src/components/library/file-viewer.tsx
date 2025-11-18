@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
   filePath: string;
+  onFileDataLoad?: (contentType: string) => void;
 }
 
 interface FileData {
@@ -26,7 +27,7 @@ function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' 
   return 'unknown';
 }
 
-export function FileViewer({ filePath }: FileViewerProps) {
+export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +50,16 @@ export function FileViewer({ filePath }: FileViewerProps) {
       if (fileType === 'text') {
         const data = await response.json();
         setFileData(data);
+
+        // Notify parent component with the actual file's content type from the response
+        if (data.contentType && onFileDataLoad) {
+          onFileDataLoad(data.contentType);
+        }
       } else {
+        // Notify parent component of content type for binary files
+        if (contentType && onFileDataLoad) {
+          onFileDataLoad(contentType);
+        }
         // For binary files (images, videos, etc.), we need to create a blob URL
         // But first we need to get file metadata
         const filenameMatch = filePath.match(/[^/]+$/);

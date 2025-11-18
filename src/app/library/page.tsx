@@ -20,6 +20,7 @@ function LibraryContent() {
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isInitialized, setIsInitialized] = useState(false);
+  const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -203,7 +204,7 @@ function LibraryContent() {
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={75} minSize={30} className="flex h-full flex-col overflow-hidden">
               {openedFiles.length > 0 && (
-                <div className="shrink-0 border-b">
+                <div className="shrink-0">
                   <FileTabs
                     files={openedFiles}
                     activeFile={activeFilePath}
@@ -214,14 +215,17 @@ function LibraryContent() {
               )}
               <div className="flex-1 min-h-0 overflow-hidden">
                 {openedFiles.length > 0 && activeFilePath ? (
-                  <FileViewer filePath={activeFilePath} />
+                  <FileViewer
+                    filePath={activeFilePath}
+                    onFileDataLoad={(contentType) => setActiveFileMimeType(contentType)}
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-muted-foreground">
                     Select a file from the tree to view
                   </div>
                 )}
               </div>
-              <FileFooterBar filePath={activeFilePath} />
+              <FileFooterBar filePath={activeFilePath} mimeType={activeFileMimeType} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
