@@ -42,7 +42,7 @@ export default function HomePage() {
       </div>
 
       {/* Fixed input at bottom */}
-      <div className="flex-shrink-0 border-t border-border bg-background">
+      <div className="flex-shrink-0 bg-background">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <OmniInput
             onEntryCreated={handleEntryCreated}

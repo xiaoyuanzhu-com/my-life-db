@@ -12,12 +12,12 @@ const BATCH_SIZE = 50;
 
 export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const [items, setItems] = useState<InboxResponse['items']>([]);
-  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+  const autoScrollRef = useRef(true);
 
   // Load initial batch
   const loadInitialBatch = useCallback(async () => {
@@ -33,7 +33,6 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
       const data: InboxResponse = await response.json();
       setItems(data.items);
-      setTotal(data.total);
       setHasMore(data.items.length < data.total);
     } catch (err) {
       console.error('Failed to load inbox:', err);
@@ -50,6 +49,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
     loadingRef.current = true;
     setIsLoading(true);
+    autoScrollRef.current = false;
 
     try {
       const offset = items.length;
@@ -61,9 +61,11 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       const data: InboxResponse = await response.json();
 
       // Append older items to the beginning of the array (since we display newest at bottom)
-      setItems(prev => [...prev, ...data.items]);
-      setTotal(data.total);
-      setHasMore(items.length + data.items.length < data.total);
+      setItems(prev => {
+        const next = [...prev, ...data.items];
+        setHasMore(next.length < data.total);
+        return next;
+      });
     } catch (err) {
       console.error('Failed to load more:', err);
       setError(err instanceof Error ? err.message : 'Failed to load more');
@@ -100,6 +102,25 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
+
+  // Auto-scroll to bottom when freshly loaded/refreshed
+  useEffect(() => {
+    if (!autoScrollRef.current) {
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+    autoScrollRef.current = false;
+  }, [items]);
+
+  useEffect(() => {
+    autoScrollRef.current = true;
+  }, [onRefresh]);
 
   if (error) {
     return (
@@ -147,14 +168,6 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
         </div>
       )}
 
-      {/* End of list indicator */}
-      {!hasMore && items.length > 0 && (
-        <div className="py-4 text-center">
-          <p className="text-xs text-muted-foreground">
-            {items.length} of {total} items
-          </p>
-        </div>
-      )}
     </div>
   );
 }
