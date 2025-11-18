@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMeiliClient } from '@/lib/search/meili-client';
 import { getFileWithDigests } from '@/lib/db/files-with-digests';
 import { getLogger } from '@/lib/log/logger';
+import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
 import type { FileWithDigests } from '@/types/file-card';
 
 const log = getLogger({ module: 'SearchAPI' });
@@ -160,11 +161,20 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      const primaryText = await readPrimaryText(fileWithDigests.path);
+      const fallbackPreview = hit.content.trim().length > 0
+        ? hit.content.trim().slice(0, 500)
+        : undefined;
+      const textPreview = primaryText
+        ? primaryText.slice(0, 500)
+        : fallbackPreview;
+
       // Generate snippet from highlighted content or original content
       const snippet = hit._formatted?.content || hit.content.slice(0, 200) + '...';
 
       results.push({
         ...fileWithDigests,
+        textPreview,
         score: 1.0, // Meilisearch doesn't provide a normalized score, so we use 1.0
         snippet,
         highlights: hit._formatted,

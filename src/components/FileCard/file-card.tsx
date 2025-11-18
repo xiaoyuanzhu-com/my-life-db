@@ -11,13 +11,14 @@ export interface FileCardProps {
   file: FileWithDigests;
   className?: string;
   showTimestamp?: boolean;
+  highlightTerms?: string[];
 }
 
 /**
  * Content-focused file card component with adaptive sizing
  * Displays text content, images, or filename based on file type
  */
-export function FileCard({ file, className, showTimestamp = false }: FileCardProps) {
+export function FileCard({ file, className, showTimestamp = false, highlightTerms }: FileCardProps) {
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
@@ -122,7 +123,7 @@ export function FileCard({ file, className, showTimestamp = false }: FileCardPro
       ) : content.type === 'text' ? (
         <div className="p-4">
           <div className="prose prose-sm dark:prose-invert max-w-none select-text">
-            <TextContent text={content.text} />
+            <TextContent text={content.text} highlightTerms={highlightTerms} />
           </div>
         </div>
       ) : (
@@ -153,17 +154,51 @@ export function FileCard({ file, className, showTimestamp = false }: FileCardPro
 }
 
 /**
- * Text content display with line limiting
+ * Text content display with optional term highlighting and line limiting
  */
-function TextContent({ text }: { text: string }) {
+function TextContent({ text, highlightTerms }: { text: string; highlightTerms?: string[] }) {
   const lines = text.split('\n').slice(0, 15); // Max 15 lines
   const displayText = lines.join('\n');
   const truncated = lines.length < text.split('\n').length;
 
   return (
     <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-      {displayText}
+      {highlightTerms && highlightTerms.length > 0
+        ? highlightMatches(displayText, highlightTerms)
+        : displayText}
       {truncated && <span className="text-muted-foreground">...</span>}
     </div>
   );
+}
+
+function highlightMatches(text: string, terms: string[]) {
+  const escapedTerms = Array.from(new Set(
+    terms
+      .map(term => term.trim())
+      .filter(term => term.length > 0)
+      .map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  ));
+
+  if (escapedTerms.length === 0) {
+    return text;
+  }
+
+  const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
+  const parts = text.split(regex);
+
+  return parts.map((part, index) => {
+    const isMatch = index % 2 === 1;
+    if (!isMatch) {
+      return <span key={`text-${index}`}>{part}</span>;
+    }
+
+    return (
+      <mark
+        key={`match-${index}`}
+        className="rounded-sm bg-yellow-200 px-0.5 py-0.5 text-foreground"
+      >
+        {part}
+      </mark>
+    );
+  });
 }

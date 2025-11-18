@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
 import type { SearchResponse, SearchResultItem } from '@/app/api/search/route';
 
@@ -22,6 +22,20 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const lastQueryRef = useRef<string | null>(null);
+  const highlightTerms = useMemo(() => {
+    if (!currentQuery.trim()) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        currentQuery
+          .split(/\s+/)
+          .map(term => term.replace(/^['"]|['"]$/g, '').trim())
+          .filter(term => term.length > 0)
+      )
+    );
+  }, [currentQuery]);
 
   // Sync incoming search results with local merged list
   useEffect(() => {
@@ -175,6 +189,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
                 key={result.path}
                 file={result}
                 showTimestamp={true}
+                highlightTerms={highlightTerms}
               />
             ))}
 
