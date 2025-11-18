@@ -13,8 +13,9 @@ import {
   getDigestById,
   createDigest,
   updateDigest,
+  deleteDigestsForPath,
 } from '@/lib/db/digests';
-import { sqlarStore } from '@/lib/db/sqlar';
+import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestCoordinator' });
@@ -39,7 +40,7 @@ export class DigestCoordinator {
    *
    * @param filePath Path to file to process
    */
-  async processFile(filePath: string): Promise<void> {
+  async processFile(filePath: string, options?: { reset?: boolean }): Promise<void> {
     log.info({ filePath }, 'processing file');
 
     // 1. Load file metadata
@@ -47,6 +48,10 @@ export class DigestCoordinator {
     if (!fileRecord) {
       log.error({ filePath }, 'file not found');
       return;
+    }
+
+    if (options?.reset) {
+      this.resetDigests(filePath);
     }
 
     // Convert to FileRecordRow (DB format)
@@ -71,16 +76,10 @@ export class DigestCoordinator {
 
     // 3. Process each digester sequentially
     for (const digester of digesters) {
+      const digesterName = digester.name;
       try {
         // Load fresh digest state for this iteration
         const existingDigests = listDigestsForPath(filePath);
-
-        // Get digester name from constructor
-        const digesterName = digester.constructor.name
-          .replace('Digester', '')
-          .replace(/([A-Z])/g, '-$1')
-          .toLowerCase()
-          .slice(1);
 
         // Check if already completed
         const existing = existingDigests.find((d) => d.digester === digesterName);
@@ -125,20 +124,25 @@ export class DigestCoordinator {
         }
 
         // Save outputs (each digest saved immediately - Option A)
+        let producedSelfDigest = false;
         for (const digest of outputs) {
+          if (digest.digester === digesterName) {
+            producedSelfDigest = true;
+          }
           await this.saveDigestOutput(filePath, digest);
+        }
+
+        if (!producedSelfDigest) {
+          await this.upsertDigest(filePath, digesterName, {
+            status: 'completed',
+            error: null,
+          });
         }
 
         processed++;
         log.info({ filePath, digester: digesterName }, 'digester completed');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        const digesterName = digester.constructor.name
-          .replace('Digester', '')
-          .replace(/([A-Z])/g, '-$1')
-          .toLowerCase()
-          .slice(1);
-
         log.error({ filePath, digester: digesterName, error: errorMsg }, 'digester failed');
 
         // Mark as failed
@@ -261,5 +265,15 @@ export class DigestCoordinator {
     });
 
     log.debug({ filePath, digester, sqlarName }, 'binary artifact saved');
+  }
+
+  /**
+   * Remove existing digests and SQLAR artifacts before reprocessing a file
+   */
+  private resetDigests(filePath: string): void {
+    log.info({ filePath }, 'resetting digests before processing');
+    deleteDigestsForPath(filePath);
+    const pathHash = hashPath(filePath);
+    sqlarDeletePrefix(this.db, `${pathHash}/`);
   }
 }

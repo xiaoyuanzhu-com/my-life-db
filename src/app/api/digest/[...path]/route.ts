@@ -81,7 +81,7 @@ export async function POST(
     const coordinator = new DigestCoordinator(db);
 
     // Process file (runs synchronously but returns void)
-    await coordinator.processFile(filePath);
+    await coordinator.processFile(filePath, { reset: true });
 
     return NextResponse.json({
       success: true,
