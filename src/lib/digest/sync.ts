@@ -33,7 +33,6 @@ export function syncNewDigesters(db: BetterSqlite3.Database): void {
     .prepare(
       `
       SELECT DISTINCT file_path FROM digests
-      WHERE file_path LIKE 'inbox/%'
     `
     )
     .all() as Array<{ file_path: string }>;

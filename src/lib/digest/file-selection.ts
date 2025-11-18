@@ -10,6 +10,8 @@ import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'FileSelection' });
 
+const EXCLUDED_PATH_PREFIXES = ['app/', '.app/', '.git/', '.mylifedb/', 'node_modules/'];
+
 /**
  * Find files that need digestion.
  * Returns files where:
@@ -34,17 +36,20 @@ export function findFilesNeedingDigestion(
 
   // Get candidate files from inbox (recent first)
   // Multiply limit to account for filtering
+  const exclusionClause = EXCLUDED_PATH_PREFIXES.map(() => 'path NOT LIKE ?').join(' AND ');
+  const exclusionArgs = EXCLUDED_PATH_PREFIXES.map(prefix => `${prefix}%`);
+
+  const candidateQuery = `
+    SELECT path FROM files
+    WHERE is_folder = 0
+      ${exclusionClause ? `AND ${exclusionClause}` : ''}
+    ORDER BY COALESCE(last_scanned_at, created_at) ASC
+    LIMIT ?
+  `;
+
   const candidateFiles = db
-    .prepare(
-      `
-      SELECT path FROM files
-      WHERE path LIKE 'inbox/%'
-        AND is_folder = 0
-      ORDER BY created_at DESC
-      LIMIT ?
-    `
-    )
-    .all(limit * 3) as Array<{ path: string }>;
+    .prepare(candidateQuery)
+    .all(...exclusionArgs, limit * 3) as Array<{ path: string }>;
 
   const needsWork: string[] = [];
 
@@ -88,7 +93,7 @@ export function findFilesNeedingDigestion(
     }
   }
 
-  log.info(
+  log.debug(
     { count: needsWork.length, checked: candidateFiles.length },
     'files needing digestion'
   );

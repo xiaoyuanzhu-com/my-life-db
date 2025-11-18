@@ -6,6 +6,7 @@
 import { initializeTaskQueue } from './task-queue/startup';
 import { startPeriodicScanner } from './scanner/library-scanner';
 import { initializeDigesters } from './digest/initialization';
+import { startDigestSupervisor } from './digest/supervisor';
 import { getLogger } from '@/lib/log/logger';
 
 declare global {
@@ -81,6 +82,9 @@ export function initializeApp() {
 
     // Start periodic library scanner
     startPeriodicScanner();
+
+    // Start digest supervisor loop
+    startDigestSupervisor();
 
     // Run async initialization tasks (database, search, settings)
     (async () => {
