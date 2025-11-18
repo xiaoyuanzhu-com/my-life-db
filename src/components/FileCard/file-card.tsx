@@ -6,19 +6,27 @@ import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
+import type { SearchResultItem } from '@/app/api/search/route';
 
 export interface FileCardProps {
   file: FileWithDigests;
   className?: string;
   showTimestamp?: boolean;
   highlightTerms?: string[];
+  matchContext?: SearchResultItem['matchContext'];
 }
 
 /**
  * Content-focused file card component with adaptive sizing
  * Displays text content, images, or filename based on file type
  */
-export function FileCard({ file, className, showTimestamp = false, highlightTerms }: FileCardProps) {
+export function FileCard({
+  file,
+  className,
+  showTimestamp = false,
+  highlightTerms,
+  matchContext,
+}: FileCardProps) {
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
@@ -81,73 +89,79 @@ export function FileCard({ file, className, showTimestamp = false, highlightTerm
       )}
 
       <div className="group relative w-full overflow-hidden rounded-lg border border-border bg-muted">
-        {content.type === 'image' ? (
-          <div className="relative w-full">
-            <Image
-              src={content.src}
-              alt={content.alt}
-              width={800}
-              height={600}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              className="w-full h-auto object-contain"
-              priority={false}
-            />
-          </div>
-      ) : content.type === 'video' ? (
-        <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
-          <video
-            src={content.src}
-            controls
-            className="w-full h-full object-contain bg-black"
-            preload="metadata"
-          >
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      ) : content.type === 'audio' ? (
-        <div className="p-6 flex items-center justify-center min-h-[120px]">
-          <div className="w-full">
-            <div className="text-sm font-medium text-foreground/80 mb-4 text-center break-all">
-              {file.name}
+        <div className="relative">
+          {content.type === 'image' ? (
+            <div className="relative w-full">
+              <Image
+                src={content.src}
+                alt={content.alt}
+                width={800}
+                height={600}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                className="w-full h-auto object-contain"
+                priority={false}
+              />
             </div>
-            <audio
-              src={content.src}
-              controls
-              className="w-full"
-              preload="metadata"
-            >
-              Your browser does not support the audio tag.
-            </audio>
-          </div>
-        </div>
-      ) : content.type === 'text' ? (
-        <div className="p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none select-text">
-            <TextContent text={content.text} highlightTerms={highlightTerms} />
-          </div>
-        </div>
-      ) : (
-        <div className="p-6 flex items-center justify-center min-h-[120px]">
-          <div className="text-center">
-            <div className="text-sm font-medium text-foreground/80 break-all">
-              {content.name}
+          ) : content.type === 'video' ? (
+            <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+              <video
+                src={content.src}
+                controls
+                className="w-full h-full object-contain bg-black"
+                preload="metadata"
+              >
+                Your browser does not support the video tag.
+              </video>
             </div>
-            {file.mimeType && (
-              <div className="mt-2 text-xs text-muted-foreground">
-                {file.mimeType}
+          ) : content.type === 'audio' ? (
+            <div className="p-6 flex items-center justify-center min-h-[120px]">
+              <div className="w-full">
+                <div className="text-sm font-medium text-foreground/80 mb-4 text-center break-all">
+                  {file.name}
+                </div>
+                <audio
+                  src={content.src}
+                  controls
+                  className="w-full"
+                  preload="metadata"
+                >
+                  Your browser does not support the audio tag.
+                </audio>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            </div>
+          ) : content.type === 'text' ? (
+            <div className="p-4">
+              <div className="prose prose-sm dark:prose-invert max-w-none select-text">
+                <TextContent text={content.text} highlightTerms={highlightTerms} />
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 flex items-center justify-center min-h-[120px]">
+              <div className="text-center">
+                <div className="text-sm font-medium text-foreground/80 break-all">
+                  {content.name}
+                </div>
+                {file.mimeType && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {file.mimeType}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-        {/* Hover open button */}
-        <Link
-          href={href}
-          className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          Open
-        </Link>
+          {/* Hover open button */}
+          <Link
+            href={href}
+            className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            Open
+          </Link>
+        </div>
+
+        {matchContext?.source === 'digest' && (
+          <DigestMatchContext context={matchContext} />
+        )}
       </div>
     </div>
   );
@@ -201,4 +215,22 @@ function highlightMatches(text: string, terms: string[]) {
       </mark>
     );
   });
+}
+
+type DigestMatchContextProps = {
+  context: NonNullable<SearchResultItem['matchContext']>;
+};
+
+function DigestMatchContext({ context }: DigestMatchContextProps) {
+  const terms = context.terms ?? [];
+  return (
+    <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
+      <p className="mb-1 font-semibold text-muted-foreground">
+        Matched {context.digest?.label ?? 'digest'}
+      </p>
+      <div className="text-xs text-foreground leading-relaxed">
+        {terms.length > 0 ? highlightMatches(context.snippet, terms) : context.snippet}
+      </div>
+    </div>
+  );
 }

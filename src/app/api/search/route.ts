@@ -3,9 +3,13 @@ import { getMeiliClient } from '@/lib/search/meili-client';
 import { getFileWithDigests } from '@/lib/db/files-with-digests';
 import { getLogger } from '@/lib/log/logger';
 import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
+import { buildMatchSnippet } from '@/lib/search/snippet';
 import type { FileWithDigests } from '@/types/file-card';
+import type { DigestSummary } from '@/types/file-card';
 
 const log = getLogger({ module: 'SearchAPI' });
+const HIGHLIGHT_PRE_TAG = '<em>';
+const HIGHLIGHT_POST_TAG = '</em>';
 
 /**
  * Escape special characters in Meilisearch filter values
@@ -23,6 +27,16 @@ export interface SearchResultItem extends FileWithDigests {
   highlights?: {
     content?: string;
     summary?: string;
+    tags?: string;
+  };
+  matchContext?: {
+    source: 'digest';
+    snippet: string;
+    terms: string[];
+    digest?: {
+      type: string;
+      label: string;
+    };
   };
 }
 
@@ -66,6 +80,20 @@ export interface SearchResponse {
  *   "timing": { "totalMs": 145, "searchMs": 42, "enrichMs": 103 }
  * }
  */
+type SearchHit = {
+  documentId: string;
+  filePath: string;
+  mimeType: string | null;
+  content: string;
+  summary: string | null;
+  tags: string | null;
+  _formatted?: {
+    content?: string;
+    summary?: string;
+    tags?: string;
+  };
+};
+
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
@@ -124,23 +152,13 @@ export async function GET(request: NextRequest) {
     // Perform Meilisearch query
     const searchStart = Date.now();
     const client = await getMeiliClient();
+    const highlightTerms = extractSearchTerms(query);
 
-    const searchResult = await client.search<{
-      documentId: string;
-      filePath: string;
-      mimeType: string | null;
-      content: string;
-      summary: string | null;
-      tags: string | null;
-      _formatted?: {
-        content?: string;
-        summary?: string;
-      };
-    }>(query, {
+    const searchResult = await client.search<SearchHit>(query, {
       limit,
       offset,
       filter,
-      attributesToHighlight: ['content', 'summary'],
+      attributesToHighlight: ['content', 'summary', 'tags'],
       attributesToCrop: ['content'],
       cropLength: 200,
     });
@@ -171,6 +189,12 @@ export async function GET(request: NextRequest) {
 
       // Generate snippet from highlighted content or original content
       const snippet = hit._formatted?.content || hit.content.slice(0, 200) + '...';
+      const matchContext = buildDigestMatchContext({
+        hit,
+        file: fileWithDigests,
+        terms: highlightTerms,
+        primaryText,
+      });
 
       results.push({
         ...fileWithDigests,
@@ -178,6 +202,7 @@ export async function GET(request: NextRequest) {
         score: 1.0, // Meilisearch doesn't provide a normalized score, so we use 1.0
         snippet,
         highlights: hit._formatted,
+        matchContext,
       });
     }
 
@@ -241,4 +266,204 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function extractSearchTerms(query: string): string[] {
+  return Array.from(
+    new Set(
+      query
+        .split(/\s+/)
+        .map((term) => term.replace(/^['"]+|['"]+$/g, '').trim())
+        .filter((term) => term.length > 0)
+    )
+  );
+}
+
+function hasHighlight(value?: string | null): boolean {
+  return Boolean(value && value.includes(HIGHLIGHT_PRE_TAG));
+}
+
+const SUMMARY_DIGESTERS = new Set(['summary', 'url-crawl-summary', 'summarize']);
+const TAG_DIGESTERS = new Set(['tagging', 'tags']);
+const CONTENT_DIGESTERS = new Set(['url-crawl-content', 'content-md', 'url-content-md']);
+
+interface DigestFieldConfig {
+  field: 'summary' | 'tags' | 'content';
+  digesterTypes: string[];
+  label: string;
+  requirePrimaryMiss?: boolean;
+}
+
+const DIGEST_FIELD_CONFIG: DigestFieldConfig[] = [
+  {
+    field: 'summary',
+    digesterTypes: ['summary', 'url-crawl-summary', 'summarize'],
+    label: 'Summary digest',
+  },
+  {
+    field: 'tags',
+    digesterTypes: ['tagging', 'tags'],
+    label: 'Tags digest',
+  },
+  {
+    field: 'content',
+    digesterTypes: ['url-crawl-content', 'content-md', 'url-content-md'],
+    label: 'Crawled digest',
+    requirePrimaryMiss: true,
+  },
+];
+
+function buildDigestMatchContext({
+  hit,
+  file,
+  terms,
+  primaryText,
+}: {
+  hit: SearchHit;
+  file: FileWithDigests;
+  terms: string[];
+  primaryText: string | null;
+}): SearchResultItem['matchContext'] | undefined {
+  if (terms.length === 0) {
+    return undefined;
+  }
+  const primaryContainsTerm = primaryText ? containsAnyTerm(primaryText, terms) : false;
+
+  for (const config of DIGEST_FIELD_CONFIG) {
+    const formattedValue = hit._formatted?.[config.field];
+    if (!hasHighlight(formattedValue)) {
+      continue;
+    }
+
+    if (config.requirePrimaryMiss && primaryContainsTerm) {
+      continue;
+    }
+
+    const digest = findDigestByType(file.digests, config.digesterTypes);
+    const digestText = digest
+      ? extractDigestText(digest)
+      : stripHighlightTags(formattedValue);
+
+    if (!digestText) {
+      continue;
+    }
+
+    const { snippet, matchFound } = buildMatchSnippet(digestText, terms, {
+      contextRadius: 80,
+      maxLength: 200,
+    });
+
+    if (!snippet) {
+      continue;
+    }
+
+    if (!matchFound && digest) {
+      // Skip mismatch when digest content doesn't contain the term
+      continue;
+    }
+
+    return {
+      source: 'digest',
+      snippet,
+      terms,
+      digest: digest
+        ? {
+            type: digest.type,
+            label: getDigestLabel(digest.type, config.label),
+          }
+        : {
+            type: config.field,
+            label: config.label,
+          },
+    };
+  }
+
+  return undefined;
+}
+
+function findDigestByType(
+  digests: DigestSummary[],
+  digesterTypes: string[]
+): DigestSummary | undefined {
+  return digests.find((digest) => digesterTypes.includes(digest.type));
+}
+
+function extractDigestText(digest: DigestSummary): string | null {
+  if (!digest.content) {
+    return null;
+  }
+
+  if (CONTENT_DIGESTERS.has(digest.type)) {
+    try {
+      const parsed = JSON.parse(digest.content) as { markdown?: unknown };
+      if (typeof parsed?.markdown === 'string') {
+        return parsed.markdown;
+      }
+    } catch {
+      // Fall through to raw content
+    }
+  }
+
+  if (SUMMARY_DIGESTERS.has(digest.type)) {
+    try {
+      const parsed = JSON.parse(digest.content) as { summary?: unknown };
+      if (typeof parsed.summary === 'string') {
+        return parsed.summary;
+      }
+    } catch {
+      // Fall through to raw content
+    }
+  }
+
+  if (TAG_DIGESTERS.has(digest.type)) {
+    try {
+      const parsed = JSON.parse(digest.content) as { tags?: unknown } | unknown[];
+      const tagsArray = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { tags?: unknown }).tags)
+          ? (parsed as { tags?: unknown }).tags
+          : [];
+      const tags = (tagsArray as unknown[])
+        .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+        .filter((tag) => tag.length > 0);
+      if (tags.length > 0) {
+        return tags.join(', ');
+      }
+    } catch {
+      // Fall through to raw content
+    }
+  }
+
+  return digest.content;
+}
+
+function getDigestLabel(type: string, fallback: string): string {
+  if (SUMMARY_DIGESTERS.has(type)) {
+    return 'Summary digest';
+  }
+  if (TAG_DIGESTERS.has(type)) {
+    return 'Tags digest';
+  }
+  if (CONTENT_DIGESTERS.has(type)) {
+    return 'Crawled digest';
+  }
+  return fallback;
+}
+
+function containsAnyTerm(text: string, terms: string[]): boolean {
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  return terms.some((term) => normalized.includes(term.toLowerCase()));
+}
+
+function stripHighlightTags(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  return value
+    .split(HIGHLIGHT_PRE_TAG)
+    .join('')
+    .split(HIGHLIGHT_POST_TAG)
+    .join('');
 }

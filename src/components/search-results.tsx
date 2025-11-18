@@ -190,6 +190,7 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
                 file={result}
                 showTimestamp={true}
                 highlightTerms={highlightTerms}
+                matchContext={result.matchContext}
               />
             ))}
 
