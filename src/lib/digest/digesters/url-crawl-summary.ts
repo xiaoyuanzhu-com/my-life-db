@@ -1,6 +1,6 @@
 /**
- * Summary Digester
- * Generates AI summaries of content
+ * URL Crawl Summary Digester
+ * Generates summaries from crawled web content
  */
 
 import type { Digester } from '../types';
@@ -10,15 +10,14 @@ import { summarizeTextDigest } from '@/lib/digest/text-summary';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 
-const log = getLogger({ module: 'SummaryDigester' });
+const log = getLogger({ module: 'UrlCrawlSummaryDigester' });
 
 /**
- * Summary Digester
- * Generates summaries from content-md digest
- * Produces: summary
+ * URL Crawl Summary Digester
+ * Generates summaries from url-crawl-content digest
  */
-export class SummaryDigester implements Digester {
-  readonly name = 'summarize';
+export class UrlCrawlSummaryDigester implements Digester {
+  readonly name = 'url-crawl-summary';
 
   async canDigest(
     filePath: string,
@@ -73,9 +72,9 @@ export class SummaryDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'summarize'),
+        id: generateDigestId(filePath, 'url-crawl-summary'),
         filePath,
-        digester: 'summarize',
+        digester: 'url-crawl-summary',
         status: 'completed',
         content: JSON.stringify({ summary: result.summary }),
         sqlarName: null,

@@ -99,13 +99,15 @@ export function listDigestsForPath(
   options?: {
     digesters?: string[];  // Only include these digesters
     excludeDigesters?: string[];  // Exclude these digesters
+    statuses?: Digest['status'][];
+    excludeStatuses?: Digest['status'][];
     order?: 'asc' | 'desc';
   }
 ): Digest[] {
   const db = getDatabase();
 
   let sql = 'SELECT * FROM digests WHERE file_path = ?';
-  const params: (string | string[])[] = [filePath];
+  const params: (string | number)[] = [filePath];
 
   if (options?.digesters && options.digesters.length > 0) {
     const placeholders = options.digesters.map(() => '?').join(', ');
@@ -117,6 +119,18 @@ export function listDigestsForPath(
     const placeholders = options.excludeDigesters.map(() => '?').join(', ');
     sql += ` AND digester NOT IN (${placeholders})`;
     params.push(...options.excludeDigesters);
+  }
+
+  if (options?.statuses && options.statuses.length > 0) {
+    const placeholders = options.statuses.map(() => '?').join(', ');
+    sql += ` AND status IN (${placeholders})`;
+    params.push(...options.statuses);
+  }
+
+  if (options?.excludeStatuses && options.excludeStatuses.length > 0) {
+    const placeholders = options.excludeStatuses.map(() => '?').join(', ');
+    sql += ` AND status NOT IN (${placeholders})`;
+    params.push(...options.excludeStatuses);
   }
 
   const orderDirection = options?.order === 'asc' ? 'ASC' : 'DESC';

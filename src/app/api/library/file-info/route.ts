@@ -30,7 +30,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all digests for this file
-    const digests = listDigestsForPath(filePath, { order: 'asc' });
+    const digests = listDigestsForPath(filePath, {
+      order: 'asc',
+      excludeStatuses: ['skipped'],
+      excludeDigesters: ['url-crawl'],
+    });
 
     return NextResponse.json({
       file: fileRecord,

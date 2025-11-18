@@ -55,7 +55,16 @@ export class DigesterRegistry {
    * Get all digest types that could be produced by all digesters
    */
   getAllDigestTypes(): string[] {
-    return this.digesters.map((d) => d.name);
+    const types = new Set<string>();
+    for (const digester of this.digesters) {
+      const outputs = digester.getOutputDigesters?.();
+      if (outputs && outputs.length > 0) {
+        outputs.forEach((name) => types.add(name));
+      } else {
+        types.add(digester.name);
+      }
+    }
+    return Array.from(types);
   }
 
   /**

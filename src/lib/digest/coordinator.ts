@@ -79,15 +79,43 @@ export class DigestCoordinator {
     // 3. Process each digester sequentially
     for (const digester of digesters) {
       const digesterName = digester.name;
+      const outputNames = this.getOutputNames(digester);
+      let pendingOutputs: string[] = [];
+
       try {
         // Load fresh digest state for this iteration
         const existingDigests = listDigestsForPath(filePath);
+        const digestsByName = new Map(existingDigests.map((d) => [d.digester, d]));
 
-        // Check if already completed
-        const existing = existingDigests.find((d) => d.digester === digesterName);
+        const allOutputsComplete = outputNames.every((name) => {
+          const existing = digestsByName.get(name);
+          return existing && (existing.status === 'completed' || existing.status === 'skipped');
+        });
 
-        if (existing?.status === 'completed') {
-          log.debug({ filePath, digester: digesterName }, 'already completed, skipping');
+        if (allOutputsComplete) {
+          log.debug({ filePath, digester: digesterName }, 'outputs already terminal, skipping');
+          skipped++;
+          continue;
+        }
+
+        const outputsInProgress = outputNames.some((name) => {
+          const digest = digestsByName.get(name);
+          return digest?.status === 'in-progress';
+        });
+
+        if (outputsInProgress) {
+          log.debug({ filePath, digester: digesterName }, 'outputs currently in progress, skipping');
+          skipped++;
+          continue;
+        }
+
+        pendingOutputs = outputNames.filter((name) => {
+          const digest = digestsByName.get(name);
+          if (!digest) return true;
+          return digest.status === 'todo' || digest.status === 'failed';
+        });
+
+        if (pendingOutputs.length === 0) {
           skipped++;
           continue;
         }
@@ -96,49 +124,38 @@ export class DigestCoordinator {
         const can = await digester.canDigest(filePath, file, existingDigests, this.db);
 
         if (!can) {
-          // Mark as skipped (not applicable)
-          await this.upsertDigest(filePath, digesterName, {
-            status: 'skipped',
-            error: 'Not applicable',
-          });
+          const reason = digesterName === 'url-crawl' ? 'File does not contain a URL' : 'Not applicable';
+          this.markDigests(filePath, pendingOutputs, 'skipped', reason);
           log.debug({ filePath, digester: digesterName }, 'not applicable, skipped');
           skipped++;
           continue;
         }
 
-        // Mark as in-progress
-        await this.upsertDigest(filePath, digesterName, { status: 'in-progress' });
+        // Mark pending outputs as in-progress
+        this.markDigests(filePath, pendingOutputs, 'in-progress');
 
         log.info({ filePath, digester: digesterName }, 'running digester');
 
         // Execute digester
         const outputs = await digester.digest(filePath, file, existingDigests, this.db);
 
-        if (outputs === null) {
-          // Digester decided to skip
-          await this.upsertDigest(filePath, digesterName, {
-            status: 'skipped',
-            error: 'Digester returned null',
-          });
-          log.debug({ filePath, digester: digesterName }, 'digester returned null, skipped');
+        if (!outputs || outputs.length === 0) {
+          this.markDigests(filePath, pendingOutputs, 'skipped', 'Digester returned no output');
+          log.debug({ filePath, digester: digesterName }, 'digester returned no output, skipped');
           skipped++;
           continue;
         }
 
-        // Save outputs (each digest saved immediately - Option A)
-        let producedSelfDigest = false;
+        const producedNames = new Set<string>();
+
         for (const digest of outputs) {
-          if (digest.digester === digesterName) {
-            producedSelfDigest = true;
-          }
+          producedNames.add(digest.digester);
           await this.saveDigestOutput(filePath, digest);
         }
 
-        if (!producedSelfDigest) {
-          await this.upsertDigest(filePath, digesterName, {
-            status: 'completed',
-            error: null,
-          });
+        const missingOutputs = pendingOutputs.filter((name) => !producedNames.has(name));
+        if (missingOutputs.length > 0) {
+          this.markDigests(filePath, missingOutputs, 'skipped', 'Output not produced');
         }
 
         processed++;
@@ -147,11 +164,8 @@ export class DigestCoordinator {
         const errorMsg = error instanceof Error ? error.message : String(error);
         log.error({ filePath, digester: digesterName, error: errorMsg }, 'digester failed');
 
-        // Mark as failed
-        await this.upsertDigest(filePath, digesterName, {
-          status: 'failed',
-          error: errorMsg,
-        });
+        const targets = pendingOutputs.length > 0 ? pendingOutputs : outputNames;
+        this.markDigests(filePath, targets, 'failed', errorMsg);
 
         failed++;
       }
@@ -161,40 +175,6 @@ export class DigestCoordinator {
       { filePath, processed, skipped, failed, total: digesters.length },
       'processing complete'
     );
-  }
-
-  /**
-   * Create or update digest record
-   */
-  private async upsertDigest(
-    filePath: string,
-    digester: string,
-    updates: Partial<Digest>
-  ): Promise<void> {
-    const id = generateDigestId(filePath, digester);
-    const existing = getDigestById(id);
-
-    if (existing) {
-      // Update existing
-      updateDigest(id, {
-        ...updates,
-        updatedAt: new Date().toISOString(),
-      });
-    } else {
-      // Create new
-      const digest: Digest = {
-        id,
-        filePath,
-        digester,
-        status: updates.status || 'todo',
-        content: updates.content ?? null,
-        sqlarName: updates.sqlarName ?? null,
-        error: updates.error ?? null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      createDigest(digest);
-    }
   }
 
   /**
@@ -279,7 +259,7 @@ export class DigestCoordinator {
     const now = new Date().toISOString();
 
     for (const digester of digesters) {
-      const outputs = [digester.name, ...(digester.getOutputDigesters?.() ?? [])];
+      const outputs = this.getOutputNames(digester);
       for (const outputName of outputs) {
         if (existingTypes.has(outputName)) {
           continue;
@@ -318,5 +298,50 @@ export class DigestCoordinator {
     deleteDigestsForPath(filePath);
     const pathHash = hashPath(filePath);
     sqlarDeletePrefix(this.db, `${pathHash}/`);
+  }
+
+  private getOutputNames(digester: Digester): string[] {
+    const outputs = digester.getOutputDigesters?.();
+    if (outputs && outputs.length > 0) {
+      return outputs;
+    }
+    return [digester.name];
+  }
+
+  private markDigests(
+    filePath: string,
+    digesterNames: string[],
+    status: Digest['status'],
+    error?: string | null
+  ): void {
+    if (digesterNames.length === 0) return;
+    const now = new Date().toISOString();
+    const errorValue = status === 'in-progress' ? null : error ?? null;
+
+    for (const name of digesterNames) {
+      const id = generateDigestId(filePath, name);
+      const existing = getDigestById(id);
+      if (existing) {
+        updateDigest(id, {
+          status,
+          error: errorValue,
+          updatedAt: now,
+        });
+        continue;
+      }
+
+      const digest: Digest = {
+        id,
+        filePath,
+        digester: name,
+        status,
+        content: null,
+        sqlarName: null,
+        error: errorValue,
+        createdAt: now,
+        updatedAt: now,
+      };
+      createDigest(digest);
+    }
   }
 }

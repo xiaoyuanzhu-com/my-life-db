@@ -144,7 +144,7 @@ function DigestCard({ digest }: { digest: Digest }) {
                     </div>
                   )}
                 </div>
-              ) : digest.digester === 'summarize' && parsedContent?.summary ? (
+              ) : (digest.digester === 'url-crawl-summary' || digest.digester === 'summarize') && parsedContent?.summary ? (
                 <div className="p-2 bg-muted rounded text-sm whitespace-pre-wrap">
                   {parsedContent.summary}
                 </div>

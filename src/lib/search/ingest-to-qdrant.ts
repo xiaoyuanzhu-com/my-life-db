@@ -101,7 +101,9 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   }
 
   // 3. Index summary from digest
-  const summaryDigest = digests.find(d => d.digester === 'summarize' && d.status === 'completed');
+  const summaryDigest =
+    digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed') ||
+    digests.find(d => d.digester === 'summarize' && d.status === 'completed');
   if (summaryDigest?.content) {
     // Parse JSON to get summary text
     let summaryText: string;

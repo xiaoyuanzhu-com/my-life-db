@@ -9,6 +9,12 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
+import {
+  getPrimaryTextContent,
+  getSummaryText,
+  hasAnyTextSource,
+  hasUrlCrawlContent,
+} from '@/lib/digest/text-source';
 
 const log = getLogger({ module: 'SlugDigester' });
 
@@ -26,14 +32,15 @@ export class SlugDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Need either summarize or url-crawl-content
-    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
-    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
+    const summaryText = getSummaryText(existingDigests);
+    if (summaryText && summaryText.trim().length > 0) {
+      return true;
+    }
 
-    const hasSummary = summaryDigest?.status === 'completed' && !!summaryDigest.content;
-    const hasContent = contentDigest?.status === 'completed' && !!contentDigest.content;
-
-    return hasSummary || hasContent;
+    return (
+      hasUrlCrawlContent(existingDigests, 20) ||
+      hasAnyTextSource(file, existingDigests, { minFileBytes: 20 })
+    );
   }
 
   async digest(
@@ -42,34 +49,14 @@ export class SlugDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    // Prefer summary, fallback to url-crawl-content
-    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
-    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
+    let sourceText = getSummaryText(existingDigests);
+    let sourceType = sourceText ? 'url-crawl-summary' : 'url-digest';
 
-    let sourceText: string | undefined;
-    let sourceType: string = 'url-crawl-content'; // Default value
-
-    // Try to get summary first
-    if (summaryDigest?.content && summaryDigest.status === 'completed') {
-      try {
-        const summaryData = JSON.parse(summaryDigest.content);
-        sourceText = summaryData.summary;
-        sourceType = 'summarize';
-      } catch {
-        // Fallback for old format
-        sourceText = summaryDigest.content;
-        sourceType = 'summarize';
-      }
-    } else if (contentDigest?.content) {
-      // Fallback to url-crawl-content
-      try {
-        const contentData = JSON.parse(contentDigest.content);
-        sourceText = contentData.markdown;
-        sourceType = 'url-crawl-content';
-      } catch {
-        // Fallback for old format
-        sourceText = contentDigest.content;
-        sourceType = 'url-crawl-content';
+    if (!sourceText) {
+      const textSource = await getPrimaryTextContent(filePath, file, existingDigests);
+      if (textSource) {
+        sourceText = textSource.text;
+        sourceType = textSource.source;
       }
     }
 

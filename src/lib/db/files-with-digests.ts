@@ -16,7 +16,11 @@ export function getFileWithDigests(path: string): FileWithDigests | null {
   const file = getFileByPath(path);
   if (!file) return null;
 
-  const digests = listDigestsForPath(path, { order: 'asc' });
+  const digests = listDigestsForPath(path, {
+    order: 'asc',
+    excludeStatuses: ['skipped'],
+    excludeDigesters: ['url-crawl'],
+  });
 
   return enrichFileWithDigests(file, digests);
 }
@@ -41,7 +45,8 @@ export function listFilesWithDigests(
   return files.map((file) => {
     const digests = listDigestsForPath(file.path, {
       digesters: options?.digesters,
-      excludeDigesters: options?.excludeDigesters,
+      excludeDigesters: [...(options?.excludeDigesters ?? []), 'url-crawl'],
+      excludeStatuses: ['skipped'],
       order: 'asc',
     });
     return enrichFileWithDigests(file, digests);

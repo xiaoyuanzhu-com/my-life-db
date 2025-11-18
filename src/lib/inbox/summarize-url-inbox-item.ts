@@ -17,13 +17,24 @@ const log = getLogger({ module: 'InboxSummary' });
  * Reads content-md digest created by the crawl step
  */
 function loadSummarySource(filePath: string): { text: string; source: string } | null {
-  // Read content-md digest from database
-  const contentDigest = getDigestByPathAndDigester(filePath, 'content-md');
+  const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
 
   if (contentDigest?.content) {
+    try {
+      const parsed = JSON.parse(contentDigest.content);
+      if (parsed?.markdown) {
+        return {
+          text: parsed.markdown,
+          source: 'url-crawl-content digest',
+        };
+      }
+    } catch {
+      // Fallback to raw content if parsing fails
+    }
+
     return {
       text: contentDigest.content,
-      source: 'content-md digest',
+      source: 'url-crawl-content digest',
     };
   }
 
@@ -89,9 +100,9 @@ defineTaskHandler({
       // Create enriched digest
       const now = new Date().toISOString();
       createDigest({
-        id: generateDigestId(filePath, 'summary'),
+        id: generateDigestId(filePath, 'url-crawl-summary'),
         filePath,
-        digester: 'summary',
+        digester: 'url-crawl-summary',
         status: 'completed',
         content: summary,
         sqlarName: null,
@@ -116,9 +127,9 @@ defineTaskHandler({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const now = new Date().toISOString();
       createDigest({
-        id: generateDigestId(filePath, 'summary'),
+        id: generateDigestId(filePath, 'url-crawl-summary'),
         filePath,
-        digester: 'summary',
+        digester: 'url-crawl-summary',
         status: 'failed',
         content: null,
         sqlarName: null,

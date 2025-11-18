@@ -5,7 +5,7 @@
 
 import { globalDigesterRegistry } from './registry';
 import { UrlCrawlerDigester } from './digesters/url-crawler';
-import { SummaryDigester } from './digesters/summary';
+import { UrlCrawlSummaryDigester } from './digesters/url-crawl-summary';
 import { TaggingDigester } from './digesters/tagging';
 import { SlugDigester } from './digesters/slug';
 import { MeiliSearchDigester } from './digesters/search-meili';
@@ -42,7 +42,7 @@ export function initializeDigesters(): void {
 
   // 2. SummaryDigester (depends on content-md)
   //    Produces: summary
-  globalDigesterRegistry.register(new SummaryDigester());
+  globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
   // 3. TaggingDigester (depends on content-md, independent of summary)
   //    Produces: tags

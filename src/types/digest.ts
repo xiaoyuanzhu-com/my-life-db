@@ -20,7 +20,7 @@ export interface DigestRecordRow {
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
   file_path: string;
 
-  /** Digester name (e.g., 'url-crawl-content', 'summarize') */
+  /** Digester name (e.g., 'url-crawl-content', 'url-crawl-summary') */
   digester: string;
 
   /** Processing status (see DigestStatus enum) */
@@ -55,7 +55,7 @@ export interface Digest {
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
   filePath: string;
 
-  /** Digester name (e.g., 'url-crawl-content', 'summarize') */
+  /** Digester name (e.g., 'url-crawl-content', 'url-crawl-summary') */
   digester: string;
 
   /** Processing status (see DigestStatus enum) */

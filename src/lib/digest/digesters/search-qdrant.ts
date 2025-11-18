@@ -11,6 +11,7 @@ import { enqueueQdrantIndex } from '@/lib/search/qdrant-tasks';
 import { getQdrantDocumentIdsByFile } from '@/lib/db/qdrant-documents';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
+import { hasAnyTextSource } from '@/lib/digest/text-source';
 
 const log = getLogger({ module: 'QdrantSearchDigester' });
 
@@ -23,15 +24,14 @@ export class QdrantSearchDigester implements Digester {
 
   async canDigest(
     filePath: string,
-    _file: FileRecordRow,
+    file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Check if url-crawl-content digest exists and is completed
-    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
-
-    if (!contentDigest || contentDigest.status !== 'completed') {
-      return false; // No content to index yet
+    if (
+      !hasAnyTextSource(file, existingDigests, { minUrlLength: 20, minFileBytes: 20 })
+    ) {
+      return false;
     }
 
     // Check if we need to re-index (dependencies changed)
@@ -46,17 +46,24 @@ export class QdrantSearchDigester implements Digester {
     }
 
     // Check if dependencies were updated after we last indexed
-    const summaryDigest = existingDigests.find((d) => d.digester === 'summarize');
+    const summaryDigest =
+      existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
+      existingDigests.find((d) => d.digester === 'summarize');
     const tagsDigest = existingDigests.find((d) => d.digester === 'tagging');
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
     // Re-index if content changed
-    if (contentDigest.updatedAt > existingSearch.updatedAt) {
+    if (contentDigest && contentDigest.updatedAt > existingSearch.updatedAt) {
       log.info({ filePath }, 'url-crawl-content updated, re-indexing');
       return true;
     }
 
     // Re-index if summary changed (and exists)
-    if (summaryDigest && summaryDigest.status === 'completed' && summaryDigest.updatedAt > existingSearch.updatedAt) {
+    if (
+      summaryDigest &&
+      summaryDigest.status === 'completed' &&
+      summaryDigest.updatedAt > existingSearch.updatedAt
+    ) {
       log.info({ filePath }, 'summary updated, re-indexing');
       return true;
     }
