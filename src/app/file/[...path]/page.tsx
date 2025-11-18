@@ -92,52 +92,31 @@ function DigestCard({ digest }: { digest: Digest }) {
         .join('/')}`
     : null;
 
-  let contentBody: ReactNode;
+  let contentBody: ReactNode | null = null;
+  let showContentSection = true;
 
   if (screenshotSrc) {
     contentBody = (
-      <div className="rounded-md overflow-hidden border bg-muted/50">
-        <img
-          src={screenshotSrc}
-          alt={`${digest.digester} screenshot`}
-          className="w-full h-auto object-contain bg-black/5"
-        />
+      <div className="flex justify-center">
+        <div className="w-full md:w-3/5 max-w-2xl">
+          <div className="rounded-md overflow-hidden border bg-muted/50">
+            <img
+              src={screenshotSrc}
+              alt={`${digest.digester} screenshot`}
+              className="w-full h-auto object-contain bg-black/5"
+            />
+          </div>
+        </div>
       </div>
     );
   } else if (digest.digester === 'url-crawl-content' && parsedContent) {
-    contentBody = (
-      <div className="space-y-2 text-sm">
-        {parsedContent.title && (
-          <div className="font-medium">{parsedContent.title}</div>
-        )}
-        {parsedContent.url && (
-          <a
-            href={parsedContent.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
-          >
-            {parsedContent.url}
-          </a>
-        )}
-        {parsedContent.description && (
-          <p className="text-sm text-muted-foreground">
-            {parsedContent.description}
-          </p>
-        )}
-        {(parsedContent.wordCount || parsedContent.readingTimeMinutes) && (
-          <div className="text-xs text-muted-foreground">
-            {parsedContent.wordCount ? `${parsedContent.wordCount} words` : null}
-            {parsedContent.wordCount && parsedContent.readingTimeMinutes ? ' · ' : ''}
-            {parsedContent.readingTimeMinutes ? `${parsedContent.readingTimeMinutes} min read` : null}
-          </div>
-        )}
-        {parsedContent.markdown && (
-          <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-            {parsedContent.markdown.slice(0, 500)}...
-          </div>
-        )}
+    const markdownContent = typeof parsedContent.markdown === 'string' ? parsedContent.markdown : null;
+    contentBody = markdownContent ? (
+      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+        {markdownContent}
       </div>
+    ) : (
+      <div className="text-sm text-muted-foreground">Markdown content unavailable.</div>
     );
   } else if (
     (digest.digester === 'url-crawl-summary' || digest.digester === 'summarize') &&
@@ -161,17 +140,32 @@ function DigestCard({ digest }: { digest: Digest }) {
         ))}
       </div>
     );
-  } else if (digest.digester === 'slug' && parsedContent) {
+  } else if (digest.digester === 'slug' && parsedContent?.slug) {
     contentBody = (
-      <div className="space-y-1 text-sm">
-        {parsedContent.title && <div>{parsedContent.title}</div>}
-        {parsedContent.slug && (
-          <code className="px-1 py-0.5 bg-muted rounded text-xs">
-            {parsedContent.slug}
-          </code>
-        )}
-      </div>
+      <code className="px-1 py-0.5 bg-muted rounded text-xs">
+        {parsedContent.slug}
+      </code>
     );
+  } else if (digest.digester === 'search-meili') {
+    if (digest.error) {
+      contentBody = (
+        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+          {digest.error}
+        </div>
+      );
+    } else {
+      showContentSection = false;
+    }
+  } else if (digest.digester === 'search-qdrant') {
+    if (digest.error) {
+      contentBody = (
+        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+          {digest.error}
+        </div>
+      );
+    } else {
+      showContentSection = false;
+    }
   } else if (parsedContent) {
     contentBody = (
       <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
@@ -190,7 +184,7 @@ function DigestCard({ digest }: { digest: Digest }) {
         {digest.error}
       </div>
     );
-  } else {
+  } else if (showContentSection) {
     contentBody = (
       <div className="text-sm text-muted-foreground">No content available.</div>
     );
@@ -205,9 +199,11 @@ function DigestCard({ digest }: { digest: Digest }) {
           {digest.status}
         </span>
       </div>
-      <div className="pt-2 border-t text-sm space-y-2">
-        {contentBody}
-      </div>
+      {showContentSection && contentBody !== null && (
+        <div className="pt-2 border-t text-sm space-y-2">
+          {contentBody}
+        </div>
+      )}
     </div>
   );
 }
