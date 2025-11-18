@@ -56,6 +56,20 @@ function getStatusColor(status: string): string {
   }
 }
 
+const TEXT_CONTENT_TYPES = new Set([
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/x-sh',
+]);
+
+function isTextContent(contentType: string | null): boolean {
+  if (!contentType) return false;
+  const normalized = contentType.split(';')[0]?.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.startsWith('text/') || TEXT_CONTENT_TYPES.has(normalized);
+}
+
 function DigestCard({ digest }: { digest: Digest }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -259,16 +273,21 @@ export default function FileInfoPage() {
     setFileContentError(null);
 
     try {
-      const response = await fetch(`/api/library/file?path=${encodeURIComponent(filePath)}`);
+      const encodedPath = filePath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+      const response = await fetch(`/raw/${encodedPath}`);
 
       if (!response.ok) {
         throw new Error('Failed to load file content');
       }
 
-      const responseContentType = response.headers.get('content-type') || '';
+      const responseContentType = response.headers.get('content-type') || null;
+      setFileContentType(responseContentType);
 
-      if (!responseContentType.startsWith('application/json')) {
-        setFileContentType(responseContentType || null);
+      if (!isTextContent(responseContentType)) {
+        setFileContent(null);
         setFileContentError(
           responseContentType
             ? `Preview not available for ${responseContentType} files`
@@ -277,9 +296,8 @@ export default function FileInfoPage() {
         return;
       }
 
-      const data = await response.json();
-      setFileContent(data.content ?? '');
-      setFileContentType(data.contentType ?? null);
+      const text = await response.text();
+      setFileContent(text ?? '');
     } catch (err) {
       console.error('Failed to load file content:', err);
       setFileContentError(err instanceof Error ? err.message : 'Failed to load file content');
