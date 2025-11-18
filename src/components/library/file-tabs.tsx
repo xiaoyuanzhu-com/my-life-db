@@ -39,7 +39,7 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
               group flex items-center gap-2 px-3 py-1.5 cursor-pointer
               rounded-t-lg transition-all duration-150 min-w-[120px] max-w-[200px]
               ${isActive
-                ? 'bg-background shadow-sm border-t-2 border-x border-t-primary border-x-border'
+                ? 'bg-background shadow-sm border-t border-x border-border'
                 : 'bg-muted/50 opacity-60 hover:opacity-80 hover:bg-muted'
               }
             `}
