@@ -15,7 +15,7 @@ const geistMono = {
 };
 
 export const metadata: Metadata = {
-  title: "MyLifeDB - Your Personal Knowledge Management System",
+  title: "MyLifeDB",
   description: "Capture your thoughts effortlessly and transform them into structured, meaningful knowledge",
   icons: {
     icon: [
