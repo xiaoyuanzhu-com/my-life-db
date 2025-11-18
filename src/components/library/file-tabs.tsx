@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import { X } from 'lucide-react';
 
 interface OpenedFile {
@@ -37,12 +38,11 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
         const showDivider = !isActive && !isPrevActive && index > 0;
 
         return (
-          <>
+          <Fragment key={file.path}>
             {showDivider && (
-              <div key={`divider-${file.path}`} className="h-4 w-px bg-border self-center" />
+              <div className="h-4 w-px bg-border self-center" />
             )}
             <div
-              key={file.path}
               className={`
                 group flex items-center gap-2 px-3 py-1.5 cursor-default relative select-none
                 transition-all duration-150 min-w-[120px] max-w-[200px]
@@ -68,7 +68,7 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          </>
+          </Fragment>
         );
       })}
     </div>
