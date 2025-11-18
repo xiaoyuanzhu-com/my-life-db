@@ -19,6 +19,12 @@ export interface Digester {
   readonly name: string;
 
   /**
+   * Optional list of digest records this digester produces aside from its own name.
+   * Defaults to the digester name when not provided.
+   */
+  getOutputDigesters?(): string[];
+
+  /**
    * Check if this digester can process the given file.
    * @returns true if applicable, false to skip
    */

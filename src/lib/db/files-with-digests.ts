@@ -16,7 +16,7 @@ export function getFileWithDigests(path: string): FileWithDigests | null {
   const file = getFileByPath(path);
   if (!file) return null;
 
-  const digests = listDigestsForPath(path);
+  const digests = listDigestsForPath(path, { order: 'asc' });
 
   return enrichFileWithDigests(file, digests);
 }
@@ -42,6 +42,7 @@ export function listFilesWithDigests(
     const digests = listDigestsForPath(file.path, {
       digesters: options?.digesters,
       excludeDigesters: options?.excludeDigesters,
+      order: 'asc',
     });
     return enrichFileWithDigests(file, digests);
   });

@@ -157,6 +157,6 @@ export function getDigestStatusView(filePath: string): DigestStatusView | null {
   if (!file) return null;
 
   // Load digests for this file
-  const digests = listDigestsForPath(filePath);
+  const digests = listDigestsForPath(filePath, { order: 'asc' });
   return summarizeDigestEnrichment(filePath, digests);
 }

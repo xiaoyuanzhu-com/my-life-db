@@ -5,6 +5,7 @@
 
 import type BetterSqlite3 from 'better-sqlite3';
 import type { Digest, FileRecordRow } from '@/types';
+import type { Digester } from './types';
 import { globalDigesterRegistry } from './registry';
 import { getFileByPath } from '@/lib/db/files';
 import {
@@ -69,6 +70,7 @@ export class DigestCoordinator {
 
     // 2. Get all digesters in registration order
     const digesters = globalDigesterRegistry.getAll();
+    this.ensureDigestPlaceholders(filePath, digesters);
 
     let processed = 0;
     let skipped = 0;
@@ -200,6 +202,7 @@ export class DigestCoordinator {
    */
   private async saveDigestOutput(filePath: string, output: Digest): Promise<void> {
     const id = generateDigestId(filePath, output.digester);
+    const targetStatus = output.status ?? 'completed';
 
     // Check if digest has binary artifacts in sqlar
     // (we need to extract sqlarName from existing digest if present)
@@ -216,10 +219,10 @@ export class DigestCoordinator {
     if (existing) {
       // Update
       updateDigest(id, {
-        status: 'completed',
+        status: targetStatus,
         content: output.content,
         sqlarName: sqlarName || existing.sqlarName,
-        error: null,
+        error: output.error ?? null,
         updatedAt: new Date().toISOString(),
       });
     } else {
@@ -228,10 +231,10 @@ export class DigestCoordinator {
         id,
         filePath: output.filePath,
         digester: output.digester,
-        status: 'completed',
+        status: targetStatus,
         content: output.content,
         sqlarName,
-        error: null,
+        error: output.error ?? null,
         createdAt: output.createdAt || new Date().toISOString(),
         updatedAt: output.updatedAt || new Date().toISOString(),
       };
@@ -265,6 +268,46 @@ export class DigestCoordinator {
     });
 
     log.debug({ filePath, digester, sqlarName }, 'binary artifact saved');
+  }
+
+  /**
+   * Ensure placeholder digests exist for all outputs before processing begins.
+   */
+  private ensureDigestPlaceholders(filePath: string, digesters: Digester[]): void {
+    const existing = listDigestsForPath(filePath, { order: 'asc' });
+    const existingTypes = new Set(existing.map((d) => d.digester));
+    const now = new Date().toISOString();
+
+    for (const digester of digesters) {
+      const outputs = [digester.name, ...(digester.getOutputDigesters?.() ?? [])];
+      for (const outputName of outputs) {
+        if (existingTypes.has(outputName)) {
+          continue;
+        }
+
+        const digest: Digest = {
+          id: generateDigestId(filePath, outputName),
+          filePath,
+          digester: outputName,
+          status: 'todo',
+          content: null,
+          sqlarName: null,
+          error: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        try {
+          createDigest(digest);
+          existingTypes.add(outputName);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (!errorMsg.includes('UNIQUE constraint')) {
+            log.error({ filePath, digester: outputName, error: errorMsg }, 'failed to create digest placeholder');
+          }
+        }
+      }
+    }
   }
 
   /**

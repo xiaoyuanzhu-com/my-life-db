@@ -99,6 +99,7 @@ export function listDigestsForPath(
   options?: {
     digesters?: string[];  // Only include these digesters
     excludeDigesters?: string[];  // Exclude these digesters
+    order?: 'asc' | 'desc';
   }
 ): Digest[] {
   const db = getDatabase();
@@ -118,7 +119,8 @@ export function listDigestsForPath(
     params.push(...options.excludeDigesters);
   }
 
-  sql += ' ORDER BY created_at DESC';
+  const orderDirection = options?.order === 'asc' ? 'ASC' : 'DESC';
+  sql += ` ORDER BY created_at ${orderDirection}, id ${orderDirection}`;
 
   const rows = db
     .prepare(sql)
