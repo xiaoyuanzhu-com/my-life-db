@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
@@ -63,6 +64,9 @@ const TEXT_CONTENT_TYPES = new Set([
   'application/x-sh',
 ]);
 
+const DIGEST_POLL_INTERVAL = 2000;
+const PENDING_DIGEST_STATUSES = new Set(['todo', 'in-progress']);
+
 function isTextContent(contentType: string | null): boolean {
   if (!contentType) return false;
   const normalized = contentType.split(';')[0]?.trim().toLowerCase();
@@ -71,158 +75,139 @@ function isTextContent(contentType: string | null): boolean {
 }
 
 function DigestCard({ digest }: { digest: Digest }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Parse JSON content (all digesters now use JSON except binary ones)
   let parsedContent: any = null;
   if (digest.content) {
     try {
       parsedContent = JSON.parse(digest.content);
     } catch {
-      // Invalid JSON, show raw content (shouldn't happen with new format)
+      // Content is not JSON, handled below
     }
+  }
+
+  const isScreenshot = digest.digester.toLowerCase().includes('screenshot');
+  const screenshotSrc = isScreenshot && digest.sqlarName
+    ? `/sqlar/${digest.sqlarName
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')}`
+    : null;
+
+  let contentBody: ReactNode;
+
+  if (screenshotSrc) {
+    contentBody = (
+      <div className="rounded-md overflow-hidden border bg-muted/50">
+        <img
+          src={screenshotSrc}
+          alt={`${digest.digester} screenshot`}
+          className="w-full h-auto object-contain bg-black/5"
+        />
+      </div>
+    );
+  } else if (digest.digester === 'url-crawl-content' && parsedContent) {
+    contentBody = (
+      <div className="space-y-2 text-sm">
+        {parsedContent.title && (
+          <div className="font-medium">{parsedContent.title}</div>
+        )}
+        {parsedContent.url && (
+          <a
+            href={parsedContent.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+          >
+            {parsedContent.url}
+          </a>
+        )}
+        {parsedContent.description && (
+          <p className="text-sm text-muted-foreground">
+            {parsedContent.description}
+          </p>
+        )}
+        {(parsedContent.wordCount || parsedContent.readingTimeMinutes) && (
+          <div className="text-xs text-muted-foreground">
+            {parsedContent.wordCount ? `${parsedContent.wordCount} words` : null}
+            {parsedContent.wordCount && parsedContent.readingTimeMinutes ? ' · ' : ''}
+            {parsedContent.readingTimeMinutes ? `${parsedContent.readingTimeMinutes} min read` : null}
+          </div>
+        )}
+        {parsedContent.markdown && (
+          <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+            {parsedContent.markdown.slice(0, 500)}...
+          </div>
+        )}
+      </div>
+    );
+  } else if (
+    (digest.digester === 'url-crawl-summary' || digest.digester === 'summarize') &&
+    parsedContent?.summary
+  ) {
+    contentBody = (
+      <div className="p-2 bg-muted rounded text-sm whitespace-pre-wrap">
+        {parsedContent.summary}
+      </div>
+    );
+  } else if (digest.digester === 'tagging' && Array.isArray(parsedContent?.tags)) {
+    contentBody = (
+      <div className="flex flex-wrap gap-1">
+        {parsedContent.tags.map((tag: string, idx: number) => (
+          <span
+            key={`${tag}-${idx}`}
+            className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+    );
+  } else if (digest.digester === 'slug' && parsedContent) {
+    contentBody = (
+      <div className="space-y-1 text-sm">
+        {parsedContent.title && <div>{parsedContent.title}</div>}
+        {parsedContent.slug && (
+          <code className="px-1 py-0.5 bg-muted rounded text-xs">
+            {parsedContent.slug}
+          </code>
+        )}
+      </div>
+    );
+  } else if (parsedContent) {
+    contentBody = (
+      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+        {JSON.stringify(parsedContent, null, 2)}
+      </div>
+    );
+  } else if (digest.content) {
+    contentBody = (
+      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+        {digest.content}
+      </div>
+    );
+  } else if (digest.error) {
+    contentBody = (
+      <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+        {digest.error}
+      </div>
+    );
+  } else {
+    contentBody = (
+      <div className="text-sm text-muted-foreground">No content available.</div>
+    );
   }
 
   return (
     <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">{digest.digester}</span>
-          {getStatusIcon(digest.status)}
-          <span className={`text-xs ${getStatusColor(digest.status)}`}>
-            {digest.status}
-          </span>
-        </div>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {isExpanded ? 'Hide' : 'Show'} Details
-        </button>
+      <div className="flex items-center gap-2">
+        <span className="font-semibold text-sm">{digest.digester}</span>
+        {getStatusIcon(digest.status)}
+        <span className={`text-xs ${getStatusColor(digest.status)}`}>
+          {digest.status}
+        </span>
       </div>
-
-      {isExpanded && (
-        <div className="space-y-2 pt-2 border-t text-sm">
-          {/* Content */}
-          {digest.content && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Content:</div>
-              {digest.digester === 'url-crawl-content' && parsedContent ? (
-                <div className="space-y-2">
-                  {parsedContent.title && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Title: </span>
-                      <span className="font-medium">{parsedContent.title}</span>
-                    </div>
-                  )}
-                  {parsedContent.url && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">URL: </span>
-                      <a href={parsedContent.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline text-xs">
-                        {parsedContent.url}
-                      </a>
-                    </div>
-                  )}
-                  {parsedContent.description && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Description: </span>
-                      <span className="text-xs">{parsedContent.description}</span>
-                    </div>
-                  )}
-                  {parsedContent.wordCount && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Word Count: </span>
-                      <span className="text-xs">{parsedContent.wordCount} ({parsedContent.readingTimeMinutes} min read)</span>
-                    </div>
-                  )}
-                  {parsedContent.markdown && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Markdown:</div>
-                      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                        {parsedContent.markdown.slice(0, 500)}...
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (digest.digester === 'url-crawl-summary' || digest.digester === 'summarize') && parsedContent?.summary ? (
-                <div className="p-2 bg-muted rounded text-sm whitespace-pre-wrap">
-                  {parsedContent.summary}
-                </div>
-              ) : digest.digester === 'tagging' && parsedContent?.tags && Array.isArray(parsedContent.tags) ? (
-                <div className="flex flex-wrap gap-1">
-                  {parsedContent.tags.map((tag: string, idx: number) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : digest.digester === 'slug' && parsedContent ? (
-                <div className="space-y-1">
-                  {parsedContent.title && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Title: </span>
-                      <span>{parsedContent.title}</span>
-                    </div>
-                  )}
-                  {parsedContent.slug && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Slug: </span>
-                      <code className="px-1 py-0.5 bg-muted rounded text-xs">{parsedContent.slug}</code>
-                    </div>
-                  )}
-                </div>
-              ) : parsedContent ? (
-                <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                  {JSON.stringify(parsedContent, null, 2)}
-                </div>
-              ) : (
-                <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                  {digest.content}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SQLAR reference */}
-          {digest.sqlarName && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Archived File:</div>
-              <code className="px-2 py-1 bg-muted rounded text-xs">{digest.sqlarName}</code>
-            </div>
-          )}
-
-          {/* Error message */}
-          {digest.error && (
-            <div>
-              <div className="text-xs text-red-600 dark:text-red-400 mb-1">Error:</div>
-              <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
-                {digest.error}
-              </div>
-            </div>
-          )}
-
-          {/* Timestamps */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-muted-foreground">Created: </span>
-              <span>{formatDate(digest.createdAt)}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Updated: </span>
-              <span>{formatDate(digest.updatedAt)}</span>
-            </div>
-          </div>
-
-          {/* Digest ID */}
-          <div className="text-xs">
-            <span className="text-muted-foreground">ID: </span>
-            <code className="text-xs">{digest.id}</code>
-          </div>
-        </div>
-      )}
+      <div className="pt-2 border-t text-sm space-y-2">
+        {contentBody}
+      </div>
     </div>
   );
 }
@@ -234,18 +219,25 @@ export default function FileInfoPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDigesting, setIsDigesting] = useState(false);
+  const [isPollingDigests, setIsPollingDigests] = useState(false);
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileContentType, setFileContentType] = useState<string | null>(null);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
+  const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reconstruct file path from params
   const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path ?? '';
 
-  const loadFileInfo = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const loadFileInfo = useCallback(async (options?: { background?: boolean }) => {
+    if (!filePath) return;
+
+    const isBackground = Boolean(options?.background);
+    if (!isBackground) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
@@ -258,9 +250,13 @@ export default function FileInfoPage() {
       setFileInfo(data);
     } catch (err) {
       console.error('Failed to load file info:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load file information');
+      if (!isBackground) {
+        setError(err instanceof Error ? err.message : 'Failed to load file information');
+      }
     } finally {
-      setIsLoading(false);
+      if (!isBackground) {
+        setIsLoading(false);
+      }
     }
   }, [filePath]);
 
@@ -306,6 +302,14 @@ export default function FileInfoPage() {
     }
   }, [filePath]);
 
+  const stopDigestPolling = useCallback(() => {
+    if (digestPollIntervalRef.current) {
+      clearInterval(digestPollIntervalRef.current);
+      digestPollIntervalRef.current = null;
+    }
+    setIsPollingDigests(false);
+  }, []);
+
   useEffect(() => {
     if (!filePath) return;
     loadFileInfo();
@@ -315,6 +319,43 @@ export default function FileInfoPage() {
     if (!filePath) return;
     loadFileContent();
   }, [filePath, loadFileContent]);
+
+  useEffect(() => {
+    if (!isPollingDigests) {
+      return;
+    }
+
+    const runPoll = () => {
+      void loadFileInfo({ background: true });
+    };
+
+    runPoll();
+    digestPollIntervalRef.current = setInterval(runPoll, DIGEST_POLL_INTERVAL);
+
+    return () => {
+      if (digestPollIntervalRef.current) {
+        clearInterval(digestPollIntervalRef.current);
+        digestPollIntervalRef.current = null;
+      }
+    };
+  }, [isPollingDigests, loadFileInfo]);
+
+  useEffect(() => {
+    if (!fileInfo) {
+      stopDigestPolling();
+      return;
+    }
+
+    const hasPending = fileInfo.digests.some((digest) =>
+      PENDING_DIGEST_STATUSES.has(digest.status)
+    );
+
+    if (hasPending) {
+      setIsPollingDigests(true);
+    } else {
+      stopDigestPolling();
+    }
+  }, [fileInfo, stopDigestPolling]);
 
   const handleBack = () => {
     // Navigate back to library with the file open
@@ -337,11 +378,8 @@ export default function FileInfoPage() {
 
       const data = await response.json();
       setDigestMessage(data.message || 'Digest processing started');
-
-      // Reload file info after a short delay to show updated digests
-      setTimeout(() => {
-        loadFileInfo();
-      }, 2000);
+      setIsPollingDigests(true);
+      await loadFileInfo({ background: true });
     } catch (err) {
       console.error('Failed to trigger digest:', err);
       setDigestMessage(err instanceof Error ? err.message : 'Failed to trigger digest');
@@ -504,7 +542,7 @@ export default function FileInfoPage() {
                 title="Trigger AI digest processing for this file"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                {isDigesting ? 'Processing...' : 'Generate Digest'}
+                {isDigesting ? 'Processing...' : 'Digest'}
               </button>
             </div>
           </div>
