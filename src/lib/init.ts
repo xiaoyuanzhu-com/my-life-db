@@ -4,13 +4,15 @@
  */
 
 import { initializeTaskQueue } from './task-queue/startup';
-import { startPeriodicScanner } from './scanner/library-scanner';
+import { startPeriodicScanner, stopPeriodicScanner } from './scanner/library-scanner';
 import { initializeDigesters } from './digest/initialization';
-import { startDigestSupervisor } from './digest/supervisor';
+import { startDigestSupervisor, stopDigestSupervisor } from './digest/supervisor';
+import { shutdownWorker } from './task-queue/worker';
 import { getLogger } from '@/lib/log/logger';
 
 declare global {
   var __mylifedb_app_initialized: boolean | undefined;
+  var __mylifedb_shutdown_hooks_registered: boolean | undefined;
 }
 
 /**
@@ -86,6 +88,9 @@ export function initializeApp() {
     // Start digest supervisor loop
     startDigestSupervisor();
 
+    // Register shutdown hooks
+    registerShutdownHooks();
+
     // Run async initialization tasks (database, search, settings)
     (async () => {
       try {
@@ -127,4 +132,61 @@ export function initializeApp() {
  */
 export function isAppInitialized(): boolean {
   return globalThis.__mylifedb_app_initialized ?? false;
+}
+
+/**
+ * Shutdown application services gracefully
+ * Cleans up all background processes, timers, and intervals
+ */
+export async function shutdownApp(): Promise<void> {
+  const log = getLogger({ module: 'AppShutdown' });
+  log.info({}, 'shutting down application services');
+
+  try {
+    // Stop digest supervisor
+    stopDigestSupervisor();
+
+    // Stop library scanner
+    stopPeriodicScanner();
+
+    // Shutdown task queue worker (wait for active tasks)
+    await shutdownWorker({
+      reason: 'app-shutdown',
+      timeoutMs: 5000,
+    });
+
+    globalThis.__mylifedb_app_initialized = false;
+    log.info({}, 'application shutdown complete');
+  } catch (error) {
+    log.error({ err: error }, 'error during application shutdown');
+  }
+}
+
+/**
+ * Register process signal handlers for graceful shutdown
+ */
+function registerShutdownHooks(): void {
+  if (globalThis.__mylifedb_shutdown_hooks_registered) {
+    return;
+  }
+
+  const log = getLogger({ module: 'AppShutdown' });
+  globalThis.__mylifedb_shutdown_hooks_registered = true;
+
+  const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
+
+  signals.forEach(signal => {
+    process.on(signal, async () => {
+      log.info({ signal }, 'received shutdown signal');
+      await shutdownApp();
+      process.exit(0);
+    });
+  });
+
+  // Cleanup on normal exit
+  process.on('beforeExit', () => {
+    log.debug({}, 'process beforeExit event');
+  });
+
+  log.info({}, 'shutdown hooks registered');
 }

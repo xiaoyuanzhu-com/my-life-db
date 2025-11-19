@@ -252,27 +252,56 @@ function getMimeType(filename: string): string {
 }
 
 /**
+ * Global scanner timer (for cleanup)
+ */
+let scannerTimer: NodeJS.Timeout | null = null;
+let initialScanTimer: NodeJS.Timeout | null = null;
+
+/**
  * Start periodic scanner
  * Scans library every hour
  */
 export function startPeriodicScanner(): NodeJS.Timeout {
   const SCAN_INTERVAL = 60 * 60 * 1000; // 1 hour
 
+  // Prevent multiple scanners from running
+  if (scannerTimer) {
+    log.warn({}, 'periodic scanner already running, skipping');
+    return scannerTimer;
+  }
+
   log.info({ intervalMinutes: 60 }, 'starting periodic library scanner');
 
   // Initial scan after 10 seconds (give app time to start)
-  setTimeout(() => {
+  initialScanTimer = setTimeout(() => {
+    initialScanTimer = null;
     scanLibrary(false).catch(err => {
       log.error({ err }, 'initial library scan failed');
     });
   }, 10000);
 
   // Periodic scan
-  const timer = setInterval(() => {
+  scannerTimer = setInterval(() => {
     scanLibrary(false).catch(err => {
       log.error({ err }, 'periodic library scan failed');
     });
   }, SCAN_INTERVAL);
 
-  return timer;
+  return scannerTimer;
+}
+
+/**
+ * Stop periodic scanner and cleanup timers
+ */
+export function stopPeriodicScanner(): void {
+  if (scannerTimer) {
+    clearInterval(scannerTimer);
+    scannerTimer = null;
+    log.info({}, 'periodic scanner stopped');
+  }
+
+  if (initialScanTimer) {
+    clearTimeout(initialScanTimer);
+    initialScanTimer = null;
+  }
 }

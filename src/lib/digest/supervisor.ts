@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3';
+import { setTimeout as setTimeoutPromise } from 'timers/promises';
 
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
@@ -98,7 +99,9 @@ class DigestSupervisor {
   }
 
   private async sleep(ms: number): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    // Use native timers/promises for better memory efficiency
+    // Avoids creating wrapper Promise objects
+    await setTimeoutPromise(ms);
   }
 
   private maybeResetStaleDigests(): void {
