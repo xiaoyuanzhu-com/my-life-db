@@ -139,7 +139,10 @@ When you add a URL to the inbox, the system automatically:
 
 Monitor enrichment with the task queue API:
 ```bash
-# Check task status
+# Queue + worker status
+curl http://localhost:3000/api/tasks/status
+
+# Check aggregate queue stats
 curl http://localhost:3000/api/tasks/stats
 
 # List all tasks

@@ -172,6 +172,13 @@ export class TaskWorker {
   }
 
   /**
+   * Get number of tasks currently executing
+   */
+  getActiveTaskCount(): number {
+    return this.activeTasks.size;
+  }
+
+  /**
    * Schedule next poll
    */
   private schedulePoll(): void {

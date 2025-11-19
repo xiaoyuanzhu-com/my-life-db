@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
-import { DigestCoordinator } from '@/lib/digest/coordinator';
-import { getDatabase } from '@/lib/db/connection';
 import { getFileByPath } from '@/lib/db/files';
 import { getDigestStatusView } from '@/lib/inbox/status-view';
+import { startDigestWorkflow } from '@/lib/inbox/digest-workflow';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiDigest' });
@@ -61,9 +60,10 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
+  let filePath: string | null = null;
   try {
     const { path } = await context.params;
-    const filePath = path.join('/');
+    filePath = path.join('/');
 
     if (!filePath) {
       return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
@@ -74,22 +74,23 @@ export async function POST(
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    log.info({ filePath }, 'starting digest processing');
+    log.info({ filePath }, 'starting digest workflow');
 
-    // Create coordinator and process file
-    const db = getDatabase();
-    const coordinator = new DigestCoordinator(db);
-
-    // Process file (runs synchronously but returns void)
-    await coordinator.processFile(filePath, { reset: true });
+    const { taskId } = await startDigestWorkflow(filePath);
 
     return NextResponse.json({
       success: true,
-      message: 'Digest processing started. Check logs for progress.'
+      taskId,
+      message: 'Digest workflow enqueued. Monitor task queue for progress.'
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error({ err: error }, 'failed to process file');
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    const statusCode =
+      error instanceof Error && error.message.includes('No digest workflow available')
+        ? 400
+        : 500;
+
+    log.error({ err: error, filePath }, 'failed to enqueue digest workflow');
+    return NextResponse.json({ error: errorMessage }, { status: statusCode });
   }
 }
