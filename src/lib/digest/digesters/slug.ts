@@ -89,6 +89,7 @@ export class SlugDigester implements Digester {
         content: JSON.stringify(slugData),
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },

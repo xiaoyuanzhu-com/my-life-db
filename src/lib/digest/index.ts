@@ -14,5 +14,5 @@ export { syncNewDigesters } from './sync';
 export type { Digester } from './types';
 
 // Task handlers (for integration)
-export { digestFileHandler, digestBatchHandler } from './task-handler';
-export type { DigestFilePayload, DigestBatchPayload } from './task-handler';
+export { digestBatchHandler, processFileDigests } from './task-handler';
+export type { DigestBatchPayload } from './task-handler';

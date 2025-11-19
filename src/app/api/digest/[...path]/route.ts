@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 
 import { getFileByPath } from '@/lib/db/files';
 import { getDigestStatusView } from '@/lib/inbox/status-view';
-import { startDigestWorkflow } from '@/lib/inbox/digest-workflow';
+import { processFileDigests } from '@/lib/digest/task-handler';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'ApiDigest' });
@@ -74,14 +74,14 @@ export async function POST(
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    log.info({ filePath }, 'starting digest workflow');
+    log.info({ filePath }, 'starting digest processing');
 
-    const { taskId } = await startDigestWorkflow(filePath);
+    // Process digests synchronously so user gets immediate feedback
+    await processFileDigests(filePath);
 
     return NextResponse.json({
       success: true,
-      taskId,
-      message: 'Digest workflow enqueued. Monitor task queue for progress.'
+      message: 'Digest processing complete.'
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

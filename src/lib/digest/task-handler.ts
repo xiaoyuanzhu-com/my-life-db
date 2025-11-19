@@ -1,6 +1,6 @@
 /**
- * Task Queue Handler for Digest Processing
- * Integrates digest coordinator with the task queue system
+ * Digest Processing Helpers
+ * Direct access to digest coordinator for API endpoints and background processing
  */
 
 import { defineTaskHandler } from '@/lib/task-queue/handler-registry';
@@ -12,13 +12,6 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'DigestTaskHandler' });
 
 /**
- * Payload for digest_file task
- */
-export interface DigestFilePayload {
-  filePath: string;
-}
-
-/**
  * Payload for digest_batch task
  */
 export interface DigestBatchPayload {
@@ -26,28 +19,9 @@ export interface DigestBatchPayload {
 }
 
 /**
- * Task handler: Process a single file through digest system
- */
-export const digestFileHandler = defineTaskHandler<DigestFilePayload>({
-  type: 'digest_file',
-  module: 'digest/task-handler',
-  handler: async (payload) => {
-    const { filePath } = payload;
-
-    log.info({ filePath }, 'processing file');
-
-    const db = getDatabase();
-    const coordinator = new DigestCoordinator(db);
-
-    await coordinator.processFile(filePath);
-
-    log.info({ filePath }, 'file processing complete');
-  },
-});
-
-/**
  * Task handler: Process a batch of files needing digestion
  * Finds files with pending/failed digests and processes them
+ * This is used by the DigestSupervisor for background processing
  */
 export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
   type: 'digest_batch',
@@ -81,3 +55,20 @@ export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
     log.info({ processed: filesToProcess.length }, 'batch processing complete');
   },
 });
+
+/**
+ * Process a file through all digesters directly
+ * Use this for API endpoints that need immediate digest processing
+ *
+ * @param filePath - Relative path from DATA_ROOT
+ */
+export async function processFileDigests(filePath: string): Promise<void> {
+  log.info({ filePath }, 'processing file digests');
+
+  const db = getDatabase();
+  const coordinator = new DigestCoordinator(db);
+
+  await coordinator.processFile(filePath);
+
+  log.info({ filePath }, 'file digests complete');
+}

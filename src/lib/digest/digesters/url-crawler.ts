@@ -164,6 +164,7 @@ export class UrlCrawlerDigester implements Digester {
         content: JSON.stringify(contentData),
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       });
@@ -189,6 +190,7 @@ export class UrlCrawlerDigester implements Digester {
             content: null,
             sqlarName,
             error: null,
+            attempts: 0,
             createdAt: now,
             updatedAt: now,
           });

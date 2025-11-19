@@ -132,6 +132,7 @@ export class QdrantSearchDigester implements Digester {
           content: JSON.stringify(metadata),
           sqlarName: null,
           error: null,
+          attempts: 0,
           createdAt: now,
           updatedAt: now,
         },

@@ -184,7 +184,7 @@ export function updateDigest(
   const db = getDatabase();
 
   const fields: string[] = [];
-  const values: (string | null)[] = [];
+  const values: (string | number | null)[] = [];
 
   if (updates.digester !== undefined) {
     fields.push('digester = ?');

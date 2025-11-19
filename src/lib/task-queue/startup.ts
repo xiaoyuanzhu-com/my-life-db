@@ -4,10 +4,7 @@
  */
 
 import { startWorker, shutdownWorker } from './worker';
-import '@/lib/inbox/enrich-url-inbox-item';
-import '@/lib/inbox/summarize-url-inbox-item';
-import '@/lib/inbox/tag-url-inbox-item';
-import '@/lib/inbox/slug-url-inbox-item';
+import '@/lib/digest/task-handler';
 import '@/lib/search/meili-tasks';
 import '@/lib/search/qdrant-tasks';
 import { ensureTaskHandlersRegistered } from '@/lib/task-queue/handler-registry';

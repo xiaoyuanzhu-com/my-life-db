@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveToInbox } from '@/lib/inbox/save-to-inbox';
 import { listFilesWithDigests } from '@/lib/db/files-with-digests';
 import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
-import { startDigestWorkflow } from '@/lib/inbox/digest-workflow';
+import { processFileDigests } from '@/lib/digest/task-handler';
 import { getLogger } from '@/lib/log/logger';
 import { notificationService } from '@/lib/notifications/notification-service';
 import type { FileWithDigests } from '@/types/file-card';
@@ -141,24 +141,14 @@ export async function POST(request: NextRequest) {
       } : undefined,
     });
 
-    // Auto-start digest workflow
-    let digestTaskId: string | null = null;
-    try {
-      const { taskId } = await startDigestWorkflow(result.path);
-      digestTaskId = taskId;
-      log.info({ path: result.path, taskId }, 'auto-started digest workflow');
-    } catch (workflowError) {
-      const message = workflowError instanceof Error ? workflowError.message : String(workflowError);
-      if (message.includes('No digest workflow available')) {
-        log.debug({ path: result.path }, 'no digest workflow available for new inbox item');
-      } else {
-        log.warn({ path: result.path, err: workflowError }, 'failed to auto-start digest workflow');
-      }
-    }
+    // Auto-start digest processing (fire and forget - runs in background)
+    processFileDigests(result.path).catch(error => {
+      log.error({ path: result.path, error }, 'digest processing failed');
+    });
+    log.info({ path: result.path }, 'auto-started digest processing');
 
     return NextResponse.json({
       path: result.path,
-      digestTaskId,
     }, { status: 201 });
   } catch (error) {
     log.error({ err: error }, 'create inbox item failed');

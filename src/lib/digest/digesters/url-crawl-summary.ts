@@ -79,6 +79,7 @@ export class UrlCrawlSummaryDigester implements Digester {
         content: JSON.stringify({ summary: result.summary }),
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },

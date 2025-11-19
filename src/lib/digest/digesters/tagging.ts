@@ -65,6 +65,7 @@ export class TaggingDigester implements Digester {
         content: JSON.stringify({ tags: result.tags }),
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },
