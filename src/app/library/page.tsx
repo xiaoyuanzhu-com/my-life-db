@@ -186,7 +186,7 @@ function LibraryContent() {
   };
 
   return (
-    <div className="flex flex-col flex-1 bg-background h-full min-h-0 overflow-hidden">
+    <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background">
       {/* Main content */}
       <div className="flex-1 overflow-hidden min-h-0">
         <div className="px-[10%] h-full min-h-0 flex flex-col">

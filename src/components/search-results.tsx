@@ -148,11 +148,11 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     results.results.length === 0;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 h-full">
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 h-full min-h-0 overflow-y-auto pb-4"
-      >
+    <div
+      ref={scrollContainerRef}
+      className="h-full overflow-y-auto pb-4"
+    >
+      <div>
         {!hasResults && isSearching && (
           <div className="flex flex-1 items-center justify-center min-h-full">
             <p className="text-sm text-muted-foreground">Searching…</p>

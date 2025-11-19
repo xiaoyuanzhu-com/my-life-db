@@ -161,7 +161,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 h-full overflow-y-auto pb-4"
+      className="h-full overflow-y-auto pb-4"
     >
       {/* Loading indicator at top */}
       {isLoading && items.length > 0 && (

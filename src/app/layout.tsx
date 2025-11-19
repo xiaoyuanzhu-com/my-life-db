@@ -44,10 +44,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen h-dvh overflow-y-auto`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased grid grid-rows-[auto_minmax(0,1fr)_auto] min-h-screen`}
       >
         <Header />
-        <main className="flex-1 flex flex-col min-h-0 overflow-hidden pb-16 md:pb-0">
+        <main className="min-h-0 flex flex-col pb-16 md:pb-0">
           {children}
         </main>
         <BottomNav />
