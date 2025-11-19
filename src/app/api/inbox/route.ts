@@ -4,6 +4,7 @@ import { saveToInbox } from '@/lib/inbox/save-to-inbox';
 import { listFilesWithDigests } from '@/lib/db/files-with-digests';
 import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
 import { getLogger } from '@/lib/log/logger';
+import { notificationService } from '@/lib/notifications/notification-service';
 import type { FileWithDigests } from '@/types/file-card';
 
 // Force Node.js runtime (not Edge)
@@ -125,6 +126,19 @@ export async function POST(request: NextRequest) {
     });
 
     log.info({ path: result.path }, 'created inbox item');
+
+    // Emit notification event
+    const firstFile = result.files[0];
+    notificationService.notify({
+      type: 'inbox-created',
+      path: result.path,
+      timestamp: new Date().toISOString(),
+      metadata: firstFile ? {
+        name: firstFile.name,
+        size: firstFile.size,
+        mimeType: firstFile.mimeType,
+      } : undefined,
+    });
 
     return NextResponse.json({ path: result.path }, { status: 201 });
   } catch (error) {
