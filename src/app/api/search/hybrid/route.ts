@@ -252,7 +252,7 @@ async function fetchSemanticResults(
       });
     }
 
-    const client = getQdrantClient();
+    const client = await getQdrantClient();
     const searchResult = (await client.search({
       vector: queryEmbedding.vector,
       limit: limit * 2, // Fetch more for better merging

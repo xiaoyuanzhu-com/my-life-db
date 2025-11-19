@@ -1,5 +1,6 @@
 import 'server-only';
 import { getLogger } from '@/lib/log/logger';
+import { loadSettings } from '@/lib/config/storage';
 
 const log = getLogger({ module: 'QdrantClient' });
 
@@ -121,10 +122,13 @@ class QdrantClient {
 
 let cachedClient: QdrantClient | null = null;
 
-export function getQdrantClient(): QdrantClient {
+export async function getQdrantClient(): Promise<QdrantClient> {
   if (cachedClient) return cachedClient;
 
-  const url = process.env.QDRANT_URL;
+  // Load settings from database
+  const settings = await loadSettings();
+  const url = settings.vendors?.qdrant?.host;
+
   if (!url) {
     throw new Error('QDRANT_URL is not configured');
   }

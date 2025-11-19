@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     const queryEmbedding = await embedText(query);
 
     // Get Qdrant client
-    const client = getQdrantClient();
+    const client = await getQdrantClient();
 
     // Perform vector search
     const searchResult = (await client.search({

@@ -106,7 +106,7 @@ defineTaskHandler({
 
       // Upload to Qdrant
       log.info({ pointCount: points.length }, 'uploading vectors to Qdrant');
-      const client = getQdrantClient();
+      const client = await getQdrantClient();
       await client.upsert(points);
 
       // Update status to 'indexed'
@@ -170,7 +170,7 @@ defineTaskHandler({
 
     try {
       // Delete from Qdrant
-      const client = getQdrantClient();
+      const client = await getQdrantClient();
       await client.delete(documentIds);
 
       log.info(
