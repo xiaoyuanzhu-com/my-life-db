@@ -46,6 +46,7 @@ export function initializeTaskQueue(options?: {
       maxAttempts: 3,
       staleTaskTimeoutSeconds: 300,
       staleTaskRecoveryIntervalMs: 60_000,
+      taskDelayMs: 1000,
     });
     log.info({}, 'worker started');
   }

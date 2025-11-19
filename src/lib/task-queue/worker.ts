@@ -22,6 +22,9 @@ export interface WorkerConfig {
 
   /** Stale task recovery interval (default: 60000ms = 1 minute) */
   staleTaskRecoveryIntervalMs?: number;
+
+  /** Optional delay between sequential tasks */
+  taskDelayMs?: number;
 }
 
 export class TaskWorker {
@@ -41,6 +44,7 @@ export class TaskWorker {
       maxAttempts: config.maxAttempts ?? 3,
       staleTaskTimeoutSeconds: config.staleTaskTimeoutSeconds ?? 300, // 5 minutes
       staleTaskRecoveryIntervalMs: config.staleTaskRecoveryIntervalMs ?? 60_000,
+      taskDelayMs: config.taskDelayMs ?? 0,
     };
   }
 
@@ -220,32 +224,32 @@ export class TaskWorker {
 
       this.logger.info({ count: readyTasks.length }, 'processing tasks');
 
-      // Execute tasks in parallel (up to batchSize)
-      const results = await Promise.allSettled(
-        readyTasks.map(task => this.trackExecution(executeTask(task.id, this.config.maxAttempts)))
-      );
-
-      // Log results
       let successCount = 0;
       let failedCount = 0;
 
-      results.forEach((result, index) => {
-        const task = readyTasks[index];
+      for (let i = 0; i < readyTasks.length; i++) {
+        const task = readyTasks[i];
+        try {
+          const result = await this.trackExecution(
+            executeTask(task.id, this.config.maxAttempts)
+          );
 
-        if (result.status === 'fulfilled') {
-          const { success, error } = result.value;
-          if (success) {
+          if (result.success) {
             successCount++;
             this.logger.info({ taskId: task.id, type: task.type }, 'task completed');
           } else {
             failedCount++;
-            this.logger.error({ taskId: task.id, type: task.type, error }, 'task failed');
+            this.logger.error({ taskId: task.id, type: task.type, error: result.error }, 'task failed');
           }
-        } else {
+        } catch (error) {
           failedCount++;
-          this.logger.error({ taskId: task.id, type: task.type, error: result.reason }, 'task threw error');
+          this.logger.error({ taskId: task.id, type: task.type, error }, 'task threw error');
         }
-      });
+
+        if (this.config.taskDelayMs > 0 && i < readyTasks.length - 1) {
+          await this.delay(this.config.taskDelayMs);
+        }
+      }
 
       this.logger.info({ successCount, failedCount }, 'batch complete');
     } catch (error) {
@@ -284,6 +288,10 @@ export class TaskWorker {
     return promise.finally(() => {
       this.activeTasks.delete(promise);
     });
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async waitForActiveTasks(timeoutMs: number): Promise<void> {
