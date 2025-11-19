@@ -96,6 +96,7 @@ defineTaskHandler({
         content: JSON.stringify(tagsPayload),
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       });
@@ -116,6 +117,7 @@ defineTaskHandler({
       // Create failed digest
       const errorMessage = error instanceof Error ? error.message : String(error);
       const now = new Date().toISOString();
+      const previous = getDigestByPathAndDigester(filePath, 'tags');
       createDigest({
         id: generateDigestId(filePath, 'tags'),
         filePath,
@@ -124,6 +126,7 @@ defineTaskHandler({
         content: null,
         sqlarName: null,
         error: errorMessage,
+        attempts: (previous?.attempts ?? 0) + 1,
         createdAt: now,
         updatedAt: now,
       });

@@ -7,6 +7,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import type { Digest, FileRecordRow } from '@/types';
 import type { Digester } from './types';
 import { globalDigesterRegistry } from './registry';
+import { MAX_DIGEST_ATTEMPTS } from './constants';
 import { getFileByPath } from '@/lib/db/files';
 import {
   listDigestsForPath,
@@ -26,6 +27,26 @@ const log = getLogger({ module: 'DigestCoordinator' });
  */
 function hashPath(filePath: string): string {
   return Buffer.from(filePath).toString('base64url').slice(0, 12);
+}
+
+function hasReachedMaxAttempts(digest: Digest): boolean {
+  return digest.status === 'failed' && digest.attempts >= MAX_DIGEST_ATTEMPTS;
+}
+
+function deriveFinalError(
+  baseError: string | null,
+  status: Digest['status'],
+  attempts: number
+): string | null {
+  if (status === 'in-progress') {
+    return null;
+  }
+
+  if (status === 'failed' && attempts >= MAX_DIGEST_ATTEMPTS) {
+    return baseError ? `${baseError} (max attempts reached)` : 'Max attempts reached';
+  }
+
+  return baseError;
 }
 
 /**
@@ -89,7 +110,11 @@ export class DigestCoordinator {
 
         const allOutputsComplete = outputNames.every((name) => {
           const existing = digestsByName.get(name);
-          return existing && (existing.status === 'completed' || existing.status === 'skipped');
+          if (!existing) return false;
+          if (hasReachedMaxAttempts(existing)) {
+            return true;
+          }
+          return existing.status === 'completed' || existing.status === 'skipped';
         });
 
         if (allOutputsComplete) {
@@ -112,7 +137,10 @@ export class DigestCoordinator {
         pendingOutputs = outputNames.filter((name) => {
           const digest = digestsByName.get(name);
           if (!digest) return true;
-          return digest.status === 'todo' || digest.status === 'failed';
+          if (digest.status === 'failed') {
+            return !hasReachedMaxAttempts(digest);
+          }
+          return digest.status === 'todo';
         });
 
         if (pendingOutputs.length === 0) {
@@ -203,7 +231,7 @@ export class DigestCoordinator {
         content: output.content,
         sqlarName: sqlarName || existing.sqlarName,
         error: output.error ?? null,
-        updatedAt: new Date().toISOString(),
+        attempts: targetStatus === 'failed' ? (existing.attempts ?? 0) + 1 : 0,
       });
     } else {
       // Create new
@@ -215,6 +243,7 @@ export class DigestCoordinator {
         content: output.content,
         sqlarName,
         error: output.error ?? null,
+        attempts: targetStatus === 'failed' ? 1 : 0,
         createdAt: output.createdAt || new Date().toISOString(),
         updatedAt: output.updatedAt || new Date().toISOString(),
       };
@@ -277,6 +306,7 @@ export class DigestCoordinator {
           content: null,
           sqlarName: null,
           error: null,
+          attempts: 0,
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -320,32 +350,40 @@ export class DigestCoordinator {
   ): void {
     if (digesterNames.length === 0) return;
     const now = new Date().toISOString();
-    const errorValue = status === 'in-progress' ? null : error ?? null;
+    const baseError = status === 'in-progress' ? null : error ?? null;
 
     for (const name of digesterNames) {
       const id = generateDigestId(filePath, name);
       const existing = getDigestById(id);
       if (existing) {
+        let attempts = existing.attempts ?? 0;
+        if (status === 'failed') {
+          attempts = Math.min(MAX_DIGEST_ATTEMPTS, attempts + 1);
+        } else if (status === 'completed' || status === 'skipped') {
+          attempts = 0;
+        }
+
         updateDigest(id, {
           status,
-          error: errorValue,
-          updatedAt: now,
+          error: deriveFinalError(baseError, status, attempts),
+          attempts,
         });
         continue;
       }
 
-      const digest: Digest = {
+      const attempts = status === 'failed' ? 1 : 0;
+      createDigest({
         id,
         filePath,
         digester: name,
         status,
         content: null,
         sqlarName: null,
-        error: errorValue,
+        error: deriveFinalError(baseError, status, attempts),
+        attempts,
         createdAt: now,
         updatedAt: now,
-      };
-      createDigest(digest);
+      });
     }
   }
 }

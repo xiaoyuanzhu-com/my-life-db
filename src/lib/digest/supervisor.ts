@@ -4,6 +4,7 @@ import { setTimeout as setTimeoutPromise } from 'timers/promises';
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
 import { getDatabase } from '@/lib/db/connection';
+import { listDigestsForPath } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 
 interface DigestSupervisorConfig {
@@ -13,6 +14,8 @@ interface DigestSupervisorConfig {
   failureMaxDelayMs: number;
   staleDigestThresholdMs: number;
   staleSweepIntervalMs: number;
+  fileDelayMs: number;
+  failureCooldownMs: number;
 }
 
 const DEFAULT_CONFIG: DigestSupervisorConfig = {
@@ -22,6 +25,8 @@ const DEFAULT_CONFIG: DigestSupervisorConfig = {
   failureMaxDelayMs: 60_000,
   staleDigestThresholdMs: 10 * 60 * 1000,
   staleSweepIntervalMs: 60 * 1000,
+  fileDelayMs: 1_000,
+  failureCooldownMs: 60_000,
 };
 
 class DigestSupervisor {
@@ -34,6 +39,7 @@ class DigestSupervisor {
   private startTimer: NodeJS.Timeout | null = null;
   private consecutiveFailures = 0;
   private lastStaleSweep = 0;
+  private failureCooldowns = new Map<string, number>();
 
   constructor(config?: Partial<DigestSupervisorConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -69,17 +75,34 @@ class DigestSupervisor {
     while (!this.stopped) {
       try {
         this.maybeResetStaleDigests();
-        const filesToProcess = findFilesNeedingDigestion(this.db, 1);
+        const filesToProcess = findFilesNeedingDigestion(this.db, 10);
+        const filePath = filesToProcess.find(path => !this.isInCooldown(path));
 
-        if (filesToProcess.length === 0) {
+        if (!filePath) {
           this.consecutiveFailures = 0;
           await this.sleep(this.config.idleSleepMs);
           continue;
         }
 
-        const filePath = filesToProcess[0];
         this.log.info({ filePath }, 'processing file through digests');
         await this.coordinator.processFile(filePath);
+
+        if (this.config.fileDelayMs > 0) {
+          await this.sleep(this.config.fileDelayMs);
+        }
+
+        if (this.hasOutstandingFailures(filePath)) {
+          if (this.config.failureCooldownMs > 0) {
+            this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
+          }
+          this.consecutiveFailures++;
+          const delay = this.calculateFailureDelay();
+          this.log.error({ filePath, delayMs: delay }, 'digest still failing, backing off');
+          await this.sleep(delay);
+          continue;
+        }
+
+        this.failureCooldowns.delete(filePath);
         this.consecutiveFailures = 0;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -126,6 +149,25 @@ class DigestSupervisor {
     if (result.changes > 0) {
       this.log.warn({ reset: result.changes }, 'reset stale digest rows');
     }
+  }
+
+  private isInCooldown(filePath: string): boolean {
+    const until = this.failureCooldowns.get(filePath);
+    if (!until) {
+      return false;
+    }
+
+    if (Date.now() >= until) {
+      this.failureCooldowns.delete(filePath);
+      return false;
+    }
+
+    return true;
+  }
+
+  private hasOutstandingFailures(filePath: string): boolean {
+    const digests = listDigestsForPath(filePath);
+    return digests.some(digest => digest.status === 'failed');
   }
 }
 

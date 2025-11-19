@@ -65,6 +65,7 @@ export function syncNewDigesters(db: BetterSqlite3.Database): void {
             content: null,
             sqlarName: null,
             error: null,
+            attempts: 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });

@@ -35,6 +35,9 @@ export interface DigestRecordRow {
   /** Error message if status='failed' */
   error: string | null;
 
+  /** Number of attempts made by this digester */
+  attempts: number;
+
   /** ISO 8601 timestamp when digest was created */
   created_at: string;
 
@@ -70,6 +73,9 @@ export interface Digest {
   /** Error message if status='failed' */
   error: string | null;
 
+  /** Number of attempts performed for this digester */
+  attempts: number;
+
   /** ISO 8601 timestamp when digest was created */
   createdAt: string;
 
@@ -89,6 +95,7 @@ export function rowToDigest(row: DigestRecordRow): Digest {
     content: row.content,
     sqlarName: row.sqlar_name,
     error: row.error,
+    attempts: row.attempts,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

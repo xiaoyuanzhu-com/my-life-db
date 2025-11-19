@@ -11,8 +11,17 @@ export function createDigest(digest: Digest): void {
   const stmt = db.prepare(`
     INSERT INTO digests (
       id, file_path, digester, status, content, sqlar_name, error,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      attempts, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      file_path = excluded.file_path,
+      digester = excluded.digester,
+      status = excluded.status,
+      content = excluded.content,
+      sqlar_name = excluded.sqlar_name,
+      error = excluded.error,
+      attempts = excluded.attempts,
+      updated_at = excluded.updated_at
   `);
 
   stmt.run(
@@ -23,6 +32,7 @@ export function createDigest(digest: Digest): void {
     digest.content,
     digest.sqlarName,
     digest.error,
+    digest.attempts ?? 0,
     digest.createdAt,
     digest.updatedAt
   );
@@ -38,11 +48,12 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
   const stmt = db.prepare(`
     INSERT INTO digests (
       id, file_path, digester, status, content, sqlar_name, error,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      attempts, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = 'todo',
       error = NULL,
+      attempts = 0,
       updated_at = ?
   `);
 
@@ -55,6 +66,7 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
     digest.content,
     digest.sqlarName,
     digest.error,
+    0,
     digest.createdAt,
     now,
     now  // updated_at for the UPDATE clause
@@ -199,6 +211,11 @@ export function updateDigest(
     values.push(updates.error);
   }
 
+  if (updates.attempts !== undefined) {
+    fields.push('attempts = ?');
+    values.push(updates.attempts);
+  }
+
   // Always update updated_at
   fields.push('updated_at = ?');
   values.push(new Date().toISOString());
@@ -280,6 +297,7 @@ export function startDigest(filePath: string, digester: string): Digest {
     content: null,
     sqlarName: null,
     error: null,
+    attempts: 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -310,6 +328,7 @@ function rowToDigest(record: DigestRecordRow): Digest {
     content: record.content,
     sqlarName: record.sqlar_name,
     error: record.error,
+    attempts: record.attempts ?? 0,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };

@@ -7,6 +7,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { listDigestsForPath } from '@/lib/db/digests';
 import { globalDigesterRegistry } from './registry';
 import { getLogger } from '@/lib/log/logger';
+import { MAX_DIGEST_ATTEMPTS } from './constants';
 
 const log = getLogger({ module: 'FileSelection' });
 
@@ -78,7 +79,10 @@ export function findFilesNeedingDigestion(
       }
 
       if (digest.status === 'failed') {
-        // Failed = should retry
+        if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
+          // Treat as permanent failure
+          continue;
+        }
         fileNeedsWork = true;
         break;
       }

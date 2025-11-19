@@ -12,7 +12,7 @@ import type { DigestPipelinePayload, UrlDigestPipelineStage } from '@/types/dige
 import { enqueueUrlSummary } from './summarize-url-inbox-item';
 import { enqueueUrlTagging } from './tag-url-inbox-item';
 import { enqueueUrlSlug } from './slug-url-inbox-item';
-import { createDigest, deleteDigestsForPath, generateDigestId } from '../db/digests';
+import { createDigest, deleteDigestsForPath, generateDigestId, getDigestByPathAndDigester } from '../db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '../db/sqlar';
 import { getDatabase } from '../db/connection';
 import { getFileByPath } from '../db/files';
@@ -123,6 +123,7 @@ export async function enrichUrlFile(
         content: processed.markdown,
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       });
@@ -142,6 +143,7 @@ export async function enrichUrlFile(
         content: null,
         sqlarName,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       });
@@ -167,6 +169,7 @@ export async function enrichUrlFile(
             content: null,
             sqlarName,
             error: null,
+            attempts: 0,
             createdAt: now,
             updatedAt: now,
           });
@@ -210,6 +213,7 @@ export async function enrichUrlFile(
       content: JSON.stringify(urlMetadata),
       sqlarName: null,
       error: null,
+      attempts: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -229,6 +233,7 @@ export async function enrichUrlFile(
 
     // Create failed digest
     const now = new Date().toISOString();
+    const previous = getDigestByPathAndDigester(filePath, 'content-md');
     createDigest({
       id: generateDigestId(filePath, 'content-md'),
       filePath,
@@ -237,6 +242,7 @@ export async function enrichUrlFile(
       content: null,
       sqlarName: null,
       error: errorMessage,
+      attempts: (previous?.attempts ?? 0) + 1,
       createdAt: now,
       updatedAt: now,
     });
