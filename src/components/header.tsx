@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 export function Header() {
   const pathname = usePathname();
   const [userEmail, setUserEmail] = useState('user@example.com');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   // Load user email from settings
   useEffect(() => {
@@ -72,37 +72,35 @@ export function Header() {
                 </Link>
               );
             })}
-            <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="rounded-full hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
-                  aria-label="User profile"
-                  onMouseEnter={() => setIsDropdownOpen(true)}
-                  onMouseLeave={() => setIsDropdownOpen(false)}
-                >
-                  <Image
-                    src={gravatarUrl}
-                    alt="User avatar"
-                    width={32}
-                    height={32}
-                    className="rounded-full pointer-events-none"
-                  />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-48"
-                onMouseEnter={() => setIsDropdownOpen(true)}
-                onMouseLeave={() => setIsDropdownOpen(false)}
-              >
-                <DropdownMenuItem asChild>
-                  <Link href="/settings" className="flex items-center gap-2 cursor-pointer">
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div
+              onMouseEnter={() => setOpen(true)}
+              onMouseLeave={() => setOpen(false)}
+            >
+              <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="rounded-full hover:opacity-80 transition-opacity focus:outline-none cursor-pointer"
+                    aria-label="User profile"
+                  >
+                    <Image
+                      src={gravatarUrl}
+                      alt="User avatar"
+                      width={32}
+                      height={32}
+                      className="rounded-full pointer-events-none"
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer">
+                      <Settings className="h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </nav>
         </div>
       </div>
