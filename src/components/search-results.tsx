@@ -20,8 +20,10 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const lastQueryRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
+  const autoScrollRef = useRef(true);
+  const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const highlightTerms = useMemo(() => {
     if (!currentQuery.trim()) {
       return [];
@@ -45,6 +47,10 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
       setTiming(null);
       setCurrentQuery('');
       lastQueryRef.current = null;
+      setIsLoadingMore(false);
+      loadingRef.current = false;
+      autoScrollRef.current = true;
+      scrollAdjustmentRef.current = null;
       return;
     }
 
@@ -54,6 +60,10 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
 
     if (isNewQuery) {
       setMergedResults(results.results);
+      autoScrollRef.current = true;
+      scrollAdjustmentRef.current = null;
+      setIsLoadingMore(false);
+      loadingRef.current = false;
     } else {
       setMergedResults(prev => {
         const prevPaths = new Set(prev.map(item => item.path));
@@ -69,22 +79,39 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     setLoadMoreError(null);
   }, [results]);
 
-  const hasResults = mergedResults.length > 0;
+  const orderedResults = useMemo(() => {
+    return mergedResults
+      .slice()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [mergedResults]);
+
+  const hasResults = orderedResults.length > 0;
   const canLoadMore = Boolean(pagination?.hasMore);
 
   const loadMore = useCallback(async () => {
-    if (!currentQuery || !canLoadMore || isLoadingMore) {
+    if (!currentQuery || !canLoadMore || isLoadingMore || loadingRef.current) {
       return;
     }
 
+    loadingRef.current = true;
     setIsLoadingMore(true);
     setLoadMoreError(null);
+    autoScrollRef.current = false;
+
+    const container = scrollContainerRef.current;
+    if (container) {
+      scrollAdjustmentRef.current = {
+        prevHeight: container.scrollHeight,
+        prevTop: container.scrollTop,
+      };
+    }
 
     try {
+      const offset = mergedResults.length;
       const params = new URLSearchParams({
         q: currentQuery,
         limit: String(SEARCH_BATCH_SIZE),
-        offset: String(mergedResults.length),
+        offset: String(offset),
       });
 
       const response = await fetch(`/api/search?${params.toString()}`);
@@ -109,37 +136,56 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
       setLoadMoreError(message);
     } finally {
       setIsLoadingMore(false);
+      loadingRef.current = false;
     }
   }, [currentQuery, canLoadMore, isLoadingMore, mergedResults.length]);
 
-  // Observe sentinel to trigger infinite scroll
+  // Keep user anchored when older results prepend, or auto-scroll for new queries
   useEffect(() => {
     const container = scrollContainerRef.current;
-    const target = sentinelRef.current;
-
-    if (!container || !target || !canLoadMore) {
+    if (!container) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            loadMore();
-            break;
-          }
-        }
-      },
-      {
-        root: container,
-        rootMargin: '200px',
-        threshold: 0,
-      }
-    );
+    const adjustment = scrollAdjustmentRef.current;
+    if (adjustment) {
+      const heightDiff = container.scrollHeight - adjustment.prevHeight;
+      container.scrollTop = adjustment.prevTop + heightDiff;
+      scrollAdjustmentRef.current = null;
+      return;
+    }
 
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [canLoadMore, loadMore]);
+    if (!autoScrollRef.current) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+    autoScrollRef.current = false;
+  }, [mergedResults]);
+
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    autoScrollRef.current = false;
+
+    const threshold = 200;
+    if (container.scrollTop < threshold) {
+      loadMore();
+    }
+  }, [loadMore]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
 
   const showEmptyState =
     !isSearching &&
@@ -184,7 +230,27 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
               )}
             </div>
 
-            {mergedResults.map((result) => (
+            {(isLoadingMore || loadMoreError) && (
+              <div className="py-2 text-center text-xs">
+                {isLoadingMore && (
+                  <p className="text-muted-foreground">Loading older results…</p>
+                )}
+                {loadMoreError && (
+                  <div className="flex flex-col items-center gap-2 text-destructive">
+                    <p>Failed to load more results: {loadMoreError}</p>
+                    <button
+                      type="button"
+                      onClick={loadMore}
+                      className="rounded-md border border-destructive/50 px-3 py-1 text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {orderedResults.map((result) => (
               <FileCard
                 key={result.path}
                 file={result}
@@ -193,29 +259,6 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
                 matchContext={result.matchContext}
               />
             ))}
-
-            {loadMoreError && (
-              <div className="flex flex-col items-center gap-2 text-xs text-destructive py-4">
-                <p>Failed to load more results: {loadMoreError}</p>
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  className="rounded-md border border-destructive/50 px-3 py-1 text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {isLoadingMore && (
-              <div className="py-2 text-center">
-                <p className="text-xs text-muted-foreground">Loading more…</p>
-              </div>
-            )}
-
-            {canLoadMore && (
-              <div ref={sentinelRef} className="h-4 w-full" />
-            )}
           </div>
         )}
       </div>

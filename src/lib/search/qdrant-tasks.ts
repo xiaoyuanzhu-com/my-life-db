@@ -1,4 +1,5 @@
 import 'server-only';
+import { randomUUID } from 'crypto';
 import { tq } from '@/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
 import {
@@ -97,12 +98,18 @@ defineTaskHandler({
         );
       }
 
-      // Build Qdrant points
-      const points = documents.map((doc, index) => ({
-        id: doc.documentId,
-        vector: embeddings[index].vector,
-        payload: buildQdrantPayload(doc),
-      }));
+      // Build Qdrant points - generate UUIDs for point IDs if not already set
+      const points = documents.map((doc, index) => {
+        // Generate or reuse UUID for Qdrant point ID
+        // Qdrant requires point IDs to be either UUIDs or unsigned integers
+        const pointId = doc.qdrantPointId || randomUUID();
+
+        return {
+          id: pointId,
+          vector: embeddings[index].vector,
+          payload: buildQdrantPayload(doc),
+        };
+      });
 
       // Upload to Qdrant
       log.info({ pointCount: points.length }, 'uploading vectors to Qdrant');
@@ -114,9 +121,12 @@ defineTaskHandler({
       const embeddingVersion = getEmbeddingVersion();
       const db = getDatabase();
 
-      for (const doc of documents) {
+      for (let i = 0; i < documents.length; i++) {
+        const doc = documents[i];
+        const pointId = points[i].id;
+
         updateEmbeddingStatus(doc.documentId, 'indexed', {
-          pointId: doc.documentId, // Using document ID as point ID
+          pointId, // Store the UUID used in Qdrant
           indexedAt: now,
           error: undefined,
         });
