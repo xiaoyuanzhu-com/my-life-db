@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { OmniInput } from '@/components/omni-input';
 import { InboxFeed } from '@/components/inbox-feed';
 import { SearchResults } from '@/components/search-results';
+import { useInboxNotifications } from '@/hooks/use-inbox-notifications';
 import type { SearchResponse } from '@/app/api/search/route';
 
 export default function HomePage() {
@@ -25,6 +26,17 @@ export default function HomePage() {
     // Trigger inbox refresh by updating the trigger value
     setRefreshTrigger(prev => prev + 1);
   };
+
+  // Handle inbox changes from real-time notifications
+  const handleInboxChange = useCallback(() => {
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
+
+  // Setup real-time notifications
+  useInboxNotifications({
+    onInboxChange: handleInboxChange,
+    enableBrowserNotifications: true,
+  });
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
