@@ -73,6 +73,7 @@ export function Header() {
               );
             })}
             <div
+              className="flex items-center"
               onMouseEnter={() => setOpen(true)}
               onMouseLeave={() => setOpen(false)}
             >
