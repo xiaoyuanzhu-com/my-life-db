@@ -43,6 +43,7 @@ export async function loadSettings(): Promise<UserSettings> {
           getSetting(db, 'preferences_digest_day') || String(DEFAULT_SETTINGS.preferences.digestDay)
         ) as UserSettings['preferences']['digestDay'],
         logLevel: ((getSetting(db, 'preferences_log_level') as UserSettings['preferences']['logLevel']) || DEFAULT_SETTINGS.preferences.logLevel || 'info'),
+        userEmail: getSetting(db, 'preferences_user_email') || undefined,
       },
       vendors: {
         openai: {
@@ -98,6 +99,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     setSetting(db, 'preferences_weekly_digest', String(settings.preferences.weeklyDigest));
     setSetting(db, 'preferences_digest_day', String(settings.preferences.digestDay));
     if (settings.preferences.logLevel) setSetting(db, 'preferences_log_level', settings.preferences.logLevel);
+    if (settings.preferences.userEmail) setSetting(db, 'preferences_user_email', settings.preferences.userEmail);
 
     // Vendors
     if (settings.vendors?.openai?.baseUrl) setSetting(db, 'vendors_openai_base_url', settings.vendors.openai.baseUrl);

@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
         port: '3000',
         pathname: '/sqlar/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.gravatar.com',
+        pathname: '/avatar/**',
+      },
     ],
     // For production, you would add your domain here
   },

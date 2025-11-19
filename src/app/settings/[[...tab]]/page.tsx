@@ -156,6 +156,24 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
+                <label className="text-sm font-medium">User Email</label>
+                <Input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={settings.preferences?.userEmail || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      preferences: {
+                        ...(settings.preferences || { theme: 'auto', defaultView: 'home', weeklyDigest: false, digestDay: 0 }),
+                        userEmail: e.target.value,
+                      } as UserSettings['preferences'],
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">Used for displaying your Gravatar avatar in the header.</p>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Log Level</label>
                 <select
                   className="w-full px-3 py-2 rounded-md border bg-background"
