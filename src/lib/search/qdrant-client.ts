@@ -86,6 +86,29 @@ class QdrantClient {
     );
   }
 
+  async ensureCollection(vectorSize: number): Promise<void> {
+    try {
+      // Check if collection exists
+      await this.request(`/collections/${encodeURIComponent(this.collection)}`, {
+        method: 'GET',
+      });
+      log.debug({ collection: this.collection }, 'collection already exists');
+    } catch (error) {
+      // Collection doesn't exist, create it
+      log.info({ collection: this.collection, vectorSize }, 'creating collection');
+      await this.request(`/collections/${encodeURIComponent(this.collection)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          vectors: {
+            size: vectorSize,
+            distance: 'Cosine',
+          },
+        }),
+      });
+      log.info({ collection: this.collection }, 'collection created');
+    }
+  }
+
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -146,4 +169,13 @@ export async function getQdrantClient(): Promise<QdrantClient> {
 
   log.info({ url, collection }, 'initialized Qdrant client');
   return cachedClient;
+}
+
+/**
+ * Ensure Qdrant collection exists
+ * Call this during app initialization or before first use
+ */
+export async function ensureQdrantCollection(vectorSize = 1024): Promise<void> {
+  const client = await getQdrantClient();
+  await client.ensureCollection(vectorSize);
 }

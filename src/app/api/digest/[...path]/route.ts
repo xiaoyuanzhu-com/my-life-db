@@ -77,7 +77,8 @@ export async function POST(
     log.info({ filePath }, 'starting digest processing');
 
     // Process digests synchronously so user gets immediate feedback
-    await processFileDigests(filePath);
+    // Reset existing digests so all digesters run fresh
+    await processFileDigests(filePath, { reset: true });
 
     return NextResponse.json({
       success: true,

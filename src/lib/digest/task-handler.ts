@@ -61,14 +61,19 @@ export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
  * Use this for API endpoints that need immediate digest processing
  *
  * @param filePath - Relative path from DATA_ROOT
+ * @param options - Processing options
+ * @param options.reset - If true, clear existing digests before processing
  */
-export async function processFileDigests(filePath: string): Promise<void> {
-  log.info({ filePath }, 'processing file digests');
+export async function processFileDigests(
+  filePath: string,
+  options?: { reset?: boolean }
+): Promise<void> {
+  log.info({ filePath, reset: options?.reset }, 'processing file digests');
 
   const db = getDatabase();
   const coordinator = new DigestCoordinator(db);
 
-  await coordinator.processFile(filePath);
+  await coordinator.processFile(filePath, options);
 
   log.info({ filePath }, 'file digests complete');
 }

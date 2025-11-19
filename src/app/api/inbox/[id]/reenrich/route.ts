@@ -33,7 +33,8 @@ export async function POST(
     log.info({ filePath }, 'reenriching inbox item');
 
     // Process digests synchronously so user gets immediate feedback
-    await processFileDigests(filePath);
+    // Reset existing digests so all digesters run fresh (this is a re-enrich after all!)
+    await processFileDigests(filePath, { reset: true });
 
     return NextResponse.json({
       success: true,

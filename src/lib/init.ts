@@ -33,30 +33,39 @@ async function initializeDatabase() {
 }
 
 /**
- * Initialize search index (Meilisearch)
- * This ensures the index exists before any documents are indexed
+ * Initialize search indexes (Meilisearch + Qdrant)
+ * This ensures the indexes/collections exist before any documents are indexed
  */
 async function initializeSearchIndex() {
   const log = getLogger({ module: 'AppInit' });
   try {
-    const { getMeiliClient } = await import('./search/meili-client');
     const { loadSettings } = await import('./config/storage');
-
-    // Check if Meilisearch is configured
     const settings = await loadSettings();
-    const host = process.env.MEILI_HOST || settings.vendors?.meilisearch?.host;
 
-    if (!host) {
-      log.info({}, 'Meilisearch not configured, skipping index initialization');
-      return;
+    // Initialize Meilisearch index
+    const meiliHost = process.env.MEILI_HOST || settings.vendors?.meilisearch?.host;
+    if (meiliHost) {
+      log.info({}, 'initializing Meilisearch index');
+      const { getMeiliClient } = await import('./search/meili-client');
+      await getMeiliClient(); // This triggers ensureIndex() automatically
+      log.info({}, 'Meilisearch index initialized');
+    } else {
+      log.info({}, 'Meilisearch not configured, skipping');
     }
 
-    log.info({}, 'initializing Meilisearch index');
-    await getMeiliClient(); // This triggers ensureIndex() automatically
-    log.info({}, 'Meilisearch index initialized');
+    // Initialize Qdrant collection
+    const qdrantHost = settings.vendors?.qdrant?.host;
+    if (qdrantHost) {
+      log.info({}, 'initializing Qdrant collection');
+      const { ensureQdrantCollection } = await import('./search/qdrant-client');
+      await ensureQdrantCollection(1024); // Use 1024 dimensions (all-MiniLM-L6-v2)
+      log.info({}, 'Qdrant collection initialized');
+    } else {
+      log.info({}, 'Qdrant not configured, skipping');
+    }
   } catch (error) {
     // Don't fail app startup if search is unavailable
-    log.warn({ err: error }, 'failed to initialize Meilisearch index, search will be unavailable');
+    log.warn({ err: error }, 'failed to initialize search indexes, search may be unavailable');
   }
 }
 

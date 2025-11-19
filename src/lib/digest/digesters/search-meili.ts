@@ -41,6 +41,10 @@ export class MeiliSearchDigester implements Digester {
       return true; // Never indexed
     }
 
+    if (existingSearch.status === 'todo') {
+      return true; // Not yet indexed
+    }
+
     if (existingSearch.status === 'failed') {
       return true; // Retry failed indexing
     }

@@ -9,7 +9,7 @@ import {
   type QdrantDocument,
 } from '@/lib/db/qdrant-documents';
 import { getDatabase } from '@/lib/db/connection';
-import { getQdrantClient } from './qdrant-client';
+import { getQdrantClient, ensureQdrantCollection } from './qdrant-client';
 import { embedTexts } from '@/lib/ai/embeddings';
 import { getLogger } from '@/lib/log/logger';
 
@@ -110,6 +110,10 @@ defineTaskHandler({
           payload: buildQdrantPayload(doc),
         };
       });
+
+      // Ensure collection exists (will create if needed)
+      const vectorSize = embeddings[0].vector.length;
+      await ensureQdrantCollection(vectorSize);
 
       // Upload to Qdrant
       log.info({ pointCount: points.length }, 'uploading vectors to Qdrant');
