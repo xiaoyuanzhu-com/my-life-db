@@ -16,6 +16,8 @@ env:
 
 jobs:
   build-and-push:
+    # Skip Docker builds for pull requests
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
