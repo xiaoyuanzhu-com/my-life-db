@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
-import { Footer } from "@/components/footer";
 import "./globals.css";
 
 // Temporarily using system fonts due to build environment network restrictions
@@ -51,7 +50,6 @@ export default function RootLayout({
         <main className="flex-1 flex flex-col min-h-0 overflow-hidden pb-16 md:pb-0">
           {children}
         </main>
-        <Footer />
         <BottomNav />
       </body>
     </html>

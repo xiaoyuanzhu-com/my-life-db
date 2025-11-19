@@ -9,8 +9,8 @@ import { ThemeToggle } from './theme-toggle';
 export function Footer() {
   const currentPath = usePathname();
 
-  // Hide footer on homepage and library experience (show on other pages)
-  if (currentPath === '/' || currentPath?.startsWith('/library')) {
+  // Hide footer on homepage, library, and file detail pages (show on other pages)
+  if (currentPath === '/' || currentPath?.startsWith('/library') || currentPath?.startsWith('/file')) {
     return null;
   }
 
