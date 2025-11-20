@@ -494,18 +494,93 @@ interface ErrorResponse {
 }
 ```
 
-### 6.2 Phase 2: Hybrid Search (Future)
+### 6.2 Hybrid Search (Implemented)
 
-**Planned Enhancement:**
-- Combine Meilisearch (keyword) + Qdrant (semantic)
-- Use Reciprocal Rank Fusion (RRF) to merge results
-- Formula: `score = keywordWeight/(k+rank) + semanticWeight/(k+rank)`
-- Where `k=60`, `keywordWeight=0.6`, `semanticWeight=0.4`
+**Current Implementation:**
+The main `/api/search` endpoint uses an adaptive hybrid approach that combines both keyword and semantic search based on query length.
 
-**Benefits:**
-- Find conceptually similar content (not just keyword matches)
-- Better handling of synonyms and paraphrases
-- More robust for natural language queries
+#### Query-Length Strategy
+
+| Query Length | Search Mode | Rationale |
+|--------------|-------------|-----------|
+| ≤10 words | Keyword + Semantic | Short queries benefit from both approaches |
+| >10 words | Semantic only | Long natural language queries work better with embeddings |
+
+#### Merge Strategy (for ≤10 word queries)
+
+**Step 1: Parallel Fetch**
+```typescript
+// Fetch from both sources in parallel
+const [meiliResult, qdrantHits] = await Promise.all([
+  meilisearch.search(query, { limit: limit * 2 }),
+  qdrant.search(embedding, { limit: limit * 2, scoreThreshold: 0.7 })
+]);
+```
+
+**Step 2: File-Path Deduplication (Union)**
+```typescript
+const filePathMap = new Map<string, SearchHit>();
+
+// Add Meilisearch results first (prioritized)
+for (const hit of meiliResult.hits) {
+  filePathMap.set(hit.filePath, hit);
+}
+
+// Add Qdrant results that aren't already in Meilisearch
+for (const hit of qdrantHits) {
+  if (!filePathMap.has(hit.payload.filePath)) {
+    filePathMap.set(hit.payload.filePath, convertToSearchHit(hit));
+  }
+}
+```
+
+**Step 3: Pagination**
+```typescript
+const mergedHits = Array.from(filePathMap.values());
+const paginatedHits = mergedHits.slice(offset, offset + limit);
+```
+
+#### Merge Behavior
+
+**Example:**
+- Keyword search returns: `file1.md`, `file2.md`, `file3.md`
+- Semantic search returns: `file2.md`, `file3.md`, `file4.md`
+- **Merged result**: `file1.md`, `file2.md`, `file3.md`, `file4.md` (union, 4 files)
+
+**Key Properties:**
+- **Union merge**: Results from either source are included
+- **Keyword prioritized**: Keyword results appear first; semantic results supplement
+- **No duplicate files**: Each file path appears only once in results
+- **Graceful fallback**: If either search fails, uses the other source only
+
+#### Benefits
+
+**Why Hybrid?**
+- **Recall boost**: Semantic search finds conceptually similar content missed by keywords
+- **Precision maintained**: Keyword search ensures exact matches always appear
+- **Best of both**: Combines lexical matching with semantic understanding
+
+**Performance:**
+- Both searches run in parallel (no sequential delay)
+- Results typically return in 100-300ms
+- Semantic threshold (0.7) filters low-quality matches
+
+#### Alternative: RRF Endpoint
+
+A dedicated `/api/search/hybrid` endpoint implements **Reciprocal Rank Fusion (RRF)** for advanced ranking:
+
+```typescript
+// RRF formula: score = keywordWeight/(k+rank) + semanticWeight/(k+rank)
+// Files in BOTH sources get boosted scores
+const rrfScore = keywordWeight/(60+rank) + semanticWeight/(60+rank);
+```
+
+**RRF Configuration:**
+- `k = 60` (RRF constant)
+- `keywordWeight = 0.5` (default, configurable)
+- `semanticWeight = 0.5` (default, configurable)
+
+This endpoint is available but not currently used by the main search UI.
 
 ### 6.3 Future Enhancements
 
