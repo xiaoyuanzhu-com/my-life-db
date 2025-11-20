@@ -19,6 +19,7 @@ interface OmniInputProps {
     isSearching: boolean;
     hasNoResults: boolean;
     hasError: boolean;
+    resultCount?: number;
   };
 }
 
@@ -341,11 +342,12 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }:
           </Button>
 
           {/* Show search status in the middle */}
-          {searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError) && (
+          {searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError || (searchStatus.resultCount && searchStatus.resultCount > 0)) && (
             <SearchStatus
               isSearching={searchStatus.isSearching}
               hasNoResults={searchStatus.hasNoResults}
               hasError={searchStatus.hasError}
+              resultCount={searchStatus.resultCount}
             />
           )}
 

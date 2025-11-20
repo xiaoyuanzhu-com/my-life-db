@@ -159,8 +159,13 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
       return;
     }
 
-    container.scrollTop = container.scrollHeight;
-    autoScrollRef.current = false;
+    // Use requestAnimationFrame to ensure DOM has been painted before scrolling
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+        autoScrollRef.current = false;
+      }
+    });
   }, [mergedResults]);
 
   const handleScroll = useCallback(() => {
@@ -221,15 +226,6 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
 
         {hasResults && (
           <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto pt-4 px-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Related files</p>
-              {timing && (
-                <p className="text-xs text-muted-foreground">
-                  {timing.totalMs}ms
-                </p>
-              )}
-            </div>
-
             {(isLoadingMore || loadMoreError) && (
               <div className="py-2 text-center text-xs">
                 {isLoadingMore && (

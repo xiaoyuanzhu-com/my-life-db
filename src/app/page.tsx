@@ -86,6 +86,7 @@ export default function HomePage() {
               isSearching: searchState.isSearching,
               hasNoResults: searchState.results !== null && searchState.results.results.length === 0 && !searchState.isSearching,
               hasError: searchState.error !== null && !searchState.isSearching,
+              resultCount: hasCurrentResults && !searchState.isSearching ? searchState.results.results.length : undefined,
             }}
           />
         </div>

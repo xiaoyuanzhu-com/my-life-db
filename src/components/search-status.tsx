@@ -6,9 +6,10 @@ interface SearchStatusProps {
   isSearching: boolean;
   hasNoResults: boolean;
   hasError: boolean;
+  resultCount?: number;
 }
 
-export function SearchStatus({ isSearching, hasNoResults, hasError }: SearchStatusProps) {
+export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount }: SearchStatusProps) {
   const [dots, setDots] = useState(0);
 
   // Animate dots for searching state
@@ -46,6 +47,15 @@ export function SearchStatus({ isSearching, hasNoResults, hasError }: SearchStat
     return (
       <div className="text-xs text-destructive">
         Search failed
+      </div>
+    );
+  }
+
+  // Show result count when there are results
+  if (resultCount && resultCount > 0) {
+    return (
+      <div className="text-xs text-muted-foreground">
+        Related files
       </div>
     );
   }
