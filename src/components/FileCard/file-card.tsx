@@ -80,30 +80,30 @@ export function FileCard({
   }, [file]);
 
   return (
-    <div className={cn('w-full', className)}>
+    <div className={cn('w-full flex flex-col items-end', className)}>
       {/* Timestamp - centered horizontally above card */}
       {showTimestamp && (
-        <div className="text-xs text-muted-foreground text-center mb-2">
+        <div className="text-xs text-muted-foreground mb-2 mr-5">
           {formatTimestamp(file.createdAt)}
         </div>
       )}
 
-      <div className="group relative w-full overflow-hidden rounded-lg border border-border bg-muted">
+      <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted">
         <div className="relative">
           {content.type === 'image' ? (
-            <div className="relative w-full">
+            <div className="relative w-full max-w-md">
               <Image
                 src={content.src}
                 alt={content.alt}
                 width={800}
                 height={600}
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                sizes="(max-width: 768px) calc(100vw - 40px), 448px"
                 className="w-full h-auto object-contain"
                 priority={false}
               />
             </div>
           ) : content.type === 'video' ? (
-            <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+            <div className="relative w-full max-w-md" style={{ aspectRatio: '16/9' }}>
               <video
                 controls
                 playsInline
@@ -132,7 +132,7 @@ export function FileCard({
               </div>
             </div>
           ) : content.type === 'text' ? (
-            <div className="p-4">
+            <div className="p-4 max-w-full">
               <div className="prose prose-sm dark:prose-invert max-w-none select-text">
                 <TextContent text={content.text} highlightTerms={highlightTerms} />
               </div>
