@@ -159,12 +159,20 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
       return;
     }
 
-    // Use requestAnimationFrame to ensure DOM has been painted before scrolling
+    // Use double requestAnimationFrame to ensure DOM has been fully painted and laid out
     requestAnimationFrame(() => {
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-        autoScrollRef.current = false;
-      }
+      requestAnimationFrame(() => {
+        if (container) {
+          console.log('[SearchResults] Auto-scrolling to bottom', {
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight,
+            scrollTop: container.scrollTop
+          });
+          container.scrollTop = container.scrollHeight;
+          autoScrollRef.current = false;
+          console.log('[SearchResults] After scroll, scrollTop:', container.scrollTop);
+        }
+      });
     });
   }, [mergedResults]);
 
