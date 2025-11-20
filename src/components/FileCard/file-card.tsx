@@ -28,11 +28,36 @@ export function FileCard({
   matchContext,
 }: FileCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
   }, [file.path]);
+
+  // Handle expand: fetch full content from raw API
+  const handleToggleExpand = async () => {
+    if (!isExpanded && !fullContent && file.textPreview) {
+      // Expanding for the first time - fetch full content
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/raw/${file.path}`);
+        if (response.ok) {
+          const text = await response.text();
+          setFullContent(text);
+          setIsExpanded(true);
+        }
+      } catch (error) {
+        console.error('Failed to load full content:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // Just toggle collapsed/expanded
+      setIsExpanded(!isExpanded);
+    }
+  };
 
   // Determine content type and data
   const content = useMemo(() => {
@@ -135,10 +160,11 @@ export function FileCard({
             </div>
           ) : content.type === 'text' ? (
             <TextContent
-              text={content.text}
+              text={fullContent || content.text}
               highlightTerms={highlightTerms}
               isExpanded={isExpanded}
-              onToggleExpand={() => setIsExpanded(!isExpanded)}
+              isLoading={isLoading}
+              onToggleExpand={handleToggleExpand}
             />
           ) : (
             <div className="p-6 flex items-center justify-center min-h-[120px]">
@@ -179,11 +205,13 @@ function TextContent({
   text,
   highlightTerms,
   isExpanded,
+  isLoading,
   onToggleExpand,
 }: {
   text: string;
   highlightTerms?: string[];
   isExpanded: boolean;
+  isLoading: boolean;
   onToggleExpand: () => void;
 }) {
   const allLines = text.split('\n');
@@ -209,9 +237,10 @@ function TextContent({
       {shouldTruncate && (
         <button
           onClick={onToggleExpand}
-          className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+          disabled={isLoading}
+          className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-wait"
         >
-          {isExpanded ? 'Collapse' : 'Expand'}
+          {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
         </button>
       )}
     </div>

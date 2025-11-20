@@ -380,10 +380,10 @@ export async function GET(request: NextRequest) {
 
       const primaryText = await readPrimaryText(fileWithDigests.path);
       const fallbackPreview = hit.content.trim().length > 0
-        ? hit.content.trim().slice(0, 10000)
+        ? hit.content.trim().split('\n').slice(0, 60).join('\n')
         : undefined;
       const textPreview = primaryText
-        ? primaryText.slice(0, 10000)
+        ? primaryText.split('\n').slice(0, 60).join('\n')
         : fallbackPreview;
 
       // Generate snippet from highlighted content or original content
