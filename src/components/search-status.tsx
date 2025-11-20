@@ -35,14 +35,6 @@ export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount 
     );
   }
 
-  if (hasNoResults) {
-    return (
-      <div className="text-xs text-muted-foreground">
-        No related files
-      </div>
-    );
-  }
-
   if (hasError) {
     return (
       <div className="text-xs text-destructive">
@@ -51,11 +43,12 @@ export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount 
     );
   }
 
-  // Show result count when there are results
-  if (resultCount && resultCount > 0) {
+  // Show result count when search is complete (either with or without results)
+  if (hasNoResults || (resultCount !== undefined && resultCount >= 0)) {
+    const count = resultCount ?? 0;
     return (
       <div className="text-xs text-muted-foreground">
-        Related files
+        {count} related {count === 1 ? 'file' : 'files'}
       </div>
     );
   }
