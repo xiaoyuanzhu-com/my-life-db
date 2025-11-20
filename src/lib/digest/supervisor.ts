@@ -6,6 +6,7 @@ import { findFilesNeedingDigestion } from './file-selection';
 import { getDatabase } from '@/lib/db/connection';
 import { listDigestsForPath } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
+import { getFileSystemWatcher, type FileChangeEvent } from '@/lib/scanner/fs-watcher';
 
 interface DigestSupervisorConfig {
   startDelayMs: number;
@@ -54,6 +55,10 @@ class DigestSupervisor {
 
     this.running = true;
     this.log.info({ delayMs: this.config.startDelayMs }, 'starting digest supervisor');
+
+    // Subscribe to file system watcher events
+    this.subscribeToFileSystemWatcher();
+
     this.startTimer = setTimeout(() => {
       this.startTimer = null;
       void this.runLoop();
@@ -168,6 +173,80 @@ class DigestSupervisor {
   private hasOutstandingFailures(filePath: string): boolean {
     const digests = listDigestsForPath(filePath);
     return digests.some(digest => digest.status === 'failed');
+  }
+
+  /**
+   * Subscribe to file system watcher events for immediate processing
+   */
+  private subscribeToFileSystemWatcher(): void {
+    const watcher = getFileSystemWatcher();
+    if (!watcher) {
+      this.log.debug({}, 'file system watcher not available, skipping subscription');
+      return;
+    }
+
+    watcher.on('file-change', (event: FileChangeEvent) => {
+      this.log.debug({ filePath: event.filePath, isNew: event.isNew }, 'file change event received');
+      void this.handleFileChangeEvent(event);
+    });
+
+    this.log.info({}, 'subscribed to file system watcher events');
+  }
+
+  /**
+   * Handle file change events from watcher (immediate processing)
+   */
+  private async handleFileChangeEvent(event: FileChangeEvent): Promise<void> {
+    try {
+      const { filePath, isNew, contentChanged, shouldInvalidateDigests } = event;
+
+      // Phase 3 (Future): Invalidate digests if content changed
+      if (!isNew && shouldInvalidateDigests) {
+        this.log.info({ filePath }, 'file content changed, invalidating existing digests');
+        await this.coordinator.processFile(filePath, { reset: true });
+
+        // Clear cooldown since we're re-processing
+        this.failureCooldowns.delete(filePath);
+
+        // Check for failures and apply cooldown if needed
+        if (this.hasOutstandingFailures(filePath)) {
+          if (this.config.failureCooldownMs > 0) {
+            this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
+          }
+        }
+        return;
+      }
+
+      // Phase 1 & 2: Check if file needs digestion (new files or pending digests)
+      const filesToProcess = findFilesNeedingDigestion(this.db, 100);
+      const needsWork = filesToProcess.includes(filePath);
+
+      if (!needsWork) {
+        this.log.debug({ filePath, isNew, contentChanged }, 'file does not need digestion');
+        return;
+      }
+
+      // Check if in cooldown
+      if (this.isInCooldown(filePath)) {
+        this.log.debug({ filePath }, 'file in cooldown, skipping');
+        return;
+      }
+
+      this.log.info({ filePath, isNew }, 'processing file immediately from watcher event');
+      await this.coordinator.processFile(filePath);
+
+      // Check for failures and apply cooldown if needed
+      if (this.hasOutstandingFailures(filePath)) {
+        if (this.config.failureCooldownMs > 0) {
+          this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
+        }
+      } else {
+        this.failureCooldowns.delete(filePath);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log.error({ error: message, filePath: event.filePath }, 'failed to process file change event');
+    }
   }
 }
 

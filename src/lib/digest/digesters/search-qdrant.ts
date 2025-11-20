@@ -28,9 +28,8 @@ export class QdrantSearchDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    if (
-      !hasAnyTextSource(file, existingDigests, { minUrlLength: 20, minFileBytes: 20 })
-    ) {
+    // Process any text file regardless of size
+    if (!hasAnyTextSource(file, existingDigests)) {
       return false;
     }
 

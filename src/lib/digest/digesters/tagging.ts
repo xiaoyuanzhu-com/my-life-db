@@ -27,10 +27,8 @@ export class TaggingDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    return hasAnyTextSource(file, existingDigests, {
-      minUrlLength: 50,
-      minFileBytes: 50,
-    });
+    // Process any text file regardless of size
+    return hasAnyTextSource(file, existingDigests);
   }
 
   async digest(

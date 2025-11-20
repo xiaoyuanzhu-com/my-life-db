@@ -19,6 +19,7 @@ import {
 } from '@/lib/db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getLogger } from '@/lib/log/logger';
+import { notificationService } from '@/lib/notifications/notification-service';
 
 const log = getLogger({ module: 'DigestCoordinator' });
 
@@ -203,6 +204,15 @@ export class DigestCoordinator {
       { filePath, processed, skipped, failed, total: digesters.length },
       'processing complete'
     );
+
+    // Emit notification for inbox files (UI auto-refresh)
+    if (filePath.startsWith('inbox/')) {
+      notificationService.notify({
+        type: 'inbox-updated',
+        path: filePath,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 
   /**

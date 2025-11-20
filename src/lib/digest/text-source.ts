@@ -94,8 +94,8 @@ export function hasLocalTextContent(file: FileRecordRow, minBytes = 0): boolean 
     (file.mime_type ? isTextMimeType(file.mime_type) : false) ||
     hasTextExtension(file.path);
   if (!textLike) return false;
-  if (file.size == null) return true;
-  return file.size >= minBytes;
+  // Allow any size - even empty files should be processed
+  return true;
 }
 
 export function hasAnyTextSource(

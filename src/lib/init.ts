@@ -5,6 +5,7 @@
 
 import { initializeTaskQueue } from './task-queue/startup';
 import { startPeriodicScanner, stopPeriodicScanner } from './scanner/library-scanner';
+import { startFileSystemWatcher, stopFileSystemWatcher } from './scanner/fs-watcher';
 import { initializeDigesters } from './digest/initialization';
 import { startDigestSupervisor, stopDigestSupervisor } from './digest/supervisor';
 import { shutdownWorker } from './task-queue/worker';
@@ -91,7 +92,10 @@ export function initializeApp() {
       startWorker: true,
     });
 
-    // Start periodic library scanner
+    // Start file system watcher (real-time file detection)
+    startFileSystemWatcher();
+
+    // Start periodic library scanner (fallback)
     startPeriodicScanner();
 
     // Start digest supervisor loop
@@ -154,6 +158,9 @@ export async function shutdownApp(): Promise<void> {
   try {
     // Stop digest supervisor
     stopDigestSupervisor();
+
+    // Stop file system watcher
+    await stopFileSystemWatcher();
 
     // Stop library scanner
     stopPeriodicScanner();
