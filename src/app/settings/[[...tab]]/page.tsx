@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Save, Check, Loader2 } from 'lucide-react';
+import { Sparkles, Save, Check, Loader2, LogOut } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/settings-context';
@@ -80,6 +80,16 @@ export default function SettingsPage() {
     },
     [setSettings, settings]
   );
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      // Redirect to login page
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   // Determine active tab from URL
   const tabParam = params.tab as string[] | undefined;
@@ -194,6 +204,22 @@ export default function SettingsPage() {
                   <option value="error">error</option>
                 </select>
                 <p className="text-xs text-muted-foreground">A browser refresh or server restart may be required to apply.</p>
+              </div>
+              <div className="pt-4 border-t">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Account</label>
+                  <div>
+                    <Button
+                      variant="outline"
+                      onClick={handleLogout}
+                      className="gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Sign out of your account and return to the login page.</p>
+                </div>
               </div>
             </CardContent>
           </Card>
