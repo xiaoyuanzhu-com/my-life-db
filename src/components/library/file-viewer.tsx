@@ -146,9 +146,12 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
           <div className="flex items-center justify-center">
             <video
               controls
+              playsInline
               className="max-w-full h-auto"
-              src={fileUrl}
+              preload="metadata"
+              muted
             >
+              <source src={fileUrl} type={fileData.contentType} />
               Your browser does not support the video tag.
             </video>
           </div>

@@ -105,11 +105,13 @@ export function FileCard({
           ) : content.type === 'video' ? (
             <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
               <video
-                src={content.src}
                 controls
+                playsInline
                 className="w-full h-full object-contain bg-black"
                 preload="metadata"
+                muted
               >
+                <source src={content.src} type={content.mimeType || 'video/mp4'} />
                 Your browser does not support the video tag.
               </video>
             </div>
