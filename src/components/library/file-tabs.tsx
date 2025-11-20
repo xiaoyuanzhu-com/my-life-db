@@ -45,7 +45,7 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
             <div
               className={`
                 group flex items-center gap-2 px-3 py-1.5 cursor-default relative select-none
-                transition-all duration-150 flex-1 basis-[160px] min-w-0 max-w-[220px]
+                transition-all duration-150 flex-[0_1_clamp(6rem,10vw,12rem)] min-w-0
                 ${isActive
                   ? 'bg-background shadow-sm border-t border-x border-border rounded-t-lg before:absolute before:bottom-0 before:-left-2 before:w-2 before:h-2 before:rounded-br-lg before:shadow-[2px_2px_0_0] before:shadow-background after:absolute after:bottom-0 after:-right-2 after:w-2 after:h-2 after:rounded-bl-lg after:shadow-[-2px_2px_0_0] after:shadow-background'
                   : 'bg-muted/80 opacity-70 hover:opacity-90 hover:bg-muted rounded-t-lg'
