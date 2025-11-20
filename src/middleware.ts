@@ -1,6 +1,6 @@
 /**
  * Next.js Middleware
- * Handles authentication and protects routes
+ * Handles authentication and protects routes (if MLD_PASSWORD is set)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -8,6 +8,14 @@ import { verifySessionToken } from '@/lib/auth/edge-session';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Check if password protection is enabled
+  const passwordEnabled = process.env.MLD_PASSWORD && process.env.MLD_PASSWORD.trim() !== '';
+
+  // If password protection is disabled, allow all access
+  if (!passwordEnabled) {
+    return NextResponse.next();
+  }
 
   // Allow access to login page and auth API routes
   if (

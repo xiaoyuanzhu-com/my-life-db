@@ -95,10 +95,10 @@ async function verifySignature(payload: string, signature: string): Promise<bool
  * Get auth secret from environment
  */
 function getAuthSecret(): string {
-  const secret = process.env.AUTH_SECRET || process.env.AUTH_PASSWORD;
+  const secret = process.env.MLD_PASSWORD;
 
-  if (!secret) {
-    throw new Error('AUTH_SECRET or AUTH_PASSWORD environment variable is not set');
+  if (!secret || secret.trim() === '') {
+    throw new Error('MLD_PASSWORD environment variable is not set');
   }
 
   return secret;
