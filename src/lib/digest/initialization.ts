@@ -6,10 +6,10 @@
 import { globalDigesterRegistry } from './registry';
 import { UrlCrawlerDigester } from './digesters/url-crawler';
 import { UrlCrawlSummaryDigester } from './digesters/url-crawl-summary';
-import { TaggingDigester } from './digesters/tagging';
+import { TagsDigester } from './digesters/tags';
 import { SlugDigester } from './digesters/slug';
-import { MeiliSearchDigester } from './digesters/search-meili';
-import { QdrantSearchDigester } from './digesters/search-qdrant';
+import { SearchKeywordDigester } from './digesters/search-keyword';
+import { SearchSemanticDigester } from './digesters/search-semantic';
 import { syncNewDigesters } from './sync';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
@@ -44,21 +44,21 @@ export function initializeDigesters(): void {
   //    Produces: summary
   globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
-  // 3. TaggingDigester (depends on content-md, independent of summary)
+  // 3. TagsDigester (depends on content-md, independent of summary)
   //    Produces: tags
-  globalDigesterRegistry.register(new TaggingDigester());
+  globalDigesterRegistry.register(new TagsDigester());
 
   // 4. SlugDigester (prefers summary, falls back to content-md)
   //    Produces: slug
   globalDigesterRegistry.register(new SlugDigester());
 
-  // 5. MeiliSearchDigester (depends on content-md, uses summary + tags if available)
-  //    Produces: search-meili
-  globalDigesterRegistry.register(new MeiliSearchDigester());
+  // 5. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  //    Produces: search-keyword
+  globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 6. QdrantSearchDigester (depends on content-md, uses summary + tags if available)
-  //    Produces: search-qdrant
-  globalDigesterRegistry.register(new QdrantSearchDigester());
+  // 6. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  //    Produces: search-semantic
+  globalDigesterRegistry.register(new SearchSemanticDigester());
 
   log.info({ count: globalDigesterRegistry.count() }, 'digesters registered');
 

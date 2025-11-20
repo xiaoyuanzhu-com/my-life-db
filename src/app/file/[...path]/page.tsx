@@ -131,7 +131,7 @@ function DigestCard({ digest }: { digest: Digest }) {
         {parsedContent.summary}
       </div>
     );
-  } else if (digest.digester === 'tagging' && Array.isArray(parsedContent?.tags)) {
+  } else if (digest.digester === 'tags' && Array.isArray(parsedContent?.tags)) {
     contentBody = (
       <div className="flex flex-wrap gap-1">
         {parsedContent.tags.map((tag: string, idx: number) => (
@@ -150,7 +150,7 @@ function DigestCard({ digest }: { digest: Digest }) {
         {parsedContent.slug}
       </code>
     );
-  } else if (digest.digester === 'search-meili') {
+  } else if (digest.digester === 'search-keyword') {
     if (digest.error) {
       contentBody = (
         <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
@@ -160,7 +160,7 @@ function DigestCard({ digest }: { digest: Digest }) {
     } else {
       showContentSection = false;
     }
-  } else if (digest.digester === 'search-qdrant') {
+  } else if (digest.digester === 'search-semantic') {
     if (digest.error) {
       contentBody = (
         <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">

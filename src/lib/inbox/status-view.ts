@@ -30,7 +30,7 @@ const DIGESTER_TO_TASK_TYPE: Record<string, string> = {
   'url-crawl-content': 'digest_url_crawl',
   'url-crawl-summary': 'digest_url_summary',
   'summarize': 'digest_url_summary',
-  'tagging': 'digest_url_tagging',
+  'tags': 'digest_url_tagging',
   'slug': 'digest_url_slug',
 };
 
@@ -87,7 +87,7 @@ export function summarizeDigestEnrichment(
     }));
 
   // Ensure all 4 digest types are present (create to-do placeholders for missing)
-  const EXPECTED_DIGESTERS = ['url-crawl-content', 'url-crawl-summary', 'tagging', 'slug'];
+  const EXPECTED_DIGESTERS = ['url-crawl-content', 'url-crawl-summary', 'tags', 'slug'];
   for (const digester of EXPECTED_DIGESTERS) {
     const taskType = DIGESTER_TO_TASK_TYPE[digester];
     if (!stages.find((s) => s.taskType === taskType)) {
@@ -109,7 +109,7 @@ export function summarizeDigestEnrichment(
   const summaryDigest = digests.find(
     (d) => d.digester === 'url-crawl-summary' || d.digester === 'summarize'
   );
-  const tagsDigest = digests.find((d) => d.digester === 'tagging');
+  const tagsDigest = digests.find((d) => d.digester === 'tags');
   const slugDigest = digests.find((d) => d.digester === 'slug');
   const screenshotDigest = digests.find((d) => d.digester === 'url-crawl-screenshot');
 

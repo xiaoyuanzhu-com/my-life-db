@@ -1,26 +1,26 @@
 /**
- * Qdrant Indexing Digester
- * Indexes file content for semantic vector search
+ * Keyword Search Indexing Digester
+ * Indexes file content for keyword search
  */
 
 import type { Digester } from '../types';
 import type { Digest, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { ingestToQdrant } from '@/lib/search/ingest-to-qdrant';
-import { enqueueQdrantIndex } from '@/lib/search/qdrant-tasks';
-import { getQdrantDocumentIdsByFile } from '@/lib/db/qdrant-documents';
+import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
+import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
+import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { hasAnyTextSource } from '@/lib/digest/text-source';
 
-const log = getLogger({ module: 'QdrantSearchDigester' });
+const log = getLogger({ module: 'SearchKeywordDigester' });
 
 /**
- * Qdrant Indexing Digester
- * Indexes content for semantic vector search
+ * Keyword Search Indexing Digester
+ * Indexes content for full-text keyword search
  */
-export class QdrantSearchDigester implements Digester {
-  readonly name = 'search-qdrant';
+export class SearchKeywordDigester implements Digester {
+  readonly name = 'search-keyword';
 
   async canDigest(
     filePath: string,
@@ -34,7 +34,7 @@ export class QdrantSearchDigester implements Digester {
     }
 
     // Check if we need to re-index (dependencies changed)
-    const existingSearch = existingDigests.find((d) => d.digester === 'search-qdrant');
+    const existingSearch = existingDigests.find((d) => d.digester === 'search-keyword');
 
     if (!existingSearch) {
       return true; // Never indexed
@@ -52,7 +52,7 @@ export class QdrantSearchDigester implements Digester {
     const summaryDigest =
       existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
       existingDigests.find((d) => d.digester === 'summarize');
-    const tagsDigest = existingDigests.find((d) => d.digester === 'tagging');
+    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
     // Re-index if content changed
@@ -86,51 +86,52 @@ export class QdrantSearchDigester implements Digester {
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    log.info({ filePath }, 'indexing for qdrant');
+    log.info({ filePath }, 'indexing for keyword search');
 
     try {
-      // Ingest to qdrant_documents table (creates chunks)
-      const result = await ingestToQdrant(filePath);
+      // Ingest to meili_documents table (creates/updates cache)
+      const result = await ingestToMeilisearch(filePath);
 
-      if (result.totalChunks === 0) {
+      if (!result.hasContent) {
         log.warn({ filePath }, 'no content to index');
         return null; // Skip this file
       }
 
-      // Get all document IDs for this file
-      const documentIds = getQdrantDocumentIdsByFile(filePath);
+      // Get document ID
+      const documentId = getMeiliDocumentIdForFile(filePath);
 
-      if (documentIds.length === 0) {
-        throw new Error('No Qdrant documents created after ingestion');
-      }
-
-      // Enqueue background task to generate embeddings and push to Qdrant
-      const taskId = enqueueQdrantIndex(documentIds);
+      // Enqueue background task to push to Meilisearch
+      const taskId = enqueueMeiliIndex([documentId]);
 
       if (!taskId) {
-        throw new Error('Failed to enqueue Qdrant indexing task');
+        throw new Error('Failed to enqueue keyword search indexing task');
       }
 
-      // Store metadata about indexing
+      // Wait for indexing to complete (check meili_documents status)
+      // Note: We return immediately here (fire-and-forget)
+      // The meili_documents table tracks actual sync status
       const now = new Date().toISOString();
+
+      // Store metadata about indexing
       const metadata = {
+        documentId,
         taskId,
-        totalChunks: result.totalChunks,
-        sources: result.sources,
-        documentIds: documentIds.length,
+        hasContent: result.hasContent,
+        hasSummary: result.hasSummary,
+        hasTags: result.hasTags,
         enqueuedAt: now,
       };
 
       log.info(
         { filePath, ...metadata },
-        'qdrant indexing enqueued'
+        'keyword search indexing enqueued'
       );
 
       return [
         {
-          id: generateDigestId(filePath, 'search-qdrant'),
+          id: generateDigestId(filePath, 'search-keyword'),
           filePath,
-          digester: 'search-qdrant',
+          digester: 'search-keyword',
           status: 'completed',
           content: JSON.stringify(metadata),
           sqlarName: null,
@@ -142,7 +143,7 @@ export class QdrantSearchDigester implements Digester {
       ];
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      log.error({ filePath, error: errorMsg }, 'qdrant indexing failed');
+      log.error({ filePath, error: errorMsg }, 'keyword search indexing failed');
       throw error; // Let coordinator handle error
     }
   }

@@ -77,7 +77,7 @@ export function DigestProgress({ stages, action, message }: DigestProgressProps)
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-foreground">Digest Progress</h2>
-            <p className="text-xs text-muted-foreground">Track progress across crawl, summary, tagging, and slug</p>
+            <p className="text-xs text-muted-foreground">Track progress across crawl, summary, tags, and slug</p>
           </div>
           {action}
         </div>

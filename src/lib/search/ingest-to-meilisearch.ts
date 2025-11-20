@@ -64,7 +64,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     }
 
     // 3. Get tags (if exists from digest)
-    const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
+    const tagsDigest = digests.find(d => d.digester === 'tags' && d.status === 'completed');
     let tagsText: string | null = null;
     if (tagsDigest?.content) {
       try {
