@@ -208,7 +208,8 @@ export class FileSystemWatcher extends EventEmitter {
         isNew ? 'new file detected' : contentChanged ? 'file content changed' : 'file metadata updated'
       );
 
-      // Emit notification for inbox files
+      // Emit notification for inbox files (immediate UI update)
+      // File changes should update UI immediately, digestion happens in background
       if (relativePath.startsWith('inbox/')) {
         if (isNew) {
           notificationService.notify({

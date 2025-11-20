@@ -23,13 +23,16 @@ export interface NotificationEvent {
   };
 }
 
+// Declare global type for HMR persistence
+declare global {
+  var __mylifedb_notification_service: NotificationService | undefined;
+}
+
 /**
  * Singleton notification service
  * Broadcasts events to all connected SSE clients
  */
 class NotificationService extends EventEmitter {
-  private static instance: NotificationService;
-
   private constructor() {
     super();
     // Increase max listeners (default is 10, but we expect many SSE connections)
@@ -37,11 +40,12 @@ class NotificationService extends EventEmitter {
   }
 
   static getInstance(): NotificationService {
-    if (!NotificationService.instance) {
-      NotificationService.instance = new NotificationService();
+    // Use globalThis to persist across HMR reloads and module contexts
+    if (!globalThis.__mylifedb_notification_service) {
+      globalThis.__mylifedb_notification_service = new NotificationService();
       log.info('NotificationService initialized');
     }
-    return NotificationService.instance;
+    return globalThis.__mylifedb_notification_service;
   }
 
   /**

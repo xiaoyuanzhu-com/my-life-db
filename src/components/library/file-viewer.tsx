@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -126,7 +125,7 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
   const fileUrl = `/raw/${filePath}`;
 
   return (
-    <div className="h-full overflow-auto p-4">
+    <div className="h-full w-full min-w-0 overflow-auto p-4">
         {fileType === 'text' && fileData.content && (
           <pre className="text-sm font-mono whitespace-pre-wrap break-words">
             {fileData.content}
@@ -134,14 +133,11 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
         )}
 
         {fileType === 'image' && (
-          <div className="flex items-center justify-center relative">
-            <Image
+          <div className="flex items-center justify-center">
+            <img
               src={fileUrl}
               alt={fileData.name}
-              width={1200}
-              height={800}
               className="max-w-full h-auto"
-              unoptimized
             />
           </div>
         )}

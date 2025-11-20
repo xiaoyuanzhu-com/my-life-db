@@ -186,12 +186,12 @@ function LibraryContent() {
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background">
+    <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background w-full">
       {/* Main content */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        <div className="px-[10%] h-full min-h-0 flex flex-col">
-          <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
-            <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0 w-full min-w-0">
+        <div className="h-full min-h-0 min-w-0 flex flex-col w-full max-w-screen-2xl mx-auto px-4 md:px-6">
+          <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 w-full">
+            <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden min-w-0">
               <div className="flex-1 overflow-y-auto">
                 <FileTree
                   onFileOpen={handleFileOpen}
@@ -202,9 +202,9 @@ function LibraryContent() {
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={75} minSize={30} className="flex h-full flex-col overflow-hidden">
+            <ResizablePanel defaultSize={75} minSize={30} className="flex h-full flex-col overflow-hidden min-w-0">
               {openedFiles.length > 0 && (
-                <div className="shrink-0">
+                <div className="shrink-0 w-full min-w-0">
                   <FileTabs
                     files={openedFiles}
                     activeFile={activeFilePath}
@@ -213,14 +213,14 @@ function LibraryContent() {
                   />
                 </div>
               )}
-              <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 w-full overflow-hidden">
                 {openedFiles.length > 0 && activeFilePath ? (
                   <FileViewer
                     filePath={activeFilePath}
                     onFileDataLoad={(contentType) => setActiveFileMimeType(contentType)}
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                  <div className="flex h-full w-full items-center justify-center text-muted-foreground">
                     Select a file from the tree to view
                   </div>
                 )}
