@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InputTypeTag } from './input-type-tag';
+import { SearchStatus } from './search-status';
 import { detectInputType, InputType } from '@/lib/utils/input-type-detector';
 import type { SearchResponse } from '@/app/api/search/route';
 
@@ -16,11 +17,16 @@ interface OmniInputProps {
     isSearching: boolean;
     error: string | null;
   }) => void;
+  searchStatus?: {
+    isSearching: boolean;
+    hasNoResults: boolean;
+    hasError: boolean;
+  };
 }
 
 const SEARCH_BATCH_SIZE = 30;
 
-export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProps) {
+export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -381,8 +387,14 @@ export function OmniInput({ onEntryCreated, onSearchStateChange }: OmniInputProp
             <Plus className="h-4 w-4" />
           </Button>
 
-          {/* Input type tag in the middle */}
-          <InputTypeTag type={detectedType} isDetecting={isDetecting} />
+          {/* Show search status in the middle */}
+          {searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError) && (
+            <SearchStatus
+              isSearching={searchStatus.isSearching}
+              hasNoResults={searchStatus.hasNoResults}
+              hasError={searchStatus.hasError}
+            />
+          )}
 
           <Button
             type="submit"

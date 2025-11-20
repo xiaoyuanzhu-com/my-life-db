@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { OmniInput } from '@/components/omni-input';
 import { InboxFeed } from '@/components/inbox-feed';
 import { SearchResults } from '@/components/search-results';
@@ -19,8 +19,26 @@ export default function HomePage() {
     error: null,
   });
 
-  // Determine if search is active (show search results instead of inbox)
-  const isSearchActive = searchState.results !== null || searchState.isSearching || searchState.error !== null;
+  // Track the last successful search results to keep them visible during searching
+  const [lastSuccessfulResults, setLastSuccessfulResults] = useState<SearchResponse | null>(null);
+
+  // Update last successful results when we get new results
+  useEffect(() => {
+    if (searchState.results && searchState.results.results.length > 0) {
+      setLastSuccessfulResults(searchState.results);
+    } else if (searchState.results !== null && searchState.results.results.length === 0) {
+      // Clear last results when we get explicit no-results response
+      setLastSuccessfulResults(null);
+    }
+  }, [searchState.results]);
+
+  // Show search results only when actively searching with previous results OR has current results
+  const hasCurrentResults = searchState.results !== null && searchState.results.results.length > 0;
+  const isSearchingWithPreviousResults = searchState.isSearching && lastSuccessfulResults !== null;
+  const showSearchResults = hasCurrentResults || isSearchingWithPreviousResults;
+
+  // Use current results if available, otherwise show last successful results while searching
+  const displayResults = hasCurrentResults ? searchState.results : lastSuccessfulResults;
 
   const handleEntryCreated = () => {
     // Trigger inbox refresh by updating the trigger value
@@ -39,16 +57,22 @@ export default function HomePage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-      {/* Scrollable feed area - shows either InboxFeed or SearchResults */}
-      <div className="flex-1 overflow-y-auto">
-        {isSearchActive ? (
-          <SearchResults
-            results={searchState.results}
-            isSearching={searchState.isSearching}
-            error={searchState.error}
-          />
-        ) : (
+      {/* Scrollable feed area - shows either SearchResults or InboxFeed */}
+      <div className="flex-1 overflow-hidden relative">
+        {/* Keep InboxFeed always mounted to avoid reloading */}
+        <div className={`absolute inset-0 overflow-y-auto ${showSearchResults ? 'invisible' : 'visible'}`}>
           <InboxFeed onRefresh={refreshTrigger} />
+        </div>
+
+        {/* Show SearchResults when needed */}
+        {showSearchResults && (
+          <div className="absolute inset-0 overflow-y-auto">
+            <SearchResults
+              results={displayResults}
+              isSearching={searchState.isSearching}
+              error={searchState.error}
+            />
+          </div>
         )}
       </div>
 
@@ -58,6 +82,11 @@ export default function HomePage() {
           <OmniInput
             onEntryCreated={handleEntryCreated}
             onSearchStateChange={setSearchState}
+            searchStatus={{
+              isSearching: searchState.isSearching,
+              hasNoResults: searchState.results !== null && searchState.results.results.length === 0 && !searchState.isSearching,
+              hasError: searchState.error !== null && !searchState.isSearching,
+            }}
           />
         </div>
       </div>
