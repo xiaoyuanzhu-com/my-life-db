@@ -94,7 +94,6 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
       body,
       icon: '/favicon.ico',
       tag: 'inbox-notification',
-      renotify: false,
     });
   }, [enableBrowserNotifications]);
 
