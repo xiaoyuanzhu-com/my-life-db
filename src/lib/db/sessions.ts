@@ -103,10 +103,10 @@ export function deleteExpiredSessions(): number {
  * Verify password (from environment variable)
  */
 export function verifyPassword(password: string): boolean {
-  const correctPassword = process.env.AUTH_PASSWORD;
+  const correctPassword = process.env.MLD_PASSWORD;
 
-  if (!correctPassword) {
-    throw new Error('AUTH_PASSWORD environment variable is not set');
+  if (!correctPassword || correctPassword.trim() === '') {
+    throw new Error('MLD_PASSWORD environment variable is not set');
   }
 
   return password === correctPassword;
