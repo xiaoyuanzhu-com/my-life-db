@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -133,11 +134,14 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
         )}
 
         {fileType === 'image' && (
-          <div className="flex items-center justify-center">
-            <img
+          <div className="flex items-center justify-center relative">
+            <Image
               src={fileUrl}
               alt={fileData.name}
+              width={1200}
+              height={800}
               className="max-w-full h-auto"
+              unoptimized
             />
           </div>
         )}

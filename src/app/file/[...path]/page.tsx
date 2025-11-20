@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
 
@@ -99,11 +100,14 @@ function DigestCard({ digest }: { digest: Digest }) {
     contentBody = (
       <div className="flex justify-center">
         <div className="w-full md:w-3/5 max-w-2xl">
-          <div className="rounded-md overflow-hidden border bg-muted/50">
-            <img
+          <div className="rounded-md overflow-hidden border bg-muted/50 relative">
+            <Image
               src={screenshotSrc}
               alt={`${digest.digester} screenshot`}
+              width={800}
+              height={600}
               className="w-full h-auto object-contain bg-black/5"
+              unoptimized
             />
           </div>
         </div>

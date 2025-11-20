@@ -93,7 +93,7 @@ class QdrantClient {
         method: 'GET',
       });
       log.debug({ collection: this.collection }, 'collection already exists');
-    } catch (error) {
+    } catch {
       // Collection doesn't exist, create it
       log.info({ collection: this.collection, vectorSize }, 'creating collection');
       await this.request(`/collections/${encodeURIComponent(this.collection)}`, {

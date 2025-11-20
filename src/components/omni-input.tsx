@@ -5,9 +5,7 @@ import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { InputTypeTag } from './input-type-tag';
 import { SearchStatus } from './search-status';
-import { detectInputType, InputType } from '@/lib/utils/input-type-detector';
 import type { SearchResponse } from '@/app/api/search/route';
 
 interface OmniInputProps {
@@ -32,10 +30,7 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }:
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [detectedType, setDetectedType] = useState<InputType | null>(null);
-  const [isDetecting, setIsDetecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Search state
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
@@ -72,47 +67,6 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }:
       console.error('Failed to save content to sessionStorage:', error);
     }
   }, [content]);
-
-  // Debounced input type detection
-  const performDetection = useCallback(async () => {
-    if (!content.trim() && selectedFiles.length === 0) {
-      setDetectedType(null);
-      setIsDetecting(false);
-      return;
-    }
-
-    setIsDetecting(true);
-
-    try {
-      const result = await detectInputType(content, selectedFiles);
-      setDetectedType(result.type);
-    } catch (err) {
-      console.error('Detection error:', err);
-      setDetectedType(null);
-    } finally {
-      setIsDetecting(false);
-    }
-  }, [content, selectedFiles]);
-
-  // Effect to trigger debounced detection
-  useEffect(() => {
-    // Clear existing timeout
-    if (detectionTimeoutRef.current) {
-      clearTimeout(detectionTimeoutRef.current);
-    }
-
-    // Set new timeout for detection (300ms debounce)
-    detectionTimeoutRef.current = setTimeout(() => {
-      performDetection();
-    }, 300);
-
-    // Cleanup
-    return () => {
-      if (detectionTimeoutRef.current) {
-        clearTimeout(detectionTimeoutRef.current);
-      }
-    };
-  }, [performDetection]);
 
   // Adaptive debounce for search
   const getSearchDebounceDelay = useCallback((queryLength: number): number => {
@@ -260,7 +214,6 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }:
       // Clear state (will also clear sessionStorage via the effect)
       setContent('');
       setSelectedFiles([]);
-      setDetectedType(null);
       setSearchResults(null); // Clear search results on submit
       setSearchError(null);
       if (fileInputRef.current) {

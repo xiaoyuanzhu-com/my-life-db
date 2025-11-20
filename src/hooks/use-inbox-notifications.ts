@@ -2,7 +2,6 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import type { NotificationEvent } from '@/lib/notifications/notification-service';
 
 interface UseInboxNotificationsOptions {
   /**
@@ -64,7 +63,7 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
 
         // Trigger refresh on any notification event
         onInboxChange();
-      } catch (error) {
+      } catch {
         // Silently ignore parse errors
       }
     };
