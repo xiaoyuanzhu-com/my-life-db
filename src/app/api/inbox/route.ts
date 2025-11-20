@@ -61,9 +61,9 @@ export async function GET(request: NextRequest) {
       paginatedFiles.map(async (file) => {
         const primaryText = await readPrimaryText(file.path);
 
-        // Truncate to ~500 chars (approximately 15 lines) for preview
+        // Truncate to ~10000 chars (approximately 200+ lines) for preview
         const textPreview = primaryText
-          ? primaryText.slice(0, 500)
+          ? primaryText.slice(0, 10000)
           : undefined;
 
         return {

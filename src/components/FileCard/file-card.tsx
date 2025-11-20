@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
@@ -27,6 +27,8 @@ export function FileCard({
   highlightTerms,
   matchContext,
 }: FileCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
@@ -132,11 +134,12 @@ export function FileCard({
               </div>
             </div>
           ) : content.type === 'text' ? (
-            <div className="p-4 max-w-full">
-              <div className="prose prose-sm dark:prose-invert max-w-none select-text">
-                <TextContent text={content.text} highlightTerms={highlightTerms} />
-              </div>
-            </div>
+            <TextContent
+              text={content.text}
+              highlightTerms={highlightTerms}
+              isExpanded={isExpanded}
+              onToggleExpand={() => setIsExpanded(!isExpanded)}
+            />
           ) : (
             <div className="p-6 flex items-center justify-center min-h-[120px]">
               <div className="text-center">
@@ -172,17 +175,45 @@ export function FileCard({
 /**
  * Text content display with optional term highlighting and line limiting
  */
-function TextContent({ text, highlightTerms }: { text: string; highlightTerms?: string[] }) {
-  const lines = text.split('\n').slice(0, 15); // Max 15 lines
-  const displayText = lines.join('\n');
-  const truncated = lines.length < text.split('\n').length;
+function TextContent({
+  text,
+  highlightTerms,
+  isExpanded,
+  onToggleExpand,
+}: {
+  text: string;
+  highlightTerms?: string[];
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const allLines = text.split('\n');
+  const maxLines = 50;
+  const shouldTruncate = allLines.length > maxLines;
+  const displayLines = isExpanded ? allLines : allLines.slice(0, maxLines);
+  const displayText = displayLines.join('\n');
 
   return (
-    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-      {highlightTerms && highlightTerms.length > 0
-        ? highlightMatches(displayText, highlightTerms)
-        : displayText}
-      {truncated && <span className="text-muted-foreground">...</span>}
+    <div className="relative">
+      <div className="p-4 max-w-full">
+        <div className="prose prose-sm dark:prose-invert max-w-none select-text">
+          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {highlightTerms && highlightTerms.length > 0
+              ? highlightMatches(displayText, highlightTerms)
+              : displayText}
+            {shouldTruncate && !isExpanded && <span className="text-muted-foreground">...</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Expand/Collapse button - shown when content is truncated */}
+      {shouldTruncate && (
+        <button
+          onClick={onToggleExpand}
+          className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          {isExpanded ? 'Collapse' : 'Expand'}
+        </button>
+      )}
     </div>
   );
 }
