@@ -32,9 +32,11 @@ export interface SearchResultItem extends FileWithDigests {
     tags?: string;
   };
   matchContext?: {
-    source: 'digest';
+    source: 'digest' | 'semantic';
     snippet: string;
     terms: string[];
+    score?: number; // Similarity score for semantic matches (0.0-1.0)
+    sourceType?: string; // Source type for semantic matches (content/summary/tags)
     digest?: {
       type: string;
       label: string;
@@ -93,6 +95,12 @@ type SearchHit = {
     content?: string;
     summary?: string;
     tags?: string;
+  };
+  // Semantic search metadata (from Qdrant)
+  _semantic?: {
+    score: number;
+    chunkText: string;
+    sourceType: string;
   };
 };
 
@@ -184,10 +192,10 @@ export async function GET(request: NextRequest) {
         const qdrantResult = (await qdrantClient.search({
           vector: queryEmbedding.vector,
           limit,
-          scoreThreshold: 0.5, // Lower threshold for better recall
+          scoreThreshold: 0.7, // Higher threshold for better precision
           filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
           withPayload: true,
-        })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string } }> };
+        })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string; sourceType?: string } }> };
 
         // Convert Qdrant results to SearchHit format
         // Group by filePath to deduplicate chunks
@@ -202,6 +210,11 @@ export async function GET(request: NextRequest) {
               content: hit.payload.text,
               summary: null,
               tags: null,
+              _semantic: {
+                score: hit.score,
+                chunkText: hit.payload.text,
+                sourceType: hit.payload.sourceType || 'content',
+              },
             });
           }
         }
@@ -270,10 +283,10 @@ export async function GET(request: NextRequest) {
               const qdrantResult = (await qdrantClient.search({
                 vector: queryEmbedding.vector,
                 limit: limit * 2, // Fetch more for merging
-                scoreThreshold: 0.5,
+                scoreThreshold: 0.7, // Higher threshold for better precision
                 filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
                 withPayload: true,
-              })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string } }> };
+              })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string; sourceType?: string } }> };
 
               return qdrantResult.result || [];
             } catch (error) {
@@ -303,6 +316,11 @@ export async function GET(request: NextRequest) {
               content: hit.payload.text,
               summary: null,
               tags: null,
+              _semantic: {
+                score: hit.score,
+                chunkText: hit.payload.text,
+                sourceType: hit.payload.sourceType || 'content',
+              },
             });
           }
         }
@@ -373,14 +391,24 @@ export async function GET(request: NextRequest) {
       const primaryContainsTerm = primaryText
         ? containsAnyTerm(primaryText, highlightTerms)
         : false;
-      const matchContext = primaryContainsTerm
-        ? undefined
-        : buildDigestMatchContext({
-            hit,
-            file: fileWithDigests,
-            terms: highlightTerms,
-            primaryContainsTerm,
-          });
+
+      // Build match context - prefer semantic if available, otherwise try digest
+      let matchContext: SearchResultItem['matchContext'] | undefined;
+      if (hit._semantic) {
+        // Semantic search result - show the matched chunk
+        matchContext = buildSemanticMatchContext({
+          semantic: hit._semantic,
+          terms: highlightTerms,
+        });
+      } else if (!primaryContainsTerm) {
+        // Keyword search result without primary match - check digests
+        matchContext = buildDigestMatchContext({
+          hit,
+          file: fileWithDigests,
+          terms: highlightTerms,
+          primaryContainsTerm,
+        });
+      }
 
       results.push({
         ...fileWithDigests,
@@ -498,6 +526,37 @@ const DIGEST_FIELD_CONFIG: DigestFieldConfig[] = [
     requirePrimaryMiss: true,
   },
 ];
+
+function buildSemanticMatchContext({
+  semantic,
+  terms,
+}: {
+  semantic: { score: number; chunkText: string; sourceType: string };
+  terms: string[];
+}): SearchResultItem['matchContext'] | undefined {
+  const { score, chunkText, sourceType } = semantic;
+
+  // Truncate chunk text if too long
+  const maxLength = 300;
+  const snippet = chunkText.length > maxLength
+    ? chunkText.slice(0, maxLength).trim() + '...'
+    : chunkText;
+
+  // Map sourceType to human-readable label
+  const sourceLabels: Record<string, string> = {
+    content: 'File content',
+    summary: 'Summary',
+    tags: 'Tags',
+  };
+
+  return {
+    source: 'semantic',
+    snippet,
+    terms,
+    score,
+    sourceType: sourceLabels[sourceType] || sourceType,
+  };
+}
 
 function buildDigestMatchContext({
   hit,

@@ -159,8 +159,8 @@ export function FileCard({
           </Link>
         </div>
 
-        {matchContext?.source === 'digest' && (
-          <DigestMatchContext context={matchContext} />
+        {matchContext && (
+          <MatchContext context={matchContext} />
         )}
       </div>
     </div>
@@ -217,12 +217,30 @@ function highlightMatches(text: string, terms: string[]) {
   });
 }
 
-type DigestMatchContextProps = {
+type MatchContextProps = {
   context: NonNullable<SearchResultItem['matchContext']>;
 };
 
-function DigestMatchContext({ context }: DigestMatchContextProps) {
+function MatchContext({ context }: MatchContextProps) {
   const terms = context.terms ?? [];
+
+  // Handle semantic match context
+  if (context.source === 'semantic') {
+    const scorePercent = context.score ? Math.round(context.score * 100) : null;
+    return (
+      <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
+        <p className="mb-1 font-semibold text-muted-foreground">
+          Semantic match{scorePercent !== null ? ` (${scorePercent}% similar)` : ''}
+          {context.sourceType && ` · ${context.sourceType}`}
+        </p>
+        <div className="text-xs text-foreground leading-relaxed italic">
+          {context.snippet}
+        </div>
+      </div>
+    );
+  }
+
+  // Handle digest match context (keyword)
   return (
     <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
       <p className="mb-1 font-semibold text-muted-foreground">
