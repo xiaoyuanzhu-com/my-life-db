@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Settings } from 'lucide-react';
+import { Settings, Home, Library, CircleUserRound } from 'lucide-react';
 import { getGravatarUrl } from '@/lib/gravatar';
 import {
   DropdownMenu,
@@ -11,12 +11,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { useEffect, useState } from 'react';
 
 export function Header() {
   const pathname = usePathname();
-  const [userEmail, setUserEmail] = useState('user@example.com');
-  const [open, setOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Load user email from settings
   useEffect(() => {
@@ -32,16 +40,17 @@ export function Header() {
       });
   }, []);
 
-  const gravatarUrl = getGravatarUrl(userEmail, 128);
+  const gravatarUrl = userEmail ? getGravatarUrl(userEmail, 128) : null;
 
   const navLinks = [
-    { href: '/', label: 'Home' },
-    { href: '/library', label: 'Library' },
+    { href: '/', label: 'Home', icon: Home },
+    { href: '/library', label: 'Library', icon: Library },
+    { href: '/settings', label: 'Settings', icon: Settings },
   ];
 
   return (
     <header className="bg-card border-b sticky top-0 z-10">
-      <div className="px-[10%] py-2">
+      <div className="w-full px-4 py-2 md:px-[10%]">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -56,7 +65,7 @@ export function Header() {
 
           {/* Desktop navigation - hidden on mobile */}
           <nav className="hidden md:flex gap-6 items-center">
-            {navLinks.map((link) => {
+            {navLinks.slice(0, 2).map((link) => {
               const isActive = pathname === link.href;
               return (
                 <Link
@@ -74,22 +83,26 @@ export function Header() {
             })}
             <div
               className="flex items-center"
-              onMouseEnter={() => setOpen(true)}
-              onMouseLeave={() => setOpen(false)}
+              onMouseEnter={() => setDesktopDropdownOpen(true)}
+              onMouseLeave={() => setDesktopDropdownOpen(false)}
             >
-              <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+              <DropdownMenu open={desktopDropdownOpen} onOpenChange={setDesktopDropdownOpen} modal={false}>
                 <DropdownMenuTrigger asChild>
                   <button
                     className="rounded-full hover:opacity-80 transition-opacity focus:outline-none cursor-pointer"
                     aria-label="User profile"
                   >
-                    <Image
-                      src={gravatarUrl}
-                      alt="User avatar"
-                      width={32}
-                      height={32}
-                      className="rounded-full pointer-events-none"
-                    />
+                    {gravatarUrl ? (
+                      <Image
+                        src={gravatarUrl}
+                        alt="User avatar"
+                        width={32}
+                        height={32}
+                        className="rounded-full pointer-events-none"
+                      />
+                    ) : (
+                      <CircleUserRound className="h-8 w-8 text-muted-foreground" />
+                    )}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
@@ -103,6 +116,56 @@ export function Header() {
               </DropdownMenu>
             </div>
           </nav>
+
+          {/* Mobile menu - visible only on mobile */}
+          <div className="md:hidden">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <button
+                  className="rounded-full hover:opacity-80 transition-opacity focus:outline-none cursor-pointer"
+                  aria-label="Open menu"
+                >
+                  {gravatarUrl ? (
+                    <Image
+                      src={gravatarUrl}
+                      alt="User avatar"
+                      width={32}
+                      height={32}
+                      className="rounded-full pointer-events-none"
+                    />
+                  ) : (
+                    <CircleUserRound className="h-8 w-8 text-muted-foreground" />
+                  )}
+                </button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px]">
+                <SheetHeader>
+                  <SheetTitle>Menu</SheetTitle>
+                </SheetHeader>
+                <nav className="flex flex-col gap-1 mt-6">
+                  {navLinks.map((link) => {
+                    const isActive = pathname === link.href;
+                    const Icon = link.icon;
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-3 rounded-md transition-colors ${
+                          isActive
+                            ? 'bg-accent text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                        <span>{link.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
       </div>
     </header>

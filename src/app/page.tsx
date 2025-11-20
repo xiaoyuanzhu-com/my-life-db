@@ -78,7 +78,7 @@ export default function HomePage() {
 
       {/* Fixed input at bottom */}
       <div className="flex-none bg-background">
-        <div className="max-w-3xl md:max-w-4xl mx-auto w-full px-4 py-4">
+        <div className="max-w-3xl md:max-w-4xl mx-auto w-full px-4 md:px-4 py-4">
           <OmniInput
             onEntryCreated={handleEntryCreated}
             onSearchStateChange={setSearchState}
