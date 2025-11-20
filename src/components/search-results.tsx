@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
+import { InboxFeed } from './inbox-feed';
 import type { SearchResponse, SearchResultItem } from '@/app/api/search/route';
 
 interface SearchResultsProps {
@@ -214,8 +215,16 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
         )}
 
         {!hasResults && showEmptyState && (
-          <div className="flex flex-1 items-center justify-center min-h-full">
-            <p className="text-sm text-muted-foreground">No related files</p>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-1 items-center justify-center min-h-[200px]">
+              <p className="text-sm text-muted-foreground">No related files</p>
+            </div>
+
+            {/* Show recent inbox when no search results */}
+            <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
+              <p className="text-sm text-muted-foreground">Recent inbox</p>
+              <InboxFeed />
+            </div>
           </div>
         )}
 

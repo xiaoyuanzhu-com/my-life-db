@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeiliClient } from '@/lib/search/meili-client';
+import { getQdrantClient } from '@/lib/search/qdrant-client';
+import { embedText } from '@/lib/ai/embeddings';
 import { getFileWithDigests } from '@/lib/db/files-with-digests';
 import { getLogger } from '@/lib/log/logger';
 import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
@@ -127,13 +129,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (query.length > 200) {
-      return NextResponse.json(
-        { error: 'Query must be at most 200 characters', code: 'QUERY_TOO_LONG' },
-        { status: 400 }
-      );
-    }
-
     // Build Meilisearch filter
     const filters: string[] = [];
 
@@ -149,19 +144,205 @@ export async function GET(request: NextRequest) {
 
     const filter = filters.length > 0 ? filters.join(' AND ') : undefined;
 
-    // Perform Meilisearch query
-    const searchStart = Date.now();
-    const client = await getMeiliClient();
-    const highlightTerms = extractSearchTerms(query);
+    // Count words in query
+    const queryWords = query.split(/\s+/).filter(word => word.length > 0);
+    const wordCount = queryWords.length;
 
-    const searchResult = await client.search<SearchHit>(query, {
-      limit,
-      offset,
-      filter,
-      attributesToHighlight: ['content', 'summary', 'tags'],
-      attributesToCrop: ['content'],
-      cropLength: 200,
-    });
+    // If query has >10 words, use Qdrant (semantic search) only
+    // Otherwise use both Meilisearch and Qdrant for better coverage
+    const useSemanticOnly = wordCount > 10;
+
+    const searchStart = Date.now();
+    const highlightTerms = extractSearchTerms(query);
+    let searchResult: { hits: SearchHit[]; estimatedTotalHits: number; limit: number; offset: number; query: string };
+
+    if (useSemanticOnly) {
+      // Use Qdrant semantic search only for long queries (>10 words)
+      log.info({ query, wordCount }, 'using semantic search only (query >10 words)');
+
+      try {
+        const queryEmbedding = await embedText(query);
+        const qdrantClient = await getQdrantClient();
+
+        // Build Qdrant filter based on path/type filters
+        const qdrantFilter: Record<string, unknown> = {};
+        if (typeFilter) {
+          qdrantFilter.must = qdrantFilter.must || [];
+          (qdrantFilter.must as Array<unknown>).push({
+            key: 'mimeType',
+            match: { value: typeFilter },
+          });
+        }
+        if (pathFilter) {
+          qdrantFilter.must = qdrantFilter.must || [];
+          (qdrantFilter.must as Array<unknown>).push({
+            key: 'filePath',
+            match: { value: pathFilter },
+          });
+        }
+
+        const qdrantResult = (await qdrantClient.search({
+          vector: queryEmbedding.vector,
+          limit,
+          scoreThreshold: 0.5, // Lower threshold for better recall
+          filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
+          withPayload: true,
+        })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string } }> };
+
+        // Convert Qdrant results to SearchHit format
+        // Group by filePath to deduplicate chunks
+        const filePathMap = new Map<string, SearchHit>();
+        for (const hit of qdrantResult.result || []) {
+          const filePath = hit.payload.filePath;
+          if (!filePathMap.has(filePath)) {
+            filePathMap.set(filePath, {
+              documentId: hit.id,
+              filePath,
+              mimeType: null, // Will be filled from files table
+              content: hit.payload.text,
+              summary: null,
+              tags: null,
+            });
+          }
+        }
+
+        searchResult = {
+          hits: Array.from(filePathMap.values()).slice(offset, offset + limit),
+          estimatedTotalHits: filePathMap.size,
+          limit,
+          offset,
+          query,
+        };
+      } catch (error) {
+        log.warn({ err: error }, 'qdrant search failed, falling back to meilisearch');
+        // Fall back to Meilisearch if Qdrant fails
+        const client = await getMeiliClient();
+        searchResult = await client.search<SearchHit>(query, {
+          limit,
+          offset,
+          filter,
+          attributesToHighlight: ['content', 'summary', 'tags'],
+          attributesToCrop: ['content'],
+          cropLength: 200,
+        });
+      }
+    } else {
+      // Use both Meilisearch and Qdrant for short queries (<=10 words)
+      log.info({ query, wordCount }, 'using hybrid search (meili + qdrant)');
+
+      try {
+        // Fetch from both sources in parallel
+        const [meiliResult, qdrantHits] = await Promise.all([
+          // Meilisearch keyword search
+          (async () => {
+            const client = await getMeiliClient();
+            return client.search<SearchHit>(query, {
+              limit: limit * 2, // Fetch more for merging
+              offset: 0, // Always from beginning for merging
+              filter,
+              attributesToHighlight: ['content', 'summary', 'tags'],
+              attributesToCrop: ['content'],
+              cropLength: 200,
+            });
+          })(),
+          // Qdrant semantic search
+          (async () => {
+            try {
+              const queryEmbedding = await embedText(query);
+              const qdrantClient = await getQdrantClient();
+
+              const qdrantFilter: Record<string, unknown> = {};
+              if (typeFilter) {
+                qdrantFilter.must = qdrantFilter.must || [];
+                (qdrantFilter.must as Array<unknown>).push({
+                  key: 'mimeType',
+                  match: { value: typeFilter },
+                });
+              }
+              if (pathFilter) {
+                qdrantFilter.must = qdrantFilter.must || [];
+                (qdrantFilter.must as Array<unknown>).push({
+                  key: 'filePath',
+                  match: { value: pathFilter },
+                });
+              }
+
+              const qdrantResult = (await qdrantClient.search({
+                vector: queryEmbedding.vector,
+                limit: limit * 2, // Fetch more for merging
+                scoreThreshold: 0.5,
+                filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
+                withPayload: true,
+              })) as { result: Array<{ id: string; score: number; payload: { filePath: string; text: string } }> };
+
+              return qdrantResult.result || [];
+            } catch (error) {
+              log.warn({ err: error }, 'qdrant search failed in hybrid mode');
+              return [];
+            }
+          })(),
+        ]);
+
+        // Merge results using a simple file-path-based deduplication
+        // Prioritize Meilisearch results (better for keyword matching)
+        const filePathMap = new Map<string, SearchHit>();
+
+        // Add Meilisearch results first (with highlights and formatting)
+        for (const hit of meiliResult.hits) {
+          filePathMap.set(hit.filePath, hit);
+        }
+
+        // Add Qdrant results that aren't already in Meilisearch
+        for (const hit of qdrantHits) {
+          const filePath = hit.payload.filePath;
+          if (!filePathMap.has(filePath)) {
+            filePathMap.set(filePath, {
+              documentId: hit.id,
+              filePath,
+              mimeType: null,
+              content: hit.payload.text,
+              summary: null,
+              tags: null,
+            });
+          }
+        }
+
+        // Convert to array and apply pagination
+        const mergedHits = Array.from(filePathMap.values());
+        const paginatedHits = mergedHits.slice(offset, offset + limit);
+
+        searchResult = {
+          hits: paginatedHits,
+          estimatedTotalHits: mergedHits.length,
+          limit,
+          offset,
+          query,
+        };
+
+        log.info(
+          {
+            query,
+            meiliCount: meiliResult.hits.length,
+            qdrantCount: qdrantHits.length,
+            mergedCount: mergedHits.length,
+            returnedCount: paginatedHits.length,
+          },
+          'hybrid search merged'
+        );
+      } catch (error) {
+        log.warn({ err: error }, 'hybrid search failed, falling back to meilisearch only');
+        // Fall back to Meilisearch only if hybrid fails
+        const client = await getMeiliClient();
+        searchResult = await client.search<SearchHit>(query, {
+          limit,
+          offset,
+          filter,
+          attributesToHighlight: ['content', 'summary', 'tags'],
+          attributesToCrop: ['content'],
+          cropLength: 200,
+        });
+      }
+    }
 
     const searchMs = Date.now() - searchStart;
 
