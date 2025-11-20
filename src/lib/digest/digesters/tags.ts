@@ -1,25 +1,25 @@
 /**
- * Tagging Digester
+ * Tags Digester
  * Generates AI tags for content
  */
 
 import type { Digester } from '../types';
 import type { Digest, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { generateTagsDigest } from '@/lib/digest/tagging';
+import { generateTagsDigest } from '@/lib/digest/tags';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { getPrimaryTextContent, hasAnyTextSource } from '@/lib/digest/text-source';
 
-const log = getLogger({ module: 'TaggingDigester' });
+const log = getLogger({ module: 'TagsDigester' });
 
 /**
- * Tagging Digester
+ * Tags Digester
  * Generates tags from content-md digest
  * Produces: tags
  */
-export class TaggingDigester implements Digester {
-  readonly name = 'tagging';
+export class TagsDigester implements Digester {
+  readonly name = 'tags';
 
   async canDigest(
     filePath: string,
@@ -56,9 +56,9 @@ export class TaggingDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'tagging'),
+        id: generateDigestId(filePath, 'tags'),
         filePath,
-        digester: 'tagging',
+        digester: 'tags',
         status: 'completed',
         content: JSON.stringify({ tags: result.tags }),
         sqlarName: null,

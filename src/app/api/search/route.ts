@@ -470,7 +470,7 @@ function hasHighlight(value?: string | null): boolean {
 }
 
 const SUMMARY_DIGESTERS = new Set(['summary', 'url-crawl-summary', 'summarize']);
-const TAG_DIGESTERS = new Set(['tagging', 'tags']);
+const TAG_DIGESTERS = new Set(['tags']);
 const CONTENT_DIGESTERS = new Set(['url-crawl-content', 'content-md', 'url-content-md']);
 
 interface DigestFieldConfig {
@@ -488,7 +488,7 @@ const DIGEST_FIELD_CONFIG: DigestFieldConfig[] = [
   },
   {
     field: 'tags',
-    digesterTypes: ['tagging', 'tags'],
+    digesterTypes: ['tags'],
     label: 'Tags digest',
   },
   {

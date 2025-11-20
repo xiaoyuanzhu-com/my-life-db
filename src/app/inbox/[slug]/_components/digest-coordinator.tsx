@@ -12,7 +12,7 @@ import { DigestProgress } from './digest-progress';
 const STAGES = [
   { key: 'crawl', label: 'Crawl', taskType: 'digest_url_crawl' },
   { key: 'summary', label: 'Summary', taskType: 'digest_url_summary' },
-  { key: 'tagging', label: 'Tagging', taskType: 'digest_url_tagging' },
+  { key: 'tags', label: 'Tags', taskType: 'digest_url_tagging' },
   { key: 'slug', label: 'Slug', taskType: 'digest_url_slug' },
 ] as const;
 
@@ -49,7 +49,7 @@ function deriveStageMap(status: DigestStatusView | null): Record<string, StageSt
     const derivedSuccess =
       (stage.key === 'crawl' && status?.crawlDone) ||
       (stage.key === 'summary' && status?.summaryDone) ||
-      (stage.key === 'tagging' && status?.tagsReady) ||
+      (stage.key === 'tags' && status?.tagsReady) ||
       (stage.key === 'slug' && status?.slugReady);
 
     if (derivedSuccess) {
@@ -336,7 +336,7 @@ export function DigestCoordinator({
                   ? 'opacity-70 cursor-not-allowed'
                   : 'hover:bg-accent'
               )}
-              title="Run crawl -> summary -> tagging -> slug in order"
+              title="Run crawl -> summary -> tags -> slug in order"
             >
               {(isDigestButtonBusy || pipelineActive) ? (
                 <span className="flex items-center gap-1">

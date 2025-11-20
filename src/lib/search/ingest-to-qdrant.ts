@@ -148,7 +148,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   }
 
   // 4. Index tags from digest (usually single chunk)
-  const tagsDigest = digests.find(d => d.digester === 'tagging' && d.status === 'completed');
+  const tagsDigest = digests.find(d => d.digester === 'tags' && d.status === 'completed');
   if (tagsDigest?.content) {
     try {
       const tagsData = JSON.parse(tagsDigest.content);

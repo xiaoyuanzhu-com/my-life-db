@@ -1,26 +1,26 @@
 /**
- * Meilisearch Indexing Digester
- * Indexes file content for keyword search
+ * Semantic Search Indexing Digester
+ * Indexes file content for semantic vector search
  */
 
 import type { Digester } from '../types';
 import type { Digest, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
-import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
-import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
+import { ingestToQdrant } from '@/lib/search/ingest-to-qdrant';
+import { enqueueQdrantIndex } from '@/lib/search/qdrant-tasks';
+import { getQdrantDocumentIdsByFile } from '@/lib/db/qdrant-documents';
 import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { hasAnyTextSource } from '@/lib/digest/text-source';
 
-const log = getLogger({ module: 'MeiliSearchDigester' });
+const log = getLogger({ module: 'SearchSemanticDigester' });
 
 /**
- * Meilisearch Indexing Digester
- * Indexes content for full-text keyword search
+ * Semantic Search Indexing Digester
+ * Indexes content for semantic vector search
  */
-export class MeiliSearchDigester implements Digester {
-  readonly name = 'search-meili';
+export class SearchSemanticDigester implements Digester {
+  readonly name = 'search-semantic';
 
   async canDigest(
     filePath: string,
@@ -34,7 +34,7 @@ export class MeiliSearchDigester implements Digester {
     }
 
     // Check if we need to re-index (dependencies changed)
-    const existingSearch = existingDigests.find((d) => d.digester === 'search-meili');
+    const existingSearch = existingDigests.find((d) => d.digester === 'search-semantic');
 
     if (!existingSearch) {
       return true; // Never indexed
@@ -52,7 +52,7 @@ export class MeiliSearchDigester implements Digester {
     const summaryDigest =
       existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
       existingDigests.find((d) => d.digester === 'summarize');
-    const tagsDigest = existingDigests.find((d) => d.digester === 'tagging');
+    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
 
     // Re-index if content changed
@@ -86,52 +86,51 @@ export class MeiliSearchDigester implements Digester {
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    log.info({ filePath }, 'indexing for meilisearch');
+    log.info({ filePath }, 'indexing for semantic search');
 
     try {
-      // Ingest to meili_documents table (creates/updates cache)
-      const result = await ingestToMeilisearch(filePath);
+      // Ingest to qdrant_documents table (creates chunks)
+      const result = await ingestToQdrant(filePath);
 
-      if (!result.hasContent) {
+      if (result.totalChunks === 0) {
         log.warn({ filePath }, 'no content to index');
         return null; // Skip this file
       }
 
-      // Get document ID
-      const documentId = getMeiliDocumentIdForFile(filePath);
+      // Get all document IDs for this file
+      const documentIds = getQdrantDocumentIdsByFile(filePath);
 
-      // Enqueue background task to push to Meilisearch
-      const taskId = enqueueMeiliIndex([documentId]);
-
-      if (!taskId) {
-        throw new Error('Failed to enqueue Meilisearch indexing task');
+      if (documentIds.length === 0) {
+        throw new Error('No semantic search documents created after ingestion');
       }
 
-      // Wait for indexing to complete (check meili_documents status)
-      // Note: We return immediately here (fire-and-forget)
-      // The meili_documents table tracks actual sync status
-      const now = new Date().toISOString();
+      // Enqueue background task to generate embeddings and push to Qdrant
+      const taskId = enqueueQdrantIndex(documentIds);
+
+      if (!taskId) {
+        throw new Error('Failed to enqueue semantic search indexing task');
+      }
 
       // Store metadata about indexing
+      const now = new Date().toISOString();
       const metadata = {
-        documentId,
         taskId,
-        hasContent: result.hasContent,
-        hasSummary: result.hasSummary,
-        hasTags: result.hasTags,
+        totalChunks: result.totalChunks,
+        sources: result.sources,
+        documentIds: documentIds.length,
         enqueuedAt: now,
       };
 
       log.info(
         { filePath, ...metadata },
-        'meilisearch indexing enqueued'
+        'semantic search indexing enqueued'
       );
 
       return [
         {
-          id: generateDigestId(filePath, 'search-meili'),
+          id: generateDigestId(filePath, 'search-semantic'),
           filePath,
-          digester: 'search-meili',
+          digester: 'search-semantic',
           status: 'completed',
           content: JSON.stringify(metadata),
           sqlarName: null,
@@ -143,7 +142,7 @@ export class MeiliSearchDigester implements Digester {
       ];
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      log.error({ filePath, error: errorMsg }, 'meilisearch indexing failed');
+      log.error({ filePath, error: errorMsg }, 'semantic search indexing failed');
       throw error; // Let coordinator handle error
     }
   }
