@@ -32,10 +32,9 @@ export default function HomePage() {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
-  // Setup real-time notifications
+  // Setup real-time notifications (auto-refresh only)
   useInboxNotifications({
     onInboxChange: handleInboxChange,
-    enableBrowserNotifications: true,
   });
 
   return (
