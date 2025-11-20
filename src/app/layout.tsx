@@ -16,6 +16,19 @@ const geistMono = {
 export const metadata: Metadata = {
   title: "MyLifeDB",
   description: "Capture your thoughts effortlessly and transform them into structured, meaningful knowledge",
+  applicationName: "MyLifeDB",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "MyLifeDB",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' }
+  ],
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -27,6 +40,7 @@ export const metadata: Metadata = {
       { rel: 'android-chrome-512x512', url: '/android-chrome-512x512.png' },
     ],
   },
+  manifest: '/manifest.webmanifest',
 };
 
 export const viewport: Viewport = {
