@@ -1,21 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useCachedFile } from '@/hooks/use-cached-file';
 
 interface FileViewerProps {
   filePath: string;
   onFileDataLoad?: (contentType: string) => void;
-}
-
-interface FileData {
-  path: string;
-  name: string;
-  content?: string;
-  contentType: string;
-  size: number;
-  modifiedAt: string;
 }
 
 function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' | 'pdf' | 'unknown' {
@@ -28,71 +20,15 @@ function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' 
 }
 
 export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
-  const [fileData, setFileData] = useState<FileData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use cached file hook with React Query + IndexedDB
+  const { data: fileData, isLoading, error } = useCachedFile(filePath);
 
-  const loadFile = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/raw/${filePath}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to load file');
-      }
-
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      const fileType = getFileType(contentType);
-
-      // Extract filename from path
-      const filenameMatch = filePath.match(/[^/]+$/);
-      const filename = filenameMatch ? filenameMatch[0] : 'file';
-
-      // For text files, decode the binary response as UTF-8
-      if (fileType === 'text') {
-        const text = await response.text();
-
-        setFileData({
-          path: filePath,
-          name: filename,
-          content: text,
-          contentType,
-          size: parseInt(response.headers.get('content-length') || '0'),
-          modifiedAt: new Date().toISOString(),
-        });
-
-        // Notify parent component
-        if (onFileDataLoad) {
-          onFileDataLoad(contentType);
-        }
-      } else {
-        // For binary files (images, videos, etc.)
-        setFileData({
-          path: filePath,
-          name: filename,
-          contentType,
-          size: parseInt(response.headers.get('content-length') || '0'),
-          modifiedAt: new Date().toISOString(),
-        });
-
-        // Notify parent component
-        if (onFileDataLoad) {
-          onFileDataLoad(contentType);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load file');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filePath, onFileDataLoad]);
-
+  // Notify parent when file loads
   useEffect(() => {
-    loadFile();
-  }, [loadFile]);
+    if (fileData && onFileDataLoad) {
+      onFileDataLoad(fileData.contentType);
+    }
+  }, [fileData, onFileDataLoad]);
 
   const handleDownload = () => {
     // Create a link element and trigger download
@@ -116,7 +52,7 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
         <FileX className="w-12 h-12" />
-        <p>{error || 'Failed to load file'}</p>
+        <p>{error instanceof Error ? error.message : 'Failed to load file'}</p>
       </div>
     );
   }

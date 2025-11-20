@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 // Temporarily using system fonts due to build environment network restrictions
@@ -46,11 +47,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased grid grid-rows-[auto_minmax(0,1fr)_auto] min-h-screen h-dvh overflow-y-auto`}
       >
-        <Header />
-        <main className="min-h-0 flex flex-col pb-16 md:pb-0">
-          {children}
-        </main>
-        <BottomNav />
+        <Providers>
+          <Header />
+          <main className="min-h-0 flex flex-col pb-16 md:pb-0">
+            {children}
+          </main>
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );
