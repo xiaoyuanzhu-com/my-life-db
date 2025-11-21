@@ -227,7 +227,7 @@ CREATE TABLE tasks (
 ## File Structure (After Processing)
 
 ```
-app/mylifedb/inbox/understanding-react-hooks/
+inbox/understanding-react-hooks/
 ├── url.txt                  # Original URL
 ├── content.html             # Raw HTML (preserved)
 ├── content.md               # Markdown conversion
@@ -352,7 +352,7 @@ curl -X POST http://localhost:3000/api/tasks \
 curl http://localhost:3000/api/tasks?type=digest_url_crawl
 
 # 6. Check processed files
-ls -la data/app/mylifedb/inbox/
+ls -la data/inbox/
 ```
 
 ## TODOs

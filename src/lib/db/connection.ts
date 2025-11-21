@@ -14,7 +14,7 @@ let migrationsEnsured = false;
  */
 export function getDatabasePath(): string {
   const baseDir = process.env.MY_DATA_DIR || './data';
-  const appDir = join(baseDir, 'app', 'mylifedb');
+  const appDir = join(baseDir, 'app', 'my-life-db');
 
   // Ensure directory exists
   if (!existsSync(appDir)) {

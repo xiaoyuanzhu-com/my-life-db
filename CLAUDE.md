@@ -36,7 +36,7 @@ MY_DATA_DIR/
 ├── journal/            # User library folders (source of truth)
 ├── work/               # User library folders (source of truth)
 └── app/                # Application data (rebuildable)
-    └── mylifedb/
+    └── my-life-db/
         └── database.sqlite
 ```
 
@@ -49,7 +49,7 @@ MY_DATA_DIR/
 
 ### Database (SQLite)
 
-- **Location**: `MY_DATA_DIR/app/mylifedb/database.sqlite`
+- **Location**: `MY_DATA_DIR/app/my-life-db/database.sqlite`
 - **`MY_DATA_DIR`** environment variable sets the base data directory (defaults to `./data`)
 - Uses `better-sqlite3` for synchronous database operations
 - Database is automatically created and initialized on first use

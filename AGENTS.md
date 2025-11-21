@@ -37,7 +37,7 @@ Example: check task queue status `curl http://localhost:3000/api/tasks/stats`.
 ## Security & Configuration Tips
 - Environment: copy `.env.example` → `.env.local`. Var: `MY_DATA_DIR` (defaults to `./data`)
 - Never commit `data/` or `.env*` (see `.gitignore`)
-- SQLite lives under `MY_DATA_DIR/app/mylifedb/database.sqlite`
+- SQLite lives under `MY_DATA_DIR/app/my-life-db/database.sqlite`
 
 ## Agent-Specific Instructions
 - Do not auto-commit; only commit on explicit request

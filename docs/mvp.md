@@ -144,12 +144,13 @@ MyLifeDB supports the following message types:
 
 ```
 MY_DATA_DIR/
+├── inbox/                          # Temporary staging (no date layer)
+│   └── {folderName}/               # UUID initially, may become AI slug
+│       ├── text.md                 # Text input (if provided)
+│       └── [files]                 # Uploaded and generated files (e.g., url.txt, content.html)
 ├── app/
-│   └── mylifedb/
-│       └── inbox/                  # Temporary staging (no date layer)
-│           └── {folderName}/       # UUID initially, may become AI slug
-│               ├── text.md         # Text input (if provided)
-│               └── [files]         # Uploaded and generated files (e.g., url.txt, content.html)
+│   └── my-life-db/                 # Application data (rebuildable)
+│       └── database.sqlite
 └── {user-content}/                 # User-owned library (free-form structure)
     ├── notes/
     ├── projects/

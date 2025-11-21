@@ -5,8 +5,8 @@ This module handles SQLite database connections and operations for MyLifeDB.
 ## Overview
 
 - **Database Engine**: SQLite via `better-sqlite3`
-- **Location**: `MY_DATA_DIR/app/mylifedb/database.sqlite`
-- **Default Path**: `./data/app/mylifedb/database.sqlite` (if `MY_DATA_DIR` is not set)
+- **Location**: `MY_DATA_DIR/app/my-life-db/database.sqlite`
+- **Default Path**: `./data/app/my-life-db/database.sqlite` (if `MY_DATA_DIR` is not set)
 
 ## Features
 

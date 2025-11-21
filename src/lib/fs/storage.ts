@@ -10,7 +10,7 @@ const log = getLogger({ module: 'Storage' });
 
 // Data root directory (respects MY_DATA_DIR environment variable)
 export const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), 'data');
-export const APP_DIR = path.join(DATA_ROOT, 'app', 'mylifedb');
+export const APP_DIR = path.join(DATA_ROOT, 'app', 'my-life-db');
 export const INBOX_DIR = path.join(DATA_ROOT, 'inbox');
 
 // Initialize data directories

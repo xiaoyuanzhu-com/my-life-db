@@ -17,7 +17,7 @@ Every app can have its own folder to store app-specific data, settings, cache, e
 ```
 data/
 ├── app/              # Application-specific data (rebuildable)
-│   └── mylifedb/
+│   └── my-life-db/
 │       └── database.sqlite
 ```
 
