@@ -82,6 +82,7 @@ class MeiliClient {
       cropLength?: number;
       highlightPreTag?: string;
       highlightPostTag?: string;
+      matchingStrategy?: 'all' | 'last';
     }
   ): Promise<{
     hits: T[];
@@ -114,6 +115,7 @@ class MeiliClient {
           cropLength: options?.cropLength ?? 200,
           highlightPreTag: options?.highlightPreTag ?? '<em>',
           highlightPostTag: options?.highlightPostTag ?? '</em>',
+          matchingStrategy: options?.matchingStrategy ?? 'all',
         }),
       }
     );

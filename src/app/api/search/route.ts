@@ -237,6 +237,7 @@ export async function GET(request: NextRequest) {
           attributesToHighlight: ['content', 'summary', 'tags'],
           attributesToCrop: ['content'],
           cropLength: 200,
+          matchingStrategy: 'all',
         });
       }
     } else {
@@ -256,6 +257,7 @@ export async function GET(request: NextRequest) {
               attributesToHighlight: ['content', 'summary', 'tags'],
               attributesToCrop: ['content'],
               cropLength: 200,
+              matchingStrategy: 'all',
             });
           })(),
           // Qdrant semantic search
@@ -358,6 +360,7 @@ export async function GET(request: NextRequest) {
           attributesToHighlight: ['content', 'summary', 'tags'],
           attributesToCrop: ['content'],
           cropLength: 200,
+          matchingStrategy: 'all',
         });
       }
     }
