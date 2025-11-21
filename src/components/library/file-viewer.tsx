@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
   filePath: string;
   onFileDataLoad?: (contentType: string) => void;
+  onContentChange?: (filePath: string, content: string, isDirty: boolean) => void;
+  initialEditedContent?: string;
 }
 
 interface FileData {
@@ -27,10 +29,14 @@ function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' 
   return 'unknown';
 }
 
-export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
+export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialEditedContent }: FileViewerProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editedContent, setEditedContent] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInitialMount = useRef(true);
 
   const loadFile = useCallback(async () => {
     setIsLoading(true);
@@ -63,6 +69,15 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
           modifiedAt: new Date().toISOString(),
         });
 
+        // Set initial edited content (from localStorage or file content)
+        if (isInitialMount.current && initialEditedContent !== undefined) {
+          setEditedContent(initialEditedContent);
+          isInitialMount.current = false;
+        } else if (isInitialMount.current) {
+          setEditedContent(text);
+          isInitialMount.current = false;
+        }
+
         // Notify parent component
         if (onFileDataLoad) {
           onFileDataLoad(contentType);
@@ -91,8 +106,71 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
   }, [filePath, onFileDataLoad]);
 
   useEffect(() => {
+    isInitialMount.current = true;
     loadFile();
   }, [loadFile]);
+
+  // Notify parent of content changes
+  useEffect(() => {
+    if (fileData?.content !== undefined && onContentChange) {
+      const isDirty = editedContent !== fileData.content;
+      onContentChange(filePath, editedContent, isDirty);
+    }
+  }, [editedContent, fileData?.content, filePath, onContentChange]);
+
+  const handleContentChange = (newContent: string) => {
+    setEditedContent(newContent);
+  };
+
+  const handleSave = async () => {
+    if (!fileData) return;
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/raw/${filePath}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+        body: editedContent,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save file');
+      }
+
+      // Update the file data with the new content
+      setFileData({
+        ...fileData,
+        content: editedContent,
+      });
+
+      // Notify parent that file is no longer dirty
+      if (onContentChange) {
+        onContentChange(filePath, editedContent, false);
+      }
+    } catch (err) {
+      console.error('Failed to save file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save file');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Keyboard shortcut for save (Cmd+S or Ctrl+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editedContent, fileData]);
+
+  const isDirty = editedContent !== fileData?.content;
 
   const handleDownload = () => {
     // Create a link element and trigger download
@@ -125,11 +203,16 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
   const fileUrl = `/raw/${filePath}`;
 
   return (
-    <div className="h-full w-full min-w-0 overflow-auto p-4">
-        {fileType === 'text' && fileData.content && (
-          <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-            {fileData.content}
-          </pre>
+    <div className="h-full w-full min-w-0 flex flex-col">
+      <div className="flex-1 overflow-auto p-4">
+        {fileType === 'text' && fileData.content !== undefined && (
+          <textarea
+            ref={textareaRef}
+            value={editedContent}
+            onChange={(e) => handleContentChange(e.target.value)}
+            className="w-full h-full min-h-[500px] p-2 font-mono text-sm bg-background border-0 resize-none focus:outline-none"
+            spellCheck={false}
+          />
         )}
 
         {fileType === 'image' && (
@@ -189,6 +272,7 @@ export function FileViewer({ filePath, onFileDataLoad }: FileViewerProps) {
             </Button>
           </div>
         )}
+      </div>
     </div>
   );
 }

@@ -12,10 +12,17 @@ export interface OpenedFile {
   name: string;
 }
 
+interface FileEditState {
+  content: string;
+  isDirty: boolean;
+}
+
 export default function LibraryBrowsePage() {
   const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [fileEditStates, setFileEditStates] = useState<Map<string, FileEditState>>(new Map());
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -23,6 +30,8 @@ export default function LibraryBrowsePage() {
       const savedOpenedFiles = localStorage.getItem('library:openedFiles');
       const savedActiveFile = localStorage.getItem('library:activeFile');
       const savedExpandedFolders = localStorage.getItem('library:expandedFolders');
+      const savedFileEditStates = localStorage.getItem('library:fileEditStates');
+      const savedDirtyFiles = localStorage.getItem('library:dirtyFiles');
 
       if (savedOpenedFiles) {
         setOpenedFiles(JSON.parse(savedOpenedFiles));
@@ -32,6 +41,13 @@ export default function LibraryBrowsePage() {
       }
       if (savedExpandedFolders) {
         setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
+      }
+      if (savedFileEditStates) {
+        const statesArray: [string, FileEditState][] = JSON.parse(savedFileEditStates);
+        setFileEditStates(new Map(statesArray));
+      }
+      if (savedDirtyFiles) {
+        setDirtyFiles(new Set(JSON.parse(savedDirtyFiles)));
       }
     } catch (error) {
       console.error('Failed to load state from localStorage:', error);
@@ -67,6 +83,24 @@ export default function LibraryBrowsePage() {
     }
   }, [expandedFolders]);
 
+  // Save file edit states to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(fileEditStates.entries())));
+    } catch (error) {
+      console.error('Failed to save file edit states to localStorage:', error);
+    }
+  }, [fileEditStates]);
+
+  // Save dirty files to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(dirtyFiles)));
+    } catch (error) {
+      console.error('Failed to save dirty files to localStorage:', error);
+    }
+  }, [dirtyFiles]);
+
   const handleFileOpen = (path: string, name: string) => {
     // Add to opened files if not already open
     if (!openedFiles.some(f => f.path === path)) {
@@ -76,8 +110,27 @@ export default function LibraryBrowsePage() {
   };
 
   const handleFileClose = (path: string) => {
+    // Check if file has unsaved changes
+    if (dirtyFiles?.has(path)) {
+      const confirmed = window.confirm(
+        'This file has unsaved changes. Are you sure you want to close it?'
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const newOpenedFiles = openedFiles.filter(f => f.path !== path);
     setOpenedFiles(newOpenedFiles);
+
+    // Remove from edit states and dirty files
+    const newFileEditStates = new Map(fileEditStates);
+    newFileEditStates.delete(path);
+    setFileEditStates(newFileEditStates);
+
+    const newDirtyFiles = new Set(dirtyFiles);
+    newDirtyFiles.delete(path);
+    setDirtyFiles(newDirtyFiles);
 
     // If closing the active file, switch to the last opened file
     if (activeFilePath === path) {
@@ -102,6 +155,35 @@ export default function LibraryBrowsePage() {
     }
     setExpandedFolders(newExpandedFolders);
   };
+
+  const handleContentChange = (filePath: string, content: string, isDirty: boolean) => {
+    // Update edit state
+    const newFileEditStates = new Map(fileEditStates);
+    newFileEditStates.set(filePath, { content, isDirty });
+    setFileEditStates(newFileEditStates);
+
+    // Update dirty files set
+    const newDirtyFiles = new Set(dirtyFiles);
+    if (isDirty) {
+      newDirtyFiles.add(filePath);
+    } else {
+      newDirtyFiles.delete(filePath);
+    }
+    setDirtyFiles(newDirtyFiles);
+  };
+
+  // Keyboard shortcut for Cmd/Ctrl+W to close active tab
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'w' && activeFilePath) {
+        e.preventDefault();
+        handleFileClose(activeFilePath);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeFilePath]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-background">
@@ -136,6 +218,7 @@ export default function LibraryBrowsePage() {
               <FileTabs
                 files={openedFiles}
                 activeFile={activeFilePath}
+                dirtyFiles={dirtyFiles}
                 onTabChange={handleTabChange}
                 onTabClose={handleFileClose}
               />
@@ -143,7 +226,11 @@ export default function LibraryBrowsePage() {
               {/* Content viewer */}
               <div className="flex-1 overflow-hidden">
                 {activeFilePath && (
-                  <FileViewer filePath={activeFilePath} />
+                  <FileViewer
+                    filePath={activeFilePath}
+                    onContentChange={handleContentChange}
+                    initialEditedContent={fileEditStates.get(activeFilePath)?.content}
+                  />
                 )}
               </div>
             </>

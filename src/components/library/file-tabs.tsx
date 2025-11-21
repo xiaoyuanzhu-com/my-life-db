@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment } from 'react';
-import { X } from 'lucide-react';
+import { X, Circle } from 'lucide-react';
 
 interface OpenedFile {
   path: string;
@@ -11,11 +11,12 @@ interface OpenedFile {
 interface FileTabsProps {
   files: OpenedFile[];
   activeFile: string | null;
+  dirtyFiles: Set<string>;
   onTabChange: (path: string) => void;
   onTabClose: (path: string) => void;
 }
 
-export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTabsProps) {
+export function FileTabs({ files, activeFile, dirtyFiles, onTabChange, onTabClose }: FileTabsProps) {
   const handleTabClick = (path: string) => {
     onTabChange(path);
   };
@@ -65,7 +66,11 @@ export function FileTabs({ files, activeFile, onTabChange, onTabClose }: FileTab
               onClick={(e) => handleCloseClick(e, file.path)}
               aria-label="Close tab"
             >
-              <X className="w-3.5 h-3.5" />
+              {dirtyFiles?.has(file.path) ? (
+                <Circle className="w-3 h-3 fill-current" />
+              ) : (
+                <X className="w-3.5 h-3.5" />
+              )}
             </button>
           </div>
           </Fragment>

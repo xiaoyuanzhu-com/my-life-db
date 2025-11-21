@@ -11,6 +11,27 @@ interface RouteContext {
   params: Promise<{ path: string[] }>;
 }
 
+async function validatePath(pathSegments: string[]) {
+  const relativePath = pathSegments.join('/');
+
+  // Security: prevent path traversal attacks
+  const normalizedPath = path.normalize(relativePath);
+  if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
+    return { error: 'Invalid path', status: 400 };
+  }
+
+  const filePath = path.join(DATA_ROOT, normalizedPath);
+
+  // Verify file exists and is within DATA_ROOT
+  const realPath = await fs.realpath(filePath);
+  const realDataRoot = await fs.realpath(DATA_ROOT);
+  if (!realPath.startsWith(realDataRoot)) {
+    return { error: 'Access denied', status: 403 };
+  }
+
+  return { realPath, relativePath };
+}
+
 /**
  * GET /raw/[...path]
  * Serve raw binary content from DATA_ROOT
@@ -22,22 +43,13 @@ export async function GET(
 ) {
   try {
     const { path: pathSegments } = await context.params;
-    const relativePath = pathSegments.join('/');
 
-    // Security: prevent path traversal attacks
-    const normalizedPath = path.normalize(relativePath);
-    if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
-      return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
+    const validation = await validatePath(pathSegments);
+    if ('error' in validation) {
+      return NextResponse.json({ error: validation.error }, { status: validation.status });
     }
 
-    const filePath = path.join(DATA_ROOT, normalizedPath);
-
-    // Verify file exists and is within DATA_ROOT
-    const realPath = await fs.realpath(filePath);
-    const realDataRoot = await fs.realpath(DATA_ROOT);
-    if (!realPath.startsWith(realDataRoot)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
+    const { realPath } = validation;
 
     const data = await fs.readFile(realPath);
     const ext = path.extname(realPath).toLowerCase();
@@ -75,5 +87,42 @@ export async function GET(
   } catch (error) {
     log.error({ err: error }, 'file not found');
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
+  }
+}
+
+/**
+ * PUT /raw/[...path]
+ * Save text content to a file in DATA_ROOT
+ */
+export async function PUT(
+  request: NextRequest,
+  context: RouteContext
+) {
+  try {
+    const { path: pathSegments } = await context.params;
+
+    const validation = await validatePath(pathSegments);
+    if ('error' in validation) {
+      return NextResponse.json({ error: validation.error }, { status: validation.status });
+    }
+
+    const { realPath } = validation;
+
+    // Read the request body as text
+    const content = await request.text();
+
+    // Write the content to the file
+    await fs.writeFile(realPath, content, 'utf-8');
+
+    log.info({ path: validation.relativePath }, 'file saved');
+
+    return NextResponse.json({
+      success: true,
+      message: 'File saved successfully',
+      path: validation.relativePath
+    });
+  } catch (error) {
+    log.error({ err: error }, 'failed to save file');
+    return NextResponse.json({ error: 'Failed to save file' }, { status: 500 });
   }
 }
