@@ -303,14 +303,53 @@ function MatchContext({ context }: MatchContextProps) {
   }
 
   // Handle digest match context (keyword)
+  // Snippet may contain <em> tags from Meilisearch (for fuzzy matches)
+  const snippetWithHighlights = renderHighlightedSnippet(context.snippet);
+
   return (
     <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
       <p className="mb-1 font-semibold text-muted-foreground">
         Matched {context.digest?.label ?? 'digest'}
       </p>
       <div className="text-xs text-foreground leading-relaxed">
-        {terms.length > 0 ? highlightMatches(context.snippet, terms) : context.snippet}
+        {snippetWithHighlights}
       </div>
     </div>
   );
+}
+
+/**
+ * Render a snippet with <em> tags from Meilisearch as React mark elements.
+ * Handles fuzzy match highlights like "docube" → "<em>Docume</em>ntation"
+ */
+function renderHighlightedSnippet(snippet: string) {
+  // Split by <em> and </em> tags
+  const parts = snippet.split(/(<em>|<\/em>)/);
+  const elements: React.ReactNode[] = [];
+  let isHighlight = false;
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+
+    if (part === '<em>') {
+      isHighlight = true;
+    } else if (part === '</em>') {
+      isHighlight = false;
+    } else if (part) {
+      if (isHighlight) {
+        elements.push(
+          <mark
+            key={`match-${i}`}
+            className="rounded-sm bg-yellow-300/90 px-0.5 py-0 text-slate-900 ring-1 ring-yellow-400 dark:bg-yellow-200/95 dark:text-slate-900 dark:ring-yellow-300"
+          >
+            {part}
+          </mark>
+        );
+      } else {
+        elements.push(<span key={`text-${i}`}>{part}</span>);
+      }
+    }
+  }
+
+  return <>{elements}</>;
 }

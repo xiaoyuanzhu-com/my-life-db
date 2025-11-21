@@ -493,7 +493,7 @@ function extractSearchTerms(query: string): string[] {
   );
 }
 
-function hasHighlight(value?: string | null): boolean {
+function hasHighlight(value?: string | null): value is string {
   return Boolean(value && value.includes(HIGHLIGHT_PRE_TAG));
 }
 
@@ -558,6 +558,49 @@ function buildSemanticMatchContext({
   };
 }
 
+/**
+ * Extract a snippet from Meilisearch's formatted text with <em> highlights.
+ * Finds the first highlight and extracts context around it.
+ * This preserves fuzzy matches (e.g., "docube" → "<em>Docume</em>ntation").
+ */
+function extractSnippetFromFormatted(formattedText: string, maxLength = 200): string {
+  // Find the first <em> tag position
+  const highlightStart = formattedText.indexOf(HIGHLIGHT_PRE_TAG);
+  if (highlightStart === -1) {
+    return formattedText.slice(0, maxLength);
+  }
+
+  // Calculate context window around the highlight
+  const contextRadius = 80;
+  const start = Math.max(0, highlightStart - contextRadius);
+  const end = Math.min(formattedText.length, highlightStart + contextRadius + 100);
+
+  let snippet = formattedText.slice(start, end);
+
+  // Add ellipsis if truncated
+  if (start > 0) {
+    snippet = '...' + snippet;
+  }
+  if (end < formattedText.length) {
+    snippet = snippet + '...';
+  }
+
+  // Ensure we don't exceed max length
+  if (snippet.length > maxLength) {
+    // Try to preserve at least one complete highlight
+    const firstHighlight = snippet.indexOf(HIGHLIGHT_PRE_TAG);
+    const highlightEnd = snippet.indexOf(HIGHLIGHT_POST_TAG, firstHighlight);
+    if (firstHighlight !== -1 && highlightEnd !== -1) {
+      const minLength = highlightEnd + HIGHLIGHT_POST_TAG.length + 20;
+      snippet = snippet.slice(0, Math.max(maxLength, minLength)) + '...';
+    } else {
+      snippet = snippet.slice(0, maxLength) + '...';
+    }
+  }
+
+  return snippet.trim();
+}
+
 function buildDigestMatchContext({
   hit,
   file,
@@ -584,25 +627,12 @@ function buildDigestMatchContext({
     }
 
     const digest = findDigestByType(file.digests, config.digesterTypes);
-    const digestText = digest
-      ? extractDigestText(digest)
-      : stripHighlightTags(formattedValue);
 
-    if (!digestText) {
-      continue;
-    }
+    // Use Meilisearch's formatted value with <em> tags for snippet
+    // This preserves fuzzy match highlights (e.g., "docube" matching "Docume" in "Documentation")
+    const snippet = extractSnippetFromFormatted(formattedValue);
 
-    const { snippet, matchFound } = buildMatchSnippet(digestText, terms, {
-      contextRadius: 80,
-      maxLength: 200,
-    });
-
-    if (!snippet) {
-      continue;
-    }
-
-    if (!matchFound && digest) {
-      // Skip mismatch when digest content doesn't contain the term
+    if (!snippet || !snippet.trim()) {
       continue;
     }
 
