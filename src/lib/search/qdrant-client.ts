@@ -148,12 +148,22 @@ let cachedClient: QdrantClient | null = null;
 export async function getQdrantClient(): Promise<QdrantClient> {
   if (cachedClient) return cachedClient;
 
-  // Load settings from database
-  const settings = await loadSettings();
-  const url = settings.vendors?.qdrant?.host;
+  // Try loading from vendor settings first
+  let url: string | undefined;
+  try {
+    const settings = await loadSettings();
+    url = settings.vendors?.qdrant?.host;
+  } catch (error) {
+    log.warn({ err: error }, 'failed to load Qdrant host from settings');
+  }
+
+  // Fall back to environment variable if not in settings
+  if (!url) {
+    url = process.env.QDRANT_URL;
+  }
 
   if (!url) {
-    throw new Error('QDRANT_URL is not configured');
+    throw new Error('QDRANT_URL is not configured (check settings.vendors.qdrant.host or QDRANT_URL env var)');
   }
 
   const collection = process.env.QDRANT_COLLECTION || 'mylifedb_vectors';
