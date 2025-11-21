@@ -152,20 +152,27 @@ export async function callOpenAICompletion(
     };
   }
 
-  const response = await client.chat.completions.create(requestParams);
-
-  // Log the full API response for debugging
-  console.log('[VendorOpenAI] Full API response:', {
-    fullResponse: response,
-    choices: response.choices,
-    firstChoice: response.choices?.[0],
-    message: response.choices?.[0]?.message,
-    content: response.choices?.[0]?.message?.content,
-    // @ts-expect-error - reasoning field may exist on some models
-    reasoning: response.choices?.[0]?.message?.reasoning,
-    finishReason: response.choices?.[0]?.finish_reason,
-    usage: response.usage,
-  });
+  let response;
+  try {
+    response = await client.chat.completions.create(requestParams);
+  } catch (error) {
+    // Log detailed error context for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log.error(
+      {
+        error: errorMessage,
+        model,
+        temperature: requestParams.temperature,
+        hasJsonSchema: !!options.jsonSchema,
+        systemPromptLength: options.systemPrompt?.length || 0,
+        promptLength: options.prompt.length,
+        promptPreview: options.prompt.substring(0, 200),
+        maxTokens: options.maxTokens,
+      },
+      'openai api call failed'
+    );
+    throw error;
+  }
 
   const message = response.choices?.[0]?.message;
   const finishReason = response.choices?.[0]?.finish_reason;
@@ -203,14 +210,6 @@ export async function callOpenAICompletion(
     completionTokens: response.usage.completion_tokens,
     totalTokens: response.usage.total_tokens,
   } : undefined;
-
-  // Log extracted values
-  console.log('[VendorOpenAI] Extracted values:', {
-    contentLength: content.length,
-    contentPreview: content.substring(0, 200),
-    content: content,
-    usage,
-  });
 
   return {
     content,

@@ -88,7 +88,7 @@ function hasTextExtension(filePath: string): boolean {
   return TEXT_EXTENSIONS.has(ext);
 }
 
-export function hasLocalTextContent(file: FileRecordRow, minBytes = 0): boolean {
+export function hasLocalTextContent(file: FileRecordRow, _minBytes = 0): boolean {
   if (file.is_folder) return false;
   const textLike =
     (file.mime_type ? isTextMimeType(file.mime_type) : false) ||

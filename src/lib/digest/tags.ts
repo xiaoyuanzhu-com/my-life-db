@@ -96,17 +96,9 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
     temperature: 0.1, // Low temperature for more consistent tags across runs
   });
 
-  // Log raw LLM response for debugging
-  console.log('[tagging] LLM response received:', {
-    contentLength: res.content.length,
-    content: res.content,
-    usage: res.usage,
-  });
-
   let tags: string[] = [];
   try {
     const payload = parseJsonFromResponse(res.content) as { tags?: unknown } | unknown[];
-    console.log('[tagging] Parsed JSON payload:', payload);
 
     // Handle both formats:
     // 1. Correct format: {"tags": ["tag1", "tag2"]}
@@ -115,7 +107,6 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
 
     if (Array.isArray(payload)) {
       // Direct array format
-      console.log('[tagging] Payload is a direct array (schema not followed)');
       tagsArray = payload;
     } else if (typeof payload === 'object' && payload !== null && 'tags' in payload) {
       // Correct object format with tags property
@@ -128,13 +119,6 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
       tags = tagsArray
         .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
         .filter((tag) => tag.length > 0);
-      console.log('[tagging] Extracted tags from array:', tags);
-    } else {
-      console.warn('[tagging] Could not extract tags array from payload:', {
-        payloadType: typeof payload,
-        isArray: Array.isArray(payload),
-        fullPayload: payload,
-      });
     }
   } catch (error) {
     // fall back to simple parsing if JSON schema fails unexpectedly
@@ -148,17 +132,10 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
       .split(/[\n,]/)
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0);
-    console.log('[tagging] Fallback parsing produced tags:', tags);
   }
 
   // Deduplicate and limit to maxTags
   const unique = Array.from(new Set(tags.map((tag) => tag.toLowerCase()))).slice(0, maxTags);
-
-  console.log('[tagging] Final tags after deduplication:', {
-    beforeDedup: tags,
-    afterDedup: unique,
-    maxTags,
-  });
 
   return {
     tags: unique,

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 interface FileViewerProps {
   filePath: string;
   onFileDataLoad?: (contentType: string) => void;
-  onContentChange?: (filePath: string, content: string, isDirty: boolean) => void;
+  onContentChange: (filePath: string, content: string, isDirty: boolean) => void;
   initialEditedContent?: string;
 }
 
@@ -37,6 +37,13 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialMount = useRef(true);
+
+  const originalContentRef = useRef<string | undefined>(undefined);
+  const initialEditedContentRef = useRef(initialEditedContent);
+
+  useEffect(() => {
+    initialEditedContentRef.current = initialEditedContent;
+  }, [initialEditedContent]);
 
   const loadFile = useCallback(async () => {
     setIsLoading(true);
@@ -69,14 +76,15 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           modifiedAt: new Date().toISOString(),
         });
 
-        // Set initial edited content (from localStorage or file content)
-        if (isInitialMount.current && initialEditedContent !== undefined) {
-          setEditedContent(initialEditedContent);
-          isInitialMount.current = false;
-        } else if (isInitialMount.current) {
-          setEditedContent(text);
-          isInitialMount.current = false;
-        }
+        originalContentRef.current = text;
+
+        const initialContent =
+          isInitialMount.current && initialEditedContentRef.current !== undefined
+            ? initialEditedContentRef.current
+            : text;
+
+        setEditedContent(initialContent);
+        isInitialMount.current = false;
 
         // Notify parent component
         if (onFileDataLoad) {
@@ -112,18 +120,20 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
   // Notify parent of content changes
   useEffect(() => {
-    if (fileData?.content !== undefined && onContentChange) {
-      const isDirty = editedContent !== fileData.content;
-      onContentChange(filePath, editedContent, isDirty);
-    }
-  }, [editedContent, fileData?.content, filePath, onContentChange]);
+    if (originalContentRef.current === undefined) return;
+
+    const isDirty = editedContent !== originalContentRef.current;
+    onContentChange(filePath, editedContent, isDirty);
+  }, [editedContent, filePath, onContentChange]);
 
   const handleContentChange = (newContent: string) => {
     setEditedContent(newContent);
   };
 
-  const handleSave = async () => {
-    if (!fileData) return;
+  const isDirty = originalContentRef.current !== undefined && editedContent !== originalContentRef.current;
+
+  const handleSave = useCallback(async () => {
+    if (!fileData || isSaving || !isDirty) return;
 
     setIsSaving(true);
     try {
@@ -139,23 +149,19 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
         throw new Error('Failed to save file');
       }
 
-      // Update the file data with the new content
-      setFileData({
-        ...fileData,
-        content: editedContent,
-      });
+      // Update the file data and original content reference
+      setFileData(prev => (prev ? { ...prev, content: editedContent } : prev));
+      originalContentRef.current = editedContent;
 
       // Notify parent that file is no longer dirty
-      if (onContentChange) {
-        onContentChange(filePath, editedContent, false);
-      }
+      onContentChange(filePath, editedContent, false);
     } catch (err) {
       console.error('Failed to save file:', err);
       setError(err instanceof Error ? err.message : 'Failed to save file');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [editedContent, fileData, filePath, isDirty, isSaving, onContentChange]);
 
   // Keyboard shortcut for save (Cmd+S or Ctrl+S)
   useEffect(() => {
@@ -168,9 +174,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editedContent, fileData]);
-
-  const isDirty = editedContent !== fileData?.content;
+  }, [handleSave]);
 
   const handleDownload = () => {
     // Create a link element and trigger download
@@ -217,6 +221,8 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
         {fileType === 'image' && (
           <div className="flex items-center justify-center">
+            {/* Using <img> because file dimensions are unknown at build time */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={fileUrl}
               alt={fileData.name}

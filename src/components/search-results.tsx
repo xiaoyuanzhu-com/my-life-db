@@ -15,7 +15,6 @@ const SEARCH_BATCH_SIZE = 30;
 export function SearchResults({ results, isSearching, error }: SearchResultsProps) {
   const [mergedResults, setMergedResults] = useState<SearchResultItem[]>([]);
   const [pagination, setPagination] = useState<SearchResponse['pagination'] | null>(null);
-  const [timing, setTiming] = useState<SearchResponse['timing'] | null>(null);
   const [currentQuery, setCurrentQuery] = useState('');
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -44,7 +43,6 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     if (!results) {
       setMergedResults([]);
       setPagination(null);
-      setTiming(null);
       setCurrentQuery('');
       lastQueryRef.current = null;
       setIsLoadingMore(false);
@@ -73,7 +71,6 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     }
 
     setPagination(results.pagination);
-    setTiming(results.timing);
     setCurrentQuery(results.query);
     lastQueryRef.current = results.query;
     setLoadMoreError(null);

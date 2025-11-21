@@ -21,7 +21,7 @@ interface DigestSupervisorConfig {
 
 const DEFAULT_CONFIG: DigestSupervisorConfig = {
   startDelayMs: 10_000,
-  idleSleepMs: 60_000,
+  idleSleepMs: 1_000, // Changed from 60s to 1s - continuous processing
   failureBaseDelayMs: 5_000,
   failureMaxDelayMs: 60_000,
   staleDigestThresholdMs: 10 * 60 * 1000,

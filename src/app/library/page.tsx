@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FileTree } from '@/components/library/file-tree';
 import { FileViewer } from '@/components/library/file-viewer';
@@ -13,14 +13,24 @@ export interface OpenedFile {
   name: string;
 }
 
+interface FileEditState {
+  content: string;
+  isDirty: boolean;
+}
+
 function LibraryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [fileEditStates, setFileEditStates] = useState<Map<string, FileEditState>>(new Map());
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
   const [isInitialized, setIsInitialized] = useState(false);
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
+  const handleFileDataLoad = useCallback((contentType: string) => {
+    setActiveFileMimeType(contentType);
+  }, []);
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -28,6 +38,8 @@ function LibraryContent() {
       const savedOpenedFiles = localStorage.getItem('library:openedFiles');
       const savedActiveFile = localStorage.getItem('library:activeFile');
       const savedExpandedFolders = localStorage.getItem('library:expandedFolders');
+      const savedFileEditStates = localStorage.getItem('library:fileEditStates');
+      const savedDirtyFiles = localStorage.getItem('library:dirtyFiles');
 
       if (savedOpenedFiles) {
         setOpenedFiles(JSON.parse(savedOpenedFiles));
@@ -39,6 +51,15 @@ function LibraryContent() {
 
       if (savedExpandedFolders) {
         setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
+      }
+
+      if (savedFileEditStates) {
+        const statesArray: [string, FileEditState][] = JSON.parse(savedFileEditStates);
+        setFileEditStates(new Map(statesArray));
+      }
+
+      if (savedDirtyFiles) {
+        setDirtyFiles(new Set(JSON.parse(savedDirtyFiles)));
       }
     } catch (error) {
       console.error('Failed to load state from localStorage:', error);
@@ -81,6 +102,24 @@ function LibraryContent() {
       console.error('Failed to save expanded folders to localStorage:', error);
     }
   }, [expandedFolders, isInitialized]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(fileEditStates.entries())));
+    } catch (error) {
+      console.error('Failed to save file edit states to localStorage:', error);
+    }
+  }, [fileEditStates, isInitialized]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(dirtyFiles)));
+    } catch (error) {
+      console.error('Failed to save dirty files to localStorage:', error);
+    }
+  }, [dirtyFiles, isInitialized]);
 
   // Handle ?open query parameter(s) - open files from URL
   useEffect(() => {
@@ -157,19 +196,34 @@ function LibraryContent() {
     expandParentFolders(path);
   };
 
-  const handleFileClose = (path: string) => {
-    const newOpenedFiles = openedFiles.filter(f => f.path !== path);
-    setOpenedFiles(newOpenedFiles);
-
-    // If closing the active file, switch to the last opened file
-    if (activeFilePath === path) {
-      if (newOpenedFiles.length > 0) {
-        setActiveFilePath(newOpenedFiles[newOpenedFiles.length - 1].path);
-      } else {
-        setActiveFilePath(null);
+  const handleFileClose = useCallback((path: string) => {
+    if (dirtyFiles.has(path)) {
+      const confirmed = window.confirm(
+        'This file has unsaved changes. Are you sure you want to close it?'
+      );
+      if (!confirmed) {
+        return;
       }
     }
-  };
+
+    setOpenedFiles(prev => {
+      const next = prev.filter(f => f.path !== path);
+      setActiveFilePath(prevActive => (prevActive === path ? (next[next.length - 1]?.path ?? null) : prevActive));
+      return next;
+    });
+
+    setFileEditStates(prev => {
+      const next = new Map(prev);
+      next.delete(path);
+      return next;
+    });
+
+    setDirtyFiles(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+  }, [dirtyFiles]);
 
   const handleTabChange = (path: string) => {
     setActiveFilePath(path);
@@ -184,6 +238,36 @@ function LibraryContent() {
     }
     setExpandedFolders(newExpandedFolders);
   };
+
+  const handleContentChange = useCallback((filePath: string, content: string, isDirty: boolean) => {
+    setFileEditStates(prev => {
+      const next = new Map(prev);
+      next.set(filePath, { content, isDirty });
+      return next;
+    });
+
+    setDirtyFiles(prev => {
+      const next = new Set(prev);
+      if (isDirty) {
+        next.add(filePath);
+      } else {
+        next.delete(filePath);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'w' && activeFilePath) {
+        e.preventDefault();
+        handleFileClose(activeFilePath);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeFilePath, handleFileClose]);
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background w-full">
@@ -208,6 +292,7 @@ function LibraryContent() {
                   <FileTabs
                     files={openedFiles}
                     activeFile={activeFilePath}
+                    dirtyFiles={dirtyFiles}
                     onTabChange={handleTabChange}
                     onTabClose={handleFileClose}
                   />
@@ -217,7 +302,9 @@ function LibraryContent() {
                 {openedFiles.length > 0 && activeFilePath ? (
                   <FileViewer
                     filePath={activeFilePath}
-                    onFileDataLoad={(contentType) => setActiveFileMimeType(contentType)}
+                    onFileDataLoad={handleFileDataLoad}
+                    onContentChange={handleContentChange}
+                    initialEditedContent={fileEditStates.get(activeFilePath)?.content}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-muted-foreground">

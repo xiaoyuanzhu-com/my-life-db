@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { FileTree } from '@/components/library/file-tree';
 import { FileViewer } from '@/components/library/file-viewer';
@@ -109,9 +109,8 @@ export default function LibraryBrowsePage() {
     setActiveFilePath(path);
   };
 
-  const handleFileClose = (path: string) => {
-    // Check if file has unsaved changes
-    if (dirtyFiles?.has(path)) {
+  const handleFileClose = useCallback((path: string) => {
+    if (dirtyFiles.has(path)) {
       const confirmed = window.confirm(
         'This file has unsaved changes. Are you sure you want to close it?'
       );
@@ -120,27 +119,24 @@ export default function LibraryBrowsePage() {
       }
     }
 
-    const newOpenedFiles = openedFiles.filter(f => f.path !== path);
-    setOpenedFiles(newOpenedFiles);
+    setOpenedFiles(prev => {
+      const next = prev.filter(f => f.path !== path);
+      setActiveFilePath(prevActive => (prevActive === path ? (next[next.length - 1]?.path ?? null) : prevActive));
+      return next;
+    });
 
-    // Remove from edit states and dirty files
-    const newFileEditStates = new Map(fileEditStates);
-    newFileEditStates.delete(path);
-    setFileEditStates(newFileEditStates);
+    setFileEditStates(prev => {
+      const next = new Map(prev);
+      next.delete(path);
+      return next;
+    });
 
-    const newDirtyFiles = new Set(dirtyFiles);
-    newDirtyFiles.delete(path);
-    setDirtyFiles(newDirtyFiles);
-
-    // If closing the active file, switch to the last opened file
-    if (activeFilePath === path) {
-      if (newOpenedFiles.length > 0) {
-        setActiveFilePath(newOpenedFiles[newOpenedFiles.length - 1].path);
-      } else {
-        setActiveFilePath(null);
-      }
-    }
-  };
+    setDirtyFiles(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+  }, [dirtyFiles]);
 
   const handleTabChange = (path: string) => {
     setActiveFilePath(path);
@@ -156,21 +152,23 @@ export default function LibraryBrowsePage() {
     setExpandedFolders(newExpandedFolders);
   };
 
-  const handleContentChange = (filePath: string, content: string, isDirty: boolean) => {
-    // Update edit state
-    const newFileEditStates = new Map(fileEditStates);
-    newFileEditStates.set(filePath, { content, isDirty });
-    setFileEditStates(newFileEditStates);
+  const handleContentChange = useCallback((filePath: string, content: string, isDirty: boolean) => {
+    setFileEditStates(prev => {
+      const newMap = new Map(prev);
+      newMap.set(filePath, { content, isDirty });
+      return newMap;
+    });
 
-    // Update dirty files set
-    const newDirtyFiles = new Set(dirtyFiles);
-    if (isDirty) {
-      newDirtyFiles.add(filePath);
-    } else {
-      newDirtyFiles.delete(filePath);
-    }
-    setDirtyFiles(newDirtyFiles);
-  };
+    setDirtyFiles(prev => {
+      const newSet = new Set(prev);
+      if (isDirty) {
+        newSet.add(filePath);
+      } else {
+        newSet.delete(filePath);
+      }
+      return newSet;
+    });
+  }, []);
 
   // Keyboard shortcut for Cmd/Ctrl+W to close active tab
   useEffect(() => {
@@ -183,7 +181,7 @@ export default function LibraryBrowsePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeFilePath]);
+  }, [activeFilePath, handleFileClose]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-background">
