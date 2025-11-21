@@ -284,8 +284,6 @@ type MatchContextProps = {
 };
 
 function MatchContext({ context }: MatchContextProps) {
-  const terms = context.terms ?? [];
-
   // Handle semantic match context
   if (context.source === 'semantic') {
     const scorePercent = context.score ? Math.round(context.score * 100) : null;

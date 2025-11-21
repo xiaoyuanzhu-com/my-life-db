@@ -5,7 +5,6 @@ import { embedText } from '@/lib/ai/embeddings';
 import { getFileWithDigests } from '@/lib/db/files-with-digests';
 import { getLogger } from '@/lib/log/logger';
 import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
-import { buildMatchSnippet } from '@/lib/search/snippet';
 import type { FileWithDigests } from '@/types/file-card';
 import type { DigestSummary } from '@/types/file-card';
 
@@ -665,54 +664,6 @@ function findDigestByType(
   return digests.find((digest) => digesterTypes.includes(digest.type));
 }
 
-function extractDigestText(digest: DigestSummary): string | null {
-  if (!digest.content) {
-    return null;
-  }
-
-  if (CONTENT_DIGESTERS.has(digest.type)) {
-    try {
-      const parsed = JSON.parse(digest.content) as { markdown?: unknown };
-      if (typeof parsed?.markdown === 'string') {
-        return parsed.markdown;
-      }
-    } catch {
-      // Fall through to raw content
-    }
-  }
-
-  if (SUMMARY_DIGESTERS.has(digest.type)) {
-    try {
-      const parsed = JSON.parse(digest.content) as { summary?: unknown };
-      if (typeof parsed.summary === 'string') {
-        return parsed.summary;
-      }
-    } catch {
-      // Fall through to raw content
-    }
-  }
-
-  if (TAG_DIGESTERS.has(digest.type)) {
-    try {
-      const parsed = JSON.parse(digest.content) as { tags?: unknown } | unknown[];
-      const tagsArray = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray((parsed as { tags?: unknown }).tags)
-          ? (parsed as { tags?: unknown }).tags
-          : [];
-      const tags = (tagsArray as unknown[])
-        .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
-        .filter((tag) => tag.length > 0);
-      if (tags.length > 0) {
-        return tags.join(', ');
-      }
-    } catch {
-      // Fall through to raw content
-    }
-  }
-
-  return digest.content;
-}
 
 function getDigestLabel(type: string, fallback: string): string {
   if (SUMMARY_DIGESTERS.has(type)) {
@@ -733,14 +684,3 @@ function containsAnyTerm(text: string, terms: string[]): boolean {
   return terms.some((term) => normalized.includes(term.toLowerCase()));
 }
 
-function stripHighlightTags(value?: string | null): string {
-  if (!value) {
-    return '';
-  }
-
-  return value
-    .split(HIGHLIGHT_PRE_TAG)
-    .join('')
-    .split(HIGHLIGHT_POST_TAG)
-    .join('');
-}
