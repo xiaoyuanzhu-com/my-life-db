@@ -92,6 +92,21 @@ export function findFilesNeedingDigestion(
       // status='in-progress' → in progress, skip for now (let it finish)
     }
 
+    // Also check for orphaned digest types (todo/failed but no registered digester)
+    // These can block processing if we don't handle them
+    if (!fileNeedsWork) {
+      const orphanedDigests = digests.filter(
+        (d) => !allDigestTypes.includes(d.digester) &&
+               (d.status === 'todo' || (d.status === 'failed' && (d.attempts ?? 0) < MAX_DIGEST_ATTEMPTS))
+      );
+      if (orphanedDigests.length > 0) {
+        log.debug(
+          { path, orphanedTypes: orphanedDigests.map((d) => d.digester) },
+          'file has orphaned digest types (will be skipped)'
+        );
+      }
+    }
+
     if (fileNeedsWork) {
       needsWork.push(path);
     }

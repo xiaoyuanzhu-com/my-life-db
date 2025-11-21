@@ -6,6 +6,16 @@ import { FileTree } from '@/components/library/file-tree';
 import { FileViewer } from '@/components/library/file-viewer';
 import { FileTabs } from '@/components/library/file-tabs';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export interface OpenedFile {
   path: string;
@@ -23,6 +33,23 @@ export default function LibraryBrowsePage() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [fileEditStates, setFileEditStates] = useState<Map<string, FileEditState>>(new Map());
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
+  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
+  const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const persistFileEditStates = useCallback((next: Map<string, FileEditState>) => {
+    try {
+      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(next.entries())));
+    } catch (error) {
+      console.error('Failed to save file edit states to localStorage:', error);
+    }
+  }, []);
+  const persistDirtyFiles = useCallback((next: Set<string>) => {
+    try {
+      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(next)));
+    } catch (error) {
+      console.error('Failed to save dirty files to localStorage:', error);
+    }
+  }, []);
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -51,20 +78,24 @@ export default function LibraryBrowsePage() {
       }
     } catch (error) {
       console.error('Failed to load state from localStorage:', error);
+    } finally {
+      setIsInitialized(true);
     }
   }, []);
 
   // Save opened files to localStorage
   useEffect(() => {
+    if (!isInitialized) return;
     try {
       localStorage.setItem('library:openedFiles', JSON.stringify(openedFiles));
     } catch (error) {
       console.error('Failed to save opened files to localStorage:', error);
     }
-  }, [openedFiles]);
+  }, [openedFiles, isInitialized]);
 
   // Save active file to localStorage
   useEffect(() => {
+    if (!isInitialized) return;
     try {
       if (activeFilePath) {
         localStorage.setItem('library:activeFile', activeFilePath);
@@ -72,34 +103,37 @@ export default function LibraryBrowsePage() {
     } catch (error) {
       console.error('Failed to save active file to localStorage:', error);
     }
-  }, [activeFilePath]);
+  }, [activeFilePath, isInitialized]);
 
   // Save expanded folders to localStorage
   useEffect(() => {
+    if (!isInitialized) return;
     try {
       localStorage.setItem('library:expandedFolders', JSON.stringify(Array.from(expandedFolders)));
     } catch (error) {
       console.error('Failed to save expanded folders to localStorage:', error);
     }
-  }, [expandedFolders]);
+  }, [expandedFolders, isInitialized]);
 
   // Save file edit states to localStorage
   useEffect(() => {
+    if (!isInitialized) return;
     try {
       localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(fileEditStates.entries())));
     } catch (error) {
       console.error('Failed to save file edit states to localStorage:', error);
     }
-  }, [fileEditStates]);
+  }, [fileEditStates, isInitialized]);
 
   // Save dirty files to localStorage
   useEffect(() => {
+    if (!isInitialized) return;
     try {
       localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(dirtyFiles)));
     } catch (error) {
       console.error('Failed to save dirty files to localStorage:', error);
     }
-  }, [dirtyFiles]);
+  }, [dirtyFiles, isInitialized]);
 
   const handleFileOpen = (path: string, name: string) => {
     // Add to opened files if not already open
@@ -109,16 +143,7 @@ export default function LibraryBrowsePage() {
     setActiveFilePath(path);
   };
 
-  const handleFileClose = useCallback((path: string) => {
-    if (dirtyFiles.has(path)) {
-      const confirmed = window.confirm(
-        'This file has unsaved changes. Are you sure you want to close it?'
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
+  const closeFile = useCallback((path: string) => {
     setOpenedFiles(prev => {
       const next = prev.filter(f => f.path !== path);
       setActiveFilePath(prevActive => (prevActive === path ? (next[next.length - 1]?.path ?? null) : prevActive));
@@ -128,15 +153,26 @@ export default function LibraryBrowsePage() {
     setFileEditStates(prev => {
       const next = new Map(prev);
       next.delete(path);
+      persistFileEditStates(next);
       return next;
     });
 
     setDirtyFiles(prev => {
       const next = new Set(prev);
       next.delete(path);
+      persistDirtyFiles(next);
       return next;
     });
-  }, [dirtyFiles]);
+  }, [persistDirtyFiles, persistFileEditStates]);
+
+  const handleFileClose = useCallback((path: string) => {
+    if (dirtyFiles.has(path)) {
+      setPendingClosePath(path);
+      setIsCloseDialogOpen(true);
+      return;
+    }
+    closeFile(path);
+  }, [closeFile, dirtyFiles]);
 
   const handleTabChange = (path: string) => {
     setActiveFilePath(path);
@@ -156,6 +192,7 @@ export default function LibraryBrowsePage() {
     setFileEditStates(prev => {
       const newMap = new Map(prev);
       newMap.set(filePath, { content, isDirty });
+      persistFileEditStates(newMap);
       return newMap;
     });
 
@@ -166,9 +203,10 @@ export default function LibraryBrowsePage() {
       } else {
         newSet.delete(filePath);
       }
+      persistDirtyFiles(newSet);
       return newSet;
     });
-  }, []);
+  }, [persistDirtyFiles, persistFileEditStates]);
 
   // Keyboard shortcut for Cmd/Ctrl+W to close active tab
   useEffect(() => {
@@ -182,6 +220,19 @@ export default function LibraryBrowsePage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeFilePath, handleFileClose]);
+
+  const confirmClose = useCallback(() => {
+    if (pendingClosePath) {
+      closeFile(pendingClosePath);
+    }
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, [closeFile, pendingClosePath]);
+
+  const cancelClose = useCallback(() => {
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, []);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-background">
@@ -239,6 +290,21 @@ export default function LibraryBrowsePage() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Closing this tab will discard them. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelClose}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClose}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

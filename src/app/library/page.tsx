@@ -7,6 +7,16 @@ import { FileViewer } from '@/components/library/file-viewer';
 import { FileTabs } from '@/components/library/file-tabs';
 import { FileFooterBar } from '@/components/library/file-footer-bar';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export interface OpenedFile {
   path: string;
@@ -26,8 +36,24 @@ function LibraryContent() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [fileEditStates, setFileEditStates] = useState<Map<string, FileEditState>>(new Map());
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
+  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
+  const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
+  const persistFileEditStates = useCallback((next: Map<string, FileEditState>) => {
+    try {
+      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(next.entries())));
+    } catch (error) {
+      console.error('Failed to save file edit states to localStorage:', error);
+    }
+  }, []);
+  const persistDirtyFiles = useCallback((next: Set<string>) => {
+    try {
+      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(next)));
+    } catch (error) {
+      console.error('Failed to save dirty files to localStorage:', error);
+    }
+  }, []);
   const handleFileDataLoad = useCallback((contentType: string) => {
     setActiveFileMimeType(contentType);
   }, []);
@@ -196,16 +222,7 @@ function LibraryContent() {
     expandParentFolders(path);
   };
 
-  const handleFileClose = useCallback((path: string) => {
-    if (dirtyFiles.has(path)) {
-      const confirmed = window.confirm(
-        'This file has unsaved changes. Are you sure you want to close it?'
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
+  const closeFile = useCallback((path: string) => {
     setOpenedFiles(prev => {
       const next = prev.filter(f => f.path !== path);
       setActiveFilePath(prevActive => (prevActive === path ? (next[next.length - 1]?.path ?? null) : prevActive));
@@ -215,15 +232,26 @@ function LibraryContent() {
     setFileEditStates(prev => {
       const next = new Map(prev);
       next.delete(path);
+      persistFileEditStates(next);
       return next;
     });
 
     setDirtyFiles(prev => {
       const next = new Set(prev);
       next.delete(path);
+      persistDirtyFiles(next);
       return next;
     });
-  }, [dirtyFiles]);
+  }, [persistDirtyFiles, persistFileEditStates]);
+
+  const handleFileClose = useCallback((path: string) => {
+    if (dirtyFiles.has(path)) {
+      setPendingClosePath(path);
+      setIsCloseDialogOpen(true);
+      return;
+    }
+    closeFile(path);
+  }, [closeFile, dirtyFiles]);
 
   const handleTabChange = (path: string) => {
     setActiveFilePath(path);
@@ -243,6 +271,7 @@ function LibraryContent() {
     setFileEditStates(prev => {
       const next = new Map(prev);
       next.set(filePath, { content, isDirty });
+      persistFileEditStates(next);
       return next;
     });
 
@@ -253,9 +282,10 @@ function LibraryContent() {
       } else {
         next.delete(filePath);
       }
+      persistDirtyFiles(next);
       return next;
     });
-  }, []);
+  }, [persistDirtyFiles, persistFileEditStates]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -268,6 +298,19 @@ function LibraryContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeFilePath, handleFileClose]);
+
+  const confirmClose = useCallback(() => {
+    if (pendingClosePath) {
+      closeFile(pendingClosePath);
+    }
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, [closeFile, pendingClosePath]);
+
+  const cancelClose = useCallback(() => {
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, []);
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background w-full">
@@ -317,6 +360,21 @@ function LibraryContent() {
           </ResizablePanelGroup>
         </div>
       </div>
+
+      <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Closing this tab will discard them. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelClose}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClose}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
