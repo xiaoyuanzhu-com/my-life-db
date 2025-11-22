@@ -109,21 +109,6 @@ export class DigestCoordinator {
         const existingDigests = listDigestsForPath(filePath);
         const digestsByName = new Map(existingDigests.map((d) => [d.digester, d]));
 
-        const allOutputsComplete = outputNames.every((name) => {
-          const existing = digestsByName.get(name);
-          if (!existing) return false;
-          if (hasReachedMaxAttempts(existing)) {
-            return true;
-          }
-          return existing.status === 'completed' || existing.status === 'skipped';
-        });
-
-        if (allOutputsComplete) {
-          log.debug({ filePath, digester: digesterName }, 'outputs already terminal, skipping');
-          skipped++;
-          continue;
-        }
-
         const outputsInProgress = outputNames.some((name) => {
           const digest = digestsByName.get(name);
           return digest?.status === 'in-progress';
@@ -135,6 +120,15 @@ export class DigestCoordinator {
           continue;
         }
 
+        const allOutputsComplete = outputNames.every((name) => {
+          const existing = digestsByName.get(name);
+          if (!existing) return false;
+          if (hasReachedMaxAttempts(existing)) {
+            return true;
+          }
+          return existing.status === 'completed' || existing.status === 'skipped';
+        });
+
         pendingOutputs = outputNames.filter((name) => {
           const digest = digestsByName.get(name);
           if (!digest) return true;
@@ -144,18 +138,32 @@ export class DigestCoordinator {
           return digest.status === 'todo';
         });
 
-        if (pendingOutputs.length === 0) {
+        const shouldReprocessCompleted = allOutputsComplete
+          ? await this.shouldReprocessCompletedOutputs(digester, filePath, file, existingDigests)
+          : false;
+
+        if (pendingOutputs.length === 0 && !shouldReprocessCompleted) {
+          log.debug({ filePath, digester: digesterName }, 'outputs already terminal, skipping');
           skipped++;
           continue;
+        }
+
+        if (pendingOutputs.length === 0 && shouldReprocessCompleted) {
+          pendingOutputs = outputNames;
+          log.info({ filePath, digester: digesterName }, 'reprocessing completed outputs');
         }
 
         // Check if can digest
         const can = await digester.canDigest(filePath, file, existingDigests, this.db);
 
         if (!can) {
-          const reason = digesterName === 'url-crawl' ? 'File does not contain a URL' : 'Not applicable';
-          this.markDigests(filePath, pendingOutputs, 'skipped', reason);
-          log.debug({ filePath, digester: digesterName }, 'not applicable, skipped');
+          if (!shouldReprocessCompleted) {
+            const reason = digesterName === 'url-crawl' ? 'File does not contain a URL' : 'Not applicable';
+            this.markDigests(filePath, pendingOutputs, 'skipped', reason);
+            log.debug({ filePath, digester: digesterName }, 'not applicable, skipped');
+          } else {
+            log.debug({ filePath, digester: digesterName }, 'completed outputs up-to-date, skipping reprocess');
+          }
           skipped++;
           continue;
         }
@@ -214,6 +222,28 @@ export class DigestCoordinator {
         path: filePath,
         timestamp: new Date().toISOString(),
       });
+    }
+  }
+
+  /**
+   * Determine if completed/skipped outputs should be reprocessed (e.g., upstream digests changed)
+   */
+  private async shouldReprocessCompletedOutputs(
+    digester: Digester,
+    filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[]
+  ): Promise<boolean> {
+    if (typeof digester.shouldReprocessCompleted !== 'function') {
+      return false;
+    }
+
+    try {
+      return await digester.shouldReprocessCompleted(filePath, file, existingDigests, this.db);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error({ filePath, digester: digester.name, error: errorMsg }, 'shouldReprocessCompleted failed');
+      return false;
     }
   }
 

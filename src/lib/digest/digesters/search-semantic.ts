@@ -14,6 +14,7 @@ import { getLogger } from '@/lib/log/logger';
 import { hasAnyTextSource } from '@/lib/digest/text-source';
 
 const log = getLogger({ module: 'SearchSemanticDigester' });
+const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 
 /**
  * Semantic Search Indexing Digester
@@ -28,56 +29,7 @@ export class SearchSemanticDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Process any text file regardless of size
-    if (!hasAnyTextSource(file, existingDigests)) {
-      return false;
-    }
-
-    // Check if we need to re-index (dependencies changed)
-    const existingSearch = existingDigests.find((d) => d.digester === 'search-semantic');
-
-    if (!existingSearch) {
-      return true; // Never indexed
-    }
-
-    if (existingSearch.status === 'todo') {
-      return true; // Not yet indexed
-    }
-
-    if (existingSearch.status === 'failed') {
-      return true; // Retry failed indexing
-    }
-
-    // Check if dependencies were updated after we last indexed
-    const summaryDigest =
-      existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
-      existingDigests.find((d) => d.digester === 'summarize');
-    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
-    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
-
-    // Re-index if content changed
-    if (contentDigest && contentDigest.updatedAt > existingSearch.updatedAt) {
-      log.info({ filePath }, 'url-crawl-content updated, re-indexing');
-      return true;
-    }
-
-    // Re-index if summary changed (and exists)
-    if (
-      summaryDigest &&
-      summaryDigest.status === 'completed' &&
-      summaryDigest.updatedAt > existingSearch.updatedAt
-    ) {
-      log.info({ filePath }, 'summary updated, re-indexing');
-      return true;
-    }
-
-    // Re-index if tags changed (and exists)
-    if (tagsDigest && tagsDigest.status === 'completed' && tagsDigest.updatedAt > existingSearch.updatedAt) {
-      log.info({ filePath }, 'tags updated, re-indexing');
-      return true;
-    }
-
-    return false; // Already indexed and up to date
+    return this.needsIndexing(filePath, file, existingDigests);
   }
 
   async digest(
@@ -145,5 +97,85 @@ export class SearchSemanticDigester implements Digester {
       log.error({ filePath, error: errorMsg }, 'semantic search indexing failed');
       throw error; // Let coordinator handle error
     }
+  }
+
+  async shouldReprocessCompleted(
+    filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[]
+  ): Promise<boolean> {
+    const existingSearch = existingDigests.find((d) => d.digester === 'search-semantic');
+    if (!existingSearch || (existingSearch.status !== 'completed' && existingSearch.status !== 'skipped')) {
+      return false;
+    }
+
+    return this.needsIndexing(filePath, file, existingDigests);
+  }
+
+  private needsIndexing(
+    filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[]
+  ): boolean {
+    // Process any text file regardless of size
+    if (!hasAnyTextSource(file, existingDigests)) {
+      return false;
+    }
+
+    const existingSearch = existingDigests.find((d) => d.digester === 'search-semantic');
+
+    if (!existingSearch) {
+      return true; // Never indexed
+    }
+
+    if (existingSearch.status === 'todo') {
+      return true; // Not yet indexed
+    }
+
+    if (existingSearch.status === 'failed') {
+      return true; // Retry failed indexing
+    }
+
+    const lastIndexed = toTimestamp(existingSearch.updatedAt);
+    const summaryDigest =
+      existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
+      existingDigests.find((d) => d.digester === 'summarize');
+    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
+    const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
+    const fileUpdatedAt = toTimestamp(file.modified_at);
+
+    // Re-index if content changed
+    if (contentDigest && toTimestamp(contentDigest.updatedAt) > lastIndexed) {
+      log.info({ filePath }, 'url-crawl-content updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if summary changed (and exists)
+    if (
+      summaryDigest &&
+      summaryDigest.status === 'completed' &&
+      toTimestamp(summaryDigest.updatedAt) > lastIndexed
+    ) {
+      log.info({ filePath }, 'summary updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if tags changed (and exists)
+    if (
+      tagsDigest &&
+      tagsDigest.status === 'completed' &&
+      toTimestamp(tagsDigest.updatedAt) > lastIndexed
+    ) {
+      log.info({ filePath }, 'tags updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if file changed and we rely on local text content
+    if (!contentDigest && fileUpdatedAt > lastIndexed) {
+      log.info({ filePath }, 'file modified after last semantic index, re-indexing');
+      return true;
+    }
+
+    return false; // Already indexed and up to date
   }
 }

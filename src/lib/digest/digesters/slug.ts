@@ -17,6 +17,7 @@ import {
 } from '@/lib/digest/text-source';
 
 const log = getLogger({ module: 'SlugDigester' });
+const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 
 /**
  * Slug Digester
@@ -94,5 +95,36 @@ export class SlugDigester implements Digester {
         updatedAt: now,
       },
     ];
+  }
+
+  async shouldReprocessCompleted(
+    _filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[]
+  ): Promise<boolean> {
+    const slugDigest = existingDigests.find((d) => d.digester === 'slug');
+    if (!slugDigest || (slugDigest.status !== 'completed' && slugDigest.status !== 'skipped')) {
+      return false;
+    }
+
+    if (!hasAnyTextSource(file, existingDigests)) {
+      return false;
+    }
+
+    const summaryDigest =
+      existingDigests.find((d) => d.digester === 'url-crawl-summary' && d.status === 'completed') ||
+      existingDigests.find((d) => d.digester === 'summarize' && d.status === 'completed');
+
+    const contentDigest = existingDigests.find(
+      (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
+    );
+
+    const sourceUpdatedAt = summaryDigest
+      ? toTimestamp(summaryDigest.updatedAt)
+      : contentDigest
+        ? toTimestamp(contentDigest.updatedAt)
+        : toTimestamp(file.modified_at);
+
+    return sourceUpdatedAt > toTimestamp(slugDigest.updatedAt);
   }
 }

@@ -53,6 +53,9 @@ export async function saveToInbox(input: SaveToInboxInput): Promise<SaveToInboxR
     throw new Error('Either text or files must be provided');
   }
 
+  // Ensure inbox directory exists (handles first-run environments)
+  await fs.mkdir(INBOX_DIR, { recursive: true });
+
   const uuid = generateId();
   const now = new Date().toISOString();
 

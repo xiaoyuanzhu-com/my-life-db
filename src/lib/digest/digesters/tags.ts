@@ -12,6 +12,7 @@ import { getLogger } from '@/lib/log/logger';
 import { getPrimaryTextContent, hasAnyTextSource } from '@/lib/digest/text-source';
 
 const log = getLogger({ module: 'TagsDigester' });
+const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 
 /**
  * Tags Digester
@@ -68,5 +69,30 @@ export class TagsDigester implements Digester {
         updatedAt: now,
       },
     ];
+  }
+
+  async shouldReprocessCompleted(
+    _filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[]
+  ): Promise<boolean> {
+    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
+    if (!tagsDigest || (tagsDigest.status !== 'completed' && tagsDigest.status !== 'skipped')) {
+      return false;
+    }
+
+    if (!hasAnyTextSource(file, existingDigests)) {
+      return false;
+    }
+
+    const contentDigest = existingDigests.find(
+      (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
+    );
+
+    const sourceUpdatedAt = contentDigest
+      ? toTimestamp(contentDigest.updatedAt)
+      : toTimestamp(file.modified_at);
+
+    return sourceUpdatedAt > toTimestamp(tagsDigest.updatedAt);
   }
 }

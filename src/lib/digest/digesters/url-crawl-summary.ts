@@ -11,6 +11,7 @@ import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'UrlCrawlSummaryDigester' });
+const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 
 /**
  * URL Crawl Summary Digester
@@ -39,6 +40,27 @@ export class UrlCrawlSummaryDigester implements Digester {
     }
 
     return true;
+  }
+
+  async shouldReprocessCompleted(
+    _filePath: string,
+    _file: FileRecordRow,
+    existingDigests: Digest[]
+  ): Promise<boolean> {
+    const summaryDigest = existingDigests.find((d) => d.digester === 'url-crawl-summary');
+    if (!summaryDigest) {
+      return false;
+    }
+
+    const contentDigest = existingDigests.find(
+      (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
+    );
+
+    if (!contentDigest) {
+      return false;
+    }
+
+    return toTimestamp(contentDigest.updatedAt) > toTimestamp(summaryDigest.updatedAt);
   }
 
   async digest(

@@ -45,4 +45,15 @@ export interface Digester {
     existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<Digest[] | null>;
+
+  /**
+   * Optional hook to signal reprocessing even when outputs are already completed/skipped.
+   * Return true when upstream inputs changed and outputs should be regenerated.
+   */
+  shouldReprocessCompleted?(
+    filePath: string,
+    file: FileRecordRow,
+    existingDigests: Digest[],
+    db: BetterSqlite3.Database
+  ): Promise<boolean> | boolean;
 }
