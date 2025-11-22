@@ -58,6 +58,7 @@ export function Header() {
               alt="MyLifeDB Logo"
               width={48}
               height={48}
+              priority
               className="rounded-md"
             />
             <span className="text-xl font-bold text-foreground">MyLifeDB</span>
