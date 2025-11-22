@@ -30,20 +30,16 @@ RUN apk add --no-cache python3 make g++
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-ARG APP_USER=my-life-db
-
-# Create non-root user matching common host UID/GID 1000
-RUN addgroup -g 1000 $APP_USER && adduser -D -u 1000 -G $APP_USER $APP_USER
-
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
 # Create data directory owned by app user; group-writable for default UID/GID
-RUN mkdir -p /app/data && chown $APP_USER:$APP_USER /app/data && chmod 775 /app/data
+RUN mkdir -p /app/data && chown node:node /app/data && chmod 775 /app/data
 
-USER 1000:1000
+# Use built-in non-root node user (uid/gid 1000) from the base image to avoid gid conflicts
+USER node
 
 EXPOSE 3000
 
