@@ -15,6 +15,7 @@ interface OmniInputProps {
     isSearching: boolean;
     error: string | null;
   }) => void;
+  maxHeight?: number;
   searchStatus?: {
     isSearching: boolean;
     hasNoResults: boolean;
@@ -25,7 +26,7 @@ interface OmniInputProps {
 
 const SEARCH_BATCH_SIZE = 30;
 
-export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }: OmniInputProps) {
+export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, maxHeight }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -294,8 +295,9 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus }:
           onChange={(e) => setContent(e.target.value)}
           placeholder="What's up?"
           disabled={isLoading}
+          style={maxHeight ? { maxHeight } : undefined}
           className={cn(
-            'border-0 bg-transparent shadow-none text-base resize-none cursor-text',
+            'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
             'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
             'placeholder:text-muted-foreground/50 min-h-[40px] px-4 pt-3 pb-2'
           )}

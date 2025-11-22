@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { OmniInput } from '@/components/omni-input';
 import { InboxFeed } from '@/components/inbox-feed';
 import { SearchResults } from '@/components/search-results';
@@ -18,6 +18,8 @@ export default function HomePage() {
     isSearching: false,
     error: null,
   });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [inputMaxHeight, setInputMaxHeight] = useState<number | null>(null);
 
   // Track the last successful search results to keep them visible during searching
   const [lastSuccessfulResults, setLastSuccessfulResults] = useState<SearchResponse | null>(null);
@@ -55,8 +57,31 @@ export default function HomePage() {
     onInboxChange: handleInboxChange,
   });
 
+  // Cap the input area to half of the available page container height
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateMaxHeight = () => {
+      const nextHeight = container.clientHeight / 2;
+      setInputMaxHeight(prev => (prev === nextHeight ? prev : nextHeight));
+    };
+
+    updateMaxHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateMaxHeight();
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   return (
-    <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden flex flex-col">
       {/* Scrollable feed area - shows either SearchResults or InboxFeed */}
       <div className="flex-1 overflow-hidden relative">
         {/* Keep InboxFeed always mounted to avoid reloading */}
@@ -82,6 +107,7 @@ export default function HomePage() {
           <OmniInput
             onEntryCreated={handleEntryCreated}
             onSearchStateChange={setSearchState}
+            maxHeight={inputMaxHeight ?? undefined}
             searchStatus={{
               isSearching: searchState.isSearching,
               hasNoResults: searchState.results !== null && searchState.results.results.length === 0 && !searchState.isSearching,
