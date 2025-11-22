@@ -16,12 +16,29 @@ export function getDatabasePath(): string {
   const baseDir = process.env.MY_DATA_DIR || './data';
   const appDir = join(baseDir, 'app', 'my-life-db');
 
-  // Ensure directory exists
-  if (!existsSync(appDir)) {
-    mkdirSync(appDir, { recursive: true });
-  }
-
   return join(appDir, 'database.sqlite');
+}
+
+/**
+ * Ensure database directory exists
+ * Separated from getDatabasePath to allow better error handling
+ */
+function ensureDatabaseDirectory(): void {
+  const baseDir = process.env.MY_DATA_DIR || './data';
+  const appDir = join(baseDir, 'app', 'my-life-db');
+
+  try {
+    if (!existsSync(appDir)) {
+      mkdirSync(appDir, { recursive: true });
+    }
+  } catch (error) {
+    // Provide detailed error message for debugging
+    const err = error as Error;
+    throw new Error(
+      `Failed to create database directory at ${appDir}: ${err.message}. ` +
+      `Ensure MY_DATA_DIR (${baseDir}) is writable and the parent directory exists.`
+    );
+  }
 }
 
 /**
@@ -29,6 +46,7 @@ export function getDatabasePath(): string {
  */
 export function getDatabase(): BetterSqlite3.Database {
   if (!db) {
+    ensureDatabaseDirectory();
     const dbPath = getDatabasePath();
     db = new Database(dbPath);
 
