@@ -65,7 +65,7 @@ export class SlugDigester implements Digester {
       return null; // Should not happen if canDigest returned true
     }
 
-    log.info({ filePath, sourceType }, 'generating slug');
+    log.debug({ filePath, sourceType }, 'generating slug');
 
     // Generate slug
     const result = generateSlugFromContentDigest(sourceText);

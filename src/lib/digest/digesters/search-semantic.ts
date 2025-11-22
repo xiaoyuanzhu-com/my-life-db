@@ -38,7 +38,7 @@ export class SearchSemanticDigester implements Digester {
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    log.info({ filePath }, 'indexing for semantic search');
+    log.debug({ filePath }, 'indexing for semantic search');
 
     try {
       // Ingest to qdrant_documents table (creates chunks)
@@ -73,7 +73,7 @@ export class SearchSemanticDigester implements Digester {
         enqueuedAt: now,
       };
 
-      log.info(
+      log.debug(
         { filePath, ...metadata },
         'semantic search indexing enqueued'
       );
@@ -146,7 +146,7 @@ export class SearchSemanticDigester implements Digester {
 
     // Re-index if content changed
     if (contentDigest && toTimestamp(contentDigest.updatedAt) > lastIndexed) {
-      log.info({ filePath }, 'url-crawl-content updated, re-indexing');
+      log.debug({ filePath }, 'url-crawl-content updated, re-indexing');
       return true;
     }
 
@@ -156,7 +156,7 @@ export class SearchSemanticDigester implements Digester {
       summaryDigest.status === 'completed' &&
       toTimestamp(summaryDigest.updatedAt) > lastIndexed
     ) {
-      log.info({ filePath }, 'summary updated, re-indexing');
+      log.debug({ filePath }, 'summary updated, re-indexing');
       return true;
     }
 
@@ -166,13 +166,13 @@ export class SearchSemanticDigester implements Digester {
       tagsDigest.status === 'completed' &&
       toTimestamp(tagsDigest.updatedAt) > lastIndexed
     ) {
-      log.info({ filePath }, 'tags updated, re-indexing');
+      log.debug({ filePath }, 'tags updated, re-indexing');
       return true;
     }
 
     // Re-index if file changed and we rely on local text content
     if (!contentDigest && fileUpdatedAt > lastIndexed) {
-      log.info({ filePath }, 'file modified after last semantic index, re-indexing');
+      log.debug({ filePath }, 'file modified after last semantic index, re-indexing');
       return true;
     }
 

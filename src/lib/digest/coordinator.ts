@@ -150,7 +150,7 @@ export class DigestCoordinator {
 
         if (pendingOutputs.length === 0 && shouldReprocessCompleted) {
           pendingOutputs = outputNames;
-          log.info({ filePath, digester: digesterName }, 'reprocessing completed outputs');
+          log.debug({ filePath, digester: digesterName }, 'reprocessing completed outputs');
         }
 
         // Check if can digest
@@ -171,7 +171,7 @@ export class DigestCoordinator {
         // Mark pending outputs as in-progress
         this.markDigests(filePath, pendingOutputs, 'in-progress');
 
-        log.info({ filePath, digester: digesterName }, 'running digester');
+        log.debug({ filePath, digester: digesterName }, 'running digester');
 
         // Execute digester
         const outputs = await digester.digest(filePath, file, existingDigests, this.db);
@@ -196,7 +196,7 @@ export class DigestCoordinator {
         }
 
         processed++;
-        log.info({ filePath, digester: digesterName }, 'digester completed');
+        log.debug({ filePath, digester: digesterName }, 'digester completed');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         log.error({ filePath, digester: digesterName, error: errorMsg }, 'digester failed');

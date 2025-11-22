@@ -89,7 +89,7 @@ export class UrlCrawlerDigester implements Digester {
     const fullPath = path.join(process.env.MY_DATA_DIR || './data', filePath);
     const url = (await fs.readFile(fullPath, 'utf-8')).trim();
 
-    log.info({ filePath, url }, 'crawling url');
+    log.debug({ filePath, url }, 'crawling url');
 
     // Crawl URL
     const crawlResult = await crawlUrlDigest({ url, timeoutMs: 30000 });
@@ -194,14 +194,14 @@ export class UrlCrawlerDigester implements Digester {
             createdAt: now,
             updatedAt: now,
           });
-          log.info({ filePath, sqlarName }, 'created url-crawl-screenshot digest');
+          log.debug({ filePath, sqlarName }, 'created url-crawl-screenshot digest');
         }
       } catch (error) {
         log.error({ error }, 'failed to process screenshot');
       }
     }
 
-    log.info({ filePath, digestCount: digests.length }, 'url crawl complete');
+    log.debug({ filePath, digestCount: digests.length }, 'url crawl complete');
 
     return digests;
   }

@@ -85,7 +85,7 @@ export class UrlCrawlSummaryDigester implements Digester {
       markdown = contentDigest.content;
     }
 
-    log.info({ filePath }, 'generating summary');
+    log.debug({ filePath }, 'generating summary');
 
     // Generate summary (uses default settings from summarizeTextDigest)
     const result = await summarizeTextDigest({ text: markdown });

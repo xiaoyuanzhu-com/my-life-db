@@ -48,7 +48,7 @@ export class TagsDigester implements Digester {
       return null;
     }
 
-    log.info({ filePath }, 'generating tags');
+    log.debug({ filePath }, 'generating tags');
 
     // Generate tags
     const result = await generateTagsDigest({ text: markdown });

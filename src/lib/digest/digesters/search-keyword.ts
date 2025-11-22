@@ -38,7 +38,7 @@ export class SearchKeywordDigester implements Digester {
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<Digest[] | null> {
-    log.info({ filePath }, 'indexing for keyword search');
+    log.debug({ filePath }, 'indexing for keyword search');
 
     try {
       // Ingest to meili_documents table (creates/updates cache)
@@ -74,7 +74,7 @@ export class SearchKeywordDigester implements Digester {
         enqueuedAt: now,
       };
 
-      log.info(
+      log.debug(
         { filePath, ...metadata },
         'keyword search indexing enqueued'
       );
@@ -147,7 +147,7 @@ export class SearchKeywordDigester implements Digester {
 
     // Re-index if content changed
     if (contentDigest && toTimestamp(contentDigest.updatedAt) > lastIndexed) {
-      log.info({ filePath }, 'url-crawl-content updated, re-indexing');
+      log.debug({ filePath }, 'url-crawl-content updated, re-indexing');
       return true;
     }
 
@@ -157,7 +157,7 @@ export class SearchKeywordDigester implements Digester {
       summaryDigest.status === 'completed' &&
       toTimestamp(summaryDigest.updatedAt) > lastIndexed
     ) {
-      log.info({ filePath }, 'summary updated, re-indexing');
+      log.debug({ filePath }, 'summary updated, re-indexing');
       return true;
     }
 
@@ -167,13 +167,13 @@ export class SearchKeywordDigester implements Digester {
       tagsDigest.status === 'completed' &&
       toTimestamp(tagsDigest.updatedAt) > lastIndexed
     ) {
-      log.info({ filePath }, 'tags updated, re-indexing');
+      log.debug({ filePath }, 'tags updated, re-indexing');
       return true;
     }
 
     // Re-index if file changed and we rely on local text content
     if (!contentDigest && fileUpdatedAt > lastIndexed) {
-      log.info({ filePath }, 'file modified after last keyword index, re-indexing');
+      log.debug({ filePath }, 'file modified after last keyword index, re-indexing');
       return true;
     }
 
