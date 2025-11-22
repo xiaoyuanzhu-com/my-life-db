@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FileX, Download, Copy } from 'lucide-react';
+import { FileX, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
@@ -35,13 +35,11 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   const [error, setError] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialMount = useRef(true);
 
   const originalContentRef = useRef<string | undefined>(undefined);
   const initialEditedContentRef = useRef(initialEditedContent);
-  const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     initialEditedContentRef.current = initialEditedContent;
@@ -120,22 +118,6 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     loadFile();
   }, [loadFile]);
 
-  useEffect(() => {
-    setCopyStatus('idle');
-    if (copyResetTimeoutRef.current) {
-      clearTimeout(copyResetTimeoutRef.current);
-      copyResetTimeoutRef.current = null;
-    }
-  }, [filePath]);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetTimeoutRef.current) {
-        clearTimeout(copyResetTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Notify parent of content changes
   useEffect(() => {
     if (originalContentRef.current === undefined) return;
@@ -204,26 +186,6 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     document.body.removeChild(link);
   };
 
-  const handleCopy = useCallback(async () => {
-    if (!navigator.clipboard) {
-      console.error('Clipboard API not available');
-      return;
-    }
-
-    if (copyResetTimeoutRef.current) {
-      clearTimeout(copyResetTimeoutRef.current);
-    }
-
-    try {
-      await navigator.clipboard.writeText(editedContent);
-      setCopyStatus('copied');
-      copyResetTimeoutRef.current = setTimeout(() => setCopyStatus('idle'), 2000);
-    } catch (err) {
-      console.error('Failed to copy file content:', err);
-      setCopyStatus('idle');
-    }
-  }, [editedContent]);
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -246,19 +208,6 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
   return (
     <div className="h-full w-full min-w-0 flex flex-col">
-      <div className="flex items-center justify-end gap-2 px-4 py-2 border-b">
-        {fileType === 'text' ? (
-          <Button variant="outline" size="sm" onClick={handleCopy}>
-            <Copy className="w-4 h-4 mr-2" />
-            {copyStatus === 'copied' ? 'Copied' : 'Copy'}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="w-4 h-4 mr-2" />
-            Download
-          </Button>
-        )}
-      </div>
       <div className="flex-1 overflow-auto p-4">
         {fileType === 'text' && fileData.content !== undefined && (
           <textarea
@@ -323,6 +272,10 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
             <FileX className="w-12 h-12" />
             <p>Cannot preview this file type</p>
+            <Button onClick={handleDownload}>
+              <Download className="w-4 h-4 mr-2" />
+              Download to view
+            </Button>
           </div>
         )}
       </div>
