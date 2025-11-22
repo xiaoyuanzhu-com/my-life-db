@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Save, Check, Loader2, LogOut } from 'lucide-react';
+import { Sparkles, Save, Check, Loader2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/settings-context';
@@ -17,6 +17,12 @@ interface ModelOption {
   owned_by?: string;
 }
 
+interface DigestStats {
+  totalFiles: number;
+  digestedFiles: number;
+  pendingDigests: number;
+}
+
 export default function SettingsPage() {
   const params = useParams();
   const { settings, setSettings, isLoading, isSaving, saveMessage, saveSettings } = useSettingsContext();
@@ -25,6 +31,8 @@ export default function SettingsPage() {
   const [modelQuery, setModelQuery] = useState('');
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [digestStats, setDigestStats] = useState<DigestStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   const filteredModels = useMemo(() => {
     if (!modelQuery) return modelOptions;
@@ -81,19 +89,32 @@ export default function SettingsPage() {
     [setSettings, settings]
   );
 
-  const handleLogout = async () => {
+  const fetchDigestStats = useCallback(async () => {
+    setIsLoadingStats(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      // Redirect to login page
-      window.location.href = '/login';
+      const response = await fetch('/api/digest/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setDigestStats(data);
+      }
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Failed to fetch digest stats:', error);
+    } finally {
+      setIsLoadingStats(false);
     }
-  };
+  }, []);
+
 
   // Determine active tab from URL
   const tabParam = params.tab as string[] | undefined;
   const activeTab = tabParam?.[0] || 'general';
+
+  // Fetch digest stats when digesters tab is active
+  useEffect(() => {
+    if (activeTab === 'digesters') {
+      void fetchDigestStats();
+    }
+  }, [activeTab, fetchDigestStats]);
 
   if (isLoading) {
     return (
@@ -115,18 +136,18 @@ export default function SettingsPage() {
     // Save only the relevant settings based on active tab
     if (activeTab === 'general') {
       saveSettings({ preferences: settings.preferences });
-    } else if (activeTab === 'enrichment') {
-      saveSettings({ enrichment: settings.enrichment });
     } else if (activeTab === 'vendors') {
       saveSettings({ vendors: settings.vendors });
+    } else if (activeTab === 'digesters') {
+      saveSettings({ digesters: settings.digesters });
     }
     // Tasks tab doesn't need saving - it's read-only
   };
 
   const tabs = [
     { label: 'General', value: 'general', path: '/settings' },
-    { label: 'Enrichment', value: 'enrichment', path: '/settings/enrichment' },
     { label: 'Vendors', value: 'vendors', path: '/settings/vendors' },
+    { label: 'Digest', value: 'digesters', path: '/settings/digesters' },
     { label: 'Tasks', value: 'tasks', path: '/settings/tasks' },
   ];
 
@@ -204,320 +225,6 @@ export default function SettingsPage() {
                   <option value="error">error</option>
                 </select>
                 <p className="text-xs text-muted-foreground">A browser refresh or server restart may be required to apply.</p>
-              </div>
-              <div className="pt-4 border-t">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Account</label>
-                  <div>
-                    <Button
-                      variant="outline"
-                      onClick={handleLogout}
-                      className="gap-2"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Logout
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Sign out of your account and return to the login page.</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Enrichment Tab */}
-        {activeTab === 'enrichment' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Enrichment Features</CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                Configure AI-powered enrichment by input type for quick capture and semantic search
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Text/Notes */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Text / Notes</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'entityExtraction', label: 'Entity extraction (people, places, topics)', description: 'Find all notes mentioning specific entities' },
-                    { key: 'autoTagging', label: 'Auto-tagging (key phrases)', description: 'Automatic organization without manual effort' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Enable semantic search' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true;
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              text: {
-                                ...settings.enrichment?.text,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.text?.[key as keyof typeof settings.enrichment.text] ?? true) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* URL/Links */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">URL / Links</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'contentCrawl', label: 'Crawl & extract main content', description: 'Full-text searchable articles' },
-                    { key: 'screenshot', label: 'Screenshot capture', description: 'Visual memory + OCR' },
-                    { key: 'metadataExtraction', label: 'Extract metadata', description: 'Title, description, author, date' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Semantic search on article content' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true;
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              url: {
-                                ...settings.enrichment?.url,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.url?.[key as keyof typeof settings.enrichment.url] ?? true) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Images */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Images</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'captioning', label: 'Image captioning', description: 'Search "find images with cats"' },
-                    { key: 'ocr', label: 'OCR (text extraction)', description: 'Search text in screenshots/documents' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Semantic search from caption + OCR' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true;
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              image: {
-                                ...settings.enrichment?.image,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.image?.[key as keyof typeof settings.enrichment.image] ?? true) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Audio */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Audio</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'transcription', label: 'ASR (speech-to-text)', description: 'Full transcription' },
-                    { key: 'speakerDiarization', label: 'Speaker diarization', description: 'Identify who said what' },
-                    { key: 'timestampExtraction', label: 'Extract timestamps', description: 'Navigate by topic' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Semantic search from transcript' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true);
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              audio: {
-                                ...settings.enrichment?.audio,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.audio?.[key as keyof typeof settings.enrichment.audio] ?? (key === 'speakerDiarization' ? false : true)) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Video */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Video</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'audioTranscription', label: 'Audio transcription (ASR)', description: 'Extract audio track and transcribe' },
-                    { key: 'frameCaptioning', label: 'Frame captioning', description: 'Describe visual content' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Semantic search from transcript + captions' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true;
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              video: {
-                                ...settings.enrichment?.video,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.video?.[key as keyof typeof settings.enrichment.video] ?? true) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* PDF/Documents */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">PDF / Documents</h3>
-                <div className="pl-4 space-y-2">
-                  {[
-                    { key: 'textExtraction', label: 'Text extraction', description: 'Extract native text from PDFs' },
-                    { key: 'ocr', label: 'OCR for scanned PDFs', description: 'Extract text from scanned documents' },
-                    { key: 'metadataExtraction', label: 'Extract metadata', description: 'Title, author, dates' },
-                    { key: 'embeddings', label: 'Generate embeddings', description: 'Semantic search' },
-                  ].map(({ key, label, description }) => (
-                    <div key={key} className="flex items-center justify-between py-1">
-                      <div className="space-y-0.5">
-                        <div className="text-sm">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <button
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          (settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true) === true
-                            ? 'bg-primary'
-                            : 'bg-muted'
-                        }`}
-                        onClick={() => {
-                          const currentValue = settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true;
-                          setSettings({
-                            ...settings,
-                            enrichment: {
-                              ...settings.enrichment,
-                              pdf: {
-                                ...settings.enrichment?.pdf,
-                                [key]: !currentValue,
-                              },
-                            } as UserSettings['enrichment'],
-                          });
-                        }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            (settings.enrichment?.pdf?.[key as keyof typeof settings.enrichment.pdf] ?? true) === true
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ))}
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -671,6 +378,129 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground">
                   Base URL for the Qdrant vector service used by semantic search.
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Digesters Tab */}
+        {activeTab === 'digesters' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Digester Configuration</CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                Enable or disable individual digesters for file processing
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Stats Display */}
+              <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+                <div className="flex items-center gap-8">
+                  {isLoadingStats ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <div className="text-2xl font-semibold">
+                          {digestStats?.digestedFiles ?? 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Digested Files</div>
+                      </div>
+                      <div className="h-8 w-px bg-border" />
+                      <div className="space-y-1">
+                        <div className="text-2xl font-semibold">
+                          {digestStats?.totalFiles ?? 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Total Files</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isLoadingStats && digestStats && (
+                    <>
+                      {digestStats.pendingDigests > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+                          <span className="text-sm text-muted-foreground">Processing</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-green-500" />
+                          <span className="text-sm text-muted-foreground">Up to date</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Digester Toggles */}
+              <div className="space-y-4">
+              {[
+                {
+                  key: 'url-crawler',
+                  label: 'URL Crawler',
+                  description: 'Crawl URLs and extract content, screenshots, and metadata'
+                },
+                {
+                  key: 'url-crawl-summary',
+                  label: 'URL Crawl Summary',
+                  description: 'Generate AI summaries of crawled URL content'
+                },
+                {
+                  key: 'tags',
+                  label: 'Tags',
+                  description: 'Extract and generate tags for content organization'
+                },
+                {
+                  key: 'slug',
+                  label: 'Slug',
+                  description: 'Generate friendly slugs for file naming'
+                },
+                {
+                  key: 'search-keyword',
+                  label: 'Search Keyword',
+                  description: 'Index content for keyword search (Meilisearch)'
+                },
+                {
+                  key: 'search-semantic',
+                  label: 'Search Semantic',
+                  description: 'Generate embeddings for semantic search (Qdrant)'
+                },
+              ].map(({ key, label, description }) => (
+                <div key={key} className="flex items-center justify-between py-2">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">{label}</div>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
+                  <button
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
+                        ? 'bg-primary'
+                        : 'bg-muted'
+                    }`}
+                    onClick={() => {
+                      const currentValue = settings.digesters?.[key as keyof typeof settings.digesters] ?? true;
+                      setSettings({
+                        ...settings,
+                        digesters: {
+                          ...settings.digesters,
+                          [key]: !currentValue,
+                        },
+                      });
+                    }}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
+                          ? 'translate-x-6'
+                          : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
               </div>
             </CardContent>
           </Card>

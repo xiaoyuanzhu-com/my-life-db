@@ -31,6 +31,16 @@ export interface UserSettings {
     };
   };
 
+  // Digester Configuration
+  digesters?: {
+    'url-crawler'?: boolean;
+    'url-crawl-summary'?: boolean;
+    'tags'?: boolean;
+    'slug'?: boolean;
+    'search-keyword'?: boolean;
+    'search-semantic'?: boolean;
+  };
+
   // Extraction Options (defaults for enrichment)
   extraction: {
     autoEnrich: boolean; // Auto-enrich new entries
@@ -95,6 +105,14 @@ export const DEFAULT_SETTINGS: UserSettings = {
     weeklyDigest: false,
     digestDay: 0, // Sunday
     logLevel: 'info',
+  },
+  digesters: {
+    'url-crawler': true,
+    'url-crawl-summary': true,
+    'tags': true,
+    'slug': true,
+    'search-keyword': true,
+    'search-semantic': true,
   },
   extraction: {
     autoEnrich: false,
