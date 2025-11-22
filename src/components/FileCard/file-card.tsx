@@ -105,6 +105,9 @@ export function FileCard({
     // Fallback to filename
     return { type: 'filename' as const, name: file.name };
   }, [file]);
+  const textDisplay = content.type === 'text'
+    ? getTextDisplay(fullContent || content.text, isExpanded)
+    : { displayText: '', shouldTruncate: false };
 
   return (
     <div className={cn('w-full flex flex-col items-end', className)}>
@@ -160,11 +163,10 @@ export function FileCard({
             </div>
           ) : content.type === 'text' ? (
             <TextContent
-              text={fullContent || content.text}
+              displayText={textDisplay.displayText}
               highlightTerms={highlightTerms}
               isExpanded={isExpanded}
-              isLoading={isLoading}
-              onToggleExpand={handleToggleExpand}
+              shouldTruncate={textDisplay.shouldTruncate}
             />
           ) : (
             <div className="p-6 flex items-center justify-center min-h-[120px]">
@@ -181,13 +183,26 @@ export function FileCard({
             </div>
           )}
 
-          {/* Hover open button */}
-          <Link
-            href={href}
-            className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            Open
-          </Link>
+          {/* Hover action bar */}
+          <div className="pointer-events-none absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="flex items-center gap-2 pointer-events-auto">
+              {textDisplay.shouldTruncate && (
+                <button
+                  onClick={handleToggleExpand}
+                  disabled={isLoading}
+                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-wait"
+                >
+                  {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+              )}
+              <Link
+                href={href}
+                className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                Open
+              </Link>
+            </div>
+          </div>
         </div>
 
         {matchContext && (
@@ -202,24 +217,16 @@ export function FileCard({
  * Text content display with optional term highlighting and line limiting
  */
 function TextContent({
-  text,
+  displayText,
   highlightTerms,
   isExpanded,
-  isLoading,
-  onToggleExpand,
+  shouldTruncate,
 }: {
-  text: string;
+  displayText: string;
   highlightTerms?: string[];
   isExpanded: boolean;
-  isLoading: boolean;
-  onToggleExpand: () => void;
+  shouldTruncate: boolean;
 }) {
-  const allLines = text.split('\n');
-  const maxLines = 50;
-  const shouldTruncate = allLines.length > maxLines;
-  const displayLines = isExpanded ? allLines : allLines.slice(0, maxLines);
-  const displayText = displayLines.join('\n');
-
   return (
     <div className="relative">
       <div className="p-4 max-w-full">
@@ -232,19 +239,18 @@ function TextContent({
           </div>
         </div>
       </div>
-
-      {/* Expand/Collapse button - shown when content is truncated */}
-      {shouldTruncate && (
-        <button
-          onClick={onToggleExpand}
-          disabled={isLoading}
-          className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-wait"
-        >
-          {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
-        </button>
-      )}
     </div>
   );
+}
+
+function getTextDisplay(text: string, isExpanded: boolean) {
+  const allLines = text.split('\n');
+  const maxLines = 50;
+  const shouldTruncate = allLines.length > maxLines;
+  const displayLines = isExpanded ? allLines : allLines.slice(0, maxLines);
+  const displayText = displayLines.join('\n');
+
+  return { displayText, shouldTruncate };
 }
 
 function highlightMatches(text: string, terms: string[]) {
