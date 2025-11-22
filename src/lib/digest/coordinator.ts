@@ -138,19 +138,10 @@ export class DigestCoordinator {
           return digest.status === 'todo';
         });
 
-        const shouldReprocessCompleted = allOutputsComplete
-          ? await this.shouldReprocessCompletedOutputs(digester, filePath, file, existingDigests)
-          : false;
-
-        if (pendingOutputs.length === 0 && !shouldReprocessCompleted) {
+        if (pendingOutputs.length === 0) {
           log.debug({ filePath, digester: digesterName }, 'outputs already terminal, skipping');
           skipped++;
           continue;
-        }
-
-        if (pendingOutputs.length === 0 && shouldReprocessCompleted) {
-          pendingOutputs = outputNames;
-          log.debug({ filePath, digester: digesterName }, 'reprocessing completed outputs');
         }
 
         // Check if can digest
@@ -169,7 +160,7 @@ export class DigestCoordinator {
         }
 
         // Mark pending outputs as in-progress
-        this.markDigests(filePath, pendingOutputs, 'in-progress');
+        this.markDigests(filePath, pendingOutputs, 'in-progress', null, { incrementAttempts: true });
 
         log.debug({ filePath, digester: digesterName }, 'running digester');
 
@@ -371,7 +362,19 @@ export class DigestCoordinator {
    */
   private resetDigests(filePath: string): void {
     log.info({ filePath }, 'resetting digests before processing');
-    deleteDigestsForPath(filePath);
+
+    // Preserve attempt counts so max-attempts logic still applies after a reset
+    const existing = listDigestsForPath(filePath);
+    for (const digest of existing) {
+      updateDigest(digest.id, {
+        status: 'todo',
+        content: null,
+        sqlarName: null,
+        error: null,
+        attempts: digest.attempts ?? 0,
+      });
+    }
+
     const pathHash = hashPath(filePath);
     sqlarDeletePrefix(this.db, `${pathHash}/`);
   }
@@ -388,7 +391,8 @@ export class DigestCoordinator {
     filePath: string,
     digesterNames: string[],
     status: Digest['status'],
-    error?: string | null
+    error?: string | null,
+    options?: { incrementAttempts?: boolean }
   ): void {
     if (digesterNames.length === 0) return;
     const now = new Date().toISOString();
@@ -399,10 +403,13 @@ export class DigestCoordinator {
       const existing = getDigestById(id);
       if (existing) {
         let attempts = existing.attempts ?? 0;
-        if (status === 'failed') {
+        const shouldIncrement = options?.incrementAttempts === true;
+        if (shouldIncrement) {
           attempts = Math.min(MAX_DIGEST_ATTEMPTS, attempts + 1);
         } else if (status === 'completed' || status === 'skipped') {
           attempts = 0;
+        } else if (status === 'failed') {
+          attempts = Math.min(MAX_DIGEST_ATTEMPTS, attempts + 1);
         }
 
         updateDigest(id, {

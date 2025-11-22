@@ -81,6 +81,10 @@ export function findFilesNeedingDigestion(
         }
 
         if (digest.status === 'todo') {
+          // Skip if we've already hit max attempts for this digester
+          if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
+            continue;
+          }
           // Todo (not skipped) = needs work
           // Note: skipped digests have status='skipped', not 'todo'
           fileNeedsWork = true;
