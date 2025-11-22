@@ -210,16 +210,16 @@ async function resolveHaidConfig(): Promise<{
   chromeCdpUrl?: string;
 }> {
   let baseUrl = process.env.HAID_BASE_URL;
-  let chromeCdpUrl: string | undefined;
+  let chromeCdpUrl = process.env.HAID_CHROME_CDP_URL;
 
   try {
     const settings = await getSettings();
     baseUrl = baseUrl || settings.vendors?.homelabAi?.baseUrl || DEFAULT_BASE_URL;
-    chromeCdpUrl = settings.vendors?.homelabAi?.chromeCdpUrl || DEFAULT_CHROME_CDP_URL;
+    chromeCdpUrl = chromeCdpUrl || settings.vendors?.homelabAi?.chromeCdpUrl || DEFAULT_CHROME_CDP_URL;
   } catch (error) {
     log.warn({ err: error }, 'failed to load HAID base URL from settings, using defaults');
     baseUrl = baseUrl || DEFAULT_BASE_URL;
-    chromeCdpUrl = DEFAULT_CHROME_CDP_URL;
+    chromeCdpUrl = chromeCdpUrl || DEFAULT_CHROME_CDP_URL;
   }
 
   return {

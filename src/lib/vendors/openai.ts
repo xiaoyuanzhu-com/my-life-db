@@ -71,7 +71,21 @@ export interface OpenAIEmbeddingResponse {
 const log = getLogger({ module: 'VendorOpenAI' });
 
 function getVendorOpenAIConfig(settings: UserSettings) {
-  return settings.vendors?.openai;
+  const envConfig = {
+    baseUrl: process.env.OPENAI_BASE_URL,
+    apiKey: process.env.OPENAI_API_KEY,
+    model: process.env.OPENAI_MODEL,
+    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL,
+  };
+
+  const vendorConfig = settings.vendors?.openai || {};
+
+  return {
+    baseUrl: vendorConfig.baseUrl || envConfig.baseUrl,
+    apiKey: vendorConfig.apiKey || envConfig.apiKey,
+    model: vendorConfig.model || envConfig.model,
+    embeddingModel: vendorConfig.embeddingModel || envConfig.embeddingModel,
+  };
 }
 
 export async function callOpenAICompletion(

@@ -44,7 +44,7 @@ export async function captionImage(
   const settings = await getSettings();
   const vendorConfig = settings.vendors?.homelabAi;
 
-  const baseUrl = vendorConfig?.baseUrl || 'https://haid.home.iloahz.com';
+  const baseUrl = vendorConfig?.baseUrl || process.env.HAID_BASE_URL || 'https://haid.home.iloahz.com';
   const model = options.model || 'unsloth/llava-v1.6-mistral-7b-hf-bnb-4bit';
   const prompt = options.prompt || 'USER: <image>\nDescribe this image in detail.\nASSISTANT:';
 
