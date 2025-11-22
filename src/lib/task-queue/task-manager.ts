@@ -49,20 +49,6 @@ export function createTask(input: CreateTaskInput): Task {
   );
 
   const created = getTaskById(id)!;
-  // Log task enqueue with input
-  try {
-    log.info(
-      {
-        event: 'task_enqueued',
-        taskId: created.id,
-        type: created.type,
-        run_after: created.run_after ?? null,
-        input: input.input,
-      },
-      'task enqueued'
-    );
-  } catch {}
-
   return created;
 }
 
@@ -213,36 +199,6 @@ export function updateTask(
 
   const result = stmt.run(...params);
   const updated = result.changes > 0;
-
-  // Log terminal status transitions with result/error details
-  if (updated && shouldLogOutcome) {
-    try {
-      const next = getTaskById(id);
-      const parsedInput = (() => {
-        try { return prev?.input ? JSON.parse(prev.input) : null; } catch { return prev?.input ?? null; }
-      })();
-      const parsedOutput = (() => {
-        // Prefer explicit update output if provided; else parse from DB
-        if (updates.output !== undefined) return updates.output;
-        try { return next?.output ? JSON.parse(next.output) : null; } catch { return next?.output ?? null; }
-      })();
-
-      const logBase = {
-        event: updates.status === 'success' ? 'task_success' : 'task_failed',
-        taskId: id,
-        type: prev?.type ?? next?.type ?? 'unknown',
-        attempts: next?.attempts ?? prev?.attempts ?? undefined,
-        input: parsedInput,
-      } as Record<string, unknown>;
-
-      if (updates.status === 'success') {
-        log.info({ ...logBase, output: parsedOutput }, 'task succeeded');
-      } else {
-        const errorVal = updates.error ?? next?.error ?? null;
-        log.error({ ...logBase, error: errorVal, output: parsedOutput }, 'task failed');
-      }
-    } catch {}
-  }
 
   return updated;
 }

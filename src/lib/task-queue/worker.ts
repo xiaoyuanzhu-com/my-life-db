@@ -222,7 +222,7 @@ export class TaskWorker {
         return;
       }
 
-      this.logger.info({ count: readyTasks.length }, 'processing tasks');
+      this.logger.debug({ count: readyTasks.length }, 'processing tasks');
 
       let successCount = 0;
       let failedCount = 0;
@@ -236,7 +236,7 @@ export class TaskWorker {
 
           if (result.success) {
             successCount++;
-            this.logger.info({ taskId: task.id, type: task.type }, 'task completed');
+            this.logger.debug({ taskId: task.id, type: task.type }, 'task completed');
           } else {
             failedCount++;
             this.logger.error({ taskId: task.id, type: task.type, error: result.error }, 'task failed');
@@ -251,7 +251,7 @@ export class TaskWorker {
         }
       }
 
-      this.logger.info({ successCount, failedCount }, 'batch complete');
+      this.logger.debug({ successCount, failedCount }, 'batch complete');
     } catch (error) {
       this.logger.error({ err: error }, 'worker poll error');
     } finally {
@@ -272,9 +272,9 @@ export class TaskWorker {
       const staleTasks = getStaleTasks(this.config.staleTaskTimeoutSeconds);
 
       if (staleTasks.length > 0) {
-        this.logger.info({ count: staleTasks.length }, 'recovering stale tasks');
+        this.logger.debug({ count: staleTasks.length }, 'recovering stale tasks');
         const recovered = recoverStaleTasks(staleTasks);
-        this.logger.info({ recovered }, 'stale tasks recovered');
+        this.logger.debug({ recovered }, 'stale tasks recovered');
       }
     } catch (error) {
       this.logger.error({ err: error }, 'stale recovery error');

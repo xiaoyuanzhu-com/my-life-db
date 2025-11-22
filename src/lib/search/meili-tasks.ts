@@ -109,7 +109,7 @@ defineTaskHandler({
 
       // Index in Meilisearch
       const taskUid = await client.addDocuments(payload);
-      log.info(
+      log.debug(
         { taskUid, documentCount: documents.length },
         'submitted documents to Meilisearch'
       );
@@ -123,7 +123,7 @@ defineTaskHandler({
           taskId: String(taskUid),
         });
 
-        log.info(
+        log.debug(
           { taskUid, documentCount: documents.length },
           'Meilisearch indexing succeeded'
         );
@@ -187,7 +187,7 @@ defineTaskHandler({
         return { count: 0, message: 'no documents deleted (empty batch)' };
       }
 
-      log.info(
+      log.debug(
         { taskUid, documentCount: documentIds.length },
         'submitted delete to Meilisearch'
       );
@@ -201,7 +201,7 @@ defineTaskHandler({
           taskId: String(taskUid),
         });
 
-        log.info(
+        log.debug(
           { taskUid, documentCount: documentIds.length },
           'Meilisearch deletion succeeded'
         );
