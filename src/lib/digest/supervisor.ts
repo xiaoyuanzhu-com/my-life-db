@@ -72,7 +72,7 @@ class DigestSupervisor {
       clearTimeout(this.startTimer);
       this.startTimer = null;
     }
-    this.log.info({}, 'digest supervisor stopped');
+    this.log.debug({}, 'digest supervisor stopped');
   }
 
   private async runLoop(): Promise<void> {

@@ -172,7 +172,7 @@ export async function shutdownApp(): Promise<void> {
     });
 
     globalThis.__mylifedb_app_initialized = false;
-    log.info({}, 'application shutdown complete');
+    log.debug({}, 'application shutdown complete');
   } catch (error) {
     log.error({ err: error }, 'error during application shutdown');
   }
@@ -193,7 +193,7 @@ function registerShutdownHooks(): void {
 
   signals.forEach(signal => {
     process.on(signal, async () => {
-      log.info({ signal }, 'received shutdown signal');
+      log.info({ signal }, 'shutdown initiated');
       await shutdownApp();
       process.exit(0);
     });
@@ -204,5 +204,5 @@ function registerShutdownHooks(): void {
     log.debug({}, 'process beforeExit event');
   });
 
-  log.info({}, 'shutdown hooks registered');
+  log.debug({}, 'shutdown hooks registered');
 }

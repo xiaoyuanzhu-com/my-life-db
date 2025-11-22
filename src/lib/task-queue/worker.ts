@@ -91,7 +91,7 @@ export class TaskWorker {
       this.staleRecoveryTimer = null;
     }
 
-    this.logger.info({}, 'worker stopped');
+    this.logger.debug({}, 'worker stopped');
   }
 
   /**
@@ -103,13 +103,13 @@ export class TaskWorker {
     }
 
     this.stopping = true;
-    this.logger.info({ reason: options?.reason }, 'worker shutting down');
+    this.logger.debug({ reason: options?.reason }, 'worker shutting down');
     this.stop();
 
     const timeoutMs = options?.timeoutMs ?? 10_000;
     const pendingBefore = this.activeTasks.size;
     if (pendingBefore === 0) {
-      this.logger.info({}, 'worker shutdown complete (no pending tasks)');
+      this.logger.debug({}, 'worker shutdown complete (no pending tasks)');
       this.stopping = false;
       return;
     }
@@ -117,7 +117,7 @@ export class TaskWorker {
     await this.waitForActiveTasks(timeoutMs);
 
     if (this.activeTasks.size === 0) {
-      this.logger.info({}, 'worker shutdown complete');
+      this.logger.debug({}, 'worker shutdown complete');
     } else {
       this.logger.warn(
         { pending: this.activeTasks.size },

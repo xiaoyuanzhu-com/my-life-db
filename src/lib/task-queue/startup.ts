@@ -70,12 +70,12 @@ function registerShutdownHooks() {
   const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   signals.forEach(signal => {
     process.on(signal, async () => {
-      log.info({ signal }, 'received shutdown signal, draining task queue');
+      log.debug({ signal }, 'received shutdown signal, draining task queue');
       await shutdownWorker({
         reason: `signal:${signal}`,
         timeoutMs: 2000  // 2 second timeout for graceful shutdown
       });
-      log.info({ signal }, 'task queue drained, exiting');
+      log.debug({ signal }, 'task queue drained, exiting');
       process.exit(0);
     });
   });

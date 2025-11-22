@@ -297,7 +297,7 @@ export function stopPeriodicScanner(): void {
   if (scannerTimer) {
     clearInterval(scannerTimer);
     scannerTimer = null;
-    log.info({}, 'periodic scanner stopped');
+    log.debug({}, 'periodic scanner stopped');
   }
 
   if (initialScanTimer) {

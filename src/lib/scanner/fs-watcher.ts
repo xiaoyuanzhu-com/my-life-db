@@ -100,7 +100,7 @@ export class FileSystemWatcher extends EventEmitter {
       return;
     }
 
-    log.info({}, 'stopping file system watcher');
+    log.debug({}, 'stopping file system watcher');
 
     // Clear all pending debounce timers
     for (const timer of this.debounceTimers.values()) {
@@ -111,7 +111,7 @@ export class FileSystemWatcher extends EventEmitter {
     await this.watcher.close();
     this.watcher = null;
 
-    log.info({}, 'file system watcher stopped');
+    log.debug({}, 'file system watcher stopped');
   }
 
   /**
