@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
@@ -30,28 +30,67 @@ export function FileCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
     return `/library?open=${encodeURIComponent(file.path)}`;
   }, [file.path]);
 
+  const ensureFullContent = useCallback(async (options?: { silent?: boolean }) => {
+    if (fullContent) {
+      return fullContent;
+    }
+
+    if (!file.textPreview) {
+      return null;
+    }
+
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
+
+    try {
+      const response = await fetch(`/raw/${file.path}`);
+      if (response.ok) {
+        const text = await response.text();
+        setFullContent(text);
+        return text;
+      }
+    } catch (error) {
+      console.error('Failed to load full content:', error);
+    } finally {
+      if (!options?.silent) {
+        setIsLoading(false);
+      }
+    }
+
+    return fullContent;
+  }, [file.path, file.textPreview, fullContent]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current) {
+        clearTimeout(copyResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (copyResetTimeoutRef.current) {
+      clearTimeout(copyResetTimeoutRef.current);
+      copyResetTimeoutRef.current = null;
+    }
+    setCopyStatus('idle');
+  }, [file.path]);
+
   // Handle expand: fetch full content from raw API
   const handleToggleExpand = async () => {
     if (!isExpanded && !fullContent && file.textPreview) {
-      // Expanding for the first time - fetch full content
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/raw/${file.path}`);
-        if (response.ok) {
-          const text = await response.text();
-          setFullContent(text);
-          setIsExpanded(true);
-        }
-      } catch (error) {
-        console.error('Failed to load full content:', error);
-      } finally {
-        setIsLoading(false);
+      const text = await ensureFullContent();
+      if (text) {
+        setIsExpanded(true);
       }
     } else {
       // Just toggle collapsed/expanded
@@ -108,6 +147,49 @@ export function FileCard({
   const textDisplay = content.type === 'text'
     ? getTextDisplay(fullContent || content.text, isExpanded)
     : { displayText: '', shouldTruncate: false };
+  const isTextContent = content.type === 'text';
+  const previewText = isTextContent ? content.text : '';
+
+  const handleDownload = useCallback(() => {
+    const link = document.createElement('a');
+    link.href = `/raw/${file.path}`;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [file.name, file.path]);
+
+  const handleCopy = useCallback(async () => {
+    if (!isTextContent) return;
+    if (!navigator.clipboard) {
+      console.error('Clipboard API not available');
+      return;
+    }
+
+    let textToCopy = fullContent || previewText;
+
+    if (!fullContent) {
+      const fetched = await ensureFullContent({ silent: true });
+      if (fetched) {
+        textToCopy = fetched;
+      }
+    }
+
+    if (!textToCopy) return;
+
+    if (copyResetTimeoutRef.current) {
+      clearTimeout(copyResetTimeoutRef.current);
+    }
+
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopyStatus('copied');
+      copyResetTimeoutRef.current = setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Failed to copy content:', error);
+      setCopyStatus('idle');
+    }
+  }, [ensureFullContent, fullContent, isTextContent, previewText]);
 
   return (
     <div className={cn('w-full flex flex-col items-end', className)}>
@@ -193,6 +275,21 @@ export function FileCard({
                   className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-wait"
                 >
                   {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+              )}
+              {isTextContent ? (
+                <button
+                  onClick={handleCopy}
+                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  {copyStatus === 'copied' ? 'Copied' : 'Copy'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleDownload}
+                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  Download
                 </button>
               )}
               <Link
