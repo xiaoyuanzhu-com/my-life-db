@@ -8,7 +8,6 @@ import { getLogger } from '@/lib/log/logger';
 const log = getLogger({ module: 'SettingsStorage' });
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
-const OPENAI_DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
 const HOMELAB_AI_DEFAULT_BASE_URL = 'https://haid.home.iloahz.com';
 const HOMELAB_AI_DEFAULT_CHROME_CDP_URL = 'http://172.16.2.2:9223/';
 
@@ -65,7 +64,6 @@ export async function loadSettings(): Promise<UserSettings> {
           baseUrl: pickSetting(getSetting(db, 'vendors_openai_base_url'), process.env.OPENAI_BASE_URL, OPENAI_DEFAULT_BASE_URL),
           apiKey: pickSetting(getSetting(db, 'vendors_openai_api_key'), process.env.OPENAI_API_KEY),
           model: pickSetting(getSetting(db, 'vendors_openai_model'), process.env.OPENAI_MODEL, OPENAI_DEFAULT_MODEL),
-          embeddingModel: pickSetting(getSetting(db, 'vendors_openai_embedding_model'), process.env.OPENAI_EMBEDDING_MODEL, OPENAI_DEFAULT_EMBEDDING_MODEL),
         },
         homelabAi: {
           baseUrl: pickSetting(getSetting(db, 'vendors_homelab_ai_base_url'), process.env.HAID_BASE_URL, HOMELAB_AI_DEFAULT_BASE_URL),
@@ -122,9 +120,6 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     if (settings.vendors?.openai?.apiKey) setSetting(db, 'vendors_openai_api_key', settings.vendors.openai.apiKey);
     if (settings.vendors?.openai && 'model' in settings.vendors.openai) {
       setSetting(db, 'vendors_openai_model', settings.vendors.openai.model ?? '');
-    }
-    if (settings.vendors?.openai && 'embeddingModel' in settings.vendors.openai) {
-      setSetting(db, 'vendors_openai_embedding_model', settings.vendors.openai.embeddingModel ?? '');
     }
     if (settings.vendors?.homelabAi?.baseUrl) setSetting(db, 'vendors_homelab_ai_base_url', settings.vendors.homelabAi.baseUrl);
     if (settings.vendors?.homelabAi?.chromeCdpUrl) {

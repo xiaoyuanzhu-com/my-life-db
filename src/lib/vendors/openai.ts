@@ -75,7 +75,6 @@ function getVendorOpenAIConfig(settings: UserSettings) {
     baseUrl: process.env.OPENAI_BASE_URL,
     apiKey: process.env.OPENAI_API_KEY,
     model: process.env.OPENAI_MODEL,
-    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL,
   };
 
   const vendorConfig = settings.vendors?.openai || {};
@@ -84,7 +83,6 @@ function getVendorOpenAIConfig(settings: UserSettings) {
     baseUrl: vendorConfig.baseUrl || envConfig.baseUrl,
     apiKey: vendorConfig.apiKey || envConfig.apiKey,
     model: vendorConfig.model || envConfig.model,
-    embeddingModel: vendorConfig.embeddingModel || envConfig.embeddingModel,
   };
 }
 
@@ -249,7 +247,7 @@ export async function callOpenAIEmbedding(
 
   const baseUrl = vendorConfig.baseUrl || 'https://api.openai.com/v1';
   const fallbackModel = 'text-embedding-3-small';
-  const model = options.model || vendorConfig.embeddingModel || fallbackModel;
+  const model = options.model || process.env.OPENAI_EMBEDDING_MODEL || fallbackModel;
 
   const response = await fetch(`${baseUrl}/embeddings`, {
     method: 'POST',
