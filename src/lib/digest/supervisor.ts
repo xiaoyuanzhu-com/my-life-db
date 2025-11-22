@@ -89,7 +89,7 @@ class DigestSupervisor {
           continue;
         }
 
-        this.log.info({ filePath }, 'processing file through digests');
+        this.log.debug({ filePath }, 'processing file through digests');
         await this.coordinator.processFile(filePath);
 
         if (this.config.fileDelayMs > 0) {

@@ -49,7 +49,7 @@ export interface ChunkResult {
  * Each file+source can generate multiple chunks (800-1000 tokens with overlap)
  */
 export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResult> {
-  log.info({ filePath }, 'starting Qdrant ingestion');
+  log.debug({ filePath }, 'starting Qdrant ingestion');
 
   // 1. Get file metadata
   const fileRecord = getFileByPath(filePath);
@@ -94,7 +94,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     result.sources.content = { chunkCount: chunks.length };
     result.totalChunks += chunks.length;
 
-    log.info(
+    log.debug(
       { filePath, sourceType: 'content', chunkCount: chunks.length },
       'indexed content chunks'
     );
@@ -141,7 +141,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     result.sources.summary = { chunkCount: chunks.length };
     result.totalChunks += chunks.length;
 
-    log.info(
+    log.debug(
       { filePath, sourceType: 'summary', chunkCount: chunks.length },
       'indexed summary chunks'
     );
@@ -182,7 +182,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
         result.sources.tags = { chunkCount: chunks.length };
         result.totalChunks += chunks.length;
 
-        log.info(
+        log.debug(
           { filePath, sourceType: 'tags', chunkCount: chunks.length },
           'indexed tag chunks'
         );
@@ -192,7 +192,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     }
   }
 
-  log.info(
+  log.debug(
     { filePath, totalChunks: result.totalChunks },
     'completed Qdrant ingestion'
   );
@@ -215,12 +215,12 @@ export async function deleteFromQdrant(filePath: string): Promise<number> {
   if (documentIds.length > 0) {
     const { enqueueQdrantDelete } = await import('./qdrant-tasks');
     enqueueQdrantDelete(documentIds);
-    log.info(
+    log.debug(
       { filePath, deletedCount, queuedForQdrantDeletion: documentIds.length },
       'deleted Qdrant chunks and queued vector deletion'
     );
   } else {
-    log.info({ filePath, deletedCount }, 'deleted Qdrant chunks (no vectors to delete)');
+    log.debug({ filePath, deletedCount }, 'deleted Qdrant chunks (no vectors to delete)');
   }
 
   return deletedCount;

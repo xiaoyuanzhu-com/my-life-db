@@ -90,7 +90,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
       mimeType: fileRecord.mimeType,
     });
 
-    log.info(
+    log.debug(
       {
         filePath,
         hasContent: true,
@@ -176,7 +176,7 @@ export function deleteMeiliDocument(filePath: string): string {
   const documentId = getMeiliDocumentIdForFile(filePath);
   deleteMeiliDocumentByFilePath(filePath);
 
-  log.info({ filePath, documentId }, 'deleted meilisearch document for file');
+  log.debug({ filePath, documentId }, 'deleted meilisearch document for file');
 
   return documentId;
 }

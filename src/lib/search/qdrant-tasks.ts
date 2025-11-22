@@ -88,7 +88,7 @@ defineTaskHandler({
 
     try {
       // Generate embeddings (batch API call)
-      log.info({ documentCount: documents.length }, 'generating embeddings');
+      log.debug({ documentCount: documents.length }, 'generating embeddings');
       const texts = documents.map(doc => doc.chunkText);
       const embeddings = await embedTexts(texts);
 
@@ -116,7 +116,7 @@ defineTaskHandler({
       await ensureQdrantCollection(vectorSize);
 
       // Upload to Qdrant
-      log.info({ pointCount: points.length }, 'uploading vectors to Qdrant');
+      log.debug({ pointCount: points.length }, 'uploading vectors to Qdrant');
       const client = await getQdrantClient();
       await client.upsert(points);
 
@@ -141,7 +141,7 @@ defineTaskHandler({
         ).run(embeddingVersion, doc.documentId);
       }
 
-      log.info(
+      log.debug(
         { documentCount: documents.length, embeddingVersion },
         'Qdrant indexing succeeded'
       );
@@ -187,7 +187,7 @@ defineTaskHandler({
       const client = await getQdrantClient();
       await client.delete(documentIds);
 
-      log.info(
+      log.debug(
         { documentCount: documentIds.length },
         'Qdrant deletion succeeded'
       );
