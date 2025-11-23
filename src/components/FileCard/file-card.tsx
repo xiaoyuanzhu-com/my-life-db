@@ -1,12 +1,20 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
 import type { SearchResultItem } from '@/app/api/search/route';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from '@/components/ui/context-menu';
+import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface FileCardProps {
   file: FileWithDigests;
@@ -41,6 +49,7 @@ export function FileCard({
   highlightTerms,
   matchContext,
 }: FileCardProps) {
+  const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -201,6 +210,71 @@ export function FileCard({
     }
   }, [ensureFullContent, fullContent, isTextContent, previewText]);
 
+  const handleShare = useCallback(async () => {
+    // Check if Web Share API is supported
+    if (!navigator.share) {
+      console.error('Web Share API not supported');
+      return;
+    }
+
+    try {
+      const shareData: ShareData = {
+        title: file.name,
+        url: `/raw/${file.path}`,
+      };
+
+      // For text content, include the text in the share
+      if (isTextContent) {
+        const textToShare = fullContent || previewText;
+        if (textToShare) {
+          shareData.text = textToShare;
+        }
+      }
+
+      await navigator.share(shareData);
+    } catch (error) {
+      // User cancelled or error occurred
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Failed to share:', error);
+      }
+    }
+  }, [file.name, file.path, fullContent, isTextContent, previewText]);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm(`Are you sure you want to delete "${file.name}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/library/file?path=${encodeURIComponent(file.path)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete file');
+      }
+
+      // Refresh the page or navigate back
+      router.refresh();
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('Failed to delete file. Please try again.');
+    }
+  }, [file.name, file.path, router]);
+
+  const handleOpen = useCallback(() => {
+    router.push(href);
+  }, [href, router]);
+
+  // Determine if we can share this file
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+
+  // Determine menu items based on file type
+  const isImage = content.type === 'image';
+  const isVideo = content.type === 'video';
+  const isAudio = content.type === 'audio';
+  const isMediaFile = isImage || isVideo || isAudio;
+
   return (
     <div className={cn('w-full flex flex-col items-end', className)}>
       {/* Timestamp - centered horizontally above card */}
@@ -210,112 +284,127 @@ export function FileCard({
         </div>
       )}
 
-      <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted">
-        <div className="relative">
-          {content.type === 'image' ? (
-            <div className="relative w-full max-w-md">
-              <Image
-                src={content.src}
-                alt={content.alt}
-                width={800}
-                height={600}
-                sizes="(max-width: 768px) calc(100vw - 40px), 448px"
-                className="w-full h-auto object-contain"
-                priority={false}
-              />
-            </div>
-          ) : content.type === 'video' ? (
-            <div className="relative w-full max-w-md" style={{ aspectRatio: '16/9' }}>
-              <video
-                controls
-                playsInline
-                className="w-full h-full object-contain bg-black"
-                preload="metadata"
-                muted
-              >
-                <source src={content.src} type={content.mimeType || 'video/mp4'} />
-                Your browser does not support the video tag.
-              </video>
-            </div>
-          ) : content.type === 'audio' ? (
-            <div className="p-6 flex items-center justify-center min-h-[120px]">
-              <div className="w-full">
-                <div className="text-sm font-medium text-foreground/80 mb-4 text-center break-all">
-                  {file.name}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted">
+            <div className="relative">
+              {content.type === 'image' ? (
+                <div className="relative w-full max-w-md">
+                  <Image
+                    src={content.src}
+                    alt={content.alt}
+                    width={800}
+                    height={600}
+                    sizes="(max-width: 768px) calc(100vw - 40px), 448px"
+                    className="w-full h-auto object-contain"
+                    priority={false}
+                  />
                 </div>
-                <audio
-                  src={content.src}
-                  controls
-                  className="w-full"
-                  preload="metadata"
-                >
-                  Your browser does not support the audio tag.
-                </audio>
-              </div>
-            </div>
-          ) : content.type === 'text' ? (
-            <TextContent
-              displayText={textDisplay.displayText}
-              highlightTerms={highlightTerms}
-              isExpanded={isExpanded}
-              shouldTruncate={textDisplay.shouldTruncate}
-            />
-          ) : (
-            <div className="p-6 flex items-center justify-center min-h-[120px]">
-              <div className="text-center">
-                <div className="text-sm font-medium text-foreground/80 break-all">
-                  {content.name}
+              ) : content.type === 'video' ? (
+                <div className="relative w-full max-w-md" style={{ aspectRatio: '16/9' }}>
+                  <video
+                    controls
+                    playsInline
+                    className="w-full h-full object-contain bg-black"
+                    preload="metadata"
+                    muted
+                  >
+                    <source src={content.src} type={content.mimeType || 'video/mp4'} />
+                    Your browser does not support the video tag.
+                  </video>
                 </div>
-                {file.mimeType && (
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {file.mimeType}
+              ) : content.type === 'audio' ? (
+                <div className="p-6 flex items-center justify-center min-h-[120px]">
+                  <div className="w-full">
+                    <div className="text-sm font-medium text-foreground/80 mb-4 text-center break-all">
+                      {file.name}
+                    </div>
+                    <audio
+                      src={content.src}
+                      controls
+                      className="w-full"
+                      preload="metadata"
+                    >
+                      Your browser does not support the audio tag.
+                    </audio>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : content.type === 'text' ? (
+                <TextContent
+                  displayText={textDisplay.displayText}
+                  highlightTerms={highlightTerms}
+                  isExpanded={isExpanded}
+                  shouldTruncate={textDisplay.shouldTruncate}
+                />
+              ) : (
+                <div className="p-6 flex items-center justify-center min-h-[120px]">
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-foreground/80 break-all">
+                      {content.name}
+                    </div>
+                    {file.mimeType && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {file.mimeType}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
+
+            {matchContext && (
+              <MatchContext context={matchContext} />
+            )}
+          </div>
+        </ContextMenuTrigger>
+
+        <ContextMenuContent className="w-48">
+          <ContextMenuItem onClick={handleOpen}>
+            <ExternalLink className="mr-2" />
+            Open
+          </ContextMenuItem>
+
+          {isTextContent && (
+            <>
+              <ContextMenuItem onClick={handleCopy}>
+                <Copy className="mr-2" />
+                {copyStatus === 'copied' ? 'Copied' : 'Copy'}
+              </ContextMenuItem>
+
+              {textDisplay.shouldTruncate && (
+                <ContextMenuItem onClick={handleToggleExpand} disabled={isLoading}>
+                  {isExpanded ? <ChevronUp className="mr-2" /> : <ChevronDown className="mr-2" />}
+                  {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
+                </ContextMenuItem>
+              )}
+            </>
           )}
 
-          {/* Hover action bar */}
-          <div className="pointer-events-none absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <div className="flex items-center gap-2 pointer-events-auto">
-              {textDisplay.shouldTruncate && (
-                <button
-                  onClick={handleToggleExpand}
-                  disabled={isLoading}
-                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-wait"
-                >
-                  {isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand'}
-                </button>
-              )}
-              {isTextContent ? (
-                <button
-                  onClick={handleCopy}
-                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  {copyStatus === 'copied' ? 'Copied' : 'Copy'}
-                </button>
-              ) : (
-                <button
-                  onClick={handleDownload}
-                  className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  Download
-                </button>
-              )}
-              <Link
-                href={href}
-                className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                Open
-              </Link>
-            </div>
-          </div>
-        </div>
+          {isMediaFile && (
+            <>
+              <ContextMenuItem onClick={handleDownload}>
+                <Download className="mr-2" />
+                Download
+              </ContextMenuItem>
 
-        {matchContext && (
-          <MatchContext context={matchContext} />
-        )}
-      </div>
+              {canShare && (
+                <ContextMenuItem onClick={handleShare}>
+                  <Share2 className="mr-2" />
+                  Share
+                </ContextMenuItem>
+              )}
+            </>
+          )}
+
+          <ContextMenuSeparator />
+
+          <ContextMenuItem onClick={handleDelete} variant="destructive">
+            <Trash2 className="mr-2" />
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
 }
