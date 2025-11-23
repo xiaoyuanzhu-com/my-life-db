@@ -16,6 +16,20 @@ export interface FileCardProps {
   matchContext?: SearchResultItem['matchContext'];
 }
 
+function toBase64Url(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = '';
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 /**
  * Content-focused file card component with adaptive sizing
  * Displays text content, images, or filename based on file type
@@ -123,11 +137,7 @@ export function FileCard({
     // Handle images (prefer screenshot for URLs, actual image for files)
     if (isImage || hasScreenshot) {
       // Generate image/screenshot URL
-      const pathHash = btoa(file.path)
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '')
-        .slice(0, 12);
+      const pathHash = toBase64Url(file.path).slice(0, 12);
 
       const src = hasScreenshot
         ? `/sqlar/${pathHash}/screenshot/screenshot.png`
