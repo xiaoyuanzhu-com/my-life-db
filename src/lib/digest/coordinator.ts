@@ -204,16 +204,6 @@ export class DigestCoordinator {
       'processing complete'
     );
 
-    // Emit notification for inbox files after digestion completes
-    // This catches API-uploaded files that may not trigger file watcher immediately
-    // (File watcher also emits notifications, but that's for immediate UI feedback)
-    if (filePath.startsWith('inbox/')) {
-      notificationService.notify({
-        type: 'inbox-updated',
-        path: filePath,
-        timestamp: new Date().toISOString(),
-      });
-    }
   }
 
   /**
