@@ -12,6 +12,14 @@ interface RouteContext {
   params: Promise<{ path: string[] }>;
 }
 
+const safeDecodeURIComponent = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 /**
  * GET /api/digest/[...path]
  *
@@ -27,7 +35,7 @@ export async function GET(
 ) {
   try {
     const { path } = await context.params;
-    const filePath = path.join('/');
+    const filePath = path.map(safeDecodeURIComponent).join('/');
 
     if (!filePath) {
       return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
@@ -63,7 +71,7 @@ export async function POST(
   let filePath: string | null = null;
   try {
     const { path } = await context.params;
-    filePath = path.join('/');
+    filePath = path.map(safeDecodeURIComponent).join('/');
 
     if (!filePath) {
       return NextResponse.json({ error: 'Missing file path' }, { status: 400 });

@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getFileByPath } from '@/lib/db/files';
 import { listDigestsForPath } from '@/lib/db/digests';
 
+const safeDecodeURIComponent = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const decodePathParam = (value: string): string => {
+  const once = safeDecodeURIComponent(value);
+  return /%[0-9A-Fa-f]{2}/.test(once) ? safeDecodeURIComponent(once) : once;
+};
+
 /**
  * GET /api/library/file-info?path=<file-path>
  *
@@ -10,7 +23,8 @@ import { listDigestsForPath } from '@/lib/db/digests';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const filePath = searchParams.get('path');
+    const rawPath = searchParams.get('path');
+    const filePath = rawPath ? decodePathParam(rawPath) : null;
 
     if (!filePath) {
       return NextResponse.json(

@@ -68,6 +68,14 @@ const TEXT_CONTENT_TYPES = new Set([
 const DIGEST_POLL_INTERVAL = 2000;
 const PENDING_DIGEST_STATUSES = new Set(['todo', 'in-progress']);
 
+const safeDecodeURIComponent = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 function isTextContent(contentType: string | null): boolean {
   if (!contentType) return false;
   const normalized = contentType.split(';')[0]?.trim().toLowerCase();
@@ -222,13 +230,18 @@ export default function FileInfoPage() {
   const [isPollingDigests, setIsPollingDigests] = useState(false);
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [fileContentType, setFileContentType] = useState<string | null>(null);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
   const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reconstruct file path from params
-  const filePath = Array.isArray(params.path) ? params.path.join('/') : params.path ?? '';
+  const filePath = Array.isArray(params.path)
+    ? params.path.map(safeDecodeURIComponent).join('/')
+    : params.path
+      ? safeDecodeURIComponent(params.path)
+      : '';
 
   const loadFileInfo = useCallback(async (options?: { background?: boolean }) => {
     if (!filePath) return;
@@ -265,6 +278,7 @@ export default function FileInfoPage() {
 
     setIsContentLoading(true);
     setFileContent(null);
+    setFilePreviewUrl(null);
     setFileContentType(null);
     setFileContentError(null);
 
@@ -273,7 +287,8 @@ export default function FileInfoPage() {
         .split('/')
         .map((segment) => encodeURIComponent(segment))
         .join('/');
-      const response = await fetch(`/raw/${encodedPath}`);
+      const rawUrl = `/raw/${encodedPath}`;
+      const response = await fetch(rawUrl);
 
       if (!response.ok) {
         throw new Error('Failed to load file content');
@@ -283,13 +298,17 @@ export default function FileInfoPage() {
       setFileContentType(responseContentType);
 
       if (!isTextContent(responseContentType)) {
-        setFileContent(null);
-        setFileContentError(
-          responseContentType
-            ? `Preview not available for ${responseContentType} files`
-            : 'Preview not available for this file type'
-        );
-        return;
+        if (responseContentType?.startsWith('image/')) {
+          setFilePreviewUrl(rawUrl);
+          return;
+        } else {
+          setFileContentError(
+            responseContentType
+              ? `Preview not available for ${responseContentType} files`
+              : 'Preview not available for this file type'
+          );
+          return;
+        }
       }
 
       const text = await response.text();
@@ -426,6 +445,24 @@ export default function FileInfoPage() {
   } else if (fileContentError) {
     fileContentBody = (
       <div className="px-6 py-8 text-sm text-muted-foreground">{fileContentError}</div>
+    );
+  } else if (filePreviewUrl && displayContentType?.startsWith('image/')) {
+    fileContentBody = (
+      <div className="flex items-center justify-center bg-muted/50">
+        <div className="max-w-3xl w-full">
+          <div className="relative w-full border-b">
+            <Image
+              src={filePreviewUrl}
+              alt={file.name}
+              width={1600}
+              height={900}
+              className="w-full h-auto object-contain bg-black/5"
+              unoptimized
+              priority
+            />
+          </div>
+        </div>
+      </div>
     );
   } else if (fileContent !== null) {
     fileContentBody = fileContent.length > 0 ? (

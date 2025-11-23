@@ -12,7 +12,14 @@ interface RouteContext {
 }
 
 async function validatePath(pathSegments: string[]) {
-  const relativePath = pathSegments.join('/');
+  let decodedSegments: string[];
+  try {
+    decodedSegments = pathSegments.map((segment) => decodeURIComponent(segment));
+  } catch {
+    return { error: 'Invalid path', status: 400 };
+  }
+
+  const relativePath = decodedSegments.join('/');
 
   // Security: prevent path traversal attacks
   const normalizedPath = path.normalize(relativePath);
@@ -20,16 +27,28 @@ async function validatePath(pathSegments: string[]) {
     return { error: 'Invalid path', status: 400 };
   }
 
-  const filePath = path.join(DATA_ROOT, normalizedPath);
-
-  // Verify file exists and is within DATA_ROOT
-  const realPath = await fs.realpath(filePath);
+  const filePath = path.resolve(DATA_ROOT, normalizedPath);
   const realDataRoot = await fs.realpath(DATA_ROOT);
+
+  if (!filePath.startsWith(realDataRoot)) {
+    return { error: 'Access denied', status: 403 };
+  }
+
+  let realPath: string;
+  try {
+    realPath = await fs.realpath(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { error: 'File not found', status: 404 };
+    }
+    throw error;
+  }
+
   if (!realPath.startsWith(realDataRoot)) {
     return { error: 'Access denied', status: 403 };
   }
 
-  return { realPath, relativePath };
+  return { realPath, relativePath: normalizedPath };
 }
 
 /**
