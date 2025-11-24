@@ -27,6 +27,7 @@ import migration024 from './024_rename_digest_type_to_digester';
 import migration025 from './025_add_attempts_to_digests';
 import migration026 from './026_create_sessions_table';
 import migration027 from './027_rename_digester_modules';
+import migration028 from './028_add_composite_indexes';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -67,6 +68,7 @@ export const migrations: Migration[] = [
   migration025,
   migration026,
   migration027,
+  migration028,
 ];
 
 /**

@@ -78,6 +78,82 @@ export function listFiles(
 }
 
 /**
+ * List top-level files in a directory (e.g., inbox/file.jpg or inbox/folder, NOT inbox/folder/nested.jpg)
+ * Optimized SQL-based filtering instead of loading all files and filtering in JavaScript
+ *
+ * @param pathPrefix - Path prefix (e.g., "inbox/")
+ * @param options - Query options
+ */
+export function listTopLevelFiles(
+  pathPrefix: string,
+  options?: {
+    orderBy?: 'path' | 'modified_at' | 'created_at';
+    ascending?: boolean;
+    limit?: number;
+    offset?: number;
+  }
+): FileRecord[] {
+  const db = getDatabase();
+  const params: (string | number)[] = [];
+
+  // Match files like "inbox/file.jpg" (no slash after prefix)
+  // OR folders like "inbox/folder" (exactly one slash after removing prefix)
+  // This uses SQL to filter instead of loading everything into memory
+  const conditions = [
+    'path LIKE ?',
+    // Top-level: path after prefix has no slashes, OR is a folder with exactly one segment
+    `(
+      path NOT LIKE ?
+      OR (is_folder = 1 AND LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1)
+    )`
+  ];
+
+  params.push(`${pathPrefix}%`);  // Match prefix
+  params.push(`${pathPrefix}%/%`);  // Has slash after prefix
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  const orderBy = options?.orderBy || 'path';
+  const ascending = options?.ascending !== false;
+  const orderClause = `ORDER BY ${orderBy} ${ascending ? 'ASC' : 'DESC'}`;
+  const limitClause = options?.limit ? `LIMIT ${options.limit}` : '';
+  const offsetClause = options?.offset ? `OFFSET ${options.offset}` : '';
+
+  const query = `
+    SELECT * FROM files
+    ${whereClause}
+    ${orderClause}
+    ${limitClause}
+    ${offsetClause}
+  `;
+
+  const rows = db.prepare(query).all(...params) as FileRecordRow[];
+  return rows.map(rowToFileRecord);
+}
+
+/**
+ * Count top-level files in a directory
+ */
+export function countTopLevelFiles(pathPrefix: string): number {
+  const db = getDatabase();
+
+  const query = `
+    SELECT COUNT(*) as count FROM files
+    WHERE path LIKE ?
+    AND (
+      path NOT LIKE ?
+      OR (is_folder = 1 AND LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1)
+    )
+  `;
+
+  const row = db.prepare(query).get(
+    `${pathPrefix}%`,
+    `${pathPrefix}%/%`
+  ) as { count: number };
+
+  return row.count;
+}
+
+/**
  * Create or update file record
  */
 export function upsertFileRecord(file: {

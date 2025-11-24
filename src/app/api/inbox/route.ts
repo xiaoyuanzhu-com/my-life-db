@@ -1,8 +1,7 @@
 // API route for inbox operations
 import { NextRequest, NextResponse } from 'next/server';
 import { saveToInbox } from '@/lib/inbox/save-to-inbox';
-import { listFilesWithDigests } from '@/lib/db/files-with-digests';
-import { readPrimaryText } from '@/lib/inbox/digest-artifacts';
+import { listTopLevelFiles, countTopLevelFiles } from '@/lib/db/files';
 import { processFileDigests } from '@/lib/digest/task-handler';
 import { getLogger } from '@/lib/log/logger';
 import { notificationService } from '@/lib/notifications/notification-service';
@@ -38,44 +37,37 @@ export async function GET(request: NextRequest) {
       ? parseInt(searchParams.get('offset')!)
       : 0;
 
-    // List files with digests in inbox directory
-    // Only fetch screenshot digests (exclude content-md, summary, tags, slug)
-    const allFiles = listFilesWithDigests('inbox/', {
+    // OPTIMIZED: SQL-based filtering and pagination
+    // - Filters top-level entries in SQL (not JavaScript)
+    // - Applies limit/offset in SQL (not after loading all files)
+    // - No digest lookups (not needed for initial render)
+    // - No text preview loading (loaded on-demand via /raw/${path})
+    const files = listTopLevelFiles('inbox/', {
       orderBy: 'created_at',
       ascending: false,
-      digesters: ['screenshot'],  // Only include screenshot for image preview
+      limit,
+      offset,
     });
 
-    // Filter to only top-level entries (inbox/foo.jpg or inbox/folder, NOT inbox/folder/file.jpg)
-    const topLevelFiles = allFiles.filter(file => {
-      const relativePath = file.path.replace(/^inbox\//, '');
-      // Top-level if: no slashes (file) OR is a folder with no additional path segments
-      return !relativePath.includes('/') || (file.isFolder && relativePath.split('/').length === 1);
-    });
+    // Get total count for pagination
+    const total = countTopLevelFiles('inbox/');
 
-    // Apply pagination after filtering
-    const paginatedFiles = topLevelFiles.slice(offset, offset + limit);
-
-    // Enrich with text preview (truncated for performance)
-    const items = await Promise.all(
-      paginatedFiles.map(async (file) => {
-        const primaryText = await readPrimaryText(file.path);
-
-        // Return first 60 lines (50 to show + 10 buffer) for preview
-        const textPreview = primaryText
-          ? primaryText.split('\n').slice(0, 60).join('\n')
-          : undefined;
-
-        return {
-          ...file,
-          textPreview,
-        };
-      })
-    );
+    // Convert FileRecord to FileWithDigests (with empty digests array)
+    const items: InboxItem[] = files.map((file) => ({
+      path: file.path,
+      name: file.name,
+      isFolder: file.isFolder,
+      size: file.size,
+      mimeType: file.mimeType,
+      hash: file.hash,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      digests: [],  // No digests needed for initial render
+    }));
 
     const response: InboxResponse = {
       items,
-      total: topLevelFiles.length,
+      total,
     };
 
     return NextResponse.json(response);
