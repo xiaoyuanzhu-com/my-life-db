@@ -113,6 +113,14 @@ async function saveSingleFile(
     hash = createHash('sha256').update(file.buffer).digest('hex');
   }
 
+  // Read text preview for text files (first 50 lines)
+  let textPreview: string | undefined;
+  if (file.mimeType.startsWith('text/')) {
+    const text = file.buffer.toString('utf-8');
+    const lines = text.split('\n').slice(0, 50);
+    textPreview = lines.join('\n');
+  }
+
   // Update files table cache
   upsertFileRecord({
     path: relativePath,
@@ -122,6 +130,7 @@ async function saveSingleFile(
     mimeType: file.mimeType,
     hash,
     modifiedAt: now,
+    textPreview,
   });
 
   log.info({ path: relativePath, size: file.size }, 'saved single file to inbox');
@@ -175,6 +184,14 @@ async function saveToFolder(
       hash = createHash('sha256').update(file.buffer).digest('hex');
     }
 
+    // Read text preview for text files (first 50 lines)
+    let textPreview: string | undefined;
+    if (file.mimeType.startsWith('text/')) {
+      const text = file.buffer.toString('utf-8');
+      const lines = text.split('\n').slice(0, 50);
+      textPreview = lines.join('\n');
+    }
+
     // Update files table cache for each file
     upsertFileRecord({
       path: fileRelativePath,
@@ -184,6 +201,7 @@ async function saveToFolder(
       mimeType: file.mimeType,
       hash,
       modifiedAt: now,
+      textPreview,
     });
 
     savedFiles.push({
