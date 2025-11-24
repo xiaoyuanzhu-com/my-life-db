@@ -164,6 +164,7 @@ export function upsertFileRecord(file: {
   mimeType?: string | null;
   hash?: string | null;
   modifiedAt: string;
+  textPreview?: string | null;
 }): FileRecord {
   const db = getDatabase();
   const now = new Date().toISOString();
@@ -180,7 +181,8 @@ export function upsertFileRecord(file: {
         mime_type = ?,
         hash = ?,
         modified_at = ?,
-        last_scanned_at = ?
+        last_scanned_at = ?,
+        text_preview = ?
       WHERE path = ?`
     ).run(
       file.name,
@@ -190,6 +192,7 @@ export function upsertFileRecord(file: {
       file.hash ?? null,
       file.modifiedAt,
       now,
+      file.textPreview ?? null,
       file.path
     );
 
@@ -199,8 +202,8 @@ export function upsertFileRecord(file: {
     db.prepare(
       `INSERT INTO files (
         path, name, is_folder, size, mime_type, hash,
-        modified_at, created_at, last_scanned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        modified_at, created_at, last_scanned_at, text_preview
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       file.path,
       file.name,
@@ -210,7 +213,8 @@ export function upsertFileRecord(file: {
       file.hash ?? null,
       file.modifiedAt,
       now,
-      now
+      now,
+      file.textPreview ?? null
     );
 
     log.debug({ path: file.path }, 'created file record');

@@ -154,6 +154,18 @@ async function scanFile(
     hash = createHash('sha256').update(buffer).digest('hex');
   }
 
+  // Read text preview for text files (first 50 lines)
+  let textPreview: string | undefined;
+  if (mimeType?.startsWith('text/')) {
+    try {
+      const content = await fs.readFile(fullPath, 'utf-8');
+      const lines = content.split('\n').slice(0, 50);
+      textPreview = lines.join('\n');
+    } catch {
+      // Ignore errors reading text preview
+    }
+  }
+
   // Check if file exists in database
   const existing = getFileByPath(relativePath);
 
@@ -173,6 +185,7 @@ async function scanFile(
       mimeType,
       hash,
       modifiedAt: fileStats.mtime.toISOString(),
+      textPreview,
     });
 
     if (!existing) {

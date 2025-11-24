@@ -37,6 +37,9 @@ export interface FileRecordRow {
 
   /** ISO 8601 timestamp of last scan */
   last_scanned_at: string;
+
+  /** Text preview for text files (first ~50 lines, null for non-text files) */
+  text_preview: string | null;
 }
 
 /**
@@ -71,6 +74,9 @@ export interface FileRecord {
 
   /** ISO 8601 timestamp of last scan */
   lastScannedAt: string;
+
+  /** Text preview for text files (first ~50 lines, null for non-text files) */
+  textPreview: string | null;
 }
 
 /**
@@ -87,5 +93,6 @@ export function rowToFileRecord(row: FileRecordRow): FileRecord {
     modifiedAt: row.modified_at,
     createdAt: row.created_at,
     lastScannedAt: row.last_scanned_at,
+    textPreview: row.text_preview,
   };
 }

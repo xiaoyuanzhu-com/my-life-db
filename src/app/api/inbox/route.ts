@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     // - Filters top-level entries in SQL (not JavaScript)
     // - Applies limit/offset in SQL (not after loading all files)
     // - No digest lookups (not needed for initial render)
-    // - No text preview loading (loaded on-demand via /raw/${path})
+    // - Text preview cached in database (no filesystem reads!)
     const files = listTopLevelFiles('inbox/', {
       orderBy: 'created_at',
       ascending: false,
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const total = countTopLevelFiles('inbox/');
 
-    // Convert FileRecord to FileWithDigests (with empty digests array)
+    // Convert FileRecord to InboxItem (includes cached textPreview from DB)
     const items: InboxItem[] = files.map((file) => ({
       path: file.path,
       name: file.name,
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       modifiedAt: file.modifiedAt,
       createdAt: file.createdAt,
       digests: [],  // No digests needed for initial render
+      textPreview: file.textPreview || undefined,  // From database cache
     }));
 
     const response: InboxResponse = {
