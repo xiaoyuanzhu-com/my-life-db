@@ -14,6 +14,16 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface FileCardProps {
@@ -40,6 +50,7 @@ export function FileCard({
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derive href from file path - navigate to library with ?open parameter
@@ -216,10 +227,12 @@ export function FileCard({
     }
   }, [file.name, file.path, fullContent, isTextContent, previewText]);
 
-  const handleDelete = useCallback(async () => {
-    if (!confirm(`Are you sure you want to delete "${file.name}"?`)) {
-      return;
-    }
+  const handleDeleteClick = useCallback(() => {
+    setIsDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    setIsDeleteDialogOpen(false);
 
     try {
       const response = await fetch(`/api/library/file?path=${encodeURIComponent(file.path)}`, {
@@ -236,7 +249,7 @@ export function FileCard({
       console.error('Failed to delete file:', error);
       alert('Failed to delete file. Please try again.');
     }
-  }, [file.name, file.path, router]);
+  }, [file.path, router]);
 
   const handleOpen = useCallback(() => {
     router.push(href);
@@ -375,12 +388,29 @@ export function FileCard({
 
           <ContextMenuSeparator />
 
-          <ContextMenuItem onClick={handleDelete} variant="destructive">
+          <ContextMenuItem onClick={handleDeleteClick} variant="destructive">
             <Trash2 className="mr-2" />
             Delete
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {file.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the file and all related data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
