@@ -32,6 +32,7 @@ export interface FileCardProps {
   showTimestamp?: boolean;
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
+  priority?: boolean;
 }
 
 /**
@@ -44,6 +45,7 @@ export function FileCard({
   showTimestamp = false,
   highlightTerms,
   matchContext,
+  priority = false,
 }: FileCardProps) {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -286,7 +288,7 @@ export function FileCard({
                     height={600}
                     sizes="(max-width: 768px) calc(100vw - 40px), 448px"
                     className="w-full h-auto object-contain"
-                    priority={false}
+                    priority={priority}
                   />
                 </div>
               ) : content.type === 'video' ? (

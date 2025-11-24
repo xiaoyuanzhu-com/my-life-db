@@ -172,11 +172,12 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
       {/* Inbox items - displayed in reverse order (oldest first, newest last) */}
       <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
-        {items.slice().reverse().map((item) => (
+        {items.slice().reverse().map((item, index, array) => (
           <FileCard
             key={item.path}
             file={item}
             showTimestamp={true}
+            priority={index === array.length - 1}
           />
         ))}
       </div>

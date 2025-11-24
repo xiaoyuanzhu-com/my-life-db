@@ -107,10 +107,11 @@ export default function InboxPage() {
 
                 {/* Item Grid for this date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {group.items.map((item) => (
+                  {group.items.map((item, itemIndex) => (
                     <FileCard
                       key={item.path}
                       file={item}
+                      priority={groupedItems[0] === group && itemIndex === 0}
                     />
                   ))}
                 </div>

@@ -251,13 +251,14 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
               </div>
             )}
 
-            {orderedResults.map((result) => (
+            {orderedResults.map((result, index, array) => (
               <FileCard
                 key={result.path}
                 file={result}
                 showTimestamp={true}
                 highlightTerms={highlightTerms}
                 matchContext={result.matchContext}
+                priority={index === array.length - 1}
               />
             ))}
           </div>
