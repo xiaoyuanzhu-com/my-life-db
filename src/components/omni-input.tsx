@@ -7,6 +7,7 @@ import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SearchStatus } from './search-status';
 import type { SearchResponse } from '@/app/api/search/route';
+import * as tus from 'tus-js-client';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
@@ -25,6 +26,14 @@ interface OmniInputProps {
 }
 
 const SEARCH_BATCH_SIZE = 30;
+const TUS_THRESHOLD = 5 * 1024 * 1024; // 5MB - use tus for files larger than this
+
+interface UploadProgress {
+  filename: string;
+  bytesUploaded: number;
+  bytesTotal: number;
+  percentage: number;
+}
 
 export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, maxHeight }: OmniInputProps) {
   const [content, setContent] = useState('');
@@ -32,6 +41,8 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Map<string, UploadProgress>>(new Map());
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Search state
@@ -180,42 +191,28 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
     }
 
     setIsLoading(true);
+    setIsUploading(true);
     setError('');
 
     try {
-      // Create FormData to support file uploads
-      const formData = new FormData();
-      // Align with new Inbox API (no date layer): expects `text` and `files`
       const trimmed = content.trim();
-      if (trimmed.length > 0) {
-        formData.append('text', trimmed);
-      }
 
-      // Add files to FormData
-      selectedFiles.forEach((file) => {
-        formData.append('files', file);
-      });
+      // Check if any files need tus upload (larger than threshold)
+      const largeFiles = selectedFiles.filter(f => f.size > TUS_THRESHOLD);
+      const smallFiles = selectedFiles.filter(f => f.size <= TUS_THRESHOLD);
 
-      const response = await fetch('/api/inbox', {
-        method: 'POST',
-        body: formData, // Send as multipart/form-data
-      });
-
-      if (!response.ok) {
-        // Try to surface server error details for easier debugging
-        let details = '';
-        try {
-          const data = await response.json();
-          details = data?.error || data?.details || '';
-        } catch {
-          // ignore
-        }
-        throw new Error(details || `HTTP ${response.status}`);
+      if (largeFiles.length > 0) {
+        // Use tus for large files
+        await handleTusUpload(trimmed, largeFiles, smallFiles);
+      } else {
+        // Use regular FormData upload for small files
+        await handleRegularUpload(trimmed, smallFiles);
       }
 
       // Clear state (will also clear sessionStorage via the effect)
       setContent('');
       setSelectedFiles([]);
+      setUploadProgress(new Map());
       setSearchResults(null); // Clear search results on submit
       setSearchError(null);
       if (fileInputRef.current) {
@@ -228,7 +225,137 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
       console.error('Inbox save failed:', err);
     } finally {
       setIsLoading(false);
+      setIsUploading(false);
     }
+  }
+
+  async function handleRegularUpload(text: string, files: File[]) {
+    const formData = new FormData();
+    if (text) {
+      formData.append('text', text);
+    }
+
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const response = await fetch('/api/inbox', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let details = '';
+      try {
+        const data = await response.json();
+        details = data?.error || data?.details || '';
+      } catch {
+        // ignore
+      }
+      throw new Error(details || `HTTP ${response.status}`);
+    }
+  }
+
+  async function handleTusUpload(text: string, largeFiles: File[], smallFiles: File[]) {
+    // Upload all files using tus
+    const allFiles = [...smallFiles, ...largeFiles];
+    const uploadResults: Array<{
+      uploadId: string;
+      filename: string;
+      size: number;
+      type: string;
+    }> = [];
+
+    // Upload each file with tus
+    for (const file of allFiles) {
+      const uploadId = await uploadFileWithTus(file);
+      uploadResults.push({
+        uploadId,
+        filename: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    }
+
+    // Finalize the upload
+    const response = await fetch('/api/upload/finalize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        uploads: uploadResults,
+        text: text || undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      let details = '';
+      try {
+        const data = await response.json();
+        details = data?.error || '';
+      } catch {
+        // ignore
+      }
+      throw new Error(details || `HTTP ${response.status}`);
+    }
+  }
+
+  function uploadFileWithTus(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const upload = new tus.Upload(file, {
+        endpoint: '/api/upload/tus',
+        retryDelays: [0, 1000, 3000, 5000],
+        metadata: {
+          filename: file.name,
+          filetype: file.type,
+        },
+        onError: (error) => {
+          console.error('[TUS] Upload failed:', error);
+          setUploadProgress(prev => {
+            const next = new Map(prev);
+            next.delete(file.name);
+            return next;
+          });
+          reject(error);
+        },
+        onProgress: (bytesUploaded, bytesTotal) => {
+          const percentage = Math.round((bytesUploaded / bytesTotal) * 100);
+          setUploadProgress(prev => {
+            const next = new Map(prev);
+            next.set(file.name, {
+              filename: file.name,
+              bytesUploaded,
+              bytesTotal,
+              percentage,
+            });
+            return next;
+          });
+        },
+        onSuccess: () => {
+          console.log('[TUS] Upload complete:', file.name);
+          // Extract upload ID from URL
+          const url = upload.url;
+          if (!url) {
+            reject(new Error('No upload URL returned'));
+            return;
+          }
+          const uploadId = url.split('/').pop();
+          if (!uploadId) {
+            reject(new Error('Could not extract upload ID'));
+            return;
+          }
+          resolve(uploadId);
+        },
+      });
+
+      upload.findPreviousUploads().then((previousUploads) => {
+        if (previousUploads.length) {
+          upload.resumeFromPreviousUpload(previousUploads[0]);
+        }
+        upload.start();
+      });
+    });
   }
 
   function handleDragEnter(e: React.DragEvent) {
@@ -272,6 +399,14 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   }
 
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  }
+
   return (
     <div className="w-full">
       <form onSubmit={handleSubmit} className="w-full">
@@ -306,27 +441,57 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
 
         {/* File chips above control bar */}
         {selectedFiles.length > 0 && (
-          <div className="flex items-center gap-2 px-4 pb-2 overflow-x-auto">
-            {selectedFiles.map((file, index) => (
-              <div
-                key={index}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5',
-                  'bg-muted rounded-md text-sm whitespace-nowrap flex-shrink-0'
-                )}
-              >
-                <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="max-w-[120px] truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeFile(index)}
-                  className="ml-1 hover:bg-background rounded-full p-0.5 transition-colors"
-                  aria-label="Remove file"
+          <div className="flex flex-col gap-2 px-4 pb-2">
+            {selectedFiles.map((file, index) => {
+              const progress = uploadProgress.get(file.name);
+              const isUploading = progress !== undefined;
+
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    'flex items-center gap-2',
+                    'bg-muted rounded-md p-2'
+                  )}
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+                  <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-sm truncate">{file.name}</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatFileSize(file.size)}
+                      </span>
+                    </div>
+                    {isUploading && (
+                      <div className="w-full">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {formatFileSize(progress.bytesUploaded)} / {formatFileSize(progress.bytesTotal)}
+                          </span>
+                          <span className="text-xs font-medium">{progress.percentage}%</span>
+                        </div>
+                        <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="bg-primary h-full transition-all duration-300 ease-out"
+                            style={{ width: `${progress.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {!isUploading && (
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="hover:bg-background rounded-full p-1 transition-colors flex-shrink-0"
+                      aria-label="Remove file"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -355,11 +520,11 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
 
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isUploading}
             size="sm"
             className="h-8 cursor-pointer"
           >
-            <span>Send</span>
+            <span>{isUploading ? 'Uploading...' : 'Send'}</span>
           </Button>
         </div>
 
