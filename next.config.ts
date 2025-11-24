@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
     ],
     // For production, you would add your domain here
   },
+  experimental: {
+    // Increase body size limit for TUS resumable uploads
+    // Using 20mb to accommodate our 10MB chunk size + overhead
+    middlewareClientMaxBodySize: '20mb',
+  },
 };
 
 export default nextConfig;

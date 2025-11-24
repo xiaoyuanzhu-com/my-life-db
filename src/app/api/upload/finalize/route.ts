@@ -39,8 +39,9 @@ export async function POST(request: NextRequest) {
     }> = [];
 
     for (const upload of uploads) {
-      // Tus stores files as {uploadId}.bin
+      // Tus stores files as {uploadId} (no extension)
       const tusFilePath = path.join(UPLOAD_DIR, upload.uploadId);
+      const metadataPath = `${tusFilePath}.json`;
 
       if (!existsSync(tusFilePath)) {
         console.error(`[FINALIZE] Upload file not found: ${tusFilePath}`);
@@ -60,9 +61,8 @@ export async function POST(request: NextRequest) {
       // Clean up tus file and metadata
       try {
         await fs.unlink(tusFilePath);
-        const infoPath = `${tusFilePath}.info`;
-        if (existsSync(infoPath)) {
-          await fs.unlink(infoPath);
+        if (existsSync(metadataPath)) {
+          await fs.unlink(metadataPath);
         }
       } catch (err) {
         console.error('[FINALIZE] Error cleaning up tus files:', err);

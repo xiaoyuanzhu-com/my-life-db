@@ -26,7 +26,10 @@ interface OmniInputProps {
 }
 
 const SEARCH_BATCH_SIZE = 30;
-const TUS_THRESHOLD = 5 * 1024 * 1024; // 5MB - use tus for files larger than this
+// Use TUS for all uploads to enable progress tracking and resumability
+// Set to 0 to always use TUS (recommended for homelab with fast network)
+// Alternative: set to 100 * 1024 * 1024 (100MB) for hybrid approach
+const TUS_THRESHOLD = 0;
 
 interface UploadProgress {
   filename: string;
@@ -306,6 +309,8 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
       const upload = new tus.Upload(file, {
         endpoint: '/api/upload/tus',
         retryDelays: [0, 1000, 3000, 5000],
+        // 10MB chunks - balances speed and reliability
+        chunkSize: 10 * 1024 * 1024,
         metadata: {
           filename: file.name,
           filetype: file.type,
@@ -401,10 +406,12 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
 
   function formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    // Use decimal (1000-based) units to match macOS Finder
+    // macOS shows: 722.9 MB for a file that's actually 689 MiB
+    const k = 1000;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
   }
 
   return (
@@ -450,40 +457,31 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
                 <div
                   key={index}
                   className={cn(
-                    'flex items-center gap-2',
+                    'flex items-center gap-2 relative overflow-hidden',
                     'bg-muted rounded-md p-2'
                   )}
                 >
-                  <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-sm truncate">{file.name}</span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatFileSize(file.size)}
-                      </span>
-                    </div>
-                    {isUploading && (
-                      <div className="w-full">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-muted-foreground">
-                            {formatFileSize(progress.bytesUploaded)} / {formatFileSize(progress.bytesTotal)}
-                          </span>
-                          <span className="text-xs font-medium">{progress.percentage}%</span>
-                        </div>
-                        <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className="bg-primary h-full transition-all duration-300 ease-out"
-                            style={{ width: `${progress.percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                  {/* Progress bar as background */}
+                  {isUploading && (
+                    <div
+                      className="absolute inset-0 bg-primary/10 transition-all duration-300 ease-out"
+                      style={{ width: `${progress.percentage}%` }}
+                    />
+                  )}
+
+                  {/* Content on top of progress bar */}
+                  <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0 relative z-10" />
+                  <div className="flex-1 min-w-0 flex items-center gap-2 relative z-10">
+                    <span className="text-sm truncate flex-1">{file.name}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {isUploading ? `${progress.percentage}%` : formatFileSize(file.size)}
+                    </span>
                   </div>
                   {!isUploading && (
                     <button
                       type="button"
                       onClick={() => removeFile(index)}
-                      className="hover:bg-background rounded-full p-1 transition-colors flex-shrink-0"
+                      className="hover:bg-background rounded-full p-1 transition-colors flex-shrink-0 relative z-10"
                       aria-label="Remove file"
                     >
                       <X className="h-4 w-4" />
