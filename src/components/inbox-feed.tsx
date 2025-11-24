@@ -23,24 +23,15 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const stickToBottomRef = useRef(true);
   const lastScrollMetricsRef = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
-  const logScrollState = useCallback((context: string) => {
+  const updateScrollMetrics = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     lastScrollMetricsRef.current = {
       scrollTop: container.scrollTop,
       scrollHeight: container.scrollHeight,
       clientHeight: container.clientHeight,
     };
-    // eslint-disable-next-line no-console
-    console.log('[InboxFeed]', context, {
-      items: items.length,
-      scrollTop: container.scrollTop,
-      scrollHeight: container.scrollHeight,
-      clientHeight: container.clientHeight,
-      distanceFromBottom,
-    });
-  }, [items.length]);
+  }, []);
 
   // Load initial batch
   const loadInitialBatch = useCallback(async () => {
@@ -113,7 +104,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     stickToBottomRef.current = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
-    logScrollState('onScroll');
+    updateScrollMetrics();
 
     // Detect scroll near top (load older items)
     const scrollTop = container.scrollTop;
@@ -122,7 +113,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     if (scrollTop < threshold && hasMore && !loadingRef.current) {
       loadMore();
     }
-  }, [hasMore, loadMore, logScrollState]);
+  }, [hasMore, loadMore, updateScrollMetrics]);
 
   // Initial load
   useEffect(() => {
@@ -155,7 +146,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
 
       if (stickToBottomRef.current || (wasAtBottom && heightIncreased) || distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
         container.scrollTop = container.scrollHeight;
-        logScrollState('resize observer');
+        updateScrollMetrics();
       }
     });
 
@@ -164,7 +155,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       observer.observe(content);
     }
     return () => observer.disconnect();
-  }, [logScrollState]);
+  }, [updateScrollMetrics]);
 
   // Auto-scroll to bottom when freshly loaded/refreshed
   useEffect(() => {
@@ -179,7 +170,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       if (container) {
         const heightDiff = container.scrollHeight - adjustment.prevHeight;
         container.scrollTop = adjustment.prevTop + heightDiff;
-        logScrollState('after adjustment');
+        updateScrollMetrics();
       }
       scrollAdjustmentRef.current = null;
       return;
@@ -198,12 +189,12 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     requestAnimationFrame(() => {
       if (container) {
         container.scrollTop = container.scrollHeight;
-        logScrollState('auto-scroll raf');
+        updateScrollMetrics();
       }
     });
     autoScrollRef.current = false;
     stickToBottomRef.current = true;
-  }, [items, logScrollState]);
+  }, [items, updateScrollMetrics]);
 
   useEffect(() => {
     autoScrollRef.current = true;
