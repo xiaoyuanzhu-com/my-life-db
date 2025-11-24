@@ -86,6 +86,7 @@ export class DigestCoordinator {
       modified_at: fileRecord.modifiedAt,
       created_at: fileRecord.createdAt,
       last_scanned_at: fileRecord.lastScannedAt,
+      text_preview: fileRecord.textPreview,
     };
 
     // 2. Get all digesters in registration order

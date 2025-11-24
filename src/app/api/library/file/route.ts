@@ -1,10 +1,9 @@
 // API route for general file operations
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
-import { getFileByPath, deleteFileRecord, deleteFilesByPrefix } from '@/lib/db/files';
-import { deleteDigestsForPath, deleteDigestsByPrefix } from '@/lib/db/digests';
+import { getFileByPath } from '@/lib/db/files';
+import { deleteFile } from '@/lib/files/delete-file';
 import { getStorageConfig } from '@/lib/config/storage';
-import fs from 'fs/promises';
 import path from 'path';
 import { getLogger } from '@/lib/log/logger';
 
@@ -45,22 +44,29 @@ export async function DELETE(request: NextRequest) {
     }
 
     const config = await getStorageConfig();
-
-    // Delete files from filesystem
     const fullPath = path.join(config.dataPath, filePath);
-    await fs.rm(fullPath, { recursive: true, force: true });
 
-    // Delete database records (file and digests)
-    if (file.isFolder) {
-      // For folders, delete all children first
-      deleteFilesByPrefix(`${filePath}/`);
-      deleteDigestsByPrefix(`${filePath}/`);
+    // Delete file and all related database records
+    const result = await deleteFile({
+      fullPath,
+      relativePath: filePath,
+      isFolder: file.isFolder,
+    });
+
+    if (!result.success) {
+      throw new Error('Delete operation failed');
     }
-    // Delete the folder/file record itself
-    deleteFileRecord(filePath);
-    deleteDigestsForPath(filePath);
 
-    return NextResponse.json({ success: true });
+    log.info(
+      {
+        filePath,
+        isFolder: file.isFolder,
+        ...result.databaseRecordsDeleted,
+      },
+      'file deleted successfully'
+    );
+
+    return NextResponse.json({ success: true, result });
   } catch (error) {
     log.error({ err: error }, 'delete file failed');
     return NextResponse.json(
