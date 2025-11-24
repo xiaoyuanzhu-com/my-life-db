@@ -24,20 +24,6 @@ export interface FileCardProps {
   matchContext?: SearchResultItem['matchContext'];
 }
 
-function toBase64Url(input: string): string {
-  const bytes = new TextEncoder().encode(input);
-  let binary = '';
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
 /**
  * Content-focused file card component with adaptive sizing
  * Displays text content, images, or filename based on file type
@@ -127,10 +113,6 @@ export function FileCard({
     const isVideo = file.mimeType?.startsWith('video/');
     const isAudio = file.mimeType?.startsWith('audio/');
 
-    // Check for screenshot
-    const screenshotDigest = file.digests.find(d => d.type === 'screenshot');
-    const hasScreenshot = !!screenshotDigest?.sqlarName;
-
     // Handle video files
     if (isVideo) {
       const src = `/raw/${file.path}`;
@@ -143,15 +125,9 @@ export function FileCard({
       return { type: 'audio' as const, src, mimeType: file.mimeType };
     }
 
-    // Handle images (prefer screenshot for URLs, actual image for files)
-    if (isImage || hasScreenshot) {
-      // Generate image/screenshot URL
-      const pathHash = toBase64Url(file.path).slice(0, 12);
-
-      const src = hasScreenshot
-        ? `/sqlar/${pathHash}/screenshot/screenshot.png`
-        : `/raw/${file.path}`;
-
+    // Handle images - always use raw file
+    if (isImage) {
+      const src = `/raw/${file.path}`;
       return { type: 'image' as const, src, alt: file.name };
     }
 
