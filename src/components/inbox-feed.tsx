@@ -9,6 +9,7 @@ interface InboxFeedProps {
 }
 
 const BATCH_SIZE = 30;
+const BOTTOM_STICK_THRESHOLD = 48;
 
 export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const [items, setItems] = useState<InboxResponse['items']>([]);
@@ -16,9 +17,30 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const autoScrollRef = useRef(true);
   const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const stickToBottomRef = useRef(true);
+  const lastScrollMetricsRef = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
+  const logScrollState = useCallback((context: string) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    lastScrollMetricsRef.current = {
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+    };
+    // eslint-disable-next-line no-console
+    console.log('[InboxFeed]', context, {
+      items: items.length,
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+      distanceFromBottom,
+    });
+  }, [items.length]);
 
   // Load initial batch
   const loadInitialBatch = useCallback(async () => {
@@ -89,6 +111,10 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
+    logScrollState('onScroll');
+
     // Detect scroll near top (load older items)
     const scrollTop = container.scrollTop;
     const threshold = 200; // Load when 200px from top
@@ -96,7 +122,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     if (scrollTop < threshold && hasMore && !loadingRef.current) {
       loadMore();
     }
-  }, [hasMore, loadMore]);
+  }, [hasMore, loadMore, logScrollState]);
 
   // Initial load
   useEffect(() => {
@@ -112,14 +138,48 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // Keep view pinned to bottom while content height changes (e.g., image loads)
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const content = contentRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      if (!container) return;
+
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const prev = lastScrollMetricsRef.current;
+      const prevDistance = prev ? prev.scrollHeight - prev.scrollTop - prev.clientHeight : null;
+      const heightIncreased = prev ? container.scrollHeight > prev.scrollHeight : false;
+      const wasAtBottom = prevDistance !== null ? prevDistance < BOTTOM_STICK_THRESHOLD : stickToBottomRef.current;
+
+      if (stickToBottomRef.current || (wasAtBottom && heightIncreased) || distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
+        container.scrollTop = container.scrollHeight;
+        logScrollState('resize observer');
+      }
+    });
+
+    observer.observe(container);
+    if (content) {
+      observer.observe(content);
+    }
+    return () => observer.disconnect();
+  }, [logScrollState]);
+
   // Auto-scroll to bottom when freshly loaded/refreshed
   useEffect(() => {
+    if (items.length === 0) {
+      // Wait for first real batch before locking auto-scroll
+      return;
+    }
+
     const adjustment = scrollAdjustmentRef.current;
     if (adjustment) {
       const container = scrollContainerRef.current;
       if (container) {
         const heightDiff = container.scrollHeight - adjustment.prevHeight;
         container.scrollTop = adjustment.prevTop + heightDiff;
+        logScrollState('after adjustment');
       }
       scrollAdjustmentRef.current = null;
       return;
@@ -134,12 +194,20 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       return;
     }
 
-    container.scrollTop = container.scrollHeight;
+    // Use requestAnimationFrame to ensure content is fully rendered before scrolling
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+        logScrollState('auto-scroll raf');
+      }
+    });
     autoScrollRef.current = false;
-  }, [items]);
+    stickToBottomRef.current = true;
+  }, [items, logScrollState]);
 
   useEffect(() => {
     autoScrollRef.current = true;
+    stickToBottomRef.current = true;
   }, [onRefresh]);
 
   if (error) {
@@ -171,7 +239,7 @@ export function InboxFeed({ onRefresh }: InboxFeedProps) {
       )}
 
       {/* Inbox items - displayed in reverse order (oldest first, newest last) */}
-      <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
+      <div ref={contentRef} className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
         {items.slice().reverse().map((item, index, array) => (
           <FileCard
             key={item.path}
