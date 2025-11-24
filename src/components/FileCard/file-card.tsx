@@ -450,7 +450,8 @@ function TextContent({
 function getTextDisplay(text: string, isExpanded: boolean) {
   const allLines = text.split('\n');
   const maxLines = 50;
-  const shouldTruncate = allLines.length > maxLines;
+  // If we have exactly maxLines, assume the preview was truncated
+  const shouldTruncate = allLines.length >= maxLines;
   const displayLines = isExpanded ? allLines : allLines.slice(0, maxLines);
   const displayText = displayLines.join('\n');
 
