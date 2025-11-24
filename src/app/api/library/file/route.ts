@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 import { getFileByPath } from '@/lib/db/files';
 import { deleteFile } from '@/lib/files/delete-file';
+import { notificationService } from '@/lib/notifications/notification-service';
 import { getStorageConfig } from '@/lib/config/storage';
 import path from 'path';
 import { getLogger } from '@/lib/log/logger';
@@ -65,6 +66,18 @@ export async function DELETE(request: NextRequest) {
       },
       'file deleted successfully'
     );
+
+    // Notify clients if this was an inbox file
+    if (filePath.startsWith('inbox/')) {
+      notificationService.notify({
+        type: 'inbox-deleted',
+        path: filePath,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          name: file.name,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, result });
   } catch (error) {
