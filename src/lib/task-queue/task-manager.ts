@@ -200,6 +200,19 @@ export function updateTask(
   const result = stmt.run(...params);
   const updated = result.changes > 0;
 
+  if (updated && shouldLogOutcome) {
+    log.info(
+      {
+        id,
+        from: prev?.status,
+        to: updates.status,
+        attempts: updates.attempts ?? prev?.attempts,
+        version: newVersion,
+      },
+      'task status updated'
+    );
+  }
+
   return updated;
 }
 

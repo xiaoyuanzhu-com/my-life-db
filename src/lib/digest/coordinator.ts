@@ -15,11 +15,9 @@ import {
   getDigestById,
   createDigest,
   updateDigest,
-  deleteDigestsForPath,
 } from '@/lib/db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { getLogger } from '@/lib/log/logger';
-import { notificationService } from '@/lib/notifications/notification-service';
 
 const log = getLogger({ module: 'DigestCoordinator' });
 
