@@ -170,11 +170,28 @@ export class FileSystemWatcher extends EventEmitter {
       const filename = path.basename(relativePath);
       const mimeType = this.getMimeType(filename);
 
-      // Hash small files
+      // Hash small files and read text preview
       let hash: string | undefined;
+      let textPreview: string | undefined;
       if (stats.size < HASH_SIZE_THRESHOLD) {
         const buffer = await fs.readFile(fullPath);
         hash = createHash('sha256').update(buffer).digest('hex');
+
+        // Read text preview for text files (first 50 lines)
+        if (mimeType.startsWith('text/')) {
+          const text = buffer.toString('utf-8');
+          const lines = text.split('\n').slice(0, 50);
+          textPreview = lines.join('\n');
+        }
+      } else if (mimeType.startsWith('text/')) {
+        // For large text files, still read preview
+        try {
+          const buffer = await fs.readFile(fullPath, 'utf-8');
+          const lines = buffer.split('\n').slice(0, 50);
+          textPreview = lines.join('\n');
+        } catch {
+          // Ignore errors reading text preview
+        }
       }
 
       // Detect if content changed (hash comparison)
@@ -201,6 +218,7 @@ export class FileSystemWatcher extends EventEmitter {
         mimeType,
         hash,
         modifiedAt: stats.mtime.toISOString(),
+        textPreview,
       });
 
       log.info(
