@@ -36,43 +36,12 @@ export function MobileContextMenu({
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
 
-  // Select all text in trigger when menu opens (for text content)
-  useEffect(() => {
-    if (open && selectTextOnOpen && triggerRef.current) {
-      // Clear any existing selection first
-      const selection = window.getSelection();
-      if (selection) {
-        selection.removeAllRanges();
-      }
-
-      // Delay selection slightly to ensure menu is rendered and previous selection is cleared
-      const timer = setTimeout(() => {
-        const sel = window.getSelection();
-        const range = document.createRange();
-
-        // Find text content within the trigger (only within the card, not outside)
-        const textElement = triggerRef.current?.querySelector('.prose');
-        if (textElement && sel) {
-          try {
-            range.selectNodeContents(textElement);
-            sel.removeAllRanges();
-            sel.addRange(range);
-          } catch (e) {
-            console.error('Failed to select text:', e);
-          }
-        }
-      }, 100);
-
-      return () => {
-        clearTimeout(timer);
-        // Clear selection when menu closes
-        const sel = window.getSelection();
-        if (sel) {
-          sel.removeAllRanges();
-        }
-      };
-    }
-  }, [open, selectTextOnOpen]);
+  // TODO: Text selection disabled for now - testing default behavior
+  // useEffect(() => {
+  //   if (open && selectTextOnOpen && triggerRef.current) {
+  //     // Custom text selection logic removed temporarily
+  //   }
+  // }, [open, selectTextOnOpen]);
 
   // Calculate position when menu opens
   useEffect(() => {
@@ -97,8 +66,8 @@ export function MobileContextMenu({
       const triggerRect = trigger.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
 
-      const gap = 12; // Space between trigger and menu
       const arrowSize = 8; // Triangle arrow height
+      const gap = arrowSize; // Space between trigger and menu (matches arrow size)
 
       // Calculate available space
       const spaceAbove = triggerRect.top - viewportRect.top;
@@ -163,7 +132,7 @@ export function MobileContextMenu({
   useEffect(() => {
     if (!open) return;
 
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (
         menuRef.current &&
         triggerRef.current &&
@@ -175,19 +144,13 @@ export function MobileContextMenu({
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as EventListener);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as EventListener);
     };
   }, [open, onOpenChange]);
-
-  // Handle trigger long-press
-  const handleTriggerLongPress = (event: React.TouchEvent | React.MouseEvent) => {
-    event.preventDefault();
-    onOpenChange(true);
-  };
 
   // Add touch event listener with { passive: false } to allow preventDefault
   useEffect(() => {
@@ -200,6 +163,7 @@ export function MobileContextMenu({
     let startY = 0;
 
     const handleTouchStart = (e: TouchEvent) => {
+      // Don't prevent default here - allow scrolling
       hasMoved = false;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
@@ -207,10 +171,6 @@ export function MobileContextMenu({
       longPressTimeout = setTimeout(() => {
         // Only trigger if user hasn't moved (not scrolling)
         if (!hasMoved) {
-          // Prevent default text selection on long-press for text content
-          if (selectTextOnOpen) {
-            e.preventDefault();
-          }
           onOpenChange(true);
         }
       }, 500);
@@ -221,12 +181,14 @@ export function MobileContextMenu({
         const deltaY = Math.abs(moveEvent.touches[0].clientY - startY);
 
         if (deltaX > 10 || deltaY > 10) {
+          // User is scrolling - cancel long press
           hasMoved = true;
           if (longPressTimeout) {
             clearTimeout(longPressTimeout);
             longPressTimeout = null;
           }
         }
+        // Allow native selection behavior
       };
 
       const cleanup = () => {
@@ -239,12 +201,11 @@ export function MobileContextMenu({
       };
 
       element.addEventListener('touchend', cleanup);
-      element.addEventListener('touchmove', handleTouchMove);
+      element.addEventListener('touchmove', handleTouchMove, { passive: true });
     };
 
-    // Add with { passive: false } to allow preventDefault for text selection
-    // But only preventDefault in the timeout, not on initial touch (allows scroll)
-    element.addEventListener('touchstart', handleTouchStart, { passive: !selectTextOnOpen });
+    // Add touch listener - passive for better scroll performance
+    element.addEventListener('touchstart', handleTouchStart, { passive: true });
 
     return () => {
       element.removeEventListener('touchstart', handleTouchStart);
@@ -252,23 +213,23 @@ export function MobileContextMenu({
         clearTimeout(longPressTimeout);
       }
     };
-  }, [selectTextOnOpen, onOpenChange]);
+  }, [onOpenChange]);
 
-  // Add/remove class to prevent system selection UI when menu is open
-  useEffect(() => {
-    const element = triggerRef.current;
-    if (!element) return;
-
-    if (open && selectTextOnOpen) {
-      element.classList.add('mobile-menu-open');
-    } else {
-      element.classList.remove('mobile-menu-open');
-    }
-
-    return () => {
-      element.classList.remove('mobile-menu-open');
-    };
-  }, [open, selectTextOnOpen]);
+  // TODO: CSS class handling disabled for now - testing default behavior
+  // useEffect(() => {
+  //   const element = triggerRef.current;
+  //   if (!element) return;
+  //
+  //   if (open && selectTextOnOpen) {
+  //     element.classList.add('mobile-menu-open');
+  //   } else {
+  //     element.classList.remove('mobile-menu-open');
+  //   }
+  //
+  //   return () => {
+  //     element.classList.remove('mobile-menu-open');
+  //   };
+  // }, [open, selectTextOnOpen]);
 
   // Clone trigger with ref and context menu handler
   const triggerWithHandlers = React.cloneElement(trigger, {
@@ -277,7 +238,7 @@ export function MobileContextMenu({
       e.preventDefault();
       onOpenChange(true);
     },
-  });
+  } as React.HTMLAttributes<HTMLElement>);
 
   return (
     <>
@@ -285,12 +246,6 @@ export function MobileContextMenu({
 
       {open && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/20"
-            onClick={() => onOpenChange(false)}
-          />
-
           {/* Menu */}
           <div
             ref={menuRef}
@@ -303,18 +258,32 @@ export function MobileContextMenu({
             )}
             style={menuStyle}
           >
-            {/* Arrow */}
+            {/* Arrow with border */}
             {position !== 'middle' && (
-              <div
-                className={cn(
-                  'absolute left-0 w-0 h-0 border-l-8 border-r-8 border-l-transparent border-r-transparent',
-                  position === 'above' &&
-                    'bottom-[-8px] border-t-8 border-t-popover',
-                  position === 'below' &&
-                    'top-[-8px] border-b-8 border-b-popover'
-                )}
-                style={arrowStyle}
-              />
+              <>
+                {/* Arrow border (outer triangle) */}
+                <div
+                  className={cn(
+                    'absolute left-0 w-0 h-0 border-l-[9px] border-r-[9px] border-l-transparent border-r-transparent',
+                    position === 'above' &&
+                      'bottom-[-9px] border-t-[9px] border-t-border',
+                    position === 'below' &&
+                      'top-[-9px] border-b-[9px] border-b-border'
+                  )}
+                  style={arrowStyle}
+                />
+                {/* Arrow fill (inner triangle) */}
+                <div
+                  className={cn(
+                    'absolute left-0 w-0 h-0 border-l-8 border-r-8 border-l-transparent border-r-transparent',
+                    position === 'above' &&
+                      'bottom-[-8px] border-t-8 border-t-popover',
+                    position === 'below' &&
+                      'top-[-8px] border-b-8 border-b-popover'
+                  )}
+                  style={arrowStyle}
+                />
+              </>
             )}
 
             {/* Grid of actions */}

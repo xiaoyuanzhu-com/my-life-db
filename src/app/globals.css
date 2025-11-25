@@ -189,12 +189,3 @@
 .mobile-menu-open *::selection {
   background: rgb(180 180 255 / 30%);
 }
-
-/* Completely hide system selection UI on iOS/Safari */
-.mobile-menu-open::before {
-  content: '';
-  position: absolute;
-  pointer-events: none;
-  inset: -100vh -100vw;
-  z-index: 9999;
-}
