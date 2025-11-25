@@ -379,7 +379,11 @@ export function FileCard({
 
   // Card element to be used as trigger
   const cardElement = (
-    <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none">
+    <div className={cn(
+      "group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none",
+      // Only disable text selection for non-text content
+      !isTextContent && "select-none"
+    )}>
             <div className="relative">
               {content.type === 'image' ? (
                 <div className="relative w-full max-w-md">
@@ -460,7 +464,7 @@ export function FileCard({
     <div className={cn('w-full flex flex-col items-end', className)}>
       {/* Timestamp - centered horizontally above card */}
       {showTimestamp && (
-        <div className="text-xs text-muted-foreground mb-2 mr-5">
+        <div className="text-xs text-muted-foreground mb-2 mr-5 select-none">
           {formatTimestamp(file.createdAt)}
         </div>
       )}
@@ -471,6 +475,7 @@ export function FileCard({
           trigger={cardElement}
           open={isMobileMenuOpen}
           onOpenChange={setIsMobileMenuOpen}
+          selectTextOnOpen={isTextContent}
         />
       ) : (
         <DesktopContextMenu trigger={cardElement}>

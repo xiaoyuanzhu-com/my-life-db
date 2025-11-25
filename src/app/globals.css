@@ -173,3 +173,28 @@
     touch-action: manipulation;
   }
 }
+
+/* Hide system text selection UI (handles, toolbar) while allowing visual selection */
+::selection {
+  background: rgb(180 180 255 / 30%);
+}
+
+/* Prevent selection handles and toolbar on mobile when context menu is open */
+.mobile-menu-open {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: none !important;
+}
+
+.mobile-menu-open *::selection {
+  background: rgb(180 180 255 / 30%);
+}
+
+/* Completely hide system selection UI on iOS/Safari */
+.mobile-menu-open::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset: -100vh -100vw;
+  z-index: 9999;
+}

@@ -18,6 +18,7 @@ export interface MobileContextMenuProps {
   trigger: React.ReactElement;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  selectTextOnOpen?: boolean;
 }
 
 type Position = 'above' | 'below' | 'middle';
@@ -27,12 +28,51 @@ export function MobileContextMenu({
   trigger,
   open,
   onOpenChange,
+  selectTextOnOpen = false,
 }: MobileContextMenuProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<Position>('above');
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
+
+  // Select all text in trigger when menu opens (for text content)
+  useEffect(() => {
+    if (open && selectTextOnOpen && triggerRef.current) {
+      // Clear any existing selection first
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+      }
+
+      // Delay selection slightly to ensure menu is rendered and previous selection is cleared
+      const timer = setTimeout(() => {
+        const sel = window.getSelection();
+        const range = document.createRange();
+
+        // Find text content within the trigger (only within the card, not outside)
+        const textElement = triggerRef.current?.querySelector('.prose');
+        if (textElement && sel) {
+          try {
+            range.selectNodeContents(textElement);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          } catch (e) {
+            console.error('Failed to select text:', e);
+          }
+        }
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        // Clear selection when menu closes
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+        }
+      };
+    }
+  }, [open, selectTextOnOpen]);
 
   // Calculate position when menu opens
   useEffect(() => {
@@ -149,26 +189,93 @@ export function MobileContextMenu({
     onOpenChange(true);
   };
 
-  // Clone trigger and add long-press handlers
+  // Add touch event listener with { passive: false } to allow preventDefault
+  useEffect(() => {
+    const element = triggerRef.current;
+    if (!element) return;
+
+    let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
+    let hasMoved = false;
+    let startX = 0;
+    let startY = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      hasMoved = false;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+
+      longPressTimeout = setTimeout(() => {
+        // Only trigger if user hasn't moved (not scrolling)
+        if (!hasMoved) {
+          // Prevent default text selection on long-press for text content
+          if (selectTextOnOpen) {
+            e.preventDefault();
+          }
+          onOpenChange(true);
+        }
+      }, 500);
+
+      const handleTouchMove = (moveEvent: TouchEvent) => {
+        // Check if moved more than 10px (threshold for scroll detection)
+        const deltaX = Math.abs(moveEvent.touches[0].clientX - startX);
+        const deltaY = Math.abs(moveEvent.touches[0].clientY - startY);
+
+        if (deltaX > 10 || deltaY > 10) {
+          hasMoved = true;
+          if (longPressTimeout) {
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+          }
+        }
+      };
+
+      const cleanup = () => {
+        if (longPressTimeout) {
+          clearTimeout(longPressTimeout);
+          longPressTimeout = null;
+        }
+        element.removeEventListener('touchend', cleanup);
+        element.removeEventListener('touchmove', handleTouchMove);
+      };
+
+      element.addEventListener('touchend', cleanup);
+      element.addEventListener('touchmove', handleTouchMove);
+    };
+
+    // Add with { passive: false } to allow preventDefault for text selection
+    // But only preventDefault in the timeout, not on initial touch (allows scroll)
+    element.addEventListener('touchstart', handleTouchStart, { passive: !selectTextOnOpen });
+
+    return () => {
+      element.removeEventListener('touchstart', handleTouchStart);
+      if (longPressTimeout) {
+        clearTimeout(longPressTimeout);
+      }
+    };
+  }, [selectTextOnOpen, onOpenChange]);
+
+  // Add/remove class to prevent system selection UI when menu is open
+  useEffect(() => {
+    const element = triggerRef.current;
+    if (!element) return;
+
+    if (open && selectTextOnOpen) {
+      element.classList.add('mobile-menu-open');
+    } else {
+      element.classList.remove('mobile-menu-open');
+    }
+
+    return () => {
+      element.classList.remove('mobile-menu-open');
+    };
+  }, [open, selectTextOnOpen]);
+
+  // Clone trigger with ref and context menu handler
   const triggerWithHandlers = React.cloneElement(trigger, {
     ref: triggerRef,
     onContextMenu: (e: React.MouseEvent) => {
       e.preventDefault();
       onOpenChange(true);
-    },
-    onTouchStart: (e: React.TouchEvent) => {
-      const timeout = setTimeout(() => {
-        handleTriggerLongPress(e);
-      }, 500);
-
-      const cleanup = () => {
-        clearTimeout(timeout);
-        document.removeEventListener('touchend', cleanup);
-        document.removeEventListener('touchmove', cleanup);
-      };
-
-      document.addEventListener('touchend', cleanup);
-      document.addEventListener('touchmove', cleanup);
     },
   });
 
