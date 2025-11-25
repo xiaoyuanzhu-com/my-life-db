@@ -4,6 +4,7 @@
  */
 
 import { globalDigesterRegistry } from './registry';
+import { EXCLUDED_PATH_PREFIXES } from './file-selection';
 import { listDigestsForPath, insertDigestIfMissing, generateDigestId, updateDigest } from '@/lib/db/digests';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
@@ -63,7 +64,13 @@ export function ensureAllDigesters(filePath: string): { added: number; orphanedS
 
 export function ensureAllDigestersForExistingFiles(): void {
   const db = getDatabase();
-  const rows = db.prepare('SELECT path FROM files WHERE is_folder = 0').all() as Array<{ path: string }>;
+  const exclusionClause = EXCLUDED_PATH_PREFIXES.map(() => 'path NOT LIKE ?').join(' AND ');
+  const exclusionArgs = EXCLUDED_PATH_PREFIXES.map(prefix => `${prefix}%`);
+  const where = exclusionClause ? `AND ${exclusionClause}` : '';
+
+  const rows = db
+    .prepare(`SELECT path FROM files WHERE is_folder = 0 ${where}`)
+    .all(...exclusionArgs) as Array<{ path: string }>;
 
   let totalAdded = 0;
   let totalOrphanedSkipped = 0;

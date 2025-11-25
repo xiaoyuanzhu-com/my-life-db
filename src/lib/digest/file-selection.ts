@@ -11,7 +11,7 @@ import { MAX_DIGEST_ATTEMPTS } from './constants';
 
 const log = getLogger({ module: 'FileSelection' });
 
-const EXCLUDED_PATH_PREFIXES = ['app/', '.app/', '.git/', '.mylifedb/', 'node_modules/'];
+export const EXCLUDED_PATH_PREFIXES = ['app/', '.app/', '.git/', '.mylifedb/', 'node_modules/'];
 
 /**
  * Find files that need digestion.

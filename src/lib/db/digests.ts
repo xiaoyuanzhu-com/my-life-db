@@ -1,4 +1,5 @@
 // Database operations for digests table
+import { randomUUID } from 'crypto';
 import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
 import type { Digest, DigestRecordRow } from '@/types';
@@ -394,9 +395,12 @@ export function startDigest(filePath: string, digester: string): Digest {
  * Format: {hash(filePath)}-{digester}
  */
 export function generateDigestId(filePath: string, digester: string): string {
-  // Simple hash of file path for shorter IDs
-  const pathHash = Buffer.from(filePath).toString('base64url').slice(0, 12);
-  return `${pathHash}-${digester}`;
+  // Keep IDs stable if a digest already exists; otherwise use a collision-free UUID
+  const existing = getDigestByPathAndDigester(filePath, digester);
+  if (existing) {
+    return existing.id;
+  }
+  return randomUUID();
 }
 
 /**
