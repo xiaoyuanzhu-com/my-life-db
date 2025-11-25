@@ -4,10 +4,9 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { summarizeTextDigest } from '@/lib/digest/text-summary';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'UrlCrawlSummaryDigester' });
@@ -68,7 +67,7 @@ export class UrlCrawlSummaryDigester implements Digester {
     file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     // Get url-crawl-content digest
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
     if (!contentDigest || !contentDigest.content) {
@@ -94,7 +93,6 @@ export class UrlCrawlSummaryDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'url-crawl-summary'),
         filePath,
         digester: 'url-crawl-summary',
         status: 'completed',

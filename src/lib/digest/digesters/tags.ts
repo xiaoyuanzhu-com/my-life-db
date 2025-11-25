@@ -4,10 +4,9 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { generateTagsDigest } from '@/lib/digest/tags';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { getPrimaryTextContent, hasAnyTextSource } from '@/lib/digest/text-source';
 
@@ -37,7 +36,7 @@ export class TagsDigester implements Digester {
     file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     const textSource = await getPrimaryTextContent(filePath, file, existingDigests);
     if (!textSource) {
       return null;
@@ -57,7 +56,6 @@ export class TagsDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'tags'),
         filePath,
         digester: 'tags',
         status: 'completed',

@@ -4,12 +4,11 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { crawlUrlDigest } from '@/lib/digest/url-crawl';
 import { processHtmlContent, extractMainContent, sanitizeContent } from '@/lib/crawl/content-enricher';
 import { sqlarStore } from '@/lib/db/sqlar';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -84,7 +83,7 @@ export class UrlCrawlerDigester implements Digester {
     _file: FileRecordRow,
     _existingDigests: Digest[],
     db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     // Read URL from file
     const fullPath = path.join(process.env.MY_DATA_DIR || './data', filePath);
     const url = (await fs.readFile(fullPath, 'utf-8')).trim();
@@ -157,7 +156,6 @@ export class UrlCrawlerDigester implements Digester {
       };
 
       digests.push({
-        id: generateDigestId(filePath, 'url-crawl-content'),
         filePath,
         digester: 'url-crawl-content',
         status: 'completed',
@@ -183,7 +181,6 @@ export class UrlCrawlerDigester implements Digester {
           await sqlarStore(db, sqlarName, screenshotBuffer);
 
           digests.push({
-            id: generateDigestId(filePath, 'url-crawl-screenshot'),
             filePath,
             digester: 'url-crawl-screenshot',
             status: 'completed',

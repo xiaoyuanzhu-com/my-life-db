@@ -20,7 +20,7 @@ export type { FileRecord, FileRecordRow } from './file-record';
 export { rowToFileRecord } from './file-record';
 
 // Database Models - Digests
-export type { Digest, DigestRecordRow } from './digest';
+export type { Digest, DigestRecordRow, DigestInput } from './digest';
 export { rowToDigest } from './digest';
 
 // Database Models - Tasks

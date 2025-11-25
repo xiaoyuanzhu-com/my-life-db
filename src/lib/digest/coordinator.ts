@@ -4,15 +4,16 @@
  */
 
 import type BetterSqlite3 from 'better-sqlite3';
-import type { Digest, FileRecordRow } from '@/types';
+import { randomUUID } from 'crypto';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type { Digester } from './types';
 import { globalDigesterRegistry } from './registry';
 import { MAX_DIGEST_ATTEMPTS } from './constants';
 import { getFileByPath } from '@/lib/db/files';
 import {
   listDigestsForPath,
-  generateDigestId,
   getDigestById,
+  getDigestByPathAndDigester,
   createDigest,
   updateDigest,
 } from '@/lib/db/digests';
@@ -194,8 +195,8 @@ export class DigestCoordinator {
   /**
    * Save digest output (text content + binary artifacts)
    */
-  private async saveDigestOutput(filePath: string, output: Digest): Promise<void> {
-    const id = generateDigestId(filePath, output.digester);
+  private async saveDigestOutput(filePath: string, output: DigestInput): Promise<void> {
+    const id = output.id || this.createOrGetDigestId(filePath, output.digester);
     const targetStatus = output.status ?? 'completed';
 
     // Check if digest has binary artifacts in sqlar
@@ -256,7 +257,7 @@ export class DigestCoordinator {
     await sqlarStore(this.db, sqlarName, data);
 
     // Update digest with sqlar_name
-    const id = generateDigestId(filePath, digester);
+    const id = this.createOrGetDigestId(filePath, digester);
     updateDigest(id, {
       sqlarName,
       updatedAt: new Date().toISOString(),
@@ -295,6 +296,30 @@ export class DigestCoordinator {
     return [digester.name];
   }
 
+  /**
+   * Get existing digest id or create a placeholder with a new UUID
+   */
+  private createOrGetDigestId(filePath: string, digester: string): string {
+    const existing = getDigestByPathAndDigester(filePath, digester);
+    if (existing) return existing.id;
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    createDigest({
+      id,
+      filePath,
+      digester,
+      status: 'todo',
+      content: null,
+      sqlarName: null,
+      error: null,
+      attempts: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return id;
+  }
+
   private markDigests(
     filePath: string,
     digesterNames: string[],
@@ -307,7 +332,7 @@ export class DigestCoordinator {
     const baseError = status === 'in-progress' ? null : error ?? null;
 
     for (const name of digesterNames) {
-      const id = generateDigestId(filePath, name);
+      const id = this.createOrGetDigestId(filePath, name);
       const existing = getDigestById(id);
       if (existing) {
         let attempts = existing.attempts ?? 0;

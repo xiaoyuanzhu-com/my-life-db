@@ -5,7 +5,7 @@
 
 import { globalDigesterRegistry } from './registry';
 import { EXCLUDED_PATH_PREFIXES } from './file-selection';
-import { listDigestsForPath, insertDigestIfMissing, generateDigestId, updateDigest } from '@/lib/db/digests';
+import { listDigestsForPath, insertDigestIfMissing, updateDigest } from '@/lib/db/digests';
 import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
@@ -27,7 +27,8 @@ export function ensureAllDigesters(filePath: string): { added: number; orphanedS
     if (existingTypes.has(type)) continue;
 
     insertDigestIfMissing({
-      id: generateDigestId(filePath, type),
+      // ID assigned by DB helper if null/undefined
+      id: undefined as any,
       filePath,
       digester: type,
       status: 'todo',

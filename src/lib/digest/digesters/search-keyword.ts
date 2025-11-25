@@ -4,12 +4,11 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
 import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
 import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { hasAnyTextSource } from '@/lib/digest/text-source';
 
@@ -37,7 +36,7 @@ export class SearchKeywordDigester implements Digester {
     _file: FileRecordRow,
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     log.debug({ filePath }, 'indexing for keyword search');
 
     try {
@@ -81,7 +80,6 @@ export class SearchKeywordDigester implements Digester {
 
       return [
         {
-          id: generateDigestId(filePath, 'search-keyword'),
           filePath,
           digester: 'search-keyword',
           status: 'completed',

@@ -22,6 +22,7 @@ export type {
   FileRecordRow,
   // Digests Table
   Digest,
+  DigestInput,
   DigestRecordRow,
   // Tasks Table
   Task,
@@ -261,4 +262,3 @@ export interface InboxDigestSlug {
   source?: string;
   generatedAt?: string;
 }
-

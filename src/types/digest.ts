@@ -52,7 +52,7 @@ export interface DigestRecordRow {
  * of different types (summary, tags, slug, screenshot, etc.).
  */
 export interface Digest {
-  /** Digest ID (hash-based from filePath + digester) */
+  /** Digest ID (opaque, UUID) */
   id: string;
 
   /** Path to file (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder') */
@@ -82,6 +82,11 @@ export interface Digest {
   /** ISO 8601 timestamp when digest was last updated */
   updatedAt: string;
 }
+
+/**
+ * Digest payload returned by digesters (ID assigned by coordinator/DB)
+ */
+export type DigestInput = Omit<Digest, 'id'> & { id?: string };
 
 /**
  * Conversion helper: DigestRecordRow → Digest

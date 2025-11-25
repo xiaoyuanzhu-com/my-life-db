@@ -4,10 +4,9 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { generateSlugFromContentDigest } from '@/lib/digest/content-slug';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import {
   getPrimaryTextContent,
@@ -49,7 +48,7 @@ export class SlugDigester implements Digester {
     file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     let sourceText = getSummaryText(existingDigests);
     let sourceType = sourceText ? 'url-crawl-summary' : 'url-digest';
 
@@ -83,7 +82,6 @@ export class SlugDigester implements Digester {
 
     return [
       {
-        id: generateDigestId(filePath, 'slug'),
         filePath,
         digester: 'slug',
         status: 'completed',

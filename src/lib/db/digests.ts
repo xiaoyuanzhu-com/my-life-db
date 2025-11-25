@@ -110,11 +110,14 @@ export function insertDigestIfMissing(digest: Digest): void {
     INSERT OR IGNORE INTO digests (
       id, file_path, digester, status, content, sqlar_name, error,
       attempts, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (
+      COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?, ?, ?
+    )
   `);
 
   const result = stmt.run(
     digest.id,
+    digest.id ?? randomUUID(),
     digest.filePath,
     digest.digester,
     digest.status,
@@ -284,7 +287,7 @@ export function updateDigest(
 
   // Always update updated_at
   fields.push('updated_at = ?');
-  values.push(new Date().toISOString());
+  values.push(updates.updatedAt ?? new Date().toISOString());
 
   values.push(id);
 
@@ -370,11 +373,11 @@ export function digestExists(filePath: string, digester: string): boolean {
  * This is the preferred way to initiate digest processing
  */
 export function startDigest(filePath: string, digester: string): Digest {
-  const id = generateDigestId(filePath, digester);
+  const existing = getDigestByPathAndDigester(filePath, digester);
   const now = new Date().toISOString();
 
   const digest: Digest = {
-    id,
+    id: existing?.id ?? randomUUID(),
     filePath,
     digester,
     status: 'todo',
@@ -395,12 +398,8 @@ export function startDigest(filePath: string, digester: string): Digest {
  * Format: {hash(filePath)}-{digester}
  */
 export function generateDigestId(filePath: string, digester: string): string {
-  // Keep IDs stable if a digest already exists; otherwise use a collision-free UUID
   const existing = getDigestByPathAndDigester(filePath, digester);
-  if (existing) {
-    return existing.id;
-  }
-  return randomUUID();
+  return existing?.id ?? randomUUID();
 }
 
 /**

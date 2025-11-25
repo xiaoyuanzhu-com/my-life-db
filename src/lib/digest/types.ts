@@ -2,7 +2,7 @@
  * Core types for the digest registry system
  */
 
-import type { Digest, FileRecordRow } from '@/types/models';
+import type { Digest, DigestInput, FileRecordRow } from '@/types/models';
 import type BetterSqlite3 from 'better-sqlite3';
 
 /**
@@ -44,7 +44,7 @@ export interface Digester {
     file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
-  ): Promise<Digest[] | null>;
+  ): Promise<DigestInput[] | null>;
 
   /**
    * Optional hook to signal reprocessing even when outputs are already completed/skipped.

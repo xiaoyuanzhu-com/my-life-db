@@ -4,12 +4,11 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToQdrant } from '@/lib/search/ingest-to-qdrant';
 import { enqueueQdrantIndex } from '@/lib/search/qdrant-tasks';
 import { getQdrantDocumentIdsByFile } from '@/lib/db/qdrant-documents';
-import { generateDigestId } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { hasAnyTextSource } from '@/lib/digest/text-source';
 
@@ -37,7 +36,7 @@ export class SearchSemanticDigester implements Digester {
     _file: FileRecordRow,
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<Digest[] | null> {
+  ): Promise<DigestInput[] | null> {
     log.debug({ filePath }, 'indexing for semantic search');
 
     try {
@@ -80,7 +79,6 @@ export class SearchSemanticDigester implements Digester {
 
       return [
         {
-          id: generateDigestId(filePath, 'search-semantic'),
           filePath,
           digester: 'search-semantic',
           status: 'completed',
