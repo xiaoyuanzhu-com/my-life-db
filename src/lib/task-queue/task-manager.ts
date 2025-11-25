@@ -2,9 +2,9 @@
  * Task Manager - CRUD operations for task queue
  */
 
-import { getDatabase } from '../db/connection';
 import { generateUUIDv7 } from './uuid';
 import type { Task, TaskInput, TaskStatus } from './types';
+import { dbRun, dbSelect, dbSelectOne, dbTransaction } from '@/lib/db/client';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'TaskManager' });
@@ -28,24 +28,24 @@ export interface UpdateTaskInput {
  * Create a new task
  */
 export function createTask(input: CreateTaskInput): Task {
-  const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
   const id = generateUUIDv7();
 
-  const stmt = db.prepare(`
-    INSERT INTO tasks (
-      id, type, input, status, version, attempts,
-      run_after, created_at, updated_at
-    ) VALUES (?, ?, ?, 'to-do', 0, 0, ?, ?, ?)
-  `);
-
-  stmt.run(
-    id,
-    input.type,
-    JSON.stringify(input.input),
-    input.run_after || null,
-    now,
-    now
+  dbRun(
+    `
+      INSERT INTO tasks (
+        id, type, input, status, version, attempts,
+        run_after, created_at, updated_at
+      ) VALUES (?, ?, ?, 'to-do', 0, 0, ?, ?, ?)
+    `,
+    [
+      id,
+      input.type,
+      JSON.stringify(input.input),
+      input.run_after || null,
+      now,
+      now,
+    ]
   );
 
   const created = getTaskById(id)!;
@@ -56,10 +56,7 @@ export function createTask(input: CreateTaskInput): Task {
  * Get task by ID
  */
 export function getTaskById(id: string): Task | null {
-  const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
-  const row = stmt.get(id) as Task | undefined;
-  return row || null;
+  return dbSelectOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
 }
 
 /**
@@ -69,8 +66,6 @@ export function getTasksByType(
   type: string,
   status?: TaskStatus
 ): Task[] {
-  const db = getDatabase();
-
   let query = 'SELECT * FROM tasks WHERE type = ?';
   const params: unknown[] = [type];
 
@@ -81,8 +76,7 @@ export function getTasksByType(
 
   query += ' ORDER BY created_at DESC';
 
-  const stmt = db.prepare(query);
-  return stmt.all(...params) as Task[];
+  return dbSelect<Task>(query, params);
 }
 
 /**
@@ -94,7 +88,6 @@ export function getTasks(filters?: {
   limit?: number;
   offset?: number;
 }): Task[] {
-  const db = getDatabase();
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -124,8 +117,7 @@ export function getTasks(filters?: {
     params.push(filters.offset);
   }
 
-  const stmt = db.prepare(query);
-  return stmt.all(...params) as Task[];
+  return dbSelect<Task>(query, params);
 }
 
 /**
@@ -137,7 +129,6 @@ export function updateTask(
   updates: UpdateTaskInput,
   expectedVersion: number
 ): boolean {
-  const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
   // Pre-read for logging when transitioning to terminal states
@@ -191,13 +182,14 @@ export function updateTask(
   params.push(id);
   params.push(expectedVersion);
 
-  const stmt = db.prepare(`
-    UPDATE tasks
-    SET ${setClauses.join(', ')}
-    WHERE id = ? AND version = ?
-  `);
-
-  const result = stmt.run(...params);
+  const result = dbRun(
+    `
+      UPDATE tasks
+      SET ${setClauses.join(', ')}
+      WHERE id = ? AND version = ?
+    `,
+    params
+  );
   const updated = result.changes > 0;
 
   if (updated && shouldLogOutcome) {
@@ -220,9 +212,7 @@ export function updateTask(
  * Delete task by ID
  */
 export function deleteTask(id: string): boolean {
-  const db = getDatabase();
-  const stmt = db.prepare('DELETE FROM tasks WHERE id = ?');
-  const result = stmt.run(id);
+  const result = dbRun('DELETE FROM tasks WHERE id = ?', [id]);
   return result.changes > 0;
 }
 
@@ -230,9 +220,7 @@ export function deleteTask(id: string): boolean {
  * Delete all tasks with a specific status
  */
 export function deleteTasksByStatus(status: TaskStatus): number {
-  const db = getDatabase();
-  const stmt = db.prepare('DELETE FROM tasks WHERE status = ?');
-  const result = stmt.run(status);
+  const result = dbRun('DELETE FROM tasks WHERE status = ?', [status]);
   return result.changes;
 }
 
@@ -244,21 +232,23 @@ export function getTaskStats(): {
   by_status: Record<TaskStatus, number>;
   by_type: Record<string, number>;
 } {
-  const db = getDatabase();
+  const total = dbSelectOne<{ count: number }>('SELECT COUNT(*) as count FROM tasks')?.count ?? 0;
 
-  const total = (db.prepare('SELECT COUNT(*) as count FROM tasks').get() as { count: number }).count;
+  const statusRows = dbSelect<{ status: TaskStatus; count: number }>(
+    `
+      SELECT status, COUNT(*) as count
+      FROM tasks
+      GROUP BY status
+    `
+  );
 
-  const statusRows = db.prepare(`
-    SELECT status, COUNT(*) as count
-    FROM tasks
-    GROUP BY status
-  `).all() as Array<{ status: TaskStatus; count: number }>;
-
-  const typeRows = db.prepare(`
-    SELECT type, COUNT(*) as count
-    FROM tasks
-    GROUP BY type
-  `).all() as Array<{ type: string; count: number }>;
+  const typeRows = dbSelect<{ type: string; count: number }>(
+    `
+      SELECT type, COUNT(*) as count
+      FROM tasks
+      GROUP BY type
+    `
+  );
 
   const by_status: Record<string, number> = {
     'to-do': 0,
@@ -287,15 +277,89 @@ export function getTaskStats(): {
  * Clean up old completed tasks
  */
 export function cleanupOldTasks(olderThanSeconds: number): number {
-  const db = getDatabase();
   const cutoffTime = Math.floor(Date.now() / 1000) - olderThanSeconds;
 
-  const stmt = db.prepare(`
-    DELETE FROM tasks
-    WHERE status IN ('success', 'failed')
-      AND completed_at < ?
-  `);
-
-  const result = stmt.run(cutoffTime);
+  const result = dbRun(
+    `
+      DELETE FROM tasks
+      WHERE status IN ('success', 'failed')
+        AND completed_at < ?
+    `,
+    [cutoffTime]
+  );
   return result.changes;
+}
+
+/**
+ * Delete pending or in-progress tasks referencing a specific file path
+ */
+export function deletePendingTasksForFile(filePath: string): number {
+  const likePath = `%\"filePath\":\"${filePath}\"%`;
+  const likePathSnake = `%\"file_path\":\"${filePath}\"%`;
+
+  const tasks = dbSelect<{ id: string; type: string; input: string }>(
+    `
+      SELECT id, type, input FROM tasks
+      WHERE status IN ('to-do', 'in-progress')
+        AND (input LIKE ? OR input LIKE ?)
+    `,
+    [likePath, likePathSnake]
+  );
+
+  let deletedCount = 0;
+
+  dbTransaction(() => {
+    for (const task of tasks) {
+      try {
+        const input = JSON.parse(task.input);
+        if (input.filePath === filePath || input.file_path === filePath) {
+          dbRun('DELETE FROM tasks WHERE id = ?', [task.id]);
+          deletedCount++;
+          log.debug({ taskId: task.id, taskType: task.type, filePath }, 'deleted task for file');
+        }
+      } catch (error) {
+        log.warn({ taskId: task.id, error }, 'failed to parse task input');
+      }
+    }
+  });
+
+  return deletedCount;
+}
+
+/**
+ * Delete pending or in-progress tasks referencing paths under a prefix
+ */
+export function deletePendingTasksForPrefix(pathPrefix: string): number {
+  const likePath = `%\"filePath\":\"${pathPrefix}%\"%`;
+  const likePathSnake = `%\"file_path\":\"${pathPrefix}%\"%`;
+
+  const tasks = dbSelect<{ id: string; type: string; input: string }>(
+    `
+      SELECT id, type, input FROM tasks
+      WHERE status IN ('to-do', 'in-progress')
+        AND (input LIKE ? OR input LIKE ?)
+    `,
+    [likePath, likePathSnake]
+  );
+
+  let deletedCount = 0;
+
+  dbTransaction(() => {
+    for (const task of tasks) {
+      try {
+        const input = JSON.parse(task.input);
+        const taskFilePath = input.filePath || input.file_path;
+
+        if (taskFilePath && typeof taskFilePath === 'string' && taskFilePath.startsWith(pathPrefix)) {
+          dbRun('DELETE FROM tasks WHERE id = ?', [task.id]);
+          deletedCount++;
+          log.debug({ taskId: task.id, taskType: task.type, filePath: taskFilePath }, 'deleted task for file prefix');
+        }
+      } catch (error) {
+        log.warn({ taskId: task.id, error }, 'failed to parse task input');
+      }
+    }
+  });
+
+  return deletedCount;
 }

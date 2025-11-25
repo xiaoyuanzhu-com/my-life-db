@@ -4,6 +4,7 @@ import 'server-only';
 import type BetterSqlite3 from 'better-sqlite3';
 import { deflate, inflate } from 'zlib';
 import { promisify } from 'util';
+import { getDatabase } from './connection';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SQLAR' });
@@ -47,14 +48,19 @@ export async function sqlarStore(
 
 /**
  * Retrieve a file from SQLAR
- * @param db Database connection
- * @param name File path/name in the archive
+ * Can be called with an explicit db or uses the shared connection by default.
+ * @param dbOrName Database connection or file path/name in the archive
  * @returns File content as Buffer, or null if not found
  */
+export async function sqlarGet(db: BetterSqlite3.Database, name: string): Promise<Buffer | null>;
+export async function sqlarGet(name: string): Promise<Buffer | null>;
 export async function sqlarGet(
-  db: BetterSqlite3.Database,
-  name: string
+  dbOrName: BetterSqlite3.Database | string,
+  maybeName?: string
 ): Promise<Buffer | null> {
+  const db = typeof dbOrName === 'string' ? getDatabase() : dbOrName;
+  const name = typeof dbOrName === 'string' ? dbOrName : maybeName!;
+
   try {
     const stmt = db.prepare('SELECT data, sz FROM sqlar WHERE name = ?');
     const row = stmt.get(name) as { data: Buffer; sz: number } | undefined;
@@ -141,14 +147,19 @@ export function sqlarList(
 
 /**
  * Delete all files with a given prefix (e.g., all files for an item)
- * @param db Database connection
+ * @param dbOrPrefix Database connection or prefix to delete (uses shared connection when omitted)
  * @param prefix File path prefix
  * @returns Number of files deleted
  */
+export function sqlarDeletePrefix(db: BetterSqlite3.Database, prefix: string): number;
+export function sqlarDeletePrefix(prefix: string): number;
 export function sqlarDeletePrefix(
-  db: BetterSqlite3.Database,
-  prefix: string
+  dbOrPrefix: BetterSqlite3.Database | string,
+  maybePrefix?: string
 ): number {
+  const db = typeof dbOrPrefix === 'string' ? getDatabase() : dbOrPrefix;
+  const prefix = typeof dbOrPrefix === 'string' ? dbOrPrefix : maybePrefix!;
+
   try {
     const stmt = db.prepare('DELETE FROM sqlar WHERE name LIKE ?');
     const result = stmt.run(`${prefix}%`);

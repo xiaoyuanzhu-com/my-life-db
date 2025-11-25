@@ -6,7 +6,7 @@
 import { globalDigesterRegistry } from './registry';
 import { EXCLUDED_PATH_PREFIXES } from './file-selection';
 import { listDigestsForPath, insertDigestIfMissing, updateDigest } from '@/lib/db/digests';
-import { getDatabase } from '@/lib/db/connection';
+import { listFilePathsForDigestion } from '@/lib/db/files';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestEnsure' });
@@ -64,26 +64,19 @@ export function ensureAllDigesters(filePath: string): { added: number; orphanedS
 }
 
 export function ensureAllDigestersForExistingFiles(): void {
-  const db = getDatabase();
-  const exclusionClause = EXCLUDED_PATH_PREFIXES.map(() => 'path NOT LIKE ?').join(' AND ');
-  const exclusionArgs = EXCLUDED_PATH_PREFIXES.map(prefix => `${prefix}%`);
-  const where = exclusionClause ? `AND ${exclusionClause}` : '';
-
-  const rows = db
-    .prepare(`SELECT path FROM files WHERE is_folder = 0 ${where}`)
-    .all(...exclusionArgs) as Array<{ path: string }>;
+  const paths = listFilePathsForDigestion(EXCLUDED_PATH_PREFIXES);
 
   let totalAdded = 0;
   let totalOrphanedSkipped = 0;
 
-  for (const { path } of rows) {
+  for (const path of paths) {
     const { added, orphanedSkipped } = ensureAllDigesters(path);
     totalAdded += added;
     totalOrphanedSkipped += orphanedSkipped;
   }
 
   log.info(
-    { files: rows.length, added: totalAdded, orphanedSkipped: totalOrphanedSkipped },
+    { files: paths.length, added: totalAdded, orphanedSkipped: totalOrphanedSkipped },
     'ensured digest placeholders for existing files'
   );
 }

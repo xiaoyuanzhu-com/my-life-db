@@ -8,7 +8,6 @@ import {
   batchUpdateEmbeddingStatus,
   type QdrantDocument,
 } from '@/lib/db/qdrant-documents';
-import { getDatabase } from '@/lib/db/connection';
 import { getQdrantClient, ensureQdrantCollection } from './qdrant-client';
 import { embedTexts } from '@/lib/ai/embeddings';
 import { getLogger } from '@/lib/log/logger';
@@ -123,7 +122,6 @@ defineTaskHandler({
       // Update status to 'indexed'
       const now = new Date().toISOString();
       const embeddingVersion = getEmbeddingVersion();
-      const db = getDatabase();
 
       for (let i = 0; i < documents.length; i++) {
         const doc = documents[i];
@@ -133,12 +131,8 @@ defineTaskHandler({
           pointId, // Store the UUID used in Qdrant
           indexedAt: now,
           error: undefined,
+          embeddingVersion,
         });
-
-        // Also update embedding version in the document
-        db.prepare(
-          'UPDATE qdrant_documents SET embedding_version = ? WHERE document_id = ?'
-        ).run(embeddingVersion, doc.documentId);
       }
 
       log.debug(

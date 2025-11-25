@@ -6,7 +6,6 @@
 import { defineTaskHandler } from '@/lib/task-queue/handler-registry';
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
-import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestTaskHandler' });
@@ -31,8 +30,7 @@ export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
 
     log.info({ limit }, 'finding files needing digestion');
 
-    const db = getDatabase();
-    const filesToProcess = findFilesNeedingDigestion(db, limit);
+    const filesToProcess = findFilesNeedingDigestion(limit);
 
     if (filesToProcess.length === 0) {
       log.info({}, 'no files need digestion');
@@ -41,7 +39,7 @@ export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
 
     log.info({ count: filesToProcess.length }, 'processing files');
 
-    const coordinator = new DigestCoordinator(db);
+    const coordinator = new DigestCoordinator();
 
     for (const filePath of filesToProcess) {
       try {
@@ -70,8 +68,7 @@ export async function processFileDigests(
 ): Promise<void> {
   log.info({ filePath, reset: options?.reset }, 'processing file digests');
 
-  const db = getDatabase();
-  const coordinator = new DigestCoordinator(db);
+  const coordinator = new DigestCoordinator();
 
   await coordinator.processFile(filePath, options);
 

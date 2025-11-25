@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 import { sqlarGet } from '@/lib/db/sqlar';
-import { getDatabase } from '@/lib/db/connection';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SqlarAPI' });
@@ -26,8 +25,7 @@ export async function GET(
 
     log.debug({ sqlarName }, 'fetching file from sqlar');
 
-    const db = getDatabase();
-    const data = await sqlarGet(db, sqlarName);
+    const data = await sqlarGet(sqlarName);
 
     if (!data) {
       log.warn({ sqlarName }, 'file not found in sqlar');

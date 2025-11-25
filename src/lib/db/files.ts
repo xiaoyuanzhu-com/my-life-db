@@ -29,6 +29,22 @@ export function getFileByPath(path: string): FileRecord | null {
 }
 
 /**
+ * List non-folder file paths while excluding specific path prefixes
+ */
+export function listFilePathsForDigestion(excludedPathPrefixes: string[] = []): string[] {
+  const db = getDatabase();
+  const exclusionClause = excludedPathPrefixes.map(() => 'path NOT LIKE ?').join(' AND ');
+  const exclusionArgs = excludedPathPrefixes.map(prefix => `${prefix}%`);
+  const where = exclusionClause ? `AND ${exclusionClause}` : '';
+
+  const rows = db
+    .prepare(`SELECT path FROM files WHERE is_folder = 0 ${where}`)
+    .all(...exclusionArgs) as Array<{ path: string }>;
+
+  return rows.map(row => row.path);
+}
+
+/**
  * List files matching path prefix
  *
  * @param pathPrefix - Path prefix to filter by (e.g., "inbox/", "notes/")

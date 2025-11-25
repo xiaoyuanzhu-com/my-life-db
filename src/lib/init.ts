@@ -24,8 +24,8 @@ async function initializeDatabase() {
   const log = getLogger({ module: 'AppInit' });
   try {
     log.info({}, 'initializing database');
-    const { getDatabase } = await import('./db/connection');
-    getDatabase(); // This triggers migrations automatically
+    const { ensureDatabaseReady } = await import('./db/client');
+    ensureDatabaseReady(); // This triggers migrations automatically
     log.info({}, 'database initialized');
   } catch (error) {
     log.error({ err: error }, 'failed to initialize database');

@@ -181,13 +181,14 @@ export function updateEmbeddingStatus(
     pointId?: string;
     error?: string;
     indexedAt?: string;
+    embeddingVersion?: number;
   }
 ): void {
   const db = getDatabase();
   const now = new Date().toISOString();
 
   const updates: string[] = ['embedding_status = ?', 'updated_at = ?'];
-  const params: (string | null)[] = [status, now];
+  const params: (string | number | null)[] = [status, now];
 
   if (options?.pointId) {
     updates.push('qdrant_point_id = ?');
@@ -205,6 +206,11 @@ export function updateEmbeddingStatus(
   if (status === 'indexed') {
     updates.push('qdrant_indexed_at = ?');
     params.push(options?.indexedAt ?? now);
+  }
+
+  if (options?.embeddingVersion !== undefined) {
+    updates.push('embedding_version = ?');
+    params.push(options.embeddingVersion);
   }
 
   params.push(documentId);

@@ -7,8 +7,8 @@ import { deleteFileRecord, deleteFilesByPrefix, listFiles } from '@/lib/db/files
 import { deleteDigestsForPath, deleteDigestsByPrefix } from '@/lib/db/digests';
 import { deleteMeiliDocumentByFilePath } from '@/lib/db/meili-documents';
 import { deleteQdrantDocumentsByFile } from '@/lib/db/qdrant-documents';
-import { getDatabase } from '@/lib/db/connection';
 import { sqlarDeletePrefix } from '@/lib/db/sqlar';
+import { deletePendingTasksForFile, deletePendingTasksForPrefix } from '@/lib/task-queue/task-manager';
 import { getLogger } from '@/lib/log/logger';
 import fs from 'fs/promises';
 
@@ -25,76 +25,6 @@ function hashPath(filePath: string): string {
  * Delete tasks related to a file path
  * Tasks store their input as JSON, so we need to check if filePath is in the input
  */
-function deleteTasksForFile(filePath: string): number {
-  const db = getDatabase();
-
-  // Get all tasks that might reference this file
-  // We'll check the JSON input field for the filePath
-  const tasks = db.prepare(`
-    SELECT id, type, input FROM tasks
-    WHERE status IN ('to-do', 'in-progress')
-    AND (
-      input LIKE '%"filePath":"${filePath}"%'
-      OR input LIKE '%"file_path":"${filePath}"%'
-    )
-  `).all() as Array<{ id: string; type: string; input: string }>;
-
-  let deletedCount = 0;
-
-  for (const task of tasks) {
-    try {
-      const input = JSON.parse(task.input);
-      // Check if this task is actually for this file
-      if (input.filePath === filePath || input.file_path === filePath) {
-        db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
-        deletedCount++;
-        log.debug({ taskId: task.id, taskType: task.type, filePath }, 'deleted task for file');
-      }
-    } catch (error) {
-      // Skip tasks with invalid JSON
-      log.warn({ taskId: task.id, error }, 'failed to parse task input');
-    }
-  }
-
-  return deletedCount;
-}
-
-/**
- * Delete tasks for files matching a prefix (for folder deletions)
- */
-function deleteTasksForPrefix(pathPrefix: string): number {
-  const db = getDatabase();
-
-  const tasks = db.prepare(`
-    SELECT id, type, input FROM tasks
-    WHERE status IN ('to-do', 'in-progress')
-    AND (
-      input LIKE '%"filePath":"${pathPrefix}%"%'
-      OR input LIKE '%"file_path":"${pathPrefix}%"%'
-    )
-  `).all() as Array<{ id: string; type: string; input: string }>;
-
-  let deletedCount = 0;
-
-  for (const task of tasks) {
-    try {
-      const input = JSON.parse(task.input);
-      const taskFilePath = input.filePath || input.file_path;
-
-      // Check if this task is for a file under this prefix
-      if (taskFilePath && taskFilePath.startsWith(pathPrefix)) {
-        db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
-        deletedCount++;
-        log.debug({ taskId: task.id, taskType: task.type, filePath: taskFilePath }, 'deleted task for file prefix');
-      }
-    } catch (error) {
-      log.warn({ taskId: task.id, error }, 'failed to parse task input');
-    }
-  }
-
-  return deletedCount;
-}
-
 export interface DeleteFileOptions {
   /**
    * Full filesystem path to delete
@@ -184,7 +114,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       // Delete SQLAR artifacts for all children
       for (const child of childFiles) {
         const childHash = hashPath(child.path);
-        const sqlarDeleted = sqlarDeletePrefix(getDatabase(), `${childHash}/`);
+        const sqlarDeleted = sqlarDeletePrefix(`${childHash}/`);
         result.databaseRecordsDeleted.sqlarFiles += sqlarDeleted;
 
         // Delete Meilisearch documents for children
@@ -202,7 +132,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       }
 
       // Delete tasks for children
-      const tasksDeleted = deleteTasksForPrefix(pathPrefix);
+      const tasksDeleted = deletePendingTasksForPrefix(pathPrefix);
       result.databaseRecordsDeleted.tasks += tasksDeleted;
     }
 
@@ -216,7 +146,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
 
     // Delete SQLAR artifacts
     const pathHash = hashPath(relativePath);
-    const sqlarDeleted = sqlarDeletePrefix(getDatabase(), `${pathHash}/`);
+    const sqlarDeleted = sqlarDeletePrefix(`${pathHash}/`);
     result.databaseRecordsDeleted.sqlarFiles += sqlarDeleted;
 
     // Delete Meilisearch document
@@ -233,7 +163,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
     result.databaseRecordsDeleted.qdrantDocuments += qdrantDeleted;
 
     // Delete tasks
-    const tasksDeleted = deleteTasksForFile(relativePath);
+    const tasksDeleted = deletePendingTasksForFile(relativePath);
     result.databaseRecordsDeleted.tasks += tasksDeleted;
 
     result.success = true;

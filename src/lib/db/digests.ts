@@ -403,6 +403,115 @@ export function generateDigestId(filePath: string, digester: string): string {
 }
 
 /**
+ * List files that need digestion based on digest statuses and attempts
+ */
+export function listFilesNeedingDigestion(options: {
+  digesterNames: string[];
+  excludedPathPrefixes?: string[];
+  statuses?: Digest['status'][];
+  maxAttempts?: number;
+  limit?: number;
+}): string[] {
+  const db = getDatabase();
+  const {
+    digesterNames,
+    excludedPathPrefixes = [],
+    statuses = ['todo', 'failed'],
+    maxAttempts = Number.MAX_SAFE_INTEGER,
+    limit = 100,
+  } = options;
+
+  if (digesterNames.length === 0) {
+    return [];
+  }
+
+  const exclusionClause = excludedPathPrefixes.map(() => 'f.path NOT LIKE ?').join(' AND ');
+  const exclusionArgs = excludedPathPrefixes.map(prefix => `${prefix}%`);
+  const digesterPlaceholders = digesterNames.map(() => '?').join(', ');
+  const statusPlaceholders = statuses.map(() => '?').join(', ');
+
+  const sql = `
+    SELECT d.file_path
+    FROM digests d
+    JOIN files f ON f.path = d.file_path
+    WHERE f.is_folder = 0
+      ${exclusionClause ? `AND ${exclusionClause}` : ''}
+      AND d.digester IN (${digesterPlaceholders})
+      AND d.status IN (${statusPlaceholders})
+      AND COALESCE(d.attempts, 0) < ?
+    GROUP BY d.file_path
+    ORDER BY COALESCE(f.last_scanned_at, f.created_at) ASC
+    LIMIT ?
+  `;
+
+  const rows = db
+    .prepare(sql)
+    .all(...exclusionArgs, ...digesterNames, ...statuses, maxAttempts, limit) as Array<{ file_path: string }>;
+
+  return rows.map(row => row.file_path);
+}
+
+/**
+ * Reset stale in-progress digests back to todo
+ */
+export function resetStaleInProgressDigests(cutoffIso: string): number {
+  const db = getDatabase();
+  const result = db
+    .prepare(
+      `
+        UPDATE digests
+        SET status = 'todo', error = NULL
+        WHERE status = 'in-progress'
+          AND updated_at < ?
+      `
+    )
+    .run(cutoffIso);
+
+  return result.changes ?? 0;
+}
+
+/**
+ * Aggregate digest stats for API responses
+ */
+export function getDigestStats(): {
+  totalFiles: number;
+  digestedFiles: number;
+  pendingDigests: number;
+} {
+  const db = getDatabase();
+
+  const totalFiles = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM files
+       WHERE is_folder = 0
+       AND path NOT LIKE 'app/%'`
+    )
+    .get() as { count: number };
+
+  const digestedFiles = db
+    .prepare(
+      `SELECT COUNT(DISTINCT file_path) as count FROM digests
+       WHERE status = 'completed'
+       AND file_path NOT LIKE 'app/%'`
+    )
+    .get() as { count: number };
+
+  const pendingDigests = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM digests
+       WHERE status IN ('todo', 'in-progress')
+       AND file_path NOT LIKE 'app/%'`
+    )
+    .get() as { count: number };
+
+  return {
+    totalFiles: totalFiles.count,
+    digestedFiles: digestedFiles.count,
+    pendingDigests: pendingDigests.count,
+  };
+}
+
+/**
  * Convert database record to Digest
  */
 function rowToDigest(record: DigestRecordRow): Digest {

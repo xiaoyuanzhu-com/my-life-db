@@ -18,6 +18,7 @@ import {
   updateDigest,
 } from '@/lib/db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
+import { withDatabase } from '@/lib/db/client';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestCoordinator' });
@@ -54,7 +55,7 @@ function deriveFinalError(
  * Processes files through all registered digesters sequentially
  */
 export class DigestCoordinator {
-  constructor(private db: BetterSqlite3.Database) {}
+  constructor(private db: BetterSqlite3.Database = withDatabase(db => db)) {}
 
   /**
    * Process a file through all digesters.

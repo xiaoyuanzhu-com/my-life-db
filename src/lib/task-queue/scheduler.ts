@@ -2,8 +2,8 @@
  * Scheduler - Retry delay calculation and task fetching
  */
 
-import { getDatabase } from '../db/connection';
 import type { Task } from './types';
+import { dbSelect, dbSelectOne } from '@/lib/db/client';
 
 /**
  * Calculate retry delay with exponential backoff and jitter
@@ -58,22 +58,22 @@ export function getNextRetryTime(task: Task): number {
  * @param maxAttempts Maximum attempts before a failed task is considered permanently failed (default: 3)
  */
 export function getReadyTasks(limit: number = 10, maxAttempts: number = 3): Task[] {
-  const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
-  const stmt = db.prepare(`
-    SELECT *
-    FROM tasks
-    WHERE (
-      (status = 'to-do')
-      OR (status = 'failed' AND attempts < ?)
-    )
-      AND (run_after IS NULL OR run_after <= ?)
-    ORDER BY created_at ASC
-    LIMIT ?
-  `);
-
-  return stmt.all(maxAttempts, now, limit) as Task[];
+  return dbSelect<Task>(
+    `
+      SELECT *
+      FROM tasks
+      WHERE (
+        (status = 'to-do')
+        OR (status = 'failed' AND attempts < ?)
+      )
+        AND (run_after IS NULL OR run_after <= ?)
+      ORDER BY created_at ASC
+      LIMIT ?
+    `,
+    [maxAttempts, now, limit]
+  );
 }
 
 /**
@@ -81,32 +81,32 @@ export function getReadyTasks(limit: number = 10, maxAttempts: number = 3): Task
  * These tasks likely crashed and should be retried
  */
 export function getStaleTasks(timeoutSeconds: number = 300): Task[] {
-  const db = getDatabase();
   const cutoffTime = Math.floor(Date.now() / 1000) - timeoutSeconds;
 
-  const stmt = db.prepare(`
-    SELECT *
-    FROM tasks
-    WHERE status = 'in-progress'
-      AND last_attempt_at < ?
-    ORDER BY last_attempt_at ASC
-  `);
-
-  return stmt.all(cutoffTime) as Task[];
+  return dbSelect<Task>(
+    `
+      SELECT *
+      FROM tasks
+      WHERE status = 'in-progress'
+        AND last_attempt_at < ?
+      ORDER BY last_attempt_at ASC
+    `,
+    [cutoffTime]
+  );
 }
 
 /**
  * Get count of pending tasks by type
  */
 export function getPendingTaskCountByType(): Record<string, number> {
-  const db = getDatabase();
-
-  const rows = db.prepare(`
-    SELECT type, COUNT(*) as count
-    FROM tasks
-    WHERE status IN ('to-do', 'failed', 'in-progress')
-    GROUP BY type
-  `).all() as Array<{ type: string; count: number }>;
+  const rows = dbSelect<{ type: string; count: number }>(
+    `
+      SELECT type, COUNT(*) as count
+      FROM tasks
+      WHERE status IN ('to-do', 'failed', 'in-progress')
+      GROUP BY type
+    `
+  );
 
   const result: Record<string, number> = {};
   rows.forEach(row => {
@@ -120,18 +120,20 @@ export function getPendingTaskCountByType(): Record<string, number> {
  * Check if there are any ready tasks
  */
 export function hasReadyTasks(): boolean {
-  const db = getDatabase();
   const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
-  const row = db.prepare(`
-    SELECT COUNT(*) as count
-    FROM tasks
-    WHERE status IN ('to-do', 'failed')
-      AND (run_after IS NULL OR run_after <= ?)
-    LIMIT 1
-  `).get(now) as { count: number };
+  const row = dbSelectOne<{ count: number }>(
+    `
+      SELECT COUNT(*) as count
+      FROM tasks
+      WHERE status IN ('to-do', 'failed')
+        AND (run_after IS NULL OR run_after <= ?)
+      LIMIT 1
+    `,
+    [now]
+  );
 
-  return row.count > 0;
+  return (row?.count ?? 0) > 0;
 }
 
 /**

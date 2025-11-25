@@ -1,10 +1,8 @@
-import type BetterSqlite3 from 'better-sqlite3';
 import { setTimeout as setTimeoutPromise } from 'timers/promises';
 
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
-import { getDatabase } from '@/lib/db/connection';
-import { listDigestsForPath } from '@/lib/db/digests';
+import { listDigestsForPath, resetStaleInProgressDigests } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
 import { getFileSystemWatcher, type FileChangeEvent } from '@/lib/scanner/fs-watcher';
 
@@ -31,7 +29,6 @@ const DEFAULT_CONFIG: DigestSupervisorConfig = {
 class DigestSupervisor {
   private readonly log = getLogger({ module: 'DigestSupervisor' });
   private readonly config: DigestSupervisorConfig;
-  private readonly db: BetterSqlite3.Database;
   private readonly coordinator: DigestCoordinator;
   private running = false;
   private stopped = false;
@@ -41,8 +38,7 @@ class DigestSupervisor {
 
   constructor(config?: Partial<DigestSupervisorConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.db = getDatabase();
-    this.coordinator = new DigestCoordinator(this.db);
+    this.coordinator = new DigestCoordinator();
   }
 
   start(): void {
@@ -77,7 +73,7 @@ class DigestSupervisor {
     while (!this.stopped) {
       try {
         this.maybeResetStaleDigests();
-        const filesToProcess = findFilesNeedingDigestion(this.db, 1);
+        const filesToProcess = findFilesNeedingDigestion(1);
         const filePath = filesToProcess[0];
 
         if (!filePath) {
@@ -133,19 +129,10 @@ class DigestSupervisor {
 
     this.lastStaleSweep = now;
     const cutoffIso = new Date(now - this.config.staleDigestThresholdMs).toISOString();
-    const result = this.db
-      .prepare(
-        `
-        UPDATE digests
-        SET status = 'todo', error = NULL
-        WHERE status = 'in-progress'
-          AND updated_at < ?
-      `
-      )
-      .run(cutoffIso);
+    const resetCount = resetStaleInProgressDigests(cutoffIso);
 
-    if (result.changes > 0) {
-      this.log.warn({ reset: result.changes }, 'reset stale digest rows');
+    if (resetCount > 0) {
+      this.log.warn({ reset: resetCount }, 'reset stale digest rows');
     }
   }
 
@@ -191,7 +178,7 @@ class DigestSupervisor {
       }
 
       // Phase 1 & 2: Check if file needs digestion (new files or pending digests)
-      const filesToProcess = findFilesNeedingDigestion(this.db, 100);
+      const filesToProcess = findFilesNeedingDigestion(100);
       const needsWork = filesToProcess.includes(filePath);
 
       if (!needsWork) {
