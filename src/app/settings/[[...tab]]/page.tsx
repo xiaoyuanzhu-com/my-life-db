@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Save, Check, Loader2 } from 'lucide-react';
+import { Sparkles, Save, Check, Loader2, RotateCcw } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/settings-context';
@@ -39,6 +39,11 @@ interface Stats {
 
 export default function SettingsPage() {
   const params = useParams();
+
+  // Determine active tab from URL first (before any callbacks that might use it)
+  const tabParam = params.tab as string[] | undefined;
+  const activeTab = tabParam?.[0] || 'general';
+
   const { settings, setSettings, isLoading, isSaving, saveMessage, saveSettings } = useSettingsContext();
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -49,6 +54,8 @@ export default function SettingsPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoadingGeneralStats, setIsLoadingGeneralStats] = useState(false);
+  const [resetingDigester, setResetingDigester] = useState<string | null>(null);
+  const [confirmResetDigester, setConfirmResetDigester] = useState<string | null>(null);
 
   const filteredModels = useMemo(() => {
     if (!modelQuery) return modelOptions;
@@ -139,10 +146,31 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const handleResetDigester = useCallback(async (digester: string) => {
+    setResetingDigester(digester);
+    try {
+      const response = await fetch(`/api/digest/reset/${digester}`, {
+        method: 'DELETE',
+      });
 
-  // Determine active tab from URL
-  const tabParam = params.tab as string[] | undefined;
-  const activeTab = tabParam?.[0] || 'general';
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`Reset ${digester}:`, data);
+        // Refresh digest stats if on digest tab
+        if (activeTab === 'digest') {
+          void fetchDigestStats();
+        }
+      } else {
+        const error = await response.json();
+        console.error('Failed to reset digester:', error);
+      }
+    } catch (error) {
+      console.error('Failed to reset digester:', error);
+    } finally {
+      setResetingDigester(null);
+      setConfirmResetDigester(null);
+    }
+  }, [activeTab, fetchDigestStats]);
 
   // Fetch digest stats when digesters tab is active
   useEffect(() => {
@@ -482,31 +510,53 @@ export default function SettingsPage() {
                     <div className="text-sm font-medium">{label}</div>
                     <p className="text-xs text-muted-foreground">{description}</p>
                   </div>
-                  <button
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
-                        ? 'bg-primary'
-                        : 'bg-muted'
-                    }`}
-                    onClick={() => {
-                      const currentValue = settings.digesters?.[key as keyof typeof settings.digesters] ?? true;
-                      setSettings({
-                        ...settings,
-                        digesters: {
-                          ...settings.digesters,
-                          [key]: !currentValue,
-                        },
-                      });
-                    }}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmResetDigester(key)}
+                      disabled={resetingDigester !== null}
+                      className="h-8 gap-1.5"
+                      title={`Reset ${label}`}
+                    >
+                      {resetingDigester === key ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span className="text-xs">Resetting</span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span className="text-xs">Reset</span>
+                        </>
+                      )}
+                    </Button>
+                    <button
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
-                          ? 'translate-x-6'
-                          : 'translate-x-1'
+                          ? 'bg-primary'
+                          : 'bg-muted'
                       }`}
-                    />
-                  </button>
+                      onClick={() => {
+                        const currentValue = settings.digesters?.[key as keyof typeof settings.digesters] ?? true;
+                        setSettings({
+                          ...settings,
+                          digesters: {
+                            ...settings.digesters,
+                            [key]: !currentValue,
+                          },
+                        });
+                      }}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
+                            ? 'translate-x-6'
+                            : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               ))}
               </div>
@@ -682,6 +732,39 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reset Confirmation Dialog */}
+      {confirmResetDigester && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setConfirmResetDigester(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg bg-background p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-2">Reset Digester</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This will delete all existing{' '}
+              <span className="font-medium text-foreground">{confirmResetDigester}</span>{' '}
+              digests and trigger regeneration for all files. Use this to refresh data after
+              changing settings or to fix processing errors.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmResetDigester(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleResetDigester(confirmResetDigester)}
+              >
+                Reset & Regenerate
+              </Button>
             </div>
           </div>
         </div>
