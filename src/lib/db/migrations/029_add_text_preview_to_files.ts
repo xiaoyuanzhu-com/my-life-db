@@ -16,7 +16,7 @@ const migration = {
     console.log('[Migration 029] text_preview column added');
   },
 
-  async down(db: BetterSqlite3.Database) {
+  async down(_db: BetterSqlite3.Database) {
     console.log('[Migration 029] Removing text_preview column from files table');
 
     // SQLite doesn't support DROP COLUMN easily, so we'd need to recreate the table

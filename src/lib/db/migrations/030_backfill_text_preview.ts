@@ -41,7 +41,7 @@ const migration = {
         );
 
         updated++;
-      } catch (error) {
+      } catch {
         // File might be deleted or unreadable, skip it
         errors++;
       }

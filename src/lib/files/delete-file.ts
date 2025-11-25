@@ -191,7 +191,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
         try {
           deleteMeiliDocumentByFilePath(child.path);
           result.databaseRecordsDeleted.meiliDocuments++;
-        } catch (error) {
+        } catch {
           // Document might not exist, that's ok
           log.debug({ filePath: child.path }, 'no meili document to delete');
         }
@@ -223,7 +223,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
     try {
       deleteMeiliDocumentByFilePath(relativePath);
       result.databaseRecordsDeleted.meiliDocuments++;
-    } catch (error) {
+    } catch {
       // Document might not exist, that's ok
       log.debug({ relativePath }, 'no meili document to delete');
     }

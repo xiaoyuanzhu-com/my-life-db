@@ -149,7 +149,7 @@ class DigestSupervisor {
     }
   }
 
-  private isInCooldown(filePath: string): boolean {
+  private isInCooldown(_filePath: string): boolean {
     return false;
   }
 
