@@ -4,7 +4,6 @@
  */
 
 import type BetterSqlite3 from 'better-sqlite3';
-import { listDigestsForPath } from '@/lib/db/digests';
 import { globalDigesterRegistry } from './registry';
 import { getLogger } from '@/lib/log/logger';
 import { MAX_DIGEST_ATTEMPTS } from './constants';
@@ -35,116 +34,29 @@ export function findFilesNeedingDigestion(
     return [];
   }
 
-  const exclusionClause = EXCLUDED_PATH_PREFIXES.map(() => 'path NOT LIKE ?').join(' AND ');
+  const exclusionClause = EXCLUDED_PATH_PREFIXES.map(() => 'f.path NOT LIKE ?').join(' AND ');
   const exclusionArgs = EXCLUDED_PATH_PREFIXES.map(prefix => `${prefix}%`);
+  const digesterPlaceholders = allDigestTypes.map(() => '?').join(', ');
 
-  const candidateQuery = `
-    SELECT path FROM files
-    WHERE is_folder = 0
+  const sql = `
+    SELECT d.file_path
+    FROM digests d
+    JOIN files f ON f.path = d.file_path
+    WHERE f.is_folder = 0
       ${exclusionClause ? `AND ${exclusionClause}` : ''}
-    ORDER BY COALESCE(last_scanned_at, created_at) ASC
+      AND d.digester IN (${digesterPlaceholders})
+      AND d.status IN ('todo', 'failed')
+      AND COALESCE(d.attempts, 0) < ?
+    GROUP BY d.file_path
+    ORDER BY COALESCE(f.last_scanned_at, f.created_at) ASC
     LIMIT ?
-    OFFSET ?
   `;
 
-  const needsWork: string[] = [];
-  const batchSize = Math.max(limit * 5, 50);
-  let offset = 0;
-  let checked = 0;
+  const rows = db
+    .prepare(sql)
+    .all(...exclusionArgs, ...allDigestTypes, MAX_DIGEST_ATTEMPTS, limit) as Array<{ file_path: string }>;
 
-  while (needsWork.length < limit) {
-    const candidateFiles = db
-      .prepare(candidateQuery)
-      .all(...exclusionArgs, batchSize, offset) as Array<{ path: string }>;
-
-    if (candidateFiles.length === 0) {
-      break;
-    }
-
-    checked += candidateFiles.length;
-
-    for (const { path } of candidateFiles) {
-      if (needsWork.length >= limit) break;
-
-      const digests = listDigestsForPath(path);
-      const digestMap = new Map(digests.map((d) => [d.digester, d]));
-
-      let fileNeedsWork = false;
-      let reason: string | null = null;
-
-      for (const expectedType of allDigestTypes) {
-        const digest = digestMap.get(expectedType);
-
-        if (!digest) {
-          // No digest record = never attempted
-          fileNeedsWork = true;
-          reason = `missing digest '${expectedType}'`;
-          break;
-        }
-
-        if (digest.status === 'todo') {
-          // Skip if we've already hit max attempts for this digester
-          if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
-            log.debug(
-              { path, digester: expectedType, attempts: digest.attempts },
-              'digest todo but at max attempts (skipping)'
-            );
-            continue;
-          }
-          // Todo (not skipped) = needs work
-          // Note: skipped digests have status='skipped', not 'todo'
-          fileNeedsWork = true;
-          reason = `todo digest '${expectedType}' attempts=${digest.attempts ?? 0}`;
-          break;
-        }
-
-        if (digest.status === 'failed') {
-          if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
-            // Treat as permanent failure
-            log.debug(
-              { path, digester: expectedType, attempts: digest.attempts },
-              'digest failed at max attempts (skipping)'
-            );
-            continue;
-          }
-          fileNeedsWork = true;
-          reason = `failed digest '${expectedType}' attempts=${digest.attempts ?? 0}`;
-          break;
-        }
-
-        // status='completed' → done, continue to next type
-        // status='skipped' → not applicable, continue to next type
-        // status='in-progress' → in progress, skip for now (let it finish)
-      }
-
-      // Also check for orphaned digest types (todo/failed but no registered digester)
-      // These can block processing if we don't handle them
-      if (!fileNeedsWork) {
-        const orphanedDigests = digests.filter(
-          (d) => !allDigestTypes.includes(d.digester) &&
-                 (d.status === 'todo' || (d.status === 'failed' && (d.attempts ?? 0) < MAX_DIGEST_ATTEMPTS))
-        );
-        if (orphanedDigests.length > 0) {
-          log.debug(
-            { path, orphanedTypes: orphanedDigests.map((d) => d.digester) },
-            'file has orphaned digest types (will be skipped)'
-          );
-        }
-      }
-
-      if (fileNeedsWork) {
-        needsWork.push(path);
-        log.debug({ path, reason }, 'file selected for digestion');
-      }
-    }
-
-    offset += batchSize;
-  }
-
-  log.debug(
-    { count: needsWork.length, checked },
-    'files needing digestion'
-  );
-
-  return needsWork;
+  const paths = rows.map(r => r.file_path);
+  log.debug({ count: paths.length }, 'files needing digestion');
+  return paths;
 }
