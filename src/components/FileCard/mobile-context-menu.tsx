@@ -273,9 +273,9 @@ export function MobileContextMenu({
                   className={cn(
                     'absolute left-0 w-0 h-0 border-l-[9px] border-r-[9px] border-l-transparent border-r-transparent',
                     position === 'above' &&
-                      'bottom-[-9px] border-t-[9px] border-t-border',
+                      'bottom-[-10px] border-t-[9px] border-t-border',
                     position === 'below' &&
-                      'top-[-9px] border-b-[9px] border-b-border'
+                      'top-[-10px] border-b-[9px] border-b-border'
                   )}
                   style={arrowStyle}
                 />
