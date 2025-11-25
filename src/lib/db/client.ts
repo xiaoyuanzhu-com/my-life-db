@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3';
-import { getDatabase } from './connection';
+import { getDatabaseInternal } from './connection';
 import { getLogger } from '@/lib/log/logger';
 
 type QueryParam = unknown;
@@ -18,7 +18,7 @@ function logQuery(kind: 'select' | 'get' | 'run' | 'tx', sql: string, params: Qu
  */
 export function dbSelect<T = Record<string, unknown>>(sql: string, params: QueryParams = []): T[] {
   logQuery('select', sql, params);
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   return db.prepare(sql).all(...params) as T[];
 }
 
@@ -27,7 +27,7 @@ export function dbSelect<T = Record<string, unknown>>(sql: string, params: Query
  */
 export function dbSelectOne<T = Record<string, unknown>>(sql: string, params: QueryParams = []): T | null {
   logQuery('get', sql, params);
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   const row = db.prepare(sql).get(...params) as T | undefined;
   return row ?? null;
 }
@@ -37,7 +37,7 @@ export function dbSelectOne<T = Record<string, unknown>>(sql: string, params: Qu
  */
 export function dbRun(sql: string, params: QueryParams = []): BetterSqlite3.RunResult {
   logQuery('run', sql, params);
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   return db.prepare(sql).run(...params);
 }
 
@@ -46,7 +46,7 @@ export function dbRun(sql: string, params: QueryParams = []): BetterSqlite3.RunR
  */
 export function dbTransaction<T>(fn: () => T): T {
   logQuery('tx', 'BEGIN', []);
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   const run = db.transaction(fn);
   return run();
 }
@@ -55,7 +55,7 @@ export function dbTransaction<T>(fn: () => T): T {
  * Ensure the database is opened and migrations have run
  */
 export function ensureDatabaseReady(): BetterSqlite3.Database {
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   return db;
 }
 
@@ -64,6 +64,6 @@ export function ensureDatabaseReady(): BetterSqlite3.Database {
  * Prefer dbSelect/dbRun/dbTransaction where possible.
  */
 export function withDatabase<T>(fn: (db: BetterSqlite3.Database) => T): T {
-  const db = getDatabase();
+  const db = getDatabaseInternal();
   return fn(db);
 }

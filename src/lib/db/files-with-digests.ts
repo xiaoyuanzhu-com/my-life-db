@@ -3,7 +3,7 @@
  * Returns unified FileWithDigests model for UI components
  */
 
-import { getDatabase } from './connection';
+import { dbSelectOne } from './client';
 import { getFileByPath, listFiles, type FileRecord } from './files';
 import { listDigestsForPath } from './digests';
 import type { FileWithDigests, DigestSummary } from '@/types/file-card';
@@ -57,7 +57,6 @@ export function listFilesWithDigests(
  * Count files matching criteria
  */
 export function countFilesWithDigests(pathPrefix?: string, isFolder?: boolean): number {
-  const db = getDatabase();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -74,8 +73,8 @@ export function countFilesWithDigests(pathPrefix?: string, isFolder?: boolean): 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const query = `SELECT COUNT(*) as count FROM files ${whereClause}`;
 
-  const row = db.prepare(query).get(...params) as { count: number };
-  return row.count;
+  const row = dbSelectOne<{ count: number }>(query, params);
+  return row?.count ?? 0;
 }
 
 /**

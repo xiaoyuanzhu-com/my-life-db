@@ -6,7 +6,7 @@
  * Can be deleted and rebuilt from filesystem at any time.
  */
 
-import { getDatabase } from './connection';
+import { dbRun, dbSelect, dbSelectOne } from './client';
 import { getLogger } from '@/lib/log/logger';
 import type { FileRecord, FileRecordRow } from '@/types/models';
 import { rowToFileRecord } from '@/types/models';
@@ -20,10 +20,7 @@ const log = getLogger({ module: 'DBFiles' });
  * Get file record by path
  */
 export function getFileByPath(path: string): FileRecord | null {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT * FROM files WHERE path = ?')
-    .get(path) as FileRecordRow | undefined;
+  const row = dbSelectOne<FileRecordRow>('SELECT * FROM files WHERE path = ?', [path]);
 
   return row ? rowToFileRecord(row) : null;
 }
@@ -32,14 +29,14 @@ export function getFileByPath(path: string): FileRecord | null {
  * List non-folder file paths while excluding specific path prefixes
  */
 export function listFilePathsForDigestion(excludedPathPrefixes: string[] = []): string[] {
-  const db = getDatabase();
   const exclusionClause = excludedPathPrefixes.map(() => 'path NOT LIKE ?').join(' AND ');
   const exclusionArgs = excludedPathPrefixes.map(prefix => `${prefix}%`);
   const where = exclusionClause ? `AND ${exclusionClause}` : '';
 
-  const rows = db
-    .prepare(`SELECT path FROM files WHERE is_folder = 0 ${where}`)
-    .all(...exclusionArgs) as Array<{ path: string }>;
+  const rows = dbSelect<{ path: string }>(
+    `SELECT path FROM files WHERE is_folder = 0 ${where}`,
+    exclusionArgs
+  );
 
   return rows.map(row => row.path);
 }
@@ -60,7 +57,6 @@ export function listFiles(
     offset?: number;
   }
 ): FileRecord[] {
-  const db = getDatabase();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -89,7 +85,7 @@ export function listFiles(
     ${offsetClause}
   `;
 
-  const rows = db.prepare(query).all(...params) as FileRecordRow[];
+  const rows = dbSelect<FileRecordRow>(query, params);
   return rows.map(rowToFileRecord);
 }
 
@@ -109,7 +105,6 @@ export function listTopLevelFiles(
     offset?: number;
   }
 ): FileRecord[] {
-  const db = getDatabase();
   const params: (string | number)[] = [];
 
   // Match files like "inbox/file.jpg" (no slash after prefix)
@@ -142,7 +137,7 @@ export function listTopLevelFiles(
     ${offsetClause}
   `;
 
-  const rows = db.prepare(query).all(...params) as FileRecordRow[];
+  const rows = dbSelect<FileRecordRow>(query, params);
   return rows.map(rowToFileRecord);
 }
 
@@ -150,8 +145,6 @@ export function listTopLevelFiles(
  * Count top-level files in a directory
  */
 export function countTopLevelFiles(pathPrefix: string): number {
-  const db = getDatabase();
-
   const query = `
     SELECT COUNT(*) as count FROM files
     WHERE path LIKE ?
@@ -161,12 +154,12 @@ export function countTopLevelFiles(pathPrefix: string): number {
     )
   `;
 
-  const row = db.prepare(query).get(
-    `${pathPrefix}%`,
-    `${pathPrefix}%/%`
-  ) as { count: number };
+  const row = dbSelectOne<{ count: number }>(
+    query,
+    [`${pathPrefix}%`, `${pathPrefix}%/%`]
+  );
 
-  return row.count;
+  return row?.count ?? 0;
 }
 
 /**
@@ -182,14 +175,13 @@ export function upsertFileRecord(file: {
   modifiedAt: string;
   textPreview?: string | null;
 }): FileRecord {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
   const existing = getFileByPath(file.path);
 
   if (existing) {
     // Update existing record
-    db.prepare(
+    dbRun(
       `UPDATE files SET
         name = ?,
         is_folder = ?,
@@ -199,38 +191,40 @@ export function upsertFileRecord(file: {
         modified_at = ?,
         last_scanned_at = ?,
         text_preview = ?
-      WHERE path = ?`
-    ).run(
-      file.name,
-      file.isFolder ? 1 : 0,
-      file.size ?? null,
-      file.mimeType ?? null,
-      file.hash ?? null,
-      file.modifiedAt,
-      now,
-      file.textPreview ?? null,
-      file.path
+      WHERE path = ?`,
+      [
+        file.name,
+        file.isFolder ? 1 : 0,
+        file.size ?? null,
+        file.mimeType ?? null,
+        file.hash ?? null,
+        file.modifiedAt,
+        now,
+        file.textPreview ?? null,
+        file.path,
+      ]
     );
 
     log.debug({ path: file.path }, 'updated file record');
   } else {
     // Insert new record
-    db.prepare(
+    dbRun(
       `INSERT INTO files (
         path, name, is_folder, size, mime_type, hash,
         modified_at, created_at, last_scanned_at, text_preview
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      file.path,
-      file.name,
-      file.isFolder ? 1 : 0,
-      file.size ?? null,
-      file.mimeType ?? null,
-      file.hash ?? null,
-      file.modifiedAt,
-      now,
-      now,
-      file.textPreview ?? null
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        file.path,
+        file.name,
+        file.isFolder ? 1 : 0,
+        file.size ?? null,
+        file.mimeType ?? null,
+        file.hash ?? null,
+        file.modifiedAt,
+        now,
+        now,
+        file.textPreview ?? null,
+      ]
     );
 
     log.debug({ path: file.path }, 'created file record');
@@ -243,13 +237,11 @@ export function upsertFileRecord(file: {
  * Update file path (for renames)
  */
 export function updateFilePath(oldPath: string, newPath: string): void {
-  const db = getDatabase();
-
-  db.prepare('UPDATE files SET path = ?, name = ? WHERE path = ?').run(
+  dbRun('UPDATE files SET path = ?, name = ? WHERE path = ?', [
     newPath,
     newPath.split('/').pop()!,
-    oldPath
-  );
+    oldPath,
+  ]);
 
   log.info({ oldPath, newPath }, 'updated file path');
 }
@@ -258,8 +250,7 @@ export function updateFilePath(oldPath: string, newPath: string): void {
  * Delete file record
  */
 export function deleteFileRecord(path: string): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM files WHERE path = ?').run(path);
+  dbRun('DELETE FROM files WHERE path = ?', [path]);
   log.debug({ path }, 'deleted file record');
 }
 
@@ -267,8 +258,7 @@ export function deleteFileRecord(path: string): void {
  * Delete all file records matching path prefix
  */
 export function deleteFilesByPrefix(pathPrefix: string): void {
-  const db = getDatabase();
-  const result = db.prepare('DELETE FROM files WHERE path LIKE ?').run(`${pathPrefix}%`);
+  const result = dbRun('DELETE FROM files WHERE path LIKE ?', [`${pathPrefix}%`]);
   log.info({ pathPrefix, deleted: result.changes }, 'deleted files by prefix');
 }
 
@@ -276,7 +266,6 @@ export function deleteFilesByPrefix(pathPrefix: string): void {
  * Count files matching path prefix
  */
 export function countFiles(pathPrefix?: string, isFolder?: boolean): number {
-  const db = getDatabase();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -293,15 +282,14 @@ export function countFiles(pathPrefix?: string, isFolder?: boolean): number {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const query = `SELECT COUNT(*) as count FROM files ${whereClause}`;
 
-  const row = db.prepare(query).get(...params) as { count: number };
-  return row.count;
+  const row = dbSelectOne<{ count: number }>(query, params);
+  return row?.count ?? 0;
 }
 
 /**
  * Clear all file records (for full rebuild)
  */
 export function clearAllFiles(): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM files').run();
+  dbRun('DELETE FROM files');
   log.info({}, 'cleared all file records');
 }

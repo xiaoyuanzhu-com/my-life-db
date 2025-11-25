@@ -6,7 +6,7 @@
  * Documents are rebuildable from filesystem + digests.
  */
 
-import { getDatabase } from './connection';
+import { dbRun, dbSelect, dbSelectOne, dbTransaction } from './client';
 import { getLogger } from '@/lib/log/logger';
 import type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from '@/types/models';
 import { rowToQdrantDocument } from '@/types/models';
@@ -20,10 +20,10 @@ export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType };
  * Get document by ID
  */
 export function getQdrantDocumentById(documentId: string): QdrantDocument | null {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT * FROM qdrant_documents WHERE document_id = ?')
-    .get(documentId) as QdrantDocumentRow | undefined;
+  const row = dbSelectOne<QdrantDocumentRow>(
+    'SELECT * FROM qdrant_documents WHERE document_id = ?',
+    [documentId]
+  );
 
   return row ? rowToQdrantDocument(row) : null;
 }
@@ -32,10 +32,10 @@ export function getQdrantDocumentById(documentId: string): QdrantDocument | null
  * List chunks for a file (all source types)
  */
 export function listQdrantDocumentsByFile(filePath: string): QdrantDocument[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT * FROM qdrant_documents WHERE file_path = ? ORDER BY source_type, chunk_index')
-    .all(filePath) as QdrantDocumentRow[];
+  const rows = dbSelect<QdrantDocumentRow>(
+    'SELECT * FROM qdrant_documents WHERE file_path = ? ORDER BY source_type, chunk_index',
+    [filePath]
+  );
 
   return rows.map(rowToQdrantDocument);
 }
@@ -47,10 +47,10 @@ export function listQdrantDocumentsByFileAndSource(
   filePath: string,
   sourceType: SourceType
 ): QdrantDocument[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT * FROM qdrant_documents WHERE file_path = ? AND source_type = ? ORDER BY chunk_index')
-    .all(filePath, sourceType) as QdrantDocumentRow[];
+  const rows = dbSelect<QdrantDocumentRow>(
+    'SELECT * FROM qdrant_documents WHERE file_path = ? AND source_type = ? ORDER BY chunk_index',
+    [filePath, sourceType]
+  );
 
   return rows.map(rowToQdrantDocument);
 }
@@ -62,13 +62,12 @@ export function listQdrantDocumentsByStatus(
   status: EmbeddingStatus,
   limit?: number
 ): QdrantDocument[] {
-  const db = getDatabase();
   const query = limit
     ? 'SELECT * FROM qdrant_documents WHERE embedding_status = ? LIMIT ?'
     : 'SELECT * FROM qdrant_documents WHERE embedding_status = ?';
 
   const params = limit ? [status, limit] : [status];
-  const rows = db.prepare(query).all(...params) as QdrantDocumentRow[];
+  const rows = dbSelect<QdrantDocumentRow>(query, params);
 
   return rows.map(rowToQdrantDocument);
 }
@@ -92,14 +91,13 @@ export function upsertQdrantDocument(doc: {
   metadataJson?: string | null;
   embeddingVersion?: number;
 }): QdrantDocument {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
   const existing = getQdrantDocumentById(doc.documentId);
 
   if (existing) {
     // Update existing document
-    db.prepare(
+    dbRun(
       `UPDATE qdrant_documents SET
         file_path = ?,
         source_type = ?,
@@ -117,52 +115,54 @@ export function upsertQdrantDocument(doc: {
         embedding_version = ?,
         qdrant_error = NULL,
         updated_at = ?
-      WHERE document_id = ?`
-    ).run(
-      doc.filePath,
-      doc.sourceType,
-      doc.chunkIndex,
-      doc.chunkCount,
-      doc.chunkText,
-      doc.spanStart,
-      doc.spanEnd,
-      doc.overlapTokens,
-      doc.wordCount,
-      doc.tokenCount,
-      doc.contentHash,
-      doc.metadataJson ?? null,
-      doc.embeddingVersion ?? 0,
-      now,
-      doc.documentId
+      WHERE document_id = ?`,
+      [
+        doc.filePath,
+        doc.sourceType,
+        doc.chunkIndex,
+        doc.chunkCount,
+        doc.chunkText,
+        doc.spanStart,
+        doc.spanEnd,
+        doc.overlapTokens,
+        doc.wordCount,
+        doc.tokenCount,
+        doc.contentHash,
+        doc.metadataJson ?? null,
+        doc.embeddingVersion ?? 0,
+        now,
+        doc.documentId,
+      ]
     );
 
     log.debug({ documentId: doc.documentId }, 'updated qdrant document');
   } else {
     // Insert new document
-    db.prepare(
+    dbRun(
       `INSERT INTO qdrant_documents (
         document_id, file_path, source_type, chunk_index, chunk_count,
         chunk_text, span_start, span_end, overlap_tokens, word_count,
         token_count, content_hash, metadata_json,
         embedding_status, embedding_version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
-    ).run(
-      doc.documentId,
-      doc.filePath,
-      doc.sourceType,
-      doc.chunkIndex,
-      doc.chunkCount,
-      doc.chunkText,
-      doc.spanStart,
-      doc.spanEnd,
-      doc.overlapTokens,
-      doc.wordCount,
-      doc.tokenCount,
-      doc.contentHash,
-      doc.metadataJson ?? null,
-      doc.embeddingVersion ?? 0,
-      now,
-      now
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [
+        doc.documentId,
+        doc.filePath,
+        doc.sourceType,
+        doc.chunkIndex,
+        doc.chunkCount,
+        doc.chunkText,
+        doc.spanStart,
+        doc.spanEnd,
+        doc.overlapTokens,
+        doc.wordCount,
+        doc.tokenCount,
+        doc.contentHash,
+        doc.metadataJson ?? null,
+        doc.embeddingVersion ?? 0,
+        now,
+        now,
+      ]
     );
 
     log.debug({ documentId: doc.documentId }, 'created qdrant document');
@@ -184,7 +184,6 @@ export function updateEmbeddingStatus(
     embeddingVersion?: number;
   }
 ): void {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
   const updates: string[] = ['embedding_status = ?', 'updated_at = ?'];
@@ -215,9 +214,10 @@ export function updateEmbeddingStatus(
 
   params.push(documentId);
 
-  db.prepare(
-    `UPDATE qdrant_documents SET ${updates.join(', ')} WHERE document_id = ?`
-  ).run(...params);
+  dbRun(
+    `UPDATE qdrant_documents SET ${updates.join(', ')} WHERE document_id = ?`,
+    params
+  );
 
   log.debug({ documentId, status }, 'updated embedding status');
 }
@@ -234,14 +234,13 @@ export function batchUpdateEmbeddingStatus(
     indexedAt?: string;
   }
 ): void {
-  const db = getDatabase();
-  const transaction = db.transaction(() => {
+  const transaction = () => {
     for (const documentId of documentIds) {
       updateEmbeddingStatus(documentId, status, options);
     }
-  });
+  };
 
-  transaction();
+  dbTransaction(transaction);
   log.debug({ count: documentIds.length, status }, 'batch updated embedding status');
 }
 
@@ -249,10 +248,7 @@ export function batchUpdateEmbeddingStatus(
  * Delete all chunks for a file
  */
 export function deleteQdrantDocumentsByFile(filePath: string): number {
-  const db = getDatabase();
-  const result = db
-    .prepare('DELETE FROM qdrant_documents WHERE file_path = ?')
-    .run(filePath);
+  const result = dbRun('DELETE FROM qdrant_documents WHERE file_path = ?', [filePath]);
 
   log.debug({ filePath, count: result.changes }, 'deleted qdrant documents for file');
   return result.changes;
@@ -262,8 +258,7 @@ export function deleteQdrantDocumentsByFile(filePath: string): number {
  * Delete document by ID
  */
 export function deleteQdrantDocument(documentId: string): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM qdrant_documents WHERE document_id = ?').run(documentId);
+  dbRun('DELETE FROM qdrant_documents WHERE document_id = ?', [documentId]);
 
   log.debug({ documentId }, 'deleted qdrant document');
 }
@@ -272,22 +267,22 @@ export function deleteQdrantDocument(documentId: string): void {
  * Count documents by status
  */
 export function countQdrantDocumentsByStatus(status: EmbeddingStatus): number {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT COUNT(*) as count FROM qdrant_documents WHERE embedding_status = ?')
-    .get(status) as { count: number };
+  const row = dbSelectOne<{ count: number }>(
+    'SELECT COUNT(*) as count FROM qdrant_documents WHERE embedding_status = ?',
+    [status]
+  );
 
-  return row.count;
+  return row?.count ?? 0;
 }
 
 /**
  * Get all document IDs for a file
  */
 export function getQdrantDocumentIdsByFile(filePath: string): string[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT document_id FROM qdrant_documents WHERE file_path = ? ORDER BY source_type, chunk_index')
-    .all(filePath) as { document_id: string }[];
+  const rows = dbSelect<{ document_id: string }>(
+    'SELECT document_id FROM qdrant_documents WHERE file_path = ? ORDER BY source_type, chunk_index',
+    [filePath]
+  );
 
   return rows.map(r => r.document_id);
 }
@@ -299,10 +294,10 @@ export function getQdrantDocumentIdsByFileAndSource(
   filePath: string,
   sourceType: SourceType
 ): string[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare('SELECT document_id FROM qdrant_documents WHERE file_path = ? AND source_type = ? ORDER BY chunk_index')
-    .all(filePath, sourceType) as { document_id: string }[];
+  const rows = dbSelect<{ document_id: string }>(
+    'SELECT document_id FROM qdrant_documents WHERE file_path = ? AND source_type = ? ORDER BY chunk_index',
+    [filePath, sourceType]
+  );
 
   return rows.map(r => r.document_id);
 }

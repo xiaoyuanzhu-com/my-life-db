@@ -4,7 +4,7 @@ import 'server-only';
 import type BetterSqlite3 from 'better-sqlite3';
 import { deflate, inflate } from 'zlib';
 import { promisify } from 'util';
-import { getDatabase } from './connection';
+import { withDatabase } from './client';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SQLAR' });
@@ -58,7 +58,7 @@ export async function sqlarGet(
   dbOrName: BetterSqlite3.Database | string,
   maybeName?: string
 ): Promise<Buffer | null> {
-  const db = typeof dbOrName === 'string' ? getDatabase() : dbOrName;
+  const db = typeof dbOrName === 'string' ? withDatabase(database => database) : dbOrName;
   const name = typeof dbOrName === 'string' ? dbOrName : maybeName!;
 
   try {
@@ -157,7 +157,7 @@ export function sqlarDeletePrefix(
   dbOrPrefix: BetterSqlite3.Database | string,
   maybePrefix?: string
 ): number {
-  const db = typeof dbOrPrefix === 'string' ? getDatabase() : dbOrPrefix;
+  const db = typeof dbOrPrefix === 'string' ? withDatabase(database => database) : dbOrPrefix;
   const prefix = typeof dbOrPrefix === 'string' ? dbOrPrefix : maybePrefix!;
 
   try {

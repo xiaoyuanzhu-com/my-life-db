@@ -1,6 +1,6 @@
 // Session management functions
 import 'server-only';
-import { getDatabase } from './connection';
+import { dbRun, dbSelectOne } from './client';
 import { randomBytes } from 'crypto';
 
 export interface Session {
@@ -16,7 +16,6 @@ const ONE_YEAR_IN_MS = 365 * 24 * 60 * 60 * 1000;
  * Create a new session token
  */
 export function createSession(): Session {
-  const db = getDatabase();
   const token = randomBytes(32).toString('base64url');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ONE_YEAR_IN_MS);
@@ -28,10 +27,13 @@ export function createSession(): Session {
     last_used_at: now.toISOString(),
   };
 
-  db.prepare(`
-    INSERT INTO sessions (token, created_at, expires_at, last_used_at)
-    VALUES (?, ?, ?, ?)
-  `).run(session.token, session.created_at, session.expires_at, session.last_used_at);
+  dbRun(
+    `
+      INSERT INTO sessions (token, created_at, expires_at, last_used_at)
+      VALUES (?, ?, ?, ?)
+    `,
+    [session.token, session.created_at, session.expires_at, session.last_used_at]
+  );
 
   return session;
 }
@@ -41,13 +43,14 @@ export function createSession(): Session {
  * Returns the session if valid, null if invalid or expired
  */
 export function validateSession(token: string): Session | null {
-  const db = getDatabase();
-
-  const session = db.prepare(`
-    SELECT token, created_at, expires_at, last_used_at
-    FROM sessions
-    WHERE token = ?
-  `).get(token) as Session | undefined;
+  const session = dbSelectOne<Session>(
+    `
+      SELECT token, created_at, expires_at, last_used_at
+      FROM sessions
+      WHERE token = ?
+    `,
+    [token]
+  );
 
   if (!session) {
     return null;
@@ -64,11 +67,14 @@ export function validateSession(token: string): Session | null {
   }
 
   // Update last used timestamp
-  db.prepare(`
-    UPDATE sessions
-    SET last_used_at = ?
-    WHERE token = ?
-  `).run(now.toISOString(), token);
+  dbRun(
+    `
+      UPDATE sessions
+      SET last_used_at = ?
+      WHERE token = ?
+    `,
+    [now.toISOString(), token]
+  );
 
   return {
     ...session,
@@ -80,21 +86,22 @@ export function validateSession(token: string): Session | null {
  * Delete a session
  */
 export function deleteSession(token: string): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  dbRun('DELETE FROM sessions WHERE token = ?', [token]);
 }
 
 /**
  * Delete all expired sessions (cleanup)
  */
 export function deleteExpiredSessions(): number {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
-  const result = db.prepare(`
-    DELETE FROM sessions
-    WHERE expires_at < ?
-  `).run(now);
+  const result = dbRun(
+    `
+      DELETE FROM sessions
+      WHERE expires_at < ?
+    `,
+    [now]
+  );
 
   return result.changes;
 }

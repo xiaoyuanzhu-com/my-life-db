@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getDatabase } from './connection';
+import { dbRun, dbSelect, dbSelectOne, dbTransaction } from './client';
 import { getLogger } from '@/lib/log/logger';
 import type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from '@/types/models';
 import { rowToMeiliDocument } from '@/types/models';
@@ -21,10 +21,10 @@ export type { MeiliDocument, MeiliDocumentRow, MeiliStatus };
  * Get document by ID
  */
 export function getMeiliDocumentById(documentId: string): MeiliDocument | null {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT * FROM meili_documents WHERE document_id = ?')
-    .get(documentId) as MeiliDocumentRow | undefined;
+  const row = dbSelectOne<MeiliDocumentRow>(
+    'SELECT * FROM meili_documents WHERE document_id = ?',
+    [documentId]
+  );
 
   return row ? rowToMeiliDocument(row) : null;
 }
@@ -33,10 +33,10 @@ export function getMeiliDocumentById(documentId: string): MeiliDocument | null {
  * Get document by file path
  */
 export function getMeiliDocumentByFilePath(filePath: string): MeiliDocument | null {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT * FROM meili_documents WHERE file_path = ?')
-    .get(filePath) as MeiliDocumentRow | undefined;
+  const row = dbSelectOne<MeiliDocumentRow>(
+    'SELECT * FROM meili_documents WHERE file_path = ?',
+    [filePath]
+  );
 
   return row ? rowToMeiliDocument(row) : null;
 }
@@ -48,13 +48,12 @@ export function listMeiliDocumentsByStatus(
   status: MeiliStatus,
   limit?: number
 ): MeiliDocument[] {
-  const db = getDatabase();
   const query = limit
     ? 'SELECT * FROM meili_documents WHERE meili_status = ? LIMIT ?'
     : 'SELECT * FROM meili_documents WHERE meili_status = ?';
 
   const params = limit ? [status, limit] : [status];
-  const rows = db.prepare(query).all(...params) as MeiliDocumentRow[];
+  const rows = dbSelect<MeiliDocumentRow>(query, params);
 
   return rows.map(rowToMeiliDocument);
 }
@@ -72,7 +71,6 @@ export function upsertMeiliDocument(doc: {
   mimeType?: string | null;
   metadataJson?: string | null;
 }): MeiliDocument {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
   // Check if document already exists for this file path
@@ -86,7 +84,7 @@ export function upsertMeiliDocument(doc: {
     }
 
     // Update existing document
-    db.prepare(
+    dbRun(
       `UPDATE meili_documents SET
         content = ?,
         summary = ?,
@@ -98,17 +96,18 @@ export function upsertMeiliDocument(doc: {
         meili_status = 'pending',
         meili_error = NULL,
         updated_at = ?
-      WHERE document_id = ?`
-    ).run(
-      doc.content,
-      doc.summary ?? null,
-      doc.tags ?? null,
-      doc.contentHash,
-      doc.wordCount,
-      doc.mimeType ?? null,
-      doc.metadataJson ?? null,
-      now,
-      existing.documentId
+      WHERE document_id = ?`,
+      [
+        doc.content,
+        doc.summary ?? null,
+        doc.tags ?? null,
+        doc.contentHash,
+        doc.wordCount,
+        doc.mimeType ?? null,
+        doc.metadataJson ?? null,
+        now,
+        existing.documentId,
+      ]
     );
 
     log.debug({ documentId: existing.documentId, filePath: doc.filePath }, 'updated meili document');
@@ -116,24 +115,25 @@ export function upsertMeiliDocument(doc: {
   } else {
     // Insert new document with a fresh UUID
     const documentId = randomUUID();
-    db.prepare(
+    dbRun(
       `INSERT INTO meili_documents (
         document_id, file_path, content, summary, tags, content_hash,
         word_count, mime_type, metadata_json, meili_status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-    ).run(
-      documentId,
-      doc.filePath,
-      doc.content,
-      doc.summary ?? null,
-      doc.tags ?? null,
-      doc.contentHash,
-      doc.wordCount,
-      doc.mimeType ?? null,
-      doc.metadataJson ?? null,
-      now,
-      now
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [
+        documentId,
+        doc.filePath,
+        doc.content,
+        doc.summary ?? null,
+        doc.tags ?? null,
+        doc.contentHash,
+        doc.wordCount,
+        doc.mimeType ?? null,
+        doc.metadataJson ?? null,
+        now,
+        now,
+      ]
     );
 
     log.debug({ documentId, filePath: doc.filePath }, 'created meili document');
@@ -152,7 +152,6 @@ export function updateMeiliStatus(
     error?: string;
   }
 ): void {
-  const db = getDatabase();
   const now = new Date().toISOString();
 
   const updates: string[] = ['meili_status = ?', 'updated_at = ?'];
@@ -178,9 +177,10 @@ export function updateMeiliStatus(
 
   params.push(documentId);
 
-  db.prepare(
-    `UPDATE meili_documents SET ${updates.join(', ')} WHERE document_id = ?`
-  ).run(...params);
+  dbRun(
+    `UPDATE meili_documents SET ${updates.join(', ')} WHERE document_id = ?`,
+    params
+  );
 
   log.debug({ documentId, status }, 'updated meili status');
 }
@@ -196,14 +196,13 @@ export function batchUpdateMeiliStatus(
     error?: string;
   }
 ): void {
-  const db = getDatabase();
-  const transaction = db.transaction(() => {
+  const transaction = () => {
     for (const documentId of documentIds) {
       updateMeiliStatus(documentId, status, options);
     }
-  });
+  };
 
-  transaction();
+  dbTransaction(transaction);
   log.debug({ count: documentIds.length, status }, 'batch updated meili status');
 }
 
@@ -222,8 +221,7 @@ export function deleteMeiliDocumentByFilePath(filePath: string): void {
  * Delete document by ID
  */
 export function deleteMeiliDocument(documentId: string): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM meili_documents WHERE document_id = ?').run(documentId);
+  dbRun('DELETE FROM meili_documents WHERE document_id = ?', [documentId]);
 
   log.debug({ documentId }, 'deleted meili document');
 }
@@ -232,12 +230,12 @@ export function deleteMeiliDocument(documentId: string): void {
  * Count documents by status
  */
 export function countMeiliDocumentsByStatus(status: MeiliStatus): number {
-  const db = getDatabase();
-  const row = db
-    .prepare('SELECT COUNT(*) as count FROM meili_documents WHERE meili_status = ?')
-    .get(status) as { count: number };
+  const row = dbSelectOne<{ count: number }>(
+    'SELECT COUNT(*) as count FROM meili_documents WHERE meili_status = ?',
+    [status]
+  );
 
-  return row.count;
+  return row?.count ?? 0;
 }
 
 /**

@@ -42,9 +42,10 @@ function ensureDatabaseDirectory(): void {
 }
 
 /**
- * Get or create database connection
+ * Internal: Get or create database connection.
+ * Use db/client helpers instead of calling this directly.
  */
-export function getDatabase(): BetterSqlite3.Database {
+export function getDatabaseInternal(): BetterSqlite3.Database {
   if (!db) {
     ensureDatabaseDirectory();
     const dbPath = getDatabasePath();
@@ -70,9 +71,9 @@ export function getDatabase(): BetterSqlite3.Database {
 }
 
 /**
- * Close database connection (useful for cleanup)
+ * Internal cleanup helper
  */
-export function closeDatabase() {
+export function closeDatabaseInternal() {
   if (db) {
     db.close();
     db = null;

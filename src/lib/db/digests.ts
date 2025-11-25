@@ -1,6 +1,6 @@
 // Database operations for digests table
 import { randomUUID } from 'crypto';
-import { getDatabase } from './connection';
+import { dbRun, dbSelect, dbSelectOne } from './client';
 import { getLogger } from '@/lib/log/logger';
 import type { Digest, DigestRecordRow } from '@/types';
 
@@ -20,35 +20,34 @@ function formatStack(maxLines: number = 5): string | undefined {
  * Create a new digest in the database
  */
 export function createDigest(digest: Digest): void {
-  const db = getDatabase();
-
-  const stmt = db.prepare(`
-    INSERT INTO digests (
-      id, file_path, digester, status, content, sqlar_name, error,
-      attempts, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      file_path = excluded.file_path,
-      digester = excluded.digester,
-      status = excluded.status,
-      content = excluded.content,
-      sqlar_name = excluded.sqlar_name,
-      error = excluded.error,
-      attempts = excluded.attempts,
-      updated_at = excluded.updated_at
-  `);
-
-  stmt.run(
-    digest.id,
-    digest.filePath,
-    digest.digester,
-    digest.status,
-    digest.content,
-    digest.sqlarName,
-    digest.error,
-    digest.attempts ?? 0,
-    digest.createdAt,
-    digest.updatedAt
+  dbRun(
+    `
+      INSERT INTO digests (
+        id, file_path, digester, status, content, sqlar_name, error,
+        attempts, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        file_path = excluded.file_path,
+        digester = excluded.digester,
+        status = excluded.status,
+        content = excluded.content,
+        sqlar_name = excluded.sqlar_name,
+        error = excluded.error,
+        attempts = excluded.attempts,
+        updated_at = excluded.updated_at
+    `,
+    [
+      digest.id,
+      digest.filePath,
+      digest.digester,
+      digest.status,
+      digest.content,
+      digest.sqlarName,
+      digest.error,
+      digest.attempts ?? 0,
+      digest.createdAt,
+      digest.updatedAt,
+    ]
   );
 
   if (digest.status === 'todo') {
@@ -64,34 +63,33 @@ export function createDigest(digest: Digest): void {
  * If digest exists, resets it to pending state. If not, creates it.
  */
 export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
-  const db = getDatabase();
-
-  const stmt = db.prepare(`
-    INSERT INTO digests (
-      id, file_path, digester, status, content, sqlar_name, error,
-      attempts, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      status = 'todo',
-      error = NULL,
-      attempts = 0,
-      updated_at = ?
-  `);
-
   const now = new Date().toISOString();
-  stmt.run(
-    digest.id,
-    digest.filePath,
-    digest.digester,
-    digest.status,
-    digest.content,
-    digest.sqlarName,
-    digest.error,
-    0,
-    digest.createdAt,
-    now,
-    now  // updated_at for the UPDATE clause
-    );
+  dbRun(
+    `
+      INSERT INTO digests (
+        id, file_path, digester, status, content, sqlar_name, error,
+        attempts, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status = 'todo',
+        error = NULL,
+        attempts = 0,
+        updated_at = ?
+    `,
+    [
+      digest.id,
+      digest.filePath,
+      digest.digester,
+      digest.status,
+      digest.content,
+      digest.sqlarName,
+      digest.error,
+      0,
+      digest.createdAt,
+      now,
+      now,
+    ]
+  );
 
   log.debug(
     { filePath: digest.filePath, digester: digest.digester, attempts: 0, stack: formatStack() },
@@ -104,29 +102,28 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
  * Used by sync routines to avoid overwriting existing statuses.
  */
 export function insertDigestIfMissing(digest: Digest): void {
-  const db = getDatabase();
-
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO digests (
-      id, file_path, digester, status, content, sqlar_name, error,
-      attempts, created_at, updated_at
-    ) VALUES (
-      COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?, ?, ?
-    )
-  `);
-
-  const result = stmt.run(
-    digest.id,
-    digest.id ?? randomUUID(),
-    digest.filePath,
-    digest.digester,
-    digest.status,
-    digest.content,
-    digest.sqlarName,
-    digest.error,
-    digest.attempts ?? 0,
-    digest.createdAt,
-    digest.updatedAt
+  const result = dbRun(
+    `
+      INSERT OR IGNORE INTO digests (
+        id, file_path, digester, status, content, sqlar_name, error,
+        attempts, created_at, updated_at
+      ) VALUES (
+        COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `,
+    [
+      digest.id,
+      digest.id ?? randomUUID(),
+      digest.filePath,
+      digest.digester,
+      digest.status,
+      digest.content,
+      digest.sqlarName,
+      digest.error,
+      digest.attempts ?? 0,
+      digest.createdAt,
+      digest.updatedAt,
+    ]
   );
 
   if (result.changes === 0) {
@@ -146,11 +143,7 @@ export function insertDigestIfMissing(digest: Digest): void {
  * Get a digest by ID
  */
 export function getDigestById(id: string): Digest | null {
-  const db = getDatabase();
-
-  const row = db
-    .prepare('SELECT * FROM digests WHERE id = ?')
-    .get(id) as DigestRecordRow | undefined;
+  const row = dbSelectOne<DigestRecordRow>('SELECT * FROM digests WHERE id = ?', [id]);
 
   if (!row) return null;
 
@@ -161,11 +154,10 @@ export function getDigestById(id: string): Digest | null {
  * Get a digest by file path and digester name
  */
 export function getDigestByPathAndDigester(filePath: string, digester: string): Digest | null {
-  const db = getDatabase();
-
-  const row = db
-    .prepare('SELECT * FROM digests WHERE file_path = ? AND digester = ?')
-    .get(filePath, digester) as DigestRecordRow | undefined;
+  const row = dbSelectOne<DigestRecordRow>(
+    'SELECT * FROM digests WHERE file_path = ? AND digester = ?',
+    [filePath, digester]
+  );
 
   if (!row) return null;
 
@@ -185,8 +177,6 @@ export function listDigestsForPath(
     order?: 'asc' | 'desc';
   }
 ): Digest[] {
-  const db = getDatabase();
-
   let sql = 'SELECT * FROM digests WHERE file_path = ?';
   const params: (string | number)[] = [filePath];
 
@@ -217,9 +207,7 @@ export function listDigestsForPath(
   const orderDirection = options?.order === 'asc' ? 'ASC' : 'DESC';
   sql += ` ORDER BY created_at ${orderDirection}, id ${orderDirection}`;
 
-  const rows = db
-    .prepare(sql)
-    .all(...params) as DigestRecordRow[];
+  const rows = dbSelect<DigestRecordRow>(sql, params);
 
   return rows.map(rowToDigest);
 }
@@ -228,8 +216,6 @@ export function listDigestsForPath(
  * List digests by digester name (across all files)
  */
 export function listDigestsByDigester(digester: string, limit?: number): Digest[] {
-  const db = getDatabase();
-
   let sql = 'SELECT * FROM digests WHERE digester = ? ORDER BY created_at DESC';
   const params: (string | number)[] = [digester];
 
@@ -238,7 +224,7 @@ export function listDigestsByDigester(digester: string, limit?: number): Digest[
     params.push(limit);
   }
 
-  const rows = db.prepare(sql).all(...params) as DigestRecordRow[];
+  const rows = dbSelect<DigestRecordRow>(sql, params);
 
   return rows.map(rowToDigest);
 }
@@ -250,8 +236,6 @@ export function updateDigest(
   id: string,
   updates: Partial<Omit<Digest, 'id' | 'filePath' | 'createdAt'>>
 ): void {
-  const db = getDatabase();
-
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
 
@@ -292,23 +276,21 @@ export function updateDigest(
   values.push(id);
 
   const sql = `UPDATE digests SET ${fields.join(', ')} WHERE id = ?`;
-  db.prepare(sql).run(...values);
+  dbRun(sql, values);
 }
 
 /**
  * Delete a digest by ID
  */
 export function deleteDigest(id: string): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM digests WHERE id = ?').run(id);
+  dbRun('DELETE FROM digests WHERE id = ?', [id]);
 }
 
 /**
  * Delete a specific digest by file path and digester
  */
 export function deleteDigestByPathAndDigester(filePath: string, digester: string): void {
-  const db = getDatabase();
-  const result = db.prepare('DELETE FROM digests WHERE file_path = ? AND digester = ?').run(filePath, digester);
+  const result = dbRun('DELETE FROM digests WHERE file_path = ? AND digester = ?', [filePath, digester]);
   if (result.changes > 0) {
     log.warn(
       { filePath, digester, removed: result.changes, stack: formatStack() },
@@ -321,8 +303,7 @@ export function deleteDigestByPathAndDigester(filePath: string, digester: string
  * Delete all digests for a file path
  */
 export function deleteDigestsForPath(filePath: string): number {
-  const db = getDatabase();
-  const result = db.prepare('DELETE FROM digests WHERE file_path = ?').run(filePath);
+  const result = dbRun('DELETE FROM digests WHERE file_path = ?', [filePath]);
   if (result.changes > 0) {
     log.warn(
       { filePath, removed: result.changes, stack: formatStack() },
@@ -336,8 +317,7 @@ export function deleteDigestsForPath(filePath: string): number {
  * Delete all digests matching path prefix (for folder deletions)
  */
 export function deleteDigestsByPrefix(pathPrefix: string): number {
-  const db = getDatabase();
-  const result = db.prepare('DELETE FROM digests WHERE file_path LIKE ?').run(`${pathPrefix}%`);
+  const result = dbRun('DELETE FROM digests WHERE file_path LIKE ?', [`${pathPrefix}%`]);
   if (result.changes > 0) {
     log.warn(
       { pathPrefix, removed: result.changes, stack: formatStack() },
@@ -351,19 +331,17 @@ export function deleteDigestsByPrefix(pathPrefix: string): number {
  * Update all digest file paths (for folder renames)
  */
 export function updateDigestPaths(oldPath: string, newPath: string): void {
-  const db = getDatabase();
-  db.prepare('UPDATE digests SET file_path = ? WHERE file_path = ?').run(newPath, oldPath);
+  dbRun('UPDATE digests SET file_path = ? WHERE file_path = ?', [newPath, oldPath]);
 }
 
 /**
  * Check if a digest exists for a file path and digester
  */
 export function digestExists(filePath: string, digester: string): boolean {
-  const db = getDatabase();
-
-  const row = db
-    .prepare('SELECT 1 FROM digests WHERE file_path = ? AND digester = ? LIMIT 1')
-    .get(filePath, digester);
+  const row = dbSelectOne('SELECT 1 FROM digests WHERE file_path = ? AND digester = ? LIMIT 1', [
+    filePath,
+    digester,
+  ]);
 
   return row !== undefined;
 }
@@ -412,7 +390,6 @@ export function listFilesNeedingDigestion(options: {
   maxAttempts?: number;
   limit?: number;
 }): string[] {
-  const db = getDatabase();
   const {
     digesterNames,
     excludedPathPrefixes = [],
@@ -444,9 +421,13 @@ export function listFilesNeedingDigestion(options: {
     LIMIT ?
   `;
 
-  const rows = db
-    .prepare(sql)
-    .all(...exclusionArgs, ...digesterNames, ...statuses, maxAttempts, limit) as Array<{ file_path: string }>;
+  const rows = dbSelect<{ file_path: string }>(sql, [
+    ...exclusionArgs,
+    ...digesterNames,
+    ...statuses,
+    maxAttempts,
+    limit,
+  ]);
 
   return rows.map(row => row.file_path);
 }
@@ -455,17 +436,15 @@ export function listFilesNeedingDigestion(options: {
  * Reset stale in-progress digests back to todo
  */
 export function resetStaleInProgressDigests(cutoffIso: string): number {
-  const db = getDatabase();
-  const result = db
-    .prepare(
-      `
-        UPDATE digests
-        SET status = 'todo', error = NULL
-        WHERE status = 'in-progress'
-          AND updated_at < ?
-      `
-    )
-    .run(cutoffIso);
+  const result = dbRun(
+    `
+      UPDATE digests
+      SET status = 'todo', error = NULL
+      WHERE status = 'in-progress'
+        AND updated_at < ?
+    `,
+    [cutoffIso]
+  );
 
   return result.changes ?? 0;
 }
@@ -478,36 +457,28 @@ export function getDigestStats(): {
   digestedFiles: number;
   pendingDigests: number;
 } {
-  const db = getDatabase();
+  const totalFiles = dbSelectOne<{ count: number }>(
+    `SELECT COUNT(*) as count FROM files
+     WHERE is_folder = 0
+     AND path NOT LIKE 'app/%'`
+  );
 
-  const totalFiles = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM files
-       WHERE is_folder = 0
-       AND path NOT LIKE 'app/%'`
-    )
-    .get() as { count: number };
+  const digestedFiles = dbSelectOne<{ count: number }>(
+    `SELECT COUNT(DISTINCT file_path) as count FROM digests
+     WHERE status = 'completed'
+     AND file_path NOT LIKE 'app/%'`
+  );
 
-  const digestedFiles = db
-    .prepare(
-      `SELECT COUNT(DISTINCT file_path) as count FROM digests
-       WHERE status = 'completed'
-       AND file_path NOT LIKE 'app/%'`
-    )
-    .get() as { count: number };
-
-  const pendingDigests = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM digests
-       WHERE status IN ('todo', 'in-progress')
-       AND file_path NOT LIKE 'app/%'`
-    )
-    .get() as { count: number };
+  const pendingDigests = dbSelectOne<{ count: number }>(
+    `SELECT COUNT(*) as count FROM digests
+     WHERE status IN ('todo', 'in-progress')
+     AND file_path NOT LIKE 'app/%'`
+  );
 
   return {
-    totalFiles: totalFiles.count,
-    digestedFiles: digestedFiles.count,
-    pendingDigests: pendingDigests.count,
+    totalFiles: totalFiles?.count ?? 0,
+    digestedFiles: digestedFiles?.count ?? 0,
+    pendingDigests: pendingDigests?.count ?? 0,
   };
 }
 
