@@ -1,6 +1,9 @@
 import 'server-only';
 
 import { callOpenAICompletion } from '@/lib/vendors/openai';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger({ module: 'TagsDigester' });
 
 /**
  * Attempts to extract and parse JSON from a string that may contain additional text.
@@ -122,12 +125,15 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
     }
   } catch (error) {
     // fall back to simple parsing if JSON schema fails unexpectedly
-    console.error('[tagging] Failed to parse JSON response from LLM:', {
-      error: error instanceof Error ? error.message : String(error),
-      rawContent: res.content,
-      contentLength: res.content.length,
-      contentPreview: res.content.substring(0, 200),
-    });
+    const err = error instanceof Error ? error : new Error(String(error));
+    log.error(
+      {
+        error: err.message,
+        rawContentPreview: res.content.substring(0, 500),
+        rawContentLength: res.content.length,
+      },
+      'failed to parse JSON response from LLM'
+    );
     tags = res.content
       .split(/[\n,]/)
       .map((tag) => tag.trim())

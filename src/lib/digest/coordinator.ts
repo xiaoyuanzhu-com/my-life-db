@@ -176,8 +176,19 @@ export class DigestCoordinator {
         processed++;
         log.debug({ filePath, digester: digesterName }, 'digester completed');
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        log.error({ filePath, digester: digesterName, error: errorMsg }, 'digester failed');
+        const err = error instanceof Error ? error : new Error(String(error));
+        const errorMsg = err.message;
+        const llmContext = (error as any)?.llmContext;
+        log.error(
+          {
+            filePath,
+            digester: digesterName,
+            error: errorMsg,
+            stack: err.stack,
+            llmContext: llmContext ?? undefined,
+          },
+          'digester failed'
+        );
 
         const targets = pendingOutputs.length > 0 ? pendingOutputs : outputNames;
         this.markDigests(filePath, targets, 'failed', errorMsg);

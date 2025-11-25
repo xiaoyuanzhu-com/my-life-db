@@ -169,21 +169,27 @@ export async function callOpenAICompletion(
     response = await client.chat.completions.create(requestParams);
   } catch (error) {
     // Log detailed error context for debugging
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    const llmContext = {
+      systemPromptPreview: options.systemPrompt ? options.systemPrompt.substring(0, 500) : null,
+      systemPromptLength: options.systemPrompt?.length || 0,
+      promptPreview: options.prompt.substring(0, 500),
+      promptLength: options.prompt.length,
+      model,
+      temperature: requestParams.temperature,
+      maxTokens: options.maxTokens ?? null,
+      hasJsonSchema: !!options.jsonSchema,
+    };
+    Object.assign(err, { llmContext });
     log.error(
       {
-        error: errorMessage,
-        model,
-        temperature: requestParams.temperature,
-        hasJsonSchema: !!options.jsonSchema,
-        systemPromptLength: options.systemPrompt?.length || 0,
-        promptLength: options.prompt.length,
-        promptPreview: options.prompt.substring(0, 200),
-        maxTokens: options.maxTokens,
+        error: err.message,
+        stack: err.stack,
+        ...llmContext,
       },
       'openai api call failed'
     );
-    throw error;
+    throw err;
   }
 
   const message = response.choices?.[0]?.message;
