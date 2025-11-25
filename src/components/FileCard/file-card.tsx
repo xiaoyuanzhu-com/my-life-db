@@ -8,12 +8,11 @@ import { formatTimestamp } from '@/lib/utils/format-timestamp';
 import type { FileWithDigests } from '@/types/file-card';
 import type { SearchResultItem } from '@/app/api/search/route';
 import {
-  ContextMenu,
-  ContextMenuContent,
   ContextMenuItem,
-  ContextMenuTrigger,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
+import { DesktopContextMenu } from './desktop-context-menu';
+import { MobileContextMenu, type MobileContextMenuAction } from './mobile-context-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,8 +52,13 @@ export function FileCard({
   const [isLoading, setIsLoading] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Detect touch capability
+  const isTouchDevice = typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   // Derive href from file path - navigate to library with ?open parameter
   const href = useMemo(() => {
@@ -320,18 +324,62 @@ export function FileCard({
   // Determine if we can share this file
   const canShare = typeof navigator !== 'undefined' && !!navigator.share;
 
-  return (
-    <div className={cn('w-full flex flex-col items-end', className)}>
-      {/* Timestamp - centered horizontally above card */}
-      {showTimestamp && (
-        <div className="text-xs text-muted-foreground mb-2 mr-5">
-          {formatTimestamp(file.createdAt)}
-        </div>
-      )}
+  // Build menu actions for mobile
+  const mobileActions = useMemo(() => {
+    const actions: MobileContextMenuAction[] = [
+      {
+        icon: ExternalLink,
+        label: 'Open',
+        onClick: handleOpen,
+      },
+    ];
 
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none">
+    if (isTextContent) {
+      actions.push({
+        icon: Copy,
+        label: copyStatus === 'copied' ? 'Copied' : 'Copy',
+        onClick: handleCopy,
+      });
+
+      if (textDisplay.shouldTruncate) {
+        actions.push({
+          icon: isExpanded ? ChevronUp : ChevronDown,
+          label: isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand',
+          onClick: handleToggleExpand,
+          disabled: isLoading,
+        });
+      }
+    }
+
+    if (isMediaFile) {
+      actions.push({
+        icon: Download,
+        label: 'Download',
+        onClick: handleDownload,
+      });
+
+      if (canShare) {
+        actions.push({
+          icon: Share2,
+          label: 'Share',
+          onClick: handleShare,
+        });
+      }
+    }
+
+    actions.push({
+      icon: Trash2,
+      label: 'Delete',
+      onClick: handleDeleteClick,
+      variant: 'destructive',
+    });
+
+    return actions;
+  }, [isTextContent, copyStatus, textDisplay.shouldTruncate, isExpanded, isLoading, isMediaFile, canShare, handleCopy, handleToggleExpand, handleDownload, handleShare, handleDeleteClick, handleOpen]);
+
+  // Card element to be used as trigger
+  const cardElement = (
+    <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none">
             <div className="relative">
               {content.type === 'image' ? (
                 <div className="relative w-full max-w-md">
@@ -402,13 +450,30 @@ export function FileCard({
 
             </div>
 
-            {matchContext && (
-              <MatchContext context={matchContext} />
-            )}
-          </div>
-        </ContextMenuTrigger>
+      {matchContext && (
+        <MatchContext context={matchContext} />
+      )}
+    </div>
+  );
 
-        <ContextMenuContent className="w-48">
+  return (
+    <div className={cn('w-full flex flex-col items-end', className)}>
+      {/* Timestamp - centered horizontally above card */}
+      {showTimestamp && (
+        <div className="text-xs text-muted-foreground mb-2 mr-5">
+          {formatTimestamp(file.createdAt)}
+        </div>
+      )}
+
+      {isTouchDevice ? (
+        <MobileContextMenu
+          actions={mobileActions}
+          trigger={cardElement}
+          open={isMobileMenuOpen}
+          onOpenChange={setIsMobileMenuOpen}
+        />
+      ) : (
+        <DesktopContextMenu trigger={cardElement}>
           <ContextMenuItem onClick={handleOpen}>
             <ExternalLink className="mr-2" />
             Open
@@ -452,8 +517,8 @@ export function FileCard({
             <Trash2 className="mr-2" />
             Delete
           </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+        </DesktopContextMenu>
+      )}
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
