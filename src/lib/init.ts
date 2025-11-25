@@ -153,7 +153,7 @@ export function isAppInitialized(): boolean {
  */
 export async function shutdownApp(): Promise<void> {
   const log = getLogger({ module: 'AppShutdown' });
-  log.info({}, 'shutting down application services');
+  log.debug({}, 'shutting down application services');
 
   try {
     // Stop digest supervisor

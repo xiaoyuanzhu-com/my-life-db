@@ -103,7 +103,7 @@ export async function callOpenAICompletion(
   const model = optionModel || vendorModel || fallbackModel;
 
   try {
-    log.info(
+    log.debug(
       {
         optionModel: optionModel || null,
         vendorModel: vendorModel || null,

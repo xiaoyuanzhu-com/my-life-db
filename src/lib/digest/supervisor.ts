@@ -16,7 +16,6 @@ interface DigestSupervisorConfig {
   staleDigestThresholdMs: number;
   staleSweepIntervalMs: number;
   fileDelayMs: number;
-  failureCooldownMs: number;
 }
 
 const DEFAULT_CONFIG: DigestSupervisorConfig = {
@@ -27,7 +26,6 @@ const DEFAULT_CONFIG: DigestSupervisorConfig = {
   staleDigestThresholdMs: 10 * 60 * 1000,
   staleSweepIntervalMs: 60 * 1000,
   fileDelayMs: 1_000,
-  failureCooldownMs: 60_000,
 };
 
 class DigestSupervisor {
@@ -40,7 +38,6 @@ class DigestSupervisor {
   private startTimer: NodeJS.Timeout | null = null;
   private consecutiveFailures = 0;
   private lastStaleSweep = 0;
-  private failureCooldowns = new Map<string, number>();
 
   constructor(config?: Partial<DigestSupervisorConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -80,8 +77,8 @@ class DigestSupervisor {
     while (!this.stopped) {
       try {
         this.maybeResetStaleDigests();
-        const filesToProcess = findFilesNeedingDigestion(this.db, 10);
-        const filePath = filesToProcess.find(path => !this.isInCooldown(path));
+        const filesToProcess = findFilesNeedingDigestion(this.db, 1);
+        const filePath = filesToProcess[0];
 
         if (!filePath) {
           this.consecutiveFailures = 0;
@@ -97,9 +94,6 @@ class DigestSupervisor {
         }
 
         if (this.hasOutstandingFailures(filePath)) {
-          if (this.config.failureCooldownMs > 0) {
-            this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
-          }
           this.consecutiveFailures++;
           const delay = this.calculateFailureDelay();
           this.log.error({ filePath, delayMs: delay }, 'digest still failing, backing off');
@@ -107,7 +101,6 @@ class DigestSupervisor {
           continue;
         }
 
-        this.failureCooldowns.delete(filePath);
         this.consecutiveFailures = 0;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -157,17 +150,7 @@ class DigestSupervisor {
   }
 
   private isInCooldown(filePath: string): boolean {
-    const until = this.failureCooldowns.get(filePath);
-    if (!until) {
-      return false;
-    }
-
-    if (Date.now() >= until) {
-      this.failureCooldowns.delete(filePath);
-      return false;
-    }
-
-    return true;
+    return false;
   }
 
   private hasOutstandingFailures(filePath: string): boolean {
@@ -204,16 +187,6 @@ class DigestSupervisor {
       if (!isNew && shouldInvalidateDigests) {
         this.log.info({ filePath }, 'file content changed, invalidating existing digests');
         await this.coordinator.processFile(filePath, { reset: true });
-
-        // Clear cooldown since we're re-processing
-        this.failureCooldowns.delete(filePath);
-
-        // Check for failures and apply cooldown if needed
-        if (this.hasOutstandingFailures(filePath)) {
-          if (this.config.failureCooldownMs > 0) {
-            this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
-          }
-        }
         return;
       }
 
@@ -226,22 +199,13 @@ class DigestSupervisor {
         return;
       }
 
-      // Check if in cooldown
-      if (this.isInCooldown(filePath)) {
-        this.log.debug({ filePath }, 'file in cooldown, skipping');
-        return;
-      }
-
       this.log.info({ filePath, isNew }, 'processing file immediately from watcher event');
       await this.coordinator.processFile(filePath);
 
       // Check for failures and apply cooldown if needed
       if (this.hasOutstandingFailures(filePath)) {
-        if (this.config.failureCooldownMs > 0) {
-          this.failureCooldowns.set(filePath, Date.now() + this.config.failureCooldownMs);
-        }
-      } else {
-        this.failureCooldowns.delete(filePath);
+        // Keep logging consistent even without cooldown behavior
+        this.log.debug({ filePath }, 'file has outstanding failures');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

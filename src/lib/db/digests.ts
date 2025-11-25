@@ -1,6 +1,19 @@
 // Database operations for digests table
 import { getDatabase } from './connection';
+import { getLogger } from '@/lib/log/logger';
 import type { Digest, DigestRecordRow } from '@/types';
+
+const log = getLogger({ module: 'DBDigests' });
+
+function formatStack(maxLines: number = 5): string | undefined {
+  const stack = new Error().stack;
+  if (!stack) return undefined;
+  return stack
+    .split('\n')
+    .slice(2, 2 + maxLines)
+    .map(line => line.trim())
+    .join(' | ');
+}
 
 /**
  * Create a new digest in the database
@@ -36,6 +49,13 @@ export function createDigest(digest: Digest): void {
     digest.createdAt,
     digest.updatedAt
   );
+
+  if (digest.status === 'todo') {
+    log.debug(
+      { filePath: digest.filePath, digester: digest.digester, attempts: digest.attempts ?? 0, stack: formatStack() },
+      'createDigest set status=todo'
+    );
+  }
 }
 
 /**
@@ -70,7 +90,52 @@ export function upsertPendingDigest(digest: Omit<Digest, 'updatedAt'>): void {
     digest.createdAt,
     now,
     now  // updated_at for the UPDATE clause
+    );
+
+  log.debug(
+    { filePath: digest.filePath, digester: digest.digester, attempts: 0, stack: formatStack() },
+    'upsertPendingDigest set status=todo'
   );
+}
+
+/**
+ * Insert a digest only if it does not exist.
+ * Used by sync routines to avoid overwriting existing statuses.
+ */
+export function insertDigestIfMissing(digest: Digest): void {
+  const db = getDatabase();
+
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO digests (
+      id, file_path, digester, status, content, sqlar_name, error,
+      attempts, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    digest.id,
+    digest.filePath,
+    digest.digester,
+    digest.status,
+    digest.content,
+    digest.sqlarName,
+    digest.error,
+    digest.attempts ?? 0,
+    digest.createdAt,
+    digest.updatedAt
+  );
+
+  if (result.changes === 0) {
+    log.debug(
+      { filePath: digest.filePath, digester: digest.digester },
+      'insertDigestIfMissing skipped existing digest'
+    );
+  } else if (digest.status === 'todo') {
+    log.debug(
+      { filePath: digest.filePath, digester: digest.digester, attempts: digest.attempts ?? 0, stack: formatStack() },
+      'insertDigestIfMissing set status=todo'
+    );
+  }
 }
 
 /**
@@ -239,7 +304,13 @@ export function deleteDigest(id: string): void {
  */
 export function deleteDigestByPathAndDigester(filePath: string, digester: string): void {
   const db = getDatabase();
-  db.prepare('DELETE FROM digests WHERE file_path = ? AND digester = ?').run(filePath, digester);
+  const result = db.prepare('DELETE FROM digests WHERE file_path = ? AND digester = ?').run(filePath, digester);
+  if (result.changes > 0) {
+    log.warn(
+      { filePath, digester, removed: result.changes, stack: formatStack() },
+      'deleted digest by path+digester'
+    );
+  }
 }
 
 /**
@@ -248,6 +319,12 @@ export function deleteDigestByPathAndDigester(filePath: string, digester: string
 export function deleteDigestsForPath(filePath: string): number {
   const db = getDatabase();
   const result = db.prepare('DELETE FROM digests WHERE file_path = ?').run(filePath);
+  if (result.changes > 0) {
+    log.warn(
+      { filePath, removed: result.changes, stack: formatStack() },
+      'deleted digests for path'
+    );
+  }
   return result.changes;
 }
 
@@ -257,6 +334,12 @@ export function deleteDigestsForPath(filePath: string): number {
 export function deleteDigestsByPrefix(pathPrefix: string): number {
   const db = getDatabase();
   const result = db.prepare('DELETE FROM digests WHERE file_path LIKE ?').run(`${pathPrefix}%`);
+  if (result.changes > 0) {
+    log.warn(
+      { pathPrefix, removed: result.changes, stack: formatStack() },
+      'deleted digests by prefix'
+    );
+  }
   return result.changes;
 }
 

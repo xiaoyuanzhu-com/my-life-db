@@ -70,6 +70,7 @@ export function findFilesNeedingDigestion(
       const digestMap = new Map(digests.map((d) => [d.digester, d]));
 
       let fileNeedsWork = false;
+      let reason: string | null = null;
 
       for (const expectedType of allDigestTypes) {
         const digest = digestMap.get(expectedType);
@@ -77,26 +78,37 @@ export function findFilesNeedingDigestion(
         if (!digest) {
           // No digest record = never attempted
           fileNeedsWork = true;
+          reason = `missing digest '${expectedType}'`;
           break;
         }
 
         if (digest.status === 'todo') {
           // Skip if we've already hit max attempts for this digester
           if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
+            log.debug(
+              { path, digester: expectedType, attempts: digest.attempts },
+              'digest todo but at max attempts (skipping)'
+            );
             continue;
           }
           // Todo (not skipped) = needs work
           // Note: skipped digests have status='skipped', not 'todo'
           fileNeedsWork = true;
+          reason = `todo digest '${expectedType}' attempts=${digest.attempts ?? 0}`;
           break;
         }
 
         if (digest.status === 'failed') {
           if ((digest.attempts ?? 0) >= MAX_DIGEST_ATTEMPTS) {
             // Treat as permanent failure
+            log.debug(
+              { path, digester: expectedType, attempts: digest.attempts },
+              'digest failed at max attempts (skipping)'
+            );
             continue;
           }
           fileNeedsWork = true;
+          reason = `failed digest '${expectedType}' attempts=${digest.attempts ?? 0}`;
           break;
         }
 
@@ -122,6 +134,7 @@ export function findFilesNeedingDigestion(
 
       if (fileNeedsWork) {
         needsWork.push(path);
+        log.debug({ path, reason }, 'file selected for digestion');
       }
     }
 

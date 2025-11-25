@@ -4,8 +4,7 @@
  */
 
 import type BetterSqlite3 from 'better-sqlite3';
-import { listDigestsForPath, createDigest } from '@/lib/db/digests';
-import { generateDigestId } from '@/lib/db/digests';
+import { listDigestsForPath, insertDigestIfMissing, generateDigestId } from '@/lib/db/digests';
 import { globalDigesterRegistry } from './registry';
 import { getLogger } from '@/lib/log/logger';
 
@@ -110,7 +109,7 @@ export function syncNewDigesters(db: BetterSqlite3.Database): void {
       if (!existingTypes.has(type)) {
         // New digest type for this file - create todo record
         try {
-          createDigest({
+          insertDigestIfMissing({
             id: generateDigestId(file_path, type),
             filePath: file_path,
             digester: type,
