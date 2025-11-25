@@ -28,7 +28,7 @@ export function MobileContextMenu({
   trigger,
   open,
   onOpenChange,
-  selectTextOnOpen = false,
+  selectTextOnOpen: _selectTextOnOpen = false,
 }: MobileContextMenuProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);

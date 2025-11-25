@@ -16,12 +16,6 @@ interface ModelOption {
   owned_by?: string;
 }
 
-interface DigestStats {
-  totalFiles: number;
-  digestedFiles: number;
-  pendingDigests: number;
-}
-
 interface Stats {
   library: {
     fileCount: number;
@@ -50,8 +44,6 @@ export default function SettingsPage() {
   const [modelQuery, setModelQuery] = useState('');
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
-  const [digestStats, setDigestStats] = useState<DigestStats | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoadingGeneralStats, setIsLoadingGeneralStats] = useState(false);
   const [resetingDigester, setResetingDigester] = useState<string | null>(null);
@@ -112,21 +104,6 @@ export default function SettingsPage() {
     [setSettings, settings]
   );
 
-  const fetchDigestStats = useCallback(async () => {
-    setIsLoadingStats(true);
-    try {
-      const response = await fetch('/api/digest/stats');
-      if (response.ok) {
-        const data = await response.json();
-        setDigestStats(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch digest stats:', error);
-    } finally {
-      setIsLoadingStats(false);
-    }
-  }, []);
-
   const fetchGeneralStats = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setIsLoadingGeneralStats(true);
@@ -156,10 +133,6 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
         console.log(`Reset ${digester}:`, data);
-        // Refresh digest stats if on digest tab
-        if (activeTab === 'digest') {
-          void fetchDigestStats();
-        }
       } else {
         const error = await response.json();
         console.error('Failed to reset digester:', error);
@@ -170,14 +143,7 @@ export default function SettingsPage() {
       setResetingDigester(null);
       setConfirmResetDigester(null);
     }
-  }, [activeTab, fetchDigestStats]);
-
-  // Fetch digest stats when digesters tab is active
-  useEffect(() => {
-    if (activeTab === 'digest') {
-      void fetchDigestStats();
-    }
-  }, [activeTab, fetchDigestStats]);
+  }, []);
 
   // Fetch general stats when stats tab is active and refresh every 5 seconds
   useEffect(() => {

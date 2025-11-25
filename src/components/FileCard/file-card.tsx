@@ -113,7 +113,7 @@ export function FileCard({
   }, [file.path]);
 
   // Handle expand: fetch full content from raw API
-  const handleToggleExpand = async () => {
+  const handleToggleExpand = useCallback(async () => {
     if (!isExpanded && !fullContent && file.textPreview) {
       const text = await ensureFullContent();
       if (text) {
@@ -123,7 +123,7 @@ export function FileCard({
       // Just toggle collapsed/expanded
       setIsExpanded(!isExpanded);
     }
-  };
+  }, [isExpanded, fullContent, file.textPreview, ensureFullContent]);
 
   // Determine content type and data
   const content = useMemo(() => {

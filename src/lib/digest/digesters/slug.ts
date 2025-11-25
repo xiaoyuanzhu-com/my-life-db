@@ -203,7 +203,7 @@ export class SlugDigester implements Digester {
     const fallbackTitle = (summaryText || primaryText || 'untitled').trim();
     const title = candidateTitle.length > 0 ? candidateTitle : fallbackTitle;
 
-    let candidateSlug = (parsed.slug || parsed.title || title).trim();
+    const candidateSlug = (parsed.slug || parsed.title || title).trim();
     let slug = generateSlug(candidateSlug);
     if (!slug) {
       slug = generateSlug(title);
