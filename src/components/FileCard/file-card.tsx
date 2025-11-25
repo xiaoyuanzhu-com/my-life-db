@@ -331,7 +331,7 @@ export function FileCard({
 
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted">
+          <div className="group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none">
             <div className="relative">
               {content.type === 'image' ? (
                 <div className="relative w-full max-w-md">
