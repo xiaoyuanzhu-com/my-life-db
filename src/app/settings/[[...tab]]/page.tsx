@@ -9,7 +9,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSettingsContext } from '../_context/settings-context';
 import { SettingsHeader } from '../_components/settings-header';
-import { TasksTab } from '../_components/tasks-tab';
 import type { UserSettings } from '@/lib/config/settings';
 
 interface ModelOption {
@@ -200,7 +199,6 @@ export default function SettingsPage() {
     { label: 'Vendors', value: 'vendors', path: '/settings/vendors' },
     { label: 'Digest', value: 'digest', path: '/settings/digest' },
     { label: 'Stats', value: 'stats', path: '/settings/stats' },
-    { label: 'Tasks', value: 'tasks', path: '/settings/tasks' },
   ];
 
   return (
@@ -586,11 +584,8 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Tasks Tab */}
-        {activeTab === 'tasks' && <TasksTab />}
-
         {/* Save Button - Only show for tabs that have settings to save */}
-        {activeTab !== 'tasks' && activeTab !== 'stats' && (
+        {activeTab !== 'stats' && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">
