@@ -5,7 +5,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
 import { DATA_ROOT } from '@/lib/fs/storage';
-import { upsertFileRecord, getFileByPath } from '@/lib/db/files';
+import { upsertFileRecord, getFileByPath, getAllFilePaths } from '@/lib/db/files';
+import { deleteFile } from '@/lib/files/delete-file';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'LibraryScanner' });
@@ -20,6 +21,7 @@ interface ScanStats {
   scanned: number;
   created: number;
   updated: number;
+  orphansDeleted: number;
   errors: number;
 }
 
@@ -32,10 +34,14 @@ export async function scanLibrary(force: boolean = false): Promise<ScanStats> {
     scanned: 0,
     created: 0,
     updated: 0,
+    orphansDeleted: 0,
     errors: 0,
   };
 
   log.info({ force }, 'starting library scan');
+
+  // Track all scanned paths (to detect orphans later)
+  const scannedPaths = new Set<string>();
 
   try {
     // Get all top-level items in DATA_ROOT
@@ -57,15 +63,19 @@ export async function scanLibrary(force: boolean = false): Promise<ScanStats> {
 
       try {
         if (item.isDirectory()) {
-          await scanDirectory(relativePath, itemPath, stats, force);
+          await scanDirectory(relativePath, itemPath, stats, force, scannedPaths);
         } else if (item.isFile()) {
           await scanFile(relativePath, itemPath, stats, force);
+          scannedPaths.add(relativePath);
         }
       } catch (error) {
         log.error({ err: error, path: relativePath }, 'failed to scan item');
         stats.errors++;
       }
     }
+
+    // Always cleanup orphans - filesystem is the source of truth
+    await cleanupOrphans(scannedPaths, stats);
 
     log.info(stats, 'library scan completed');
   } catch (error) {
@@ -82,9 +92,11 @@ async function scanDirectory(
   relativePath: string,
   fullPath: string,
   stats: ScanStats,
-  force: boolean
+  force: boolean,
+  scannedPaths: Set<string>
 ): Promise<void> {
   stats.scanned++;
+  scannedPaths.add(relativePath);
 
   // Get directory stats
   const dirStats = await fs.stat(fullPath);
@@ -123,11 +135,12 @@ async function scanDirectory(
     if (item.isDirectory()) {
       const subPath = path.join(relativePath, item.name);
       const subFullPath = path.join(fullPath, item.name);
-      await scanDirectory(subPath, subFullPath, stats, force);
+      await scanDirectory(subPath, subFullPath, stats, force, scannedPaths);
     } else if (item.isFile()) {
       const filePath = path.join(relativePath, item.name);
       const fileFullPath = path.join(fullPath, item.name);
       await scanFile(filePath, fileFullPath, stats, force);
+      scannedPaths.add(filePath);
     }
   }
 }
@@ -316,5 +329,61 @@ export function stopPeriodicScanner(): void {
   if (initialScanTimer) {
     clearTimeout(initialScanTimer);
     initialScanTimer = null;
+  }
+}
+
+/**
+ * Detect and clean up orphaned database records
+ * Compares scanned paths against database records and deletes orphans
+ * Filesystem is the source of truth - always trust the scan results
+ */
+async function cleanupOrphans(scannedPaths: Set<string>, stats: ScanStats): Promise<void> {
+  try {
+    // Get all file paths from database (excluding reserved folders)
+    const dbPaths = getAllFilePaths(RESERVED_FOLDERS);
+
+    log.debug({ dbCount: dbPaths.length, scannedCount: scannedPaths.size }, 'checking for orphans');
+
+    // Find orphans: files in DB but not on filesystem
+    const orphans: string[] = [];
+    for (const dbPath of dbPaths) {
+      if (!scannedPaths.has(dbPath)) {
+        orphans.push(dbPath);
+      }
+    }
+
+    if (orphans.length === 0) {
+      log.debug({}, 'no orphans found');
+      return;
+    }
+
+    const deletionPercentage = dbPaths.length > 0 ? (orphans.length / dbPaths.length) * 100 : 0;
+    log.info({ count: orphans.length, percentage: deletionPercentage.toFixed(1) }, 'found orphaned records, cleaning up');
+
+    // Delete each orphan (this will clean up all related data)
+    for (const orphanPath of orphans) {
+      try {
+        const fullPath = path.join(DATA_ROOT, orphanPath);
+
+        // Determine if it was a folder by checking if it has children in DB
+        const isFolder = dbPaths.some(p => p.startsWith(`${orphanPath}/`));
+
+        await deleteFile({
+          fullPath,
+          relativePath: orphanPath,
+          isFolder,
+        });
+
+        stats.orphansDeleted++;
+        log.debug({ path: orphanPath }, 'deleted orphaned record');
+      } catch (error) {
+        log.error({ err: error, path: orphanPath }, 'failed to delete orphaned record');
+        stats.errors++;
+      }
+    }
+
+    log.info({ deleted: stats.orphansDeleted }, 'orphan cleanup complete');
+  } catch (error) {
+    log.error({ err: error }, 'orphan cleanup failed');
   }
 }

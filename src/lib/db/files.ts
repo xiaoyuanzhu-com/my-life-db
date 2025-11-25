@@ -287,6 +287,28 @@ export function countFiles(pathPrefix?: string, isFolder?: boolean): number {
 }
 
 /**
+ * Get all file paths from database (excluding reserved folders)
+ * Used for orphan detection during library scans
+ */
+export function getAllFilePaths(excludedPrefixes: string[] = []): string[] {
+  const conditions: string[] = [];
+  const params: string[] = [];
+
+  if (excludedPrefixes.length > 0) {
+    excludedPrefixes.forEach(prefix => {
+      conditions.push('path NOT LIKE ?');
+      params.push(`${prefix}%`);
+    });
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const query = `SELECT path FROM files ${whereClause} ORDER BY path ASC`;
+
+  const rows = dbSelect<{ path: string }>(query, params);
+  return rows.map(row => row.path);
+}
+
+/**
  * Clear all file records (for full rebuild)
  */
 export function clearAllFiles(): void {
