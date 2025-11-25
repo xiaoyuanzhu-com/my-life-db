@@ -135,7 +135,7 @@ export class UrlCrawlerDigester implements Digester {
     }
 
     // Build digests array
-    const digests: Digest[] = [];
+    const digests: DigestInput[] = [];
     const now = new Date().toISOString();
     const pathHash = hashPath(filePath);
 
