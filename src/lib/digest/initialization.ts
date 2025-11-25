@@ -10,8 +10,7 @@ import { TagsDigester } from './digesters/tags';
 import { SlugDigester } from './digesters/slug';
 import { SearchKeywordDigester } from './digesters/search-keyword';
 import { SearchSemanticDigester } from './digesters/search-semantic';
-import { syncNewDigesters } from './sync';
-import { getDatabase } from '@/lib/db/connection';
+import { ensureAllDigestersForExistingFiles } from './ensure';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestInit' });
@@ -66,12 +65,11 @@ export function initializeDigesters(): void {
   // This is a side effect of importing task-handler.ts
   log.info({}, 'task handlers registered');
 
-  // Sync digest records for files that were processed before new digesters were added
+  // Backfill digest records for all existing files
   try {
-    const db = getDatabase();
-    syncNewDigesters(db);
+    ensureAllDigestersForExistingFiles();
   } catch (error) {
-    log.error({ error }, 'failed to sync digest records');
+    log.error({ error }, 'failed to ensure digest records');
     // Don't throw - allow initialization to continue
   }
 

@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { INBOX_DIR, generateId } from '@/lib/fs/storage';
 import { getUniqueFilenames } from '@/lib/fs/file-deduplication';
 import { upsertFileRecord } from '@/lib/db/files';
+import { ensureAllDigesters } from '@/lib/digest/ensure';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'SaveToInbox' });
@@ -133,6 +134,8 @@ async function saveSingleFile(
     textPreview,
   });
 
+  ensureAllDigesters(relativePath);
+
   log.info({ path: relativePath, size: file.size }, 'saved single file to inbox');
 
   return {
@@ -203,6 +206,8 @@ async function saveToFolder(
       modifiedAt: now,
       textPreview,
     });
+
+    ensureAllDigesters(fileRelativePath);
 
     savedFiles.push({
       name: uniqueFilename,

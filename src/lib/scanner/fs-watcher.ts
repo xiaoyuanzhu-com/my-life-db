@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { EventEmitter } from 'events';
 import { DATA_ROOT } from '@/lib/fs/storage';
 import { upsertFileRecord, getFileByPath } from '@/lib/db/files';
+import { ensureAllDigesters } from '@/lib/digest/ensure';
 import { notificationService } from '@/lib/notifications/notification-service';
 import { getLogger } from '@/lib/log/logger';
 
@@ -225,6 +226,10 @@ export class FileSystemWatcher extends EventEmitter {
         { path: relativePath, isNew, contentChanged, size: stats.size },
         isNew ? 'new file detected' : contentChanged ? 'file content changed' : 'file metadata updated'
       );
+
+      if (isNew) {
+        ensureAllDigesters(relativePath);
+      }
 
       // Emit notification for inbox files (immediate UI update)
       // File changes should update UI immediately, digestion happens in background

@@ -91,7 +91,6 @@ export class DigestCoordinator {
 
     // 2. Get all digesters in registration order
     const digesters = globalDigesterRegistry.getAll();
-    this.ensureDigestPlaceholders(filePath, digesters);
 
     let processed = 0;
     let skipped = 0;
@@ -264,51 +263,6 @@ export class DigestCoordinator {
     });
 
     log.debug({ filePath, digester, sqlarName }, 'binary artifact saved');
-  }
-
-  /**
-   * Ensure placeholder digests exist for all outputs before processing begins.
-   */
-  private ensureDigestPlaceholders(filePath: string, digesters: Digester[]): void {
-    const existing = listDigestsForPath(filePath, { order: 'asc' });
-    const existingTypes = new Set(existing.map((d) => d.digester));
-    const baseTime = Date.now();
-    let offset = 0;
-
-    for (const digester of digesters) {
-      const outputs = this.getOutputNames(digester);
-      for (const outputName of outputs) {
-        if (existingTypes.has(outputName)) {
-          continue;
-        }
-
-        const timestamp = new Date(baseTime + offset).toISOString();
-        offset++;
-
-        const digest: Digest = {
-          id: generateDigestId(filePath, outputName),
-          filePath,
-          digester: outputName,
-          status: 'todo',
-          content: null,
-          sqlarName: null,
-          error: null,
-          attempts: 0,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
-
-        try {
-          createDigest(digest);
-          existingTypes.add(outputName);
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          if (!errorMsg.includes('UNIQUE constraint')) {
-            log.error({ filePath, digester: outputName, error: errorMsg }, 'failed to create digest placeholder');
-          }
-        }
-      }
-    }
   }
 
   /**
