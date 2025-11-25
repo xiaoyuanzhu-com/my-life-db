@@ -211,7 +211,7 @@ export function MobileContextMenu({
             )}
 
             {/* Grid of actions */}
-            <div className="p-3 grid grid-cols-5 gap-2 max-w-[min(90vw,400px)]">
+            <div className="p-2 grid grid-cols-5 gap-1 max-w-[min(90vw,360px)]">
               {actions.map((action, index) => {
                 const Icon = action.icon;
                 return (
@@ -225,16 +225,16 @@ export function MobileContextMenu({
                     }}
                     disabled={action.disabled}
                     className={cn(
-                      'flex flex-col items-center justify-center gap-1 p-2 rounded-md',
-                      'active:scale-95 transition-all',
+                      'flex flex-col items-center justify-center gap-0.5 p-1.5 rounded-md min-w-0',
+                      'active:scale-95 transition-all select-none',
                       'disabled:opacity-50 disabled:pointer-events-none',
                       action.variant === 'destructive'
                         ? 'text-destructive active:bg-destructive/10'
                         : 'text-foreground active:bg-accent'
                     )}
                   >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    <span className="text-[10px] font-medium leading-tight text-center break-words max-w-full">
+                    <Icon className="w-4 h-4 shrink-0 pointer-events-none" />
+                    <span className="text-[9px] font-medium leading-tight text-center break-words w-full px-0.5 select-none">
                       {action.label}
                     </span>
                   </button>

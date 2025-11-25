@@ -354,7 +354,7 @@ export function FileCard({
     if (isMediaFile) {
       actions.push({
         icon: Download,
-        label: 'Download',
+        label: 'Save',
         onClick: handleDownload,
       });
 
@@ -499,7 +499,7 @@ export function FileCard({
             <>
               <ContextMenuItem onClick={handleDownload}>
                 <Download className="mr-2" />
-                Download
+                Save
               </ContextMenuItem>
 
               {canShare && (
