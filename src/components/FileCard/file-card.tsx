@@ -158,6 +158,12 @@ export function FileCard({
   const isTextContent = content.type === 'text';
   const previewText = isTextContent ? content.text : '';
 
+  // Determine file type flags early for use in callbacks
+  const isImage = content.type === 'image';
+  const isVideo = content.type === 'video';
+  const isAudio = content.type === 'audio';
+  const isMediaFile = isImage || isVideo || isAudio;
+
   const handleDownload = useCallback(() => {
     const link = document.createElement('a');
     link.href = `/raw/${file.path}`;
@@ -209,7 +215,6 @@ export function FileCard({
     try {
       const shareData: ShareData = {
         title: file.name,
-        url: `/raw/${file.path}`,
       };
 
       // For text content, include the text in the share
@@ -218,6 +223,33 @@ export function FileCard({
         if (textToShare) {
           shareData.text = textToShare;
         }
+      } else if (isMediaFile) {
+        // For media files (images, videos, audio), share the actual file
+        try {
+          const response = await fetch(`/raw/${file.path}`);
+          if (response.ok) {
+            const blob = await response.blob();
+            const fileToShare = new File([blob], file.name, { type: file.mimeType || blob.type });
+
+            // Check if files can be shared
+            if (navigator.canShare && navigator.canShare({ files: [fileToShare] })) {
+              shareData.files = [fileToShare];
+            } else {
+              // Fallback to URL if file sharing not supported
+              shareData.url = `/raw/${file.path}`;
+            }
+          } else {
+            // Fallback to URL if fetch fails
+            shareData.url = `/raw/${file.path}`;
+          }
+        } catch (fetchError) {
+          console.error('Failed to fetch file for sharing:', fetchError);
+          // Fallback to URL
+          shareData.url = `/raw/${file.path}`;
+        }
+      } else {
+        // For other file types, share URL
+        shareData.url = `/raw/${file.path}`;
       }
 
       await navigator.share(shareData);
@@ -227,7 +259,7 @@ export function FileCard({
         console.error('Failed to share:', error);
       }
     }
-  }, [file.name, file.path, fullContent, isTextContent, previewText]);
+  }, [file.name, file.path, file.mimeType, fullContent, isTextContent, previewText, isMediaFile]);
 
   const handleDeleteClick = useCallback(() => {
     setIsDeleteDialogOpen(true);
@@ -259,12 +291,6 @@ export function FileCard({
 
   // Determine if we can share this file
   const canShare = typeof navigator !== 'undefined' && !!navigator.share;
-
-  // Determine menu items based on file type
-  const isImage = content.type === 'image';
-  const isVideo = content.type === 'video';
-  const isAudio = content.type === 'audio';
-  const isMediaFile = isImage || isVideo || isAudio;
 
   return (
     <div className={cn('w-full flex flex-col items-end', className)}>
