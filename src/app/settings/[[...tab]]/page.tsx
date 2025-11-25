@@ -23,6 +23,21 @@ interface DigestStats {
   pendingDigests: number;
 }
 
+interface Stats {
+  library: {
+    fileCount: number;
+    totalSize: number;
+  };
+  inbox: {
+    itemCount: number;
+  };
+  digests: {
+    totalFiles: number;
+    digestedFiles: number;
+    pendingDigests: number;
+  };
+}
+
 export default function SettingsPage() {
   const params = useParams();
   const { settings, setSettings, isLoading, isSaving, saveMessage, saveSettings } = useSettingsContext();
@@ -33,6 +48,8 @@ export default function SettingsPage() {
   const [modelError, setModelError] = useState<string | null>(null);
   const [digestStats, setDigestStats] = useState<DigestStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [isLoadingGeneralStats, setIsLoadingGeneralStats] = useState(false);
 
   const filteredModels = useMemo(() => {
     if (!modelQuery) return modelOptions;
@@ -104,6 +121,25 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchGeneralStats = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoadingGeneralStats(true);
+    }
+    try {
+      const response = await fetch('/api/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    } finally {
+      if (showLoading) {
+        setIsLoadingGeneralStats(false);
+      }
+    }
+  }, []);
+
 
   // Determine active tab from URL
   const tabParam = params.tab as string[] | undefined;
@@ -111,10 +147,25 @@ export default function SettingsPage() {
 
   // Fetch digest stats when digesters tab is active
   useEffect(() => {
-    if (activeTab === 'digesters') {
+    if (activeTab === 'digest') {
       void fetchDigestStats();
     }
   }, [activeTab, fetchDigestStats]);
+
+  // Fetch general stats when stats tab is active and refresh every 5 seconds
+  useEffect(() => {
+    if (activeTab === 'stats') {
+      void fetchGeneralStats(true); // Show loading on initial load
+
+      // Set up auto-refresh interval
+      const intervalId = setInterval(() => {
+        void fetchGeneralStats(false); // Don't show loading on auto-refresh
+      }, 5000);
+
+      // Clean up interval on unmount or when tab changes
+      return () => clearInterval(intervalId);
+    }
+  }, [activeTab, fetchGeneralStats]);
 
   if (isLoading) {
     return (
@@ -138,7 +189,7 @@ export default function SettingsPage() {
       saveSettings({ preferences: settings.preferences });
     } else if (activeTab === 'vendors') {
       saveSettings({ vendors: settings.vendors });
-    } else if (activeTab === 'digesters') {
+    } else if (activeTab === 'digest') {
       saveSettings({ digesters: settings.digesters });
     }
     // Tasks tab doesn't need saving - it's read-only
@@ -147,7 +198,8 @@ export default function SettingsPage() {
   const tabs = [
     { label: 'General', value: 'general', path: '/settings' },
     { label: 'Vendors', value: 'vendors', path: '/settings/vendors' },
-    { label: 'Digest', value: 'digesters', path: '/settings/digesters' },
+    { label: 'Digest', value: 'digest', path: '/settings/digest' },
+    { label: 'Stats', value: 'stats', path: '/settings/stats' },
     { label: 'Tasks', value: 'tasks', path: '/settings/tasks' },
   ];
 
@@ -384,7 +436,7 @@ export default function SettingsPage() {
         )}
 
         {/* Digesters Tab */}
-        {activeTab === 'digesters' && (
+        {activeTab === 'digest' && (
           <Card>
             <CardHeader>
               <CardTitle>Digester Configuration</CardTitle>
@@ -393,48 +445,6 @@ export default function SettingsPage() {
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Stats Display */}
-              <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
-                <div className="flex items-center gap-8">
-                  {isLoadingStats ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  ) : (
-                    <>
-                      <div className="space-y-1">
-                        <div className="text-2xl font-semibold">
-                          {digestStats?.digestedFiles ?? 0}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Digested Files</div>
-                      </div>
-                      <div className="h-8 w-px bg-border" />
-                      <div className="space-y-1">
-                        <div className="text-2xl font-semibold">
-                          {digestStats?.totalFiles ?? 0}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Total Files</div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {!isLoadingStats && digestStats && (
-                    <>
-                      {digestStats.pendingDigests > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
-                          <span className="text-sm text-muted-foreground">Processing</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full bg-green-500" />
-                          <span className="text-sm text-muted-foreground">Up to date</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
               {/* Digester Toggles */}
               <div className="space-y-4">
               {[
@@ -506,11 +516,81 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* Stats Tab */}
+        {activeTab === 'stats' && (
+          <Card>
+            <CardContent className="space-y-6">
+              {isLoadingGeneralStats ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : stats ? (
+                <div className="space-y-6">
+                  {/* Library Stats */}
+                  <div>
+                    <h3 className="text-sm font-medium mb-3">Library</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <div className="text-2xl font-semibold">
+                          {stats.library.fileCount.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Files</div>
+                      </div>
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <div className="text-2xl font-semibold">
+                          {(stats.library.totalSize / (1000 * 1000)).toFixed(2)} MB
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Total Size</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Digest Stats */}
+                  <div>
+                    <h3 className="text-sm font-medium mb-3">Digests</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <div className="text-2xl font-semibold">
+                          {stats.digests.digestedFiles.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Digested Files</div>
+                      </div>
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <div className="text-2xl font-semibold">
+                          {stats.digests.totalFiles.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Total Files</div>
+                      </div>
+                      <div className="p-4 rounded-lg border bg-muted/50">
+                        <div className="flex items-center gap-2">
+                          {stats.digests.pendingDigests > 0 ? (
+                            <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+                          ) : (
+                            <div className="h-2 w-2 rounded-full bg-green-500" />
+                          )}
+                          <div className="text-2xl font-semibold">
+                            {stats.digests.pendingDigests.toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Pending</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-muted-foreground py-8">
+                  Failed to load statistics
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tasks Tab */}
         {activeTab === 'tasks' && <TasksTab />}
 
         {/* Save Button - Only show for tabs that have settings to save */}
-        {activeTab !== 'tasks' && (
+        {activeTab !== 'tasks' && activeTab !== 'stats' && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">
