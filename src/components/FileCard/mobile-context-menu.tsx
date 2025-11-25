@@ -128,17 +128,23 @@ export function MobileContextMenu({
     };
   }, [open]);
 
-  // Close on outside click
+  // Close on outside click (including clicking the trigger/file card)
   useEffect(() => {
     if (!open) return;
 
+    // Add a small delay before enabling click-to-close to prevent accidental dismissal
+    // when lifting finger after long press
+    let clickEnabled = false;
+    const enableClickTimer = setTimeout(() => {
+      clickEnabled = true;
+    }, 200);
+
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (
-        menuRef.current &&
-        triggerRef.current &&
-        !menuRef.current.contains(event.target as Node) &&
-        !triggerRef.current.contains(event.target as Node)
-      ) {
+      // Only close if the grace period has passed
+      if (!clickEnabled) return;
+
+      // Close if clicked anywhere except the menu itself
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         onOpenChange(false);
       }
     };
@@ -147,6 +153,7 @@ export function MobileContextMenu({
     document.addEventListener('touchstart', handleClickOutside as EventListener);
 
     return () => {
+      clearTimeout(enableClickTimer);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside as EventListener);
     };
