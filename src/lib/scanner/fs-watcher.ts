@@ -11,6 +11,7 @@ import { DATA_ROOT } from '@/lib/fs/storage';
 import { upsertFileRecord, getFileByPath } from '@/lib/db/files';
 import { ensureAllDigesters } from '@/lib/digest/ensure';
 import { notificationService } from '@/lib/notifications/notification-service';
+import { deleteFile } from '@/lib/files/delete-file';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'FileSystemWatcher' });
@@ -85,6 +86,8 @@ export class FileSystemWatcher extends EventEmitter {
     this.watcher
       .on('add', filePath => this.handleFileEvent(filePath, 'add'))
       .on('change', filePath => this.handleFileEvent(filePath, 'change'))
+      .on('unlink', filePath => this.handleFileDelete(filePath, false))
+      .on('unlinkDir', filePath => this.handleFileDelete(filePath, true))
       .on('error', error => {
         log.error({ err: error }, 'file system watcher error');
       })
@@ -260,6 +263,45 @@ export class FileSystemWatcher extends EventEmitter {
       this.emit('file-change', event);
     } catch (error) {
       log.error({ err: error, path: relativePath }, 'failed to process file change');
+    }
+  }
+
+  /**
+   * Handle file/folder deletion events
+   */
+  private async handleFileDelete(fullPath: string, isFolder: boolean): Promise<void> {
+    // Get relative path from DATA_ROOT
+    const relativePath = path.relative(DATA_ROOT, fullPath);
+
+    try {
+      log.info({ path: relativePath, isFolder }, 'file deletion detected');
+
+      // Call centralized delete function
+      const result = await deleteFile({
+        fullPath,
+        relativePath,
+        isFolder,
+      });
+
+      log.info(
+        {
+          path: relativePath,
+          isFolder,
+          ...result.databaseRecordsDeleted,
+        },
+        'file deletion processed'
+      );
+
+      // Emit notification for inbox deletions (immediate UI update)
+      if (relativePath.startsWith('inbox/')) {
+        notificationService.notify({
+          type: 'inbox-deleted',
+          path: relativePath,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      log.error({ err: error, path: relativePath, isFolder }, 'failed to process file deletion');
     }
   }
 
