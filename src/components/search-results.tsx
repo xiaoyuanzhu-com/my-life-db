@@ -160,14 +160,8 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (container) {
-          console.log('[SearchResults] Auto-scrolling to bottom', {
-            scrollHeight: container.scrollHeight,
-            clientHeight: container.clientHeight,
-            scrollTop: container.scrollTop
-          });
           container.scrollTop = container.scrollHeight;
           autoScrollRef.current = false;
-          console.log('[SearchResults] After scroll, scrollTop:', container.scrollTop);
         }
       });
     });
