@@ -51,3 +51,4 @@ Example: check task queue status `curl http://localhost:3000/api/tasks/stats`.
 - Avoid follow-up questions unless absolutely necessary for an important decision. Default to making sensible choices based on industry best practices and this project’s conventions.
 - Assume MVP-stage priorities: simple, performant, robust, and extensible. Prefer pragmatic solutions with minimal complexity.
 - Only escalate when a decision is truly ambiguous and impactful; otherwise proceed without proposing trivial alternatives.
+- Do not propose changes that conflict with the established architecture/design; only suggest adjustments when you are confident they align with the existing system.
