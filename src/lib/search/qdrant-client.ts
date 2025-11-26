@@ -70,6 +70,21 @@ class QdrantClient {
     );
   }
 
+  async deleteAll(): Promise<void> {
+    // Delete all points using filter that matches all (empty filter matches everything)
+    await this.request<QdrantDeleteResponse>(
+      `/collections/${encodeURIComponent(this.collection)}/points/delete?wait=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          filter: {
+            must: []  // Empty filter matches all points
+          }
+        }),
+      }
+    );
+  }
+
   async search(params: QdrantSearchParams): Promise<unknown> {
     return this.request(
       `/collections/${encodeURIComponent(this.collection)}/points/search`,

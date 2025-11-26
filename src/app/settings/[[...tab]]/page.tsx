@@ -729,7 +729,7 @@ export default function SettingsPage() {
               <Button
                 onClick={() => handleResetDigester(confirmResetDigester)}
               >
-                Reset & Regenerate
+                Reset
               </Button>
             </div>
           </div>

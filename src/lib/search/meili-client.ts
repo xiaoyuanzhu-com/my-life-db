@@ -69,6 +69,16 @@ class MeiliClient {
     return response.taskUid;
   }
 
+  async deleteAllDocuments(): Promise<number> {
+    const response = await this.request<{ taskUid: number }>(
+      `/indexes/${encodeURIComponent(this.indexUid)}/documents`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return response.taskUid;
+  }
+
   async search<T = unknown>(
     query: string,
     options?: {
