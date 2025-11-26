@@ -50,6 +50,10 @@ export async function PUT(request: NextRequest) {
         ...currentSettings.vendors,
         ...updates.vendors,
       },
+      digesters: {
+        ...currentSettings.digesters,
+        ...updates.digesters,
+      },
       extraction: {
         ...currentSettings.extraction,
         ...updates.extraction,

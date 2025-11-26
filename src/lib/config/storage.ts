@@ -54,6 +54,14 @@ export async function loadSettings(): Promise<UserSettings> {
           host: pickSetting(getSettingValue('vendors_qdrant_host'), process.env.QDRANT_URL),
         },
       },
+      digesters: {
+        'url-crawler': getSettingValue('digesters_url_crawler') !== 'false',
+        'url-crawl-summary': getSettingValue('digesters_url_crawl_summary') !== 'false',
+        'tags': getSettingValue('digesters_tags') !== 'false',
+        'slug': getSettingValue('digesters_slug') !== 'false',
+        'search-keyword': getSettingValue('digesters_search_keyword') !== 'false',
+        'search-semantic': getSettingValue('digesters_search_semantic') !== 'false',
+      },
       extraction: {
         autoEnrich: getSettingValue('extraction_auto_enrich') === 'true' || DEFAULT_SETTINGS.extraction.autoEnrich,
         includeEntities: getSettingValue('extraction_include_entities') !== 'false',
@@ -106,6 +114,16 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     }
     if (settings.vendors?.qdrant?.host) {
       setSettingValue('vendors_qdrant_host', settings.vendors.qdrant.host);
+    }
+
+    // Digesters
+    if (settings.digesters) {
+      setSettingValue('digesters_url_crawler', String(settings.digesters['url-crawler'] ?? true));
+      setSettingValue('digesters_url_crawl_summary', String(settings.digesters['url-crawl-summary'] ?? true));
+      setSettingValue('digesters_tags', String(settings.digesters['tags'] ?? true));
+      setSettingValue('digesters_slug', String(settings.digesters['slug'] ?? true));
+      setSettingValue('digesters_search_keyword', String(settings.digesters['search-keyword'] ?? true));
+      setSettingValue('digesters_search_semantic', String(settings.digesters['search-semantic'] ?? true));
     }
 
     // Extraction
