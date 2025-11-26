@@ -18,42 +18,38 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-export interface OpenedFile {
+export interface TabState {
   path: string;
   name: string;
-}
-
-interface FileEditState {
-  content: string;
+  content?: string;
   isDirty: boolean;
+  isActive: boolean;
 }
 
 function LibraryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [openedFiles, setOpenedFiles] = useState<OpenedFile[]>([]);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<TabState[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [fileEditStates, setFileEditStates] = useState<Map<string, FileEditState>>(new Map());
-  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
-  const persistFileEditStates = useCallback((next: Map<string, FileEditState>) => {
+
+  // Derived values
+  const activeTab = tabs.find(tab => tab.isActive);
+  const activeFilePath = activeTab?.path ?? null;
+  const dirtyFiles = new Set(tabs.filter(tab => tab.isDirty).map(tab => tab.path));
+  const openedFiles = tabs.map(tab => ({ path: tab.path, name: tab.name }));
+
+  const persistTabs = useCallback((nextTabs: TabState[]) => {
     try {
-      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(next.entries())));
+      localStorage.setItem('library:tabs', JSON.stringify(nextTabs));
     } catch (error) {
-      console.error('Failed to save file edit states to localStorage:', error);
+      console.error('Failed to save tabs to localStorage:', error);
     }
   }, []);
-  const persistDirtyFiles = useCallback((next: Set<string>) => {
-    try {
-      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(next)));
-    } catch (error) {
-      console.error('Failed to save dirty files to localStorage:', error);
-    }
-  }, []);
+
   const handleFileDataLoad = useCallback((contentType: string) => {
     setActiveFileMimeType(contentType);
   }, []);
@@ -61,32 +57,22 @@ function LibraryContent() {
   // Load state from localStorage on mount
   useEffect(() => {
     try {
-      const savedOpenedFiles = localStorage.getItem('library:openedFiles');
-      const savedActiveFile = localStorage.getItem('library:activeFile');
+      const savedTabs = localStorage.getItem('library:tabs');
       const savedExpandedFolders = localStorage.getItem('library:expandedFolders');
-      const savedFileEditStates = localStorage.getItem('library:fileEditStates');
-      const savedDirtyFiles = localStorage.getItem('library:dirtyFiles');
 
-      if (savedOpenedFiles) {
-        setOpenedFiles(JSON.parse(savedOpenedFiles));
-      }
-
-      if (savedActiveFile) {
-        setActiveFilePath(savedActiveFile);
+      if (savedTabs) {
+        setTabs(JSON.parse(savedTabs));
       }
 
       if (savedExpandedFolders) {
         setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
       }
 
-      if (savedFileEditStates) {
-        const statesArray: [string, FileEditState][] = JSON.parse(savedFileEditStates);
-        setFileEditStates(new Map(statesArray));
-      }
-
-      if (savedDirtyFiles) {
-        setDirtyFiles(new Set(JSON.parse(savedDirtyFiles)));
-      }
+      // Clean up deprecated localStorage keys
+      localStorage.removeItem('library:dirtyFiles');
+      localStorage.removeItem('library:openedFiles');
+      localStorage.removeItem('library:activeFile');
+      localStorage.removeItem('library:fileEditStates');
     } catch (error) {
       console.error('Failed to load state from localStorage:', error);
     } finally {
@@ -95,29 +81,11 @@ function LibraryContent() {
     }
   }, []);
 
-  // Save opened files to localStorage (skip on initial mount)
+  // Save tabs to localStorage (skip on initial mount)
   useEffect(() => {
     if (!isInitialized) return;
-    try {
-      localStorage.setItem('library:openedFiles', JSON.stringify(openedFiles));
-    } catch (error) {
-      console.error('Failed to save opened files to localStorage:', error);
-    }
-  }, [openedFiles, isInitialized]);
-
-  // Save active file to localStorage (skip on initial mount)
-  useEffect(() => {
-    if (!isInitialized) return;
-    try {
-      if (activeFilePath) {
-        localStorage.setItem('library:activeFile', activeFilePath);
-      } else {
-        localStorage.removeItem('library:activeFile');
-      }
-    } catch (error) {
-      console.error('Failed to save active file to localStorage:', error);
-    }
-  }, [activeFilePath, isInitialized]);
+    persistTabs(tabs);
+  }, [tabs, isInitialized, persistTabs]);
 
   // Save expanded folders to localStorage (skip on initial mount)
   useEffect(() => {
@@ -128,24 +96,6 @@ function LibraryContent() {
       console.error('Failed to save expanded folders to localStorage:', error);
     }
   }, [expandedFolders, isInitialized]);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    try {
-      localStorage.setItem('library:fileEditStates', JSON.stringify(Array.from(fileEditStates.entries())));
-    } catch (error) {
-      console.error('Failed to save file edit states to localStorage:', error);
-    }
-  }, [fileEditStates, isInitialized]);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    try {
-      localStorage.setItem('library:dirtyFiles', JSON.stringify(Array.from(dirtyFiles)));
-    } catch (error) {
-      console.error('Failed to save dirty files to localStorage:', error);
-    }
-  }, [dirtyFiles, isInitialized]);
 
   // Handle ?open query parameter(s) - open files from URL
   useEffect(() => {
@@ -159,22 +109,24 @@ function LibraryContent() {
       // Extract file name from path
       const fileName = filePath.split('/').pop() || filePath;
 
-      // Use setOpenedFiles with updater function to get the latest state
-      setOpenedFiles(prev => {
-        // Check if file is already open using the latest state
-        const isAlreadyOpen = prev.some(f => f.path === filePath);
+      setTabs(prev => {
+        // Check if file is already open
+        const existingTabIndex = prev.findIndex(t => t.path === filePath);
 
-        if (isAlreadyOpen) {
-          // File already open, just switch to it
-          return prev;
+        if (existingTabIndex !== -1) {
+          // File already open, just activate it
+          return prev.map((t, i) => ({
+            ...t,
+            isActive: i === existingTabIndex,
+          }));
         }
 
-        // Add to opened files
-        return [...prev, { path: filePath, name: fileName }];
+        // Add new tab and deactivate others
+        return [
+          ...prev.map(t => ({ ...t, isActive: false })),
+          { path: filePath, name: fileName, isDirty: false, isActive: true },
+        ];
       });
-
-      // Set as active file (the last one in the list will be active)
-      setActiveFilePath(filePath);
 
       // Auto-expand parent folders to reveal the file
       expandParentFolders(filePath);
@@ -182,7 +134,7 @@ function LibraryContent() {
 
     // Clean up URL by removing ?open parameters
     router.replace('/library', { scroll: false });
-  }, [searchParams, router]); // Intentionally excluding openedFiles to avoid infinite loop
+  }, [searchParams, router]);
 
   // Helper function to expand all parent folders of a file path
   const expandParentFolders = (filePath: string) => {
@@ -212,37 +164,44 @@ function LibraryContent() {
   };
 
   const handleFileOpen = (path: string, name: string) => {
-    // Add to opened files if not already open
-    if (!openedFiles.some(f => f.path === path)) {
-      setOpenedFiles([...openedFiles, { path, name }]);
-    }
-    setActiveFilePath(path);
+    setTabs(prev => {
+      const existingTabIndex = prev.findIndex(t => t.path === path);
+
+      if (existingTabIndex !== -1) {
+        // File already open, just activate it
+        return prev.map((t, i) => ({
+          ...t,
+          isActive: i === existingTabIndex,
+        }));
+      }
+
+      // Add new tab and deactivate others
+      return [
+        ...prev.map(t => ({ ...t, isActive: false })),
+        { path, name, isDirty: false, isActive: true },
+      ];
+    });
 
     // Auto-expand parent folders to keep the file visible
     expandParentFolders(path);
   };
 
   const closeFile = useCallback((path: string) => {
-    setOpenedFiles(prev => {
-      const next = prev.filter(f => f.path !== path);
-      setActiveFilePath(prevActive => (prevActive === path ? (next[next.length - 1]?.path ?? null) : prevActive));
-      return next;
-    });
+    setTabs(prev => {
+      const closingTabIndex = prev.findIndex(t => t.path === path);
+      if (closingTabIndex === -1) return prev;
 
-    setFileEditStates(prev => {
-      const next = new Map(prev);
-      next.delete(path);
-      persistFileEditStates(next);
-      return next;
-    });
+      const next = prev.filter(t => t.path !== path);
 
-    setDirtyFiles(prev => {
-      const next = new Set(prev);
-      next.delete(path);
-      persistDirtyFiles(next);
+      // If closing the active tab, activate the last remaining tab
+      const wasActive = prev[closingTabIndex].isActive;
+      if (wasActive && next.length > 0) {
+        next[next.length - 1].isActive = true;
+      }
+
       return next;
     });
-  }, [persistDirtyFiles, persistFileEditStates]);
+  }, []);
 
   const handleFileClose = useCallback((path: string) => {
     if (dirtyFiles.has(path)) {
@@ -254,7 +213,12 @@ function LibraryContent() {
   }, [closeFile, dirtyFiles]);
 
   const handleTabChange = (path: string) => {
-    setActiveFilePath(path);
+    setTabs(prev =>
+      prev.map(t => ({
+        ...t,
+        isActive: t.path === path,
+      }))
+    );
   };
 
   const handleToggleFolder = (path: string, isExpanded: boolean) => {
@@ -268,24 +232,14 @@ function LibraryContent() {
   };
 
   const handleContentChange = useCallback((filePath: string, content: string, isDirty: boolean) => {
-    setFileEditStates(prev => {
-      const next = new Map(prev);
-      next.set(filePath, { content, isDirty });
-      persistFileEditStates(next);
-      return next;
-    });
-
-    setDirtyFiles(prev => {
-      const next = new Set(prev);
-      if (isDirty) {
-        next.add(filePath);
-      } else {
-        next.delete(filePath);
-      }
-      persistDirtyFiles(next);
-      return next;
-    });
-  }, [persistDirtyFiles, persistFileEditStates]);
+    setTabs(prev =>
+      prev.map(t =>
+        t.path === filePath
+          ? { ...t, content, isDirty }
+          : t
+      )
+    );
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -347,7 +301,7 @@ function LibraryContent() {
                     filePath={activeFilePath}
                     onFileDataLoad={handleFileDataLoad}
                     onContentChange={handleContentChange}
-                    initialEditedContent={fileEditStates.get(activeFilePath)?.content}
+                    initialEditedContent={activeTab?.content}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-muted-foreground">
