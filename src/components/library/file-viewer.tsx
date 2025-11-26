@@ -76,15 +76,19 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           modifiedAt: new Date().toISOString(),
         });
 
-        originalContentRef.current = text;
-
         const initialContent =
           isInitialMount.current && initialEditedContentRef.current !== undefined
             ? initialEditedContentRef.current
             : text;
 
+        // Set both refs before updating state to avoid dirty state race condition
+        originalContentRef.current = text;
         setEditedContent(initialContent);
         isInitialMount.current = false;
+
+        // Notify parent component with correct initial dirty state
+        const initialIsDirty = initialContent !== text;
+        onContentChange(filePath, initialContent, initialIsDirty);
 
         // Notify parent component
         if (onFileDataLoad) {
@@ -111,16 +115,17 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     } finally {
       setIsLoading(false);
     }
-  }, [filePath, onFileDataLoad]);
+  }, [filePath, onFileDataLoad, onContentChange]);
 
   useEffect(() => {
     isInitialMount.current = true;
     loadFile();
   }, [loadFile]);
 
-  // Notify parent of content changes
+  // Notify parent of content changes (only when user edits, not on initial load)
   useEffect(() => {
-    if (originalContentRef.current === undefined) return;
+    // Skip notification on initial mount since loadFile handles it
+    if (originalContentRef.current === undefined || isInitialMount.current) return;
 
     const isDirty = editedContent !== originalContentRef.current;
     onContentChange(filePath, editedContent, isDirty);
