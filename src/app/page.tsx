@@ -4,11 +4,13 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { OmniInput } from '@/components/omni-input';
 import { InboxFeed } from '@/components/inbox-feed';
 import { SearchResults } from '@/components/search-results';
+import { PinnedTags } from '@/components/pinned-tags';
 import { useInboxNotifications } from '@/hooks/use-inbox-notifications';
 import type { SearchResponse } from '@/app/api/search/route';
 
 export default function HomePage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [scrollToPath, setScrollToPath] = useState<string | undefined>(undefined);
   const [searchState, setSearchState] = useState<{
     results: SearchResponse | null;
     isSearching: boolean;
@@ -52,6 +54,16 @@ export default function HomePage() {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
+  // Handle pinned tag clicks
+  const handlePinnedTagClick = useCallback((path: string) => {
+    setScrollToPath(path);
+  }, []);
+
+  // Handle scroll completion
+  const handleScrollComplete = useCallback(() => {
+    setScrollToPath(undefined);
+  }, []);
+
   // Setup real-time notifications (auto-refresh only)
   useInboxNotifications({
     onInboxChange: handleInboxChange,
@@ -86,7 +98,11 @@ export default function HomePage() {
       <div className="flex-1 overflow-hidden relative">
         {/* Keep InboxFeed always mounted to avoid reloading */}
         <div className={`absolute inset-0 overflow-y-auto ${showSearchResults ? 'invisible' : 'visible'}`}>
-          <InboxFeed onRefresh={refreshTrigger} />
+          <InboxFeed
+            onRefresh={refreshTrigger}
+            scrollToPath={scrollToPath}
+            onScrollComplete={handleScrollComplete}
+          />
         </div>
 
         {/* Show SearchResults when needed */}
@@ -104,6 +120,10 @@ export default function HomePage() {
       {/* Fixed input at bottom */}
       <div className="flex-none bg-background">
         <div className="max-w-3xl md:max-w-4xl mx-auto w-full px-4 md:px-4 py-4">
+          <PinnedTags
+            onTagClick={handlePinnedTagClick}
+            onRefresh={refreshTrigger}
+          />
           <OmniInput
             onEntryCreated={handleEntryCreated}
             onSearchStateChange={setSearchState}

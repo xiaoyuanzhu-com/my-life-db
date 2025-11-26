@@ -35,4 +35,7 @@ export interface FileWithDigests {
 
   // Optional text preview (truncated, for inbox/search list views)
   textPreview?: string;
+
+  // Pin status (from pins table)
+  isPinned?: boolean;
 }

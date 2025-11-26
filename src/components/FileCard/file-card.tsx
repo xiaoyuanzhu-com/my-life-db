@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp, Pin } from 'lucide-react';
 
 export interface FileCardProps {
   file: FileWithDigests;
@@ -266,6 +266,23 @@ export function FileCard({
     }
   }, [file.name, file.path, file.mimeType, fullContent, isTextContent, previewText, isMediaFile]);
 
+  const handleTogglePin = useCallback(async () => {
+    try {
+      const response = await fetch('/api/library/pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: file.path }),
+      });
+
+      if (response.ok) {
+        // Trigger parent refresh to update UI
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('Failed to toggle pin:', error);
+    }
+  }, [file.path, router]);
+
   const handleDeleteClick = useCallback(() => {
     setIsDeleteDialogOpen(true);
   }, []);
@@ -304,6 +321,11 @@ export function FileCard({
         icon: ExternalLink,
         label: 'Open',
         onClick: handleOpen,
+      },
+      {
+        icon: Pin,
+        label: file.isPinned ? 'Unpin' : 'Pin',
+        onClick: handleTogglePin,
       },
     ];
 
@@ -348,7 +370,7 @@ export function FileCard({
     });
 
     return actions;
-  }, [isTextContent, copyStatus, textDisplay.shouldTruncate, isExpanded, isLoading, isMediaFile, canShare, handleCopy, handleToggleExpand, handleDownload, handleShare, handleDeleteClick, handleOpen]);
+  }, [isTextContent, copyStatus, textDisplay.shouldTruncate, isExpanded, isLoading, isMediaFile, canShare, handleCopy, handleToggleExpand, handleDownload, handleShare, handleDeleteClick, handleOpen, handleTogglePin, file.isPinned]);
 
   // Card element to be used as trigger
   const cardElement = (
@@ -451,6 +473,11 @@ export function FileCard({
           <ContextMenuItem onClick={handleOpen}>
             <ExternalLink className="mr-2" />
             Open
+          </ContextMenuItem>
+
+          <ContextMenuItem onClick={handleTogglePin}>
+            <Pin className="mr-2 h-4 w-4" />
+            {file.isPinned ? 'Unpin' : 'Pin'}
           </ContextMenuItem>
 
           {isTextContent && (

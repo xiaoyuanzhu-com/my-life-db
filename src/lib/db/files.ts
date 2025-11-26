@@ -315,3 +315,53 @@ export function clearAllFiles(): void {
   dbRun('DELETE FROM files');
   log.info({}, 'cleared all file records');
 }
+
+/**
+ * Get the position of a file in the ordered list
+ * Used for pagination when scrolling to a specific item
+ *
+ * @param path - File path to find
+ * @param pathPrefix - Path prefix to filter by (e.g., "inbox/")
+ * @param orderBy - Sort column (created_at or modified_at)
+ * @param ascending - Sort direction
+ * @returns Position info or null if file not found
+ */
+export function getFilePosition(
+  path: string,
+  pathPrefix: string = 'inbox/',
+  orderBy: 'created_at' | 'modified_at' = 'created_at',
+  ascending: boolean = false
+): { position: number; total: number } | null {
+  const file = getFileByPath(path);
+  if (!file) return null;
+
+  const operator = ascending ? '<' : '>';
+  const sortValue = orderBy === 'created_at' ? file.createdAt : file.modifiedAt;
+
+  // Count how many items come BEFORE this one in the sort order
+  const query = `
+    SELECT COUNT(*) as position
+    FROM files
+    WHERE path LIKE ?
+      AND (
+        ${orderBy} ${operator} ?
+        OR (${orderBy} = ? AND path ${operator} ?)
+      )
+  `;
+
+  const result = dbSelectOne<{ position: number }>(
+    query,
+    [`${pathPrefix}%`, sortValue, sortValue, path]
+  );
+
+  // Get total count
+  const totalResult = dbSelectOne<{ total: number }>(
+    'SELECT COUNT(*) as total FROM files WHERE path LIKE ?',
+    [`${pathPrefix}%`]
+  );
+
+  return {
+    position: result?.position ?? 0,
+    total: totalResult?.total ?? 0,
+  };
+}

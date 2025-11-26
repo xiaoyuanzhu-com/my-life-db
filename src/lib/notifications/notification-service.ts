@@ -9,7 +9,8 @@ const log = getLogger({ module: 'NotificationService' });
 export type NotificationEventType =
   | 'inbox-created'
   | 'inbox-updated'
-  | 'inbox-deleted';
+  | 'inbox-deleted'
+  | 'pin-changed';
 
 // Notification payload structure
 export interface NotificationEvent {

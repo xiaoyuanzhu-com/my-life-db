@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveToInbox } from '@/lib/inbox/save-to-inbox';
 import { listTopLevelFiles, countTopLevelFiles } from '@/lib/db/files';
+import { isPinned } from '@/lib/db/pins';
 import { processFileDigests } from '@/lib/digest/task-handler';
 import { getLogger } from '@/lib/log/logger';
 import { notificationService } from '@/lib/notifications/notification-service';
@@ -64,6 +65,7 @@ export async function GET(request: NextRequest) {
       createdAt: file.createdAt,
       digests: [],  // No digests needed for initial render
       textPreview: file.textPreview || undefined,  // From database cache
+      isPinned: isPinned(file.path),  // Check pin status
     }));
 
     const response: InboxResponse = {
