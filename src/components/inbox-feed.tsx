@@ -24,7 +24,7 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
   const contentRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const autoScrollRef = useRef(true);
-  const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const scrollAdjustmentRef = useRef<{ anchorPath: string; anchorTop: number; loadDirection: 'up' | 'down' } | null>(null);
   const stickToBottomRef = useRef(true);
   const lastScrollMetricsRef = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
   const itemRefsRef = useRef<Map<string, HTMLDivElement>>(new Map()); // Track DOM elements by path
@@ -113,15 +113,22 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
 
     loadingRef.current = true;
     setIsLoading(true);
-    autoScrollRef.current = false;
 
     try {
+      // Anchor-based scroll adjustment: capture position of first item before loading
       const container = scrollContainerRef.current;
-      if (container) {
-        scrollAdjustmentRef.current = {
-          prevHeight: container.scrollHeight,
-          prevTop: container.scrollTop,
-        };
+      if (container && items.length > 0) {
+        const anchorPath = items[0].path;
+        const anchorElement = itemRefsRef.current.get(anchorPath);
+
+        if (anchorElement) {
+          const anchorTop = anchorElement.getBoundingClientRect().top;
+          scrollAdjustmentRef.current = {
+            anchorPath,
+            anchorTop,
+            loadDirection: 'up',
+          };
+        }
       }
 
       const offset = currentOffset + items.length;
@@ -146,7 +153,7 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [currentOffset, items.length, hasMore, totalItems]);
+  }, [currentOffset, items, hasMore, totalItems]);
 
   // Load more items (newer) - load items with smaller offset
   const loadMoreNewer = useCallback(async () => {
@@ -154,15 +161,22 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
 
     loadingRef.current = true;
     setIsLoading(true);
-    autoScrollRef.current = false;
 
     try {
+      // Anchor-based scroll adjustment: capture position of first item before loading
       const container = scrollContainerRef.current;
-      if (container) {
-        scrollAdjustmentRef.current = {
-          prevHeight: container.scrollHeight,
-          prevTop: container.scrollTop,
-        };
+      if (container && items.length > 0) {
+        const anchorPath = items[0].path;
+        const anchorElement = itemRefsRef.current.get(anchorPath);
+
+        if (anchorElement) {
+          const anchorTop = anchorElement.getBoundingClientRect().top;
+          scrollAdjustmentRef.current = {
+            anchorPath,
+            anchorTop,
+            loadDirection: 'down',
+          };
+        }
       }
 
       // Calculate new offset (move backwards by BATCH_SIZE)
@@ -187,7 +201,7 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [currentOffset]);
+  }, [currentOffset, items]);
 
   // Scroll to specific item
   const scrollToItem = useCallback((path: string) => {
@@ -207,9 +221,14 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
       element.style.backgroundColor = '';
     }, 1000);
 
-    // Disable auto-scroll and bottom-stick
+    // Disable auto-scroll and bottom-stick during navigation
     autoScrollRef.current = false;
     stickToBottomRef.current = false;
+
+    // Re-enable infinite scroll after smooth scroll completes
+    setTimeout(() => {
+      autoScrollRef.current = true;
+    }, 1000); // Match smooth scroll duration
 
     // Call completion callback
     if (onScrollComplete) {
@@ -239,7 +258,8 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
     };
 
     handleScrollToPath();
-  }, [scrollToPath, items, loadBatchContainingItem, scrollToItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToPath]); // Only re-run when scrollToPath changes, not when items change
 
   // Scroll handler for infinite scroll
   const handleScroll = useCallback(() => {
@@ -255,6 +275,11 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
     updateScrollMetrics();
 
     const threshold = 200; // Load when 200px from boundary
+
+    // Don't trigger infinite scroll when disabled (e.g., during pin navigation)
+    if (!autoScrollRef.current) {
+      return;
+    }
 
     // Detect scroll near top (load older items)
     if (scrollTop < threshold && hasMore && !loadingRef.current) {
@@ -316,12 +341,22 @@ export function InboxFeed({ onRefresh, scrollToPath, onScrollComplete }: InboxFe
       return;
     }
 
+    // Anchor-based scroll adjustment for infinite loading
+    // Uses geometric DOM measurements to maintain visual stability when items are prepended/appended
     const adjustment = scrollAdjustmentRef.current;
     if (adjustment) {
       const container = scrollContainerRef.current;
       if (container) {
-        const heightDiff = container.scrollHeight - adjustment.prevHeight;
-        container.scrollTop = adjustment.prevTop + heightDiff;
+        const anchorElement = itemRefsRef.current.get(adjustment.anchorPath);
+
+        if (anchorElement) {
+          // Measure how much the anchor element moved after DOM update
+          const newAnchorTop = anchorElement.getBoundingClientRect().top;
+          const delta = newAnchorTop - adjustment.anchorTop;
+
+          // Compensate scroll to keep the same content visible
+          container.scrollTop -= delta;
+        }
         updateScrollMetrics();
       }
       scrollAdjustmentRef.current = null;
