@@ -54,7 +54,6 @@ export function FileCard({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
 
   // Detect touch capability
   const isTouchDevice = typeof window !== 'undefined' &&
@@ -229,38 +228,12 @@ export function FileCard({
           shareData.text = textToShare;
         }
       } else if (isMediaFile) {
-        // For media files (images, videos, audio), share the actual file
+        // For media files (images, videos, audio), share the actual original file
         try {
-          let blob: Blob | null = null;
-
-          // For images, try to reuse the cached image from the DOM
-          if (isImage && imageRef.current?.complete) {
-            try {
-              // Create canvas and draw the image to get blob without network request
-              const canvas = document.createElement('canvas');
-              canvas.width = imageRef.current.naturalWidth;
-              canvas.height = imageRef.current.naturalHeight;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(imageRef.current, 0, 0);
-                blob = await new Promise<Blob | null>((resolve) => {
-                  canvas.toBlob(resolve, file.mimeType || 'image/png');
-                });
-              }
-            } catch (canvasError) {
-              console.log('Canvas conversion failed, falling back to fetch:', canvasError);
-            }
-          }
-
-          // Fallback: fetch from cache or network
-          if (!blob) {
-            const response = await fetch(`/raw/${file.path}`, { cache: 'force-cache' });
-            if (response.ok) {
-              blob = await response.blob();
-            }
-          }
-
-          if (blob) {
+          // Always fetch the original file to ensure full quality
+          const response = await fetch(`/raw/${file.path}`, { cache: 'force-cache' });
+          if (response.ok) {
+            const blob = await response.blob();
             const fileToShare = new File([blob], file.name, { type: file.mimeType || blob.type });
 
             // Check if files can be shared
@@ -291,7 +264,7 @@ export function FileCard({
         console.error('Failed to share:', error);
       }
     }
-  }, [file.name, file.path, file.mimeType, fullContent, isTextContent, previewText, isMediaFile, isImage]);
+  }, [file.name, file.path, file.mimeType, fullContent, isTextContent, previewText, isMediaFile]);
 
   const handleDeleteClick = useCallback(() => {
     setIsDeleteDialogOpen(true);
@@ -395,10 +368,6 @@ export function FileCard({
                     sizes="(max-width: 768px) calc(100vw - 40px), 448px"
                     className="w-full h-auto object-contain"
                     priority={priority}
-                    onLoad={(e) => {
-                      // Store reference to the loaded image for sharing without extra network request
-                      imageRef.current = e.currentTarget as HTMLImageElement;
-                    }}
                   />
                 </div>
               ) : content.type === 'video' ? (
