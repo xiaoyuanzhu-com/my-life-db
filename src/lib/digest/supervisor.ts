@@ -13,7 +13,6 @@ interface DigestSupervisorConfig {
   failureMaxDelayMs: number;
   staleDigestThresholdMs: number;
   staleSweepIntervalMs: number;
-  fileDelayMs: number;
 }
 
 const DEFAULT_CONFIG: DigestSupervisorConfig = {
@@ -23,7 +22,6 @@ const DEFAULT_CONFIG: DigestSupervisorConfig = {
   failureMaxDelayMs: 60_000,
   staleDigestThresholdMs: 10 * 60 * 1000,
   staleSweepIntervalMs: 60 * 1000,
-  fileDelayMs: 1_000,
 };
 
 class DigestSupervisor {
@@ -84,10 +82,6 @@ class DigestSupervisor {
 
         this.log.debug({ filePath }, 'processing file through digests');
         await this.coordinator.processFile(filePath);
-
-        if (this.config.fileDelayMs > 0) {
-          await this.sleep(this.config.fileDelayMs);
-        }
 
         if (this.hasOutstandingFailures(filePath)) {
           this.consecutiveFailures++;
