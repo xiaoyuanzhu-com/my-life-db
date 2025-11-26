@@ -433,6 +433,8 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
         >
         {/* Textarea with regular placeholder */}
         <Textarea
+          id="omni-input"
+          name="content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="What's up?"
@@ -441,7 +443,7 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
           className={cn(
             'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
             'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
-            'placeholder:text-muted-foreground/50 min-h-[40px] px-4 pt-3 pb-2'
+            'placeholder:text-muted-foreground/50 min-h-[32px] px-3 py-2'
           )}
           aria-invalid={!!error}
         />
@@ -494,12 +496,12 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
         )}
 
         {/* Bottom control bar - floating buttons */}
-        <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center justify-between px-3 h-9">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 cursor-pointer"
+            className="h-7 w-7 p-0 cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Add file"
           >
@@ -520,7 +522,7 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
             type="submit"
             disabled={isLoading || isUploading}
             size="sm"
-            className="h-8 cursor-pointer"
+            className="h-7 cursor-pointer"
           >
             <span>{isUploading ? 'Uploading...' : 'Send'}</span>
           </Button>
