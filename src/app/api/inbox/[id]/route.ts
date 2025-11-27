@@ -4,7 +4,6 @@ export const runtime = 'nodejs';
 import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from '@/lib/db/files';
 import { deleteDigestsForPath, deleteDigestsByPrefix } from '@/lib/db/digests';
 import { getStorageConfig } from '@/lib/config/storage';
-import { getUniqueFilename } from '@/lib/fs/file-deduplication';
 import fs from 'fs/promises';
 import path from 'path';
 import { getDigestStatusView } from '@/lib/inbox/status-view';
@@ -74,7 +73,7 @@ export async function GET(
 
 /**
  * PUT /api/inbox/[id]
- * Update an inbox item (text and/or files)
+ * Update an inbox item - only supports editing markdown files
  */
 export async function PUT(
   request: NextRequest,
@@ -83,103 +82,59 @@ export async function PUT(
   try {
     const { id } = await context.params;
     const filePath = `inbox/${id}`;
-    const file = getFileByPath(filePath);
 
+    // Only allow editing .md files
+    if (!filePath.endsWith('.md')) {
+      return NextResponse.json(
+        { error: 'Only markdown files can be edited' },
+        { status: 400 }
+      );
+    }
+
+    const file = getFileByPath(filePath);
     if (!file) {
       return NextResponse.json(
-        { error: 'Inbox item not found' },
+        { error: 'File not found' },
         { status: 404 }
       );
     }
 
     const config = await getStorageConfig();
-    const formData = await request.formData();
-    const text = formData.get('text') as string | null;
-    const removeFiles = formData.getAll('removeFiles') as string[];
-    const newFileEntries = formData.getAll('files') as File[];
+    const body = await request.json();
+    const text = body.text;
 
-    const itemPath = path.join(config.dataPath, filePath);
-
-    // Handle single-file items - convert to folder if needed
-    if (!file.isFolder && (text !== null || newFileEntries.length > 0)) {
-      // Need to convert single file to folder to accommodate text or additional files
-      const tempPath = `${itemPath}.tmp`;
-
-      // Read existing file
-      const existingContent = await fs.readFile(itemPath);
-      const originalName = path.basename(filePath);
-
-      // Rename file to folder
-      await fs.rename(itemPath, tempPath);
-      await fs.mkdir(itemPath);
-      await fs.writeFile(path.join(itemPath, originalName), existingContent);
-      await fs.rm(tempPath, { force: true });
-
-      // Update database record to folder
-      upsertFileRecord({
-        path: filePath,
-        name: file.name,
-        isFolder: true,
-        modifiedAt: new Date().toISOString(),
-      });
-
-      // Reload file record
-      file.isFolder = true;
+    if (typeof text !== 'string') {
+      return NextResponse.json(
+        { error: 'Text content required' },
+        { status: 400 }
+      );
     }
 
-    const itemDir = file.isFolder ? itemPath : path.dirname(itemPath);
+    // Write text to file
+    const fullPath = path.join(config.dataPath, filePath);
+    await fs.writeFile(fullPath, text, 'utf-8');
 
-    // 1. Handle text update
-    if (text !== null) {
-      const textFilePath = path.join(itemDir, 'text.md');
+    // Update file record with new modified time
+    const stats = await fs.stat(fullPath);
+    const hash = text.length < 10 * 1024 * 1024
+      ? require('crypto').createHash('sha256').update(text).digest('hex')
+      : undefined;
 
-      if (text.trim().length === 0) {
-        // Remove text.md if text is empty
-        await fs.rm(textFilePath, { force: true });
-      } else {
-        // Update or create text.md
-        const textBuffer = Buffer.from(text, 'utf-8');
-        await fs.writeFile(textFilePath, textBuffer);
-      }
-    }
+    const lines = text.split('\n').slice(0, 50);
+    const textPreview = lines.join('\n');
 
-    // 2. Handle file removal
-    if (removeFiles.length > 0) {
-      for (const filename of removeFiles) {
-        const filePathToRemove = path.join(itemDir, filename);
-        await fs.rm(filePathToRemove, { force: true });
-      }
-    }
-
-    // 3. Handle new file additions
-    if (newFileEntries.length > 0) {
-      for (const fileEntry of newFileEntries) {
-        if (fileEntry.size === 0) continue;
-
-        const buffer = Buffer.from(await fileEntry.arrayBuffer());
-
-        // Get unique filename
-        const uniqueFilename = await getUniqueFilename(itemDir, fileEntry.name);
-        const filePathToWrite = path.join(itemDir, uniqueFilename);
-
-        // Save file
-        await fs.writeFile(filePathToWrite, buffer);
-      }
-    }
-
-    // 4. Update database file record with new modified time
-    const stats = await fs.stat(itemPath);
     upsertFileRecord({
       path: filePath,
       name: file.name,
-      isFolder: file.isFolder,
-      mimeType: file.mimeType,
-      size: file.size,
-      hash: file.hash,
+      isFolder: false,
+      mimeType: 'text/markdown',
+      size: stats.size,
+      hash,
       modifiedAt: stats.mtime.toISOString(),
+      textPreview,
     });
 
-    // 5. Return updated file
+    // Return updated file
     const updatedFile = getFileByPath(filePath);
     return NextResponse.json(updatedFile);
 
@@ -194,7 +149,7 @@ export async function PUT(
 
 /**
  * DELETE /api/inbox/[id]
- * Delete an inbox item and its files
+ * Delete an inbox item (file or folder)
  */
 export async function DELETE(
   request: NextRequest,
@@ -213,20 +168,22 @@ export async function DELETE(
     }
 
     const config = await getStorageConfig();
+    const fullPath = path.join(config.dataPath, filePath);
 
-    // Delete files from filesystem
-    const itemPath = path.join(config.dataPath, filePath);
-    await fs.rm(itemPath, { recursive: true, force: true });
+    // Delete from filesystem (recursive handles both files and folders)
+    await fs.rm(fullPath, { recursive: true, force: true });
 
-    // Delete database records (file and digests)
+    // Delete database records
     if (file.isFolder) {
-      // For folders, delete all children first
+      // For existing folders, delete all children first
       deleteFilesByPrefix(`${filePath}/`);
       deleteDigestsByPrefix(`${filePath}/`);
     }
-    // Delete the folder/file record itself
+    // Delete the file/folder record itself (cascades to digests via FK)
     deleteFileRecord(filePath);
     deleteDigestsForPath(filePath);
+
+    log.info({ path: filePath }, 'deleted inbox item');
 
     return NextResponse.json({ success: true });
   } catch (error) {

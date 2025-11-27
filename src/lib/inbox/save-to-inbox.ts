@@ -7,7 +7,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
 import { INBOX_DIR, generateId } from '@/lib/fs/storage';
-import { getUniqueFilenames } from '@/lib/fs/file-deduplication';
 import { upsertFileRecord } from '@/lib/db/files';
 import { ensureAllDigesters } from '@/lib/digest/ensure';
 import { getLogger } from '@/lib/log/logger';
@@ -28,8 +27,8 @@ interface SaveToInboxInput {
 }
 
 interface SaveToInboxResult {
-  path: string; // Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'inbox/{uuid}')
-  isFolder: boolean;
+  path: string; // Primary path (first saved file) for backward compatibility
+  paths: string[]; // All saved file paths (relative from DATA_ROOT)
   files: Array<{
     name: string;
     size: number;
@@ -39,12 +38,13 @@ interface SaveToInboxResult {
 }
 
 /**
- * Save content to inbox
- * - Single file: saved as inbox/{unique-filename} (no folder)
- * - Multiple files or text+files: saved as inbox/{uuid}/ folder
- * - Text-only: saved as inbox/{uuid}.md
+ * Save content to inbox - all files saved individually in inbox root
+ * - Text only: saved as inbox/{uuid}.md
+ * - Single file: saved as inbox/{unique-filename}
+ * - Text + files: saved as inbox/{uuid}.md, inbox/{filename1}, inbox/{filename2}, etc.
+ * - Multiple files: saved as inbox/{filename1}, inbox/{filename2}, etc.
  * - Updates files table cache
- * - Returns path for reference
+ * - Returns all paths
  */
 export async function saveToInbox(input: SaveToInboxInput): Promise<SaveToInboxResult> {
   const { text, files = [] } = input;
@@ -57,40 +57,39 @@ export async function saveToInbox(input: SaveToInboxInput): Promise<SaveToInboxR
   // Ensure inbox directory exists (handles first-run environments)
   await fs.mkdir(INBOX_DIR, { recursive: true });
 
-  const uuid = generateId();
   const now = new Date().toISOString();
+  const savedPaths: string[] = [];
+  const savedFiles: Array<{ name: string; size: number; mimeType: string; hash?: string }> = [];
 
-  // Prepare file list
-  const allFiles: Array<{ filename: string; buffer: Buffer; mimeType: string; size: number }> = [];
-
-  // Add text file if provided
+  // 1. Save text first (if provided) with UUID name
   if (text && text.trim().length > 0) {
+    const uuid = generateId();
     const textBuffer = Buffer.from(text, 'utf-8');
-    const filename = files.length === 0 ? `${uuid}.md` : 'text.md';
-    allFiles.push({
-      filename,
+    const textFile = {
+      filename: `${uuid}.md`,
       buffer: textBuffer,
       mimeType: 'text/markdown',
       size: textBuffer.length,
-    });
+    };
+    const result = await saveSingleFile(textFile, now);
+    savedPaths.push(result.path);
+    savedFiles.push(...result.files);
   }
 
-  // Add user files
-  allFiles.push(...files);
-
-  // Single file case (no folder)
-  if (allFiles.length === 1 && files.length === 1) {
-    // Single uploaded file (not text) - use original filename
-    return await saveSingleFile(allFiles[0], now);
+  // 2. Save each file with original name (in order)
+  for (const file of files) {
+    const result = await saveSingleFile(file, now);
+    savedPaths.push(result.path);
+    savedFiles.push(...result.files);
   }
 
-  if (allFiles.length === 1 && !files.length) {
-    // Single text file - use UUID.md as filename
-    return await saveSingleFile(allFiles[0], now);
-  }
+  log.info({ paths: savedPaths, fileCount: savedFiles.length }, 'saved files to inbox');
 
-  // Multi-file case (folder with UUID name)
-  return await saveToFolder(uuid, allFiles, now);
+  return {
+    path: savedPaths[0], // Primary path (backward compat)
+    paths: savedPaths,   // All saved paths
+    files: savedFiles,
+  };
 }
 
 /**
@@ -140,97 +139,13 @@ async function saveSingleFile(
 
   return {
     path: relativePath,
-    isFolder: false,
+    paths: [relativePath],
     files: [{
       name: uniqueName,
       size: file.size,
       mimeType: file.mimeType,
       hash,
     }],
-  };
-}
-
-/**
- * Save multiple files to inbox folder (UUID-named, will be renamed to slug later)
- */
-async function saveToFolder(
-  uuid: string,
-  allFiles: Array<{ filename: string; buffer: Buffer; mimeType: string; size: number }>,
-  now: string
-): Promise<SaveToInboxResult> {
-  const folderName = uuid;
-  const folderPath = path.join(INBOX_DIR, folderName);
-  const relativePath = `inbox/${folderName}`;
-
-  // Create directory
-  await fs.mkdir(folderPath, { recursive: true });
-
-  // Get unique filenames within folder (handle duplicates)
-  const originalFilenames = allFiles.map(f => f.filename);
-  const uniqueFilenames = await getUniqueFilenames(folderPath, originalFilenames);
-
-  // Save files and collect metadata
-  const savedFiles: Array<{ name: string; size: number; mimeType: string; hash?: string }> = [];
-
-  for (let i = 0; i < allFiles.length; i++) {
-    const file = allFiles[i];
-    const uniqueFilename = uniqueFilenames[i];
-    const filePath = path.join(folderPath, uniqueFilename);
-    const fileRelativePath = `${relativePath}/${uniqueFilename}`;
-
-    // Write file to disk
-    await fs.writeFile(filePath, file.buffer);
-
-    // Compute hash if small enough
-    let hash: string | undefined;
-    if (file.size < HASH_SIZE_THRESHOLD) {
-      hash = createHash('sha256').update(file.buffer).digest('hex');
-    }
-
-    // Read text preview for text files (first 50 lines)
-    let textPreview: string | undefined;
-    if (file.mimeType.startsWith('text/')) {
-      const text = file.buffer.toString('utf-8');
-      const lines = text.split('\n').slice(0, 50);
-      textPreview = lines.join('\n');
-    }
-
-    // Update files table cache for each file
-    upsertFileRecord({
-      path: fileRelativePath,
-      name: uniqueFilename,
-      isFolder: false,
-      size: file.size,
-      mimeType: file.mimeType,
-      hash,
-      modifiedAt: now,
-      textPreview,
-    });
-
-    ensureAllDigesters(fileRelativePath);
-
-    savedFiles.push({
-      name: uniqueFilename,
-      size: file.size,
-      mimeType: file.mimeType,
-      hash,
-    });
-  }
-
-  // Also create a folder entry in files table
-  upsertFileRecord({
-    path: relativePath,
-    name: folderName,
-    isFolder: true,
-    modifiedAt: now,
-  });
-
-  log.info({ path: relativePath, fileCount: savedFiles.length }, 'saved files to inbox folder');
-
-  return {
-    path: relativePath,
-    isFolder: true,
-    files: savedFiles,
   };
 }
 

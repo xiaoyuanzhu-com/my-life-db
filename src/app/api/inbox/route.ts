@@ -121,29 +121,35 @@ export async function POST(request: NextRequest) {
       files,
     });
 
-    log.info({ path: result.path }, 'created inbox item');
+    log.info({ paths: result.paths, fileCount: result.files.length }, 'created inbox items');
 
-    // Emit notification event
-    const firstFile = result.files[0];
-    notificationService.notify({
-      type: 'inbox-created',
-      path: result.path,
-      timestamp: new Date().toISOString(),
-      metadata: firstFile ? {
-        name: firstFile.name,
-        size: firstFile.size,
-        mimeType: firstFile.mimeType,
-      } : undefined,
-    });
+    // Emit notification events for all saved files
+    for (let i = 0; i < result.paths.length; i++) {
+      const filePath = result.paths[i];
+      const file = result.files[i];
+      notificationService.notify({
+        type: 'inbox-created',
+        path: filePath,
+        timestamp: new Date().toISOString(),
+        metadata: file ? {
+          name: file.name,
+          size: file.size,
+          mimeType: file.mimeType,
+        } : undefined,
+      });
+    }
 
-    // Auto-start digest processing (fire and forget - runs in background)
-    processFileDigests(result.path).catch(error => {
-      log.error({ path: result.path, error }, 'digest processing failed');
-    });
-    log.info({ path: result.path }, 'auto-started digest processing');
+    // Auto-start digest processing for ALL saved files (fire and forget)
+    for (const filePath of result.paths) {
+      processFileDigests(filePath).catch(error => {
+        log.error({ path: filePath, error }, 'digest processing failed');
+      });
+    }
+    log.info({ paths: result.paths }, 'auto-started digest processing for all files');
 
     return NextResponse.json({
-      path: result.path,
+      path: result.path,   // Primary path (backward compat)
+      paths: result.paths, // All saved paths
     }, { status: 201 });
   } catch (error) {
     log.error({ err: error }, 'create inbox item failed');

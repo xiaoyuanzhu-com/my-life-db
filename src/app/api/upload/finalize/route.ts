@@ -82,15 +82,18 @@ export async function POST(request: NextRequest) {
       files: files.length > 0 ? files : undefined,
     });
 
-    // Trigger digest processing (fire and forget)
-    processFileDigests(result.path).catch((error: unknown) => {
-      console.error('[FINALIZE] Error processing digests:', error);
-    });
+    // Trigger digest processing for all saved files (fire and forget)
+    for (const filePath of result.paths) {
+      processFileDigests(filePath).catch((error: unknown) => {
+        console.error('[FINALIZE] Error processing digests:', error);
+      });
+    }
 
     return NextResponse.json(
       {
         success: true,
-        path: result.path,
+        path: result.path,   // Primary path (backward compat)
+        paths: result.paths, // All saved paths
       },
       { status: 201 }
     );

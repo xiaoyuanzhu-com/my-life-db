@@ -12,51 +12,65 @@ import { getDigestByPathAndDigester } from '@/lib/db/digests';
  * ALWAYS returns original user input from files (source of truth)
  * NEVER returns digest content - digests are rebuildable
  *
- * For single files: reads the file directly
- * For folders: looks for text files in the folder
+ * Reads text content directly from file (if text-like)
+ * For folders (existing inbox items), searches for text files
  *
- * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'inbox/uuid-folder')
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg' or 'inbox/abc123.md')
  */
 export async function readPrimaryText(filePath: string): Promise<string | null> {
   const absolutePath = path.join(DATA_ROOT, filePath);
 
   try {
     const stats = await fs.stat(absolutePath);
+
     if (stats.isFile()) {
-      // Single file: read directly
-      const content = await fs.readFile(absolutePath, 'utf-8');
-      return content.trim().length > 0 ? content.trim() : null;
-    }
-  } catch {
-    // Not a file, try as folder below
-  }
-
-  // Folder: search for text files
-  const candidates = [
-    'text.md',
-    'note.md',
-    'notes.md',
-    'content.md',
-    'main-content.md',
-    'url.txt',
-  ];
-
-  async function readFileIfExists(name: string): Promise<string | null> {
-    try {
-      const candidatePath = path.join(absolutePath, name);
-      const content = await fs.readFile(candidatePath, 'utf-8');
-      return content.trim().length > 0 ? content.trim() : null;
-    } catch {
+      // Single file: read directly if it's a text file
+      if (isTextFile(filePath)) {
+        const content = await fs.readFile(absolutePath, 'utf-8');
+        return content.trim().length > 0 ? content.trim() : null;
+      }
+      // Non-text file (image, video, etc.)
       return null;
     }
-  }
 
-  for (const name of candidates) {
-    const content = await readFileIfExists(name);
-    if (content) return content;
-  }
+    // Folder (for existing inbox items with folder structure)
+    // Search for text files in priority order
+    const candidates = [
+      'text.md',
+      'note.md',
+      'notes.md',
+      'content.md',
+      'main-content.md',
+      'url.txt',
+    ];
 
-  return null;
+    for (const name of candidates) {
+      try {
+        const candidatePath = path.join(absolutePath, name);
+        const content = await fs.readFile(candidatePath, 'utf-8');
+        if (content.trim().length > 0) {
+          return content.trim();
+        }
+      } catch {
+        // File doesn't exist, try next candidate
+        continue;
+      }
+    }
+
+    return null;
+  } catch {
+    // Path doesn't exist
+    return null;
+  }
+}
+
+/**
+ * Helper: Check if file is a text file based on extension
+ */
+function isTextFile(filePath: string): boolean {
+  const textExtensions = ['.md', '.txt', '.text', '.markdown'];
+  const ext = path.extname(filePath).toLowerCase();
+  return textExtensions.includes(ext);
 }
 
 /**

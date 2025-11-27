@@ -28,8 +28,10 @@ The application uses a flat, user-friendly data structure with two special folde
 ```
 MY_DATA_DIR/
 ├── inbox/              # Unprocessed items (source of truth)
-│   ├── photo.jpg       # Single file items
-│   └── {uuid}/         # Multi-file items (renamed to slug after digest)
+│   ├── photo.jpg       # All files saved individually
+│   ├── abc123.md       # Text-only saves (UUID name)
+│   ├── photo-2.jpg     # Multiple files from same upload
+│   └── {old-uuid}/     # Legacy folder items (existing data)
 │       ├── text.md
 │       └── files...
 ├── notes/              # User library folders (source of truth)
@@ -99,10 +101,15 @@ MY_DATA_DIR/
 - Maximum simplicity and durability - works with any file browser
 
 **Inbox Handling:**
-- Single file: saved as `inbox/{unique-filename}` (no folder)
-- Multiple files or text+files: saved as `inbox/{uuid}/` folder
-- UUID folders renamed to friendly slug after digest generation
-- Slug generation only for UUID-named files/folders (not user-uploaded names)
+- **All files saved individually** in inbox root (no folders for new uploads)
+- Text only: saved as `inbox/{uuid}.md`
+- Single file: saved as `inbox/{unique-filename}` (original name, deduplicated)
+- Text + files: saved as `inbox/{uuid}.md`, `inbox/file1.jpg`, `inbox/file2.jpg`, etc.
+- Multiple files: saved as `inbox/file1.jpg`, `inbox/file2.jpg`, etc. (original names)
+- Text saved first (if provided), then files in upload order
+- File deduplication uses macOS-style naming: `photo.jpg`, `photo 2.jpg`, `photo 3.jpg`
+- **Legacy**: Existing `inbox/{uuid}/` folders still supported (read/edit/delete work)
+- No folder creation for new uploads - pure file-based architecture
 
 **Digest Workflow:**
 - Each file path can have multiple digest types (summary, tags, slug, screenshot, content-md)
