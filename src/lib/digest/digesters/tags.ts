@@ -37,6 +37,11 @@ export class TagsDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<DigestInput[] | null> {
+    // Check if we have any text source - throw error if not
+    if (!hasAnyTextSource(file, existingDigests)) {
+      throw new Error('No text source available for tag generation');
+    }
+
     const textSource = await getPrimaryTextContent(filePath, file, existingDigests);
     if (!textSource) {
       return null;

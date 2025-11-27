@@ -33,11 +33,16 @@ export class SearchSemanticDigester implements Digester {
 
   async digest(
     filePath: string,
-    _file: FileRecordRow,
-    _existingDigests: Digest[],
+    file: FileRecordRow,
+    existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<DigestInput[] | null> {
     log.debug({ filePath }, 'indexing for semantic search');
+
+    // Check if we have any text source - throw error if not
+    if (!hasAnyTextSource(file, existingDigests)) {
+      throw new Error('No text source available for indexing');
+    }
 
     try {
       // Ingest to qdrant_documents table (creates chunks)

@@ -119,6 +119,10 @@ export class SlugDigester implements Digester {
     const sourceType = primaryTextSource?.source || (summaryText ? 'summary' : urlMarkdown ? 'url-digest' : 'unknown');
 
     if (!primaryText) {
+      // Check if we have any potential text source that might become available
+      if (!hasAnyTextSource(file, existingDigests)) {
+        throw new Error('No text source available for slug generation');
+      }
       return null; // Should not happen if canDigest returned true
     }
 
