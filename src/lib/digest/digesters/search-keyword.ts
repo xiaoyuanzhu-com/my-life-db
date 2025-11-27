@@ -141,11 +141,18 @@ export class SearchKeywordDigester implements Digester {
       existingDigests.find((d) => d.digester === 'summarize');
     const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
+    const docDigest = existingDigests.find((d) => d.digester === 'doc-to-markdown');
     const fileUpdatedAt = toTimestamp(file.modified_at);
 
     // Re-index if content changed
     if (contentDigest && toTimestamp(contentDigest.updatedAt) > lastIndexed) {
       log.debug({ filePath }, 'url-crawl-content updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if doc-to-markdown content changed
+    if (docDigest && toTimestamp(docDigest.updatedAt) > lastIndexed) {
+      log.debug({ filePath }, 'doc-to-markdown content updated, re-indexing');
       return true;
     }
 
@@ -170,7 +177,7 @@ export class SearchKeywordDigester implements Digester {
     }
 
     // Re-index if file changed and we rely on local text content
-    if (!contentDigest && fileUpdatedAt > lastIndexed) {
+    if (!contentDigest && !docDigest && fileUpdatedAt > lastIndexed) {
       log.debug({ filePath }, 'file modified after last keyword index, re-indexing');
       return true;
     }

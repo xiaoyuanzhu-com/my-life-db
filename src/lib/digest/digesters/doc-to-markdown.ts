@@ -96,12 +96,7 @@ export class DocToMarkdownDigester implements Digester {
           filePath,
           digester: 'doc-to-markdown',
           status: 'completed',
-          content: JSON.stringify({
-            markdown: result.markdown,
-            model: result.model,
-            requestId: result.requestId,
-            processingTimeMs: result.processingTimeMs,
-          }),
+          content: result.markdown,
           sqlarName: null,
           error: null,
           attempts: 0,

@@ -33,7 +33,7 @@ const TEXT_EXTENSIONS = new Set([
   '.tsv',
 ]);
 
-export type TextSourceType = 'url-digest' | 'file';
+export type TextSourceType = 'url-digest' | 'doc-to-markdown' | 'file';
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -62,6 +62,13 @@ export function getSummaryText(existingDigests: Digest[]): string | null {
   if (!summaryDigest?.content) return null;
   const parsed = parseJson<{ summary?: string }>(summaryDigest.content);
   return parsed?.summary ?? summaryDigest.content;
+}
+
+export function getDocToMarkdown(existingDigests: Digest[]): string | null {
+  const digest = existingDigests.find(
+    (d) => d.digester === 'doc-to-markdown' && d.status === 'completed'
+  );
+  return digest?.content ?? null;
 }
 
 export function getUrlCrawlMarkdown(existingDigests: Digest[]): string | null {
@@ -98,12 +105,20 @@ export function hasLocalTextContent(file: FileRecordRow, _minBytes = 0): boolean
   return true;
 }
 
+export function hasDocToMarkdownContent(existingDigests: Digest[], minLength = 0): boolean {
+  const markdown = getDocToMarkdown(existingDigests);
+  return markdown ? markdown.trim().length >= minLength : false;
+}
+
 export function hasAnyTextSource(
   file: FileRecordRow,
   existingDigests: Digest[],
   options?: { minUrlLength?: number; minFileBytes?: number }
 ): boolean {
   if (hasUrlCrawlContent(existingDigests, options?.minUrlLength ?? 0)) {
+    return true;
+  }
+  if (hasDocToMarkdownContent(existingDigests, options?.minUrlLength ?? 0)) {
     return true;
   }
   return hasLocalTextContent(file, options?.minFileBytes ?? 0);
@@ -124,9 +139,14 @@ export async function getPrimaryTextContent(
   file: FileRecordRow,
   existingDigests: Digest[]
 ): Promise<{ text: string; source: TextSourceType } | null> {
-  const fromDigest = getUrlCrawlMarkdown(existingDigests);
-  if (fromDigest) {
-    return { text: fromDigest, source: 'url-digest' };
+  const fromUrlDigest = getUrlCrawlMarkdown(existingDigests);
+  if (fromUrlDigest) {
+    return { text: fromUrlDigest, source: 'url-digest' };
+  }
+
+  const fromDocDigest = getDocToMarkdown(existingDigests);
+  if (fromDocDigest) {
+    return { text: fromDocDigest, source: 'doc-to-markdown' };
   }
 
   if (!file.is_folder && hasLocalTextContent(file)) {

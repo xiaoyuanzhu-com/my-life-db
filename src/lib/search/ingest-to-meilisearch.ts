@@ -123,7 +123,8 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
  *
  * Priority:
  * 1. URL: Get from digest/content-md
- * 2. Library/Inbox file: Read from filesystem
+ * 2. Doc: Get from doc-to-markdown digest
+ * 3. Library/Inbox file: Read from filesystem
  */
 async function getFileContent(filePath: string): Promise<string | null> {
   // Check for URL digest first
@@ -137,6 +138,12 @@ async function getFileContent(filePath: string): Promise<string | null> {
       // Fallback for old format (plain markdown)
       return contentDigest.content;
     }
+  }
+
+  // Check for doc-to-markdown digest
+  const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
+  if (docDigest?.content && docDigest.status === 'completed') {
+    return docDigest.content;
   }
 
   // Read from filesystem for markdown/text files

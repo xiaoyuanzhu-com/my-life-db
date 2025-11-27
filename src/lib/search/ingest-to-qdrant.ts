@@ -236,7 +236,7 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
 
 /**
  * Get file content for indexing
- * Priority: 1) URL digest, 2) Filesystem file, 3) Folder text.md
+ * Priority: 1) URL digest, 2) Doc-to-markdown digest, 3) Filesystem file, 4) Folder text.md
  */
 async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
   const dataDir = DATA_DIR;
@@ -254,7 +254,13 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     }
   }
 
-  // 2. Try reading from filesystem (markdown or text files)
+  // 2. Check for doc-to-markdown digest
+  const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
+  if (docDigest?.content && docDigest.status === 'completed') {
+    return docDigest.content;
+  }
+
+  // 3. Try reading from filesystem (markdown or text files)
   if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
     try {
       const fullPath = path.join(dataDir, filePath);
