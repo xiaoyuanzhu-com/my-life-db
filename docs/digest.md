@@ -59,13 +59,13 @@ todo → in-progress → completed (terminal)
 
 **Terminal States**:
 - `completed`: Digester successfully produced output
-- `skipped`: Digester determined file is not applicable (e.g., doc-to-markdown for non-document files)
+- `skipped`: Digester will never apply to this file (e.g., url-crawl on a PDF, doc-to-markdown on a text file)
 - `failed` (after 3 attempts): Digester failed and max retries reached
 
 **Non-Terminal States**:
 - `todo`: Waiting to be processed
 - `in-progress`: Currently executing
-- `failed` (< 3 attempts): Will retry on next processing cycle
+- `failed` (< 3 attempts): Will retry on next processing cycle (includes dependency failures)
 
 ### Binary Artifacts (SQLAR)
 
@@ -115,6 +115,7 @@ interface Digester {
 - **Multiple Outputs**: A digester can produce multiple digest records (e.g., UrlCrawlerDigester produces content-md, content-html, screenshot, url-metadata)
 - **Dependency Access**: Later digesters can read outputs from earlier digesters via `existingDigests`
 - **Smart Skipping**: `canDigest()` determines if digester should run based on file metadata and existing digests
+- **Dependency Failures**: Digesters that depend on other digesters should throw errors (not return false) when dependencies are missing or failed. This marks them as `failed` (retryable) instead of `skipped` (terminal), allowing them to retry when dependencies become available.
 
 ### Registered Digesters (Execution Order)
 
@@ -336,16 +337,36 @@ async canDigest(filePath, file, existingDigests, db) {
   return hasAnyTextSource(file, existingDigests);
 }
 
+async digest(filePath, file, existingDigests, db) {
+  // Throw error if dependencies not ready - marks as 'failed' (retryable)
+  if (!hasAnyTextSource(file, existingDigests)) {
+    throw new Error('No text source available for indexing');
+  }
+
+  // ... indexing logic
+}
+
 // hasAnyTextSource() checks url-crawl-content, doc-to-markdown, then local files
 ```
 
-**Execution Flow**:
+**Execution Flow (Success Case)**:
 1. DocToMarkdownDigester runs first (position 2)
 2. Produces `doc-to-markdown` digest with markdown content
 3. SearchKeywordDigester runs later (position 6)
 4. Loads fresh digests, sees completed `doc-to-markdown`
 5. `hasAnyTextSource()` returns true
 6. SearchKeywordDigester indexes the markdown
+
+**Execution Flow (Dependency Failure Case)**:
+1. DocToMarkdownDigester runs and fails (status='failed', attempts=1)
+2. SearchKeywordDigester runs later (position 6)
+3. `hasAnyTextSource()` returns false (no doc-to-markdown content)
+4. `canDigest()` returns false, but `digest()` throws error
+5. SearchKeywordDigester marked as 'failed' (attempts=1, retryable)
+6. On next processing cycle:
+   - If DocToMarkdownDigester succeeds → SearchKeywordDigester retries and succeeds
+   - If DocToMarkdownDigester still failing → SearchKeywordDigester retries and fails again
+   - After 3 attempts, both become terminally 'failed'
 
 ### Re-indexing on Content Change
 
@@ -404,18 +425,19 @@ Coordinator tracks each output independently with its own status.
 
 ### Issue: Search digesters not running for documents
 
-**Symptom**: doc-to-markdown completes, but search-keyword/search-semantic show "skipped"
+**Symptom**: doc-to-markdown completes, but search-keyword/search-semantic show "skipped" or "failed"
 
-**Cause**: Concurrent `processFile()` calls created race condition:
-1. First call starts doc-to-markdown (status='in-progress')
-2. Second call starts while first is running
-3. Second call checks `hasDocToMarkdownContent()` → returns false (status not 'completed')
-4. Search digesters marked as "skipped"
-5. First call completes doc-to-markdown (too late)
+**Previous Cause (Fixed)**: Digesters were marked as "skipped" when dependencies weren't ready, making them permanently terminal even when dependencies later succeeded.
 
-**Fix**: File-level locking in coordinator prevents concurrent processing
-- Second call now rejected immediately with warning log
-- Search digesters wait for doc-to-markdown to complete
+**Solution Implemented**: Digesters now throw errors instead of returning null when dependencies are missing:
+- When doc-to-markdown fails or hasn't completed yet, dependent digesters throw errors
+- This marks them as 'failed' (retryable) instead of 'skipped' (terminal)
+- When doc-to-markdown succeeds on retry, dependent digesters automatically retry and succeed
+- Both digesters follow the same retry logic (max 3 attempts)
+
+**Additional Protection**: File-level locking in coordinator prevents concurrent processing
+- Multiple calls to `processFile()` for the same file are rejected with warning log
+- Ensures digesters see consistent state within a single processing run
 
 ### Issue: Digests stuck in "in-progress"
 
@@ -455,11 +477,18 @@ Coordinator tracks each output independently with its own status.
    - Call `hasAnyTextSource()` to check for any text content
    - Call `getPrimaryTextContent()` to get highest-priority text
 
-5. **Return Null for Skip**: If digester has nothing to do, return `null`
-   - Coordinator automatically marks outputs as "skipped"
-   - Better than returning empty array
+5. **Throw Errors for Dependency Failures**: If a digester depends on another digester's output
+   - Use `canDigest()` for quick checks (file type, size, etc.)
+   - In `digest()`, throw an error if dependencies are missing: `throw new Error('No text source available')`
+   - This marks the digest as 'failed' (retryable) instead of 'skipped' (terminal)
+   - Allows automatic retry when dependencies become available
 
-6. **Handle Errors Gracefully**: Let coordinator handle retries
-   - Throw errors for transient failures
+6. **Return Null Only for True Skips**: If digester has nothing to do and never will
+   - Return `null` only when the file type is fundamentally incompatible
+   - Example: URL crawler returning null for non-URL files
+   - Coordinator marks these as "skipped" (terminal)
+
+7. **Handle Errors Gracefully**: Let coordinator handle retries
+   - Throw errors for transient failures and dependency issues
    - Coordinator increments attempts and applies backoff
    - After 3 attempts, digest stays failed (terminal)
