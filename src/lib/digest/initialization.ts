@@ -6,6 +6,7 @@
 import { globalDigesterRegistry } from './registry';
 import { UrlCrawlerDigester } from './digesters/url-crawler';
 import { UrlCrawlSummaryDigester } from './digesters/url-crawl-summary';
+import { DocToMarkdownDigester } from './digesters/doc-to-markdown';
 import { TagsDigester } from './digesters/tags';
 import { SlugDigester } from './digesters/slug';
 import { SearchKeywordDigester } from './digesters/search-keyword';
@@ -39,23 +40,27 @@ export function initializeDigesters(): void {
   //    Produces: content-md, content-html, screenshot, url-metadata
   globalDigesterRegistry.register(new UrlCrawlerDigester());
 
-  // 2. SummaryDigester (depends on content-md)
+  // 2. DocToMarkdownDigester (no dependencies)
+  //    Produces: doc-to-markdown
+  globalDigesterRegistry.register(new DocToMarkdownDigester());
+
+  // 3. SummaryDigester (depends on content-md)
   //    Produces: summary
   globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
-  // 3. TagsDigester (depends on content-md, independent of summary)
+  // 4. TagsDigester (depends on content-md, independent of summary)
   //    Produces: tags
   globalDigesterRegistry.register(new TagsDigester());
 
-  // 4. SlugDigester (prefers summary, falls back to content-md)
+  // 5. SlugDigester (prefers summary, falls back to content-md)
   //    Produces: slug
   globalDigesterRegistry.register(new SlugDigester());
 
-  // 5. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  // 6. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
   //    Produces: search-keyword
   globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 6. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  // 7. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
   //    Produces: search-semantic
   globalDigesterRegistry.register(new SearchSemanticDigester());
 
