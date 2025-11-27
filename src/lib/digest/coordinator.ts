@@ -55,6 +55,8 @@ function deriveFinalError(
  * Processes files through all registered digesters sequentially
  */
 export class DigestCoordinator {
+  private processingFiles = new Set<string>();
+
   constructor(private db: BetterSqlite3.Database = withDatabase(db => db)) {}
 
   /**
@@ -64,14 +66,24 @@ export class DigestCoordinator {
    * @param filePath Path to file to process
    */
   async processFile(filePath: string, options?: { reset?: boolean }): Promise<void> {
-    log.info({ filePath }, 'processing file');
-
-    // 1. Load file metadata
-    const fileRecord = getFileByPath(filePath);
-    if (!fileRecord) {
-      log.error({ filePath }, 'file not found');
+    // Check if already processing this file
+    if (this.processingFiles.has(filePath)) {
+      log.warn({ filePath }, 'file is already being processed, skipping duplicate call');
       return;
     }
+
+    // Mark file as being processed
+    this.processingFiles.add(filePath);
+
+    try {
+      log.info({ filePath }, 'processing file');
+
+      // 1. Load file metadata
+      const fileRecord = getFileByPath(filePath);
+      if (!fileRecord) {
+        log.error({ filePath }, 'file not found');
+        return;
+      }
 
     if (options?.reset) {
       this.resetDigests(filePath);
@@ -106,8 +118,15 @@ export class DigestCoordinator {
 
       try {
         // Load fresh digest state for this iteration
+        log.info({ filePath, digester: digesterName }, `[${digesterName}] Loading fresh digest state`);
         const existingDigests = listDigestsForPath(filePath);
         const digestsByName = new Map(existingDigests.map((d) => [d.digester, d]));
+
+        // Log relevant digest states for debugging
+        const docDigest = existingDigests.find(d => d.digester === 'doc-to-markdown');
+        if (docDigest) {
+          log.info({ filePath, digester: digesterName, docStatus: docDigest.status, hasContent: !!docDigest.content }, `[${digesterName}] doc-to-markdown state`);
+        }
 
         const outputsInProgress = outputNames.some((name) => {
           const digest = digestsByName.get(name);
@@ -136,23 +155,25 @@ export class DigestCoordinator {
         }
 
         // Check if can digest
+        log.info({ filePath, digester: digesterName }, `[${digesterName}] Checking canDigest()`);
         const can = await digester.canDigest(filePath, file, existingDigests, this.db);
+        log.info({ filePath, digester: digesterName, can }, `[${digesterName}] canDigest() result`);
 
         if (!can) {
           const reason = digesterName === 'url-crawl' ? 'File does not contain a URL' : 'Not applicable';
           this.markDigests(filePath, pendingOutputs, 'skipped', reason);
-          log.debug({ filePath, digester: digesterName }, 'not applicable, skipped');
+          log.info({ filePath, digester: digesterName, reason }, `[${digesterName}] Marked as skipped`);
           skipped++;
           continue;
         }
 
         // Mark pending outputs as in-progress
         this.markDigests(filePath, pendingOutputs, 'in-progress', null, { incrementAttempts: true });
-
-        log.debug({ filePath, digester: digesterName }, 'running digester');
+        log.info({ filePath, digester: digesterName }, `[${digesterName}] Marked as in-progress, starting execution`);
 
         // Execute digester
         const outputs = await digester.digest(filePath, file, existingDigests, this.db);
+        log.info({ filePath, digester: digesterName, outputCount: outputs?.length ?? 0 }, `[${digesterName}] Digester completed, returned outputs`);
 
         if (!outputs || outputs.length === 0) {
           this.markDigests(filePath, pendingOutputs, 'skipped', 'Digester returned no output');
@@ -165,7 +186,9 @@ export class DigestCoordinator {
 
         for (const digest of outputs) {
           producedNames.add(digest.digester);
+          log.info({ filePath, digester: digesterName, outputDigester: digest.digester, status: digest.status }, `[${digesterName}] Saving output to database`);
           await this.saveDigestOutput(filePath, digest);
+          log.info({ filePath, digester: digesterName, outputDigester: digest.digester }, `[${digesterName}] Output saved to database`);
         }
 
         const missingOutputs = pendingOutputs.filter((name) => !producedNames.has(name));
@@ -174,7 +197,7 @@ export class DigestCoordinator {
         }
 
         processed++;
-        log.debug({ filePath, digester: digesterName }, 'digester completed');
+        log.info({ filePath, digester: digesterName }, `[${digesterName}] ✓ Digester fully completed and saved`);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         const errorMsg = err.message;
@@ -201,7 +224,10 @@ export class DigestCoordinator {
       { filePath, processed, skipped, failed, total: digesters.length },
       'processing complete'
     );
-
+  } finally {
+      // Always remove file from processing set
+      this.processingFiles.delete(filePath);
+    }
   }
 
   /**

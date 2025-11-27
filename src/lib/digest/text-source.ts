@@ -115,13 +115,22 @@ export function hasAnyTextSource(
   existingDigests: Digest[],
   options?: { minUrlLength?: number; minFileBytes?: number }
 ): boolean {
-  if (hasUrlCrawlContent(existingDigests, options?.minUrlLength ?? 0)) {
+  const urlCrawl = hasUrlCrawlContent(existingDigests, options?.minUrlLength ?? 0);
+  if (urlCrawl) {
+    log.info({ filePath: file.path }, 'hasAnyTextSource: TRUE from url-crawl-content');
     return true;
   }
-  if (hasDocToMarkdownContent(existingDigests, options?.minUrlLength ?? 0)) {
+
+  const docToMd = hasDocToMarkdownContent(existingDigests, options?.minUrlLength ?? 0);
+  if (docToMd) {
+    log.info({ filePath: file.path }, 'hasAnyTextSource: TRUE from doc-to-markdown');
     return true;
   }
-  return hasLocalTextContent(file, options?.minFileBytes ?? 0);
+
+  const localText = hasLocalTextContent(file, options?.minFileBytes ?? 0);
+  log.info({ filePath: file.path, hasUrlCrawl: urlCrawl, hasDocToMd: docToMd, hasLocalText: localText },
+    `hasAnyTextSource: ${localText ? 'TRUE from local text' : 'FALSE - no text source found'}`);
+  return localText;
 }
 
 async function readLocalFile(filePath: string): Promise<string | null> {
