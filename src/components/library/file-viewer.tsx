@@ -218,16 +218,20 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
   return (
     <div className="h-full w-full min-w-0 flex flex-col">
-      <div className="flex-1 overflow-auto p-4">
-        {fileType === 'text' && fileData.content !== undefined && (
+      {fileType === 'text' && fileData.content !== undefined && (
+        <div className="flex-1 min-h-0 p-4">
           <textarea
             ref={textareaRef}
             value={editedContent}
             onChange={(e) => handleContentChange(e.target.value)}
-            className="w-full h-full min-h-[500px] p-2 font-mono text-sm bg-background border-0 resize-none focus:outline-none"
+            className="w-full h-full p-2 font-mono text-sm bg-background border-0 resize-none focus:outline-none"
             spellCheck={false}
           />
-        )}
+        </div>
+      )}
+
+      {fileType !== 'text' && (
+      <div className="flex-1 overflow-auto p-4">
 
         {fileType === 'image' && (
           <div className="flex items-center justify-center">
@@ -289,6 +293,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
