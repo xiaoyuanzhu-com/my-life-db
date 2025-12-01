@@ -56,7 +56,9 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
         throw new Error('Failed to load file');
       }
 
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      // Extract just the MIME type, stripping charset and other parameters
+      const rawContentType = response.headers.get('content-type') || 'application/octet-stream';
+      const contentType = rawContentType.split(';')[0].trim();
       const fileType = getFileType(contentType);
 
       // Extract filename from path
