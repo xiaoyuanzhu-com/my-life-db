@@ -82,45 +82,26 @@ export class DocToMarkdownDigester implements Digester {
   ): Promise<DigestInput[] | null> {
     log.debug({ filePath, name: file.name }, 'converting document to markdown');
 
-    try {
-      // Convert document to markdown
-      const result = await convertDocToMarkdown({
+    // Convert document to markdown
+    // Let errors propagate - coordinator handles retry logic
+    const result = await convertDocToMarkdown({
+      filePath,
+      filename: file.name,
+    });
+
+    const now = new Date().toISOString();
+
+    return [
+      {
         filePath,
-        filename: file.name,
-      });
-
-      const now = new Date().toISOString();
-
-      return [
-        {
-          filePath,
-          digester: 'doc-to-markdown',
-          status: 'completed',
-          content: result.markdown,
-          sqlarName: null,
-          error: null,
-          attempts: 0,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    } catch (error) {
-      log.error({ filePath, error }, 'failed to convert document to markdown');
-
-      const now = new Date().toISOString();
-      return [
-        {
-          filePath,
-          digester: 'doc-to-markdown',
-          status: 'failed',
-          content: null,
-          sqlarName: null,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          attempts: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    }
+        digester: 'doc-to-markdown',
+        status: 'completed',
+        content: result.markdown,
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
   }
 }

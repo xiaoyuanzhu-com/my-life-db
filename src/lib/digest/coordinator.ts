@@ -230,13 +230,16 @@ export class DigestCoordinator {
     const existing = getDigestById(id);
 
     if (existing) {
-      // Update
+      // Update - cap attempts at MAX_DIGEST_ATTEMPTS for consistency
+      const attempts = targetStatus === 'failed'
+        ? Math.min(MAX_DIGEST_ATTEMPTS, (existing.attempts ?? 0) + 1)
+        : 0;
       updateDigest(id, {
         status: targetStatus,
         content: output.content,
         sqlarName: sqlarName || existing.sqlarName,
         error: output.error ?? null,
-        attempts: targetStatus === 'failed' ? (existing.attempts ?? 0) + 1 : 0,
+        attempts,
       });
     } else {
       // Create new
@@ -289,7 +292,7 @@ export class DigestCoordinator {
    */
   private resetDigests(filePath: string): void {
     log.debug({ filePath }, 'resetting digests');
-    // Preserve attempt counts so max-attempts logic still applies after a reset
+    // Reset attempts to 0 so user can trigger a fresh retry cycle
     const existing = listDigestsForPath(filePath);
     for (const digest of existing) {
       updateDigest(digest.id, {
@@ -297,7 +300,7 @@ export class DigestCoordinator {
         content: null,
         sqlarName: null,
         error: null,
-        attempts: digest.attempts ?? 0,
+        attempts: 0,
       });
     }
 

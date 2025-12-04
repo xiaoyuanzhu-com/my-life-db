@@ -196,7 +196,7 @@ Users can manually trigger digest processing:
 **Reset Behavior**:
 - Sets all digest statuses to "todo"
 - Clears content and sqlarName fields
-- Preserves attempt counts (max-attempt logic still applies)
+- Resets attempt counts to 0 (allows full retry cycle)
 - Deletes SQLAR artifacts for the file
 
 ### Processing Algorithm
@@ -302,7 +302,7 @@ async processFile(filePath: string, options?: { reset?: boolean }) {
 4. **Max Attempts Protection**: Failed digests retry up to 3 times
    - `attempts` field incremented on each failure
    - After 3 attempts, digest stays in "failed" state (terminal)
-   - Reset preserves attempt counts to prevent infinite retries
+   - Manual reset (via API) clears attempt counts, allowing fresh retry cycle
 
 5. **Partial Progress**: Each digest saved immediately after completion
    - Survives crashes or interruptions
@@ -488,7 +488,26 @@ Coordinator tracks each output independently with its own status.
    - Example: URL crawler returning null for non-URL files
    - Coordinator marks these as "skipped" (terminal)
 
-7. **Handle Errors Gracefully**: Let coordinator handle retries
-   - Throw errors for transient failures and dependency issues
-   - Coordinator increments attempts and applies backoff
+7. **Always Throw Errors, Never Return Failed DigestInput**: Let coordinator handle all error tracking
+   - **ALWAYS** throw errors from `digest()` - never catch and return `DigestInput` with `status: 'failed'`
+   - Coordinator catches errors, increments attempts (capped at MAX_DIGEST_ATTEMPTS), and marks as failed
+   - This ensures consistent retry logic and prevents attempts from exceeding the cap
    - After 3 attempts, digest stays failed (terminal)
+
+   ```typescript
+   // CORRECT: Throw errors
+   async digest(...): Promise<DigestInput[] | null> {
+     const result = await externalService.process(file); // Let errors propagate
+     return [{ digester: 'my-digester', status: 'completed', content: result }];
+   }
+
+   // WRONG: Catching and returning failed status
+   async digest(...): Promise<DigestInput[] | null> {
+     try {
+       const result = await externalService.process(file);
+       return [{ status: 'completed', ... }];
+     } catch (error) {
+       return [{ status: 'failed', error: error.message }]; // DON'T DO THIS
+     }
+   }
+   ```

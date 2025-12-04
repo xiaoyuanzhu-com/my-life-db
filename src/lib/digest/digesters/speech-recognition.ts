@@ -87,50 +87,31 @@ export class SpeechRecognitionDigester implements Digester {
   ): Promise<DigestInput[] | null> {
     log.debug({ filePath, name: file.name }, 'transcribing audio file');
 
-    try {
-      // Get absolute path to audio file
-      const absolutePath = path.join(DATA_ROOT, filePath);
+    // Get absolute path to audio file
+    const absolutePath = path.join(DATA_ROOT, filePath);
 
-      // Transcribe audio using HAID whisperx with diarization
-      const result = await speechRecognitionWithHaid({
-        audioPath: absolutePath,
-      });
+    // Transcribe audio using HAID whisperx with diarization
+    // Let errors propagate - coordinator handles retry logic
+    const result = await speechRecognitionWithHaid({
+      audioPath: absolutePath,
+    });
 
-      // Store the full JSON response
-      const jsonContent = JSON.stringify(result, null, 2);
+    // Store the full JSON response
+    const jsonContent = JSON.stringify(result, null, 2);
 
-      const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-      return [
-        {
-          filePath,
-          digester: 'speech-recognition',
-          status: 'completed',
-          content: jsonContent,
-          sqlarName: null,
-          error: null,
-          attempts: 0,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    } catch (error) {
-      log.error({ filePath, error }, 'failed to transcribe audio');
-
-      const now = new Date().toISOString();
-      return [
-        {
-          filePath,
-          digester: 'speech-recognition',
-          status: 'failed',
-          content: null,
-          sqlarName: null,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          attempts: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    }
+    return [
+      {
+        filePath,
+        digester: 'speech-recognition',
+        status: 'completed',
+        content: jsonContent,
+        sqlarName: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
   }
 }
