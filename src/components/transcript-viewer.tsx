@@ -21,15 +21,16 @@ interface TranscriptViewerProps {
 }
 
 // Speaker colors for differentiation
+// Using border-left style for better dark mode compatibility
 const SPEAKER_COLORS = [
-  { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', avatar: 'bg-blue-500' },
-  { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-300', avatar: 'bg-green-500' },
-  { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-300', avatar: 'bg-purple-500' },
-  { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-300', avatar: 'bg-orange-500' },
-  { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-300', avatar: 'bg-pink-500' },
-  { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-300', avatar: 'bg-teal-500' },
-  { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-300', avatar: 'bg-red-500' },
-  { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-300', avatar: 'bg-indigo-500' },
+  { border: 'border-l-blue-500', text: 'text-blue-600 dark:text-blue-400', avatar: 'bg-blue-500' },
+  { border: 'border-l-green-500', text: 'text-green-600 dark:text-green-400', avatar: 'bg-green-500' },
+  { border: 'border-l-purple-500', text: 'text-purple-600 dark:text-purple-400', avatar: 'bg-purple-500' },
+  { border: 'border-l-orange-500', text: 'text-orange-600 dark:text-orange-400', avatar: 'bg-orange-500' },
+  { border: 'border-l-pink-500', text: 'text-pink-600 dark:text-pink-400', avatar: 'bg-pink-500' },
+  { border: 'border-l-teal-500', text: 'text-teal-600 dark:text-teal-400', avatar: 'bg-teal-500' },
+  { border: 'border-l-red-500', text: 'text-red-600 dark:text-red-400', avatar: 'bg-red-500' },
+  { border: 'border-l-indigo-500', text: 'text-indigo-600 dark:text-indigo-400', avatar: 'bg-indigo-500' },
 ];
 
 function formatTime(seconds: number): string {
@@ -105,14 +106,14 @@ export function TranscriptViewer({ data, onSeek }: TranscriptViewerProps) {
                   <button
                     key={segIndex}
                     onClick={() => handleSegmentClick(segment.start)}
-                    className={`group w-full text-left p-2 rounded-lg ${color.bg} hover:opacity-80 transition-opacity`}
+                    className={`group w-full text-left p-2 rounded-r-lg border-l-3 ${color.border} bg-muted/50 hover:bg-muted transition-colors`}
                     disabled={!onSeek}
                   >
                     <div className="flex items-start gap-2">
-                      <span className={`flex-shrink-0 text-xs ${color.text} opacity-70 pt-0.5 font-mono`}>
+                      <span className={`flex-shrink-0 text-xs ${color.text} pt-0.5 font-mono`}>
                         {formatTime(segment.start)}
                       </span>
-                      <span className="flex-1 text-sm">{segment.text}</span>
+                      <span className="flex-1 text-sm text-foreground">{segment.text}</span>
                       {onSeek && (
                         <Play className={`flex-shrink-0 w-4 h-4 ${color.text} opacity-0 group-hover:opacity-70 transition-opacity`} />
                       )}
