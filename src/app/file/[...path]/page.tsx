@@ -251,9 +251,29 @@ export default function FileInfoPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const handleAudioSeek = useCallback((time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      audioRef.current.play();
+    const audio = audioRef.current;
+    console.log('[AudioSeek] time:', time, 'audio:', audio, 'readyState:', audio?.readyState);
+    if (!audio) return;
+
+    // If audio metadata is loaded, seek directly
+    if (audio.readyState >= 1) {
+      console.log('[AudioSeek] seeking to', time, 'duration:', audio.duration);
+      audio.currentTime = time;
+      console.log('[AudioSeek] currentTime after set:', audio.currentTime);
+      audio.play().then(() => {
+        console.log('[AudioSeek] playing, currentTime:', audio.currentTime);
+      });
+    } else {
+      // Wait for metadata to load before seeking
+      console.log('[AudioSeek] waiting for metadata...');
+      const onLoadedMetadata = () => {
+        console.log('[AudioSeek] metadata loaded, seeking to', time);
+        audio.currentTime = time;
+        audio.play();
+        audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      };
+      audio.addEventListener('loadedmetadata', onLoadedMetadata);
+      audio.load();
     }
   }, []);
 
@@ -491,6 +511,7 @@ export default function FileInfoPage() {
         <audio
           ref={audioRef}
           controls
+          preload="metadata"
           className="w-full"
           src={filePreviewUrl}
         >

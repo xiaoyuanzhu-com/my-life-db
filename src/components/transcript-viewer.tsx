@@ -47,10 +47,10 @@ function getSpeakerColor(speaker: string, speakerMap: Map<string, number>) {
 }
 
 function getSpeakerInitial(speaker: string): string {
-  // Extract number from "SPEAKER_00" format or use first char
-  const match = speaker.match(/(\d+)$/);
+  // Extract last digit from "SPEAKER_00" format or use first char
+  const match = speaker.match(/(\d)$/);
   if (match) {
-    return String(parseInt(match[1], 10) + 1);
+    return match[1];
   }
   return speaker.charAt(0).toUpperCase();
 }
