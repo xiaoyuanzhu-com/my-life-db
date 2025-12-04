@@ -66,11 +66,6 @@ export async function processFileDigests(
   filePath: string,
   options?: { reset?: boolean }
 ): Promise<void> {
-  log.info({ filePath, reset: options?.reset }, 'processing file digests');
-
   const coordinator = new DigestCoordinator();
-
   await coordinator.processFile(filePath, options);
-
-  log.info({ filePath }, 'file digests complete');
 }

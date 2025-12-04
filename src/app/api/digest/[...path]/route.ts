@@ -82,8 +82,6 @@ export async function POST(
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    log.info({ filePath }, 'starting digest processing');
-
     // Process digests synchronously so user gets immediate feedback
     // Reset existing digests so all digesters run fresh
     await processFileDigests(filePath, { reset: true });
