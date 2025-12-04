@@ -11,9 +11,28 @@ export interface HaidSpeechRecognitionOptions {
   audioPath: string;
 }
 
-// The full response JSON from whisperx diarization
+export interface HaidSpeechRecognitionWord {
+  word: string;
+  start: number;
+  end: number;
+  speaker: string | null;
+}
+
+export interface HaidSpeechRecognitionSegment {
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+  words: HaidSpeechRecognitionWord[];
+}
+
 export interface HaidSpeechRecognitionResponse {
-  [key: string]: unknown;
+  request_id: string;
+  processing_time_ms: number;
+  text: string;
+  language: string;
+  model: string;
+  segments: HaidSpeechRecognitionSegment[];
 }
 
 export interface HaidEmbeddingOptions {
@@ -177,7 +196,7 @@ export async function speechRecognitionWithHaid(
   }
 
   const config = await resolveHaidConfig();
-  const endpoint = `${config.baseUrl}/api/audio-to-text`;
+  const endpoint = `${config.baseUrl}/api/whisperx/transcribe`;
 
   // Read audio file and convert to base64
   const fs = await import('fs');
