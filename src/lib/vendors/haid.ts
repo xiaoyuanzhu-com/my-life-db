@@ -7,6 +7,15 @@ const DEFAULT_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 const DEFAULT_BASE_URL = 'http://172.16.2.11:3003';
 const DEFAULT_CHROME_CDP_URL = 'http://172.16.2.2:9223/';
 
+export interface HaidSpeechRecognitionOptions {
+  audioPath: string;
+}
+
+// The full response JSON from whisperx diarization
+export interface HaidSpeechRecognitionResponse {
+  [key: string]: unknown;
+}
+
 export interface HaidEmbeddingOptions {
   texts: string[];
   model?: string;
@@ -156,6 +165,54 @@ export async function callHaidEmbedding(
     model: data.model ?? model,
     dimensions,
   };
+}
+
+const DEFAULT_ASR_MODEL = 'large-v3';
+
+export async function speechRecognitionWithHaid(
+  options: HaidSpeechRecognitionOptions
+): Promise<HaidSpeechRecognitionResponse> {
+  if (!options.audioPath) {
+    throw new Error('HAID speech recognition requires an audio file path');
+  }
+
+  const config = await resolveHaidConfig();
+  const endpoint = `${config.baseUrl}/api/audio-to-text`;
+
+  // Read audio file and convert to base64
+  const fs = await import('fs');
+  const audioBuffer = fs.readFileSync(options.audioPath);
+  const audioBase64 = audioBuffer.toString('base64');
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      audio: audioBase64,
+      asr_model: DEFAULT_ASR_MODEL,
+      diarize: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `HAID speech recognition error (${response.status}): ${errorText || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+
+  log.info({
+    audioPath: options.audioPath,
+    hasSegments: Array.isArray(data.segments),
+    segmentCount: Array.isArray(data.segments) ? data.segments.length : 0,
+  }, 'speech recognition completed');
+
+  return data;
 }
 
 function normalizeMetadata(raw: any): HaidCrawlMetadata | undefined {

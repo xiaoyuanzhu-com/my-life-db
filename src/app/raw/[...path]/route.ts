@@ -93,6 +93,12 @@ export async function GET(
       '.mp3': 'audio/mpeg',
       '.wav': 'audio/wav',
       '.ogg': 'audio/ogg',
+      '.m4a': 'audio/mp4',
+      '.aac': 'audio/aac',
+      '.flac': 'audio/flac',
+      '.wma': 'audio/x-ms-wma',
+      '.aiff': 'audio/aiff',
+      '.opus': 'audio/opus',
     };
     const contentType = contentTypeMap[ext] || 'application/octet-stream';
 

@@ -34,6 +34,7 @@ export interface UserSettings {
   digesters?: {
     'url-crawler'?: boolean;
     'url-crawl-summary'?: boolean;
+    'speech-recognition'?: boolean;
     'tags'?: boolean;
     'slug'?: boolean;
     'search-keyword'?: boolean;
@@ -108,6 +109,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   digesters: {
     'url-crawler': true,
     'url-crawl-summary': true,
+    'speech-recognition': true,
     'tags': true,
     'slug': true,
     'search-keyword': true,
