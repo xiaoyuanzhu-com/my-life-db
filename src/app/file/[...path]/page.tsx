@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
+import { TranscriptViewer } from '@/components/transcript-viewer';
 
 interface FileInfoData {
   file: FileRecord;
@@ -83,7 +84,12 @@ function isTextContent(contentType: string | null): boolean {
   return normalized.startsWith('text/') || TEXT_CONTENT_TYPES.has(normalized);
 }
 
-function DigestCard({ digest }: { digest: Digest }) {
+interface DigestCardProps {
+  digest: Digest;
+  onAudioSeek?: (time: number) => void;
+}
+
+function DigestCard({ digest, onAudioSeek }: DigestCardProps) {
   let parsedContent: any = null;
   if (digest.content) {
     try {
@@ -178,6 +184,13 @@ function DigestCard({ digest }: { digest: Digest }) {
     } else {
       showContentSection = false;
     }
+  } else if (digest.digester === 'speech-recognition' && parsedContent?.segments) {
+    contentBody = (
+      <TranscriptViewer
+        data={parsedContent}
+        onSeek={onAudioSeek}
+      />
+    );
   } else if (parsedContent) {
     contentBody = (
       <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
@@ -235,6 +248,14 @@ export default function FileInfoPage() {
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
   const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleAudioSeek = useCallback((time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      audioRef.current.play();
+    }
+  }, []);
 
   // Reconstruct file path from params
   const filePath = Array.isArray(params.path)
@@ -298,7 +319,7 @@ export default function FileInfoPage() {
       setFileContentType(responseContentType);
 
       if (!isTextContent(responseContentType)) {
-        if (responseContentType?.startsWith('image/')) {
+        if (responseContentType?.startsWith('image/') || responseContentType?.startsWith('audio/')) {
           setFilePreviewUrl(rawUrl);
           return;
         } else {
@@ -464,6 +485,19 @@ export default function FileInfoPage() {
         </div>
       </div>
     );
+  } else if (filePreviewUrl && displayContentType?.startsWith('audio/')) {
+    fileContentBody = (
+      <div className="px-6 py-8">
+        <audio
+          ref={audioRef}
+          controls
+          className="w-full"
+          src={filePreviewUrl}
+        >
+          Your browser does not support the audio element.
+        </audio>
+      </div>
+    );
   } else if (fileContent !== null) {
     fileContentBody = fileContent.length > 0 ? (
       <div className="px-6 py-4 bg-muted/50 max-h-[32rem] overflow-auto">
@@ -586,7 +620,11 @@ export default function FileInfoPage() {
           {digests.length > 0 ? (
             <div className="space-y-3">
               {digests.map((digest) => (
-                <DigestCard key={digest.id} digest={digest} />
+                <DigestCard
+                  key={digest.id}
+                  digest={digest}
+                  onAudioSeek={displayContentType?.startsWith('audio/') ? handleAudioSeek : undefined}
+                />
               ))}
             </div>
           ) : (
