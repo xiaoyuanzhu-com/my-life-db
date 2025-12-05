@@ -14,6 +14,7 @@ export interface VoiceSourceOffset {
   segments: Array<{
     start: number;
     end: number;
+    text?: string;
   }>;
 }
 
