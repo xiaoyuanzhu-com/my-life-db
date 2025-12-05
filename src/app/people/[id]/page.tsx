@@ -23,9 +23,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ArrowLeft, User, Volume2, Camera, Trash2, GitMerge, MoreHorizontal, X, Play, Check, Pencil } from 'lucide-react';
+import { ArrowLeft, User, Volume2, Camera, Trash2, GitMerge, MoreHorizontal, X, Check, Pencil } from 'lucide-react';
 import type { PersonRecord, PersonCluster, VoiceSourceOffset } from '@/types/models';
 import { use } from 'react';
+import { VoiceClipList } from '@/components/voice-clip-list';
+
+interface VoiceSegmentWithText {
+  start: number;
+  end: number;
+  text: string;
+}
 
 interface PersonEmbeddingDisplay {
   id: string;
@@ -36,6 +43,7 @@ interface PersonEmbeddingDisplay {
   quality: number | null;
   manualAssignment: boolean;
   createdAt: string;
+  segmentsWithText?: VoiceSegmentWithText[];
 }
 
 interface PersonDetail extends PersonRecord {
@@ -166,15 +174,6 @@ export default function PersonDetailPage({
     );
   }
 
-  // Group voice embeddings by source file
-  const voiceBySource = person.embeddings.voice.reduce((acc, emb) => {
-    if (!acc[emb.sourcePath]) {
-      acc[emb.sourcePath] = [];
-    }
-    acc[emb.sourcePath].push(emb);
-    return acc;
-  }, {} as Record<string, PersonEmbeddingDisplay[]>);
-
   return (
     <div className="min-h-screen bg-background">
       <div className="px-[20%] py-8">
@@ -291,44 +290,13 @@ export default function PersonDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {Object.entries(voiceBySource).map(([sourcePath, embeddings]) => (
-                  <div key={sourcePath} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium text-sm text-foreground">
-                        {sourcePath.split('/').pop()}
-                      </p>
-                      <span className="text-xs text-muted-foreground">{sourcePath}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {embeddings.map((emb) => (
-                        <div key={emb.id} className="flex items-center gap-1">
-                          {emb.sourceOffset?.segments?.map((seg, idx) => (
-                            <Button
-                              key={idx}
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                            >
-                              <Play className="h-3 w-3 mr-1" />
-                              {formatTime(seg.start)}-{formatTime(seg.end)}
-                            </Button>
-                          ))}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handleUnassignEmbedding(emb.id)}
-                            title="Remove from this person"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <VoiceClipList
+                clips={person.embeddings.voice.map((emb) => ({
+                  id: emb.id,
+                  sourcePath: emb.sourcePath,
+                  segmentsWithText: emb.segmentsWithText || [],
+                }))}
+              />
             </CardContent>
           </Card>
         )}
@@ -381,10 +349,4 @@ export default function PersonDetailPage({
       </div>
     </div>
   );
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

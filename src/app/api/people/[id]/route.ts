@@ -14,7 +14,28 @@ import {
   listClustersForPeople,
   listEmbeddingsForPeople,
 } from '@/lib/db/people';
+import { getDigestByPathAndDigester } from '@/lib/db/digests';
 import { getLogger } from '@/lib/log/logger';
+import type { VoiceSourceOffset } from '@/types/people-embedding';
+
+interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+}
+
+interface SpeechRecognitionContent {
+  text: string;
+  language: string;
+  segments: TranscriptSegment[];
+}
+
+interface VoiceSegmentWithText {
+  start: number;
+  end: number;
+  text: string;
+}
 
 export const runtime = 'nodejs';
 
@@ -49,6 +70,57 @@ export async function GET(
     const voiceEmbeddings = listEmbeddingsForPeople(id, 'voice');
     const faceEmbeddings = listEmbeddingsForPeople(id, 'face');
 
+    // Collect unique source paths to fetch transcripts
+    const sourcePaths = [...new Set(voiceEmbeddings.map((e) => e.sourcePath))];
+
+    // Fetch speech-recognition digests for all source files
+    const transcriptsByPath = new Map<string, TranscriptSegment[]>();
+    for (const sourcePath of sourcePaths) {
+      const digest = getDigestByPathAndDigester(sourcePath, 'speech-recognition');
+      if (digest?.content) {
+        try {
+          const content = JSON.parse(digest.content) as SpeechRecognitionContent;
+          if (content.segments) {
+            transcriptsByPath.set(sourcePath, content.segments);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+
+    // Enrich voice embeddings with individual segments and their transcript text
+    const enrichedVoiceEmbeddings = voiceEmbeddings.map((e) => {
+      const sourceOffset = e.sourceOffset as VoiceSourceOffset | null;
+      const transcriptSegments = transcriptsByPath.get(e.sourcePath) || [];
+
+      // Build segments with matched transcript text
+      const segmentsWithText: VoiceSegmentWithText[] = [];
+      if (sourceOffset?.segments && sourceOffset.segments.length > 0) {
+        for (const embSeg of sourceOffset.segments) {
+          // Find all transcript segments that overlap with this embedding segment
+          const matchedTexts: string[] = [];
+          for (const transSeg of transcriptSegments) {
+            const overlap = Math.min(embSeg.end, transSeg.end) - Math.max(embSeg.start, transSeg.start);
+            if (overlap > 0.1) {
+              matchedTexts.push(transSeg.text);
+            }
+          }
+          segmentsWithText.push({
+            start: embSeg.start,
+            end: embSeg.end,
+            text: matchedTexts.join(' ').trim(),
+          });
+        }
+      }
+
+      return {
+        ...e,
+        vector: undefined, // Don't send vectors to client
+        segmentsWithText,
+      };
+    });
+
     return NextResponse.json({
       ...people,
       clusters: {
@@ -56,11 +128,7 @@ export async function GET(
         face: faceClusters,
       },
       embeddings: {
-        voice: voiceEmbeddings.map((e) => ({
-          ...e,
-          // Convert Float32Array to regular array for JSON serialization
-          vector: undefined, // Don't send vectors to client
-        })),
+        voice: enrichedVoiceEmbeddings,
         face: faceEmbeddings.map((e) => ({
           ...e,
           vector: undefined,
