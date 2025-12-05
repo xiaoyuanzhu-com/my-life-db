@@ -61,8 +61,7 @@ END:VCARD
 |--------|------|-------------|
 | id | TEXT PK | UUID |
 | vcf_path | TEXT | Relative path to vCard (nullable for pending) |
-| slug | TEXT UNIQUE | URL-safe identifier |
-| display_name | TEXT | Name or auto-generated "Unknown #N" for pending |
+| display_name | TEXT | Name (nullable for pending, UI shows "Add a name") |
 | avatar | BLOB | Cached representative photo (thumbnail) |
 | created_at | TEXT | ISO timestamp |
 | updated_at | TEXT | ISO timestamp |
@@ -96,10 +95,14 @@ Stores biometric vectors extracted from media files.
 | type | TEXT | `voice` or `face` |
 | vector | BLOB | Float32 array (512 for voice, 128 for face) |
 | source_path | TEXT | File that produced this embedding |
-| source_offset | TEXT | JSON: `{start, end}` for audio, `{frame, bbox}` for video |
+| source_offset | TEXT | JSON (see format below) |
 | quality | REAL | Duration (voice) or face size (face) for filtering |
 | manual_assignment | BOOLEAN | If TRUE, skip in auto-clustering |
 | created_at | TEXT | ISO timestamp |
+
+**source_offset format**:
+- Voice: `{ "segments": [{ "start": 0.5, "end": 5.2 }, { "start": 10.0, "end": 15.5 }] }` - all segments for this speaker
+- Face: `{ "frame": 120, "bbox": [x, y, w, h] }` - frame number and bounding box
 
 ## Clustering
 
@@ -153,16 +156,23 @@ merged_centroid = (centroid_a * n_a + centroid_b * n_b) / (n_a + n_b)
 
 **Remove embedding from cluster**:
 - Unlink embedding from cluster (set `cluster_id = NULL`)
-- If cluster becomes empty, delete it
-- Otherwise, recalculate centroid excluding removed embedding:
+- Recalculate centroid excluding removed embedding:
 ```
 new_centroid = (old_centroid * n - removed_embedding) / (n - 1)
 ```
+- If cluster becomes empty → delete cluster
+- If people has no clusters left:
+  - Pending (no vcf_path) → delete people record
+  - Identified (has vcf_path) → keep people record (just no voice/face data)
 
 **Periodic re-clustering** (optional background task):
 - Run full AHC on unassigned embeddings where `manual_assignment = FALSE`
 - Helps correct drift from incremental centroid updates
 - Embeddings with `manual_assignment = TRUE` are never auto-clustered
+
+**Source file deletion**:
+- When a source file is deleted, delete all embeddings referencing that file
+- Cascade: empty clusters → deleted, empty pending people → deleted
 
 ## Digester Integration
 
@@ -187,10 +197,10 @@ sequenceDiagram
 
 ### New Digesters
 
-| Digester | Input | Output |
-|----------|-------|--------|
-| `speaker-embedding` | Audio with ASR result | Embeddings for each speaker |
-| `face-embedding` | Photo/video | Embeddings for detected faces |
+| Digester | Depends on | Input | Output |
+|----------|------------|-------|--------|
+| `speaker-embedding` | `speech-recognition` | ASR result with speakers | Embeddings for each speaker |
+| `face-embedding` | - | Photo/video | Embeddings for detected faces |
 
 ### Embedding Extraction
 
@@ -263,14 +273,14 @@ When user wants to change the representative photo/voice:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/people` | GET | List all people (uses cached avatar) |
-| `/api/people` | POST | Create person from vCard data |
-| `/api/people/[slug]` | GET | Person details with linked clusters |
-| `/api/people/[slug]` | PUT | Update vCard fields |
-| `/api/people/[slug]` | DELETE | Remove person (orphans clusters) |
-| `/api/people/[slug]/representative` | PUT | Set representative photo/voice |
-| `/api/people/[slug]/merge` | POST | Merge another person into this one |
-| `/api/people/embeddings/[id]/assign` | POST | Manually assign embedding to person |
-| `/api/people/embeddings/[id]/unassign` | POST | Unassign embedding from person |
+| `/api/people` | POST | Create identified people with name |
+| `/api/people/[id]` | GET | People details with linked clusters/embeddings |
+| `/api/people/[id]` | PUT | Update name (creates vCard if pending) |
+| `/api/people/[id]` | DELETE | Delete people and orphan embeddings |
+| `/api/people/[id]/representative` | PUT | Set representative photo/voice |
+| `/api/people/[id]/merge` | POST | Merge another people into this one |
+| `/api/people/embeddings/[id]/assign` | POST | Manually assign embedding to people |
+| `/api/people/embeddings/[id]/unassign` | POST | Unassign embedding from people |
 
 ## UX
 
@@ -291,23 +301,23 @@ Single unified page showing all people (both identified and pending):
 │ Pending (12)                                            │
 │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐           │
 │ │ [face] │ │ [🔊]   │ │ [face] │ │ [🔊]   │           │
-│ │ Unk #1 │ │ Unk #2 │ │ Unk #3 │ │ Unk #4 │           │
+│ │Add name│ │Add name│ │Add name│ │Add name│           │
 │ └────────┘ └────────┘ └────────┘ └────────┘           │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - Identified people shown first
-- Pending people shown with auto-generated names ("Unknown #N")
+- Pending people shown with "Add a name" placeholder
 - Avatar shows face crop or speaker icon
-- Click any person → detail page
+- Click any people → detail page
 
-### Person Detail (`/people/[slug]`)
+### People Detail (`/people/[id]`)
 
 Same page for both identified and pending:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Unknown #1                              [Identify]      │
+│ [Add a name]                                            │
 │ ─────────────────────────────────────────────────────── │
 │                                                         │
 │ Voice clips:                                            │
@@ -331,8 +341,8 @@ Same page for both identified and pending:
 - Voice: show clips grouped by source file, colored by embedding
 - Face: show face crops
 - Each clip/face can be unassigned individually
-- [Identify] button: enter name → creates vCard, status = identified
-- [Merge with...]: select another person, move all clusters to target
+- Name field: inline editable, saving creates vCard if pending
+- [Merge with...]: select another people, move all clusters to target
 
 ### Review UI Details
 
