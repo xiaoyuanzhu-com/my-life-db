@@ -31,6 +31,7 @@ import migration028 from './028_add_composite_indexes';
 import migration029 from './029_add_text_preview_to_files';
 import migration030 from './030_backfill_text_preview';
 import migration031 from './031_create_pins_table';
+import migration032 from './032_create_people_registry';
 import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -75,6 +76,7 @@ export const migrations: Migration[] = [
   migration029,
   migration030,
   migration031,
+  migration032,
 ];
 
 /**

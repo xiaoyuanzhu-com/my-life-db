@@ -38,3 +38,21 @@ export { rowToMeiliDocument } from './meili-document';
 // Database Models - Qdrant Documents
 export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from './qdrant-document';
 export { rowToQdrantDocument } from './qdrant-document';
+
+// Database Models - People Registry
+export type { PersonRecord, PersonRecordRow, PersonInput, PersonWithCounts } from './person';
+export { rowToPersonRecord } from './person';
+
+export type { PersonCluster, PersonClusterRow, PersonClusterInput, ClusterType } from './person-cluster';
+export { rowToPersonCluster, float32ArrayToBuffer } from './person-cluster';
+
+export type {
+  PersonEmbedding,
+  PersonEmbeddingRow,
+  PersonEmbeddingInput,
+  PersonEmbeddingWithSource,
+  VoiceSourceOffset,
+  FaceSourceOffset,
+  SourceOffset,
+} from './person-embedding';
+export { rowToPersonEmbedding, float32ArrayToBuffer as embeddingFloat32ArrayToBuffer } from './person-embedding';
