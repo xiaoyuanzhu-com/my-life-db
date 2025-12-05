@@ -56,6 +56,12 @@ NOTE:Met at 2024 conference
 END:VCARD
 ```
 
+**Media size limits** (stored as base64 in vCard):
+- PHOTO: thumbnail only, max 100KB JPEG
+- X-VOICE-CLIP: 5-10 second sample, max 200KB WAV
+
+Full media remains in source files; vCard stores representative samples only.
+
 **App data** (`people` table):
 | Column | Type | Description |
 |--------|------|-------------|
@@ -69,6 +75,8 @@ END:VCARD
 **Computed state**: `vcf_path IS NULL` → pending, otherwise identified.
 
 vCard stores authoritative data for identified people. SQLite caches display_name + avatar for fast list rendering.
+
+**vCard ownership**: vCards are app-managed files. Do not edit .vcf files outside the app - changes will not sync to SQLite cache.
 
 ### Cluster (SQLite)
 
@@ -142,6 +150,13 @@ new_centroid = (old_centroid * n + new_embedding) / (n + 1)
 | Voice | > 0.85 cosine |
 | Face | > 0.80 cosine |
 
+**Assumptions**:
+- All embeddings are L2-normalized before storage
+- Voice: WhisperX speaker encoder (512-dim)
+- Face: FaceNet/similar (128-dim)
+
+Thresholds are tuned for these specific models. If embedding model changes, all embeddings should be re-extracted (thresholds may need adjustment).
+
 Based on [FaceNet](https://arxiv.org/abs/1503.03832) research showing 128-dim embeddings achieve excellent clustering with simple thresholding. [Cosine similarity](https://medium.com/@sapkotabinit2002/speaker-identification-and-clustering-using-pyannote-dbscan-and-cosine-similarity-dfa08b5b2a24) is standard for normalized speaker embeddings.
 
 ### Cluster Operations
@@ -155,15 +170,16 @@ merged_centroid = (centroid_a * n_a + centroid_b * n_b) / (n_a + n_b)
 - Recalculate centroid
 
 **Remove embedding from cluster**:
-- Unlink embedding from cluster (set `cluster_id = NULL`)
-- Recalculate centroid excluding removed embedding:
-```
-new_centroid = (old_centroid * n - removed_embedding) / (n - 1)
-```
-- If cluster becomes empty → delete cluster
-- If people has no clusters left:
-  - Pending (no vcf_path) → delete people record
-  - Identified (has vcf_path) → keep people record (just no voice/face data)
+1. Unlink embedding from cluster (set `cluster_id = NULL`, set `manual_assignment = TRUE`)
+2. Check if cluster is now empty (n=1 before removal):
+   - If empty → delete cluster, skip to step 4
+   - If not empty → recalculate centroid: `new_centroid = (old_centroid * n - removed_embedding) / (n - 1)`
+3. Update cluster's `sample_count`
+4. Check if people has no clusters left:
+   - Pending (no vcf_path) → delete people record
+   - Identified (has vcf_path) → keep people record (just no voice/face data)
+
+All steps should run in a transaction.
 
 **Periodic re-clustering** (optional background task):
 - Run full AHC on unassigned embeddings where `manual_assignment = FALSE`
@@ -276,9 +292,9 @@ When user wants to change the representative photo/voice:
 | `/api/people` | POST | Create identified people with name |
 | `/api/people/[id]` | GET | People details with linked clusters/embeddings |
 | `/api/people/[id]` | PUT | Update name (creates vCard if pending) |
-| `/api/people/[id]` | DELETE | Delete people and orphan embeddings |
+| `/api/people/[id]` | DELETE | Delete people, clusters, and .vcf file; orphan embeddings |
 | `/api/people/[id]/representative` | PUT | Set representative photo/voice |
-| `/api/people/[id]/merge` | POST | Merge another people into this one |
+| `/api/people/[id]/merge` | POST | Merge source into target: move clusters, delete source .vcf |
 | `/api/people/embeddings/[id]/assign` | POST | Manually assign embedding to people |
 | `/api/people/embeddings/[id]/unassign` | POST | Unassign embedding from people |
 
@@ -400,6 +416,23 @@ MY_DATA_DIR/
    - Integrate face embedding API
    - Photo/video processing
    - Unified clustering across voice+face
+
+## Implementation Notes
+
+### Recommended Indexes
+
+```sql
+CREATE INDEX idx_clusters_person_id ON person_clusters(person_id);
+CREATE INDEX idx_clusters_type ON person_clusters(type);
+CREATE INDEX idx_embeddings_cluster_id ON person_embeddings(cluster_id);
+CREATE INDEX idx_embeddings_source_path ON person_embeddings(source_path);
+CREATE INDEX idx_embeddings_type ON person_embeddings(type);
+```
+
+### Constraints
+
+- `person_clusters.person_id` → `people.id` (FK, CASCADE DELETE)
+- `person_embeddings.cluster_id` → `person_clusters.id` (FK, SET NULL on delete)
 
 ## References
 
