@@ -146,7 +146,7 @@ export class SpeakerEmbeddingDigester implements Digester {
         continue;
       }
 
-      // Build source offset with all segments for this speaker
+      // Build source offset with all segments for this speaker (including text)
       const speakerSegments = speechResult.segments.filter(
         (seg) => seg.speaker === speaker.speaker_id
       );
@@ -154,6 +154,7 @@ export class SpeakerEmbeddingDigester implements Digester {
         segments: speakerSegments.map((seg) => ({
           start: seg.start,
           end: seg.end,
+          text: seg.text,
         })),
       };
 
