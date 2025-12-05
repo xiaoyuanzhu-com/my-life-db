@@ -26,6 +26,13 @@ export interface HaidSpeechRecognitionSegment {
   words: HaidSpeechRecognitionWord[];
 }
 
+export interface HaidSpeechRecognitionSpeaker {
+  speaker_id: string;
+  embedding: number[];  // 512 floats
+  total_duration: number;
+  segment_count: number;
+}
+
 export interface HaidSpeechRecognitionResponse {
   request_id: string;
   processing_time_ms: number;
@@ -33,6 +40,7 @@ export interface HaidSpeechRecognitionResponse {
   language: string;
   model: string;
   segments: HaidSpeechRecognitionSegment[];
+  speakers?: HaidSpeechRecognitionSpeaker[];
 }
 
 export interface HaidEmbeddingOptions {
