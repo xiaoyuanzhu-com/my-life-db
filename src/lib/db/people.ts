@@ -41,7 +41,7 @@ export type {
 const log = getLogger({ module: 'DBPeople' });
 
 // Similarity thresholds from design doc
-const VOICE_SIMILARITY_THRESHOLD = 0.85;
+const VOICE_SIMILARITY_THRESHOLD = 0.75;
 const FACE_SIMILARITY_THRESHOLD = 0.80;
 
 // =============================================================================
