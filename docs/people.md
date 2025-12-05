@@ -22,8 +22,8 @@ graph TB
 
     subgraph AppData["app/my-life-db/database.sqlite"]
         People["people table"]
-        Embeddings["person_embeddings table"]
-        Clusters["person_clusters table"]
+        Embeddings["people_embeddings table"]
+        Clusters["people_clusters table"]
     end
 
     subgraph Sources["Content Sources"]
@@ -85,7 +85,7 @@ Persistent grouping of embeddings. Each cluster always belongs to a people entry
 | Column | Type | Description |
 |--------|------|-------------|
 | id | TEXT PK | UUID |
-| person_id | TEXT FK | Linked people entry (always set) |
+| people_id | TEXT FK | Linked people entry (always set) |
 | type | TEXT | `voice` or `face` |
 | centroid | BLOB | Average embedding vector |
 | sample_count | INT | Number of embeddings in cluster |
@@ -396,7 +396,7 @@ MY_DATA_DIR/
 ## Migration Path
 
 1. **Phase 1**: Schema + speaker digester
-   - Create tables: people, person_clusters, person_embeddings
+   - Create tables: people, people_clusters, people_embeddings
    - Implement speaker-embedding digester with auto-clustering
    - Auto-create pending people entry for new clusters
    - API for CRUD on people
@@ -422,17 +422,17 @@ MY_DATA_DIR/
 ### Recommended Indexes
 
 ```sql
-CREATE INDEX idx_clusters_person_id ON person_clusters(person_id);
-CREATE INDEX idx_clusters_type ON person_clusters(type);
-CREATE INDEX idx_embeddings_cluster_id ON person_embeddings(cluster_id);
-CREATE INDEX idx_embeddings_source_path ON person_embeddings(source_path);
-CREATE INDEX idx_embeddings_type ON person_embeddings(type);
+CREATE INDEX idx_people_clusters_people_id ON people_clusters(people_id);
+CREATE INDEX idx_people_clusters_type ON people_clusters(type);
+CREATE INDEX idx_people_embeddings_cluster_id ON people_embeddings(cluster_id);
+CREATE INDEX idx_people_embeddings_source_path ON people_embeddings(source_path);
+CREATE INDEX idx_people_embeddings_type ON people_embeddings(type);
 ```
 
 ### Constraints
 
-- `person_clusters.person_id` → `people.id` (FK, CASCADE DELETE)
-- `person_embeddings.cluster_id` → `person_clusters.id` (FK, SET NULL on delete)
+- `people_clusters.people_id` → `people.id` (FK, CASCADE DELETE)
+- `people_embeddings.cluster_id` → `people_clusters.id` (FK, SET NULL on delete)
 
 ## References
 

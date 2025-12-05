@@ -21,7 +21,7 @@ export interface PeopleClusterRow {
   id: string;
 
   /** People entry this cluster belongs to (FK to people.id) */
-  person_id: string;
+  people_id: string;
 
   /** Type of cluster: 'voice' or 'face' */
   type: ClusterType;
@@ -86,7 +86,7 @@ export function float32ArrayToBuffer(arr: Float32Array): Buffer {
 export function rowToPeopleCluster(row: PeopleClusterRow): PeopleCluster {
   return {
     id: row.id,
-    peopleId: row.person_id,
+    peopleId: row.people_id,
     type: row.type,
     centroid: bufferToFloat32Array(row.centroid),
     sampleCount: row.sample_count,

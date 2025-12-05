@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ArrowLeft, User, Volume2, Camera, Trash2, GitMerge, MoreHorizontal, X, Check, Pencil } from 'lucide-react';
-import type { PersonRecord, PersonCluster, VoiceSourceOffset } from '@/types/models';
+import type { PeopleRecord, PeopleCluster, VoiceSourceOffset } from '@/types/models';
 import { use } from 'react';
 import { VoiceClipList } from '@/components/voice-clip-list';
 
@@ -34,7 +34,7 @@ interface VoiceSegmentWithText {
   text: string;
 }
 
-interface PersonEmbeddingDisplay {
+interface PeopleEmbeddingDisplay {
   id: string;
   clusterId: string | null;
   type: 'voice' | 'face';
@@ -46,53 +46,53 @@ interface PersonEmbeddingDisplay {
   segmentsWithText?: VoiceSegmentWithText[];
 }
 
-interface PersonDetail extends PersonRecord {
+interface PeopleDetail extends PeopleRecord {
   clusters: {
-    voice: PersonCluster[];
-    face: PersonCluster[];
+    voice: PeopleCluster[];
+    face: PeopleCluster[];
   };
   embeddings: {
-    voice: PersonEmbeddingDisplay[];
-    face: PersonEmbeddingDisplay[];
+    voice: PeopleEmbeddingDisplay[];
+    face: PeopleEmbeddingDisplay[];
   };
 }
 
-export default function PersonDetailPage({
+export default function PeopleDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const [person, setPerson] = useState<PersonDetail | null>(null);
+  const [people, setPeople] = useState<PeopleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const loadPerson = useCallback(async () => {
+  const loadPeople = useCallback(async () => {
     try {
       const response = await fetch(`/api/people/${id}`);
       if (response.ok) {
         const data = await response.json();
-        setPerson(data);
+        setPeople(data);
         setEditName(data.displayName || '');
       } else if (response.status === 404) {
-        setPerson(null);
+        setPeople(null);
       }
     } catch (error) {
-      console.error('Failed to load person:', error);
+      console.error('Failed to load people:', error);
     } finally {
       setIsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
-    loadPerson();
-  }, [loadPerson]);
+    loadPeople();
+  }, [loadPeople]);
 
   const handleSaveName = async () => {
-    if (!person || !editName.trim()) return;
+    if (!people || !editName.trim()) return;
 
     setIsSaving(true);
     try {
@@ -104,7 +104,7 @@ export default function PersonDetailPage({
 
       if (response.ok) {
         const updated = await response.json();
-        setPerson((prev) => (prev ? { ...prev, ...updated } : null));
+        setPeople((prev) => (prev ? { ...prev, ...updated } : null));
         setIsEditing(false);
       }
     } catch (error) {
@@ -124,7 +124,7 @@ export default function PersonDetailPage({
         router.push('/people');
       }
     } catch (error) {
-      console.error('Failed to delete person:', error);
+      console.error('Failed to delete people:', error);
     }
   };
 
@@ -135,8 +135,8 @@ export default function PersonDetailPage({
       });
 
       if (response.ok) {
-        // Reload person data
-        loadPerson();
+        // Reload people data
+        loadPeople();
       }
     } catch (error) {
       console.error('Failed to unassign embedding:', error);
@@ -153,14 +153,14 @@ export default function PersonDetailPage({
     );
   }
 
-  if (!person) {
+  if (!people) {
     return (
       <div className="min-h-screen bg-background">
         <div className="px-[20%] py-8">
           <Card>
             <CardContent className="text-center py-12">
               <User className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">Person not found</p>
+              <p className="text-muted-foreground mb-4">People not found</p>
               <Link href="/people">
                 <Button variant="outline">
                   <ArrowLeft className="mr-2 h-4 w-4" />
@@ -187,15 +187,15 @@ export default function PersonDetailPage({
         <div className="flex items-start gap-6 mb-8">
           {/* Avatar */}
           <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-            {person.avatar ? (
+            {people.avatar ? (
               <img
-                src={`data:image/jpeg;base64,${person.avatar}`}
-                alt={person.displayName || 'Person'}
+                src={`data:image/jpeg;base64,${people.avatar}`}
+                alt={people.displayName || 'People'}
                 className="w-full h-full object-cover"
               />
-            ) : person.clusters.face.length > 0 ? (
+            ) : people.clusters.face.length > 0 ? (
               <Camera className="h-12 w-12 text-muted-foreground" />
-            ) : person.clusters.voice.length > 0 ? (
+            ) : people.clusters.voice.length > 0 ? (
               <Volume2 className="h-12 w-12 text-muted-foreground" />
             ) : (
               <User className="h-12 w-12 text-muted-foreground" />
@@ -222,8 +222,8 @@ export default function PersonDetailPage({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <h1 className={`text-3xl font-bold ${person.isPending ? 'text-muted-foreground italic' : 'text-foreground'}`}>
-                  {person.displayName || 'Add a name'}
+                <h1 className={`text-3xl font-bold ${people.isPending ? 'text-muted-foreground italic' : 'text-foreground'}`}>
+                  {people.displayName || 'Add a name'}
                 </h1>
                 <Button variant="ghost" size="icon" onClick={() => setIsEditing(true)}>
                   <Pencil className="h-4 w-4" />
@@ -232,9 +232,9 @@ export default function PersonDetailPage({
             )}
 
             <p className="text-muted-foreground mt-2">
-              {person.clusters.voice.length} voice cluster{person.clusters.voice.length !== 1 ? 's' : ''}
-              {person.clusters.face.length > 0 && (
-                <> &middot; {person.clusters.face.length} face cluster{person.clusters.face.length !== 1 ? 's' : ''}</>
+              {people.clusters.voice.length} voice cluster{people.clusters.voice.length !== 1 ? 's' : ''}
+              {people.clusters.face.length > 0 && (
+                <> &middot; {people.clusters.face.length} face cluster{people.clusters.face.length !== 1 ? 's' : ''}</>
               )}
             </p>
 
@@ -264,9 +264,9 @@ export default function PersonDetailPage({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete person?</AlertDialogTitle>
+                    <AlertDialogTitle>Delete this people entry?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will delete {person.displayName || 'this person'} and all their clusters.
+                      This will delete {people.displayName || 'this entry'} and all their clusters.
                       The underlying embeddings will be kept but unassigned.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -281,17 +281,17 @@ export default function PersonDetailPage({
         </div>
 
         {/* Voice Clips Section */}
-        {person.embeddings.voice.length > 0 && (
+        {people.embeddings.voice.length > 0 && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Volume2 className="h-5 w-5" />
-                Voice Clips ({person.embeddings.voice.length})
+                Voice Clips ({people.embeddings.voice.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
               <VoiceClipList
-                clips={person.embeddings.voice.map((emb) => ({
+                clips={people.embeddings.voice.map((emb) => ({
                   id: emb.id,
                   sourcePath: emb.sourcePath,
                   segmentsWithText: emb.segmentsWithText || [],
@@ -302,17 +302,17 @@ export default function PersonDetailPage({
         )}
 
         {/* Face Crops Section */}
-        {person.embeddings.face.length > 0 && (
+        {people.embeddings.face.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Camera className="h-5 w-5" />
-                Faces ({person.embeddings.face.length})
+                Faces ({people.embeddings.face.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                {person.embeddings.face.map((emb) => (
+                {people.embeddings.face.map((emb) => (
                   <div key={emb.id} className="relative group">
                     <div className="aspect-square rounded-lg bg-muted flex items-center justify-center">
                       <User className="h-8 w-8 text-muted-foreground" />
@@ -322,7 +322,7 @@ export default function PersonDetailPage({
                       size="icon"
                       className="absolute top-0 right-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => handleUnassignEmbedding(emb.id)}
-                      title="Remove from this person"
+                      title="Remove from this people entry"
                     >
                       <X className="h-3 w-3" />
                     </Button>
@@ -337,11 +337,11 @@ export default function PersonDetailPage({
         )}
 
         {/* Empty state */}
-        {person.embeddings.voice.length === 0 && person.embeddings.face.length === 0 && (
+        {people.embeddings.voice.length === 0 && people.embeddings.face.length === 0 && (
           <Card>
             <CardContent className="text-center py-12">
               <p className="text-muted-foreground">
-                No voice clips or faces linked to this person yet.
+                No voice clips or faces linked to this people entry yet.
               </p>
             </CardContent>
           </Card>
