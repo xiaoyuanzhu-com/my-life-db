@@ -1,18 +1,18 @@
 /**
- * People API - Individual Person Operations
+ * People API - Individual People Operations
  *
- * GET    /api/people/[id] - Get person with clusters and embeddings
- * PUT    /api/people/[id] - Update person name (creates vCard if pending)
- * DELETE /api/people/[id] - Delete person, clusters, and vCard
+ * GET    /api/people/[id] - Get people entry with clusters and embeddings
+ * PUT    /api/people/[id] - Update people name (creates vCard if pending)
+ * DELETE /api/people/[id] - Delete people entry, clusters, and vCard
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getPersonById,
-  updatePerson,
-  deletePerson,
-  listClustersForPerson,
-  listEmbeddingsForPerson,
+  getPeopleById,
+  updatePeople,
+  deletePeople,
+  listClustersForPeople,
+  listEmbeddingsForPeople,
 } from '@/lib/db/people';
 import { getLogger } from '@/lib/log/logger';
 
@@ -26,7 +26,7 @@ interface RouteContext {
 
 /**
  * GET /api/people/[id]
- * Get person details with linked clusters and embeddings
+ * Get people details with linked clusters and embeddings
  */
 export async function GET(
   request: NextRequest,
@@ -34,23 +34,23 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const person = getPersonById(id);
+    const people = getPeopleById(id);
 
-    if (!person) {
+    if (!people) {
       return NextResponse.json(
-        { error: 'Person not found' },
+        { error: 'People not found' },
         { status: 404 }
       );
     }
 
     // Get clusters and embeddings
-    const voiceClusters = listClustersForPerson(id, 'voice');
-    const faceClusters = listClustersForPerson(id, 'face');
-    const voiceEmbeddings = listEmbeddingsForPerson(id, 'voice');
-    const faceEmbeddings = listEmbeddingsForPerson(id, 'face');
+    const voiceClusters = listClustersForPeople(id, 'voice');
+    const faceClusters = listClustersForPeople(id, 'face');
+    const voiceEmbeddings = listEmbeddingsForPeople(id, 'voice');
+    const faceEmbeddings = listEmbeddingsForPeople(id, 'face');
 
     return NextResponse.json({
-      ...person,
+      ...people,
       clusters: {
         voice: voiceClusters,
         face: faceClusters,
@@ -68,9 +68,9 @@ export async function GET(
       },
     });
   } catch (error) {
-    log.error({ err: error }, 'get person failed');
+    log.error({ err: error }, 'get people failed');
     return NextResponse.json(
-      { error: 'Failed to get person' },
+      { error: 'Failed to get people' },
       { status: 500 }
     );
   }
@@ -78,7 +78,7 @@ export async function GET(
 
 /**
  * PUT /api/people/[id]
- * Update person name
+ * Update people name
  *
  * For pending people (no vcfPath), this sets the display name.
  * In a full implementation, this would also create the vCard file.
@@ -92,11 +92,11 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    const person = getPersonById(id);
+    const people = getPeopleById(id);
 
-    if (!person) {
+    if (!people) {
       return NextResponse.json(
-        { error: 'Person not found' },
+        { error: 'People not found' },
         { status: 404 }
       );
     }
@@ -112,20 +112,20 @@ export async function PUT(
     }
 
     // Update display name
-    const updatedPerson = updatePerson(id, {
+    const updatedPeople = updatePeople(id, {
       displayName: displayName.trim(),
     });
 
     // TODO: In Phase 2, create/update vCard file here
     // For now, we just update the database
 
-    log.info({ personId: id, displayName }, 'updated person');
+    log.info({ peopleId: id, displayName }, 'updated people');
 
-    return NextResponse.json(updatedPerson);
+    return NextResponse.json(updatedPeople);
   } catch (error) {
-    log.error({ err: error }, 'update person failed');
+    log.error({ err: error }, 'update people failed');
     return NextResponse.json(
-      { error: 'Failed to update person' },
+      { error: 'Failed to update people' },
       { status: 500 }
     );
   }
@@ -133,10 +133,10 @@ export async function PUT(
 
 /**
  * DELETE /api/people/[id]
- * Delete person, their clusters, and orphan their embeddings
+ * Delete people entry, their clusters, and orphan their embeddings
  *
  * Note: Embeddings are not deleted - they become orphaned (cluster_id = NULL)
- * and can be reassigned to another person.
+ * and can be reassigned to another people entry.
  */
 export async function DELETE(
   request: NextRequest,
@@ -144,30 +144,30 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const person = getPersonById(id);
+    const people = getPeopleById(id);
 
-    if (!person) {
+    if (!people) {
       return NextResponse.json(
-        { error: 'Person not found' },
+        { error: 'People not found' },
         { status: 404 }
       );
     }
 
     // TODO: In Phase 2, delete vCard file if exists
-    // if (person.vcfPath) {
-    //   await deleteVCardFile(person.vcfPath);
+    // if (people.vcfPath) {
+    //   await deleteVCardFile(people.vcfPath);
     // }
 
-    // Delete person (cascades to clusters, embeddings become orphaned)
-    deletePerson(id);
+    // Delete people (cascades to clusters, embeddings become orphaned)
+    deletePeople(id);
 
-    log.info({ personId: id, displayName: person.displayName }, 'deleted person');
+    log.info({ peopleId: id, displayName: people.displayName }, 'deleted people');
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    log.error({ err: error }, 'delete person failed');
+    log.error({ err: error }, 'delete people failed');
     return NextResponse.json(
-      { error: 'Failed to delete person' },
+      { error: 'Failed to delete people' },
       { status: 500 }
     );
   }

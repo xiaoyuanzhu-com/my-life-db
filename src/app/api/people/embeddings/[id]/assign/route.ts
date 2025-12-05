@@ -1,11 +1,11 @@
 /**
  * Embedding API - Assign Operations
  *
- * POST /api/people/embeddings/[id]/assign - Manually assign embedding to a person
+ * POST /api/people/embeddings/[id]/assign - Manually assign embedding to a people entry
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmbeddingById, getPersonById, assignEmbeddingToPerson } from '@/lib/db/people';
+import { getEmbeddingById, getPeopleById, assignEmbeddingToPeople } from '@/lib/db/people';
 import { getLogger } from '@/lib/log/logger';
 
 export const runtime = 'nodejs';
@@ -18,13 +18,13 @@ interface RouteContext {
 
 /**
  * POST /api/people/embeddings/[id]/assign
- * Manually assign an embedding to a person
+ * Manually assign an embedding to a people entry
  *
  * This is a manual override that sets manualAssignment = true,
  * preventing the embedding from being auto-clustered in the future.
  *
  * Request body:
- * - personId: string (ID of person to assign embedding to)
+ * - peopleId: string (ID of people to assign embedding to)
  */
 export async function POST(
   request: NextRequest,
@@ -33,11 +33,11 @@ export async function POST(
   try {
     const { id: embeddingId } = await context.params;
     const body = await request.json();
-    const { personId } = body;
+    const { peopleId } = body;
 
-    if (!personId || typeof personId !== 'string') {
+    if (!peopleId || typeof peopleId !== 'string') {
       return NextResponse.json(
-        { error: 'personId is required' },
+        { error: 'peopleId is required' },
         { status: 400 }
       );
     }
@@ -51,26 +51,26 @@ export async function POST(
       );
     }
 
-    // Validate person exists
-    const person = getPersonById(personId);
-    if (!person) {
+    // Validate people exists
+    const people = getPeopleById(peopleId);
+    if (!people) {
       return NextResponse.json(
-        { error: 'Person not found' },
+        { error: 'People not found' },
         { status: 404 }
       );
     }
 
-    // Assign embedding to person
-    const result = assignEmbeddingToPerson(embeddingId, personId);
+    // Assign embedding to people
+    const result = assignEmbeddingToPeople(embeddingId, peopleId);
 
     log.info(
       {
         embeddingId,
-        personId,
+        peopleId,
         clusterId: result.cluster.id,
-        personName: person.displayName,
+        peopleName: people.displayName,
       },
-      'assigned embedding to person'
+      'assigned embedding to people'
     );
 
     return NextResponse.json({

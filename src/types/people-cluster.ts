@@ -1,8 +1,8 @@
 /**
- * Person Cluster - person_clusters table models
+ * People Cluster - people_clusters table models
  *
- * Persistent grouping of embeddings. Each cluster always belongs to a person
- * (either pending or identified). A person can have multiple clusters of
+ * Persistent grouping of embeddings. Each cluster always belongs to a people entry
+ * (either pending or identified). A people entry can have multiple clusters of
  * the same type to capture variation.
  */
 
@@ -12,15 +12,15 @@
 export type ClusterType = 'voice' | 'face';
 
 /**
- * Person cluster row (snake_case - matches SQLite schema exactly)
+ * People cluster row (snake_case - matches SQLite schema exactly)
  *
  * Primary key: id (UUID)
  */
-export interface PersonClusterRow {
+export interface PeopleClusterRow {
   /** UUID for primary key */
   id: string;
 
-  /** Person this cluster belongs to (FK to people.id) */
+  /** People entry this cluster belongs to (FK to people.id) */
   person_id: string;
 
   /** Type of cluster: 'voice' or 'face' */
@@ -40,14 +40,14 @@ export interface PersonClusterRow {
 }
 
 /**
- * Person cluster (camelCase - for TypeScript usage)
+ * People cluster (camelCase - for TypeScript usage)
  */
-export interface PersonCluster {
+export interface PeopleCluster {
   /** UUID for primary key */
   id: string;
 
-  /** Person this cluster belongs to */
-  personId: string;
+  /** People entry this cluster belongs to */
+  peopleId: string;
 
   /** Type of cluster: 'voice' or 'face' */
   type: ClusterType;
@@ -81,12 +81,12 @@ export function float32ArrayToBuffer(arr: Float32Array): Buffer {
 }
 
 /**
- * Conversion helper: PersonClusterRow → PersonCluster
+ * Conversion helper: PeopleClusterRow → PeopleCluster
  */
-export function rowToPersonCluster(row: PersonClusterRow): PersonCluster {
+export function rowToPeopleCluster(row: PeopleClusterRow): PeopleCluster {
   return {
     id: row.id,
-    personId: row.person_id,
+    peopleId: row.person_id,
     type: row.type,
     centroid: bufferToFloat32Array(row.centroid),
     sampleCount: row.sample_count,
@@ -98,9 +98,9 @@ export function rowToPersonCluster(row: PersonClusterRow): PersonCluster {
 /**
  * Input for creating a new cluster
  */
-export interface PersonClusterInput {
+export interface PeopleClusterInput {
   id?: string;
-  personId: string;
+  peopleId: string;
   type: ClusterType;
   centroid?: Float32Array | null;
   sampleCount?: number;

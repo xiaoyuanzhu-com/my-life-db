@@ -1,11 +1,11 @@
 /**
  * People API - Merge Operations
  *
- * POST /api/people/[id]/merge - Merge source person into this (target) person
+ * POST /api/people/[id]/merge - Merge source people into this (target) people
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPersonById, mergePeople } from '@/lib/db/people';
+import { getPeopleById, mergePeople } from '@/lib/db/people';
 import { getLogger } from '@/lib/log/logger';
 
 export const runtime = 'nodejs';
@@ -18,13 +18,13 @@ interface RouteContext {
 
 /**
  * POST /api/people/[id]/merge
- * Merge another person (source) into this person (target)
+ * Merge another people (source) into this people (target)
  *
- * All clusters from the source person are moved to the target.
- * The source person is deleted after merge.
+ * All clusters from the source people are moved to the target.
+ * The source people is deleted after merge.
  *
  * Request body:
- * - sourceId: string (ID of person to merge into this one)
+ * - sourceId: string (ID of people to merge into this one)
  */
 export async function POST(
   request: NextRequest,
@@ -43,32 +43,32 @@ export async function POST(
     }
 
     // Validate both people exist
-    const target = getPersonById(targetId);
-    const source = getPersonById(sourceId);
+    const target = getPeopleById(targetId);
+    const source = getPeopleById(sourceId);
 
     if (!target) {
       return NextResponse.json(
-        { error: 'Target person not found' },
+        { error: 'Target people not found' },
         { status: 404 }
       );
     }
 
     if (!source) {
       return NextResponse.json(
-        { error: 'Source person not found' },
+        { error: 'Source people not found' },
         { status: 404 }
       );
     }
 
     if (targetId === sourceId) {
       return NextResponse.json(
-        { error: 'Cannot merge person with itself' },
+        { error: 'Cannot merge people with itself' },
         { status: 400 }
       );
     }
 
     // Perform merge
-    const mergedPerson = mergePeople(targetId, sourceId);
+    const mergedPeople = mergePeople(targetId, sourceId);
 
     log.info(
       {
@@ -80,7 +80,7 @@ export async function POST(
       'merged people'
     );
 
-    return NextResponse.json(mergedPerson);
+    return NextResponse.json(mergedPeople);
   } catch (error) {
     log.error({ err: error }, 'merge people failed');
     return NextResponse.json(

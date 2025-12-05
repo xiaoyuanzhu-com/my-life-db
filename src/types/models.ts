@@ -40,19 +40,19 @@ export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } f
 export { rowToQdrantDocument } from './qdrant-document';
 
 // Database Models - People Registry
-export type { PersonRecord, PersonRecordRow, PersonInput, PersonWithCounts } from './person';
-export { rowToPersonRecord } from './person';
+export type { PeopleRecord, PeopleRecordRow, PeopleInput, PeopleWithCounts } from './people-record';
+export { rowToPeopleRecord } from './people-record';
 
-export type { PersonCluster, PersonClusterRow, PersonClusterInput, ClusterType } from './person-cluster';
-export { rowToPersonCluster, float32ArrayToBuffer } from './person-cluster';
+export type { PeopleCluster, PeopleClusterRow, PeopleClusterInput, ClusterType } from './people-cluster';
+export { rowToPeopleCluster, float32ArrayToBuffer } from './people-cluster';
 
 export type {
-  PersonEmbedding,
-  PersonEmbeddingRow,
-  PersonEmbeddingInput,
-  PersonEmbeddingWithSource,
+  PeopleEmbedding,
+  PeopleEmbeddingRow,
+  PeopleEmbeddingInput,
+  PeopleEmbeddingWithSource,
   VoiceSourceOffset,
   FaceSourceOffset,
   SourceOffset,
-} from './person-embedding';
-export { rowToPersonEmbedding, float32ArrayToBuffer as embeddingFloat32ArrayToBuffer } from './person-embedding';
+} from './people-embedding';
+export { rowToPeopleEmbedding, float32ArrayToBuffer as embeddingFloat32ArrayToBuffer } from './people-embedding';

@@ -5,15 +5,15 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { User, Volume2, Camera, Plus } from 'lucide-react';
-import type { PersonWithCounts } from '@/types/models';
+import type { PeopleWithCounts } from '@/types/models';
 
 interface PeopleResponse {
-  people: PersonWithCounts[];
+  people: PeopleWithCounts[];
   total: number;
 }
 
 export default function PeoplePage() {
-  const [people, setPeople] = useState<PersonWithCounts[]>([]);
+  const [people, setPeople] = useState<PeopleWithCounts[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -69,8 +69,8 @@ export default function PeoplePage() {
                   Identified ({identified.length})
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {identified.map((person) => (
-                    <PersonCard key={person.id} person={person} />
+                  {identified.map((entry) => (
+                    <PeopleCard key={entry.id} people={entry} />
                   ))}
                 </div>
               </section>
@@ -83,8 +83,8 @@ export default function PeoplePage() {
                   Pending ({pending.length})
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {pending.map((person) => (
-                    <PersonCard key={person.id} person={person} />
+                  {pending.map((entry) => (
+                    <PeopleCard key={entry.id} people={entry} />
                   ))}
                 </div>
               </section>
@@ -96,20 +96,20 @@ export default function PeoplePage() {
   );
 }
 
-function PersonCard({ person }: { person: PersonWithCounts }) {
-  const hasVoice = person.voiceClusterCount > 0;
-  const hasFace = person.faceClusterCount > 0;
+function PeopleCard({ people }: { people: PeopleWithCounts }) {
+  const hasVoice = people.voiceClusterCount > 0;
+  const hasFace = people.faceClusterCount > 0;
 
   return (
-    <Link href={`/people/${person.id}`}>
+    <Link href={`/people/${people.id}`}>
       <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
         <CardContent className="p-4 flex flex-col items-center text-center">
           {/* Avatar */}
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3 overflow-hidden">
-            {person.avatar ? (
+            {people.avatar ? (
               <img
-                src={`data:image/jpeg;base64,${person.avatar}`}
-                alt={person.displayName || 'Person'}
+                src={`data:image/jpeg;base64,${people.avatar}`}
+                alt={people.displayName || 'People'}
                 className="w-full h-full object-cover"
               />
             ) : hasFace ? (
@@ -123,9 +123,9 @@ function PersonCard({ person }: { person: PersonWithCounts }) {
 
           {/* Name */}
           <p className={`text-sm font-medium truncate w-full ${
-            person.isPending ? 'text-muted-foreground italic' : 'text-foreground'
+            people.isPending ? 'text-muted-foreground italic' : 'text-foreground'
           }`}>
-            {person.displayName || 'Add a name'}
+            {people.displayName || 'Add a name'}
           </p>
 
           {/* Stats */}
@@ -133,13 +133,13 @@ function PersonCard({ person }: { person: PersonWithCounts }) {
             {hasVoice && (
               <span className="flex items-center gap-1">
                 <Volume2 className="h-3 w-3" />
-                {person.voiceClusterCount}
+                {people.voiceClusterCount}
               </span>
             )}
             {hasFace && (
               <span className="flex items-center gap-1">
                 <Camera className="h-3 w-3" />
-                {person.faceClusterCount}
+                {people.faceClusterCount}
               </span>
             )}
           </div>
