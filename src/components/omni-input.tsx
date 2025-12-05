@@ -437,6 +437,14 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
           name="content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (content.trim() || selectedFiles.length > 0) {
+                handleSubmit(e);
+              }
+            }
+          }}
           placeholder="What's up?"
           disabled={isLoading}
           style={maxHeight ? { maxHeight } : undefined}
