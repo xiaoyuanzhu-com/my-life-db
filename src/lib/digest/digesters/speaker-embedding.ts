@@ -14,7 +14,7 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import type { HaidSpeechRecognitionResponse, HaidSpeechRecognitionSegment } from '@/lib/vendors/haid';
-import type { VoiceSourceOffset } from '@/types/person-embedding';
+import type { VoiceSourceOffset } from '@/types/people-embedding';
 import { addEmbeddingWithClustering, listEmbeddingsForSource } from '@/lib/db/people';
 import { getLogger } from '@/lib/log/logger';
 
@@ -126,8 +126,8 @@ export class SpeakerEmbeddingDigester implements Digester {
       speakerId: string;
       embeddingId: string;
       clusterId: string;
-      personId: string;
-      isNewPerson: boolean;
+      peopleId: string;
+      isNewPeople: boolean;
       duration: number;
       segmentCount: number;
     }[] = [];
@@ -174,8 +174,8 @@ export class SpeakerEmbeddingDigester implements Digester {
           speakerId: speaker.speaker_id,
           embeddingId: result.embedding.id,
           clusterId: result.cluster.id,
-          personId: result.person.id,
-          isNewPerson: result.isNewPerson,
+          peopleId: result.people.id,
+          isNewPeople: result.isNewPeople,
           duration: speaker.total_duration,
           segmentCount: speaker.segment_count,
         });
@@ -185,8 +185,8 @@ export class SpeakerEmbeddingDigester implements Digester {
             filePath,
             speakerId: speaker.speaker_id,
             embeddingId: result.embedding.id,
-            personId: result.person.id,
-            isNewPerson: result.isNewPerson,
+            peopleId: result.people.id,
+            isNewPeople: result.isNewPeople,
           },
           'processed speaker embedding'
         );

@@ -8,34 +8,34 @@ import { randomUUID } from 'crypto';
 import { dbSelect, dbSelectOne, dbRun, dbTransaction } from './client';
 import { getLogger } from '@/lib/log/logger';
 import type {
-  PersonRecordRow,
-  PersonRecord,
-  PersonInput,
-  PersonWithCounts,
-  PersonClusterRow,
-  PersonCluster,
-  PersonClusterInput,
+  PeopleRecordRow,
+  PeopleRecord,
+  PeopleInput,
+  PeopleWithCounts,
+  PeopleClusterRow,
+  PeopleCluster,
+  PeopleClusterInput,
   ClusterType,
-  PersonEmbeddingRow,
-  PersonEmbedding,
-  PersonEmbeddingInput,
+  PeopleEmbeddingRow,
+  PeopleEmbedding,
+  PeopleEmbeddingInput,
   SourceOffset,
 } from '@/types/models';
 import {
-  rowToPersonRecord,
-  rowToPersonCluster,
+  rowToPeopleRecord,
+  rowToPeopleCluster,
   float32ArrayToBuffer,
-  rowToPersonEmbedding,
+  rowToPeopleEmbedding,
 } from '@/types/models';
 
 // Re-export types for convenience
 export type {
-  PersonRecord,
-  PersonRecordRow,
-  PersonCluster,
-  PersonClusterRow,
-  PersonEmbedding,
-  PersonEmbeddingRow,
+  PeopleRecord,
+  PeopleRecordRow,
+  PeopleCluster,
+  PeopleClusterRow,
+  PeopleEmbedding,
+  PeopleEmbeddingRow,
 };
 
 const log = getLogger({ module: 'DBPeople' });
@@ -49,9 +49,9 @@ const FACE_SIMILARITY_THRESHOLD = 0.80;
 // =============================================================================
 
 /**
- * Create a new person (identified or pending)
+ * Create a new people entry (identified or pending)
  */
-export function createPerson(input: PersonInput): PersonRecord {
+export function createPeople(input: PeopleInput): PeopleRecord {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
 
@@ -61,31 +61,31 @@ export function createPerson(input: PersonInput): PersonRecord {
     [id, input.vcfPath ?? null, input.displayName ?? null, input.avatar ?? null, now, now]
   );
 
-  log.info({ id, displayName: input.displayName }, 'created person');
+  log.info({ id, displayName: input.displayName }, 'created people');
 
-  const person = getPersonById(id);
-  if (!person) throw new Error('Failed to create person');
-  return person;
+  const people = getPeopleById(id);
+  if (!people) throw new Error('Failed to create people');
+  return people;
 }
 
 /**
- * Get person by ID
+ * Get people by ID
  */
-export function getPersonById(id: string): PersonRecord | null {
-  const row = dbSelectOne<PersonRecordRow>(
+export function getPeopleById(id: string): PeopleRecord | null {
+  const row = dbSelectOne<PeopleRecordRow>(
     'SELECT * FROM people WHERE id = ?',
     [id]
   );
-  return row ? rowToPersonRecord(row) : null;
+  return row ? rowToPeopleRecord(row) : null;
 }
 
 /**
- * Update person
+ * Update people entry
  */
-export function updatePerson(
+export function updatePeople(
   id: string,
-  updates: Partial<Pick<PersonInput, 'displayName' | 'vcfPath' | 'avatar'>>
-): PersonRecord | null {
+  updates: Partial<Pick<PeopleInput, 'displayName' | 'vcfPath' | 'avatar'>>
+): PeopleRecord | null {
   const now = new Date().toISOString();
   const setClauses: string[] = ['updated_at = ?'];
   const params: (string | Buffer | null)[] = [now];
@@ -106,20 +106,20 @@ export function updatePerson(
   params.push(id);
 
   dbRun(`UPDATE people SET ${setClauses.join(', ')} WHERE id = ?`, params);
-  log.info({ id, updates: Object.keys(updates) }, 'updated person');
+  log.info({ id, updates: Object.keys(updates) }, 'updated people');
 
-  return getPersonById(id);
+  return getPeopleById(id);
 }
 
 /**
- * Delete person and cascade to clusters (embeddings become orphaned)
+ * Delete people entry and cascade to clusters (embeddings become orphaned)
  */
-export function deletePerson(id: string): void {
+export function deletePeople(id: string): void {
   dbTransaction(() => {
     // Due to CASCADE, clusters will be deleted automatically
     // Embeddings will have cluster_id set to NULL (SET NULL)
     dbRun('DELETE FROM people WHERE id = ?', [id]);
-    log.info({ id }, 'deleted person');
+    log.info({ id }, 'deleted people');
   });
 }
 
@@ -131,7 +131,7 @@ export function listPeople(options?: {
   identifiedOnly?: boolean;
   limit?: number;
   offset?: number;
-}): PersonRecord[] {
+}): PeopleRecord[] {
   let query = 'SELECT * FROM people';
   const conditions: string[] = [];
   const params: (string | number)[] = [];
@@ -158,8 +158,8 @@ export function listPeople(options?: {
     params.push(options.offset);
   }
 
-  const rows = dbSelect<PersonRecordRow>(query, params);
-  return rows.map(rowToPersonRecord);
+  const rows = dbSelect<PeopleRecordRow>(query, params);
+  return rows.map(rowToPeopleRecord);
 }
 
 /**
@@ -186,7 +186,7 @@ export function listPeopleWithCounts(options?: {
   identifiedOnly?: boolean;
   limit?: number;
   offset?: number;
-}): PersonWithCounts[] {
+}): PeopleWithCounts[] {
   let query = `
     SELECT p.*,
       (SELECT COUNT(*) FROM person_clusters c WHERE c.person_id = p.id AND c.type = 'voice') as voice_cluster_count,
@@ -220,15 +220,15 @@ export function listPeopleWithCounts(options?: {
     params.push(options.offset);
   }
 
-  interface PersonWithCountsRow extends PersonRecordRow {
+  interface PeopleWithCountsRow extends PeopleRecordRow {
     voice_cluster_count: number;
     face_cluster_count: number;
     embedding_count: number;
   }
 
-  const rows = dbSelect<PersonWithCountsRow>(query, params);
+  const rows = dbSelect<PeopleWithCountsRow>(query, params);
   return rows.map((row) => ({
-    ...rowToPersonRecord(row),
+    ...rowToPeopleRecord(row),
     voiceClusterCount: row.voice_cluster_count,
     faceClusterCount: row.face_cluster_count,
     embeddingCount: row.embedding_count,
@@ -242,7 +242,7 @@ export function listPeopleWithCounts(options?: {
 /**
  * Create a new cluster
  */
-export function createCluster(input: PersonClusterInput): PersonCluster {
+export function createCluster(input: PeopleClusterInput): PeopleCluster {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
 
@@ -251,7 +251,7 @@ export function createCluster(input: PersonClusterInput): PersonCluster {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      input.personId,
+      input.peopleId,
       input.type,
       input.centroid ? float32ArrayToBuffer(input.centroid) : null,
       input.sampleCount ?? 0,
@@ -260,7 +260,7 @@ export function createCluster(input: PersonClusterInput): PersonCluster {
     ]
   );
 
-  log.info({ id, personId: input.personId, type: input.type }, 'created cluster');
+  log.info({ id, peopleId: input.peopleId, type: input.type }, 'created cluster');
 
   const cluster = getClusterById(id);
   if (!cluster) throw new Error('Failed to create cluster');
@@ -270,20 +270,20 @@ export function createCluster(input: PersonClusterInput): PersonCluster {
 /**
  * Get cluster by ID
  */
-export function getClusterById(id: string): PersonCluster | null {
-  const row = dbSelectOne<PersonClusterRow>(
+export function getClusterById(id: string): PeopleCluster | null {
+  const row = dbSelectOne<PeopleClusterRow>(
     'SELECT * FROM person_clusters WHERE id = ?',
     [id]
   );
-  return row ? rowToPersonCluster(row) : null;
+  return row ? rowToPeopleCluster(row) : null;
 }
 
 /**
- * List clusters for a person
+ * List clusters for a people entry
  */
-export function listClustersForPerson(personId: string, type?: ClusterType): PersonCluster[] {
+export function listClustersForPeople(peopleId: string, type?: ClusterType): PeopleCluster[] {
   let query = 'SELECT * FROM person_clusters WHERE person_id = ?';
-  const params: string[] = [personId];
+  const params: string[] = [peopleId];
 
   if (type) {
     query += ' AND type = ?';
@@ -292,8 +292,8 @@ export function listClustersForPerson(personId: string, type?: ClusterType): Per
 
   query += ' ORDER BY created_at ASC';
 
-  const rows = dbSelect<PersonClusterRow>(query, params);
-  return rows.map(rowToPersonCluster);
+  const rows = dbSelect<PeopleClusterRow>(query, params);
+  return rows.map(rowToPeopleCluster);
 }
 
 /**
@@ -302,7 +302,7 @@ export function listClustersForPerson(personId: string, type?: ClusterType): Per
 export function updateCluster(
   id: string,
   updates: { centroid?: Float32Array | null; sampleCount?: number }
-): PersonCluster | null {
+): PeopleCluster | null {
   const now = new Date().toISOString();
   const setClauses: string[] = ['updated_at = ?'];
   const params: (string | Buffer | number | null)[] = [now];
@@ -335,12 +335,12 @@ export function deleteCluster(id: string): void {
 /**
  * Get all clusters of a specific type (for similarity search)
  */
-export function listAllClusters(type: ClusterType): PersonCluster[] {
-  const rows = dbSelect<PersonClusterRow>(
+export function listAllClusters(type: ClusterType): PeopleCluster[] {
+  const rows = dbSelect<PeopleClusterRow>(
     'SELECT * FROM person_clusters WHERE type = ? AND centroid IS NOT NULL',
     [type]
   );
-  return rows.map(rowToPersonCluster);
+  return rows.map(rowToPeopleCluster);
 }
 
 // =============================================================================
@@ -350,7 +350,7 @@ export function listAllClusters(type: ClusterType): PersonCluster[] {
 /**
  * Create a new embedding
  */
-export function createEmbedding(input: PersonEmbeddingInput): PersonEmbedding {
+export function createEmbedding(input: PeopleEmbeddingInput): PeopleEmbedding {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
 
@@ -380,46 +380,46 @@ export function createEmbedding(input: PersonEmbeddingInput): PersonEmbedding {
 /**
  * Get embedding by ID
  */
-export function getEmbeddingById(id: string): PersonEmbedding | null {
-  const row = dbSelectOne<PersonEmbeddingRow>(
+export function getEmbeddingById(id: string): PeopleEmbedding | null {
+  const row = dbSelectOne<PeopleEmbeddingRow>(
     'SELECT * FROM person_embeddings WHERE id = ?',
     [id]
   );
-  return row ? rowToPersonEmbedding(row) : null;
+  return row ? rowToPeopleEmbedding(row) : null;
 }
 
 /**
  * List embeddings for a cluster
  */
-export function listEmbeddingsForCluster(clusterId: string): PersonEmbedding[] {
-  const rows = dbSelect<PersonEmbeddingRow>(
+export function listEmbeddingsForCluster(clusterId: string): PeopleEmbedding[] {
+  const rows = dbSelect<PeopleEmbeddingRow>(
     'SELECT * FROM person_embeddings WHERE cluster_id = ? ORDER BY created_at ASC',
     [clusterId]
   );
-  return rows.map(rowToPersonEmbedding);
+  return rows.map(rowToPeopleEmbedding);
 }
 
 /**
  * List embeddings for a source file
  */
-export function listEmbeddingsForSource(sourcePath: string): PersonEmbedding[] {
-  const rows = dbSelect<PersonEmbeddingRow>(
+export function listEmbeddingsForSource(sourcePath: string): PeopleEmbedding[] {
+  const rows = dbSelect<PeopleEmbeddingRow>(
     'SELECT * FROM person_embeddings WHERE source_path = ? ORDER BY created_at ASC',
     [sourcePath]
   );
-  return rows.map(rowToPersonEmbedding);
+  return rows.map(rowToPeopleEmbedding);
 }
 
 /**
- * List embeddings for a person (through their clusters)
+ * List embeddings for a people entry (through their clusters)
  */
-export function listEmbeddingsForPerson(personId: string, type?: ClusterType): PersonEmbedding[] {
+export function listEmbeddingsForPeople(peopleId: string, type?: ClusterType): PeopleEmbedding[] {
   let query = `
     SELECT e.* FROM person_embeddings e
     INNER JOIN person_clusters c ON e.cluster_id = c.id
     WHERE c.person_id = ?
   `;
-  const params: string[] = [personId];
+  const params: string[] = [peopleId];
 
   if (type) {
     query += ' AND e.type = ?';
@@ -428,8 +428,8 @@ export function listEmbeddingsForPerson(personId: string, type?: ClusterType): P
 
   query += ' ORDER BY e.created_at ASC';
 
-  const rows = dbSelect<PersonEmbeddingRow>(query, params);
-  return rows.map(rowToPersonEmbedding);
+  const rows = dbSelect<PeopleEmbeddingRow>(query, params);
+  return rows.map(rowToPeopleEmbedding);
 }
 
 /**
@@ -438,7 +438,7 @@ export function listEmbeddingsForPerson(personId: string, type?: ClusterType): P
 export function updateEmbedding(
   id: string,
   updates: { clusterId?: string | null; manualAssignment?: boolean }
-): PersonEmbedding | null {
+): PeopleEmbedding | null {
   const setClauses: string[] = [];
   const params: (string | number | null)[] = [];
 
@@ -527,11 +527,11 @@ export function l2Normalize(vector: Float32Array): Float32Array {
 export function findBestMatchingCluster(
   vector: Float32Array,
   type: ClusterType
-): { cluster: PersonCluster; similarity: number } | null {
+): { cluster: PeopleCluster; similarity: number } | null {
   const clusters = listAllClusters(type);
   const threshold = type === 'voice' ? VOICE_SIMILARITY_THRESHOLD : FACE_SIMILARITY_THRESHOLD;
 
-  let bestMatch: { cluster: PersonCluster; similarity: number } | null = null;
+  let bestMatch: { cluster: PeopleCluster; similarity: number } | null = null;
 
   for (const cluster of clusters) {
     if (!cluster.centroid) continue;
@@ -550,7 +550,7 @@ export function findBestMatchingCluster(
  * Formula: new_centroid = (old_centroid * n + new_embedding) / (n + 1)
  */
 export function updateCentroidForAddition(
-  cluster: PersonCluster,
+  cluster: PeopleCluster,
   newEmbedding: Float32Array
 ): Float32Array {
   const n = cluster.sampleCount;
@@ -573,7 +573,7 @@ export function updateCentroidForAddition(
  * Formula: new_centroid = (old_centroid * n - removed_embedding) / (n - 1)
  */
 export function updateCentroidForRemoval(
-  cluster: PersonCluster,
+  cluster: PeopleCluster,
   removedEmbedding: Float32Array
 ): Float32Array | null {
   const n = cluster.sampleCount;
@@ -596,8 +596,8 @@ export function updateCentroidForRemoval(
  * Formula: merged_centroid = (centroid_a * n_a + centroid_b * n_b) / (n_a + n_b)
  */
 export function calculateMergedCentroid(
-  clusterA: PersonCluster,
-  clusterB: PersonCluster
+  clusterA: PeopleCluster,
+  clusterB: PeopleCluster
 ): Float32Array | null {
   if (!clusterA.centroid || !clusterB.centroid) {
     return clusterA.centroid ?? clusterB.centroid ?? null;
@@ -628,8 +628,8 @@ export function calculateMergedCentroid(
  * Otherwise, find the best matching cluster or create a new one.
  */
 export function addEmbeddingWithClustering(
-  input: PersonEmbeddingInput
-): { embedding: PersonEmbedding; cluster: PersonCluster; person: PersonRecord; isNewPerson: boolean } {
+  input: PeopleEmbeddingInput
+): { embedding: PeopleEmbedding; cluster: PeopleCluster; people: PeopleRecord; isNewPeople: boolean } {
   return dbTransaction(() => {
     const normalizedVector = l2Normalize(input.vector);
 
@@ -641,8 +641,8 @@ export function addEmbeddingWithClustering(
         manualAssignment: true,
       });
       // For manual assignments, we don't auto-cluster
-      // The embedding will need to be manually assigned to a person/cluster
-      throw new Error('Manual assignment requires explicit cluster/person assignment');
+      // The embedding will need to be manually assigned to a people/cluster
+      throw new Error('Manual assignment requires explicit cluster/people assignment');
     }
 
     // Find best matching cluster
@@ -663,20 +663,20 @@ export function addEmbeddingWithClustering(
         sampleCount: match.cluster.sampleCount + 1,
       });
 
-      const person = getPersonById(match.cluster.personId);
-      if (!person) throw new Error('Cluster has no person');
+      const people = getPeopleById(match.cluster.peopleId);
+      if (!people) throw new Error('Cluster has no people');
 
       log.info(
-        { embeddingId: embedding.id, clusterId: match.cluster.id, personId: person.id, similarity: match.similarity },
+        { embeddingId: embedding.id, clusterId: match.cluster.id, peopleId: people.id, similarity: match.similarity },
         'added embedding to existing cluster'
       );
 
-      return { embedding, cluster: match.cluster, person, isNewPerson: false };
+      return { embedding, cluster: match.cluster, people, isNewPeople: false };
     } else {
-      // Create new cluster and pending person
-      const person = createPerson({});
+      // Create new cluster and pending people
+      const people = createPeople({});
       const cluster = createCluster({
-        personId: person.id,
+        peopleId: people.id,
         type: input.type,
         centroid: normalizedVector,
         sampleCount: 1,
@@ -689,11 +689,11 @@ export function addEmbeddingWithClustering(
       });
 
       log.info(
-        { embeddingId: embedding.id, clusterId: cluster.id, personId: person.id },
-        'created new cluster and pending person'
+        { embeddingId: embedding.id, clusterId: cluster.id, peopleId: people.id },
+        'created new cluster and pending people'
       );
 
-      return { embedding, cluster, person, isNewPerson: true };
+      return { embedding, cluster, people, isNewPeople: true };
     }
   });
 }
@@ -705,14 +705,14 @@ export function addEmbeddingWithClustering(
 /**
  * Merge two people: move all clusters from source to target, delete source
  */
-export function mergePeople(targetId: string, sourceId: string): PersonRecord {
+export function mergePeople(targetId: string, sourceId: string): PeopleRecord {
   return dbTransaction(() => {
-    const target = getPersonById(targetId);
-    const source = getPersonById(sourceId);
+    const target = getPeopleById(targetId);
+    const source = getPeopleById(sourceId);
 
-    if (!target) throw new Error(`Target person not found: ${targetId}`);
-    if (!source) throw new Error(`Source person not found: ${sourceId}`);
-    if (targetId === sourceId) throw new Error('Cannot merge person with itself');
+    if (!target) throw new Error(`Target people not found: ${targetId}`);
+    if (!source) throw new Error(`Source people not found: ${sourceId}`);
+    if (targetId === sourceId) throw new Error('Cannot merge people with itself');
 
     // Move all clusters from source to target
     dbRun(
@@ -720,8 +720,8 @@ export function mergePeople(targetId: string, sourceId: string): PersonRecord {
       [targetId, new Date().toISOString(), sourceId]
     );
 
-    // Delete source person
-    deletePerson(sourceId);
+    // Delete source people
+    deletePeople(sourceId);
 
     log.info({ targetId, sourceId }, 'merged people');
 
@@ -754,16 +754,16 @@ export function unassignEmbedding(embeddingId: string): void {
     // Update cluster centroid
     if (cluster.sampleCount <= 1) {
       // Cluster will be empty - check if we should delete it
-      const personId = cluster.personId;
+      const peopleId = cluster.peopleId;
       deleteCluster(clusterId);
 
-      // Check if person has no clusters left and is pending
-      const remainingClusters = listClustersForPerson(personId);
+      // Check if people has no clusters left and is pending
+      const remainingClusters = listClustersForPeople(peopleId);
       if (remainingClusters.length === 0) {
-        const person = getPersonById(personId);
-        if (person?.isPending) {
-          deletePerson(personId);
-          log.info({ personId }, 'deleted empty pending person');
+        const people = getPeopleById(peopleId);
+        if (people?.isPending) {
+          deletePeople(peopleId);
+          log.info({ peopleId }, 'deleted empty pending people');
         }
       }
     } else {
@@ -780,27 +780,27 @@ export function unassignEmbedding(embeddingId: string): void {
 }
 
 /**
- * Assign embedding to a specific person's cluster (manual assignment)
- * Creates a new cluster for the person if needed
+ * Assign embedding to a specific people's cluster (manual assignment)
+ * Creates a new cluster for the people if needed
  */
-export function assignEmbeddingToPerson(
+export function assignEmbeddingToPeople(
   embeddingId: string,
-  personId: string
-): { embedding: PersonEmbedding; cluster: PersonCluster } {
+  peopleId: string
+): { embedding: PeopleEmbedding; cluster: PeopleCluster } {
   return dbTransaction(() => {
     const embedding = getEmbeddingById(embeddingId);
     if (!embedding) throw new Error(`Embedding not found: ${embeddingId}`);
 
-    const person = getPersonById(personId);
-    if (!person) throw new Error(`Person not found: ${personId}`);
+    const people = getPeopleById(peopleId);
+    if (!people) throw new Error(`People not found: ${peopleId}`);
 
     // Find an existing cluster of the same type, or create new
-    const existingClusters = listClustersForPerson(personId, embedding.type);
-    let targetCluster: PersonCluster;
+    const existingClusters = listClustersForPeople(peopleId, embedding.type);
+    let targetCluster: PeopleCluster;
 
     if (existingClusters.length > 0) {
-      // Find best matching cluster for this person
-      let bestMatch: { cluster: PersonCluster; similarity: number } | null = null;
+      // Find best matching cluster for this people
+      let bestMatch: { cluster: PeopleCluster; similarity: number } | null = null;
 
       for (const cluster of existingClusters) {
         if (!cluster.centroid) continue;
@@ -817,9 +817,9 @@ export function assignEmbeddingToPerson(
         targetCluster = existingClusters[0];
       }
     } else {
-      // Create new cluster for this person
+      // Create new cluster for this people
       targetCluster = createCluster({
-        personId,
+        peopleId,
         type: embedding.type,
         centroid: embedding.vector,
         sampleCount: 0,
@@ -831,15 +831,15 @@ export function assignEmbeddingToPerson(
       const oldCluster = getClusterById(embedding.clusterId);
       if (oldCluster) {
         if (oldCluster.sampleCount <= 1) {
-          const oldPersonId = oldCluster.personId;
+          const oldPeopleId = oldCluster.peopleId;
           deleteCluster(oldCluster.id);
 
-          // Clean up empty pending person
-          const remainingClusters = listClustersForPerson(oldPersonId);
+          // Clean up empty pending people
+          const remainingClusters = listClustersForPeople(oldPeopleId);
           if (remainingClusters.length === 0) {
-            const oldPerson = getPersonById(oldPersonId);
-            if (oldPerson?.isPending) {
-              deletePerson(oldPersonId);
+            const oldPeople = getPeopleById(oldPeopleId);
+            if (oldPeople?.isPending) {
+              deletePeople(oldPeopleId);
             }
           }
         } else {
@@ -872,7 +872,7 @@ export function assignEmbeddingToPerson(
       throw new Error('Failed to assign embedding');
     }
 
-    log.info({ embeddingId, personId, clusterId: targetCluster.id }, 'assigned embedding to person');
+    log.info({ embeddingId, peopleId, clusterId: targetCluster.id }, 'assigned embedding to people');
 
     return { embedding: finalEmbedding, cluster: finalCluster };
   });
@@ -910,16 +910,16 @@ export function handleSourceFileDeletion(sourcePath: string): void {
       // Count remaining embeddings
       const remaining = listEmbeddingsForCluster(clusterId);
       if (remaining.length === 0) {
-        const personId = cluster.personId;
+        const peopleId = cluster.peopleId;
         deleteCluster(clusterId);
 
-        // Check if person has no clusters left and is pending
-        const remainingClusters = listClustersForPerson(personId);
+        // Check if people has no clusters left and is pending
+        const remainingClusters = listClustersForPeople(peopleId);
         if (remainingClusters.length === 0) {
-          const person = getPersonById(personId);
-          if (person?.isPending) {
-            deletePerson(personId);
-            log.info({ personId, sourcePath }, 'deleted empty pending person after source deletion');
+          const people = getPeopleById(peopleId);
+          if (people?.isPending) {
+            deletePeople(peopleId);
+            log.info({ peopleId, sourcePath }, 'deleted empty pending people after source deletion');
           }
         }
       } else {

@@ -2,11 +2,11 @@
  * People API - List and Create
  *
  * GET  /api/people - List all people (identified first, then pending)
- * POST /api/people - Create a new identified person with name
+ * POST /api/people - Create a new identified people entry with name
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { listPeopleWithCounts, createPerson, countPeople } from '@/lib/db/people';
+import { listPeopleWithCounts, createPeople, countPeople } from '@/lib/db/people';
 import { getLogger } from '@/lib/log/logger';
 
 export const runtime = 'nodejs';
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/people
- * Create a new identified person with a name
+ * Create a new identified people entry with a name
  *
  * Request body:
  * - displayName: string (required)
@@ -74,18 +74,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create person - vcfPath will be set when vCard is created
-    const person = createPerson({
+    // Create people entry - vcfPath will be set when vCard is created
+    const people = createPeople({
       displayName: displayName.trim(),
     });
 
-    log.info({ personId: person.id, displayName }, 'created person');
+    log.info({ peopleId: people.id, displayName }, 'created people');
 
-    return NextResponse.json(person, { status: 201 });
+    return NextResponse.json(people, { status: 201 });
   } catch (error) {
-    log.error({ err: error }, 'create person failed');
+    log.error({ err: error }, 'create people failed');
     return NextResponse.json(
-      { error: 'Failed to create person' },
+      { error: 'Failed to create people' },
       { status: 500 }
     );
   }

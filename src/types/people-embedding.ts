@@ -1,11 +1,11 @@
 /**
- * Person Embedding - person_embeddings table models
+ * People Embedding - people_embeddings table models
  *
  * Stores biometric vectors extracted from media files.
  * Each embedding links back to its source file and optionally to a cluster.
  */
 
-import type { ClusterType } from './person-cluster';
+import type { ClusterType } from './people-cluster';
 
 /**
  * Voice source offset - segments for this speaker in an audio file
@@ -31,15 +31,15 @@ export interface FaceSourceOffset {
 export type SourceOffset = VoiceSourceOffset | FaceSourceOffset;
 
 /**
- * Person embedding row (snake_case - matches SQLite schema exactly)
+ * People embedding row (snake_case - matches SQLite schema exactly)
  *
  * Primary key: id (UUID)
  */
-export interface PersonEmbeddingRow {
+export interface PeopleEmbeddingRow {
   /** UUID for primary key */
   id: string;
 
-  /** Parent cluster (FK to person_clusters.id, nullable) */
+  /** Parent cluster (FK to people_clusters.id, nullable) */
   cluster_id: string | null;
 
   /** Type of embedding: 'voice' or 'face' */
@@ -65,9 +65,9 @@ export interface PersonEmbeddingRow {
 }
 
 /**
- * Person embedding (camelCase - for TypeScript usage)
+ * People embedding (camelCase - for TypeScript usage)
  */
-export interface PersonEmbedding {
+export interface PeopleEmbedding {
   /** UUID for primary key */
   id: string;
 
@@ -111,9 +111,9 @@ export function float32ArrayToBuffer(arr: Float32Array): Buffer {
 }
 
 /**
- * Conversion helper: PersonEmbeddingRow → PersonEmbedding
+ * Conversion helper: PeopleEmbeddingRow → PeopleEmbedding
  */
-export function rowToPersonEmbedding(row: PersonEmbeddingRow): PersonEmbedding {
+export function rowToPeopleEmbedding(row: PeopleEmbeddingRow): PeopleEmbedding {
   return {
     id: row.id,
     clusterId: row.cluster_id,
@@ -130,7 +130,7 @@ export function rowToPersonEmbedding(row: PersonEmbeddingRow): PersonEmbedding {
 /**
  * Input for creating a new embedding
  */
-export interface PersonEmbeddingInput {
+export interface PeopleEmbeddingInput {
   id?: string;
   clusterId?: string | null;
   type: ClusterType;
@@ -144,7 +144,7 @@ export interface PersonEmbeddingInput {
 /**
  * Embedding with additional info for UI display
  */
-export interface PersonEmbeddingWithSource extends PersonEmbedding {
+export interface PeopleEmbeddingWithSource extends PeopleEmbedding {
   /** Filename from source path */
   fileName: string;
 }

@@ -1,5 +1,5 @@
 /**
- * Person Record - People table models
+ * People Record - People table models
  *
  * Stores both identified (with vcf_path) and pending (without) people.
  * Pending people are auto-created during clustering; identified people
@@ -7,15 +7,15 @@
  */
 
 /**
- * Person record row (snake_case - matches SQLite schema exactly)
+ * People record row (snake_case - matches SQLite schema exactly)
  *
  * Primary key: id (UUID)
  */
-export interface PersonRecordRow {
+export interface PeopleRecordRow {
   /** UUID for primary key */
   id: string;
 
-  /** Relative path to vCard file (null = pending person) */
+  /** Relative path to vCard file (null = pending people) */
   vcf_path: string | null;
 
   /** Display name (null for pending - UI shows "Add a name") */
@@ -32,13 +32,13 @@ export interface PersonRecordRow {
 }
 
 /**
- * Person record (camelCase - for TypeScript usage)
+ * People record (camelCase - for TypeScript usage)
  */
-export interface PersonRecord {
+export interface PeopleRecord {
   /** UUID for primary key */
   id: string;
 
-  /** Relative path to vCard file (null = pending person) */
+  /** Relative path to vCard file (null = pending people) */
   vcfPath: string | null;
 
   /** Display name (null for pending - UI shows "Add a name") */
@@ -58,9 +58,9 @@ export interface PersonRecord {
 }
 
 /**
- * Conversion helper: PersonRecordRow → PersonRecord
+ * Conversion helper: PeopleRecordRow → PeopleRecord
  */
-export function rowToPersonRecord(row: PersonRecordRow): PersonRecord {
+export function rowToPeopleRecord(row: PeopleRecordRow): PeopleRecord {
   return {
     id: row.id,
     vcfPath: row.vcf_path,
@@ -73,9 +73,9 @@ export function rowToPersonRecord(row: PersonRecordRow): PersonRecord {
 }
 
 /**
- * Input for creating a new person
+ * Input for creating a new people entry
  */
-export interface PersonInput {
+export interface PeopleInput {
   id?: string;
   vcfPath?: string | null;
   displayName?: string | null;
@@ -83,9 +83,9 @@ export interface PersonInput {
 }
 
 /**
- * Person with cluster and embedding counts for UI
+ * People with cluster and embedding counts for UI
  */
-export interface PersonWithCounts extends PersonRecord {
+export interface PeopleWithCounts extends PeopleRecord {
   voiceClusterCount: number;
   faceClusterCount: number;
   embeddingCount: number;

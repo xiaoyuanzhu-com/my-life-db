@@ -4,10 +4,10 @@ A unified system to manage identities across media: faces in photos/videos, voic
 
 ## Overview
 
-**Goal**: Build a personal knowledge graph of people, linking biometric embeddings (voice, face) to canonical person records, enabling search/filter by person and surfacing interaction history.
+**Goal**: Build a personal knowledge graph of people, linking biometric embeddings (voice, face) to canonical people records, enabling search/filter by people and surfacing interaction history.
 
 **Principles**:
-- **User data first**: Person records stored as vCards (`.vcf`) in user data folder
+- **User data first**: People records stored as vCards (`.vcf`) in user data folder
 - **App data is derived**: Embeddings and clusters stored in SQLite (rebuildable)
 - **Progressive enrichment**: Manual labeling improves auto-matching over time
 
@@ -41,7 +41,7 @@ graph TB
 
 ## Data Models
 
-### Person (vCard + SQLite)
+### People Entry (vCard + SQLite)
 
 **User data** (`MY_DATA_DIR/people/{slug}.vcf`):
 ```
@@ -80,12 +80,12 @@ vCard stores authoritative data for identified people. SQLite caches display_nam
 
 ### Cluster (SQLite)
 
-Persistent grouping of embeddings. Each cluster always belongs to a person (pending or identified).
+Persistent grouping of embeddings. Each cluster always belongs to a people entry (pending or identified).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | TEXT PK | UUID |
-| person_id | TEXT FK | Linked person (always set) |
+| person_id | TEXT FK | Linked people entry (always set) |
 | type | TEXT | `voice` or `face` |
 | centroid | BLOB | Average embedding vector |
 | sample_count | INT | Number of embeddings in cluster |
@@ -129,8 +129,8 @@ flowchart TD
     AddToCluster --> UpdateCentroid[Update cluster centroid]
 
     CheckSim -->|No| CreateCluster[Create new cluster]
-    CreateCluster --> CreatePerson[Create pending person]
-    CreatePerson --> LinkCluster[Link cluster to person]
+    CreateCluster --> CreatePeople[Create pending people entry]
+    CreatePeople --> LinkCluster[Link cluster to people]
 ```
 
 **Why not HDBSCAN?**
@@ -243,11 +243,11 @@ flowchart TD
     AddToCluster --> UpdateCentroid[Update centroid]
 
     FindMatch -->|Not found| CreateCluster[Create new cluster]
-    CreateCluster --> CreatePending[Create pending person]
-    CreatePending --> Link[Link cluster → person]
+    CreateCluster --> CreatePending[Create pending people entry]
+    CreatePending --> Link[Link cluster → people]
 ```
 
-**Multiple clusters per person**: A person can have multiple clusters (even of the same type). Matching checks all clusters linked to a person - this captures variation (e.g., voice at different ages, different lighting for faces).
+**Multiple clusters per people**: A people entry can have multiple clusters (even of the same type). Matching checks all clusters linked to a people entry - this captures variation (e.g., voice at different ages, different lighting for faces).
 
 ### 2. Identifying Pending People
 
@@ -256,7 +256,7 @@ flowchart TD
     Start[Pending people] --> ShowUI[Show in people list]
     ShowUI --> UserAction{User action}
 
-    UserAction -->|"Name this person"| SetName[Set display_name]
+    UserAction -->|"Name this people entry"| SetName[Set display_name]
     SetName --> CreateVCF[Create .vcf file]
     CreateVCF --> SetPath[Set vcf_path]
 
@@ -271,14 +271,14 @@ flowchart TD
 ### 3. Manual Assignment
 
 When user manually assigns/unassigns an embedding:
-- **Assign to person**: set `manual_assignment = TRUE`, link to appropriate cluster (or create new one for that person)
-- **Unassign from person**: set `cluster_id = NULL`, keep `manual_assignment = TRUE`
+- **Assign to people**: set `manual_assignment = TRUE`, link to appropriate cluster (or create new one for that people entry)
+- **Unassign from people**: set `cluster_id = NULL`, keep `manual_assignment = TRUE`
 - Embeddings with `manual_assignment = TRUE` are never touched by auto-clustering
 
 ### 4. Representative Selection
 
 When user wants to change the representative photo/voice:
-1. Show all embeddings in clusters linked to person
+1. Show all embeddings in clusters linked to people entry
 2. User selects preferred one
 3. Extract clip/crop from source file
 4. Encode as base64 in vCard (PHOTO/X-VOICE-CLIP)
@@ -295,8 +295,8 @@ When user wants to change the representative photo/voice:
 | `/api/people/[id]` | DELETE | Delete people, clusters, and .vcf file; orphan embeddings |
 | `/api/people/[id]/representative` | PUT | Set representative photo/voice |
 | `/api/people/[id]/merge` | POST | Merge source into target: move clusters, delete source .vcf |
-| `/api/people/embeddings/[id]/assign` | POST | Manually assign embedding to people |
-| `/api/people/embeddings/[id]/unassign` | POST | Unassign embedding from people |
+| `/api/people/embeddings/[id]/assign` | POST | Manually assign embedding to people entry |
+| `/api/people/embeddings/[id]/unassign` | POST | Unassign embedding from people entry |
 
 ## UX
 
@@ -358,7 +358,7 @@ Same page for both identified and pending:
 - Face: show face crops
 - Each clip/face can be unassigned individually
 - Name field: inline editable, saving creates vCard if pending
-- [Merge with...]: select another people, move all clusters to target
+- [Merge with...]: select another people entry, move all clusters to target
 
 ### Review UI Details
 
@@ -375,8 +375,8 @@ Same page for both identified and pending:
 ### Search Integration
 
 - Add people filter to search UI
-- Show person tags on file cards when detected
-- People carousel in file inspector for media with faces/voices
+- Show people tags on file cards when detected
+- People carousel in file inspector for media with detected faces/voices
 
 ## File Structure
 
@@ -398,12 +398,12 @@ MY_DATA_DIR/
 1. **Phase 1**: Schema + speaker digester
    - Create tables: people, person_clusters, person_embeddings
    - Implement speaker-embedding digester with auto-clustering
-   - Auto-create pending person for new clusters
+   - Auto-create pending people entry for new clusters
    - API for CRUD on people
 
 2. **Phase 2**: People UI
    - Unified people page (identified + pending)
-   - Person detail with clip/face review
+   - People detail with clip/face review
    - Identify, merge, unassign actions
    - vCard read/write for identified people
 
