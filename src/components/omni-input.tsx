@@ -443,7 +443,7 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
           className={cn(
             'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
             'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
-            'placeholder:text-muted-foreground/50 min-h-[32px] px-3 py-2'
+            'placeholder:text-muted-foreground/50 min-h-9 px-4 pt-2'
           )}
           aria-invalid={!!error}
         />
