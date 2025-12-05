@@ -189,11 +189,11 @@ export function listPeopleWithCounts(options?: {
 }): PeopleWithCounts[] {
   let query = `
     SELECT p.*,
-      (SELECT COUNT(*) FROM person_clusters c WHERE c.person_id = p.id AND c.type = 'voice') as voice_cluster_count,
-      (SELECT COUNT(*) FROM person_clusters c WHERE c.person_id = p.id AND c.type = 'face') as face_cluster_count,
-      (SELECT COUNT(*) FROM person_embeddings e
-       INNER JOIN person_clusters c ON e.cluster_id = c.id
-       WHERE c.person_id = p.id) as embedding_count
+      (SELECT COUNT(*) FROM people_clusters c WHERE c.people_id = p.id AND c.type = 'voice') as voice_cluster_count,
+      (SELECT COUNT(*) FROM people_clusters c WHERE c.people_id = p.id AND c.type = 'face') as face_cluster_count,
+      (SELECT COUNT(*) FROM people_embeddings e
+       INNER JOIN people_clusters c ON e.cluster_id = c.id
+       WHERE c.people_id = p.id) as embedding_count
     FROM people p
   `;
   const conditions: string[] = [];
@@ -247,7 +247,7 @@ export function createCluster(input: PeopleClusterInput): PeopleCluster {
   const id = input.id ?? randomUUID();
 
   dbRun(
-    `INSERT INTO person_clusters (id, person_id, type, centroid, sample_count, created_at, updated_at)
+    `INSERT INTO people_clusters (id, people_id, type, centroid, sample_count, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
@@ -272,7 +272,7 @@ export function createCluster(input: PeopleClusterInput): PeopleCluster {
  */
 export function getClusterById(id: string): PeopleCluster | null {
   const row = dbSelectOne<PeopleClusterRow>(
-    'SELECT * FROM person_clusters WHERE id = ?',
+    'SELECT * FROM people_clusters WHERE id = ?',
     [id]
   );
   return row ? rowToPeopleCluster(row) : null;
@@ -282,7 +282,7 @@ export function getClusterById(id: string): PeopleCluster | null {
  * List clusters for a people entry
  */
 export function listClustersForPeople(peopleId: string, type?: ClusterType): PeopleCluster[] {
-  let query = 'SELECT * FROM person_clusters WHERE person_id = ?';
+  let query = 'SELECT * FROM people_clusters WHERE people_id = ?';
   const params: string[] = [peopleId];
 
   if (type) {
@@ -318,7 +318,7 @@ export function updateCluster(
 
   params.push(id);
 
-  dbRun(`UPDATE person_clusters SET ${setClauses.join(', ')} WHERE id = ?`, params);
+  dbRun(`UPDATE people_clusters SET ${setClauses.join(', ')} WHERE id = ?`, params);
   log.debug({ id }, 'updated cluster');
 
   return getClusterById(id);
@@ -328,7 +328,7 @@ export function updateCluster(
  * Delete cluster (embeddings will have cluster_id set to NULL)
  */
 export function deleteCluster(id: string): void {
-  dbRun('DELETE FROM person_clusters WHERE id = ?', [id]);
+  dbRun('DELETE FROM people_clusters WHERE id = ?', [id]);
   log.info({ id }, 'deleted cluster');
 }
 
@@ -337,7 +337,7 @@ export function deleteCluster(id: string): void {
  */
 export function listAllClusters(type: ClusterType): PeopleCluster[] {
   const rows = dbSelect<PeopleClusterRow>(
-    'SELECT * FROM person_clusters WHERE type = ? AND centroid IS NOT NULL',
+    'SELECT * FROM people_clusters WHERE type = ? AND centroid IS NOT NULL',
     [type]
   );
   return rows.map(rowToPeopleCluster);
@@ -355,7 +355,7 @@ export function createEmbedding(input: PeopleEmbeddingInput): PeopleEmbedding {
   const id = input.id ?? randomUUID();
 
   dbRun(
-    `INSERT INTO person_embeddings (id, cluster_id, type, vector, source_path, source_offset, quality, manual_assignment, created_at)
+    `INSERT INTO people_embeddings (id, cluster_id, type, vector, source_path, source_offset, quality, manual_assignment, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
@@ -382,7 +382,7 @@ export function createEmbedding(input: PeopleEmbeddingInput): PeopleEmbedding {
  */
 export function getEmbeddingById(id: string): PeopleEmbedding | null {
   const row = dbSelectOne<PeopleEmbeddingRow>(
-    'SELECT * FROM person_embeddings WHERE id = ?',
+    'SELECT * FROM people_embeddings WHERE id = ?',
     [id]
   );
   return row ? rowToPeopleEmbedding(row) : null;
@@ -393,7 +393,7 @@ export function getEmbeddingById(id: string): PeopleEmbedding | null {
  */
 export function listEmbeddingsForCluster(clusterId: string): PeopleEmbedding[] {
   const rows = dbSelect<PeopleEmbeddingRow>(
-    'SELECT * FROM person_embeddings WHERE cluster_id = ? ORDER BY created_at ASC',
+    'SELECT * FROM people_embeddings WHERE cluster_id = ? ORDER BY created_at ASC',
     [clusterId]
   );
   return rows.map(rowToPeopleEmbedding);
@@ -404,7 +404,7 @@ export function listEmbeddingsForCluster(clusterId: string): PeopleEmbedding[] {
  */
 export function listEmbeddingsForSource(sourcePath: string): PeopleEmbedding[] {
   const rows = dbSelect<PeopleEmbeddingRow>(
-    'SELECT * FROM person_embeddings WHERE source_path = ? ORDER BY created_at ASC',
+    'SELECT * FROM people_embeddings WHERE source_path = ? ORDER BY created_at ASC',
     [sourcePath]
   );
   return rows.map(rowToPeopleEmbedding);
@@ -415,9 +415,9 @@ export function listEmbeddingsForSource(sourcePath: string): PeopleEmbedding[] {
  */
 export function listEmbeddingsForPeople(peopleId: string, type?: ClusterType): PeopleEmbedding[] {
   let query = `
-    SELECT e.* FROM person_embeddings e
-    INNER JOIN person_clusters c ON e.cluster_id = c.id
-    WHERE c.person_id = ?
+    SELECT e.* FROM people_embeddings e
+    INNER JOIN people_clusters c ON e.cluster_id = c.id
+    WHERE c.people_id = ?
   `;
   const params: string[] = [peopleId];
 
@@ -455,7 +455,7 @@ export function updateEmbedding(
 
   params.push(id);
 
-  dbRun(`UPDATE person_embeddings SET ${setClauses.join(', ')} WHERE id = ?`, params);
+  dbRun(`UPDATE people_embeddings SET ${setClauses.join(', ')} WHERE id = ?`, params);
   log.debug({ id }, 'updated embedding');
 
   return getEmbeddingById(id);
@@ -465,7 +465,7 @@ export function updateEmbedding(
  * Delete embedding
  */
 export function deleteEmbedding(id: string): void {
-  dbRun('DELETE FROM person_embeddings WHERE id = ?', [id]);
+  dbRun('DELETE FROM people_embeddings WHERE id = ?', [id]);
   log.debug({ id }, 'deleted embedding');
 }
 
@@ -474,7 +474,7 @@ export function deleteEmbedding(id: string): void {
  */
 export function deleteEmbeddingsForSource(sourcePath: string): number {
   const result = dbRun(
-    'DELETE FROM person_embeddings WHERE source_path = ?',
+    'DELETE FROM people_embeddings WHERE source_path = ?',
     [sourcePath]
   );
   log.info({ sourcePath, count: result.changes }, 'deleted embeddings for source');
@@ -716,7 +716,7 @@ export function mergePeople(targetId: string, sourceId: string): PeopleRecord {
 
     // Move all clusters from source to target
     dbRun(
-      'UPDATE person_clusters SET person_id = ?, updated_at = ? WHERE person_id = ?',
+      'UPDATE people_clusters SET people_id = ?, updated_at = ? WHERE people_id = ?',
       [targetId, new Date().toISOString(), sourceId]
     );
 
