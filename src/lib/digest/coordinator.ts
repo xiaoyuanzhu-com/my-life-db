@@ -64,8 +64,10 @@ export class DigestCoordinator {
    * Self-managed - returns void, logs progress internally.
    *
    * @param filePath Path to file to process
+   * @param options.reset If true, reset digests before processing
+   * @param options.digester If provided, only reset and reprocess this specific digester
    */
-  async processFile(filePath: string, options?: { reset?: boolean }): Promise<void> {
+  async processFile(filePath: string, options?: { reset?: boolean; digester?: string }): Promise<void> {
     // Check if already processing this file
     if (this.processingFiles.has(filePath)) {
       log.warn({ filePath }, 'file is already being processed, skipping duplicate call');
@@ -86,7 +88,7 @@ export class DigestCoordinator {
       }
 
     if (options?.reset) {
-      this.resetDigests(filePath);
+      this.resetDigests(filePath, options.digester);
     }
 
     // Convert to FileRecordRow (DB format)
@@ -142,9 +144,14 @@ export class DigestCoordinator {
         });
 
         if (pendingOutputs.length === 0) {
-          // Already terminal - get the status from existing digest
-          const existingStatus = digestsByName.get(digesterName)?.status ?? 'completed';
-          log.info({ filePath }, `[${digesterName}] ${existingStatus}`);
+          // Already terminal - derive status from output digests
+          const outputStatuses = outputNames.map((name) => digestsByName.get(name)?.status);
+          const existingStatus = outputStatuses.includes('completed')
+            ? 'completed'
+            : outputStatuses.includes('skipped')
+              ? 'skipped'
+              : outputStatuses[0] ?? 'completed';
+          log.info({ filePath }, `[${digesterName}] already ${existingStatus}`);
           skipped++;
           continue;
         }
@@ -289,12 +296,21 @@ export class DigestCoordinator {
 
   /**
    * Remove existing digests and SQLAR artifacts before reprocessing a file
+   * @param filePath Path to file
+   * @param digester If provided, only reset this specific digester
    */
-  private resetDigests(filePath: string): void {
-    log.debug({ filePath }, 'resetting digests');
+  private resetDigests(filePath: string, digester?: string): void {
+    log.debug({ filePath, digester }, 'resetting digests');
     // Reset attempts to 0 so user can trigger a fresh retry cycle
     const existing = listDigestsForPath(filePath);
+    const pathHash = hashPath(filePath);
+
     for (const digest of existing) {
+      // If digester is specified, only reset that one
+      if (digester && digest.digester !== digester) {
+        continue;
+      }
+
       updateDigest(digest.id, {
         status: 'todo',
         content: null,
@@ -302,10 +318,17 @@ export class DigestCoordinator {
         error: null,
         attempts: 0,
       });
+
+      // Delete SQLAR artifacts for this specific digester
+      if (digest.sqlarName) {
+        sqlarDeletePrefix(this.db, `${pathHash}/${digest.digester}/`);
+      }
     }
 
-    const pathHash = hashPath(filePath);
-    sqlarDeletePrefix(this.db, `${pathHash}/`);
+    // If resetting all digests, delete all SQLAR artifacts for the file
+    if (!digester) {
+      sqlarDeletePrefix(this.db, `${pathHash}/`);
+    }
   }
 
   private getOutputNames(digester: Digester): string[] {
