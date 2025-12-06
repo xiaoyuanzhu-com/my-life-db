@@ -60,9 +60,12 @@ export async function GET(
  * Process any file through digest system
  * Runs all applicable digesters on the file
  *
+ * Query params:
+ * - digester: Optional. If provided, only reset and reprocess this specific digester
+ *
  * Examples:
- * - POST /api/digest/inbox/foo.txt → process inbox file
- * - POST /api/digest/notes/my-note.md → process library file
+ * - POST /api/digest/inbox/foo.txt → process inbox file (reset all)
+ * - POST /api/digest/notes/my-note.md?digester=tags → reset and reprocess only "tags" digester
  */
 export async function POST(
   request: NextRequest,
@@ -72,6 +75,7 @@ export async function POST(
   try {
     const { path } = await context.params;
     filePath = path.map(safeDecodeURIComponent).join('/');
+    const digester = request.nextUrl.searchParams.get('digester');
 
     if (!filePath) {
       return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
@@ -83,12 +87,17 @@ export async function POST(
     }
 
     // Process digests synchronously so user gets immediate feedback
-    // Reset existing digests so all digesters run fresh
-    await processFileDigests(filePath, { reset: true });
+    // Reset existing digests so digesters run fresh
+    await processFileDigests(filePath, {
+      reset: true,
+      digester: digester || undefined,
+    });
 
     return NextResponse.json({
       success: true,
-      message: 'Digest processing complete.'
+      message: digester
+        ? `Digest "${digester}" processing complete.`
+        : 'Digest processing complete.'
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

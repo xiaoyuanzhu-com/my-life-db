@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, Hash, HardDrive, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle, Sparkles, RotateCcw } from 'lucide-react';
 import type { FileRecord, Digest } from '@/types';
 import { TranscriptViewer } from '@/components/transcript-viewer';
 
@@ -87,9 +87,11 @@ function isTextContent(contentType: string | null): boolean {
 interface DigestCardProps {
   digest: Digest;
   onAudioSeek?: (time: number) => void;
+  onReset?: (digester: string) => void;
+  isResetting?: boolean;
 }
 
-function DigestCard({ digest, onAudioSeek }: DigestCardProps) {
+function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardProps) {
   let parsedContent: any = null;
   if (digest.content) {
     try {
@@ -215,14 +217,33 @@ function DigestCard({ digest, onAudioSeek }: DigestCardProps) {
     );
   }
 
+  const canReset = digest.status !== 'in-progress' && digest.status !== 'todo';
+
   return (
     <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="font-semibold text-sm">{digest.digester}</span>
-        {getStatusIcon(digest.status)}
-        <span className={`text-xs ${getStatusColor(digest.status)}`}>
-          {digest.status}
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-sm">{digest.digester}</span>
+          {getStatusIcon(digest.status)}
+          <span className={`text-xs ${getStatusColor(digest.status)}`}>
+            {digest.status}
+          </span>
+        </div>
+        {canReset && onReset && (
+          <button
+            onClick={() => onReset(digest.digester)}
+            disabled={isResetting}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={`Reset and reprocess "${digest.digester}"`}
+          >
+            {isResetting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RotateCcw className="w-3 h-3" />
+            )}
+            Reset
+          </button>
+        )}
       </div>
       {showContentSection && contentBody !== null && (
         <div className="pt-2 border-t text-sm space-y-2">
@@ -247,6 +268,7 @@ export default function FileInfoPage() {
   const [fileContentType, setFileContentType] = useState<string | null>(null);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
+  const [resettingDigester, setResettingDigester] = useState<string | null>(null);
   const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -438,6 +460,32 @@ export default function FileInfoPage() {
       setDigestMessage(err instanceof Error ? err.message : 'Failed to trigger digest');
     } finally {
       setIsDigesting(false);
+    }
+  };
+
+  const handleResetDigest = async (digester: string) => {
+    setResettingDigester(digester);
+    setDigestMessage(null);
+
+    try {
+      const response = await fetch(`/api/digest/${filePath}?digester=${encodeURIComponent(digester)}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to reset ${digester}`);
+      }
+
+      const data = await response.json();
+      setDigestMessage(data.message || `${digester} reset complete`);
+      setIsPollingDigests(true);
+      await loadFileInfo({ background: true });
+    } catch (err) {
+      console.error('Failed to reset digest:', err);
+      setDigestMessage(err instanceof Error ? err.message : `Failed to reset ${digester}`);
+    } finally {
+      setResettingDigester(null);
     }
   };
 
@@ -638,6 +686,8 @@ export default function FileInfoPage() {
                   key={digest.id}
                   digest={digest}
                   onAudioSeek={displayContentType?.startsWith('audio/') ? handleAudioSeek : undefined}
+                  onReset={handleResetDigest}
+                  isResetting={resettingDigester === digest.digester}
                 />
               ))}
             </div>

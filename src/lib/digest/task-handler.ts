@@ -61,10 +61,11 @@ export const digestBatchHandler = defineTaskHandler<DigestBatchPayload>({
  * @param filePath - Relative path from DATA_ROOT
  * @param options - Processing options
  * @param options.reset - If true, clear existing digests before processing
+ * @param options.digester - If provided, only reset and reprocess this specific digester
  */
 export async function processFileDigests(
   filePath: string,
-  options?: { reset?: boolean }
+  options?: { reset?: boolean; digester?: string }
 ): Promise<void> {
   const coordinator = new DigestCoordinator();
   await coordinator.processFile(filePath, options);
