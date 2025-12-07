@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withDatabase } from '@/lib/db/client';
 import { getLogger } from '@/lib/log/logger';
 import { ensureAllDigestersForExistingFiles } from '@/lib/digest/ensure';
+import { deleteAllEmbeddings } from '@/lib/db/people';
 
 const log = getLogger({ module: 'api/digest/reset' });
 
@@ -24,16 +25,25 @@ export async function DELETE(
       );
     }
 
-    const response = withDatabase((db) => {
+    // For speaker-embedding, delete embeddings FIRST (synchronously)
+    // This must happen before any digest processing can occur
+    let embeddingsDeleted = 0;
+    if (digester === 'speaker-embedding') {
+      try {
+        embeddingsDeleted = deleteAllEmbeddings();
+        log.info({ embeddingsDeleted }, 'cleared people embeddings');
+      } catch (error) {
+        log.warn({ error }, 'failed to clear people embeddings');
+      }
+    }
+
+    const deletedCount = withDatabase((db) => {
       // Get count before deletion
       const countStmt = db.prepare('SELECT COUNT(*) as count FROM digests WHERE digester = ?');
       const { count } = countStmt.get(digester) as { count: number };
 
       if (count === 0) {
-        return NextResponse.json(
-          { message: 'No digests found for this digester', count: 0 },
-          { status: 200 }
-        );
+        return 0;
       }
 
       // Delete all digests for this digester type
@@ -45,49 +55,41 @@ export async function DELETE(
         'deleted digests for digester'
       );
 
-      return NextResponse.json({
-        message: `Successfully deleted ${result.changes} digest(s)`,
-        count: result.changes,
-        digester,
-      });
+      return result.changes;
     });
 
-    // After successful deletion, recreate digest placeholders and clear search indexes
-    // This runs asynchronously without blocking the response
-    setImmediate(async () => {
+    // Clear search indexes if resetting search digesters
+    if (digester === 'search-keyword') {
       try {
-        // Recreate digest placeholders for all files
-        // This will create new 'todo' records for the deleted digester
-        ensureAllDigestersForExistingFiles();
-
-        // Clear search indexes if resetting search digesters
-        if (digester === 'search-keyword') {
-          // Clear Meilisearch index
-          try {
-            const { getMeiliClient } = await import('@/lib/search/meili-client');
-            const meiliClient = await getMeiliClient();
-            const taskUid = await meiliClient.deleteAllDocuments();
-            log.info({ taskUid }, 'cleared Meilisearch index');
-          } catch (error) {
-            log.warn({ error }, 'failed to clear Meilisearch index');
-          }
-        } else if (digester === 'search-semantic') {
-          // Clear Qdrant collection
-          try {
-            const { getQdrantClient } = await import('@/lib/search/qdrant-client');
-            const qdrantClient = await getQdrantClient();
-            await qdrantClient.deleteAll();
-            log.info({}, 'cleared Qdrant collection');
-          } catch (error) {
-            log.warn({ error }, 'failed to clear Qdrant collection');
-          }
-        }
+        const { getMeiliClient } = await import('@/lib/search/meili-client');
+        const meiliClient = await getMeiliClient();
+        const taskUid = await meiliClient.deleteAllDocuments();
+        log.info({ taskUid }, 'cleared Meilisearch index');
       } catch (error) {
-        log.error({ error }, 'failed to recreate digest placeholders or clear search indexes');
+        log.warn({ error }, 'failed to clear Meilisearch index');
       }
-    });
+    } else if (digester === 'search-semantic') {
+      try {
+        const { getQdrantClient } = await import('@/lib/search/qdrant-client');
+        const qdrantClient = await getQdrantClient();
+        await qdrantClient.deleteAll();
+        log.info({}, 'cleared Qdrant collection');
+      } catch (error) {
+        log.warn({ error }, 'failed to clear Qdrant collection');
+      }
+    }
 
-    return response;
+    // Recreate digest placeholders for all files
+    ensureAllDigestersForExistingFiles();
+
+    return NextResponse.json({
+      message: deletedCount > 0
+        ? `Successfully deleted ${deletedCount} digest(s)`
+        : 'No digests found for this digester',
+      count: deletedCount,
+      digester,
+      embeddingsDeleted,
+    });
   } catch (error) {
     log.error({ error }, 'failed to delete digests');
     return NextResponse.json(

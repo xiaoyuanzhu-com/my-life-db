@@ -20,6 +20,7 @@ import {
 import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { withDatabase } from '@/lib/db/client';
 import { getLogger } from '@/lib/log/logger';
+import { deleteEmbeddingsForSource } from '@/lib/db/people';
 
 const log = getLogger({ module: 'DigestCoordinator' });
 
@@ -322,6 +323,12 @@ export class DigestCoordinator {
       // Delete SQLAR artifacts for this specific digester
       if (digest.sqlarName) {
         sqlarDeletePrefix(this.db, `${pathHash}/${digest.digester}/`);
+      }
+
+      // Delete embeddings when resetting speaker-embedding
+      if (digest.digester === 'speaker-embedding') {
+        const deleted = deleteEmbeddingsForSource(filePath);
+        log.debug({ filePath, deleted }, 'deleted embeddings for source');
       }
     }
 

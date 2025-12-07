@@ -471,6 +471,7 @@ export function deleteEmbedding(id: string): void {
 
 /**
  * Delete all embeddings for a source path
+ * Also cleans up orphaned clusters and people
  */
 export function deleteEmbeddingsForSource(sourcePath: string): number {
   const result = dbRun(
@@ -478,6 +479,54 @@ export function deleteEmbeddingsForSource(sourcePath: string): number {
     [sourcePath]
   );
   log.info({ sourcePath, count: result.changes }, 'deleted embeddings for source');
+
+  // Clean up orphaned clusters (no embeddings pointing to them)
+  const clustersDeleted = dbRun(`
+    DELETE FROM people_clusters
+    WHERE id NOT IN (SELECT DISTINCT cluster_id FROM people_embeddings WHERE cluster_id IS NOT NULL)
+  `, []);
+  if (clustersDeleted.changes > 0) {
+    log.info({ count: clustersDeleted.changes }, 'deleted orphaned clusters');
+  }
+
+  // Clean up orphaned placeholder people (no clusters, no name, no vcf_path)
+  const peopleDeleted = dbRun(`
+    DELETE FROM people
+    WHERE id NOT IN (SELECT DISTINCT people_id FROM people_clusters)
+      AND (display_name IS NULL OR display_name = '')
+      AND vcf_path IS NULL
+  `, []);
+  if (peopleDeleted.changes > 0) {
+    log.info({ count: peopleDeleted.changes }, 'deleted orphaned placeholder people');
+  }
+
+  return result.changes;
+}
+
+/**
+ * Delete all embeddings (for full reset)
+ * Also cleans up orphaned clusters and placeholder people
+ */
+export function deleteAllEmbeddings(): number {
+  const result = dbRun('DELETE FROM people_embeddings', []);
+  log.info({ count: result.changes }, 'deleted all embeddings');
+
+  // Clean up orphaned clusters (no embeddings pointing to them)
+  const clustersDeleted = dbRun(`
+    DELETE FROM people_clusters
+    WHERE id NOT IN (SELECT DISTINCT cluster_id FROM people_embeddings WHERE cluster_id IS NOT NULL)
+  `, []);
+  log.info({ count: clustersDeleted.changes }, 'deleted orphaned clusters');
+
+  // Clean up orphaned placeholder people (no clusters, no name, no vcf_path)
+  const peopleDeleted = dbRun(`
+    DELETE FROM people
+    WHERE id NOT IN (SELECT DISTINCT people_id FROM people_clusters)
+      AND (display_name IS NULL OR display_name = '')
+      AND vcf_path IS NULL
+  `, []);
+  log.info({ count: peopleDeleted.changes }, 'deleted orphaned placeholder people');
+
   return result.changes;
 }
 
