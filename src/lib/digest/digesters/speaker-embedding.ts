@@ -31,6 +31,7 @@ const MIN_SPEAKER_DURATION = 2.0;
 export class SpeakerEmbeddingDigester implements Digester {
   readonly name = 'speaker-embedding';
   readonly label = 'Speaker ID';
+  readonly description = 'Extract and cluster speaker voice embeddings for identification';
 
   async canDigest(
     filePath: string,

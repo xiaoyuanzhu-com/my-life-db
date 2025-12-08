@@ -31,6 +31,13 @@ interface Stats {
   };
 }
 
+interface DigesterInfo {
+  name: string;
+  label: string;
+  description: string;
+  outputs: string[];
+}
+
 export default function SettingsPage() {
   const params = useParams();
 
@@ -48,6 +55,8 @@ export default function SettingsPage() {
   const [isLoadingGeneralStats, setIsLoadingGeneralStats] = useState(false);
   const [resetingDigester, setResetingDigester] = useState<string | null>(null);
   const [confirmResetDigester, setConfirmResetDigester] = useState<string | null>(null);
+  const [digesters, setDigesters] = useState<DigesterInfo[]>([]);
+  const [isLoadingDigesters, setIsLoadingDigesters] = useState(false);
 
   const filteredModels = useMemo(() => {
     if (!modelQuery) return modelOptions;
@@ -123,6 +132,21 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchDigesters = useCallback(async () => {
+    setIsLoadingDigesters(true);
+    try {
+      const response = await fetch('/api/digest/digesters');
+      if (response.ok) {
+        const data = await response.json();
+        setDigesters(data.digesters || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch digesters:', error);
+    } finally {
+      setIsLoadingDigesters(false);
+    }
+  }, []);
+
   const handleResetDigester = useCallback(async (digester: string) => {
     setResetingDigester(digester);
     try {
@@ -159,6 +183,13 @@ export default function SettingsPage() {
       return () => clearInterval(intervalId);
     }
   }, [activeTab, fetchGeneralStats]);
+
+  // Fetch digesters when digest tab is active
+  useEffect(() => {
+    if (activeTab === 'digest') {
+      void fetchDigesters();
+    }
+  }, [activeTab, fetchDigesters]);
 
   if (isLoading) {
     return (
@@ -438,94 +469,73 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Digester Toggles */}
-              <div className="space-y-4">
-              {[
-                {
-                  key: 'url-crawler',
-                  label: 'URL Crawler',
-                  description: 'Crawl URLs and extract content, screenshots, and metadata'
-                },
-                {
-                  key: 'url-crawl-summary',
-                  label: 'URL Crawl Summary',
-                  description: 'Generate AI summaries of crawled URL content'
-                },
-                {
-                  key: 'tags',
-                  label: 'Tags',
-                  description: 'Extract and generate tags for content organization'
-                },
-                {
-                  key: 'slug',
-                  label: 'Slug',
-                  description: 'Generate friendly slugs for file naming'
-                },
-                {
-                  key: 'search-keyword',
-                  label: 'Search Keyword',
-                  description: 'Index content for keyword search (Meilisearch)'
-                },
-                {
-                  key: 'search-semantic',
-                  label: 'Search Semantic',
-                  description: 'Generate embeddings for semantic search (Qdrant)'
-                },
-              ].map(({ key, label, description }) => (
-                <div key={key} className="flex items-center justify-between py-2">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">{label}</div>
-                    <p className="text-xs text-muted-foreground">{description}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmResetDigester(key)}
-                      disabled={resetingDigester !== null}
-                      className="h-8 gap-1.5"
-                      title={`Reset ${label}`}
-                    >
-                      {resetingDigester === key ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          <span className="text-xs">Resetting</span>
-                        </>
-                      ) : (
-                        <>
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          <span className="text-xs">Reset</span>
-                        </>
-                      )}
-                    </Button>
-                    <button
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
-                          ? 'bg-primary'
-                          : 'bg-muted'
-                      }`}
-                      onClick={() => {
-                        const currentValue = settings.digesters?.[key as keyof typeof settings.digesters] ?? true;
-                        setSettings({
-                          ...settings,
-                          digesters: {
-                            ...settings.digesters,
-                            [key]: !currentValue,
-                          },
-                        });
-                      }}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          (settings.digesters?.[key as keyof typeof settings.digesters] ?? true) === true
-                            ? 'translate-x-6'
-                            : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
+              {isLoadingDigesters ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ))}
-              </div>
+              ) : digesters.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  No digesters found
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {digesters.map(({ name, label, description }) => (
+                    <div key={name} className="flex items-center justify-between py-2">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">{label}</div>
+                        <p className="text-xs text-muted-foreground">{description}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setConfirmResetDigester(name)}
+                          disabled={resetingDigester !== null}
+                          className="h-8 gap-1.5"
+                          title={`Reset ${label}`}
+                        >
+                          {resetingDigester === name ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span className="text-xs">Resetting</span>
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              <span className="text-xs">Reset</span>
+                            </>
+                          )}
+                        </Button>
+                        <button
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            (settings.digesters?.[name as keyof typeof settings.digesters] ?? true) === true
+                              ? 'bg-primary'
+                              : 'bg-muted'
+                          }`}
+                          onClick={() => {
+                            const currentValue = settings.digesters?.[name as keyof typeof settings.digesters] ?? true;
+                            setSettings({
+                              ...settings,
+                              digesters: {
+                                ...settings.digesters,
+                                [name]: !currentValue,
+                              },
+                            });
+                          }}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              (settings.digesters?.[name as keyof typeof settings.digesters] ?? true) === true
+                                ? 'translate-x-6'
+                                : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

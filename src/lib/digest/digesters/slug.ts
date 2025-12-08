@@ -88,6 +88,7 @@ function extractSlugPayload(content: string): ParsedSlugResponse {
 export class SlugDigester implements Digester {
   readonly name = 'slug';
   readonly label = 'Slug';
+  readonly description = 'Generate friendly URL slugs for file naming';
 
   async canDigest(
     filePath: string,

@@ -47,6 +47,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 export class DocToMarkdownDigester implements Digester {
   readonly name = 'doc-to-markdown';
   readonly label = 'Doc to Markdown';
+  readonly description = 'Convert PDF, Word, Excel, PowerPoint, and EPUB documents to markdown';
 
   async canDigest(
     filePath: string,

@@ -19,8 +19,6 @@ import { getLogger } from '@/lib/log/logger';
 
 const log = getLogger({ module: 'DigestInit' });
 
-let initialized = false;
-
 /**
  * Initialize the digest system
  * - Registers all digesters in dependency order
@@ -29,7 +27,8 @@ let initialized = false;
  * This function is idempotent - safe to call multiple times
  */
 export function initializeDigesters(): void {
-  if (initialized) {
+  // Check if digesters are already registered (survives HMR via globalThis)
+  if (globalDigesterRegistry.count() > 0) {
     log.debug({}, 'digesters already initialized');
     return;
   }
@@ -93,13 +92,5 @@ export function initializeDigesters(): void {
     // Don't throw - allow initialization to continue
   }
 
-  initialized = true;
   log.info({}, 'digest system initialized');
-}
-
-/**
- * Reset initialization state (for testing)
- */
-export function resetDigesterInitialization(): void {
-  initialized = false;
 }

@@ -381,14 +381,23 @@ export function FileCard({
     )}>
             <div className="relative">
               {content.type === 'image' ? (
-                <div className="relative w-full max-w-md">
+                <div
+                  className="relative flex items-center justify-center"
+                  style={{ minWidth: 100, minHeight: 100 }}
+                >
                   <Image
                     src={content.src}
                     alt={content.alt}
                     width={800}
                     height={600}
                     sizes="(max-width: 768px) calc(100vw - 40px), 448px"
-                    className="w-full h-auto object-contain"
+                    className="object-contain"
+                    style={{
+                      maxWidth: 'min(calc(100vw - 40px), 448px)',
+                      maxHeight: 320,
+                      width: 'auto',
+                      height: 'auto',
+                    }}
                     priority={priority}
                   />
                 </div>

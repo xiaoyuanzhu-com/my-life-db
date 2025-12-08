@@ -52,6 +52,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 export class SpeechRecognitionDigester implements Digester {
   readonly name = 'speech-recognition';
   readonly label = 'Speech Recognition';
+  readonly description = 'Transcribe audio files to text with speaker diarization';
 
   async canDigest(
     filePath: string,

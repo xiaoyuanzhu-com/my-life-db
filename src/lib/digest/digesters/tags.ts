@@ -21,6 +21,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
 export class TagsDigester implements Digester {
   readonly name = 'tags';
   readonly label = 'Tags';
+  readonly description = 'Generate AI tags for content organization and categorization';
 
   async canDigest(
     filePath: string,

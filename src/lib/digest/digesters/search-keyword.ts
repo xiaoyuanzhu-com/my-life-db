@@ -22,6 +22,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
 export class SearchKeywordDigester implements Digester {
   readonly name = 'search-keyword';
   readonly label = 'Keyword Search';
+  readonly description = 'Index content for full-text keyword search in Meilisearch';
 
   async canDigest(
     filePath: string,

@@ -75,12 +75,13 @@ export class DigesterRegistry {
   }
 
   /**
-   * Get digester info for API/UI (name, label, outputs)
+   * Get digester info for API/UI (name, label, description, outputs)
    */
-  getDigesterInfo(): Array<{ name: string; label: string; outputs: string[] }> {
+  getDigesterInfo(): Array<{ name: string; label: string; description: string; outputs: string[] }> {
     return this.digesters.map((d) => ({
       name: d.name,
       label: d.label,
+      description: d.description,
       outputs: d.getOutputDigesters?.() ?? [d.name],
     }));
   }

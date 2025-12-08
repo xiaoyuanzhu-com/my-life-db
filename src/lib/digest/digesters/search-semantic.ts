@@ -22,6 +22,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
 export class SearchSemanticDigester implements Digester {
   readonly name = 'search-semantic';
   readonly label = 'Semantic Search';
+  readonly description = 'Generate embeddings for semantic vector search in Qdrant';
 
   async canDigest(
     filePath: string,

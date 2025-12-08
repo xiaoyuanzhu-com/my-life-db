@@ -50,6 +50,7 @@ function hashPath(filePath: string): string {
 export class UrlCrawlerDigester implements Digester {
   readonly name = 'url-crawl';
   readonly label = 'URL Crawler';
+  readonly description = 'Crawl URLs to extract content, screenshots, and metadata';
 
   getOutputDigesters(): string[] {
     return ['url-crawl-content', 'url-crawl-screenshot'];
