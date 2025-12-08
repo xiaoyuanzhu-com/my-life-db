@@ -46,6 +46,7 @@ const SUPPORTED_EXTENSIONS = new Set([
  */
 export class DocToMarkdownDigester implements Digester {
   readonly name = 'doc-to-markdown';
+  readonly label = 'Doc to Markdown';
 
   async canDigest(
     filePath: string,

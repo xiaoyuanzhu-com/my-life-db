@@ -5,18 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import type { DigestStatusView } from '@/lib/inbox/status-view';
+import type { DigestStatusView, DigestStageStatus } from '@/lib/inbox/status-view';
 import { cn } from '@/lib/utils';
 import { DigestProgress } from './digest-progress';
 
-const STAGES = [
-  { key: 'crawl', label: 'Crawl', taskType: 'digest_url_crawl' },
-  { key: 'summary', label: 'Summary', taskType: 'digest_url_summary' },
-  { key: 'tags', label: 'Tags', taskType: 'digest_url_tagging' },
-  { key: 'slug', label: 'Slug', taskType: 'digest_url_slug' },
-] as const;
+type StageStatusName = DigestStageStatus['status'];
 
-type StageStatusName = 'to-do' | 'in-progress' | 'success' | 'failed';
+interface DigesterInfo {
+  name: string;
+  label: string;
+  outputs: string[];
+}
 
 const log = (message: string, payload?: unknown) => {
   if (payload === undefined) {
@@ -26,92 +25,8 @@ const log = (message: string, payload?: unknown) => {
   }
 };
 
-function deriveStageMap(status: DigestStatusView | null): Record<string, StageStatusName> {
-  const map: Record<string, StageStatusName> = {};
-
-  // ONLY use explicit stage states from the API
-  // The done flags are for UI hints, not for determining stage status
-  status?.stages?.forEach(stage => {
-    map[stage.taskType] = stage.status;
-    log(`deriveStageMap: from stages[] ${stage.taskType} = ${stage.status}`);
-  });
-
-  // For stages not in the API response, check if they're completed via done flags
-  // But NEVER set them to 'to-do' here - let the merge logic handle that
-  STAGES.forEach(stage => {
-    if (map[stage.taskType]) {
-      // Already have explicit status from API
-      return;
-    }
-
-    // Only derive 'success' state from done flags
-    // If not done, leave it undefined so merge logic can handle it properly
-    const derivedSuccess =
-      (stage.key === 'crawl' && status?.crawlDone) ||
-      (stage.key === 'summary' && status?.summaryDone) ||
-      (stage.key === 'tags' && status?.tagsReady) ||
-      (stage.key === 'slug' && status?.slugReady);
-
-    if (derivedSuccess) {
-      log(`deriveStageMap: derived ${stage.taskType} = success (done flag set)`);
-      map[stage.taskType] = 'success';
-    } else {
-      // Don't set anything - let merge logic preserve previous state
-      log(`deriveStageMap: ${stage.taskType} not in API response and not done, leaving undefined for merge`);
-    }
-  });
-
-  return map;
-}
-
-function mergeStageMaps(
-  previous: Record<string, StageStatusName>,
-  status: DigestStatusView | null
-): Record<string, StageStatusName> {
-  const incoming = deriveStageMap(status);
-  const merged: Record<string, StageStatusName> = { ...previous };
-
-  STAGES.forEach(stage => {
-    const taskType = stage.taskType;
-    const nextState = incoming[taskType];
-    const prevState = previous[taskType];
-
-    // If incoming doesn't have this stage, keep previous state
-    if (!nextState) {
-      log(`merge: ${taskType} not in incoming, preserving ${prevState ?? 'to-do'}`);
-      if (!prevState) {
-        merged[taskType] = 'to-do';
-      }
-      return;
-    }
-
-    // Prevent regression: never move backwards from a terminal or progress state
-    // Order: to-do < in-progress < success/failed
-    if (prevState === 'success' || prevState === 'failed') {
-      // Terminal states: never change
-      log(`merge: ${taskType} locked at terminal state ${prevState}`);
-      return;
-    }
-
-    if (prevState === 'in-progress' && nextState === 'to-do') {
-      // Don't regress from in-progress to to-do
-      log(`merge: ${taskType} prevented regression from in-progress to to-do`);
-      return;
-    }
-
-    // Allow progression: to-do -> in-progress -> success/failed
-    if (prevState !== nextState) {
-      log(`merge: ${taskType} changing from ${prevState ?? 'undefined'} to ${nextState}`);
-    }
-    merged[taskType] = nextState;
-  });
-
-  return merged;
-}
-
 interface DigestCoordinatorProps {
   itemId: string;
-  type: string;
   initialSummary: string | null;
   initialTags: string[] | null;
   initialScreenshot: InboxDigestScreenshot | null;
@@ -133,9 +48,12 @@ interface DigestStatusResponse {
   status: DigestStatusView | null;
 }
 
+interface DigestersResponse {
+  digesters: DigesterInfo[];
+}
+
 export function DigestCoordinator({
   itemId,
-  type,
   initialSummary,
   initialTags,
   initialScreenshot,
@@ -147,7 +65,7 @@ export function DigestCoordinator({
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
   const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
   const [status, setStatus] = useState<DigestStatusView | null>(initialStatus);
-  const [stageStatusMap, setStageStatusMap] = useState<Record<string, StageStatusName>>(deriveStageMap(initialStatus));
+  const [digesters, setDigesters] = useState<DigesterInfo[]>([]);
   const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
@@ -165,6 +83,22 @@ export function DigestCoordinator({
   useEffect(() => {
     itemIdRef.current = itemId;
   }, [itemId]);
+
+  // Fetch digesters on mount
+  useEffect(() => {
+    async function loadDigesters() {
+      try {
+        const res = await fetch('/api/digest/digesters', { cache: 'no-store' });
+        if (res.ok) {
+          const data = (await res.json()) as DigestersResponse;
+          setDigesters(data.digesters);
+        }
+      } catch (error) {
+        log('failed to load digesters', error);
+      }
+    }
+    loadDigesters();
+  }, []);
 
   const fetchContent = useCallback(async () => {
     const currentId = itemIdRef.current;
@@ -190,7 +124,7 @@ export function DigestCoordinator({
     const payload = (await res.json()) as DigestStatusResponse;
     log('fetchStatus success', {
       overall: payload.status?.overall ?? null,
-      stageStatuses: payload.status?.stages?.map(stage => ({ taskType: stage.taskType, status: stage.status })) ?? [],
+      stageCount: payload.status?.stages?.length ?? 0,
     });
     return payload;
   }, []);
@@ -212,16 +146,7 @@ export function DigestCoordinator({
       setTags(Array.isArray(digest.tags) ? digest.tags : null);
       setScreenshot(digest.screenshot ?? null);
       setSlug(digest.slug ?? null);
-      const nextStatus = statusPayload.status ?? null;
-      setStatus(nextStatus);
-      setStageStatusMap(prev => {
-        const merged = mergeStageMaps(prev, nextStatus);
-        log(
-          'stage map merged',
-          STAGES.map(stage => `${stage.taskType}:${merged[stage.taskType] ?? 'to-do'}`).join(', ')
-        );
-        return merged;
-      });
+      setStatus(statusPayload.status ?? null);
       setPollError(null);
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -249,41 +174,48 @@ export function DigestCoordinator({
   }, [refreshDigest]);
 
   const pipelineActive = useMemo(() => {
-    const active = Object.values(stageStatusMap).some(value => value === 'in-progress');
-    log('pipelineActive computed', `active=${active} | ${STAGES.map(stage => `${stage.taskType}:${stageStatusMap[stage.taskType] ?? 'to-do'}`).join(', ')}`);
-    return active;
-  }, [stageStatusMap]);
+    return status?.stages?.some(stage => stage.status === 'in-progress') ?? false;
+  }, [status]);
 
   const hasFailures = Boolean(status?.hasFailures);
   const failedStage = useMemo(() => status?.stages?.find(stage => stage.status === 'failed'), [status]);
 
+  // Build progress stages from actual digest status, filtered to non-skipped stages
   const progressStages = useMemo(() => {
-    const stages = STAGES.map(stage => {
-      const taskType = stage.taskType;
-      const statusValue = stageStatusMap[taskType] ?? 'to-do';
-      return {
-        key: stage.key,
-        label: stage.label,
-        status: statusValue,
-      };
-    });
-    log(
-      'progressStages',
-      stages.map(stage => `${stage.key}:${stage.status}`).join(', ')
-    );
-    return stages;
-  }, [stageStatusMap]);
+    if (!status?.stages || status.stages.length === 0) {
+      return [];
+    }
+
+    // Filter out skipped stages and map to progress format
+    return status.stages
+      .filter(stage => stage.status !== 'skipped')
+      .map(stage => {
+        // Find digester label
+        const digesterInfo = digesters.find(d =>
+          d.name === stage.digester || d.outputs.includes(stage.digester)
+        );
+        const label = digesterInfo?.label ?? formatDigesterName(stage.digester);
+
+        return {
+          key: stage.digester,
+          label,
+          status: stage.status as StageStatusName,
+        };
+      });
+  }, [status, digesters]);
 
   const message = useMemo(() => {
     if (pipelineError) return pipelineError;
     if (pollError) return `Auto refresh issue: ${pollError}`;
     if (hasFailures && failedStage) {
-      const stageMeta = STAGES.find(stage => stage.taskType === failedStage.taskType);
-      const label = stageMeta?.label ?? failedStage.taskType;
+      const digesterInfo = digesters.find(d =>
+        d.name === failedStage.digester || d.outputs.includes(failedStage.digester)
+      );
+      const label = digesterInfo?.label ?? formatDigesterName(failedStage.digester);
       return `Digest failed at ${label}. Resolve the issue and retry.`;
     }
     return null;
-  }, [failedStage, hasFailures, pipelineError, pollError]);
+  }, [failedStage, hasFailures, pipelineError, pollError, digesters]);
 
   const handleDigestClick = useCallback(async () => {
     setIsDigestButtonBusy(true);
@@ -292,19 +224,13 @@ export function DigestCoordinator({
     setTags(null);
     setScreenshot(null);
     setSlug(null);
-    setStageStatusMap({
-      digest_url_crawl: 'in-progress',
-      digest_url_summary: 'to-do',
-      digest_url_tagging: 'to-do',
-      digest_url_slug: 'to-do',
-    });
     log('handleDigestClick triggered');
     try {
       const res = await fetch(`/api/digest/inbox/${itemIdRef.current}`, { method: 'POST' });
       if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error((body as { error?: string }).error || res.statusText);
-    }
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || res.statusText);
+      }
       log('workflow started, refreshing after delay');
       // Add a small delay before refreshing to give backend time to update
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -325,29 +251,27 @@ export function DigestCoordinator({
       <DigestProgress
         stages={progressStages}
         action={
-          type === 'url' ? (
-            <button
-              type="button"
-              onClick={handleDigestClick}
-              disabled={isDigestButtonBusy || pipelineActive}
-              className={cn(
-                'text-xs font-medium rounded px-3 py-1 border transition-colors',
-                (isDigestButtonBusy || pipelineActive)
-                  ? 'opacity-70 cursor-not-allowed'
-                  : 'hover:bg-accent'
-              )}
-              title="Run crawl -> summary -> tags -> slug in order"
-            >
-              {(isDigestButtonBusy || pipelineActive) ? (
-                <span className="flex items-center gap-1">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Processing...
-                </span>
-              ) : (
-                'Digest'
-              )}
-            </button>
-          ) : null
+          <button
+            type="button"
+            onClick={handleDigestClick}
+            disabled={isDigestButtonBusy || pipelineActive}
+            className={cn(
+              'text-xs font-medium rounded px-3 py-1 border transition-colors',
+              (isDigestButtonBusy || pipelineActive)
+                ? 'opacity-70 cursor-not-allowed'
+                : 'hover:bg-accent'
+            )}
+            title="Run all applicable digesters"
+          >
+            {(isDigestButtonBusy || pipelineActive) ? (
+              <span className="flex items-center gap-1">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Processing...
+              </span>
+            ) : (
+              'Digest'
+            )}
+          </button>
         }
         message={message}
       />
@@ -394,7 +318,7 @@ export function DigestCoordinator({
       <section className="bg-card rounded-lg border">
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Slug</h2>
-          <p className="text-xs text-muted-foreground">Generated handle for this URL digest</p>
+          <p className="text-xs text-muted-foreground">Generated handle for this digest</p>
         </div>
         <div className="p-6 space-y-2">
           {slug?.slug ? (
@@ -449,4 +373,14 @@ export function DigestCoordinator({
       </section>
     </div>
   );
+}
+
+/**
+ * Convert digester name to human-readable format (fallback when label not available)
+ */
+function formatDigesterName(name: string): string {
+  return name
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }

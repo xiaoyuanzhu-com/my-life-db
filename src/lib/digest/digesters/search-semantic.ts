@@ -21,6 +21,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
  */
 export class SearchSemanticDigester implements Digester {
   readonly name = 'search-semantic';
+  readonly label = 'Semantic Search';
 
   async canDigest(
     filePath: string,

@@ -73,6 +73,17 @@ export class DigesterRegistry {
   count(): number {
     return this.digesters.length;
   }
+
+  /**
+   * Get digester info for API/UI (name, label, outputs)
+   */
+  getDigesterInfo(): Array<{ name: string; label: string; outputs: string[] }> {
+    return this.digesters.map((d) => ({
+      name: d.name,
+      label: d.label,
+      outputs: d.getOutputDigesters?.() ?? [d.name],
+    }));
+  }
 }
 
 /**

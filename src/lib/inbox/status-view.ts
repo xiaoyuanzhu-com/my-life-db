@@ -2,9 +2,10 @@ import { getFileByPath } from '@/lib/db/files';
 import { listDigestsForPath } from '@/lib/db/digests';
 import type { DigestStatus, Digest } from '@/types';
 
-export interface InboxStageStatus {
-  taskType: string;
-  status: 'to-do' | 'in-progress' | 'success' | 'failed';
+export interface DigestStageStatus {
+  /** Digester name (e.g., 'url-crawl-content', 'tags') */
+  digester: string;
+  status: 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
   error: string | null;
   updatedAt: string | null;
 }
@@ -12,30 +13,19 @@ export interface InboxStageStatus {
 export interface DigestStatusView {
   filePath: string;
   overall: DigestStatus;
-  stages: InboxStageStatus[];
+  /** All digest stages for this file */
+  stages: DigestStageStatus[];
   hasFailures: boolean;
   completedCount: number;
+  skippedCount: number;
   totalCount: number;
-  // Derived hints for UI
-  crawlDone: boolean;
-  summaryDone: boolean;
-  screenshotReady: boolean;
-  tagsReady: boolean;
-  slugReady: boolean;
   canRetry: boolean;
 }
 
-// Map digesters to task types
-const DIGESTER_TO_TASK_TYPE: Record<string, string> = {
-  'url-crawl-content': 'digest_url_crawl',
-  'url-crawl-summary': 'digest_url_summary',
-  'summarize': 'digest_url_summary',
-  'tags': 'digest_url_tagging',
-  'slug': 'digest_url_slug',
-};
-
-// Map digest status to task status
-function mapDigestStatus(status: Digest['status']): InboxStageStatus['status'] {
+/**
+ * Map digest status to stage status for UI
+ */
+function mapDigestStatus(status: Digest['status']): DigestStageStatus['status'] {
   switch (status) {
     case 'todo':
       return 'to-do';
@@ -45,6 +35,8 @@ function mapDigestStatus(status: Digest['status']): InboxStageStatus['status'] {
       return 'success';
     case 'failed':
       return 'failed';
+    case 'skipped':
+      return 'skipped';
     default:
       return 'to-do';
   }
@@ -58,79 +50,37 @@ function deriveOverallStatus(digests: Digest[]): DigestStatus {
 
   const hasInProgress = digests.some(d => d.status === 'in-progress');
   const hasFailed = digests.some(d => d.status === 'failed');
-  const allCompleted = digests.every(d => d.status === 'completed' || d.status === 'skipped');
+  const allTerminal = digests.every(d =>
+    d.status === 'completed' || d.status === 'skipped' || d.status === 'failed'
+  );
 
-  if (hasFailed) return 'failed';
   if (hasInProgress) return 'in-progress';
-  if (allCompleted) return 'completed';
+  if (hasFailed) return 'failed';
+  if (allTerminal) return 'completed';
   return 'todo';
 }
 
 /**
  * Summarize digest enrichment status for a file
  *
- * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg')
  * @param digests - List of digests for this file
  */
 export function summarizeDigestEnrichment(
   filePath: string,
   digests: Digest[]
 ): DigestStatusView {
-  // Convert digests to stages
-  const stages: InboxStageStatus[] = digests
-    .filter((d) => DIGESTER_TO_TASK_TYPE[d.digester])
-    .map((d) => ({
-      taskType: DIGESTER_TO_TASK_TYPE[d.digester],
-      status: mapDigestStatus(d.status),
-      error: d.error,
-      updatedAt: d.updatedAt,
-    }));
-
-  // Ensure all 4 digest types are present (create to-do placeholders for missing)
-  const EXPECTED_DIGESTERS = ['url-crawl-content', 'url-crawl-summary', 'tags', 'slug'];
-  for (const digester of EXPECTED_DIGESTERS) {
-    const taskType = DIGESTER_TO_TASK_TYPE[digester];
-    if (!stages.find((s) => s.taskType === taskType)) {
-      stages.push({
-        taskType,
-        status: 'to-do',
-        error: null,
-        updatedAt: null,
-      });
-    }
-  }
-
-  // Sort stages in expected order
-  const stageOrder = ['digest_url_crawl', 'digest_url_summary', 'digest_url_tagging', 'digest_url_slug'];
-  stages.sort((a, b) => stageOrder.indexOf(a.taskType) - stageOrder.indexOf(b.taskType));
-
-  // Derive booleans from digests
-  const contentDigest = digests.find((d) => d.digester === 'url-crawl-content');
-  const summaryDigest = digests.find(
-    (d) => d.digester === 'url-crawl-summary' || d.digester === 'summarize'
-  );
-  const tagsDigest = digests.find((d) => d.digester === 'tags');
-  const slugDigest = digests.find((d) => d.digester === 'slug');
-  const screenshotDigest = digests.find((d) => d.digester === 'url-crawl-screenshot');
-
-  const crawlStage = stages.find((s) => s.taskType === 'digest_url_crawl');
-  const crawlDone = Boolean(
-    crawlStage?.status === 'success' || contentDigest?.status === 'completed'
-  );
-  const summaryStage = stages.find((s) => s.taskType === 'digest_url_summary');
-  const summaryDone = Boolean(
-    summaryStage?.status === 'success' || summaryDigest?.status === 'completed'
-  );
-  const screenshotReady = Boolean(screenshotDigest?.status === 'completed');
-  const taggingStage = stages.find((s) => s.taskType === 'digest_url_tagging');
-  const tagsReady = Boolean(taggingStage?.status === 'success' || tagsDigest?.status === 'completed');
-  const slugStage = stages.find((s) => s.taskType === 'digest_url_slug');
-  const slugReady = Boolean(
-    slugStage?.status === 'success' || slugDigest?.status === 'completed'
-  );
+  // Convert all digests to stages (no filtering)
+  const stages: DigestStageStatus[] = digests.map((d) => ({
+    digester: d.digester,
+    status: mapDigestStatus(d.status),
+    error: d.error,
+    updatedAt: d.updatedAt,
+  }));
 
   const totalCount = stages.length;
   const completedCount = stages.filter((s) => s.status === 'success').length;
+  const skippedCount = stages.filter((s) => s.status === 'skipped').length;
   const hasFailures = stages.some((s) => s.status === 'failed');
   const canRetry = hasFailures;
 
@@ -140,12 +90,8 @@ export function summarizeDigestEnrichment(
     stages,
     hasFailures,
     completedCount,
+    skippedCount,
     totalCount,
-    crawlDone,
-    summaryDone,
-    screenshotReady,
-    tagsReady,
-    slugReady,
     canRetry,
   };
 }
@@ -153,7 +99,7 @@ export function summarizeDigestEnrichment(
 /**
  * Get digest status view for a file path
  *
- * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
+ * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/photo.jpg')
  */
 export function getDigestStatusView(filePath: string): DigestStatusView | null {
   const file = getFileByPath(filePath);

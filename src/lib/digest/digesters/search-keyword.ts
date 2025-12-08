@@ -21,6 +21,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
  */
 export class SearchKeywordDigester implements Digester {
   readonly name = 'search-keyword';
+  readonly label = 'Keyword Search';
 
   async canDigest(
     filePath: string,

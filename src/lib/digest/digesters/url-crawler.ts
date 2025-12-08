@@ -49,6 +49,7 @@ function hashPath(filePath: string): string {
  */
 export class UrlCrawlerDigester implements Digester {
   readonly name = 'url-crawl';
+  readonly label = 'URL Crawler';
 
   getOutputDigesters(): string[] {
     return ['url-crawl-content', 'url-crawl-screenshot'];

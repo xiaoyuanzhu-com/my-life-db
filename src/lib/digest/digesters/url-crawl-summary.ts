@@ -18,6 +18,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
  */
 export class UrlCrawlSummaryDigester implements Digester {
   readonly name = 'url-crawl-summary';
+  readonly label = 'Summary';
 
   async canDigest(
     filePath: string,

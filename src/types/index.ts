@@ -226,27 +226,24 @@ export interface ExtractionOptions {
 // Inbox enrichment status (for API responses)
 // ============================================================================
 
-// Enrichment summary included in API responses for inbox items
-export interface InboxStageStatusSummary {
-  taskType: string;
-  status: 'to-do' | 'in-progress' | 'success' | 'failed';
-  attempts: number;
+// Digest stage status for API responses
+export interface DigestStageStatusSummary {
+  /** Digester name (e.g., 'url-crawl-content', 'tags') */
+  digester: string;
+  status: 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
   error: string | null;
-  updatedAt: number | null;
+  updatedAt: string | null;
 }
 
-export interface InboxEnrichmentSummary {
-  itemId: string;
+// Digest status summary for a file
+export interface DigestStatusSummary {
+  filePath: string;
   overall: DigestStatus;
-  stages: InboxStageStatusSummary[];
+  stages: DigestStageStatusSummary[];
   hasFailures: boolean;
   completedCount: number;
+  skippedCount: number;
   totalCount: number;
-  crawlDone: boolean;
-  summaryDone: boolean;
-  screenshotReady: boolean;
-  tagsReady: boolean;
-  slugReady: boolean;
   canRetry: boolean;
 }
 

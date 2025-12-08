@@ -18,6 +18,9 @@ export interface Digester {
   /** Unique digester name (e.g., 'url-crawl', 'summarize') */
   readonly name: string;
 
+  /** Human-readable label for UI display (e.g., 'URL Crawler', 'Summary') */
+  readonly label: string;
+
   /**
    * Optional list of digest records this digester produces aside from its own name.
    * Defaults to the digester name when not provided.

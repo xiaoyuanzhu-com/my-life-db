@@ -45,6 +45,7 @@ const SUPPORTED_EXTENSIONS = new Set([
  */
 export class ImageOcrDigester implements Digester {
   readonly name = 'image-ocr';
+  readonly label = 'Image OCR';
 
   async canDigest(
     filePath: string,

@@ -87,6 +87,7 @@ function extractSlugPayload(content: string): ParsedSlugResponse {
  */
 export class SlugDigester implements Digester {
   readonly name = 'slug';
+  readonly label = 'Slug';
 
   async canDigest(
     filePath: string,

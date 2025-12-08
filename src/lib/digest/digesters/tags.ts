@@ -20,6 +20,7 @@ const toTimestamp = (value?: string | null) => value ? new Date(value).getTime()
  */
 export class TagsDigester implements Digester {
   readonly name = 'tags';
+  readonly label = 'Tags';
 
   async canDigest(
     filePath: string,

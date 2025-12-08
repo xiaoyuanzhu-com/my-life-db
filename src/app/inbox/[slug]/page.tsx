@@ -74,7 +74,6 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ sl
 
         <DigestCoordinator
           itemId={slugParam}
-          type={isUrlType ? 'url' : 'text'}
           initialSummary={summary}
           initialTags={tags}
           initialScreenshot={screenshot}
