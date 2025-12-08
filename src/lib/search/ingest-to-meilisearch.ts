@@ -124,7 +124,8 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
  * Priority:
  * 1. URL: Get from digest/content-md
  * 2. Doc: Get from doc-to-markdown digest
- * 3. Library/Inbox file: Read from filesystem
+ * 3. Image: Get from image-ocr digest
+ * 4. Library/Inbox file: Read from filesystem
  */
 async function getFileContent(filePath: string): Promise<string | null> {
   // Check for URL digest first
@@ -144,6 +145,12 @@ async function getFileContent(filePath: string): Promise<string | null> {
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
     return docDigest.content;
+  }
+
+  // Check for image-ocr digest
+  const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
+  if (ocrDigest?.content && ocrDigest.status === 'completed') {
+    return ocrDigest.content;
   }
 
   // Read from filesystem for markdown/text files

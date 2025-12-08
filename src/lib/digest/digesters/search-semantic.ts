@@ -146,6 +146,7 @@ export class SearchSemanticDigester implements Digester {
     const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
     const contentDigest = existingDigests.find((d) => d.digester === 'url-crawl-content');
     const docDigest = existingDigests.find((d) => d.digester === 'doc-to-markdown');
+    const ocrDigest = existingDigests.find((d) => d.digester === 'image-ocr');
     const fileUpdatedAt = toTimestamp(file.modified_at);
 
     // Re-index if content changed
@@ -157,6 +158,12 @@ export class SearchSemanticDigester implements Digester {
     // Re-index if doc-to-markdown content changed
     if (docDigest && toTimestamp(docDigest.updatedAt) > lastIndexed) {
       log.debug({ filePath }, 'doc-to-markdown content updated, re-indexing');
+      return true;
+    }
+
+    // Re-index if image-ocr content changed
+    if (ocrDigest && toTimestamp(ocrDigest.updatedAt) > lastIndexed) {
+      log.debug({ filePath }, 'image-ocr content updated, re-indexing');
       return true;
     }
 
@@ -181,7 +188,7 @@ export class SearchSemanticDigester implements Digester {
     }
 
     // Re-index if file changed and we rely on local text content
-    if (!contentDigest && !docDigest && fileUpdatedAt > lastIndexed) {
+    if (!contentDigest && !docDigest && !ocrDigest && fileUpdatedAt > lastIndexed) {
       log.debug({ filePath }, 'file modified after last semantic index, re-indexing');
       return true;
     }

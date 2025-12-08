@@ -71,6 +71,18 @@ export function getDocToMarkdown(existingDigests: Digest[]): string | null {
   return digest?.content ?? null;
 }
 
+export function getImageOcrText(existingDigests: Digest[]): string | null {
+  const digest = existingDigests.find(
+    (d) => d.digester === 'image-ocr' && d.status === 'completed'
+  );
+  return digest?.content ?? null;
+}
+
+export function hasImageOcrContent(existingDigests: Digest[], minLength = 0): boolean {
+  const text = getImageOcrText(existingDigests);
+  return text ? text.trim().length >= minLength : false;
+}
+
 export function getUrlCrawlMarkdown(existingDigests: Digest[]): string | null {
   const digest = existingDigests.find(
     (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
@@ -119,6 +131,9 @@ export function hasAnyTextSource(
     return true;
   }
   if (hasDocToMarkdownContent(existingDigests, options?.minUrlLength ?? 0)) {
+    return true;
+  }
+  if (hasImageOcrContent(existingDigests, options?.minUrlLength ?? 0)) {
     return true;
   }
   return hasLocalTextContent(file, options?.minFileBytes ?? 0);

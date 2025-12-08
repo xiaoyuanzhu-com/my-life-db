@@ -236,7 +236,7 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
 
 /**
  * Get file content for indexing
- * Priority: 1) URL digest, 2) Doc-to-markdown digest, 3) Filesystem file, 4) Folder text.md
+ * Priority: 1) URL digest, 2) Doc-to-markdown digest, 3) Image OCR digest, 4) Filesystem file, 5) Folder text.md
  */
 async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
   const dataDir = DATA_DIR;
@@ -260,7 +260,13 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     return docDigest.content;
   }
 
-  // 3. Try reading from filesystem (markdown or text files)
+  // 3. Check for image-ocr digest
+  const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
+  if (ocrDigest?.content && ocrDigest.status === 'completed') {
+    return ocrDigest.content;
+  }
+
+  // 4. Try reading from filesystem (markdown or text files)
   if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
     try {
       const fullPath = path.join(dataDir, filePath);
@@ -271,7 +277,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     }
   }
 
-  // 3. Try folder's text.md
+  // 5. Try folder's text.md
   if (isFolder) {
     try {
       const textMdPath = path.join(dataDir, filePath, 'text.md');
