@@ -89,6 +89,7 @@ Each digester implements this interface:
 ```typescript
 interface Digester {
   readonly name: string;
+  readonly label: string;  // Human-readable label for UI display
 
   // Check if this digester applies to the file
   canDigest(
@@ -122,32 +123,54 @@ interface Digester {
 Digesters execute in registration order. Order matters for dependencies:
 
 1. **UrlCrawlerDigester** (no dependencies)
+   - Label: "URL Crawler"
    - Outputs: `url-crawl-content`, `url-crawl-html`, `screenshot`, `url-metadata`
    - Extracts URL from file, crawls webpage, captures screenshot
 
 2. **DocToMarkdownDigester** (no dependencies)
+   - Label: "Doc to Markdown"
    - Outputs: `doc-to-markdown`
    - Converts PDF/Word/PowerPoint/Excel/EPUB to markdown using HAID service
 
-3. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
+3. **SpeechRecognitionDigester** (no dependencies)
+   - Label: "Speech Recognition"
+   - Outputs: `speech-recognition`
+   - Transcribes audio/video files to text
+
+4. **SpeakerEmbeddingDigester** (no dependencies)
+   - Label: "Speaker ID"
+   - Outputs: `speaker-embedding`
+   - Extracts speaker embeddings for speaker identification
+
+5. **ImageOcrDigester** (no dependencies)
+   - Label: "Image OCR"
+   - Outputs: `image-ocr`
+   - Extracts text from images using OCR
+
+6. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
+   - Label: "Summary"
    - Outputs: `url-crawl-summary`
    - Generates AI summary of crawled content
 
-4. **TagsDigester** (depends on text content)
+7. **TagsDigester** (depends on text content)
+   - Label: "Tags"
    - Outputs: `tags`
    - Generates semantic tags for file content
 
-5. **SlugDigester** (depends on summary or content)
+8. **SlugDigester** (depends on summary or content)
+   - Label: "Slug"
    - Outputs: `slug`
    - Generates friendly filename for UUID-named inbox items
 
-6. **SearchKeywordDigester** (depends on text content)
+9. **SearchKeywordDigester** (depends on text content)
+   - Label: "Keyword Search"
    - Outputs: `search-keyword`
    - Indexes content in Meilisearch for full-text search
 
-7. **SearchSemanticDigester** (depends on text content)
-   - Outputs: `search-semantic`
-   - Generates embeddings and indexes in Qdrant for vector search
+10. **SearchSemanticDigester** (depends on text content)
+    - Label: "Semantic Search"
+    - Outputs: `search-semantic`
+    - Generates embeddings and indexes in Qdrant for vector search
 
 **Dependency Pattern**: Later digesters can safely read outputs from earlier digesters because `processFile()` loads fresh digest state at the start of each iteration.
 
@@ -205,12 +228,11 @@ The `DigestCoordinator.processFile()` method orchestrates the pipeline:
 
 ```typescript
 async processFile(filePath: string, options?: { reset?: boolean }) {
-  // 1. Acquire file-level lock (prevent concurrent processing)
-  if (processingFiles.has(filePath)) {
-    log.warn('file already being processed, skipping');
+  // 1. Acquire database-level lock (prevent concurrent processing across processes)
+  if (!tryAcquireLock(filePath, 'DigestCoordinator')) {
+    log.debug('file already being processed, skipping');
     return;
   }
-  processingFiles.add(filePath);
 
   try {
     // 2. Load file metadata
@@ -278,33 +300,39 @@ async processFile(filePath: string, options?: { reset?: boolean }) {
     log.error('digester failed', error);
     markDigests(filePath, pendingOutputs, 'failed', error.message);
   } finally {
-    // 6. Release file-level lock
-    processingFiles.delete(filePath);
+    // 6. Release database lock
+    releaseLock(filePath);
   }
 }
 ```
 
 **Key Mechanisms**:
 
-1. **File-Level Locking**: Prevents concurrent `processFile()` calls for same file
+1. **Database-Level Locking**: Prevents concurrent `processFile()` calls for same file across processes
+   - Uses `processing_locks` table in SQLite for cross-process coordination
    - Multiple systems (API, supervisor, watcher) can safely trigger processing
-   - First caller acquires lock, subsequent callers skip with warning
+   - First caller acquires lock, subsequent callers skip silently
    - Lock released in `finally` block (handles errors)
+   - Stale locks (>10 min) are automatically cleaned up on supervisor startup
 
-2. **Fresh State Loading**: `listDigestsForPath()` called at start of each digester iteration
+2. **File Selection Exclusion**: Files with any `in-progress` digest are excluded from `findFilesNeedingDigestion`
+   - Prevents supervisor from re-picking a file that's currently being processed
+   - Query includes: `AND d.file_path NOT IN (SELECT file_path FROM digests WHERE status = 'in-progress')`
+
+3. **Fresh State Loading**: `listDigestsForPath()` called at start of each digester iteration
    - Later digesters see outputs from earlier digesters
    - Enables dependency chains (e.g., search depends on doc-to-markdown)
 
-3. **Terminal State Respect**: Once a digest reaches "completed" or "skipped", it stays terminal
+4. **Terminal State Respect**: Once a digest reaches "completed" or "skipped", it stays terminal
    - Prevents redundant reprocessing
    - Reset option (`{ reset: true }`) explicitly clears terminal states
 
-4. **Max Attempts Protection**: Failed digests retry up to 3 times
+5. **Max Attempts Protection**: Failed digests retry up to 3 times
    - `attempts` field incremented on each failure
    - After 3 attempts, digest stays in "failed" state (terminal)
    - Manual reset (via API) clears attempt counts, allowing fresh retry cycle
 
-5. **Partial Progress**: Each digest saved immediately after completion
+6. **Partial Progress**: Each digest saved immediately after completion
    - Survives crashes or interruptions
    - Next run resumes from where it left off
 
@@ -319,7 +347,10 @@ Many digesters (tags, summary, search) need text content. The system checks sour
 2. Doc-to-Markdown Content (doc-to-markdown digest)
    - Converted document (PDF, Word, etc.)
 
-3. Local File Content
+3. Image OCR Content (image-ocr digest)
+   - Text extracted from images via OCR
+
+4. Local File Content
    - Direct read from filesystem for text files
 ```
 
