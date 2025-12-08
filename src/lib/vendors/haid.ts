@@ -288,6 +288,71 @@ function extractEmbeddings(payload: any): number[][] {
   return [];
 }
 
+export interface HaidImageOcrOptions {
+  imagePath: string;
+  model?: string;
+  outputFormat?: 'text' | 'markdown';
+}
+
+export interface HaidImageOcrResponse {
+  request_id: string;
+  processing_time_ms: number;
+  text: string;
+  model: string;
+  output_format: string;
+}
+
+const DEFAULT_OCR_MODEL = 'opendatalab/MinerU2.5-2509-1.2B';
+
+export async function imageOcrWithHaid(
+  options: HaidImageOcrOptions
+): Promise<HaidImageOcrResponse> {
+  if (!options.imagePath) {
+    throw new Error('HAID image OCR requires an image file path');
+  }
+
+  const config = await resolveHaidConfig();
+  const endpoint = `${config.baseUrl}/api/image-ocr`;
+
+  // Read image file and convert to base64
+  const fs = await import('fs');
+  const imageBuffer = fs.readFileSync(options.imagePath);
+  const imageBase64 = imageBuffer.toString('base64');
+
+  const model = options.model || DEFAULT_OCR_MODEL;
+  const outputFormat = options.outputFormat || 'text';
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      model,
+      output_format: outputFormat,
+      image: imageBase64,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `HAID image OCR error (${response.status}): ${errorText || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+
+  log.info({
+    imagePath: options.imagePath,
+    processingTimeMs: data.processing_time_ms,
+    textLength: data.text?.length ?? 0,
+  }, 'image OCR completed');
+
+  return data;
+}
+
 async function resolveHaidConfig(): Promise<{
   baseUrl: string;
   apiKey?: string;
