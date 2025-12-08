@@ -416,6 +416,9 @@ export function listFilesNeedingDigestion(options: {
       AND d.digester IN (${digesterPlaceholders})
       AND d.status IN (${statusPlaceholders})
       AND COALESCE(d.attempts, 0) < ?
+      AND d.file_path NOT IN (
+        SELECT file_path FROM digests WHERE status = 'in-progress'
+      )
     GROUP BY d.file_path
     ORDER BY COALESCE(f.last_scanned_at, f.created_at) ASC
     LIMIT ?

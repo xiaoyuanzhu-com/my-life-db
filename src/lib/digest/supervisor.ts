@@ -3,6 +3,7 @@ import { setTimeout as setTimeoutPromise } from 'timers/promises';
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
 import { listDigestsForPath, resetStaleInProgressDigests } from '@/lib/db/digests';
+import { cleanupStaleLocks, isLocked } from '@/lib/db/processing-locks';
 import { getLogger } from '@/lib/log/logger';
 import { getFileSystemWatcher, type FileChangeEvent } from '@/lib/scanner/fs-watcher';
 
@@ -68,6 +69,10 @@ class DigestSupervisor {
 
   private async runLoop(): Promise<void> {
     this.log.info({}, 'digest supervisor loop started');
+
+    // Clean up any stale locks from crashed processes on startup
+    cleanupStaleLocks();
+
     while (!this.stopped) {
       try {
         this.maybeResetStaleDigests();
@@ -76,6 +81,12 @@ class DigestSupervisor {
 
         if (!filePath) {
           this.consecutiveFailures = 0;
+          await this.sleep(this.config.idleSleepMs);
+          continue;
+        }
+
+        // Skip if already locked (being processed by another worker)
+        if (isLocked(filePath)) {
           await this.sleep(this.config.idleSleepMs);
           continue;
         }

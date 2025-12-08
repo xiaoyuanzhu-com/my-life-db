@@ -19,6 +19,7 @@ import {
 } from '@/lib/db/digests';
 import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
 import { withDatabase } from '@/lib/db/client';
+import { tryAcquireLock, releaseLock } from '@/lib/db/processing-locks';
 import { getLogger } from '@/lib/log/logger';
 import { deleteEmbeddingsForSource } from '@/lib/db/people';
 
@@ -56,8 +57,6 @@ function deriveFinalError(
  * Processes files through all registered digesters sequentially
  */
 export class DigestCoordinator {
-  private processingFiles = new Set<string>();
-
   constructor(private db: BetterSqlite3.Database = withDatabase(db => db)) {}
 
   /**
@@ -69,14 +68,11 @@ export class DigestCoordinator {
    * @param options.digester If provided, only reset and reprocess this specific digester
    */
   async processFile(filePath: string, options?: { reset?: boolean; digester?: string }): Promise<void> {
-    // Check if already processing this file
-    if (this.processingFiles.has(filePath)) {
-      log.warn({ filePath }, 'file is already being processed, skipping duplicate call');
+    // Try to acquire database-level lock (prevents concurrent processing across processes)
+    if (!tryAcquireLock(filePath, 'DigestCoordinator')) {
+      log.debug({ filePath }, 'file is already being processed, skipping');
       return;
     }
-
-    // Mark file as being processed
-    this.processingFiles.add(filePath);
 
     try {
       log.debug({ filePath }, 'processing file');
@@ -213,8 +209,8 @@ export class DigestCoordinator {
       'processing complete'
     );
   } finally {
-      // Always remove file from processing set
-      this.processingFiles.delete(filePath);
+      // Always release the database lock
+      releaseLock(filePath);
     }
   }
 
