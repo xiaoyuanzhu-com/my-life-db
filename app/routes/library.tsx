@@ -1,0 +1,283 @@
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import { FileTree } from "~/components/library/file-tree";
+import { FileViewer } from "~/components/library/file-viewer";
+import { FileTabs } from "~/components/library/file-tabs";
+import { FileFooterBar } from "~/components/library/file-footer-bar";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "~/components/ui/resizable";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+
+export interface TabState {
+  path: string;
+  name: string;
+  content?: string;
+  isDirty: boolean;
+  isActive: boolean;
+}
+
+function LibraryContent() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [tabs, setTabs] = useState<TabState[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
+  const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
+
+  const activeTab = tabs.find((tab) => tab.isActive);
+  const activeFilePath = activeTab?.path ?? null;
+  const dirtyFiles = new Set(tabs.filter((tab) => tab.isDirty).map((tab) => tab.path));
+  const openedFiles = tabs.map((tab) => ({ path: tab.path, name: tab.name }));
+
+  const persistTabs = useCallback((nextTabs: TabState[]) => {
+    try {
+      localStorage.setItem("library:tabs", JSON.stringify(nextTabs));
+    } catch (error) {
+      console.error("Failed to save tabs to localStorage:", error);
+    }
+  }, []);
+
+  const handleFileDataLoad = useCallback((contentType: string) => {
+    setActiveFileMimeType(contentType);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedTabs = localStorage.getItem("library:tabs");
+      const savedExpandedFolders = localStorage.getItem("library:expandedFolders");
+
+      if (savedTabs) {
+        setTabs(JSON.parse(savedTabs));
+      }
+      if (savedExpandedFolders) {
+        setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
+      }
+
+      localStorage.removeItem("library:dirtyFiles");
+      localStorage.removeItem("library:openedFiles");
+      localStorage.removeItem("library:activeFile");
+      localStorage.removeItem("library:fileEditStates");
+    } catch (error) {
+      console.error("Failed to load state from localStorage:", error);
+    } finally {
+      setIsInitialized(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    persistTabs(tabs);
+  }, [tabs, isInitialized, persistTabs]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      localStorage.setItem("library:expandedFolders", JSON.stringify(Array.from(expandedFolders)));
+    } catch (error) {
+      console.error("Failed to save expanded folders to localStorage:", error);
+    }
+  }, [expandedFolders, isInitialized]);
+
+  useEffect(() => {
+    const openParams = searchParams.getAll("open");
+    if (openParams.length === 0) return;
+
+    openParams.forEach((filePath) => {
+      if (!filePath) return;
+      const fileName = filePath.split("/").pop() || filePath;
+
+      setTabs((prev) => {
+        const existingTabIndex = prev.findIndex((t) => t.path === filePath);
+        if (existingTabIndex !== -1) {
+          return prev.map((t, i) => ({ ...t, isActive: i === existingTabIndex }));
+        }
+        return [...prev.map((t) => ({ ...t, isActive: false })), { path: filePath, name: fileName, isDirty: false, isActive: true }];
+      });
+
+      expandParentFolders(filePath);
+    });
+
+    navigate("/library", { replace: true });
+  }, [searchParams, navigate]);
+
+  const expandParentFolders = (filePath: string) => {
+    const pathParts = filePath.split("/");
+
+    setExpandedFolders((prev) => {
+      const newExpandedFolders = new Set(prev);
+      let currentPath = "";
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        if (i === 0) {
+          currentPath = "./" + pathParts[i];
+        } else {
+          currentPath += "/" + pathParts[i];
+        }
+        newExpandedFolders.add(currentPath);
+      }
+      return newExpandedFolders;
+    });
+  };
+
+  const handleFileOpen = (path: string, name: string) => {
+    setTabs((prev) => {
+      const existingTabIndex = prev.findIndex((t) => t.path === path);
+      if (existingTabIndex !== -1) {
+        return prev.map((t, i) => ({ ...t, isActive: i === existingTabIndex }));
+      }
+      return [...prev.map((t) => ({ ...t, isActive: false })), { path, name, isDirty: false, isActive: true }];
+    });
+    expandParentFolders(path);
+  };
+
+  const closeFile = useCallback((path: string) => {
+    setTabs((prev) => {
+      const closingTabIndex = prev.findIndex((t) => t.path === path);
+      if (closingTabIndex === -1) return prev;
+
+      const next = prev.filter((t) => t.path !== path);
+      const wasActive = prev[closingTabIndex].isActive;
+      if (wasActive && next.length > 0) {
+        next[next.length - 1].isActive = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleFileClose = useCallback(
+    (path: string) => {
+      if (dirtyFiles.has(path)) {
+        setPendingClosePath(path);
+        setIsCloseDialogOpen(true);
+        return;
+      }
+      closeFile(path);
+    },
+    [closeFile, dirtyFiles]
+  );
+
+  const handleTabChange = (path: string) => {
+    setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.path === path })));
+  };
+
+  const handleToggleFolder = (path: string, isExpanded: boolean) => {
+    const newExpandedFolders = new Set(expandedFolders);
+    if (isExpanded) {
+      newExpandedFolders.add(path);
+    } else {
+      newExpandedFolders.delete(path);
+    }
+    setExpandedFolders(newExpandedFolders);
+  };
+
+  const handleContentChange = useCallback((filePath: string, content: string, isDirty: boolean) => {
+    setTabs((prev) => prev.map((t) => (t.path === filePath ? { ...t, content, isDirty } : t)));
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "w" && activeFilePath) {
+        e.preventDefault();
+        handleFileClose(activeFilePath);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeFilePath, handleFileClose]);
+
+  const confirmClose = useCallback(() => {
+    if (pendingClosePath) {
+      closeFile(pendingClosePath);
+    }
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, [closeFile, pendingClosePath]);
+
+  const cancelClose = useCallback(() => {
+    setIsCloseDialogOpen(false);
+    setPendingClosePath(null);
+  }, []);
+
+  return (
+    <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background w-full">
+      <div className="flex-1 overflow-hidden min-h-0 w-full min-w-0">
+        <div className="h-full min-h-0 min-w-0 flex flex-col w-full px-[10%]">
+          <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 w-full">
+            <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden min-w-0">
+              <div className="flex-1 overflow-y-auto">
+                <FileTree
+                  onFileOpen={handleFileOpen}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={handleToggleFolder}
+                  selectedFilePath={activeFilePath}
+                />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={75} minSize={30} className="flex h-full flex-col overflow-hidden min-w-0">
+              {openedFiles.length > 0 && (
+                <div className="shrink-0 w-full min-w-0">
+                  <FileTabs
+                    files={openedFiles}
+                    activeFile={activeFilePath}
+                    dirtyFiles={dirtyFiles}
+                    onTabChange={handleTabChange}
+                    onTabClose={handleFileClose}
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+                {openedFiles.length > 0 && activeFilePath ? (
+                  <FileViewer
+                    filePath={activeFilePath}
+                    onFileDataLoad={handleFileDataLoad}
+                    onContentChange={handleContentChange}
+                    initialEditedContent={activeTab?.content}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                    Select a file from the tree to view
+                  </div>
+                )}
+              </div>
+              <FileFooterBar filePath={activeFilePath} mimeType={activeFileMimeType} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      </div>
+
+      <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Closing this tab will discard them. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelClose}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClose}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <LibraryContent />
+    </Suspense>
+  );
+}
