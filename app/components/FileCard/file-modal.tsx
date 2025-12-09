@@ -1,55 +1,22 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '~/components/ui/dialog';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import type { BaseModalProps } from './types';
+import { getFileContentType } from './utils';
+import { getModalComponent } from './modals';
 
-export interface FileModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  file: {
-    name: string;
-    path: string;
-    mimeType?: string | null;
-  };
-}
+export type { BaseModalProps as FileModalProps } from './types';
 
-export function FileModal({ open, onOpenChange, file }: FileModalProps) {
-  const isImage = file.mimeType?.startsWith('image/');
+/**
+ * FileModal - Modal dispatcher component
+ *
+ * Detects file content type and renders the appropriate modal component.
+ * Returns null if no modal is available for the content type.
+ */
+export function FileModal({ file, open, onOpenChange }: BaseModalProps) {
+  const contentType = getFileContentType(file);
+  const ModalComponent = getModalComponent(contentType);
 
-  if (!isImage) {
+  if (!ModalComponent) {
     return null;
   }
 
-  const src = `/raw/${file.path}`;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-[90vw] max-h-[90vh] w-fit p-0 border-none bg-transparent shadow-none overflow-hidden rounded-none"
-        showCloseButton={false}
-      >
-        <VisuallyHidden>
-          <DialogTitle>{file.name}</DialogTitle>
-        </VisuallyHidden>
-        <div
-          className="relative flex items-center justify-center cursor-pointer"
-          onClick={() => onOpenChange(false)}
-        >
-          <img
-            src={src}
-            alt={file.name}
-            className="object-contain"
-            style={{
-              maxWidth: '90vw',
-              maxHeight: '90vh',
-              width: 'auto',
-              height: 'auto',
-            }}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+  return <ModalComponent file={file} open={open} onOpenChange={onOpenChange} />;
 }
