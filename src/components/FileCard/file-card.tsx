@@ -153,6 +153,19 @@ export function FileCard({
       return { type: 'text' as const, text: file.textPreview };
     }
 
+    // Check for screenshot digest (for non-media files like PDFs, URLs)
+    // Digesters: doc-to-screenshot, url-crawl-screenshot
+    const screenshotDigest = file.digests?.find(
+      d => d.type.includes('screenshot') && d.status === 'completed' && d.sqlarName
+    );
+    if (screenshotDigest?.sqlarName) {
+      const src = `/sqlar/${screenshotDigest.sqlarName
+        .split('/')
+        .map(segment => encodeURIComponent(segment))
+        .join('/')}`;
+      return { type: 'screenshot' as const, src, alt: file.name };
+    }
+
     // Fallback to filename
     return { type: 'filename' as const, name: file.name };
   }, [file]);
@@ -437,6 +450,27 @@ export function FileCard({
                   isExpanded={isExpanded}
                   shouldTruncate={textDisplay.shouldTruncate}
                 />
+              ) : content.type === 'screenshot' ? (
+                <div
+                  className="relative flex items-center justify-center"
+                  style={{ minWidth: 100, minHeight: 100 }}
+                >
+                  <Image
+                    src={content.src}
+                    alt={content.alt}
+                    width={800}
+                    height={600}
+                    sizes="(max-width: 768px) calc(100vw - 40px), 448px"
+                    className="object-contain"
+                    style={{
+                      maxWidth: 'min(calc(100vw - 40px), 448px)',
+                      maxHeight: 320,
+                      width: 'auto',
+                      height: 'auto',
+                    }}
+                    unoptimized
+                  />
+                </div>
               ) : (
                 <div className="p-6 flex items-center justify-center min-h-[120px]">
                   <div className="text-center">
