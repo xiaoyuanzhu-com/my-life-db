@@ -101,6 +101,7 @@ export class DocToMarkdownDigester implements Digester {
         content: result.markdown,
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },

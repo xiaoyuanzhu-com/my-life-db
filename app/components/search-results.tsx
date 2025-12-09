@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
-import type { SearchResponse, SearchResultItem } from '~/app/api/search/route';
+import type { SearchResponse } from '~/routes/api.search';
+import type { SearchResultItem } from '~/types/search';
 
 interface SearchResultsProps {
   results: SearchResponse | null;

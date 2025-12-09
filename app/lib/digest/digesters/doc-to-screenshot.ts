@@ -113,6 +113,7 @@ export class DocToScreenshotDigester implements Digester {
         content: null,
         sqlarName,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },

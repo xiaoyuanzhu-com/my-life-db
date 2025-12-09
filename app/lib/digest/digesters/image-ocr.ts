@@ -103,6 +103,7 @@ export class ImageOcrDigester implements Digester {
         content: result.text,
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },
