@@ -388,7 +388,8 @@ export function FileCard({
   // Card element to be used as trigger
   const cardElement = (
     <div className={cn(
-      "group relative max-w-[calc(100%-40px)] w-fit overflow-hidden rounded-lg border border-border bg-muted touch-callout-none",
+      "group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none",
+      content.type === 'audio' ? "w-[calc(50%-40px)] min-w-[280px]" : "max-w-[calc(100%-40px)] w-fit",
       // Only disable text selection for non-text content
       !isTextContent && "select-none"
     )}>
