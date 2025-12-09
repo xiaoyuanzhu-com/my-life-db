@@ -1,4 +1,3 @@
-import 'server-only';
 /**
  * Digest Layer - Image OCR
  * Placeholder interface. Real OCR (text extraction) will be wired later.

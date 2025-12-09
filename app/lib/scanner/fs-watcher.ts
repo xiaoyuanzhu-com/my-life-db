@@ -1,4 +1,3 @@
-import 'server-only';
 // File system watcher for real-time file detection
 // Watches DATA_ROOT for file/folder changes, updates files table, triggers digest processing
 

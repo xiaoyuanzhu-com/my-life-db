@@ -113,7 +113,9 @@ export async function callOpenAICompletion(
       },
       'openai completion model selection'
     );
-  } catch {}
+  } catch {
+    // Ignore logging errors
+  }
 
   // Initialize OpenAI client
   const client = new OpenAI({

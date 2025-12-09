@@ -1,4 +1,3 @@
-import 'server-only';
 import { callHaidEmbedding } from '~/lib/vendors/haid';
 import { getLogger } from '~/lib/log/logger';
 

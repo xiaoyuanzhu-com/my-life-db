@@ -19,7 +19,6 @@ import type {
   PeopleEmbeddingRow,
   PeopleEmbedding,
   PeopleEmbeddingInput,
-  SourceOffset,
 } from '~/types/models';
 import {
   rowToPeopleRecord,
@@ -684,7 +683,7 @@ export function addEmbeddingWithClustering(
 
     // If manual assignment, just create the embedding without clustering
     if (input.manualAssignment) {
-      const embedding = createEmbedding({
+      createEmbedding({
         ...input,
         vector: normalizedVector,
         manualAssignment: true,

@@ -1,4 +1,3 @@
-import 'server-only';
 import { getLogger } from '~/lib/log/logger';
 import { loadSettings } from '~/lib/config/storage';
 

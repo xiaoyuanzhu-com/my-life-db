@@ -1,4 +1,3 @@
-import 'server-only';
 /**
  * Digest Layer - Text Summary
  * Business-facing summary function backed by OpenAI.

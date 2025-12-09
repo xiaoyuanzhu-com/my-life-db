@@ -127,7 +127,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   useEffect(() => {
     isInitialMount.current = true;
     loadFile();
-  }, [filePath]); // Only reload when filePath changes
+  }, [filePath, loadFile]); // Reload when filePath or loadFile changes
 
   // Notify parent of content changes (only when user edits, not on initial load)
   useEffect(() => {
@@ -237,8 +237,6 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
 
         {fileType === 'image' && (
           <div className="flex items-center justify-center">
-            {/* Using <img> because file dimensions are unknown at build time */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={fileUrl}
               alt={fileData.name}

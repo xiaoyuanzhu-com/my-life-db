@@ -1,4 +1,3 @@
-import 'server-only';
 
 import { tq } from './index';
 import { getHandler, unregisterHandler } from './executor';

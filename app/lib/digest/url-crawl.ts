@@ -1,4 +1,3 @@
-import 'server-only';
 /**
  * Digest Layer - URL Crawl
  * Business-facing function to crawl a URL and produce a digest-friendly output.

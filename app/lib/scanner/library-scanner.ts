@@ -1,4 +1,3 @@
-import 'server-only';
 // Periodic scanner for library folders
 // Scans DATA_ROOT for folders and files, updates files table cache
 import fs from 'fs/promises';

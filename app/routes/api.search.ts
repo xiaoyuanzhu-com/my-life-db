@@ -5,7 +5,7 @@ import { embedText } from "~/lib/ai/embeddings";
 import { getFileWithDigests } from "~/lib/db/files-with-digests";
 import { getLogger } from "~/lib/log/logger";
 import { readPrimaryText } from "~/lib/inbox/digest-artifacts";
-import type { FileWithDigests, DigestSummary } from "~/types/file-card";
+import type { FileWithDigests } from "~/types/file-card";
 
 const log = getLogger({ module: "SearchAPI" });
 const HIGHLIGHT_PRE_TAG = "<em>";

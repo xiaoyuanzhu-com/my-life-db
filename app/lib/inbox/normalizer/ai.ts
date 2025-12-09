@@ -1,4 +1,3 @@
-import 'server-only';
 // AI-first Inbox Folder Normalizer
 // Builds a compact prompt from a folder inventory and asks the configured AI
 // to best-effort map legacy shapes to the current InboxItem fields.

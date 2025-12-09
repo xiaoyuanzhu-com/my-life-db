@@ -13,7 +13,7 @@
 import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import type { HaidSpeechRecognitionResponse, HaidSpeechRecognitionSegment } from '~/lib/vendors/haid';
+import type { HaidSpeechRecognitionResponse } from '~/lib/vendors/haid';
 import type { VoiceSourceOffset } from '~/types/people-embedding';
 import { addEmbeddingWithClustering, listEmbeddingsForSource } from '~/lib/db/people';
 import { getLogger } from '~/lib/log/logger';

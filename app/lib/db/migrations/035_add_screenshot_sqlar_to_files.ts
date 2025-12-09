@@ -44,7 +44,7 @@ const migration = {
     console.log(`[Migration 035] Backfilled ${result.changes} files with screenshot_sqlar`);
   },
 
-  async down(db: BetterSqlite3.Database) {
+  async down(_db: BetterSqlite3.Database) {
     console.log('[Migration 035] Removing screenshot_sqlar column from files table');
     console.warn('[Migration 035] Rollback not supported - would require table recreation');
   },

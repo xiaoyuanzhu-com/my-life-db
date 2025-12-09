@@ -1,4 +1,3 @@
-import 'server-only';
 
 import { callOpenAICompletion } from '~/lib/vendors/openai';
 import { getLogger } from '~/lib/log/logger';

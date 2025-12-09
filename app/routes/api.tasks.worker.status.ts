@@ -4,7 +4,7 @@ import { getLogger } from "~/lib/log/logger";
 
 const log = getLogger({ module: "ApiWorkerStatus" });
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const worker = getWorker();
 

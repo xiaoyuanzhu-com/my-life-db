@@ -6,7 +6,7 @@ import { getLogger } from "~/lib/log/logger";
 
 const log = getLogger({ module: "ApiTaskStatus" });
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const stats = getTaskStats();
     const pendingByType = getPendingTaskCountByType();

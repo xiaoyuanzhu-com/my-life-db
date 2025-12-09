@@ -1,4 +1,3 @@
-import 'server-only';
 import type { ChunkDescriptor } from './types';
 
 export interface ChunkerOptions {

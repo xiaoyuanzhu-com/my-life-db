@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router';
 import { Settings, Home, Library, CircleUserRound } from 'lucide-react';
-import { getGravatarUrl } from '~/lib/gravatar';
+import { getGravatarUrlSync } from '~/lib/gravatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +37,7 @@ export function Header() {
       });
   }, []);
 
-  const gravatarUrl = userEmail ? getGravatarUrl(userEmail, 128) : null;
+  const gravatarUrl = userEmail ? getGravatarUrlSync(userEmail, 128) : null;
 
   const navLinks = [
     { href: '/', label: 'Home', icon: Home },

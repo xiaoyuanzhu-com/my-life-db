@@ -1,4 +1,3 @@
-import 'server-only';
 import { getLogger } from '~/lib/log/logger';
 import { getSettings } from '~/lib/config/storage';
 import type { MeilisearchDocumentPayload } from './types';

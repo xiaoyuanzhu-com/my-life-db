@@ -1,4 +1,3 @@
-import 'server-only';
 /**
  * Simple cross-process lock via lock file
  * Ensures only one process performs a critical section (e.g., starts worker)

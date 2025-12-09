@@ -3,7 +3,6 @@
  * Uses HAID service to convert documents (PDF, Word, PowerPoint, Excel, EPUB) to markdown
  */
 
-import 'server-only';
 import { getSettings } from '~/lib/config/storage';
 import { getLogger } from '~/lib/log/logger';
 import { promises as fs } from 'fs';

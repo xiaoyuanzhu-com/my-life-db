@@ -16,6 +16,10 @@ export default defineConfig({
         "fsevents",
         "pino",
         "pino-pretty",
+        // TUS upload server dependencies
+        "@tus/server",
+        "@tus/file-store",
+        "@tus/utils",
       ],
     },
   },

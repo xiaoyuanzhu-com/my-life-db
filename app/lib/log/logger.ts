@@ -1,4 +1,3 @@
-import 'server-only';
 import pino from 'pino';
 
 // Lightweight logger wrapper around pino with a safe fallback to console.
@@ -116,7 +115,9 @@ export function setLogLevel(level: LogLevel): void {
     if (anyLogger && typeof anyLogger === 'object' && 'level' in anyLogger) {
       anyLogger.level = level as unknown as string;
     }
-  } catch {}
+  } catch {
+    // Ignore errors when setting log level
+  }
 }
 
 export function getLogger(bindings?: Record<string, unknown>): PinoLike {

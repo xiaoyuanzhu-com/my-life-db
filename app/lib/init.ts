@@ -17,9 +17,7 @@ import { shutdownWorker } from "./task-queue/worker";
 import { getLogger } from "~/lib/log/logger";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __mylifedb_app_initialized: boolean | undefined;
-  // eslint-disable-next-line no-var
   var __mylifedb_shutdown_hooks_registered: boolean | undefined;
 }
 

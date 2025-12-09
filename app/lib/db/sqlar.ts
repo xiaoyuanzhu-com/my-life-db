@@ -1,6 +1,5 @@
 // SQLAR (SQLite Archive) helper functions
 // SQLAR is a standard SQLite format for storing compressed files in a database
-import 'server-only';
 import type BetterSqlite3 from 'better-sqlite3';
 import { deflate, inflate } from 'zlib';
 import { promisify } from 'util';

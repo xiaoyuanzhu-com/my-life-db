@@ -1,4 +1,3 @@
-import 'server-only';
 import { tq } from '~/lib/task-queue';
 import { defineTaskHandler, ensureTaskRuntimeReady } from '~/lib/task-queue/handler-registry';
 import {

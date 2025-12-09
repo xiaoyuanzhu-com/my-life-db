@@ -14,7 +14,7 @@ const safeDecodeURIComponent = (value: string): string => {
   }
 };
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   try {
     const splat = params["*"] || "";
     const filePath = splat.split("/").map(safeDecodeURIComponent).join("/");

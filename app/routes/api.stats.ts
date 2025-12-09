@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { dbSelectOne } from "~/lib/db/client";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const libraryFiles = dbSelectOne<{ count: number; totalSize: number }>(
       `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalSize

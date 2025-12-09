@@ -294,8 +294,8 @@ export function cleanupOldTasks(olderThanSeconds: number): number {
  * Delete pending or in-progress tasks referencing a specific file path
  */
 export function deletePendingTasksForFile(filePath: string): number {
-  const likePath = `%\"filePath\":\"${filePath}\"%`;
-  const likePathSnake = `%\"file_path\":\"${filePath}\"%`;
+  const likePath = `%"filePath":"${filePath}"%`;
+  const likePathSnake = `%"file_path":"${filePath}"%`;
 
   const tasks = dbSelect<{ id: string; type: string; input: string }>(
     `
@@ -330,8 +330,8 @@ export function deletePendingTasksForFile(filePath: string): number {
  * Delete pending or in-progress tasks referencing paths under a prefix
  */
 export function deletePendingTasksForPrefix(pathPrefix: string): number {
-  const likePath = `%\"filePath\":\"${pathPrefix}%\"%`;
-  const likePathSnake = `%\"file_path\":\"${pathPrefix}%\"%`;
+  const likePath = `%"filePath":"${pathPrefix}%"%`;
+  const likePathSnake = `%"file_path":"${pathPrefix}%"%`;
 
   const tasks = dbSelect<{ id: string; type: string; input: string }>(
     `

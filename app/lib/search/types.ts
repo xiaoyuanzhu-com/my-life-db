@@ -1,4 +1,3 @@
-import 'server-only';
 
 /**
  * Chunk descriptor for text chunking operations

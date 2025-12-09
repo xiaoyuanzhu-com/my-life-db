@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { FileTree } from "~/components/library/file-tree";
 import { FileViewer } from "~/components/library/file-viewer";
@@ -36,7 +36,7 @@ function LibraryContent() {
 
   const activeTab = tabs.find((tab) => tab.isActive);
   const activeFilePath = activeTab?.path ?? null;
-  const dirtyFiles = new Set(tabs.filter((tab) => tab.isDirty).map((tab) => tab.path));
+  const dirtyFiles = useMemo(() => new Set(tabs.filter((tab) => tab.isDirty).map((tab) => tab.path)), [tabs]);
   const openedFiles = tabs.map((tab) => ({ path: tab.path, name: tab.name }));
 
   const persistTabs = useCallback((nextTabs: TabState[]) => {

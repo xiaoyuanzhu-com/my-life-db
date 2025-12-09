@@ -1,4 +1,3 @@
-import 'server-only';
 /**
  * Save content to inbox folder
  * No items abstraction - just saves files and updates files table cache

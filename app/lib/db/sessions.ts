@@ -1,5 +1,4 @@
-// Session management functions
-import 'server-only';
+// Session management functions (server-only)
 import { dbRun, dbSelectOne } from './client';
 import { randomBytes } from 'crypto';
 
