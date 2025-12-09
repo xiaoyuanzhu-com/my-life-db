@@ -247,6 +247,15 @@ export function updateFilePath(oldPath: string, newPath: string): void {
 }
 
 /**
+ * Update screenshot_sqlar cached field
+ * Called by digest coordinator when a screenshot digest completes
+ */
+export function updateFileScreenshotSqlar(path: string, screenshotSqlar: string | null): void {
+  dbRun('UPDATE files SET screenshot_sqlar = ? WHERE path = ?', [screenshotSqlar, path]);
+  log.debug({ path, screenshotSqlar }, 'updated file screenshot_sqlar');
+}
+
+/**
  * Delete file record
  */
 export function deleteFileRecord(path: string): void {

@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveToInbox } from '@/lib/inbox/save-to-inbox';
 import { listTopLevelFiles, countTopLevelFiles } from '@/lib/db/files';
-import { listDigestsForPath } from '@/lib/db/digests';
 import { isPinned } from '@/lib/db/pins';
-import type { DigestSummary } from '@/types/file-card';
 import { processFileDigests } from '@/lib/digest/task-handler';
 import { getLogger } from '@/lib/log/logger';
 import { notificationService } from '@/lib/notifications/notification-service';
@@ -55,39 +53,22 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const total = countTopLevelFiles('inbox/');
 
-    // Convert FileRecord to InboxItem (includes cached textPreview from DB)
-    const items: InboxItem[] = files.map((file) => {
-      // Load screenshot digests for files without text preview (PDFs, URLs, etc.)
-      let digests: DigestSummary[] = [];
-      if (!file.textPreview && !file.mimeType?.startsWith('image/') && !file.mimeType?.startsWith('video/') && !file.mimeType?.startsWith('audio/')) {
-        const screenshotDigests = listDigestsForPath(file.path, {
-          digesters: ['doc-to-screenshot', 'url-crawl-screenshot'],
-          statuses: ['completed'],
-        });
-        digests = screenshotDigests.map(d => ({
-          type: d.digester,
-          status: d.status,
-          content: d.content,
-          sqlarName: d.sqlarName,
-          error: d.error,
-          updatedAt: d.updatedAt,
-        }));
-      }
-
-      return {
-        path: file.path,
-        name: file.name,
-        isFolder: file.isFolder,
-        size: file.size,
-        mimeType: file.mimeType,
-        hash: file.hash,
-        modifiedAt: file.modifiedAt,
-        createdAt: file.createdAt,
-        digests,
-        textPreview: file.textPreview || undefined,  // From database cache
-        isPinned: isPinned(file.path),  // Check pin status
-      };
-    });
+    // Convert FileRecord to InboxItem
+    // Uses cached fields: textPreview, screenshotSqlar (no digest queries needed!)
+    const items: InboxItem[] = files.map((file) => ({
+      path: file.path,
+      name: file.name,
+      isFolder: file.isFolder,
+      size: file.size,
+      mimeType: file.mimeType,
+      hash: file.hash,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      digests: [],  // Not needed - screenshotSqlar is cached on FileRecord
+      textPreview: file.textPreview || undefined,
+      screenshotSqlar: file.screenshotSqlar || undefined,
+      isPinned: isPinned(file.path),
+    }));
 
     const response: InboxResponse = {
       items,

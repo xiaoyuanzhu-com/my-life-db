@@ -36,6 +36,9 @@ export interface FileWithDigests {
   // Optional text preview (truncated, for inbox/search list views)
   textPreview?: string;
 
+  // Screenshot SQLAR path (cached for fast inbox rendering)
+  screenshotSqlar?: string;
+
   // Pin status (from pins table)
   isPinned?: boolean;
 }

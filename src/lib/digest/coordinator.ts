@@ -9,7 +9,7 @@ import type { Digest, DigestInput, FileRecordRow } from '@/types';
 import type { Digester } from './types';
 import { globalDigesterRegistry } from './registry';
 import { MAX_DIGEST_ATTEMPTS } from './constants';
-import { getFileByPath } from '@/lib/db/files';
+import { getFileByPath, updateFileScreenshotSqlar } from '@/lib/db/files';
 import {
   listDigestsForPath,
   getDigestById,
@@ -100,6 +100,7 @@ export class DigestCoordinator {
       created_at: fileRecord.createdAt,
       last_scanned_at: fileRecord.lastScannedAt,
       text_preview: fileRecord.textPreview,
+      screenshot_sqlar: fileRecord.screenshotSqlar,
     };
 
     // 2. Get all digesters in registration order
@@ -263,6 +264,11 @@ export class DigestCoordinator {
     }
 
     log.debug({ filePath, digester: output.digester }, 'digest saved');
+
+    // Sync screenshot_sqlar to files table for fast inbox queries
+    if (output.digester.includes('screenshot') && targetStatus === 'completed' && output.sqlarName) {
+      updateFileScreenshotSqlar(filePath, output.sqlarName);
+    }
   }
 
   /**
@@ -325,6 +331,11 @@ export class DigestCoordinator {
       if (digest.digester === 'speaker-embedding') {
         const deleted = deleteEmbeddingsForSource(filePath);
         log.debug({ filePath, deleted }, 'deleted embeddings for source');
+      }
+
+      // Clear screenshot_sqlar cache when resetting screenshot digesters
+      if (digest.digester.includes('screenshot')) {
+        updateFileScreenshotSqlar(filePath, null);
       }
     }
 

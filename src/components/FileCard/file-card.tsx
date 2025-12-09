@@ -153,13 +153,14 @@ export function FileCard({
       return { type: 'text' as const, text: file.textPreview };
     }
 
-    // Check for screenshot digest (for non-media files like PDFs, URLs)
-    // Digesters: doc-to-screenshot, url-crawl-screenshot
-    const screenshotDigest = file.digests?.find(
+    // Check for cached screenshot (for non-media files like PDFs, URLs)
+    // First check direct screenshotSqlar field, then fall back to digests array
+    const sqlarName = file.screenshotSqlar || file.digests?.find(
       d => d.type.includes('screenshot') && d.status === 'completed' && d.sqlarName
-    );
-    if (screenshotDigest?.sqlarName) {
-      const src = `/sqlar/${screenshotDigest.sqlarName
+    )?.sqlarName;
+
+    if (sqlarName) {
+      const src = `/sqlar/${sqlarName
         .split('/')
         .map(segment => encodeURIComponent(segment))
         .join('/')}`;
