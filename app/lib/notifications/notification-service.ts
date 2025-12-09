@@ -1,7 +1,7 @@
 // Notification service for broadcasting real-time events
 // Uses in-memory EventEmitter for server-side pub/sub
 import { EventEmitter } from 'events';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'NotificationService' });
 

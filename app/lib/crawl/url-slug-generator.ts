@@ -2,10 +2,10 @@
  * URL Slug Generator - Generate human-readable slugs for URLs
  */
 
-import { callOpenAICompletion, isOpenAIConfigured } from '@/lib/vendors/openai';
+import { callOpenAICompletion, isOpenAIConfigured } from '~/lib/vendors/openai';
 import { generateSlug } from '../utils/slug';
 import type { CrawlResult } from './url-crawler';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'SlugGenerator' });
 

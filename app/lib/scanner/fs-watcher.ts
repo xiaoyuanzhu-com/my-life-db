@@ -7,12 +7,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
 import { EventEmitter } from 'events';
-import { DATA_ROOT } from '@/lib/fs/storage';
-import { upsertFileRecord, getFileByPath } from '@/lib/db/files';
-import { ensureAllDigesters } from '@/lib/digest/ensure';
-import { notificationService } from '@/lib/notifications/notification-service';
-import { deleteFile } from '@/lib/files/delete-file';
-import { getLogger } from '@/lib/log/logger';
+import { DATA_ROOT } from '~/lib/fs/storage';
+import { upsertFileRecord, getFileByPath } from '~/lib/db/files';
+import { ensureAllDigesters } from '~/lib/digest/ensure';
+import { notificationService } from '~/lib/notifications/notification-service';
+import { deleteFile } from '~/lib/files/delete-file';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'FileSystemWatcher' });
 

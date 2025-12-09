@@ -4,13 +4,13 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { ingestToMeilisearch } from '@/lib/search/ingest-to-meilisearch';
-import { enqueueMeiliIndex } from '@/lib/search/meili-tasks';
-import { getMeiliDocumentIdForFile } from '@/lib/db/meili-documents';
-import { getLogger } from '@/lib/log/logger';
-import { hasAnyTextSource } from '@/lib/digest/text-source';
+import { ingestToMeilisearch } from '~/lib/search/ingest-to-meilisearch';
+import { enqueueMeiliIndex } from '~/lib/search/meili-tasks';
+import { getMeiliDocumentIdForFile } from '~/lib/db/meili-documents';
+import { getLogger } from '~/lib/log/logger';
+import { hasAnyTextSource } from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'SearchKeywordDigester' });
 const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;

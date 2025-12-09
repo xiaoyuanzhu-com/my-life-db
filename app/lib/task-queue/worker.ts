@@ -5,7 +5,7 @@
 import { getReadyTasks, getStaleTasks } from './scheduler';
 import { executeTask } from './executor';
 import { recoverStaleTasks } from './executor';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 export interface WorkerConfig {
   /** Polling interval in milliseconds (default: 1000ms) */

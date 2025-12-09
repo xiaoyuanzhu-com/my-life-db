@@ -5,9 +5,9 @@
 
 import { globalDigesterRegistry } from './registry';
 import { EXCLUDED_PATH_PREFIXES } from './file-selection';
-import { listDigestsForPath, insertDigestIfMissing, updateDigest } from '@/lib/db/digests';
-import { listFilePathsForDigestion } from '@/lib/db/files';
-import { getLogger } from '@/lib/log/logger';
+import { listDigestsForPath, insertDigestIfMissing, updateDigest } from '~/lib/db/digests';
+import { listFilePathsForDigestion } from '~/lib/db/files';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DigestEnsure' });
 

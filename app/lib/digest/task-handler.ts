@@ -3,10 +3,10 @@
  * Direct access to digest coordinator for API endpoints and background processing
  */
 
-import { defineTaskHandler } from '@/lib/task-queue/handler-registry';
+import { defineTaskHandler } from '~/lib/task-queue/handler-registry';
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DigestTaskHandler' });
 

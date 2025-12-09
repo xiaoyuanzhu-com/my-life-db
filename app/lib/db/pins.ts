@@ -6,11 +6,11 @@
 
 import { randomUUID } from 'crypto';
 import { dbSelect, dbSelectOne, dbRun } from './client';
-import { getLogger } from '@/lib/log/logger';
-import type { PinRecordRow, PinRecord } from '@/types/pin';
-import { rowToPinRecord } from '@/types/pin';
+import { getLogger } from '~/lib/log/logger';
+import type { PinRecordRow, PinRecord } from '~/types/pin';
+import { rowToPinRecord } from '~/types/pin';
 import { getFileByPath } from './files';
-import type { FileRecord } from '@/types/models';
+import type { FileRecord } from '~/types/models';
 
 // Re-export types for convenience
 export type { PinRecord, PinRecordRow };

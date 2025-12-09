@@ -1,8 +1,8 @@
 // Database operations for digests table
 import { randomUUID } from 'crypto';
 import { dbRun, dbSelect, dbSelectOne } from './client';
-import { getLogger } from '@/lib/log/logger';
-import type { Digest, DigestRecordRow } from '@/types';
+import { getLogger } from '~/lib/log/logger';
+import type { Digest, DigestRecordRow } from '~/types';
 
 const log = getLogger({ module: 'DBDigests' });
 

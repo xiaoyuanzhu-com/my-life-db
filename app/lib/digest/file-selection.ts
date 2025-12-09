@@ -4,8 +4,8 @@
  */
 
 import { globalDigesterRegistry } from './registry';
-import { listFilesNeedingDigestion } from '@/lib/db/digests';
-import { getLogger } from '@/lib/log/logger';
+import { listFilesNeedingDigestion } from '~/lib/db/digests';
+import { getLogger } from '~/lib/log/logger';
 import { MAX_DIGEST_ATTEMPTS } from './constants';
 
 const log = getLogger({ module: 'FileSelection' });

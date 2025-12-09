@@ -7,7 +7,7 @@ import 'server-only';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
-import { APP_DIR } from '@/lib/fs/storage';
+import { APP_DIR } from '~/lib/fs/storage';
 
 const LOCKS_DIR = path.join(APP_DIR, 'locks');
 

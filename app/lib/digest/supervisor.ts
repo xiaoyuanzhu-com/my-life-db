@@ -2,10 +2,10 @@ import { setTimeout as setTimeoutPromise } from 'timers/promises';
 
 import { DigestCoordinator } from './coordinator';
 import { findFilesNeedingDigestion } from './file-selection';
-import { listDigestsForPath, resetStaleInProgressDigests } from '@/lib/db/digests';
-import { cleanupStaleLocks, isLocked } from '@/lib/db/processing-locks';
-import { getLogger } from '@/lib/log/logger';
-import { getFileSystemWatcher, type FileChangeEvent } from '@/lib/scanner/fs-watcher';
+import { listDigestsForPath, resetStaleInProgressDigests } from '~/lib/db/digests';
+import { cleanupStaleLocks, isLocked } from '~/lib/db/processing-locks';
+import { getLogger } from '~/lib/log/logger';
+import { getFileSystemWatcher, type FileChangeEvent } from '~/lib/scanner/fs-watcher';
 
 interface DigestSupervisorConfig {
   startDelayMs: number;

@@ -2,7 +2,7 @@
  * Core types for the digest registry system
  */
 
-import type { Digest, DigestInput, FileRecordRow } from '@/types/models';
+import type { Digest, DigestInput, FileRecordRow } from '~/types/models';
 import type BetterSqlite3 from 'better-sqlite3';
 
 /**

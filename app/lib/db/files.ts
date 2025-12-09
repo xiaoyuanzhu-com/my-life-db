@@ -7,9 +7,9 @@
  */
 
 import { dbRun, dbSelect, dbSelectOne } from './client';
-import { getLogger } from '@/lib/log/logger';
-import type { FileRecord, FileRecordRow } from '@/types/models';
-import { rowToFileRecord } from '@/types/models';
+import { getLogger } from '~/lib/log/logger';
+import type { FileRecord, FileRecordRow } from '~/types/models';
+import { rowToFileRecord } from '~/types/models';
 
 // Re-export types for convenience
 export type { FileRecord, FileRecordRow };

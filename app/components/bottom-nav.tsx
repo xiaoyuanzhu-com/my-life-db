@@ -1,9 +1,6 @@
-'use client';
-
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { Link, useLocation } from 'react-router';
 import { Home, Inbox, Library } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '~/lib/utils';
 
 const navItems = [
   {
@@ -24,7 +21,8 @@ const navItems = [
 ];
 
 export function BottomNav() {
-  const pathname = usePathname();
+  const location = useLocation();
+  const pathname = location.pathname;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t md:hidden">
@@ -39,7 +37,7 @@ export function BottomNav() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                to={item.href}
                 className={cn(
                   'flex flex-col items-center justify-center gap-1 py-3 px-4 min-w-[64px] transition-colors',
                   'active:bg-accent/50', // Touch feedback

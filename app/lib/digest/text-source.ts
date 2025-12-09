@@ -4,8 +4,8 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { Digest, FileRecordRow } from '@/types';
-import { getLogger } from '@/lib/log/logger';
+import type { Digest, FileRecordRow } from '~/types';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DigestTextSource' });
 

@@ -4,9 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { getSettings } from '@/lib/config/storage';
-import { getLogger } from '@/lib/log/logger';
-import type { UserSettings } from '@/lib/config/settings';
+import { getSettings } from '~/lib/config/storage';
+import { getLogger } from '~/lib/log/logger';
+import type { UserSettings } from '~/lib/config/settings';
 
 export interface OpenAICompletionOptions {
   prompt: string;

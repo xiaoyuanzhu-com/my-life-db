@@ -1,8 +1,8 @@
 // Settings storage and persistence using SQLite (key-value)
 import type { UserSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
-import { getSettingValue, setSettingValue } from '@/lib/db/settings';
-import { getLogger } from '@/lib/log/logger';
+import { getSettingValue, setSettingValue } from '~/lib/db/settings';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'SettingsStorage' });
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';

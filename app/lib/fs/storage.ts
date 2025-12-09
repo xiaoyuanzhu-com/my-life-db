@@ -3,8 +3,8 @@ import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import type { Directory, DirectoryMetadata } from '@/types';
-import { getLogger } from '@/lib/log/logger';
+import type { Directory, DirectoryMetadata } from '~/types';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'Storage' });
 

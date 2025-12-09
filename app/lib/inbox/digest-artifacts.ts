@@ -3,9 +3,9 @@ import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { DATA_ROOT } from '@/lib/fs/storage';
-import type { InboxDigestScreenshot, InboxDigestSlug } from '@/types';
-import { getDigestByPathAndDigester } from '@/lib/db/digests';
+import { DATA_ROOT } from '~/lib/fs/storage';
+import type { InboxDigestScreenshot, InboxDigestSlug } from '~/types';
+import { getDigestByPathAndDigester } from '~/lib/db/digests';
 
 /**
  * Read primary text for a file

@@ -4,13 +4,13 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { ingestToQdrant } from '@/lib/search/ingest-to-qdrant';
-import { enqueueQdrantIndex } from '@/lib/search/qdrant-tasks';
-import { getQdrantDocumentIdsByFile } from '@/lib/db/qdrant-documents';
-import { getLogger } from '@/lib/log/logger';
-import { hasAnyTextSource } from '@/lib/digest/text-source';
+import { ingestToQdrant } from '~/lib/search/ingest-to-qdrant';
+import { enqueueQdrantIndex } from '~/lib/search/qdrant-tasks';
+import { getQdrantDocumentIdsByFile } from '~/lib/db/qdrant-documents';
+import { getLogger } from '~/lib/log/logger';
+import { hasAnyTextSource } from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'SearchSemanticDigester' });
 const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;

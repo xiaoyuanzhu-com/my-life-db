@@ -4,8 +4,8 @@
  */
 
 import 'server-only';
-import { getSettings } from '@/lib/config/storage';
-import { getLogger } from '@/lib/log/logger';
+import { getSettings } from '~/lib/config/storage';
+import { getLogger } from '~/lib/log/logger';
 import { promises as fs } from 'fs';
 import path from 'path';
 

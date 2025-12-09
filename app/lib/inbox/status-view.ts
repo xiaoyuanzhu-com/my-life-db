@@ -1,6 +1,6 @@
-import { getFileByPath } from '@/lib/db/files';
-import { listDigestsForPath } from '@/lib/db/digests';
-import type { DigestStatus, Digest } from '@/types';
+import { getFileByPath } from '~/lib/db/files';
+import { listDigestsForPath } from '~/lib/db/digests';
+import type { DigestStatus, Digest } from '~/types';
 
 export interface DigestStageStatus {
   /** Digester name (e.g., 'url-crawl-content', 'tags') */

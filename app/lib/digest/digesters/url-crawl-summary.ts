@@ -4,10 +4,10 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { summarizeTextDigest } from '@/lib/digest/text-summary';
-import { getLogger } from '@/lib/log/logger';
+import { summarizeTextDigest } from '~/lib/digest/text-summary';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'UrlCrawlSummaryDigester' });
 const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;

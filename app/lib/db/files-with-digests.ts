@@ -6,7 +6,7 @@
 import { dbSelectOne } from './client';
 import { getFileByPath, listFiles, type FileRecord } from './files';
 import { listDigestsForPath } from './digests';
-import type { FileWithDigests, DigestSummary } from '@/types/file-card';
+import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 
 /**
  * Get file with all digests

@@ -3,13 +3,13 @@
  * Deletes file from filesystem and all related database records
  */
 
-import { deleteFileRecord, deleteFilesByPrefix, listFiles } from '@/lib/db/files';
-import { deleteDigestsForPath, deleteDigestsByPrefix } from '@/lib/db/digests';
-import { deleteMeiliDocumentByFilePath } from '@/lib/db/meili-documents';
-import { deleteQdrantDocumentsByFile } from '@/lib/db/qdrant-documents';
-import { sqlarDeletePrefix } from '@/lib/db/sqlar';
-import { deletePendingTasksForFile, deletePendingTasksForPrefix } from '@/lib/task-queue/task-manager';
-import { getLogger } from '@/lib/log/logger';
+import { deleteFileRecord, deleteFilesByPrefix, listFiles } from '~/lib/db/files';
+import { deleteDigestsForPath, deleteDigestsByPrefix } from '~/lib/db/digests';
+import { deleteMeiliDocumentByFilePath } from '~/lib/db/meili-documents';
+import { deleteQdrantDocumentsByFile } from '~/lib/db/qdrant-documents';
+import { sqlarDeletePrefix } from '~/lib/db/sqlar';
+import { deletePendingTasksForFile, deletePendingTasksForPrefix } from '~/lib/task-queue/task-manager';
+import { getLogger } from '~/lib/log/logger';
 import fs from 'fs/promises';
 
 const log = getLogger({ module: 'DeleteFile' });

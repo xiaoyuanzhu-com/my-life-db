@@ -15,7 +15,7 @@ import { SlugDigester } from './digesters/slug';
 import { SearchKeywordDigester } from './digesters/search-keyword';
 import { SearchSemanticDigester } from './digesters/search-semantic';
 import { ensureAllDigestersForExistingFiles } from './ensure';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DigestInit' });
 

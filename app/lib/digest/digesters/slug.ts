@@ -4,18 +4,18 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { callOpenAICompletion } from '@/lib/vendors/openai';
-import { getLogger } from '@/lib/log/logger';
-import { generateSlug } from '@/lib/utils/slug';
+import { callOpenAICompletion } from '~/lib/vendors/openai';
+import { getLogger } from '~/lib/log/logger';
+import { generateSlug } from '~/lib/utils/slug';
 import {
   getPrimaryTextContent,
   getSummaryText,
   getUrlCrawlMarkdown,
   hasAnyTextSource,
   hasUrlCrawlContent,
-} from '@/lib/digest/text-source';
+} from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'SlugDigester' });
 const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;

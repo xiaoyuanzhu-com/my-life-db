@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Pin, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { PinnedItem } from '@/types/pin';
+import { cn } from '~/lib/utils';
+import type { PinnedItem } from '~/types/pin';
 
 interface PinnedTagsProps {
   onTagClick: (path: string) => void;

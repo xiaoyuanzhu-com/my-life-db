@@ -1,7 +1,5 @@
-'use client';
-
 import { Info, FileText } from 'lucide-react';
-import Link from 'next/link';
+import { Link } from 'react-router';
 
 interface FileFooterBarProps {
   filePath: string | null;
@@ -25,7 +23,7 @@ export function FileFooterBar({ filePath, mimeType }: FileFooterBarProps) {
         </span>
       )}
       <Link
-        href={infoUrl}
+        to={infoUrl}
         className="flex items-center gap-1.5 hover:text-foreground transition-colors px-2 py-0.5 rounded hover:bg-accent"
         title="View file information and digests"
       >

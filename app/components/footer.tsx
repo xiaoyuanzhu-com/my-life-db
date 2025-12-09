@@ -1,13 +1,11 @@
-'use client';
-
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { Link, useLocation } from 'react-router';
 import { siGithub, siDiscord } from 'simple-icons';
 import { Settings } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 
 export function Footer() {
-  const currentPath = usePathname();
+  const location = useLocation();
+  const currentPath = location.pathname;
 
   // Hide footer on homepage, library, and file detail pages (show on other pages)
   if (currentPath === '/' || currentPath?.startsWith('/library') || currentPath?.startsWith('/file')) {
@@ -18,7 +16,7 @@ export function Footer() {
     <footer className="bg-card mt-auto">
       <div className="max-w-7xl mx-auto px-4 py-2">
         <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-          <Link
+          <a
             href="https://xiaoyuanzhu.com/"
             target="_blank"
             rel="noopener noreferrer"
@@ -26,9 +24,9 @@ export function Footer() {
           >
             <span>©</span>
             <span>小圆猪</span>
-          </Link>
+          </a>
 
-          <Link
+          <a
             href="https://github.com/xiaoyuanzhu-com/my-life-db"
             target="_blank"
             rel="noopener noreferrer"
@@ -38,9 +36,9 @@ export function Footer() {
             <svg className="h-3.5 w-3.5" role="img" viewBox="0 0 24 24" fill="currentColor">
               <path d={siGithub.path} />
             </svg>
-          </Link>
+          </a>
 
-          <Link
+          <a
             href="https://discord.gg/Zqrr77UZ"
             target="_blank"
             rel="noopener noreferrer"
@@ -50,12 +48,12 @@ export function Footer() {
             <svg className="h-3.5 w-3.5" role="img" viewBox="0 0 24 24" fill="currentColor">
               <path d={siDiscord.path} />
             </svg>
-          </Link>
+          </a>
 
           <ThemeToggle />
 
           <Link
-            href="/settings"
+            to="/settings"
             className="flex items-center hover:text-foreground transition-colors"
             title="Settings"
           >

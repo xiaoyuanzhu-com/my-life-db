@@ -1,6 +1,6 @@
-import { InputType } from '@/lib/utils/input-type-detector';
+import { InputType } from '~/lib/utils/input-type-detector';
 import { Loader2, FileText, Link, Image, Music, Video, FileIcon, Layers } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '~/lib/utils';
 
 interface InputTypeTagProps {
   type: InputType | null;

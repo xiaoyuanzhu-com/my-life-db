@@ -5,23 +5,23 @@
 
 import type BetterSqlite3 from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type { Digester } from './types';
 import { globalDigesterRegistry } from './registry';
 import { MAX_DIGEST_ATTEMPTS } from './constants';
-import { getFileByPath } from '@/lib/db/files';
+import { getFileByPath } from '~/lib/db/files';
 import {
   listDigestsForPath,
   getDigestById,
   getDigestByPathAndDigester,
   createDigest,
   updateDigest,
-} from '@/lib/db/digests';
-import { sqlarStore, sqlarDeletePrefix } from '@/lib/db/sqlar';
-import { withDatabase } from '@/lib/db/client';
-import { tryAcquireLock, releaseLock } from '@/lib/db/processing-locks';
-import { getLogger } from '@/lib/log/logger';
-import { deleteEmbeddingsForSource } from '@/lib/db/people';
+} from '~/lib/db/digests';
+import { sqlarStore, sqlarDeletePrefix } from '~/lib/db/sqlar';
+import { withDatabase } from '~/lib/db/client';
+import { tryAcquireLock, releaseLock } from '~/lib/db/processing-locks';
+import { getLogger } from '~/lib/log/logger';
+import { deleteEmbeddingsForSource } from '~/lib/db/people';
 
 const log = getLogger({ module: 'DigestCoordinator' });
 

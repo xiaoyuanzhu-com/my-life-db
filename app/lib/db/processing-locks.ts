@@ -3,7 +3,7 @@
  * Prevents concurrent processing of the same file across processes/workers
  */
 import { dbRun, dbSelectOne } from './client';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'ProcessingLocks' });
 

@@ -6,10 +6,10 @@ import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
-import { INBOX_DIR, generateId } from '@/lib/fs/storage';
-import { upsertFileRecord } from '@/lib/db/files';
-import { ensureAllDigesters } from '@/lib/digest/ensure';
-import { getLogger } from '@/lib/log/logger';
+import { INBOX_DIR, generateId } from '~/lib/fs/storage';
+import { upsertFileRecord } from '~/lib/db/files';
+import { ensureAllDigesters } from '~/lib/digest/ensure';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'SaveToInbox' });
 

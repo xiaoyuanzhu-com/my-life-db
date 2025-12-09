@@ -4,11 +4,11 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { imageOcrWithHaid } from '@/lib/vendors/haid';
-import { DATA_ROOT } from '@/lib/fs/storage';
-import { getLogger } from '@/lib/log/logger';
+import { imageOcrWithHaid } from '~/lib/vendors/haid';
+import { DATA_ROOT } from '~/lib/fs/storage';
+import { getLogger } from '~/lib/log/logger';
 import path from 'path';
 
 const log = getLogger({ module: 'ImageOcrDigester' });

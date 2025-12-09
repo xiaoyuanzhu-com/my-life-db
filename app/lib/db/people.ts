@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'crypto';
 import { dbSelect, dbSelectOne, dbRun, dbTransaction } from './client';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 import type {
   PeopleRecordRow,
   PeopleRecord,
@@ -20,13 +20,13 @@ import type {
   PeopleEmbedding,
   PeopleEmbeddingInput,
   SourceOffset,
-} from '@/types/models';
+} from '~/types/models';
 import {
   rowToPeopleRecord,
   rowToPeopleCluster,
   float32ArrayToBuffer,
   rowToPeopleEmbedding,
-} from '@/types/models';
+} from '~/types/models';
 
 // Re-export types for convenience
 export type {

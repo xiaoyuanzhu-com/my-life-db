@@ -2,14 +2,14 @@ import 'server-only';
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
 import path from 'path';
-import { getDigestByPathAndDigester, listDigestsForPath } from '@/lib/db/digests';
-import { getFileByPath } from '@/lib/db/files';
+import { getDigestByPathAndDigester, listDigestsForPath } from '~/lib/db/digests';
+import { getFileByPath } from '~/lib/db/files';
 import {
   upsertMeiliDocument,
   deleteMeiliDocumentByFilePath,
   getMeiliDocumentIdForFile,
-} from '@/lib/db/meili-documents';
-import { getLogger } from '@/lib/log/logger';
+} from '~/lib/db/meili-documents';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'MeiliIngest' });
 

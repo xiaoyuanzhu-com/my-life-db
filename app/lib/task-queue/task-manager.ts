@@ -4,8 +4,8 @@
 
 import { generateUUIDv7 } from './uuid';
 import type { Task, TaskInput, TaskStatus } from './types';
-import { dbRun, dbSelect, dbSelectOne, dbTransaction } from '@/lib/db/client';
-import { getLogger } from '@/lib/log/logger';
+import { dbRun, dbSelect, dbSelectOne, dbTransaction } from '~/lib/db/client';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'TaskManager' });
 

@@ -6,10 +6,10 @@ import {
   upsertQdrantDocument,
   deleteQdrantDocumentsByFile,
   getQdrantDocumentIdsByFile,
-} from '@/lib/db/qdrant-documents';
-import { getFileByPath } from '@/lib/db/files';
-import { listDigestsForPath, getDigestByPathAndDigester } from '@/lib/db/digests';
-import { getLogger } from '@/lib/log/logger';
+} from '~/lib/db/qdrant-documents';
+import { getFileByPath } from '~/lib/db/files';
+import { listDigestsForPath, getDigestByPathAndDigester } from '~/lib/db/digests';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'IngestQdrant' });
 

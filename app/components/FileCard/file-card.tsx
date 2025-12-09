@@ -1,16 +1,13 @@
-'use client';
-
-import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
-import { formatTimestamp } from '@/lib/utils/format-timestamp';
-import type { FileWithDigests } from '@/types/file-card';
-import type { SearchResultItem } from '@/app/api/search/route';
+import { useNavigate } from 'react-router';
+import { cn } from '~/lib/utils';
+import { formatTimestamp } from '~/lib/utils/format-timestamp';
+import type { FileWithDigests } from '~/types/file-card';
+import type { SearchResultItem } from '~/types/search';
 import {
   ContextMenuItem,
   ContextMenuSeparator,
-} from '@/components/ui/context-menu';
+} from '~/components/ui/context-menu';
 import { DesktopContextMenu } from './desktop-context-menu';
 import { MobileContextMenu, type MobileContextMenuAction } from './mobile-context-menu';
 import {
@@ -22,7 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '~/components/ui/alert-dialog';
 import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp, Pin } from 'lucide-react';
 
 export interface FileCardProps {
@@ -46,7 +43,7 @@ export function FileCard({
   matchContext,
   priority = false,
 }: FileCardProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -275,13 +272,13 @@ export function FileCard({
       });
 
       if (response.ok) {
-        // Trigger parent refresh to update UI
-        router.refresh();
+        // Trigger page refresh to update UI
+        window.location.reload();
       }
     } catch (error) {
       console.error('Failed to toggle pin:', error);
     }
-  }, [file.path, router]);
+  }, [file.path]);
 
   const handleDeleteClick = useCallback(() => {
     setIsDeleteDialogOpen(true);
@@ -299,17 +296,17 @@ export function FileCard({
         throw new Error('Failed to delete file');
       }
 
-      // Refresh the page or navigate back
-      router.refresh();
+      // Refresh the page
+      window.location.reload();
     } catch (error) {
       console.error('Failed to delete file:', error);
       alert('Failed to delete file. Please try again.');
     }
-  }, [file.path, router]);
+  }, [file.path]);
 
   const handleOpen = useCallback(() => {
-    router.push(href);
-  }, [href, router]);
+    navigate(href);
+  }, [href, navigate]);
 
   // Determine if we can share this file
   const canShare = typeof navigator !== 'undefined' && !!navigator.share;
@@ -385,12 +382,9 @@ export function FileCard({
                   className="relative flex items-center justify-center"
                   style={{ minWidth: 100, minHeight: 100 }}
                 >
-                  <Image
+                  <img
                     src={content.src}
                     alt={content.alt}
-                    width={800}
-                    height={600}
-                    sizes="(max-width: 768px) calc(100vw - 40px), 448px"
                     className="object-contain"
                     style={{
                       maxWidth: 'min(calc(100vw - 40px), 448px)',
@@ -398,7 +392,7 @@ export function FileCard({
                       width: 'auto',
                       height: 'auto',
                     }}
-                    priority={priority}
+                    loading={priority ? 'eager' : 'lazy'}
                   />
                 </div>
               ) : content.type === 'video' ? (
