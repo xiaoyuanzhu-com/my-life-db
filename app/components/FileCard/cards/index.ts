@@ -7,6 +7,8 @@ import { TextCard } from './text-card';
 import { PdfCard } from './pdf-card';
 import { DocCard } from './doc-card';
 import { PptCard } from './ppt-card';
+import { XlsCard } from './xls-card';
+import { EpubCard } from './epub-card';
 import { FallbackCard } from './fallback-card';
 
 const cardRegistry: Record<FileContentType, ComponentType<BaseCardProps>> = {
@@ -17,6 +19,8 @@ const cardRegistry: Record<FileContentType, ComponentType<BaseCardProps>> = {
   pdf: PdfCard,
   doc: DocCard,
   ppt: PptCard,
+  xls: XlsCard,
+  epub: EpubCard,
   fallback: FallbackCard,
 };
 
@@ -32,5 +36,7 @@ export {
   PdfCard,
   DocCard,
   PptCard,
+  XlsCard,
+  EpubCard,
   FallbackCard,
 };

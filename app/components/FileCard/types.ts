@@ -14,6 +14,8 @@ export type FileContentType =
   | 'pdf'
   | 'doc'
   | 'ppt'
+  | 'xls'
+  | 'epub'
   | 'fallback';
 
 /**

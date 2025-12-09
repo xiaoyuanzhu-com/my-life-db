@@ -39,6 +39,25 @@ function isPowerPoint(mimeType: string, ext: string): boolean {
 }
 
 /**
+ * Check if MIME type or extension indicates an Excel spreadsheet
+ */
+function isExcel(mimeType: string, ext: string): boolean {
+  const xlsMimes = [
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ];
+  const xlsExts = ['xls', 'xlsx'];
+  return xlsMimes.includes(mimeType) || xlsExts.includes(ext);
+}
+
+/**
+ * Check if MIME type or extension indicates an EPUB eBook
+ */
+function isEpub(mimeType: string, ext: string): boolean {
+  return mimeType === 'application/epub+zip' || ext === 'epub';
+}
+
+/**
  * Determine the content type of a file for card/modal dispatch
  * Priority: MIME type > Extension > textPreview > fallback
  */
@@ -55,6 +74,8 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
   if (mimeType === 'application/pdf' || ext === 'pdf') return 'pdf';
   if (isWordDocument(mimeType, ext)) return 'doc';
   if (isPowerPoint(mimeType, ext)) return 'ppt';
+  if (isExcel(mimeType, ext)) return 'xls';
+  if (isEpub(mimeType, ext)) return 'epub';
 
   // 3. Text content (has preview)
   if (file.textPreview) return 'text';
