@@ -1,5 +1,4 @@
 // React hook for real-time inbox notifications
-'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
 

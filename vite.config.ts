@@ -21,6 +21,11 @@ export default defineConfig({
         "@tus/file-store",
         "@tus/utils",
       ],
+      onLog(level, log, handler) {
+        // Suppress "Generated an empty chunk" warnings for API routes (server-only routes)
+        if (log.message?.includes("Generated an empty chunk")) return;
+        handler(level, log);
+      },
     },
   },
   // Optimize deps for client-side

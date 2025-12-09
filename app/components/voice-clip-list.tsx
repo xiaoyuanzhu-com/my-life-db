@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useRef, useCallback } from 'react';
 import { Play, Pause, Volume2 } from 'lucide-react';
 

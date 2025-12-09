@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 
 export function SlugButton({ itemId }: { itemId: string }) {

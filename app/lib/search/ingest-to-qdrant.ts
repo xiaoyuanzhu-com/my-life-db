@@ -9,6 +9,7 @@ import {
 import { getFileByPath } from '~/lib/db/files';
 import { listDigestsForPath, getDigestByPathAndDigester } from '~/lib/db/digests';
 import { getLogger } from '~/lib/log/logger';
+import { enqueueQdrantDelete } from './qdrant-tasks';
 
 const log = getLogger({ module: 'IngestQdrant' });
 
@@ -212,7 +213,6 @@ export async function deleteFromQdrant(filePath: string): Promise<number> {
 
   // Enqueue Qdrant deletion task to remove vectors from collection
   if (documentIds.length > 0) {
-    const { enqueueQdrantDelete } = await import('./qdrant-tasks');
     enqueueQdrantDelete(documentIds);
     log.debug(
       { filePath, deletedCount, queuedForQdrantDeletion: documentIds.length },

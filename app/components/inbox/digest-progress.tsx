@@ -1,5 +1,3 @@
-'use client';
-
 import { Fragment } from 'react';
 import { AlertCircle, CheckCircle2, Circle, Loader2, SkipForward, XCircle } from 'lucide-react';
 

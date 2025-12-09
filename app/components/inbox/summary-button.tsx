@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 
 export function SummaryButton({ itemId }: { itemId: string }) {

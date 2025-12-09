@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { FileCard } from './FileCard';
 import type { InboxResponse } from '~/routes/api.inbox';

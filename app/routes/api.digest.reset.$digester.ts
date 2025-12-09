@@ -3,6 +3,8 @@ import { withDatabase } from "~/lib/db/client";
 import { getLogger } from "~/lib/log/logger";
 import { ensureAllDigestersForExistingFiles } from "~/lib/digest/ensure";
 import { deleteAllEmbeddings } from "~/lib/db/people";
+import { getMeiliClient } from "~/lib/search/meili-client";
+import { getQdrantClient } from "~/lib/search/qdrant-client";
 
 const log = getLogger({ module: "api/digest/reset" });
 
@@ -45,7 +47,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     if (digester === "search-keyword") {
       try {
-        const { getMeiliClient } = await import("~/lib/search/meili-client");
         const meiliClient = await getMeiliClient();
         const taskUid = await meiliClient.deleteAllDocuments();
         log.info({ taskUid }, "cleared Meilisearch index");
@@ -54,7 +55,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
     } else if (digester === "search-semantic") {
       try {
-        const { getQdrantClient } = await import("~/lib/search/qdrant-client");
         const qdrantClient = await getQdrantClient();
         await qdrantClient.deleteAll();
         log.info({}, "cleared Qdrant collection");

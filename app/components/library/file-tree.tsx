@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode } from 'lucide-react';
 
