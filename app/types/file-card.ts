@@ -7,8 +7,8 @@
  * Digest summary (minimal info from digests table)
  */
 export interface DigestSummary {
-  type: string; // 'summary', 'tags', 'slug', 'screenshot', 'content-md'
-  status: 'pending' | 'enriching' | 'enriched' | 'failed';
+  type: string; // digester name: 'tags', 'slug', 'doc-to-screenshot', etc.
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
   content: string | null; // Text content (summary, JSON for tags/slug)
   sqlarName: string | null; // Filename in SQLAR (for binary digests)
   error: string | null;
@@ -35,6 +35,9 @@ export interface FileWithDigests {
 
   // Optional text preview (truncated, for inbox/search list views)
   textPreview?: string;
+
+  // Screenshot SQLAR path (cached for fast inbox rendering)
+  screenshotSqlar?: string;
 
   // Pin status (from pins table)
   isPinned?: boolean;

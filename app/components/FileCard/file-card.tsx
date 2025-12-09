@@ -150,6 +150,20 @@ export function FileCard({
       return { type: 'text' as const, text: file.textPreview };
     }
 
+    // Check for cached screenshot (for non-media files like PDFs, URLs)
+    // First check direct screenshotSqlar field, then fall back to digests array
+    const sqlarName = file.screenshotSqlar || file.digests?.find(
+      d => d.type.includes('screenshot') && d.status === 'completed' && d.sqlarName
+    )?.sqlarName;
+
+    if (sqlarName) {
+      const src = `/sqlar/${sqlarName
+        .split('/')
+        .map(segment => encodeURIComponent(segment))
+        .join('/')}`;
+      return { type: 'screenshot' as const, src, alt: file.name };
+    }
+
     // Fallback to filename
     return { type: 'filename' as const, name: file.name };
   }, [file]);
@@ -431,6 +445,24 @@ export function FileCard({
                   isExpanded={isExpanded}
                   shouldTruncate={textDisplay.shouldTruncate}
                 />
+              ) : content.type === 'screenshot' ? (
+                <div
+                  className="relative flex items-center justify-center"
+                  style={{ minWidth: 100, minHeight: 100 }}
+                >
+                  <img
+                    src={content.src}
+                    alt={content.alt}
+                    className="object-contain"
+                    style={{
+                      maxWidth: 'min(calc(100vw - 40px), 448px)',
+                      maxHeight: 320,
+                      width: 'auto',
+                      height: 'auto',
+                    }}
+                    loading={priority ? 'eager' : 'lazy'}
+                  />
+                </div>
               ) : (
                 <div className="p-6 flex items-center justify-center min-h-[120px]">
                   <div className="text-center">
