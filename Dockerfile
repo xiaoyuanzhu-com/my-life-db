@@ -17,7 +17,6 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build with Turbopack
 RUN npm run build
 
 # Runner stage - production image
@@ -28,12 +27,11 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy build output and dependencies
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
 
 # Create data directory owned by app user; group-writable for default UID/GID
 RUN mkdir -p /app/data && chown node:node /app/data && chmod 775 /app/data
@@ -47,4 +45,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV MY_DATA_DIR=/app/data
 
-CMD ["node", "server.js"]
+CMD ["node", "./build/server/index.js"]
