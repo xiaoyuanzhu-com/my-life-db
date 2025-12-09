@@ -1,0 +1,261 @@
+// Core types for MyLifeDB
+
+// ============================================================================
+// Core Data Models - Re-exported from central models file
+// ============================================================================
+
+// Import for use within this file (for types defined in this file)
+import type {
+  MessageType as MessageTypeModel,
+  DigestStatus,
+} from './models';
+
+// Re-export for external consumers
+export type {
+  // Enums & Constants
+  MessageType,
+  DigestStatus,
+  TaskStatus,
+  FileType,
+  // Files Table
+  FileRecord,
+  FileRecordRow,
+  // Digests Table
+  Digest,
+  DigestInput,
+  DigestRecordRow,
+  // Tasks Table
+  Task,
+  TaskRecordRow,
+  // Settings Table
+  Setting,
+  SettingRecordRow,
+  // Meilisearch Documents Table
+  MeiliDocument,
+  MeiliDocumentRow,
+  MeiliStatus,
+  // Qdrant Documents Table
+  QdrantDocument,
+  QdrantDocumentRow,
+  EmbeddingStatus,
+  SourceType,
+  // Conversion Helpers
+} from './models';
+
+export {
+  rowToFileRecord,
+  rowToDigest,
+  rowToTask,
+  rowToSetting,
+  rowToMeiliDocument,
+  rowToQdrantDocument,
+} from './models';
+
+/**
+ * Attachment Type - categorized file type
+ */
+export type AttachmentType = 'image' | 'audio' | 'video' | 'pdf' | 'other';
+
+export interface EntryMetadata {
+  id: string; // UUID v4
+  type: MessageTypeModel; // Type of message
+  slug: string | null; // URL-safe slug from AI-generated title, initially null
+  title: string | null; // AI-generated title, initially null
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+  tags: string[]; // User or AI-generated tags
+
+  // AI-enriched data (populated async during insights/review)
+  ai: {
+    enriched: boolean;
+    enrichedAt: string | null; // ISO date string
+    title: string | null; // AI-generated title suggestion
+    tags: string[]; // AI-generated tags
+    summary: string | null; // Brief AI summary
+    confidence?: number; // 0-1 confidence score
+
+    // Content analysis
+    entities?: {
+      people?: string[]; // People mentioned
+      places?: string[]; // Locations mentioned
+      organizations?: string[]; // Companies, groups
+      concepts?: string[]; // Key concepts/topics
+      dates?: string[]; // Dates/times mentioned
+    };
+
+    // Classification
+    category?: 'journal' | 'idea' | 'observation' | 'question' | 'meeting' | 'todo' | 'note' | 'other';
+    sentiment?: 'positive' | 'negative' | 'neutral' | 'mixed';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+
+    // Context
+    mood?: string; // For journal entries
+    actionItems?: Array<{
+      task: string;
+      assignee?: string;
+      dueDate?: string;
+    }>;
+
+    // Relationships
+    relatedEntryIds?: string[]; // Similar/related entries
+    suggestedSpaces?: string[]; // Suggested categories/spaces
+  };
+
+  // File attachments metadata
+  attachments: Array<{
+    filename: string;
+    mimeType: string;
+    size: number; // bytes
+    type: AttachmentType; // Categorized file type
+    ai?: {
+      caption?: string; // Image caption
+      ocr?: string; // Extracted text
+      transcription?: string; // Audio transcription
+    };
+  }>;
+}
+
+export interface Entry {
+  metadata: EntryMetadata;
+  content: string;
+  directoryPath: string; // e.g., "inbox/{folderName}" (legacy Entry model)
+  date: string; // kept for legacy compatibility
+}
+
+export interface DirectoryMetadata {
+  name: string;
+  description?: string;
+  createdAt: string;
+  color?: string;
+  icon?: string;
+}
+
+export interface Directory {
+  path: string; // Relative path from data root
+  metadata: DirectoryMetadata;
+  entryCount: number;
+  subdirectories: string[];
+}
+
+export interface SearchResult {
+  type: 'entry' | 'directory';
+  id: string;
+  title: string;
+  snippet: string;
+  filePath: string;
+  highlights?: string[];
+  score: number;
+}
+
+export interface SearchQuery {
+  query: string;
+  filters?: {
+    dateRange?: { start: string; end: string };
+    directories?: string[];
+    tags?: string[];
+  };
+  limit?: number;
+}
+
+// AI Extraction Types
+export interface TextExtractionResult {
+  title: string | null;
+  summary: string | null;
+  tags: string[];
+  entities: {
+    people: string[];
+    places: string[];
+    organizations: string[];
+    concepts: string[];
+    dates: string[];
+  };
+  category: 'journal' | 'idea' | 'observation' | 'question' | 'meeting' | 'todo' | 'note' | 'other';
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  mood?: string;
+  actionItems: Array<{
+    task: string;
+    assignee?: string;
+    dueDate?: string;
+  }>;
+  confidence: number; // 0-1
+}
+
+export interface ImageExtractionResult {
+  caption: string | null;
+  ocrText: string | null;
+  imageType: 'photo' | 'screenshot' | 'diagram' | 'chart' | 'document' | 'other';
+  detectedObjects: string[];
+  tags: string[];
+  confidence: number;
+}
+
+export interface AudioExtractionResult {
+  transcription: string | null;
+  duration: number; // seconds
+  speakerCount: number;
+  keyPoints: string[];
+  actionItems: Array<{
+    task: string;
+    assignee?: string;
+  }>;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  confidence: number;
+}
+
+export interface LinkExtractionResult {
+  title: string | null;
+  description: string | null;
+  previewImage: string | null;
+  domain: string;
+  author?: string;
+  publishedDate?: string;
+  tags: string[];
+  confidence: number;
+}
+
+export interface ExtractionOptions {
+  includeEntities?: boolean;
+  includeSentiment?: boolean;
+  includeActionItems?: boolean;
+  includeRelatedEntries?: boolean;
+  minConfidence?: number; // 0-1, filter results below threshold
+}
+
+// ============================================================================
+// Inbox enrichment status (for API responses)
+// ============================================================================
+
+// Digest stage status for API responses
+export interface DigestStageStatusSummary {
+  /** Digester name (e.g., 'url-crawl-content', 'tags') */
+  digester: string;
+  status: 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
+  error: string | null;
+  updatedAt: string | null;
+}
+
+// Digest status summary for a file
+export interface DigestStatusSummary {
+  filePath: string;
+  overall: DigestStatus;
+  stages: DigestStageStatusSummary[];
+  hasFailures: boolean;
+  completedCount: number;
+  skippedCount: number;
+  totalCount: number;
+  canRetry: boolean;
+}
+
+export interface InboxDigestScreenshot {
+  src: string;
+  mimeType: string;
+  filename: string;
+}
+
+export interface InboxDigestSlug {
+  slug: string;
+  title?: string;
+  source?: string;
+  generatedAt?: string;
+}

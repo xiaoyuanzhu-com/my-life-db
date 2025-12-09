@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Task Queue API
+  description: RESTful API for task queue management and monitoring
+  version: 1.0.0
+
+servers:
+  - url: /api/task-queue
+    description: Task Queue API base path
+
+paths:
+  /tasks:
+    post:
+      summary: Create new task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - input
+              properties:
+                type:
+                  type: string
+                  description: Task type identifier
+                  example: send_email
+                input:
+                  type: object
+                  description: Task-specific data (arbitrary JSON)
+                  example:
+                    to: user@example.com
+                    subject: Welcome
+                options:
+                  type: object
+                  properties:
+                    run_after:
+                      type: integer
+                      description: Unix timestamp - don't run before this time
+                      example: 1736942400
+      responses:
+        '201':
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: Invalid request (missing type or input)
+
+    get:
+      summary: List tasks with filters
+      operationId: listTasks
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: Filter by task type
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [to-do, in-progress, success, failed]
+          description: Filter by status (can repeat for multiple)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+          description: Max results to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+    delete:
+      summary: Cleanup old tasks
+      operationId: cleanupTasks
+      parameters:
+        - name: olderThan
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Unix timestamp - delete success tasks older than this
+      responses:
+        '200':
+          description: Tasks deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+        '400':
+          description: Invalid timestamp
+
+  /tasks/{id}:
+    get:
+      summary: Get task by ID
+      operationId: getTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+
+    delete:
+      summary: Delete task
+      operationId: deleteTask
+      description: Only success/failed tasks can be deleted
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Task deleted
+        '400':
+          description: Task still in to-do/in-progress status
+        '404':
+          description: Task not found
+
+  /tasks/{id}/retry:
+    post:
+      summary: Retry failed task immediately
+      operationId: retryTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task reset for retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [to-do]
+                  attempts:
+                    type: integer
+                  run_after:
+                    type: integer
+                    nullable: true
+        '400':
+          description: Task not in failed state
+        '404':
+          description: Task not found
+
+  /tasks/stats:
+    get:
+      summary: Get queue statistics
+      operationId: getStats
+      responses:
+        '200':
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStats'
+
+  /tasks/pause:
+    post:
+      summary: Pause worker
+      operationId: pauseWorker
+      description: Stop executing tasks but keep polling
+      responses:
+        '200':
+          description: Worker paused
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paused:
+                    type: boolean
+                    example: true
+
+  /tasks/resume:
+    post:
+      summary: Resume worker
+      operationId: resumeWorker
+      description: Start executing tasks again
+      responses:
+        '200':
+          description: Worker resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paused:
+                    type: boolean
+                    example: false
+
+  /tasks/rate-limit:
+    post:
+      summary: Set rate limit
+      operationId: setRateLimit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tasksPerSecond
+              properties:
+                tasksPerSecond:
+                  type: integer
+                  description: Tasks per second (0 = unlimited)
+                  example: 10
+      responses:
+        '200':
+          description: Rate limit updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasksPerSecond:
+                    type: integer
+
+components:
+  schemas:
+    TaskResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: UUID v7 (time-ordered)
+          example: 01936d3f-1234-7abc-def0-123456789abc
+        type:
+          type: string
+          example: send_email
+        status:
+          type: string
+          enum: [to-do, in-progress, success, failed]
+        created_at:
+          type: integer
+          description: Unix timestamp
+          example: 1736942100
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          description: UUID v7 (time-ordered)
+          example: 01936d3f-1234-7abc-def0-123456789abc
+        type:
+          type: string
+          example: send_email
+        input:
+          type: object
+          description: Task-specific data
+        status:
+          type: string
+          enum: [to-do, in-progress, success, failed]
+        attempts:
+          type: integer
+        last_attempt_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp
+        output:
+          type: object
+          nullable: true
+          description: Handler output (JSON). On failure, contains error message.
+        error:
+          type: string
+          nullable: true
+          description: Error message
+        run_after:
+          type: integer
+          nullable: true
+          description: Unix timestamp - don't run before this
+        created_at:
+          type: integer
+          description: Unix timestamp
+        updated_at:
+          type: integer
+          description: Unix timestamp
+        completed_at:
+          type: integer
+          nullable: true
+          description: Unix timestamp
+
+    QueueStats:
+      type: object
+      properties:
+        to-do:
+          type: integer
+        in-progress:
+          type: integer
+        success:
+          type: integer
+        failed:
+          type: integer
+        byType:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              to-do:
+                type: integer
+              success:
+                type: integer
+              failed:
+                type: integer
