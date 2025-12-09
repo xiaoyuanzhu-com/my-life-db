@@ -37,6 +37,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     const total = countTopLevelFiles("inbox/");
 
+    // Convert FileRecord to InboxItem
+    // Uses cached fields: textPreview, screenshotSqlar (no digest queries needed!)
     const items: InboxItem[] = files.map((file) => ({
       path: file.path,
       name: file.name,
@@ -46,8 +48,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
       hash: file.hash,
       modifiedAt: file.modifiedAt,
       createdAt: file.createdAt,
-      digests: [],
+      digests: [],  // Not needed - screenshotSqlar is cached on FileRecord
       textPreview: file.textPreview || undefined,
+      screenshotSqlar: file.screenshotSqlar || undefined,
       isPinned: isPinned(file.path),
     }));
 

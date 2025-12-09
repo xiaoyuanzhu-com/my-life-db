@@ -34,6 +34,7 @@ import migration031 from './031_create_pins_table';
 import migration032 from './032_create_people_registry';
 import migration033 from './033_rename_person_to_people';
 import migration034 from './034_create_processing_locks';
+import migration035 from './035_add_screenshot_sqlar_to_files';
 import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -81,6 +82,7 @@ export const migrations: Migration[] = [
   migration032,
   migration033,
   migration034,
+  migration035,
 ];
 
 /**

@@ -4,20 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Next.js 15.5.5 application with TypeScript, React 19, and Tailwind CSS 4. It uses the App Router architecture (not Pages Router).
+This is a React Router 7 application with TypeScript, React 19, and Tailwind CSS 4. It uses Express as the HTTP server and Vite for bundling.
 
 ## Common Commands
 
 ### Development
-- `npm run dev` - Start development server with Turbopack (runs on http://localhost:3000)
-- `npm run build` - Build production application with Turbopack
+- `npm run dev` - Start development server with Vite (runs on http://localhost:3000)
+- `npm run build` - Build production application
 - `npm start` - Start production server (must run `npm run build` first)
 - `npm run lint` - Run ESLint to check code quality
+- `npm run typecheck` - Generate types and run TypeScript compiler
 
 ### Important Build Details
-- This project uses **Turbopack** as the bundler (specified in build and dev scripts)
+- This project uses **Vite** as the bundler
+- Server runs on **Express** with React Router SSR
 - TypeScript strict mode is enabled
-- ESLint uses Next.js config with `next/core-web-vitals` and `next/typescript` presets
 
 ## Architecture
 
@@ -117,21 +118,21 @@ MY_DATA_DIR/
 - Status tracked in digest.status field: pending → enriching → enriched (or failed)
 - Digest IDs generated from file path hash + digest type for stability
 
-### App Router Structure
-- Uses Next.js App Router located in `src/app/`
-- Root layout in `src/app/layout.tsx` handles:
-  - Font loading (system fonts used in constrained build environments)
-  - Global CSS imports
-  - HTML structure with font CSS variables
-- Main page is `src/app/page.tsx`
+### Application Structure
+- Uses React Router 7 with file-based routing in `app/routes/`
+- Server initialization in `app/server.ts` handles:
+  - Database initialization
+  - Search index setup (Meilisearch, Qdrant)
+  - Background services (task queue, file watcher, digest supervisor)
+- Root layout in `app/root.tsx` provides HTML structure and global styles
+- Route configuration in `app/routes.ts`
 
 ### Styling
-- Tailwind CSS 4 with PostCSS plugin (`@tailwindcss/postcss`)
-- Global styles in `src/app/globals.css` with:
+- Tailwind CSS 4 with Vite plugin (`@tailwindcss/vite`)
+- Global styles in `app/globals.css` with:
   - CSS custom properties for theming (`--background`, `--foreground`)
   - Automatic dark mode via `prefers-color-scheme`
   - Tailwind theme inline configuration with font variables
-- Geist font family used via CSS variables (`--font-geist-sans`, `--font-geist-mono`)
 
 ### UI Components (shadcn/ui)
 **IMPORTANT:** This project uses shadcn/ui components. Follow these rules:
@@ -149,14 +150,14 @@ MY_DATA_DIR/
    - Maintains consistency with project configuration
 
 ### TypeScript Configuration
-- Path alias: `@/*` maps to `./src/*`
+- Path alias: `~/*` maps to `./app/*`
 - Module resolution: bundler
 - Strict mode enabled
-- Target: ES2017
+- Target: ES2022
 
 ### ESLint Configuration
 - Uses flat config format (eslint.config.mjs)
-- Ignores: `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`
+- Ignores: `node_modules`, `build`
 
 ## Naming Conventions
 
@@ -172,7 +173,7 @@ MY_DATA_DIR/
 
 **Directory Structure:**
 ```
-src/types/
+app/types/
 ├── models/                     # Core database models
 │   ├── enums/                 # kebab-case.ts files
 │   │   ├── message-type.ts
@@ -185,6 +186,7 @@ src/types/
 │   └── index.ts               # Aggregates exports
 ├── models.ts                   # Re-exports from models/
 ├── file-card.ts                # UI-specific types
+├── search.ts                   # Search API types
 ├── digest-workflow.ts          # Workflow types
 └── index.ts                    # Main entry point
 ```
