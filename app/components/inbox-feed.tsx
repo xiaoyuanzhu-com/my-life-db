@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { FileCard } from './FileCard';
-import type { InboxResponse } from '~/app/api/inbox/route';
+import type { InboxResponse } from '~/routes/api.inbox';
 
 interface InboxFeedProps {
   onRefresh?: number; // Trigger refresh when this value changes

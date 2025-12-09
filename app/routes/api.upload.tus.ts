@@ -21,10 +21,17 @@ const tusServer = new Server({
   datastore: new FileStore({ directory: UPLOAD_DIR }),
 });
 
-// Handler that wraps TUS server for React Router
-async function handleTusRequest(request: Request) {
-  await ensureUploadDir();
-  return tusServer.handle(request);
+// Handler that wraps TUS server for React Router using handleWeb (for web frameworks)
+const handleTusRequest = tusServer.handleWeb.bind(tusServer);
+
+// Ensure upload dir exists on first request
+let dirEnsured = false;
+async function ensureAndHandle(request: Request) {
+  if (!dirEnsured) {
+    await ensureUploadDir();
+    dirEnsured = true;
+  }
+  return handleTusRequest(request);
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {

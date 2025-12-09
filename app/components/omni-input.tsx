@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
-import type { SearchResponse } from '~/app/api/search/route';
+import type { SearchResponse } from '~/routes/api.search';
 import * as tus from 'tus-js-client';
 
 interface OmniInputProps {

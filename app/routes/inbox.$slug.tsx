@@ -6,6 +6,8 @@ import { TaggingButton } from "~/components/inbox/tagging-button";
 import { SlugButton } from "~/components/inbox/slug-button";
 import { DigestCoordinator } from "~/components/inbox/digest-coordinator";
 import { IndexButton } from "~/components/inbox/index-button";
+import type { InboxDigestScreenshot, InboxDigestSlug } from "~/types";
+import type { DigestStatusView } from "~/lib/inbox/status-view";
 
 interface InboxDetail {
   path: string;
@@ -15,10 +17,10 @@ interface InboxDetail {
   digest: {
     summary: string | null;
     tags: string[] | null;
-    screenshot: string | null;
-    slug: string | null;
+    screenshot: InboxDigestScreenshot | null;
+    slug: InboxDigestSlug | null;
   };
-  enrichment: unknown;
+  enrichment: DigestStatusView | null;
 }
 
 export default function InboxDetailPage() {

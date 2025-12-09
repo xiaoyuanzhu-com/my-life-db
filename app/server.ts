@@ -37,8 +37,9 @@ async function initialize() {
   // 2. Load settings and apply log level
   const settings = await loadSettings();
   const logLevel = settings.preferences?.logLevel;
-  if (logLevel) {
-    setLogLevel(logLevel as "trace" | "debug" | "info" | "warn" | "error" | "fatal");
+  const validLogLevels = ['debug', 'info', 'warn', 'error'] as const;
+  if (logLevel && validLogLevels.includes(logLevel as typeof validLogLevels[number])) {
+    setLogLevel(logLevel as typeof validLogLevels[number]);
     log.info({ level: logLevel }, "log level applied from settings");
   }
 
@@ -159,7 +160,6 @@ async function main() {
   app.all(
     "*",
     createRequestHandler({
-      // @ts-expect-error - build output typing
       build: () => import("virtual:react-router/server-build"),
       getLoadContext() {
         // Add any custom context here if needed

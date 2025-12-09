@@ -111,6 +111,7 @@ export class SpeechRecognitionDigester implements Digester {
         content: jsonContent,
         sqlarName: null,
         error: null,
+        attempts: 0,
         createdAt: now,
         updatedAt: now,
       },
