@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
 import { Copy, Download, ExternalLink, Share2, Trash2, ChevronDown, ChevronUp, Pin } from 'lucide-react';
+import { FileModal } from './file-modal';
 
 export interface FileCardProps {
   file: FileWithDigests;
@@ -50,6 +51,7 @@ export function FileCard({
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Detect touch capability
@@ -393,8 +395,9 @@ export function FileCard({
             <div className="relative">
               {content.type === 'image' ? (
                 <div
-                  className="relative flex items-center justify-center"
+                  className="relative flex items-center justify-center cursor-pointer"
                   style={{ minWidth: 100, minHeight: 100 }}
+                  onClick={() => setIsPreviewOpen(true)}
                 >
                   <img
                     src={content.src}
@@ -572,6 +575,12 @@ export function FileCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <FileModal
+        open={isPreviewOpen}
+        onOpenChange={setIsPreviewOpen}
+        file={file}
+      />
     </div>
   );
 }
