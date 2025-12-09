@@ -4,7 +4,7 @@ import { tq } from './index';
 import { getHandler, unregisterHandler } from './executor';
 import { getWorker } from './worker';
 import type { TaskHandler } from './types';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 type TaskHandlerDefinition<TPayload = unknown> = {
   type: string;

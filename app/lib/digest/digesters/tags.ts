@@ -4,11 +4,11 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { generateTagsDigest } from '@/lib/digest/tags';
-import { getLogger } from '@/lib/log/logger';
-import { getPrimaryTextContent, hasAnyTextSource } from '@/lib/digest/text-source';
+import { generateTagsDigest } from '~/lib/digest/tags';
+import { getLogger } from '~/lib/log/logger';
+import { getPrimaryTextContent, hasAnyTextSource } from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'TagsDigester' });
 const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;

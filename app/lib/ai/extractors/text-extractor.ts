@@ -1,4 +1,4 @@
-import type { TextExtractionResult, ExtractionOptions } from '@/types';
+import type { TextExtractionResult, ExtractionOptions } from '~/types';
 
 /**
  * Extract comprehensive information from text content

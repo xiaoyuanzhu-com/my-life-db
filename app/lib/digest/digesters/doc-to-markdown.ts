@@ -4,10 +4,10 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { convertDocToMarkdown } from '@/lib/digest/doc-to-markdown';
-import { getLogger } from '@/lib/log/logger';
+import { convertDocToMarkdown } from '~/lib/digest/doc-to-markdown';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'DocToMarkdownDigester' });
 

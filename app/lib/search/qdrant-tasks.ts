@@ -1,16 +1,16 @@
 import 'server-only';
 import { randomUUID } from 'crypto';
-import { tq } from '@/lib/task-queue';
-import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
+import { tq } from '~/lib/task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '~/lib/task-queue/handler-registry';
 import {
   getQdrantDocumentById,
   updateEmbeddingStatus,
   batchUpdateEmbeddingStatus,
   type QdrantDocument,
-} from '@/lib/db/qdrant-documents';
+} from '~/lib/db/qdrant-documents';
 import { getQdrantClient, ensureQdrantCollection } from './qdrant-client';
-import { embedTexts } from '@/lib/ai/embeddings';
-import { getLogger } from '@/lib/log/logger';
+import { embedTexts } from '~/lib/ai/embeddings';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'QdrantTasks' });
 

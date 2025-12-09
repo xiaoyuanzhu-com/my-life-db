@@ -5,7 +5,7 @@ import 'server-only';
  * Implement only what we use; keep interface small.
  */
 
-import { callOpenAICompletion } from '@/lib/vendors/openai';
+import { callOpenAICompletion } from '~/lib/vendors/openai';
 
 export interface TextSummaryInput {
   text: string;

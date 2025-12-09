@@ -1,27 +1,24 @@
-'use client';
-
-import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { Link, useLocation } from 'react-router';
 import { Settings, Home, Library, CircleUserRound } from 'lucide-react';
-import { getGravatarUrl } from '@/lib/gravatar';
+import { getGravatarUrl } from '~/lib/gravatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '~/components/ui/dropdown-menu';
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet';
+} from '~/components/ui/sheet';
 import { useEffect, useState } from 'react';
 
 export function Header() {
-  const pathname = usePathname();
+  const location = useLocation();
+  const pathname = location.pathname;
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -52,13 +49,12 @@ export function Header() {
     <header className="bg-card border-b sticky top-0 z-10">
       <div className="w-full px-4 py-2 md:px-[10%]">
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
+          <Link to="/" className="flex items-center gap-2">
+            <img
               src="/my-life-db-logo.png"
               alt="MyLifeDB Logo"
               width={48}
               height={48}
-              priority
               className="rounded-md"
             />
             <span className="text-xl font-bold text-foreground">MyLifeDB</span>
@@ -71,7 +67,7 @@ export function Header() {
               return (
                 <Link
                   key={link.href}
-                  href={link.href}
+                  to={link.href}
                   className={`text-sm font-medium transition-colors ${
                     isActive
                       ? 'text-primary'
@@ -94,7 +90,7 @@ export function Header() {
                     aria-label="User profile"
                   >
                     {gravatarUrl ? (
-                      <Image
+                      <img
                         src={gravatarUrl}
                         alt="User avatar"
                         width={32}
@@ -108,7 +104,7 @@ export function Header() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem asChild>
-                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer">
+                    <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
                       <Settings className="h-4 w-4" />
                       <span>Settings</span>
                     </Link>
@@ -127,7 +123,7 @@ export function Header() {
                   aria-label="Open menu"
                 >
                   {gravatarUrl ? (
-                    <Image
+                    <img
                       src={gravatarUrl}
                       alt="User avatar"
                       width={32}
@@ -150,7 +146,7 @@ export function Header() {
                     return (
                       <Link
                         key={link.href}
-                        href={link.href}
+                        to={link.href}
                         onClick={() => setMobileMenuOpen(false)}
                         className={`flex items-center gap-3 px-3 py-3 rounded-md transition-colors ${
                           isActive

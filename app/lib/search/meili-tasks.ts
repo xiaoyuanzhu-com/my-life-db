@@ -1,13 +1,13 @@
 import 'server-only';
-import { tq } from '@/lib/task-queue';
-import { defineTaskHandler, ensureTaskRuntimeReady } from '@/lib/task-queue/handler-registry';
+import { tq } from '~/lib/task-queue';
+import { defineTaskHandler, ensureTaskRuntimeReady } from '~/lib/task-queue/handler-registry';
 import {
   getMeiliDocumentById,
   batchUpdateMeiliStatus,
   type MeiliDocument,
-} from '@/lib/db/meili-documents';
+} from '~/lib/db/meili-documents';
 import { getMeiliClient } from './meili-client';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'MeiliTasks' });
 

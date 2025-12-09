@@ -3,7 +3,7 @@
  */
 
 import type { Task } from './types';
-import { dbSelect, dbSelectOne } from '@/lib/db/client';
+import { dbSelect, dbSelectOne } from '~/lib/db/client';
 
 /**
  * Calculate retry delay with exponential backoff and jitter

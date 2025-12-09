@@ -5,7 +5,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { deflate, inflate } from 'zlib';
 import { promisify } from 'util';
 import { withDatabase } from './client';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'SQLAR' });
 const deflateAsync = promisify(deflate);

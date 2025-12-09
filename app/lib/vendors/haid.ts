@@ -1,6 +1,6 @@
 import 'server-only';
-import { getSettings } from '@/lib/config/storage';
-import { getLogger } from '@/lib/log/logger';
+import { getSettings } from '~/lib/config/storage';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'VendorHAID' });
 const DEFAULT_MODEL = 'Qwen/Qwen3-Embedding-0.6B';

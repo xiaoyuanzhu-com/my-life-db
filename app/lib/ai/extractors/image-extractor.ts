@@ -1,4 +1,4 @@
-import type { ImageExtractionResult } from '@/types';
+import type { ImageExtractionResult } from '~/types';
 import path from 'path';
 
 /**

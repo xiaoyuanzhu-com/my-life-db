@@ -3,7 +3,7 @@
  * Provides image captioning using local AI models
  */
 
-import { getSettings } from '@/lib/config/storage';
+import { getSettings } from '~/lib/config/storage';
 import { readFileSync } from 'fs';
 
 export interface HomelabAIImageCaptionOptions {

@@ -4,12 +4,12 @@
  */
 
 import type { Digester } from '../types';
-import type { Digest, DigestInput, FileRecordRow } from '@/types';
+import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { crawlUrlDigest } from '@/lib/digest/url-crawl';
-import { processHtmlContent, extractMainContent, sanitizeContent } from '@/lib/crawl/content-enricher';
-import { sqlarStore } from '@/lib/db/sqlar';
-import { getLogger } from '@/lib/log/logger';
+import { crawlUrlDigest } from '~/lib/digest/url-crawl';
+import { processHtmlContent, extractMainContent, sanitizeContent } from '~/lib/crawl/content-enricher';
+import { sqlarStore } from '~/lib/db/sqlar';
+import { getLogger } from '~/lib/log/logger';
 import { promises as fs } from 'fs';
 import path from 'path';
 

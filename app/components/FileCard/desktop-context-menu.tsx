@@ -5,7 +5,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu';
+} from '~/components/ui/context-menu';
 
 export interface DesktopContextMenuProps {
   children: React.ReactNode;

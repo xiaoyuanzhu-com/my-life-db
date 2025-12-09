@@ -4,7 +4,7 @@
 
 import { getTaskById, updateTask } from './task-manager';
 import type { Task, TaskHandler } from './types';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'TaskExecutor' });
 

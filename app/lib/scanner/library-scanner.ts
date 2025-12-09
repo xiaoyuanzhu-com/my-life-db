@@ -4,10 +4,10 @@ import 'server-only';
 import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
-import { DATA_ROOT } from '@/lib/fs/storage';
-import { upsertFileRecord, getFileByPath, getAllFilePaths } from '@/lib/db/files';
-import { deleteFile } from '@/lib/files/delete-file';
-import { getLogger } from '@/lib/log/logger';
+import { DATA_ROOT } from '~/lib/fs/storage';
+import { upsertFileRecord, getFileByPath, getAllFilePaths } from '~/lib/db/files';
+import { deleteFile } from '~/lib/files/delete-file';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'LibraryScanner' });
 

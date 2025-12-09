@@ -7,9 +7,9 @@
  */
 
 import { dbRun, dbSelect, dbSelectOne, dbTransaction } from './client';
-import { getLogger } from '@/lib/log/logger';
-import type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from '@/types/models';
-import { rowToQdrantDocument } from '@/types/models';
+import { getLogger } from '~/lib/log/logger';
+import type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from '~/types/models';
+import { rowToQdrantDocument } from '~/types/models';
 
 const log = getLogger({ module: 'DBQdrantDocuments' });
 

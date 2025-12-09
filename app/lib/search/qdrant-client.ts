@@ -1,6 +1,6 @@
 import 'server-only';
-import { getLogger } from '@/lib/log/logger';
-import { loadSettings } from '@/lib/config/storage';
+import { getLogger } from '~/lib/log/logger';
+import { loadSettings } from '~/lib/config/storage';
 
 const log = getLogger({ module: 'QdrantClient' });
 

@@ -1,7 +1,7 @@
 import 'server-only';
 
-import { callOpenAICompletion } from '@/lib/vendors/openai';
-import { getLogger } from '@/lib/log/logger';
+import { callOpenAICompletion } from '~/lib/vendors/openai';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'TagsDigester' });
 

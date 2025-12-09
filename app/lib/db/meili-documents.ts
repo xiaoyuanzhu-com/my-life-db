@@ -8,9 +8,9 @@
 
 import { randomUUID } from 'crypto';
 import { dbRun, dbSelect, dbSelectOne, dbTransaction } from './client';
-import { getLogger } from '@/lib/log/logger';
-import type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from '@/types/models';
-import { rowToMeiliDocument } from '@/types/models';
+import { getLogger } from '~/lib/log/logger';
+import type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from '~/types/models';
+import { rowToMeiliDocument } from '~/types/models';
 
 const log = getLogger({ module: 'DBMeiliDocuments' });
 

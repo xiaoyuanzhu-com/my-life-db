@@ -4,7 +4,7 @@ import 'server-only';
  * Business-facing function to crawl a URL and produce a digest-friendly output.
  */
 
-import { crawlUrlWithHaid } from '@/lib/vendors/haid';
+import { crawlUrlWithHaid } from '~/lib/vendors/haid';
 
 export interface UrlCrawlInput {
   url: string;

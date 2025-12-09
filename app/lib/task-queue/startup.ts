@@ -7,8 +7,8 @@ import { startWorker, shutdownWorker } from './worker';
 import '@/lib/digest/task-handler';
 import '@/lib/search/meili-tasks';
 import '@/lib/search/qdrant-tasks';
-import { ensureTaskHandlersRegistered } from '@/lib/task-queue/handler-registry';
-import { getLogger } from '@/lib/log/logger';
+import { ensureTaskHandlersRegistered } from '~/lib/task-queue/handler-registry';
+import { getLogger } from '~/lib/log/logger';
 
 declare global {
   var __mylifedb_taskqueue_initialized: boolean | undefined;

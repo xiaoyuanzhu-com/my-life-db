@@ -1,6 +1,6 @@
 import type BetterSqlite3 from 'better-sqlite3';
 import { getDatabaseInternal } from './connection';
-import { getLogger } from '@/lib/log/logger';
+import { getLogger } from '~/lib/log/logger';
 
 type QueryParam = unknown;
 type QueryParams = QueryParam[] | readonly QueryParam[];

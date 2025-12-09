@@ -1,6 +1,6 @@
 import 'server-only';
-import { callHaidEmbedding } from '@/lib/vendors/haid';
-import { getLogger } from '@/lib/log/logger';
+import { callHaidEmbedding } from '~/lib/vendors/haid';
+import { getLogger } from '~/lib/log/logger';
 
 const log = getLogger({ module: 'Embeddings' });
 
