@@ -32,6 +32,7 @@
     "cmdk": "^1.1.1",
     "compression": "^1.7.5",
     "date-fns": "^4.1.0",
+    "epubjs": "^0.3.93",
     "express": "^4.21.0",
     "gray-matter": "^4.0.3",
     "isbot": "^5.1.17",

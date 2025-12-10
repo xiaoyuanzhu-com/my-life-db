@@ -34,6 +34,8 @@ app/components/FileCard/
 └── modals/
     ├── index.ts                # Modal registry: getModalComponent(type)
     ├── image-modal.tsx         # Full-screen image viewer
+    ├── pdf-modal.tsx           # Scrollable PDF viewer
+    ├── epub-modal.tsx          # EPUB reader with pagination
     └── fallback-modal.tsx      # Generic file info modal
 ```
 
@@ -504,14 +506,20 @@ Open, Pin, Save, Share, Delete
 ### EPUB Card
 
 **Card:**
-- With screenshot: Cover image (same sizing as PDF)
-- Without screenshot: Filename + "EPUB eBook" label
+- Fixed width: 226px (same as PDF)
+- With screenshot: Cover image display (max height 320px) with filename + size footer
+- Without screenshot: Filename + "EPUB eBook" label with footer
+- Footer: filename (left) and size (right), `justify-between`
+- Click opens modal
 
 **Modal:**
-None
+- EPUB reader using epub.js (lazy-loaded, separate bundle)
+- Continuous scrolling view (scrolled-doc flow)
+- Max width 800px, responsive to viewport
+- White background for optimal reading
 
 **Context Menu:**
-Open, Pin, Save, Share, Delete
+Preview, Open, Pin, Save, Share, Delete
 
 ---
 
