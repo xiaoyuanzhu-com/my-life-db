@@ -2,10 +2,14 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { saveToInbox } from "~/lib/inbox/save-to-inbox";
 import { listTopLevelFiles, countTopLevelFiles } from "~/lib/db/files";
 import { isPinned } from "~/lib/db/pins";
+import { initializeDigesters } from "~/lib/digest/initialization";
 import { processFileDigests } from "~/lib/digest/task-handler";
 import { getLogger } from "~/lib/log/logger";
 import { notificationService } from "~/lib/notifications/notification-service";
 import type { FileWithDigests } from "~/types/file-card";
+
+// Ensure digesters are registered (survives HMR in dev mode)
+initializeDigesters();
 
 const log = getLogger({ module: "ApiInbox" });
 

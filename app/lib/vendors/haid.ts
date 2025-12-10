@@ -352,6 +352,71 @@ export async function imageOcrWithHaid(
   return data;
 }
 
+export interface HaidImageCaptioningOptions {
+  imagePath: string;
+  model?: string;
+  prompt?: string;
+}
+
+export interface HaidImageCaptioningResponse {
+  request_id: string;
+  processing_time_ms: number;
+  caption: string;
+  model: string;
+}
+
+const DEFAULT_CAPTIONING_MODEL = 'deepseek-ai/DeepSeek-OCR';
+const DEFAULT_CAPTIONING_PROMPT = 'Describe this image in detail.';
+
+export async function imageCaptioningWithHaid(
+  options: HaidImageCaptioningOptions
+): Promise<HaidImageCaptioningResponse> {
+  if (!options.imagePath) {
+    throw new Error('HAID image captioning requires an image file path');
+  }
+
+  const config = await resolveHaidConfig();
+  const endpoint = `${config.baseUrl}/api/image-captioning`;
+
+  // Read image file and convert to base64
+  const fs = await import('fs');
+  const imageBuffer = fs.readFileSync(options.imagePath);
+  const imageBase64 = imageBuffer.toString('base64');
+
+  const model = options.model || DEFAULT_CAPTIONING_MODEL;
+  const prompt = options.prompt || DEFAULT_CAPTIONING_PROMPT;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      image: imageBase64,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `HAID image captioning error (${response.status}): ${errorText || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+
+  log.info({
+    imagePath: options.imagePath,
+    processingTimeMs: data.processing_time_ms,
+    captionLength: data.caption?.length ?? 0,
+  }, 'image captioning completed');
+
+  return data;
+}
+
 async function resolveHaidConfig(): Promise<{
   baseUrl: string;
   apiKey?: string;

@@ -11,6 +11,7 @@ import { DocToScreenshotDigester } from './digesters/doc-to-screenshot';
 import { SpeechRecognitionDigester } from './digesters/speech-recognition';
 import { SpeakerEmbeddingDigester } from './digesters/speaker-embedding';
 import { ImageOcrDigester } from './digesters/image-ocr';
+import { ImageCaptioningDigester } from './digesters/image-captioning';
 import { TagsDigester } from './digesters/tags';
 import { SlugDigester } from './digesters/slug';
 import { SearchKeywordDigester } from './digesters/search-keyword';
@@ -63,23 +64,27 @@ export function initializeDigesters(): void {
   //    Produces: image-ocr (extracts text from images)
   globalDigesterRegistry.register(new ImageOcrDigester());
 
-  // 7. SummaryDigester (depends on content-md)
+  // 7. ImageCaptioningDigester (no dependencies)
+  //    Produces: image-captioning (generates captions for images)
+  globalDigesterRegistry.register(new ImageCaptioningDigester());
+
+  // 8. SummaryDigester (depends on content-md)
   //    Produces: summary
   globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
-  // 8. TagsDigester (depends on content-md, independent of summary)
+  // 9. TagsDigester (depends on content-md, independent of summary)
   //    Produces: tags
   globalDigesterRegistry.register(new TagsDigester());
 
-  // 9. SlugDigester (prefers summary, falls back to content-md)
-  //    Produces: slug
+  // 10. SlugDigester (prefers summary, falls back to content-md)
+  //     Produces: slug
   globalDigesterRegistry.register(new SlugDigester());
 
-  // 10. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  // 11. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-keyword
   globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 11. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  // 12. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-semantic
   globalDigesterRegistry.register(new SearchSemanticDigester());
 

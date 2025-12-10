@@ -1,7 +1,11 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getFileByPath } from "~/lib/db/files";
+import { initializeDigesters } from "~/lib/digest/initialization";
 import { processFileDigests } from "~/lib/digest/task-handler";
 import { getLogger } from "~/lib/log/logger";
+
+// Ensure digesters are registered (survives HMR in dev mode)
+initializeDigesters();
 
 const log = getLogger({ module: "ApiInboxReenrich" });
 
