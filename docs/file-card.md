@@ -321,3 +321,216 @@ To add a new file type:
 - Text files: Text selectable, card container not selectable
 - Media files: Entire card non-selectable
 - Timestamps: Always non-selectable
+
+---
+
+## UX Specifications by File Type
+
+This section documents the detailed UX behavior for each file type.
+
+### Common Properties
+
+**Card Container:**
+- Rounded corners (`rounded-lg`), border, muted background
+- Max width: `calc(100% - 40px)` to allow timestamp alignment
+- Selection: `touch-callout-none select-none` (except text cards)
+- Match context displayed at bottom when from search results
+
+**Context Menu Activation:**
+- Desktop: Right-click
+- Mobile: Long-press (500ms)
+
+**Available Context Menu Actions:**
+
+| Action | Icon | Behavior | Used By |
+|--------|------|----------|---------|
+| Open | ExternalLink | Navigate to library page | All |
+| Pin/Unpin | Pin | Toggle pinned state, reload page | All |
+| Save | Download | Download file to device | All except Text |
+| Share | Share2 | Native share API (hidden if unavailable) | All except Text |
+| Copy | Copy | Copy text content to clipboard | Text only |
+| Expand/Collapse | ChevronDown/Up | Toggle text truncation | Text only (if >50 lines) |
+| Delete | Trash2 | Show confirmation dialog | All |
+
+---
+
+### Image Card
+
+**Card:**
+- Displays image with `object-contain`
+- Min: 100×100px, Max: `min(100vw - 40px, 448px)` × 320px
+- Aspect ratio preserved
+- Click opens modal
+- Loading: lazy (eager when `priority` prop)
+
+**Modal:**
+- Full-screen overlay (90vw × 90vh max)
+- Transparent background, no border
+- Click anywhere to dismiss
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Video Card
+
+**Card:**
+- Fixed 16:9 aspect ratio
+- Max width: 448px
+- Native `<video>` with controls
+- Black background for letterboxing
+- `playsInline`, `muted`, `preload="metadata"`
+
+**Modal:**
+None (native fullscreen via video controls)
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Audio Card
+
+**Card:**
+- Width: `50% - 40px`, min 280px
+- Min height: 120px
+- Filename displayed above player (centered)
+- Native `<audio>` with controls
+- `preload="metadata"`
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Text Card
+
+**Card:**
+- Prose styling with `whitespace-pre-wrap`, `break-words`
+- Text selectable (`select-text`)
+- Max 50 lines shown initially (truncated with "...")
+- Search term highlighting supported
+- Expand fetches full content via API
+
+**Modal:**
+None (expand in-place)
+
+**Context Menu:**
+Open, Pin, Copy, Expand/Collapse, Delete
+
+**Special:**
+- `selectTextOnOpen` enabled
+- Mobile long-press auto-selects all text
+- Copy fetches full content if not loaded
+
+---
+
+### PDF Card
+
+**Card:**
+- With screenshot: Image display (max 448px × 320px)
+- Without screenshot: Filename + "PDF Document" label (min height 120px)
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Document Card (Word)
+
+**Card:**
+- With screenshot: Same as PDF
+- Without screenshot: Filename + "Word Document" label
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### PowerPoint Card
+
+**Card:**
+- With screenshot: Same as PDF
+- Without screenshot: Filename + "PowerPoint Presentation" label
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### EPUB Card
+
+**Card:**
+- With screenshot: Cover image (same sizing as PDF)
+- Without screenshot: Filename + "EPUB eBook" label
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Excel Card
+
+**Card:**
+- With screenshot: Same as PDF
+- Without screenshot: Filename + "Excel Spreadsheet" label
+
+**Modal:**
+None
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+### Fallback Card
+
+**Card:**
+- Centered filename
+- MIME type below (if available)
+- Min height: 120px
+
+**Modal:**
+None (info modal exists but not connected)
+
+**Context Menu:**
+Open, Pin, Save, Share, Delete
+
+---
+
+## Size Reference
+
+| Card Type | Width | Height | Notes |
+|-----------|-------|--------|-------|
+| Image | fit-content, max 448px | max 320px | Aspect ratio preserved |
+| Video | max 448px | 16:9 aspect | Fixed aspect ratio |
+| Audio | 50% - 40px, min 280px | min 120px | Fixed compact layout |
+| Text | fit-content | varies | Expands with content |
+| PDF/Doc/PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
+| Fallback | fit-content | min 120px | Filename only |
+
+---
+
+## Screenshot-Based Cards
+
+PDF, DOC, PPT, EPUB, XLS use AI-generated screenshots stored in SQLAR.
+
+- Source: `getScreenshotUrl(file)` → `/api/digest/{path}/screenshot`
+- Dimensions: Same as image card (448px × 320px max)
+- Fallback: Filename + type label when no screenshot available
