@@ -201,12 +201,23 @@ Each card builds its own action list and passes to the wrapper. Shared actions u
 
 ### Modal Components
 
-Modals are simple - currently only `image-modal.tsx` exists. Others can be added as needed:
+Modals are simple - currently `image-modal.tsx` and `pdf-modal.tsx` exist. Others can be added as needed:
 
 ```typescript
 // modals/image-modal.tsx - Full-screen image viewer
+// modals/pdf-modal.tsx - Scrollable PDF viewer
 // modals/fallback-modal.tsx - Generic file info display
 ```
+
+**Common Modal UX:**
+- Raw file feel - content fills the modal
+- Required DialogContent overrides for raw file modals:
+  - `p-0` - no padding
+  - `border-none` - no border
+  - `rounded-none` - no rounded corners
+  - `shadow-none` - no shadow
+  - `bg-transparent` - no background
+  - `outline-none` - no focus ring
 
 ## Props Flow
 

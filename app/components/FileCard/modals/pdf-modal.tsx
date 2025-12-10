@@ -36,7 +36,7 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[90vw] sm:max-w-[90vw] max-h-[90vh] w-fit p-4 overflow-hidden flex flex-col"
+        className="max-w-[90vw] sm:max-w-[90vw] max-h-[90vh] w-fit p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden flex flex-col"
         showCloseButton={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
