@@ -393,11 +393,18 @@ Open, Pin, Save, Share, Delete
 ### Audio Card
 
 **Card:**
-- Width: `50% - 40px`, min 280px
-- Min height: 120px
-- Filename displayed above player (centered)
-- Native `<audio>` with controls
-- `preload="metadata"`
+- WeChat-style single bar design
+- Width: Based on audio duration, capped at `50% - 40px`, min 100px
+- Fixed height (compact single bar)
+- No filename displayed
+- Shows audio duration (e.g., `5"` for 5 seconds)
+- Click to play, click again to pause
+- Background color fill shows playback progress
+
+**Interaction:**
+- Tap/click: Toggle play/pause
+- Progress indicated by background color fill (left to right)
+- Duration displayed on right side
 
 **Modal:**
 None
@@ -520,7 +527,7 @@ Open, Pin, Save, Share, Delete
 |-----------|-------|--------|-------|
 | Image | fit-content, max 448px | max 320px | Aspect ratio preserved |
 | Video | max 448px | 16:9 aspect | Fixed aspect ratio |
-| Audio | 50% - 40px, min 280px | min 120px | Fixed compact layout |
+| Audio | duration-based, max 50%-40px, min 100px | fixed 40px | WeChat-style bar |
 | Text | fit-content | varies | Expands with content |
 | PDF/Doc/PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
 | Fallback | fit-content | min 120px | Filename only |
