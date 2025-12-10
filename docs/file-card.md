@@ -449,12 +449,17 @@ Open, Pin, Copy, Delete
 - Filename: middle-truncated with ellipsis (e.g., "docum...nt.pdf")
 - Truncation uses visual weight: English/digits = 2, CJK = 3, max weight 42
 - Size format: human-readable with max 1 decimal (5KB, 14.3MB, 20GB)
+- Click opens modal
 
 **Modal:**
-None
+- Full PDF viewer using react-pdf (lazy-loaded, separate bundle)
+- Page navigation with prev/next buttons (hidden for single-page PDFs)
+- Page counter showing current/total
+- Max width 800px, responsive to viewport
+- pdf.js worker loaded via Vite `?url` import (no CDN dependency)
 
 **Context Menu:**
-Open, Pin, Save, Share, Delete
+Preview, Open, Pin, Save, Share, Delete
 
 ---
 

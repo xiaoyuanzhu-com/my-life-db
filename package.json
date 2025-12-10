@@ -41,6 +41,7 @@
     "pino": "^9.4.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-pdf": "^10.2.0",
     "react-resizable-panels": "^3.0.6",
     "react-router": "^7.1.0",
     "simple-icons": "^15.17.0",

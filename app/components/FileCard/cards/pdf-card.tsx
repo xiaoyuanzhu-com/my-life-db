@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Download, Share2, Trash2 } from 'lucide-react';
+import { ExternalLink, Pin, Download, Share2, Trash2, Eye } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
@@ -17,6 +17,10 @@ import {
   truncateMiddle,
 } from '../utils';
 
+const PdfModal = lazy(() =>
+  import('../modals/pdf-modal').then((m) => ({ default: m.PdfModal }))
+);
+
 export function PdfCard({
   file,
   className,
@@ -25,6 +29,7 @@ export function PdfCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -41,6 +46,7 @@ export function PdfCard({
   const handleShare = () => shareFile(file.path, file.name, file.mimeType);
 
   const actions: ContextMenuAction[] = [
+    { icon: Eye, label: 'Preview', onClick: () => setIsPreviewOpen(true) },
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name) },
@@ -51,10 +57,11 @@ export function PdfCard({
   const cardContent = (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none',
+        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none cursor-pointer',
         'max-w-[calc(100%-40px)] w-fit',
         className
       )}
+      onClick={() => setIsPreviewOpen(true)}
     >
       {screenshotSrc ? (
         <div className="flex flex-col w-[226px]">
@@ -98,6 +105,21 @@ export function PdfCard({
         fileName={file.name}
         filePath={file.path}
       />
+      {isPreviewOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
+              Loading...
+            </div>
+          }
+        >
+          <PdfModal
+            file={file}
+            open={isPreviewOpen}
+            onOpenChange={setIsPreviewOpen}
+          />
+        </Suspense>
+      )}
     </>
   );
 }
