@@ -14,7 +14,7 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[90vw] max-h-[90vh] w-fit p-0 border-none bg-transparent shadow-none overflow-hidden rounded-none"
+        className="max-w-[90vw] sm:max-w-[90vw] max-h-[90vh] w-fit p-0 border-none bg-transparent shadow-none overflow-hidden rounded-none"
         showCloseButton={false}
       >
         <VisuallyHidden>
