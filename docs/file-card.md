@@ -421,20 +421,21 @@ Open, Pin, Save, Share, Delete
 **Card:**
 - Prose styling with `whitespace-pre-wrap`, `break-words`
 - Text selectable (`select-text`)
-- Max 50 lines shown initially (truncated with "...")
+- Max 20 lines shown (truncated with "...")
 - Search term highlighting supported
-- Expand fetches full content via API
+- Double-click opens modal with full content
 
 **Modal:**
-None (expand in-place)
+- Full content with scroll
+- Touch-friendly close button (top-right)
+- Lazy loads full content when opened
 
 **Context Menu:**
-Open, Pin, Copy, Expand/Collapse, Delete
+Open, Pin, Copy, Delete
 
 **Special:**
 - `selectTextOnOpen` enabled
 - Mobile long-press auto-selects all text
-- Copy fetches full content if not loaded
 
 ---
 
@@ -530,7 +531,7 @@ Open, Pin, Save, Share, Delete
 | Image | fit-content, max 448px | max 320px | Aspect ratio preserved |
 | Video | max 448px | 16:9 aspect | Fixed aspect ratio |
 | Audio | duration-based, max 50%-40px, min 100px | fixed 40px | WeChat-style bar |
-| Text | fit-content | varies | Expands with content |
+| Text | fit-content | max 20 lines | Double-click for modal |
 | PDF/Doc/PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
 | Fallback | fit-content | min 120px | Filename only |
 

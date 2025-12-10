@@ -6,6 +6,7 @@ import {
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps } from '../types';
 import { getRawFileUrl } from '../utils';
+import { ModalCloseButton } from '../ui/modal-close-button';
 
 export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   const src = getRawFileUrl(file.path);
@@ -19,6 +20,7 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
         <VisuallyHidden>
           <DialogTitle>{file.name}</DialogTitle>
         </VisuallyHidden>
+        <ModalCloseButton onClick={() => onOpenChange(false)} />
         <div
           className="relative flex items-center justify-center cursor-pointer"
           onClick={() => onOpenChange(false)}

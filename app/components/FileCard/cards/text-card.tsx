@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Copy, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ExternalLink, Pin, Copy, Trash2 } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { TextModal } from '../modals/text-modal';
 import { highlightMatches } from '../ui/text-highlight';
 import {
   togglePin,
-  fetchFullContent,
   getFileLibraryUrl,
 } from '../utils';
 
-const MAX_LINES = 50;
+const MAX_LINES = 20;
 
-function getTextDisplay(text: string, isExpanded: boolean) {
+function getTextDisplay(text: string) {
   const allLines = text.split('\n');
-  const shouldTruncate = allLines.length >= MAX_LINES;
-  const displayLines = isExpanded ? allLines : allLines.slice(0, MAX_LINES);
+  const shouldTruncate = allLines.length > MAX_LINES;
+  const displayLines = allLines.slice(0, MAX_LINES);
   const displayText = displayLines.join('\n');
   return { displayText, shouldTruncate };
 }
@@ -30,11 +30,10 @@ export function TextCard({
   matchContext,
 }: BaseCardProps) {
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [fullContent, setFullContent] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const href = getFileLibraryUrl(file.path);
@@ -58,21 +57,6 @@ export function TextCard({
     };
   }, []);
 
-  const ensureFullContent = useCallback(async (options?: { silent?: boolean }) => {
-    if (fullContent) return fullContent;
-    if (!file.textPreview) return null;
-
-    if (!options?.silent) setIsLoading(true);
-
-    const text = await fetchFullContent(file.path);
-    if (text) {
-      setFullContent(text);
-    }
-
-    if (!options?.silent) setIsLoading(false);
-    return text || fullContent;
-  }, [file.path, file.textPreview, fullContent]);
-
   const handleOpen = () => navigate(href);
 
   const handleTogglePin = async () => {
@@ -88,12 +72,7 @@ export function TextCard({
       return;
     }
 
-    let textToCopy = fullContent || previewText;
-    if (!fullContent) {
-      const fetched = await ensureFullContent({ silent: true });
-      if (fetched) textToCopy = fetched;
-    }
-
+    const textToCopy = fullContent || previewText;
     if (!textToCopy) return;
 
     if (copyResetTimeoutRef.current) {
@@ -108,33 +87,22 @@ export function TextCard({
       console.error('Failed to copy content:', error);
       setCopyStatus('idle');
     }
-  }, [ensureFullContent, fullContent, previewText]);
+  }, [fullContent, previewText]);
 
-  const handleToggleExpand = useCallback(async () => {
-    if (!isExpanded && !fullContent && file.textPreview) {
-      const text = await ensureFullContent();
-      if (text) setIsExpanded(true);
-    } else {
-      setIsExpanded(!isExpanded);
-    }
-  }, [isExpanded, fullContent, file.textPreview, ensureFullContent]);
+  const handleDoubleClick = () => {
+    setIsModalOpen(true);
+  };
 
-  const { displayText, shouldTruncate } = getTextDisplay(
-    fullContent || previewText,
-    isExpanded
-  );
+  const handleFullContentLoaded = useCallback((content: string) => {
+    setFullContent(content);
+  }, []);
+
+  const { displayText, shouldTruncate } = getTextDisplay(previewText);
 
   const actions: ContextMenuAction[] = [
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Copy, label: copyStatus === 'copied' ? 'Copied' : 'Copy', onClick: handleCopy },
-    {
-      icon: isExpanded ? ChevronUp : ChevronDown,
-      label: isLoading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand',
-      onClick: handleToggleExpand,
-      disabled: isLoading,
-      hidden: !shouldTruncate,
-    },
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },
   ];
 
@@ -145,6 +113,7 @@ export function TextCard({
         'max-w-[calc(100%-40px)] w-fit',
         className
       )}
+      onDoubleClick={handleDoubleClick}
     >
       <div className="relative">
         <div className="p-4 max-w-full">
@@ -153,7 +122,7 @@ export function TextCard({
               {highlightTerms && highlightTerms.length > 0
                 ? highlightMatches(displayText, highlightTerms)
                 : displayText}
-              {shouldTruncate && !isExpanded && <span className="text-muted-foreground">...</span>}
+              {shouldTruncate && <span className="text-muted-foreground">...</span>}
             </div>
           </div>
         </div>
@@ -172,6 +141,14 @@ export function TextCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+      />
+      <TextModal
+        file={file}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        previewText={previewText}
+        fullContent={fullContent}
+        onFullContentLoaded={handleFullContentLoaded}
       />
     </>
   );
