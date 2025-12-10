@@ -402,7 +402,9 @@ Open, Pin, Save, Share, Delete
 - Background color fill shows playback progress
 
 **Interaction:**
-- Tap/click: Toggle play/pause
+- Tap/click (no drag): Toggle play/pause
+- Drag (≥10px movement): Scrub seek with visual preview, seek applied on release
+- Dragging outside the bar continues tracking until mouse release
 - Progress indicated by background color fill (left to right)
 - Duration displayed on right side
 

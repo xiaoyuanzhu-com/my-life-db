@@ -57,7 +57,11 @@ export function AudioCard({
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [seekPreview, setSeekPreview] = useState<number | null>(null); // Preview progress while dragging
   const audioRef = useRef<HTMLAudioElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef<number | null>(null);
+  const isDragging = useRef(false);
 
   const src = getRawFileUrl(file.path);
   const href = getFileLibraryUrl(file.path);
@@ -92,18 +96,113 @@ export function AudioCard({
     };
   }, []);
 
-  const handleClick = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const DRAG_THRESHOLD = 10; // pixels of movement to trigger seek mode
 
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-    } else {
-      audio.play();
-      setIsPlaying(true);
+  // Calculate seek ratio from mouse position
+  const getSeekRatio = (clientX: number): number => {
+    const container = containerRef.current;
+    if (!container) return 0;
+    const rect = container.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    return Math.max(0, Math.min(1, clickX / rect.width));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    dragStartX.current = e.clientX;
+    isDragging.current = false;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (dragStartX.current === null) return;
+
+    const movement = Math.abs(e.clientX - dragStartX.current);
+
+    if (movement >= DRAG_THRESHOLD) {
+      isDragging.current = true;
+      // Show preview progress (visual only, no actual seek)
+      if (duration) {
+        const ratio = getSeekRatio(e.clientX);
+        setSeekPreview(ratio * 100);
+      }
     }
   };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current;
+    setSeekPreview(null); // Clear preview
+
+    if (!audio) {
+      dragStartX.current = null;
+      return;
+    }
+
+    if (isDragging.current && duration) {
+      // Was dragging - apply seek on release
+      const ratio = getSeekRatio(e.clientX);
+      audio.currentTime = ratio * duration;
+      // Auto-play after seek
+      if (!isPlaying) {
+        audio.play();
+        setIsPlaying(true);
+      }
+    } else {
+      // Simple click - toggle play/pause
+      if (isPlaying) {
+        audio.pause();
+        setIsPlaying(false);
+      } else {
+        audio.play();
+        setIsPlaying(true);
+      }
+    }
+
+    dragStartX.current = null;
+    isDragging.current = false;
+  };
+
+  // Use document-level listeners to track mouse outside the element
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (dragStartX.current === null) return;
+
+      const movement = Math.abs(e.clientX - dragStartX.current);
+
+      if (movement >= DRAG_THRESHOLD) {
+        isDragging.current = true;
+        if (duration) {
+          const ratio = getSeekRatio(e.clientX);
+          setSeekPreview(ratio * 100);
+        }
+      }
+    };
+
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (dragStartX.current === null) return;
+
+      const audio = audioRef.current;
+      setSeekPreview(null);
+
+      if (audio && isDragging.current && duration) {
+        const ratio = getSeekRatio(e.clientX);
+        audio.currentTime = ratio * duration;
+        if (!isPlaying) {
+          audio.play();
+          setIsPlaying(true);
+        }
+      }
+
+      dragStartX.current = null;
+      isDragging.current = false;
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [duration, isPlaying]);
 
   const handleOpen = () => navigate(href);
 
@@ -126,20 +225,29 @@ export function AudioCard({
 
   const barWidth = duration > 0 ? getBarWidth(duration) : '100px';
 
+  // Show seek preview while dragging, otherwise show actual progress
+  const displayProgress = seekPreview !== null ? seekPreview : progress;
+
   const cardContent = (
     <div
+      ref={containerRef}
       className={cn(
         'group relative overflow-hidden rounded-full border border-border bg-muted touch-callout-none select-none cursor-pointer',
         'h-10 min-w-[100px]',
         className
       )}
       style={{ width: barWidth }}
-      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
       {/* Progress background */}
       <div
-        className="absolute inset-0 bg-primary/20 transition-all duration-100"
-        style={{ width: `${progress}%` }}
+        className={cn(
+          'absolute inset-0 bg-primary/20',
+          seekPreview === null && 'transition-all duration-100'
+        )}
+        style={{ width: `${displayProgress}%` }}
       />
 
       {/* Content */}
