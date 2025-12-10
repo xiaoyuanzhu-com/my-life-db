@@ -94,6 +94,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const contentType = contentTypeMap[ext] || "application/octet-stream";
     const stat = await fs.stat(realPath);
     const fileSize = stat.size;
+    const etag = `"${stat.mtimeMs.toString(16)}-${fileSize.toString(16)}"`;
+
+    // Check If-None-Match for cache validation
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304 });
+    }
 
     // Check for Range header (needed for audio/video seeking)
     const rangeHeader = request.headers.get("range");
@@ -132,6 +139,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             "Accept-Ranges": "bytes",
             "Content-Disposition": `inline; filename="${encodeURIComponent(path.basename(realPath))}"`,
             "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": etag,
           },
         });
       }
@@ -147,6 +155,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         "Accept-Ranges": "bytes",
         "Content-Disposition": `inline; filename="${encodeURIComponent(path.basename(realPath))}"`,
         "Cache-Control": "public, max-age=31536000, immutable",
+        "ETag": etag,
       },
     });
   } catch (error) {

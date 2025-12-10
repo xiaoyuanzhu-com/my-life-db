@@ -453,8 +453,7 @@ Open, Pin, Copy, Delete
 
 **Modal:**
 - Full PDF viewer using react-pdf (lazy-loaded, separate bundle)
-- Page navigation with prev/next buttons (hidden for single-page PDFs)
-- Page counter showing current/total
+- All pages rendered in continuous scroll view
 - Max width 800px, responsive to viewport
 - pdf.js worker loaded via Vite `?url` import (no CDN dependency)
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -20,7 +20,8 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageWidth, setPageWidth] = useState<number | null>(null);
 
-  const src = getRawFileUrl(file.path);
+  // Memoize file source to prevent react-pdf from treating it as a new file on each render
+  const src = useMemo(() => ({ url: getRawFileUrl(file.path) }), [file.path]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
