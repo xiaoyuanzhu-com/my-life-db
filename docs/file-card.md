@@ -442,10 +442,12 @@ Open, Pin, Copy, Delete
 ### PDF Card
 
 **Card:**
-- With screenshot: Image display (max 448px × 320px) with filename + size footer
+- Fixed width: 226px (A4-ish aspect ratio)
+- With screenshot: Image display (max height 320px, aspect ratio preserved) with filename + size footer
 - Without screenshot: Filename + "PDF Document" label (min height 120px)
-- Footer shows: `{filename} · {size}` (e.g., "document.pdf · 2.4MB")
-- Filename truncated with ellipsis if too long
+- Footer: filename (left) and size (right), `justify-between`
+- Filename: middle-truncated with ellipsis (e.g., "docum...nt.pdf")
+- Truncation uses visual weight: English/digits = 2, CJK = 3, max weight 42
 - Size format: human-readable with max 1 decimal (5KB, 14.3MB, 20GB)
 
 **Modal:**
@@ -459,7 +461,7 @@ Open, Pin, Save, Share, Delete
 ### Document Card (Word)
 
 **Card:**
-- With screenshot: Same as PDF
+- Same layout as PDF Card (226px fixed width, footer with filename + size)
 - Without screenshot: Filename + "Word Document" label
 
 **Modal:**
@@ -535,7 +537,8 @@ Open, Pin, Save, Share, Delete
 | Video | max 448px | 16:9 aspect | Fixed aspect ratio |
 | Audio | duration-based, max 50%-40px, min 100px | fixed 40px | WeChat-style bar |
 | Text | fit-content | max 20 lines | Double-click for modal |
-| PDF/Doc/PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
+| PDF/Doc | fixed 226px | max 320px + footer | A4-ish ratio, filename + size footer |
+| PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
 | Fallback | fit-content | min 120px | Filename only |
 
 ---
