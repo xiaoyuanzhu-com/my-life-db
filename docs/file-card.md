@@ -442,8 +442,11 @@ Open, Pin, Copy, Delete
 ### PDF Card
 
 **Card:**
-- With screenshot: Image display (max 448px × 320px)
+- With screenshot: Image display (max 448px × 320px) with filename + size footer
 - Without screenshot: Filename + "PDF Document" label (min height 120px)
+- Footer shows: `{filename} · {size}` (e.g., "document.pdf · 2.4MB")
+- Filename truncated with ellipsis if too long
+- Size format: human-readable with max 1 decimal (5KB, 14.3MB, 20GB)
 
 **Modal:**
 None

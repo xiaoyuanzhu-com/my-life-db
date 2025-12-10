@@ -85,6 +85,86 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
 }
 
 // =============================================================================
+// Formatting Utilities
+// =============================================================================
+
+/**
+ * Format file size in human-readable format
+ * Examples: 5KB, 14.3MB, 20GB, 20.4GB (max 1 decimal precision)
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0B';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const k = 1024;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+
+  // Use 1 decimal place only if needed (not a whole number)
+  const formatted = value % 1 === 0 ? value.toString() : value.toFixed(1);
+  return `${formatted}${units[i]}`;
+}
+
+/**
+ * Get visual weight of a character
+ * English letters and digits: weight 2
+ * Others (CJK, etc.): weight 3
+ */
+function getCharWeight(char: string): number {
+  return /[a-zA-Z0-9]/.test(char) ? 2 : 3;
+}
+
+/**
+ * Get total visual weight of a string
+ */
+function getStringWeight(str: string): number {
+  let weight = 0;
+  for (const char of str) {
+    weight += getCharWeight(char);
+  }
+  return weight;
+}
+
+/**
+ * Truncate string in the middle with ellipsis, using visual weight
+ * English/digits: weight 2, others (CJK): weight 3
+ * Max total weight: 32
+ * Example: "very-long-filename.pdf" → "very-l...me.pdf"
+ */
+export function truncateMiddle(str: string, maxWeight: number = 42): string {
+  const ellipsis = '...';
+  const ellipsisWeight = ellipsis.length * 2; // 6
+
+  if (getStringWeight(str) <= maxWeight) return str;
+
+  const targetWeight = maxWeight - ellipsisWeight;
+  const halfWeight = targetWeight / 2;
+
+  // Build front part
+  let front = '';
+  let frontWeight = 0;
+  for (const char of str) {
+    const charWeight = getCharWeight(char);
+    if (frontWeight + charWeight > halfWeight) break;
+    front += char;
+    frontWeight += charWeight;
+  }
+
+  // Build back part (from end)
+  let back = '';
+  let backWeight = 0;
+  for (let i = str.length - 1; i >= 0; i--) {
+    const char = str[i];
+    const charWeight = getCharWeight(char);
+    if (backWeight + charWeight > halfWeight) break;
+    back = char + back;
+    backWeight += charWeight;
+  }
+
+  return front + ellipsis + back;
+}
+
+// =============================================================================
 // File Operations (Pure Functions)
 // =============================================================================
 

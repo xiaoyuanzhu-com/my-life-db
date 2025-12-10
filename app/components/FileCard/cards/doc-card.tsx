@@ -13,6 +13,8 @@ import {
   togglePin,
   getFileLibraryUrl,
   getScreenshotUrl,
+  formatFileSize,
+  truncateMiddle,
 } from '../utils';
 
 export function DocCard({
@@ -55,22 +57,19 @@ export function DocCard({
       )}
     >
       {screenshotSrc ? (
-        <div
-          className="relative flex items-center justify-center"
-          style={{ minWidth: 100, minHeight: 100 }}
-        >
+        <div className="flex flex-col w-[226px]">
           <img
             src={screenshotSrc}
             alt={file.name}
-            className="object-contain"
-            style={{
-              maxWidth: 'min(calc(100vw - 40px), 448px)',
-              maxHeight: 320,
-              width: 'auto',
-              height: 'auto',
-            }}
+            className="w-full h-auto max-h-[320px] object-contain object-top"
             loading={priority ? 'eager' : 'lazy'}
           />
+          <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border flex items-center justify-between">
+            <span>{truncateMiddle(file.name)}</span>
+            {file.size != null && (
+              <span>{formatFileSize(file.size)}</span>
+            )}
+          </div>
         </div>
       ) : (
         <div className="p-6 flex items-center justify-center min-h-[120px]">
