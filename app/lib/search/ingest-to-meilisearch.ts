@@ -121,13 +121,15 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
  * Get file content for indexing
  *
  * Priority:
- * 1. URL: Get from digest/content-md
+ * 1. URL: Get from url-crawl-content digest
  * 2. Doc: Get from doc-to-markdown digest
- * 3. Image: Get from image-ocr digest
- * 4. Library/Inbox file: Read from filesystem
+ * 3. Image OCR: Get from image-ocr digest
+ * 4. Image Caption: Get from image-captioning digest (fallback for images)
+ * 5. Speech: Get from speech-recognition digest
+ * 6. Library/Inbox file: Read from filesystem for text files
  */
 async function getFileContent(filePath: string): Promise<string | null> {
-  // Check for URL digest first
+  // 1. Check for URL digest first
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
     // Parse JSON to get markdown
@@ -140,19 +142,40 @@ async function getFileContent(filePath: string): Promise<string | null> {
     }
   }
 
-  // Check for doc-to-markdown digest
+  // 2. Check for doc-to-markdown digest
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
     return docDigest.content;
   }
 
-  // Check for image-ocr digest
+  // 3. Check for image-ocr digest
   const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
   if (ocrDigest?.content && ocrDigest.status === 'completed') {
     return ocrDigest.content;
   }
 
-  // Read from filesystem for markdown/text files
+  // 4. Check for image-captioning digest (fallback for images without OCR text)
+  const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
+  if (captionDigest?.content && captionDigest.status === 'completed') {
+    return captionDigest.content;
+  }
+
+  // 5. Check for speech-recognition digest
+  const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
+  if (speechDigest?.content && speechDigest.status === 'completed') {
+    // Parse transcript JSON to extract plain text
+    try {
+      const transcriptData = JSON.parse(speechDigest.content);
+      if (transcriptData.segments && Array.isArray(transcriptData.segments)) {
+        return transcriptData.segments.map((s: { text: string }) => s.text).join(' ');
+      }
+      return speechDigest.content;
+    } catch {
+      return speechDigest.content;
+    }
+  }
+
+  // 6. Read from filesystem for markdown/text files
   if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';

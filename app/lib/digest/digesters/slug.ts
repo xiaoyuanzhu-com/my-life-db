@@ -13,12 +13,9 @@ import {
   getPrimaryTextContent,
   getSummaryText,
   getUrlCrawlMarkdown,
-  hasAnyTextSource,
-  hasUrlCrawlContent,
 } from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'SlugDigester' });
-const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 const MAX_TEXT_CHARS = 4000;
 const MAX_MARKDOWN_CHARS = 6000;
 
@@ -82,8 +79,11 @@ function extractSlugPayload(content: string): ParsedSlugResponse {
 
 /**
  * Slug Digester
- * Generates slugs from summary (preferred) or content-md (fallback)
- * Produces: slug
+ * Generates slugs from summary (preferred) or content (fallback)
+ *
+ * Always runs for all file types. Completes with slug if text available,
+ * completes with null content if no text available (never skips).
+ * Cascading resets from upstream digesters trigger re-processing.
  */
 export class SlugDigester implements Digester {
   readonly name = 'slug';
@@ -91,20 +91,14 @@ export class SlugDigester implements Digester {
   readonly description = 'Generate friendly URL slugs for file naming';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
+    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    const summaryText = getSummaryText(existingDigests);
-    if (summaryText && summaryText.trim().length > 0) {
-      return true;
-    }
-
-    return (
-      hasUrlCrawlContent(existingDigests, 20) ||
-      hasAnyTextSource(file, existingDigests, { minFileBytes: 20 })
-    );
+    // Always try to run for non-folder files
+    // Cascading resets handle re-processing when content becomes available
+    return !file.is_folder;
   }
 
   async digest(
@@ -113,6 +107,8 @@ export class SlugDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<DigestInput[] | null> {
+    const now = new Date().toISOString();
+
     const summaryText = getSummaryText(existingDigests);
     const primaryTextSource = await getPrimaryTextContent(filePath, file, existingDigests);
     const urlMarkdown = getUrlCrawlMarkdown(existingDigests);
@@ -121,11 +117,22 @@ export class SlugDigester implements Digester {
     const sourceType = primaryTextSource?.source || (summaryText ? 'summary' : urlMarkdown ? 'url-digest' : 'unknown');
 
     if (!primaryText) {
-      // Check if we have any potential text source that might become available
-      if (!hasAnyTextSource(file, existingDigests)) {
-        throw new Error('No text source available for slug generation');
-      }
-      return null; // Should not happen if canDigest returned true
+      // No text available - complete with no content (don't skip)
+      // Cascading resets will trigger re-processing if content becomes available
+      log.debug({ filePath }, 'no text content available for slug');
+      return [
+        {
+          filePath,
+          digester: 'slug',
+          status: 'completed',
+          content: null,
+          sqlarName: null,
+          error: null,
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
     }
 
     const truncatedPrimary = truncateText(primaryText, MAX_TEXT_CHARS);
@@ -219,8 +226,6 @@ export class SlugDigester implements Digester {
       log.warn({ filePath }, 'slug empty after normalization, using fallback');
     }
 
-    const now = new Date().toISOString();
-
     // Create slug digest with metadata
     const slugData = {
       slug,
@@ -245,36 +250,5 @@ export class SlugDigester implements Digester {
         updatedAt: now,
       },
     ];
-  }
-
-  async shouldReprocessCompleted(
-    _filePath: string,
-    file: FileRecordRow,
-    existingDigests: Digest[]
-  ): Promise<boolean> {
-    const slugDigest = existingDigests.find((d) => d.digester === 'slug');
-    if (!slugDigest || (slugDigest.status !== 'completed' && slugDigest.status !== 'skipped')) {
-      return false;
-    }
-
-    if (!hasAnyTextSource(file, existingDigests)) {
-      return false;
-    }
-
-    const summaryDigest =
-      existingDigests.find((d) => d.digester === 'url-crawl-summary' && d.status === 'completed') ||
-      existingDigests.find((d) => d.digester === 'summarize' && d.status === 'completed');
-
-    const contentDigest = existingDigests.find(
-      (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
-    );
-
-    const sourceUpdatedAt = summaryDigest
-      ? toTimestamp(summaryDigest.updatedAt)
-      : contentDigest
-        ? toTimestamp(contentDigest.updatedAt)
-        : toTimestamp(file.modified_at);
-
-    return sourceUpdatedAt > toTimestamp(slugDigest.updatedAt);
   }
 }

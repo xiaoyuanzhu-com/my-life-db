@@ -26,6 +26,20 @@ import { deleteEmbeddingsForSource } from '~/lib/db/people';
 const log = getLogger({ module: 'DigestCoordinator' });
 
 /**
+ * Cascading reset mappings
+ * When a digester completes with content, reset these downstream digesters
+ * This ensures dependent digesters re-process with updated content
+ */
+const CASCADING_RESETS: Record<string, string[]> = {
+  'url-crawl-content': ['url-crawl-summary', 'tags', 'slug', 'search-keyword', 'search-semantic'],
+  'doc-to-markdown': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'image-ocr': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'image-captioning': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'url-crawl-summary': ['tags', 'slug'],
+};
+
+/**
  * Hash function for generating SQLAR paths
  */
 function hashPath(filePath: string): string {
@@ -268,6 +282,49 @@ export class DigestCoordinator {
     // Sync screenshot_sqlar to files table for fast inbox queries
     if (output.digester.includes('screenshot') && targetStatus === 'completed' && output.sqlarName) {
       updateFileScreenshotSqlar(filePath, output.sqlarName);
+    }
+
+    // Trigger cascading resets if this digester completed with content
+    if (targetStatus === 'completed' && output.content) {
+      this.triggerCascadingResets(filePath, output.digester);
+    }
+  }
+
+  /**
+   * Reset downstream digesters when an upstream digester completes with content
+   */
+  private triggerCascadingResets(filePath: string, digesterName: string): void {
+    const downstreamDigesters = CASCADING_RESETS[digesterName];
+    if (!downstreamDigesters || downstreamDigesters.length === 0) {
+      return;
+    }
+
+    const existing = listDigestsForPath(filePath);
+    const digestsByName = new Map(existing.map((d) => [d.digester, d]));
+    const resetTargets: string[] = [];
+
+    for (const downstream of downstreamDigesters) {
+      const digest = digestsByName.get(downstream);
+      if (!digest) continue;
+
+      // Only reset terminal states (completed, skipped, failed)
+      // Leave todo and in-progress alone
+      if (digest.status === 'completed' || digest.status === 'skipped' || digest.status === 'failed') {
+        resetTargets.push(downstream);
+      }
+    }
+
+    if (resetTargets.length > 0) {
+      log.info({ filePath, trigger: digesterName, targets: resetTargets }, 'triggering cascading resets');
+      for (const target of resetTargets) {
+        const digest = digestsByName.get(target)!;
+        updateDigest(digest.id, {
+          status: 'todo',
+          content: null,
+          error: null,
+          attempts: 0,
+        });
+      }
     }
   }
 

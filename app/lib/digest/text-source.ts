@@ -33,7 +33,7 @@ const TEXT_EXTENSIONS = new Set([
   '.tsv',
 ]);
 
-export type TextSourceType = 'url-digest' | 'doc-to-markdown' | 'file';
+export type TextSourceType = 'url-digest' | 'doc-to-markdown' | 'image-ocr' | 'image-captioning' | 'speech-recognition' | 'file';
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -80,6 +80,37 @@ export function getImageOcrText(existingDigests: Digest[]): string | null {
 
 export function hasImageOcrContent(existingDigests: Digest[], minLength = 0): boolean {
   const text = getImageOcrText(existingDigests);
+  return text ? text.trim().length >= minLength : false;
+}
+
+export function getImageCaptioningText(existingDigests: Digest[]): string | null {
+  const digest = existingDigests.find(
+    (d) => d.digester === 'image-captioning' && d.status === 'completed'
+  );
+  return digest?.content ?? null;
+}
+
+export function hasImageCaptioningContent(existingDigests: Digest[], minLength = 0): boolean {
+  const text = getImageCaptioningText(existingDigests);
+  return text ? text.trim().length >= minLength : false;
+}
+
+export function getSpeechRecognitionText(existingDigests: Digest[]): string | null {
+  const digest = existingDigests.find(
+    (d) => d.digester === 'speech-recognition' && d.status === 'completed'
+  );
+  if (!digest?.content) return null;
+
+  // Parse transcript JSON to extract plain text
+  const parsed = parseJson<{ segments?: Array<{ text: string }> }>(digest.content);
+  if (parsed?.segments) {
+    return parsed.segments.map((s) => s.text).join(' ');
+  }
+  return digest.content;
+}
+
+export function hasSpeechRecognitionContent(existingDigests: Digest[], minLength = 0): boolean {
+  const text = getSpeechRecognitionText(existingDigests);
   return text ? text.trim().length >= minLength : false;
 }
 
@@ -136,6 +167,12 @@ export function hasAnyTextSource(
   if (hasImageOcrContent(existingDigests, options?.minUrlLength ?? 0)) {
     return true;
   }
+  if (hasImageCaptioningContent(existingDigests, options?.minUrlLength ?? 0)) {
+    return true;
+  }
+  if (hasSpeechRecognitionContent(existingDigests, options?.minUrlLength ?? 0)) {
+    return true;
+  }
   return hasLocalTextContent(file, options?.minFileBytes ?? 0);
 }
 
@@ -154,16 +191,37 @@ export async function getPrimaryTextContent(
   file: FileRecordRow,
   existingDigests: Digest[]
 ): Promise<{ text: string; source: TextSourceType } | null> {
+  // 1. URL crawl content (highest priority for URLs)
   const fromUrlDigest = getUrlCrawlMarkdown(existingDigests);
   if (fromUrlDigest) {
     return { text: fromUrlDigest, source: 'url-digest' };
   }
 
+  // 2. Document to markdown (for PDFs, DOCX, etc.)
   const fromDocDigest = getDocToMarkdown(existingDigests);
   if (fromDocDigest) {
     return { text: fromDocDigest, source: 'doc-to-markdown' };
   }
 
+  // 3. Image OCR (primary for images)
+  const fromOcr = getImageOcrText(existingDigests);
+  if (fromOcr) {
+    return { text: fromOcr, source: 'image-ocr' };
+  }
+
+  // 4. Image captioning (fallback for images without OCR text)
+  const fromCaptioning = getImageCaptioningText(existingDigests);
+  if (fromCaptioning) {
+    return { text: fromCaptioning, source: 'image-captioning' };
+  }
+
+  // 5. Speech recognition (for audio/video)
+  const fromSpeech = getSpeechRecognitionText(existingDigests);
+  if (fromSpeech) {
+    return { text: fromSpeech, source: 'speech-recognition' };
+  }
+
+  // 6. Local file content (for text files)
   if (!file.is_folder && hasLocalTextContent(file)) {
     const text = await readLocalFile(filePath);
     if (text) {

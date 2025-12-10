@@ -336,92 +336,160 @@ async processFile(filePath: string, options?: { reset?: boolean }) {
    - Survives crashes or interruptions
    - Next run resumes from where it left off
 
-## Text Source Priority
+## File Type to Digester Mapping
 
-Many digesters (tags, summary, search) need text content. The system checks sources in priority order:
+Each file type has a deterministic set of digesters that apply to it. This is based on MIME type and file extension, not runtime content detection.
+
+### Primary Text Sources by File Type
+
+| File Type | Primary Text Source Digester | Fallback Text Source |
+|-----------|------------------------------|----------------------|
+| URL (`.md` with URL content) | `url-crawl-content` | - |
+| Document (PDF, DOCX, XLSX, PPTX, EPUB) | `doc-to-markdown` | - |
+| Image (PNG, JPG, GIF, WEBP, etc.) | `image-ocr` | `image-captioning` |
+| Audio/Video (MP3, WAV, MP4, etc.) | `speech-recognition` | - |
+| Text file (`.md`, `.txt`, `.json`, etc.) | Local file content | - |
+
+### Digester Applicability by File Type
+
+| Digester | URL | Document | Image | Audio/Video | Text |
+|----------|-----|----------|-------|-------------|------|
+| url-crawl | ✓ | - | - | - | - |
+| doc-to-markdown | - | ✓ | - | - | - |
+| doc-to-screenshot | - | ✓ | - | - | - |
+| speech-recognition | - | - | - | ✓ | - |
+| speaker-embedding | - | - | - | ✓ | - |
+| image-ocr | - | - | ✓ | - | - |
+| image-captioning | - | - | ✓ | - | - |
+| url-crawl-summary | ✓ | - | - | - | - |
+| tags | ✓ | ✓ | ✓ | ✓ | ✓ |
+| slug | ✓ | ✓ | ✓ | ✓ | ✓ |
+| search-keyword | ✓ | ✓ | ✓ | ✓ | ✓ |
+| search-semantic | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+## Cascading Resets
+
+When a content-producing digester completes with new content, it triggers automatic resets of dependent digesters. This ensures downstream digesters re-process with the updated content.
+
+### Reset Triggers
+
+Each digester declares which downstream digesters should be reset when it completes:
 
 ```typescript
-1. URL Crawl Content (url-crawl-content digest)
-   - Markdown extracted from crawled webpage
-
-2. Doc-to-Markdown Content (doc-to-markdown digest)
-   - Converted document (PDF, Word, etc.)
-
-3. Image OCR Content (image-ocr digest)
-   - Text extracted from images via OCR
-
-4. Local File Content
-   - Direct read from filesystem for text files
+// Hardcoded reset mappings
+const CASCADING_RESETS: Record<string, string[]> = {
+  'url-crawl-content': ['url-crawl-summary', 'tags', 'slug', 'search-keyword', 'search-semantic'],
+  'doc-to-markdown': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'image-ocr': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'image-captioning': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['tags', 'slug', 'search-keyword', 'search-semantic'],
+  'url-crawl-summary': ['tags', 'slug'],  // Summary can improve tags/slug
+};
 ```
 
-This priority is implemented in `hasAnyTextSource()` and `getPrimaryTextContent()` functions.
+### Reset Behavior
+
+When a digester completes:
+1. Coordinator checks if digester has cascading resets defined
+2. For each downstream digester in the reset list:
+   - If status is `completed` or `skipped`, reset to `todo`
+   - If status is `failed`, reset to `todo` (clears attempts)
+   - If status is `todo` or `in-progress`, leave unchanged
+3. Downstream digesters will run on next processing cycle
+
+**Example Flow (Image with OCR)**:
+1. `image-ocr` runs, finds text "Meeting Notes 2024"
+2. Coordinator sees `image-ocr` completed with content
+3. Resets `tags`, `slug`, `search-keyword`, `search-semantic` to `todo`
+4. `tags` runs, generates tags from OCR text
+5. `search-keyword` runs, indexes OCR text
+
+**Example Flow (Image without OCR text)**:
+1. `image-ocr` runs, finds no text (content is empty/null)
+2. `image-captioning` runs, generates "A photo of a sunset over the ocean"
+3. Coordinator sees `image-captioning` completed with content
+4. Resets `tags`, `slug`, `search-keyword`, `search-semantic` to `todo`
+5. `tags` runs, generates tags from caption
+6. `search-keyword` runs, indexes caption
+
+## Dependent Digester Behavior
+
+Digesters that depend on text content (tags, slug, search) follow these rules:
+
+### Always Complete (Never Skip for "No Content")
+
+Dependent digesters should always reach a terminal state:
+- **Has text content**: Process and mark `completed` with content
+- **No text content available**: Mark `completed` with empty/null content (not `skipped`)
+- **External service error**: Mark `failed` (will retry)
+
+This ensures:
+1. UI shows clear status (not perpetually "todo")
+2. Cascading resets work correctly (completed state can be reset)
+3. No confusion between "not applicable" vs "no content found"
+
+### `skipped` vs `completed` with No Content
+
+- **`skipped`**: File type is fundamentally incompatible (e.g., `url-crawl` on a PDF)
+- **`completed` with null content**: File type is compatible but no content was produced
+
+```typescript
+// Example: SearchKeywordDigester for an image
+async digest(filePath, file, existingDigests, db) {
+  const text = getTextContent(file, existingDigests);
+
+  if (!text) {
+    // No text available - complete with no content (don't skip)
+    return [{
+      digester: 'search-keyword',
+      status: 'completed',
+      content: null,  // Explicitly null
+      error: null,
+    }];
+  }
+
+  // Has text - index it
+  await indexToMeilisearch(filePath, text);
+  return [{
+    digester: 'search-keyword',
+    status: 'completed',
+    content: JSON.stringify({ indexed: true, wordCount: text.split(' ').length }),
+  }];
+}
+```
+
+### Getting Text Content
+
+Each dependent digester knows which text sources to check based on file type:
+
+```typescript
+function getTextContent(file: FileRecordRow, digests: Digest[]): string | null {
+  // Check digest-based sources first (in priority order)
+  const urlContent = getDigestContent(digests, 'url-crawl-content');
+  if (urlContent) return parseUrlContentMarkdown(urlContent);
+
+  const docContent = getDigestContent(digests, 'doc-to-markdown');
+  if (docContent) return docContent;
+
+  const ocrContent = getDigestContent(digests, 'image-ocr');
+  if (ocrContent) return ocrContent;
+
+  const captionContent = getDigestContent(digests, 'image-captioning');
+  if (captionContent) return captionContent;
+
+  const transcriptContent = getDigestContent(digests, 'speech-recognition');
+  if (transcriptContent) return parseTranscriptText(transcriptContent);
+
+  // Fall back to local file for text files
+  if (isTextFile(file)) {
+    return readLocalFile(file.path);
+  }
+
+  return null;
+}
+```
 
 ## Common Patterns
-
-### Digester Dependencies
-
-**Pattern**: Later digester depends on earlier digester's output
-
-```typescript
-// SearchKeywordDigester checks for doc-to-markdown content
-async canDigest(filePath, file, existingDigests, db) {
-  return hasAnyTextSource(file, existingDigests);
-}
-
-async digest(filePath, file, existingDigests, db) {
-  // Throw error if dependencies not ready - marks as 'failed' (retryable)
-  if (!hasAnyTextSource(file, existingDigests)) {
-    throw new Error('No text source available for indexing');
-  }
-
-  // ... indexing logic
-}
-
-// hasAnyTextSource() checks url-crawl-content, doc-to-markdown, then local files
-```
-
-**Execution Flow (Success Case)**:
-1. DocToMarkdownDigester runs first (position 2)
-2. Produces `doc-to-markdown` digest with markdown content
-3. SearchKeywordDigester runs later (position 6)
-4. Loads fresh digests, sees completed `doc-to-markdown`
-5. `hasAnyTextSource()` returns true
-6. SearchKeywordDigester indexes the markdown
-
-**Execution Flow (Dependency Failure Case)**:
-1. DocToMarkdownDigester runs and fails (status='failed', attempts=1)
-2. SearchKeywordDigester runs later (position 6)
-3. `hasAnyTextSource()` returns false (no doc-to-markdown content)
-4. `canDigest()` returns false, but `digest()` throws error
-5. SearchKeywordDigester marked as 'failed' (attempts=1, retryable)
-6. On next processing cycle:
-   - If DocToMarkdownDigester succeeds → SearchKeywordDigester retries and succeeds
-   - If DocToMarkdownDigester still failing → SearchKeywordDigester retries and fails again
-   - After 3 attempts, both become terminally 'failed'
-
-### Re-indexing on Content Change
-
-**Pattern**: Digester checks if upstream content changed since last run
-
-```typescript
-private needsIndexing(filePath, file, existingDigests): boolean {
-  const existingSearch = existingDigests.find(d => d.digester === 'search-keyword');
-  if (!existingSearch) return true; // Never indexed
-  if (existingSearch.status === 'failed') return true; // Retry
-
-  const lastIndexed = toTimestamp(existingSearch.updatedAt);
-  const docDigest = existingDigests.find(d => d.digester === 'doc-to-markdown');
-
-  // Re-index if doc-to-markdown updated after last index
-  if (docDigest && toTimestamp(docDigest.updatedAt) > lastIndexed) {
-    return true;
-  }
-
-  return false; // Up to date
-}
-```
-
-This pattern ensures search indexes stay in sync with content changes.
 
 ### Multiple Outputs
 
@@ -493,43 +561,42 @@ Coordinator tracks each output independently with its own status.
 ## Best Practices
 
 1. **Order Matters**: Register digesters in dependency order
-   - Digesters with no dependencies first
-   - Digesters that consume outputs later
+   - Content-producing digesters first (url-crawl, doc-to-markdown, image-ocr, etc.)
+   - Content-consuming digesters later (tags, slug, search)
 
 2. **Check Fresh State**: Always use `existingDigests` parameter passed to your digester
    - Contains latest digest records including earlier digesters in same run
    - Never cache or reuse digest state across calls
 
-3. **Respect Terminal States**: Don't try to reprocess completed/skipped digests
-   - Trust the status field
-   - Use reset option when intentional reprocessing needed
+3. **Deterministic `canDigest`**: Base on file type, not content availability
+   - Check MIME type and file extension
+   - Don't check if upstream digesters have content yet
+   - Example: `image-ocr` returns true for all images, regardless of whether text will be found
 
-4. **Use Text Source Helpers**: Don't reinvent content detection
-   - Call `hasAnyTextSource()` to check for any text content
-   - Call `getPrimaryTextContent()` to get highest-priority text
+4. **Complete vs Skip**: Use the right terminal state
+   - **`skipped`**: File type is fundamentally incompatible (e.g., `url-crawl` on a PDF)
+   - **`completed` with null content**: File type is compatible but no output produced
+   - Never use `skipped` for "no content available" - that prevents cascading resets
 
-5. **Throw Errors for Dependency Failures**: If a digester depends on another digester's output
-   - Use `canDigest()` for quick checks (file type, size, etc.)
-   - In `digest()`, throw an error if dependencies are missing: `throw new Error('No text source available')`
-   - This marks the digest as 'failed' (retryable) instead of 'skipped' (terminal)
-   - Allows automatic retry when dependencies become available
-
-6. **Return Null Only for True Skips**: If digester has nothing to do and never will
-   - Return `null` only when the file type is fundamentally incompatible
-   - Example: URL crawler returning null for non-URL files
-   - Coordinator marks these as "skipped" (terminal)
-
-7. **Always Throw Errors, Never Return Failed DigestInput**: Let coordinator handle all error tracking
+5. **Let Errors Propagate**: For external service failures
    - **ALWAYS** throw errors from `digest()` - never catch and return `DigestInput` with `status: 'failed'`
-   - Coordinator catches errors, increments attempts (capped at MAX_DIGEST_ATTEMPTS), and marks as failed
-   - This ensures consistent retry logic and prevents attempts from exceeding the cap
+   - Coordinator catches errors, increments attempts, and marks as failed
    - After 3 attempts, digest stays failed (terminal)
 
    ```typescript
-   // CORRECT: Throw errors
+   // CORRECT: Throw errors for service failures
    async digest(...): Promise<DigestInput[] | null> {
      const result = await externalService.process(file); // Let errors propagate
      return [{ digester: 'my-digester', status: 'completed', content: result }];
+   }
+
+   // CORRECT: Complete with no content when nothing to index
+   async digest(...): Promise<DigestInput[] | null> {
+     const text = getTextContent(file, existingDigests);
+     if (!text) {
+       return [{ digester: 'search-keyword', status: 'completed', content: null }];
+     }
+     // ... index text
    }
 
    // WRONG: Catching and returning failed status
@@ -542,3 +609,13 @@ Coordinator tracks each output independently with its own status.
      }
    }
    ```
+
+6. **Return Null Only for True Skips**: When file type doesn't match
+   - Return `null` only when the file type is fundamentally incompatible
+   - Example: URL crawler returning null for non-URL files
+   - Coordinator marks these as "skipped" (terminal)
+
+7. **Cascading Resets are Automatic**: Don't manually reset downstream digesters
+   - Define reset mappings in `CASCADING_RESETS` constant
+   - Coordinator handles resets after each digester completes with content
+   - Downstream digesters will re-run on next processing cycle

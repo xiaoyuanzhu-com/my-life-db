@@ -8,15 +8,17 @@ import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { generateTagsDigest } from '~/lib/digest/tags';
 import { getLogger } from '~/lib/log/logger';
-import { getPrimaryTextContent, hasAnyTextSource } from '~/lib/digest/text-source';
+import { getPrimaryTextContent } from '~/lib/digest/text-source';
 
 const log = getLogger({ module: 'TagsDigester' });
-const toTimestamp = (value?: string | null) => value ? new Date(value).getTime() : 0;
 
 /**
  * Tags Digester
- * Generates tags from content-md digest
- * Produces: tags
+ * Generates tags from content
+ *
+ * Always runs for all file types. Completes with tags if text available,
+ * completes with null content if no text available (never skips).
+ * Cascading resets from upstream digesters trigger re-processing.
  */
 export class TagsDigester implements Digester {
   readonly name = 'tags';
@@ -24,13 +26,14 @@ export class TagsDigester implements Digester {
   readonly description = 'Generate AI tags for content organization and categorization';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
+    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
-    // Process any text file regardless of size
-    return hasAnyTextSource(file, existingDigests);
+    // Always try to run for non-folder files
+    // Cascading resets handle re-processing when content becomes available
+    return !file.is_folder;
   }
 
   async digest(
@@ -39,34 +42,60 @@ export class TagsDigester implements Digester {
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<DigestInput[] | null> {
-    // Check if we have any text source - throw error if not
-    if (!hasAnyTextSource(file, existingDigests)) {
-      throw new Error('No text source available for tag generation');
-    }
+    const now = new Date().toISOString();
 
+    // Check if we have any text content
     const textSource = await getPrimaryTextContent(filePath, file, existingDigests);
+
     if (!textSource) {
-      return null;
+      // No text available - complete with no content (don't skip)
+      // Cascading resets will trigger re-processing if content becomes available
+      log.debug({ filePath }, 'no text content available for tags');
+      return [
+        {
+          filePath,
+          digester: 'tags',
+          status: 'completed',
+          content: null,
+          sqlarName: null,
+          error: null,
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
     }
 
     const markdown = textSource.text.trim();
     if (markdown.length < 10) {
-      return null;
+      // Text too short - complete with no content
+      log.debug({ filePath }, 'text too short for tag generation');
+      return [
+        {
+          filePath,
+          digester: 'tags',
+          status: 'completed',
+          content: null,
+          sqlarName: null,
+          error: null,
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
     }
 
-    log.debug({ filePath }, 'generating tags');
+    log.debug({ filePath, source: textSource.source }, 'generating tags');
 
     // Generate tags
     const result = await generateTagsDigest({ text: markdown });
-
-    const now = new Date().toISOString();
 
     return [
       {
         filePath,
         digester: 'tags',
         status: 'completed',
-        content: JSON.stringify({ tags: result.tags }),
+        content: JSON.stringify({ tags: result.tags, textSource: textSource.source }),
         sqlarName: null,
         error: null,
         attempts: 0,
@@ -74,30 +103,5 @@ export class TagsDigester implements Digester {
         updatedAt: now,
       },
     ];
-  }
-
-  async shouldReprocessCompleted(
-    _filePath: string,
-    file: FileRecordRow,
-    existingDigests: Digest[]
-  ): Promise<boolean> {
-    const tagsDigest = existingDigests.find((d) => d.digester === 'tags');
-    if (!tagsDigest || (tagsDigest.status !== 'completed' && tagsDigest.status !== 'skipped')) {
-      return false;
-    }
-
-    if (!hasAnyTextSource(file, existingDigests)) {
-      return false;
-    }
-
-    const contentDigest = existingDigests.find(
-      (d) => d.digester === 'url-crawl-content' && d.status === 'completed'
-    );
-
-    const sourceUpdatedAt = contentDigest
-      ? toTimestamp(contentDigest.updatedAt)
-      : toTimestamp(file.modified_at);
-
-    return sourceUpdatedAt > toTimestamp(tagsDigest.updatedAt);
   }
 }
