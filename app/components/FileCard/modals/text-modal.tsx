@@ -42,7 +42,7 @@ export function TextModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[90vw] max-h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
+        className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
         showCloseButton={false}
       >
         <VisuallyHidden>
