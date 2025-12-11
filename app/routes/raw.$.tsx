@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import fs from "fs/promises";
 import path from "path";
-import { DATA_ROOT } from "~/lib/fs/storage";
-import { getLogger } from "~/lib/log/logger";
+import { DATA_ROOT } from "~/.server/fs/storage";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "RawFileAPI" });
 

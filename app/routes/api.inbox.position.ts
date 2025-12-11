@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getFilePosition } from "~/lib/db/files";
-import { getLogger } from "~/lib/log/logger";
+import { getFilePosition } from "~/.server/db/files";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiInboxPosition" });
 const BATCH_SIZE = 30;

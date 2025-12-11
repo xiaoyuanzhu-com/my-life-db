@@ -1,10 +1,10 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getMeiliClient } from "~/lib/search/meili-client";
-import { getQdrantClient } from "~/lib/search/qdrant-client";
-import { embedText } from "~/lib/ai/embeddings";
-import { getFileWithDigests } from "~/lib/db/files-with-digests";
-import { getLogger } from "~/lib/log/logger";
-import { readPrimaryText } from "~/lib/inbox/digest-artifacts";
+import { getMeiliClient } from "~/.server/search/meili-client";
+import { getQdrantClient } from "~/.server/search/qdrant-client";
+import { embedText } from "~/.server/ai/embeddings";
+import { getFileWithDigests } from "~/.server/db/files-with-digests";
+import { getLogger } from "~/.server/log/logger";
+import { readPrimaryText } from "~/.server/inbox/digest-artifacts";
 import type { FileWithDigests } from "~/types/file-card";
 
 const log = getLogger({ module: "SearchAPI" });

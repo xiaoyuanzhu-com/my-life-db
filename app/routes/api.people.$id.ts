@@ -5,8 +5,8 @@ import {
   deletePeople,
   listClustersForPeople,
   listEmbeddingsForPeople,
-} from "~/lib/db/people";
-import { getLogger } from "~/lib/log/logger";
+} from "~/.server/db/people";
+import { getLogger } from "~/.server/log/logger";
 import type { VoiceSourceOffset } from "~/types/people-embedding";
 
 const log = getLogger({ module: "ApiPeopleById" });

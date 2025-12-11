@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import type { InboxDigestScreenshot, InboxDigestSlug } from '~/types';
-import type { DigestStatusView, DigestStageStatus } from '~/lib/inbox/status-view';
+import type { InboxDigestScreenshot, InboxDigestSlug, DigestStatusSummary as DigestStatusView, DigestStageStatusSummary as DigestStageStatus } from '~/types';
 import { cn } from '~/lib/utils';
 import { DigestProgress } from './digest-progress';
 

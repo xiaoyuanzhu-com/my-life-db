@@ -1,15 +1,15 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getFileByPath } from "~/lib/db/files";
-import { initializeDigesters } from "~/lib/digest/initialization";
-import { processFileDigests } from "~/lib/digest/task-handler";
-import { getLogger } from "~/lib/log/logger";
-
-// Ensure digesters are registered (survives HMR in dev mode)
-initializeDigesters();
-
-const log = getLogger({ module: "ApiInboxReenrich" });
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  const { getFileByPath } = await import("~/.server/db/files");
+  const { initializeDigesters } = await import("~/.server/digest/initialization");
+  const { processFileDigests } = await import("~/.server/digest/task-handler");
+  const { getLogger } = await import("~/.server/log/logger");
+  const log = getLogger({ module: "ApiInboxReenrich" });
+
+  // Ensure digesters are registered
+  initializeDigesters();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }

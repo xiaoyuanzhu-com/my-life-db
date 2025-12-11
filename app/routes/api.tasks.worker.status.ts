@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getWorker } from "~/lib/task-queue/worker";
-import { getLogger } from "~/lib/log/logger";
+import { getWorker } from "~/.server/task-queue/worker";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiWorkerStatus" });
 

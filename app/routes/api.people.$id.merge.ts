@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getPeopleById, mergePeople } from "~/lib/db/people";
-import { getLogger } from "~/lib/log/logger";
+import { getPeopleById, mergePeople } from "~/.server/db/people";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiPeopleMerge" });
 

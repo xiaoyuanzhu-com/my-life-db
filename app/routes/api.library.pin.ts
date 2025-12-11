@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
-import { togglePinFile } from "~/lib/db/pins";
-import { notificationService } from "~/lib/notifications/notification-service";
-import { getLogger } from "~/lib/log/logger";
+import { togglePinFile } from "~/.server/db/pins";
+import { notificationService } from "~/.server/notifications/notification-service";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiPin" });
 

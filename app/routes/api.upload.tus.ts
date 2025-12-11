@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { handleTus } from "~/lib/upload/tus-server.server";
+import { handleTus } from "~/.server/upload/tus-server.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   return handleTus(request);

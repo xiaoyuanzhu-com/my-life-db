@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getSettings } from "~/lib/config/storage";
-import { getLogger } from "~/lib/log/logger";
+import { getSettings } from "~/.server/config/storage";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiVendorsOpenAIModels" });
 

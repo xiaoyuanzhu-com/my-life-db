@@ -1,10 +1,10 @@
 import type { ActionFunctionArgs } from "react-router";
-import { withDatabase } from "~/lib/db/client";
-import { getLogger } from "~/lib/log/logger";
-import { ensureAllDigestersForExistingFiles } from "~/lib/digest/ensure";
-import { deleteAllEmbeddings } from "~/lib/db/people";
-import { getMeiliClient } from "~/lib/search/meili-client";
-import { getQdrantClient } from "~/lib/search/qdrant-client";
+import { withDatabase } from "~/.server/db/client";
+import { getLogger } from "~/.server/log/logger";
+import { ensureAllDigestersForExistingFiles } from "~/.server/digest/ensure";
+import { deleteAllEmbeddings } from "~/.server/db/people";
+import { getMeiliClient } from "~/.server/search/meili-client";
+import { getQdrantClient } from "~/.server/search/qdrant-client";
 
 const log = getLogger({ module: "api/digest/reset" });
 

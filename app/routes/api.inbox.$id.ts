@@ -1,19 +1,19 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from "~/lib/db/files";
-import { deleteDigestsForPath, deleteDigestsByPrefix } from "~/lib/db/digests";
-import { getStorageConfig } from "~/lib/config/storage";
+import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from "~/.server/db/files";
+import { deleteDigestsForPath, deleteDigestsByPrefix } from "~/.server/db/digests";
+import { getStorageConfig } from "~/.server/config/storage";
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import { getDigestStatusView } from "~/lib/inbox/status-view";
-import { getLogger } from "~/lib/log/logger";
+import { getDigestStatusView } from "~/.server/inbox/status-view";
+import { getLogger } from "~/.server/log/logger";
 import {
   readPrimaryText,
   readDigestSummary,
   readDigestTags,
   readDigestScreenshot,
   readDigestSlug,
-} from "~/lib/inbox/digest-artifacts";
+} from "~/.server/inbox/digest-artifacts";
 
 const log = getLogger({ module: "ApiInboxById" });
 

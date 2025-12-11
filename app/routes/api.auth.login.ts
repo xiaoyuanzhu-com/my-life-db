@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { verifyPassword, createSession } from "~/lib/db/sessions";
-import { createSessionToken } from "~/lib/auth/edge-session";
+import { verifyPassword, createSession } from "~/.server/db/sessions";
+import { createSessionToken } from "~/.server/auth/edge-session";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {

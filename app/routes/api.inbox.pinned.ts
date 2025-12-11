@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { listPinnedFiles } from "~/lib/db/pins";
-import { getFileByPath } from "~/lib/db/files";
+import { listPinnedFiles } from "~/.server/db/pins";
+import { getFileByPath } from "~/.server/db/files";
 import type { PinnedItem } from "~/types/pin";
-import { getLogger } from "~/lib/log/logger";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiInboxPinned" });
 

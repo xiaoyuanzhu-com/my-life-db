@@ -1,14 +1,4 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { getFileByPath } from "~/lib/db/files";
-import { getDigestStatusView } from "~/lib/inbox/status-view";
-import { initializeDigesters } from "~/lib/digest/initialization";
-import { processFileDigests } from "~/lib/digest/task-handler";
-import { getLogger } from "~/lib/log/logger";
-
-// Ensure digesters are registered (survives HMR in dev mode)
-initializeDigesters();
-
-const log = getLogger({ module: "ApiDigest" });
 
 const safeDecodeURIComponent = (value: string): string => {
   try {
@@ -19,6 +9,11 @@ const safeDecodeURIComponent = (value: string): string => {
 };
 
 export async function loader({ params }: LoaderFunctionArgs) {
+  const { getFileByPath } = await import("~/.server/db/files");
+  const { getDigestStatusView } = await import("~/.server/inbox/status-view");
+  const { getLogger } = await import("~/.server/log/logger");
+  const log = getLogger({ module: "ApiDigest" });
+
   try {
     const splat = params["*"] || "";
     const filePath = splat.split("/").map(safeDecodeURIComponent).join("/");
@@ -41,6 +36,15 @@ export async function loader({ params }: LoaderFunctionArgs) {
 }
 
 export async function action({ params, request }: ActionFunctionArgs) {
+  const { getFileByPath } = await import("~/.server/db/files");
+  const { initializeDigesters } = await import("~/.server/digest/initialization");
+  const { processFileDigests } = await import("~/.server/digest/task-handler");
+  const { getLogger } = await import("~/.server/log/logger");
+  const log = getLogger({ module: "ApiDigest" });
+
+  // Ensure digesters are registered
+  initializeDigesters();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }

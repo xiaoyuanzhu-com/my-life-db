@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { loadSettings, saveSettings, resetSettings } from "~/lib/config/storage";
+import { loadSettings, saveSettings, resetSettings } from "~/.server/config/storage";
 import { sanitizeSettings } from "~/lib/config/settings";
 import type { UserSettings } from "~/lib/config/settings";
-import { getLogger } from "~/lib/log/logger";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiSettings" });
 

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { pauseWorker, getWorker } from "~/lib/task-queue/worker";
-import { getLogger } from "~/lib/log/logger";
+import { pauseWorker, getWorker } from "~/.server/task-queue/worker";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiWorkerPause" });
 

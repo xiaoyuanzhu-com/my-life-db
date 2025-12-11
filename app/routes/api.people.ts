@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { listPeopleWithCounts, createPeople, countPeople } from "~/lib/db/people";
-import { getLogger } from "~/lib/log/logger";
+import { listPeopleWithCounts, createPeople, countPeople } from "~/.server/db/people";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiPeople" });
 

@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { getTaskById, deleteTask } from "~/lib/task-queue/task-manager";
-import { getLogger } from "~/lib/log/logger";
+import { getTaskById, deleteTask } from "~/.server/task-queue/task-manager";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiTaskById" });
 

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { resumeWorker, getWorker } from "~/lib/task-queue/worker";
-import { getLogger } from "~/lib/log/logger";
+import { resumeWorker, getWorker } from "~/.server/task-queue/worker";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiWorkerResume" });
 

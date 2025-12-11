@@ -1,10 +1,10 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getFileByPath } from "~/lib/db/files";
-import { deleteFile } from "~/lib/files/delete-file";
-import { notificationService } from "~/lib/notifications/notification-service";
-import { getStorageConfig } from "~/lib/config/storage";
+import { getFileByPath } from "~/.server/db/files";
+import { deleteFile } from "~/.server/files/delete-file";
+import { notificationService } from "~/.server/notifications/notification-service";
+import { getStorageConfig } from "~/.server/config/storage";
 import path from "path";
-import { getLogger } from "~/lib/log/logger";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiLibraryFile" });
 

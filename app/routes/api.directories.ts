@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { createDirectory, listDirectories, readDirectory } from "~/lib/fs/storage";
+import { createDirectory, listDirectories, readDirectory } from "~/.server/fs/storage";
 import { z } from "zod";
-import { getLogger } from "~/lib/log/logger";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiDirectories" });
 

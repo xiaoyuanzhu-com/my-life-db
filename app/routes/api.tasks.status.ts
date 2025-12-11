@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getTaskStats } from "~/lib/task-queue/task-manager";
-import { getPendingTaskCountByType, hasReadyTasks } from "~/lib/task-queue/scheduler";
-import { getWorker } from "~/lib/task-queue/worker";
-import { getLogger } from "~/lib/log/logger";
+import { getTaskStats } from "~/.server/task-queue/task-manager";
+import { getPendingTaskCountByType, hasReadyTasks } from "~/.server/task-queue/scheduler";
+import { getWorker } from "~/.server/task-queue/worker";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiTaskStatus" });
 

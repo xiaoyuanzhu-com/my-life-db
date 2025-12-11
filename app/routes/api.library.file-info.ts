@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getFileByPath } from "~/lib/db/files";
-import { listDigestsForPath } from "~/lib/db/digests";
+import { getFileByPath } from "~/.server/db/files";
+import { listDigestsForPath } from "~/.server/db/digests";
 
 const safeDecodeURIComponent = (value: string): string => {
   try {

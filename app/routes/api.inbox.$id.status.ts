@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getDigestStatusView } from "~/lib/inbox/status-view";
-import { getLogger } from "~/lib/log/logger";
+import { getDigestStatusView } from "~/.server/inbox/status-view";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiInboxStatus" });
 

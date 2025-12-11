@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { sqlarGet } from "~/lib/db/sqlar";
-import { getLogger } from "~/lib/log/logger";
+import { sqlarGet } from "~/.server/db/sqlar";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "SqlarAPI" });
 

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getEmbeddingById, getPeopleById, assignEmbeddingToPeople } from "~/lib/db/people";
-import { getLogger } from "~/lib/log/logger";
+import { getEmbeddingById, getPeopleById, assignEmbeddingToPeople } from "~/.server/db/people";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiEmbeddingAssign" });
 

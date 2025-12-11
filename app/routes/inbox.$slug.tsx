@@ -6,8 +6,7 @@ import { TaggingButton } from "~/components/inbox/tagging-button";
 import { SlugButton } from "~/components/inbox/slug-button";
 import { DigestCoordinator } from "~/components/inbox/digest-coordinator";
 import { IndexButton } from "~/components/inbox/index-button";
-import type { InboxDigestScreenshot, InboxDigestSlug } from "~/types";
-import type { DigestStatusView } from "~/lib/inbox/status-view";
+import type { InboxDigestScreenshot, InboxDigestSlug, DigestStatusSummary as DigestStatusView } from "~/types";
 
 interface InboxDetail {
   path: string;

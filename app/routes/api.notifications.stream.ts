@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { notificationService, type NotificationEvent } from "~/lib/notifications/notification-service";
-import { getLogger } from "~/lib/log/logger";
+import { notificationService, type NotificationEvent } from "~/.server/notifications/notification-service";
+import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiNotificationsStream" });
 

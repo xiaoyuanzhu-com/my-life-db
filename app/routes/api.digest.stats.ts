@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getDigestStats } from "~/lib/db/digests";
+import { getDigestStats } from "~/.server/db/digests";
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {

@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { dbSelectOne } from "~/lib/db/client";
+import { dbSelectOne } from "~/.server/db/client";
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
