@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { listPinnedFiles } from "~/.server/db/pins";
-import { getFileByPath } from "~/.server/db/files";
+import { getFileByPath, createCursor } from "~/.server/db/files";
 import type { PinnedItem } from "~/types/pin";
 import { getLogger } from "~/.server/log/logger";
 
@@ -10,15 +10,20 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const pins = listPinnedFiles("inbox/");
 
-    const items: PinnedItem[] = pins.map((pin) => {
-      const file = getFileByPath(pin.filePath);
-      return {
-        path: pin.filePath,
-        name: file?.name ?? pin.filePath.split("/").pop() ?? "",
-        pinnedAt: pin.pinnedAt,
-        displayText: pin.displayText ?? file?.name ?? "",
-      };
-    });
+    const items: PinnedItem[] = pins
+      .map((pin) => {
+        const file = getFileByPath(pin.filePath);
+        if (!file) return null;
+
+        return {
+          path: pin.filePath,
+          name: file.name,
+          pinnedAt: pin.pinnedAt,
+          displayText: pin.displayText ?? file.name,
+          cursor: createCursor(file),
+        };
+      })
+      .filter((item): item is PinnedItem => item !== null);
 
     return Response.json({ items });
   } catch (error) {

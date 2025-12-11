@@ -8,7 +8,7 @@ import type { SearchResponse } from "~/routes/api.search";
 
 export default function HomePage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [scrollToPath, setScrollToPath] = useState<string | undefined>(undefined);
+  const [scrollToCursor, setScrollToCursor] = useState<string | undefined>(undefined);
   const [searchState, setSearchState] = useState<{
     keywordResults: SearchResponse | null;
     semanticResults: SearchResponse | null;
@@ -96,12 +96,12 @@ export default function HomePage() {
     setRefreshTrigger((prev) => prev + 1);
   }, []);
 
-  const handlePinnedTagClick = useCallback((path: string) => {
-    setScrollToPath(path);
+  const handlePinnedTagClick = useCallback((cursor: string) => {
+    setScrollToCursor(cursor);
   }, []);
 
   const handleScrollComplete = useCallback(() => {
-    setScrollToPath(undefined);
+    setScrollToCursor(undefined);
   }, []);
 
   useInboxNotifications({
@@ -134,7 +134,7 @@ export default function HomePage() {
     <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden flex flex-col">
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 overflow-y-auto ${showSearchResults ? "invisible" : "visible"}`}>
-          <InboxFeed onRefresh={refreshTrigger} scrollToPath={scrollToPath} onScrollComplete={handleScrollComplete} />
+          <InboxFeed onRefresh={refreshTrigger} scrollToCursor={scrollToCursor} onScrollComplete={handleScrollComplete} />
         </div>
 
         {showSearchResults && (

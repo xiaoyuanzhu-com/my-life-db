@@ -74,9 +74,6 @@ type Pages = {
   "/api/inbox/pinned": {
     params: {};
   };
-  "/api/inbox/position": {
-    params: {};
-  };
   "/api/inbox/:id": {
     params: {
       "id": string;
@@ -200,7 +197,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/inbox" | "/inbox/:slug" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/position" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/tasks" | "/api/tasks/stats" | "/api/tasks/status" | "/api/tasks/worker/pause" | "/api/tasks/worker/resume" | "/api/tasks/worker/status" | "/api/tasks/:id" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
+    page: "/" | "/login" | "/inbox" | "/inbox/:slug" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/tasks" | "/api/tasks/stats" | "/api/tasks/status" | "/api/tasks/worker/pause" | "/api/tasks/worker/resume" | "/api/tasks/worker/status" | "/api/tasks/:id" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -265,10 +262,6 @@ type RouteFiles = {
   "routes/api.inbox.pinned.ts": {
     id: "routes/api.inbox.pinned";
     page: "/api/inbox/pinned";
-  };
-  "routes/api.inbox.position.ts": {
-    id: "routes/api.inbox.position";
-    page: "/api/inbox/position";
   };
   "routes/api.inbox.$id.ts": {
     id: "routes/api.inbox.$id";
@@ -414,7 +407,6 @@ type RouteModules = {
   "routes/api.auth.logout": typeof import("./app/routes/api.auth.logout.ts");
   "routes/api.inbox": typeof import("./app/routes/api.inbox.ts");
   "routes/api.inbox.pinned": typeof import("./app/routes/api.inbox.pinned.ts");
-  "routes/api.inbox.position": typeof import("./app/routes/api.inbox.position.ts");
   "routes/api.inbox.$id": typeof import("./app/routes/api.inbox.$id.ts");
   "routes/api.inbox.$id.reenrich": typeof import("./app/routes/api.inbox.$id.reenrich.ts");
   "routes/api.inbox.$id.status": typeof import("./app/routes/api.inbox.$id.status.ts");

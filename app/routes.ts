@@ -23,7 +23,6 @@ export default [
 
   route("api/inbox", "routes/api.inbox.ts"),
   route("api/inbox/pinned", "routes/api.inbox.pinned.ts"),
-  route("api/inbox/position", "routes/api.inbox.position.ts"),
   route("api/inbox/:id", "routes/api.inbox.$id.ts"),
   route("api/inbox/:id/reenrich", "routes/api.inbox.$id.reenrich.ts"),
   route("api/inbox/:id/status", "routes/api.inbox.$id.status.ts"),

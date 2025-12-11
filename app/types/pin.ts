@@ -78,21 +78,7 @@ export interface PinnedItem {
 
   /** Display text (first line or filename) */
   displayText: string;
-}
 
-/**
- * Item position in ordered list
- */
-export interface ItemPosition {
-  /** File path */
-  path: string;
-
-  /** 0-based position in the ordered list */
-  position: number;
-
-  /** Total number of items */
-  total: number;
-
-  /** Calculated batch offset (for BATCH_SIZE) */
-  batchOffset: number;
+  /** Cursor for direct navigation (created_at:path) */
+  cursor: string;
 }

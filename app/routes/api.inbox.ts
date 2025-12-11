@@ -1,6 +1,13 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import type { FileWithDigests } from "~/types/file-card";
-import { listTopLevelFiles, countTopLevelFiles } from "~/.server/db/files";
+import {
+  listTopLevelFilesNewest,
+  listTopLevelFilesBefore,
+  listTopLevelFilesAfter,
+  listTopLevelFilesAround,
+  parseCursor,
+  createCursor,
+} from "~/.server/db/files";
 import { isPinned } from "~/.server/db/pins";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
 import { initializeDigesters } from "~/.server/digest/initialization";
@@ -16,31 +23,65 @@ export interface InboxItem extends FileWithDigests {
 
 export interface InboxResponse {
   items: InboxItem[];
-  total: number;
+  cursors: {
+    first: string | null;
+    last: string | null;
+  };
+  hasMore: {
+    older: boolean;
+    newer: boolean;
+  };
 }
+
+const DEFAULT_LIMIT = 30;
 
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const url = new URL(request.url);
     const limit = url.searchParams.get("limit")
       ? parseInt(url.searchParams.get("limit")!)
-      : 50;
-    const offset = url.searchParams.get("offset")
-      ? parseInt(url.searchParams.get("offset")!)
-      : 0;
+      : DEFAULT_LIMIT;
+    const before = url.searchParams.get("before");
+    const after = url.searchParams.get("after");
+    const around = url.searchParams.get("around");
 
-    const files = listTopLevelFiles("inbox/", {
-      orderBy: "created_at",
-      ascending: false,
-      limit,
-      offset,
-    });
+    let result;
 
-    const total = countTopLevelFiles("inbox/");
+    if (around) {
+      // Load page containing specific cursor (for pin navigation)
+      const cursor = parseCursor(around);
+      if (!cursor) {
+        return Response.json({ error: "Invalid around cursor format" }, { status: 400 });
+      }
+      const aroundResult = listTopLevelFilesAround("inbox/", cursor, limit);
+      result = {
+        items: aroundResult.items,
+        cursors: aroundResult.cursors,
+        hasMore: aroundResult.hasMore,
+        targetIndex: aroundResult.targetIndex,
+      };
+    } else if (before) {
+      // Load older items
+      const cursor = parseCursor(before);
+      if (!cursor) {
+        return Response.json({ error: "Invalid before cursor format" }, { status: 400 });
+      }
+      result = listTopLevelFilesBefore("inbox/", cursor, limit);
+    } else if (after) {
+      // Load newer items
+      const cursor = parseCursor(after);
+      if (!cursor) {
+        return Response.json({ error: "Invalid after cursor format" }, { status: 400 });
+      }
+      result = listTopLevelFilesAfter("inbox/", cursor, limit);
+    } else {
+      // Load newest page (initial load)
+      result = listTopLevelFilesNewest("inbox/", limit);
+    }
 
     // Convert FileRecord to InboxItem
     // Uses cached fields: textPreview, screenshotSqlar (no digest queries needed!)
-    const items: InboxItem[] = files.map((file) => ({
+    const items: InboxItem[] = result.items.map((file) => ({
       path: file.path,
       name: file.name,
       isFolder: file.isFolder,
@@ -55,7 +96,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
       isPinned: isPinned(file.path),
     }));
 
-    const response: InboxResponse = { items, total };
+    // Build response with proper cursors from the mapped items
+    const response: InboxResponse & { targetIndex?: number } = {
+      items,
+      cursors: {
+        first: items.length > 0 ? createCursor(items[0]) : null,
+        last: items.length > 0 ? createCursor(items[items.length - 1]) : null,
+      },
+      hasMore: result.hasMore,
+    };
+
+    // Include targetIndex for around queries
+    if ('targetIndex' in result) {
+      response.targetIndex = result.targetIndex;
+    }
+
     return Response.json(response);
   } catch (error) {
     log.error({ err: error }, "list inbox items failed");

@@ -4,7 +4,7 @@ import { cn } from '~/lib/utils';
 import type { PinnedItem } from '~/types/pin';
 
 interface PinnedTagsProps {
-  onTagClick: (path: string) => void;
+  onTagClick: (cursor: string) => void;
   onRefresh?: number;
 }
 
@@ -60,7 +60,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
             "transition-colors duration-150",
             "max-w-xs"
           )}
-          onClick={() => onTagClick(item.path)}
+          onClick={() => onTagClick(item.cursor)}
         >
           <Pin className="h-3 w-3 text-primary flex-shrink-0" />
           <span className="text-xs font-medium text-primary truncate">
