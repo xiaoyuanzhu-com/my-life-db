@@ -18,6 +18,7 @@ app/components/FileCard/
 ├── desktop-context-menu.tsx    # Desktop context menu wrapper (shadcn)
 ├── mobile-context-menu.tsx     # Mobile context menu implementation
 ├── ui/
+│   ├── card-styles.ts          # Unified card styling constants
 │   ├── match-context.tsx       # Search result match context display
 │   ├── text-highlight.tsx      # Text highlighting utilities
 │   └── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
@@ -344,10 +345,18 @@ This section documents the detailed UX behavior for each file type.
 ### Common Properties
 
 **Card Container:**
-- Rounded corners (`rounded-lg`), border, muted background
+- Unified styling from `ui/card-styles.ts`
+- Rounded corners (`rounded-lg`), border (`border-border`), muted background (`bg-muted`)
 - Max width: `calc(100% - 40px)` to allow timestamp alignment
 - Selection: `touch-callout-none select-none` (except text cards)
 - Match context displayed at bottom when from search results
+
+**Shared Style Constants:**
+```typescript
+// ui/card-styles.ts
+export const cardContainerClass = 'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none';
+export const cardClickableClass = cardContainerClass + ' cursor-pointer max-w-[calc(100%-40px)] w-fit';
+```
 
 **Context Menu Activation:**
 - Desktop: Right-click
@@ -406,9 +415,9 @@ Open, Pin, Save, Share, Delete
 ### Audio Card
 
 **Card:**
-- WeChat-style single bar design
+- Compact bar design with unified rounded corners (`rounded-lg`)
 - Width: Based on audio duration, capped at `50% - 40px`, min 100px
-- Fixed height (compact single bar)
+- Fixed height: 40px
 - No filename displayed
 - Shows audio duration (e.g., `5"` for 5 seconds)
 - Click to play, click again to pause
@@ -562,7 +571,7 @@ Open, Pin, Save, Share, Delete
 |-----------|-------|--------|-------|
 | Image | fit-content, max 448px | max 320px | Aspect ratio preserved |
 | Video | max 448px | 16:9 aspect | Fixed aspect ratio |
-| Audio | duration-based, max 50%-40px, min 100px | fixed 40px | WeChat-style bar |
+| Audio | duration-based, max 50%-40px, min 100px | fixed 40px | Compact bar with rounded-lg |
 | Text | fit-content | max 20 lines | Double-click for modal |
 | PDF/Doc | fixed 226px | max 320px + footer | A4-ish ratio, filename + size footer |
 | PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |

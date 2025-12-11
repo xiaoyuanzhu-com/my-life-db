@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { cardClickableClass } from '../ui/card-styles';
 import { FallbackModal } from '../modals/fallback-modal';
 import {
   downloadFile,
@@ -50,11 +51,7 @@ export function PptCard({
 
   const cardContent = (
     <div
-      className={cn(
-        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none cursor-pointer',
-        'max-w-[calc(100%-40px)] w-fit',
-        className
-      )}
+      className={cn(cardClickableClass, className)}
       onClick={() => setIsPreviewOpen(true)}
     >
       {screenshotSrc ? (

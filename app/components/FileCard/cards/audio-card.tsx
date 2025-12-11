@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { cardContainerClass } from '../ui/card-styles';
 import {
   downloadFile,
   shareFile,
@@ -232,8 +233,8 @@ export function AudioCard({
     <div
       ref={containerRef}
       className={cn(
-        'group relative overflow-hidden rounded-full border border-border bg-muted touch-callout-none select-none cursor-pointer',
-        'h-10 min-w-[100px]',
+        cardContainerClass,
+        'cursor-pointer h-10 min-w-[100px]',
         className
       )}
       style={{ width: barWidth }}

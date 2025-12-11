@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { cardContainerClass } from '../ui/card-styles';
 import { TextModal } from '../modals/text-modal';
 import { highlightMatches } from '../ui/text-highlight';
 import {
@@ -109,7 +110,7 @@ export function TextCard({
   const cardContent = (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none',
+        cardContainerClass,
         'max-w-[calc(100%-40px)] w-fit',
         className
       )}
