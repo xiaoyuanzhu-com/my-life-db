@@ -143,7 +143,7 @@ export default function HomePage() {
               isSearching,
               hasNoResults: !hasAnyResults && !isSearching && (searchState.keywordResults !== null || searchState.semanticResults !== null),
               hasError: error !== null,
-              resultCount: hasCurrentResults && !isSearching
+              resultCount: hasCurrentResults
                 ? (searchState.keywordResults?.results?.length ?? 0) + (searchState.semanticResults?.results?.length ?? 0)
                 : undefined,
             }}

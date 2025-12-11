@@ -47,9 +47,6 @@ export default [
   route("api/people/embeddings/:id/unassign", "routes/api.people.embeddings.$id.unassign.ts"),
 
   route("api/search", "routes/api.search.ts"),
-  route("api/search/hybrid", "routes/api.search.hybrid.ts"),
-  route("api/search/keyword", "routes/api.search.keyword.ts"),
-  route("api/search/semantic", "routes/api.search.semantic.ts"),
 
   route("api/settings", "routes/api.settings.ts"),
   route("api/stats", "routes/api.stats.ts"),

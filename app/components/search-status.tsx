@@ -24,6 +24,16 @@ export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount 
     return () => clearInterval(interval);
   }, [isSearching]);
 
+  // Show partial results with "Searching..." when we have results but still searching
+  if (isSearching && resultCount !== undefined && resultCount > 0) {
+    return (
+      <div className="text-xs text-muted-foreground flex items-center">
+        <span>{resultCount} related {resultCount === 1 ? 'file' : 'files'}. Searching</span>
+        <span className="inline-block w-3 text-left">{'.'.repeat(dots)}</span>
+      </div>
+    );
+  }
+
   if (isSearching) {
     return (
       <div className="text-xs text-muted-foreground flex items-center">

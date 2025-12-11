@@ -149,15 +149,6 @@ type Pages = {
   "/api/search": {
     params: {};
   };
-  "/api/search/hybrid": {
-    params: {};
-  };
-  "/api/search/keyword": {
-    params: {};
-  };
-  "/api/search/semantic": {
-    params: {};
-  };
   "/api/settings": {
     params: {};
   };
@@ -209,7 +200,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/inbox" | "/inbox/:slug" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/position" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/search/hybrid" | "/api/search/keyword" | "/api/search/semantic" | "/api/settings" | "/api/stats" | "/api/tasks" | "/api/tasks/stats" | "/api/tasks/status" | "/api/tasks/worker/pause" | "/api/tasks/worker/resume" | "/api/tasks/worker/status" | "/api/tasks/:id" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
+    page: "/" | "/login" | "/inbox" | "/inbox/:slug" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/position" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/tasks" | "/api/tasks/stats" | "/api/tasks/status" | "/api/tasks/worker/pause" | "/api/tasks/worker/resume" | "/api/tasks/worker/status" | "/api/tasks/:id" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -351,18 +342,6 @@ type RouteFiles = {
     id: "routes/api.search";
     page: "/api/search";
   };
-  "routes/api.search.hybrid.ts": {
-    id: "routes/api.search.hybrid";
-    page: "/api/search/hybrid";
-  };
-  "routes/api.search.keyword.ts": {
-    id: "routes/api.search.keyword";
-    page: "/api/search/keyword";
-  };
-  "routes/api.search.semantic.ts": {
-    id: "routes/api.search.semantic";
-    page: "/api/search/semantic";
-  };
   "routes/api.settings.ts": {
     id: "routes/api.settings";
     page: "/api/settings";
@@ -454,9 +433,6 @@ type RouteModules = {
   "routes/api.people.embeddings.$id.assign": typeof import("./app/routes/api.people.embeddings.$id.assign.ts");
   "routes/api.people.embeddings.$id.unassign": typeof import("./app/routes/api.people.embeddings.$id.unassign.ts");
   "routes/api.search": typeof import("./app/routes/api.search.ts");
-  "routes/api.search.hybrid": typeof import("./app/routes/api.search.hybrid.ts");
-  "routes/api.search.keyword": typeof import("./app/routes/api.search.keyword.ts");
-  "routes/api.search.semantic": typeof import("./app/routes/api.search.semantic.ts");
   "routes/api.settings": typeof import("./app/routes/api.settings.ts");
   "routes/api.stats": typeof import("./app/routes/api.stats.ts");
   "routes/api.tasks": typeof import("./app/routes/api.tasks.ts");
