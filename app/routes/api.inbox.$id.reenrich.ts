@@ -1,12 +1,12 @@
 import type { ActionFunctionArgs } from "react-router";
+import { getFileByPath } from "~/.server/db/files";
+import { initializeDigesters } from "~/.server/digest/initialization";
+import { processFileDigests } from "~/.server/digest/task-handler";
+import { getLogger } from "~/.server/log/logger";
+
+const log = getLogger({ module: "ApiInboxReenrich" });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const { getFileByPath } = await import("~/.server/db/files");
-  const { initializeDigesters } = await import("~/.server/digest/initialization");
-  const { processFileDigests } = await import("~/.server/digest/task-handler");
-  const { getLogger } = await import("~/.server/log/logger");
-  const log = getLogger({ module: "ApiInboxReenrich" });
-
   // Ensure digesters are registered
   initializeDigesters();
 

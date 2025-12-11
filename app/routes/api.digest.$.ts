@@ -1,4 +1,9 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { getFileByPath } from "~/.server/db/files";
+import { getDigestStatusView } from "~/.server/inbox/status-view";
+import { initializeDigesters } from "~/.server/digest/initialization";
+import { processFileDigests } from "~/.server/digest/task-handler";
+import { getLogger } from "~/.server/log/logger";
 
 const safeDecodeURIComponent = (value: string): string => {
   try {
@@ -8,12 +13,9 @@ const safeDecodeURIComponent = (value: string): string => {
   }
 };
 
-export async function loader({ params }: LoaderFunctionArgs) {
-  const { getFileByPath } = await import("~/.server/db/files");
-  const { getDigestStatusView } = await import("~/.server/inbox/status-view");
-  const { getLogger } = await import("~/.server/log/logger");
-  const log = getLogger({ module: "ApiDigest" });
+const log = getLogger({ module: "ApiDigest" });
 
+export async function loader({ params }: LoaderFunctionArgs) {
   try {
     const splat = params["*"] || "";
     const filePath = splat.split("/").map(safeDecodeURIComponent).join("/");
@@ -36,12 +38,6 @@ export async function loader({ params }: LoaderFunctionArgs) {
 }
 
 export async function action({ params, request }: ActionFunctionArgs) {
-  const { getFileByPath } = await import("~/.server/db/files");
-  const { initializeDigesters } = await import("~/.server/digest/initialization");
-  const { processFileDigests } = await import("~/.server/digest/task-handler");
-  const { getLogger } = await import("~/.server/log/logger");
-  const log = getLogger({ module: "ApiDigest" });
-
   // Ensure digesters are registered
   initializeDigesters();
 

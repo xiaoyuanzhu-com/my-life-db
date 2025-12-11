@@ -1,4 +1,13 @@
 import type { ActionFunctionArgs } from "react-router";
+import path from "path";
+import fs from "fs/promises";
+import { existsSync } from "fs";
+import { saveToInbox } from "~/.server/inbox/save-to-inbox";
+import { initializeDigesters } from "~/.server/digest/initialization";
+import { processFileDigests } from "~/.server/digest";
+
+const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), "data");
+const UPLOAD_DIR = path.join(DATA_ROOT, "app", "my-life-db", "uploads");
 
 interface FinalizeRequest {
   uploads: Array<{
@@ -11,18 +20,8 @@ interface FinalizeRequest {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const path = await import("path");
-  const fs = await import("fs/promises");
-  const { existsSync } = await import("fs");
-  const { saveToInbox } = await import("~/.server/inbox/save-to-inbox");
-  const { initializeDigesters } = await import("~/.server/digest/initialization");
-  const { processFileDigests } = await import("~/.server/digest");
-
   // Ensure digesters are registered
   initializeDigesters();
-
-  const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), "data");
-  const UPLOAD_DIR = path.join(DATA_ROOT, "app", "my-life-db", "uploads");
 
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });

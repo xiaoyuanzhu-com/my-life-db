@@ -1,5 +1,14 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import type { FileWithDigests } from "~/types/file-card";
+import { listTopLevelFiles, countTopLevelFiles } from "~/.server/db/files";
+import { isPinned } from "~/.server/db/pins";
+import { saveToInbox } from "~/.server/inbox/save-to-inbox";
+import { initializeDigesters } from "~/.server/digest/initialization";
+import { processFileDigests } from "~/.server/digest/task-handler";
+import { getLogger } from "~/.server/log/logger";
+import { notificationService } from "~/.server/notifications/notification-service";
+
+const log = getLogger({ module: "ApiInbox" });
 
 export interface InboxItem extends FileWithDigests {
   textPreview?: string;
@@ -11,12 +20,6 @@ export interface InboxResponse {
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  // Dynamic imports to avoid module-level side effects
-  const { listTopLevelFiles, countTopLevelFiles } = await import("~/.server/db/files");
-  const { isPinned } = await import("~/.server/db/pins");
-  const { getLogger } = await import("~/.server/log/logger");
-  const log = getLogger({ module: "ApiInbox" });
-
   try {
     const url = new URL(request.url);
     const limit = url.searchParams.get("limit")
@@ -61,13 +64,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { saveToInbox } = await import("~/.server/inbox/save-to-inbox");
-  const { initializeDigesters } = await import("~/.server/digest/initialization");
-  const { processFileDigests } = await import("~/.server/digest/task-handler");
-  const { getLogger } = await import("~/.server/log/logger");
-  const { notificationService } = await import("~/.server/notifications/notification-service");
-  const log = getLogger({ module: "ApiInbox" });
-
   // Ensure digesters are registered
   initializeDigesters();
 
