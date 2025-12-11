@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { OmniInput } from "~/components/omni-input";
 import { InboxFeed } from "~/components/inbox-feed";
 import { SearchResults } from "~/components/search-results";
@@ -42,6 +42,25 @@ export default function HomePage() {
 
   // Get the query from whichever result is available
   const currentQuery = searchState.keywordResults?.query || searchState.semanticResults?.query || '';
+
+  // Calculate deduplicated result count (same merge logic as SearchResults)
+  const mergedResultCount = useMemo(() => {
+    const keywordResults = searchState.keywordResults?.results ?? [];
+    const semanticResults = searchState.semanticResults?.results ?? [];
+
+    if (keywordResults.length === 0 && semanticResults.length === 0) {
+      return 0;
+    }
+
+    const paths = new Set<string>();
+    for (const item of keywordResults) {
+      paths.add(item.path);
+    }
+    for (const item of semanticResults) {
+      paths.add(item.path);
+    }
+    return paths.size;
+  }, [searchState.keywordResults?.results, searchState.semanticResults?.results]);
 
   useEffect(() => {
     if (hasAnyResults) {
@@ -143,9 +162,7 @@ export default function HomePage() {
               isSearching,
               hasNoResults: !hasAnyResults && !isSearching && (searchState.keywordResults !== null || searchState.semanticResults !== null),
               hasError: error !== null,
-              resultCount: hasCurrentResults
-                ? (searchState.keywordResults?.results?.length ?? 0) + (searchState.semanticResults?.results?.length ?? 0)
-                : undefined,
+              resultCount: hasCurrentResults ? mergedResultCount : undefined,
             }}
           />
         </div>
