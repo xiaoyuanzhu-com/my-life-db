@@ -97,6 +97,17 @@ This container must be inside a parent with `overflow-hidden` and a constrained 
 2. Auto-scroll to bottom: `container.scrollTop = container.scrollHeight`
 3. User sees newest items first
 
+### Stick-to-Bottom with Async Content
+
+The feed keeps scroll pinned to bottom while images load asynchronously. This uses a **content stabilization** pattern:
+
+1. **ResizeObserver** watches the content div (not container) for size changes
+2. When content changes (images loading), mark `contentStabilized = false` and reset a 500ms timer
+3. After 500ms of no resize events, mark `contentStabilized = true`
+4. **Scroll handler** only allows `stickToBottom` to become `false` when content is stabilized
+
+This prevents a race condition where async image loading causes scroll events that would prematurely disable stick-to-bottom before all content has loaded.
+
 ### Infinite Scroll Triggers
 
 - **Near top** (`scrollTop < 200px`): Call `loadOlderPage()` to fetch older items

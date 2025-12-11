@@ -328,12 +328,11 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    const prevStickToBottom = stickToBottomRef.current;
     // Only allow disabling stickToBottom when content has stabilized (images loaded)
     // This prevents scroll events from async image loading from disabling stick-to-bottom
-    const newStickToBottom = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
+    const nearBottom = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
 
-    if (newStickToBottom) {
+    if (nearBottom) {
       // Always allow enabling stickToBottom
       stickToBottomRef.current = true;
     } else if (contentStabilizedRef.current) {
@@ -342,15 +341,6 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     }
     // If content not stabilized and user appears to scroll away, keep stickToBottom true
 
-    if (prevStickToBottom !== stickToBottomRef.current) {
-      console.log('[scroll:handleScroll] stickToBottom changed:', prevStickToBottom, '->', stickToBottomRef.current, {
-        scrollTop,
-        scrollHeight,
-        clientHeight,
-        distanceFromBottom,
-        contentStabilized: contentStabilizedRef.current,
-      });
-    }
     updateScrollMetrics();
 
     // Determine current viewport page for eviction
@@ -461,17 +451,8 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    console.log('[scroll:layoutEffect]', {
-      stickToBottom: stickToBottomRef.current,
-      scrollHeight: container.scrollHeight,
-      scrollTop: container.scrollTop,
-      clientHeight: container.clientHeight,
-      distanceFromBottom: container.scrollHeight - container.scrollTop - container.clientHeight,
-    });
-
     if (stickToBottomRef.current) {
       container.scrollTop = container.scrollHeight;
-      console.log('[scroll:layoutEffect] scrolled to bottom, new scrollTop:', container.scrollTop);
       updateScrollMetrics();
     }
   }, [pages, isInitialLoad, updateScrollMetrics]);
@@ -493,23 +474,13 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       // Mark as stabilized after 500ms of no resize events
       stabilizeTimeoutRef.current = setTimeout(() => {
         contentStabilizedRef.current = true;
-        console.log('[scroll:resizeObserver] content stabilized');
       }, 500);
 
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
 
-      console.log('[scroll:resizeObserver]', {
-        stickToBottom: stickToBottomRef.current,
-        scrollHeight: container.scrollHeight,
-        scrollTop: container.scrollTop,
-        clientHeight: container.clientHeight,
-        distanceFromBottom,
-      });
-
       // Always scroll to bottom if stickToBottomRef is true (simplest check)
       if (stickToBottomRef.current) {
         container.scrollTop = container.scrollHeight;
-        console.log('[scroll:resizeObserver] stickToBottom=true, scrolled to bottom, new scrollTop:', container.scrollTop);
         updateScrollMetrics();
         return;
       }
@@ -517,7 +488,6 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       // Also scroll if we're close to bottom (handles edge cases)
       if (distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
         container.scrollTop = container.scrollHeight;
-        console.log('[scroll:resizeObserver] nearBottom, scrolled to bottom, new scrollTop:', container.scrollTop);
         updateScrollMetrics();
       }
     });
