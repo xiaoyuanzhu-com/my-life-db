@@ -480,9 +480,10 @@ Preview, Open, Pin, Save, Share, Delete
 **Card:**
 - Same layout as PDF Card (226px fixed width, footer with filename + size)
 - Without screenshot: Filename + "Word Document" label
+- Click opens modal
 
 **Modal:**
-None
+- File info display (path, type, size, created/modified dates)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete
@@ -494,9 +495,10 @@ Open, Pin, Save, Share, Delete
 **Card:**
 - With screenshot: Same as PDF
 - Without screenshot: Filename + "PowerPoint Presentation" label
+- Click opens modal
 
 **Modal:**
-None
+- File info display (path, type, size, created/modified dates)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete
@@ -528,9 +530,10 @@ Preview, Open, Pin, Save, Share, Delete
 **Card:**
 - With screenshot: Same as PDF
 - Without screenshot: Filename + "Excel Spreadsheet" label
+- Click opens modal
 
 **Modal:**
-None
+- File info display (path, type, size, created/modified dates)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete
@@ -543,9 +546,10 @@ Open, Pin, Save, Share, Delete
 - Centered filename
 - MIME type below (if available)
 - Min height: 120px
+- Click opens modal
 
 **Modal:**
-None (info modal exists but not connected)
+- File info display (path, type, size, created/modified dates)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete
@@ -562,7 +566,7 @@ Open, Pin, Save, Share, Delete
 | Text | fit-content | max 20 lines | Double-click for modal |
 | PDF/Doc | fixed 226px | max 320px + footer | A4-ish ratio, filename + size footer |
 | PPT/EPUB/XLS | fit-content, max 448px | max 320px | Screenshot or fallback |
-| Fallback | fit-content | min 120px | Filename only |
+| Fallback | fit-content | min 120px | Click for info modal |
 
 ---
 

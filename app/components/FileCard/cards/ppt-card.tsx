@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { FallbackModal } from '../modals/fallback-modal';
 import {
   downloadFile,
   shareFile,
@@ -22,6 +23,7 @@ export function PptCard({
   matchContext,
 }: BaseCardProps) {
   const navigate = useNavigate();
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
@@ -49,10 +51,11 @@ export function PptCard({
   const cardContent = (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none',
+        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none cursor-pointer',
         'max-w-[calc(100%-40px)] w-fit',
         className
       )}
+      onClick={() => setIsPreviewOpen(true)}
     >
       {screenshotSrc ? (
         <div
@@ -93,6 +96,11 @@ export function PptCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
+      <FallbackModal
+        file={file}
+        open={isPreviewOpen}
+        onOpenChange={setIsPreviewOpen}
+      />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { FallbackModal } from '../modals/fallback-modal';
 import {
   downloadFile,
   shareFile,
@@ -20,6 +21,7 @@ export function FallbackCard({
   matchContext,
 }: BaseCardProps) {
   const navigate = useNavigate();
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const href = getFileLibraryUrl(file.path);
@@ -46,10 +48,11 @@ export function FallbackCard({
   const cardContent = (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none',
+        'group relative overflow-hidden rounded-lg border border-border bg-muted touch-callout-none select-none cursor-pointer',
         'max-w-[calc(100%-40px)] w-fit',
         className
       )}
+      onClick={() => setIsPreviewOpen(true)}
     >
       <div className="p-6 flex items-center justify-center min-h-[120px]">
         <div className="text-center">
@@ -72,6 +75,11 @@ export function FallbackCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
+      <FallbackModal
+        file={file}
+        open={isPreviewOpen}
+        onOpenChange={setIsPreviewOpen}
+      />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

@@ -1,42 +1,32 @@
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps } from '../types';
+import { ModalCloseButton } from '../ui/modal-close-button';
 
 export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent
+        className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
+        showCloseButton={false}
+      >
+        <VisuallyHidden>
           <DialogTitle>{file.name}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="text-muted-foreground">Path</div>
-            <div className="break-all">{file.path}</div>
-
-            {file.mimeType && (
-              <>
-                <div className="text-muted-foreground">Type</div>
-                <div>{file.mimeType}</div>
-              </>
-            )}
-
+        </VisuallyHidden>
+        <ModalCloseButton onClick={() => onOpenChange(false)} />
+        <div className="flex-1 flex flex-col items-center justify-center pb-[10vh]">
+          <div className="text-center space-y-2 text-sm px-6">
+            <div className="break-all">{file.name}</div>
             {file.size !== null && (
-              <>
-                <div className="text-muted-foreground">Size</div>
-                <div>{formatFileSize(file.size)}</div>
-              </>
+              <div className="text-muted-foreground">{formatFileSize(file.size)}</div>
             )}
-
-            <div className="text-muted-foreground">Created</div>
-            <div>{new Date(file.createdAt).toLocaleString()}</div>
-
-            <div className="text-muted-foreground">Modified</div>
-            <div>{new Date(file.modifiedAt).toLocaleString()}</div>
+            <div className="text-muted-foreground">
+              {new Date(file.createdAt).toLocaleString()}
+            </div>
           </div>
         </div>
       </DialogContent>
