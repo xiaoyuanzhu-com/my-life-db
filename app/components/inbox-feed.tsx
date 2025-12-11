@@ -319,6 +319,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    // Don't trigger infinite scroll during initial load
+    if (isInitialLoad) return;
+
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
@@ -364,7 +367,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
     // Evict distant pages
     evictDistantPages(viewportPageIndex);
-  }, [pageIndices, pages, loadingPages, getPageHeight, loadOlderPage, loadNewerPage, evictDistantPages, updateScrollMetrics]);
+  }, [isInitialLoad, pageIndices, pages, loadingPages, getPageHeight, loadOlderPage, loadNewerPage, evictDistantPages, updateScrollMetrics]);
 
   // Initial load
   useEffect(() => {
