@@ -10,30 +10,64 @@ export default function HomePage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [scrollToPath, setScrollToPath] = useState<string | undefined>(undefined);
   const [searchState, setSearchState] = useState<{
-    results: SearchResponse | null;
-    isSearching: boolean;
-    error: string | null;
+    keywordResults: SearchResponse | null;
+    semanticResults: SearchResponse | null;
+    isKeywordSearching: boolean;
+    isSemanticSearching: boolean;
+    keywordError: string | null;
+    semanticError: string | null;
   }>({
-    results: null,
-    isSearching: false,
-    error: null,
+    keywordResults: null,
+    semanticResults: null,
+    isKeywordSearching: false,
+    isSemanticSearching: false,
+    keywordError: null,
+    semanticError: null,
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const [inputMaxHeight, setInputMaxHeight] = useState<number | null>(null);
   const [lastSuccessfulResults, setLastSuccessfulResults] = useState<SearchResponse | null>(null);
 
-  useEffect(() => {
-    if (searchState.results && searchState.results.results.length > 0) {
-      setLastSuccessfulResults(searchState.results);
-    } else if (searchState.results !== null && searchState.results.results.length === 0) {
-      setLastSuccessfulResults(null);
-    }
-  }, [searchState.results]);
+  // Derive combined state from keyword and semantic results
+  const isSearching = searchState.isKeywordSearching || searchState.isSemanticSearching;
+  const hasAnyResults =
+    (searchState.keywordResults?.results?.length ?? 0) > 0 ||
+    (searchState.semanticResults?.results?.length ?? 0) > 0;
+  const bothFailed =
+    searchState.keywordError !== null &&
+    searchState.semanticError !== null &&
+    !searchState.isKeywordSearching &&
+    !searchState.isSemanticSearching;
+  const error = bothFailed ? (searchState.keywordError || searchState.semanticError) : null;
 
-  const hasCurrentResults = searchState.results !== null && searchState.results.results.length > 0;
-  const isSearchingWithPreviousResults = searchState.isSearching && lastSuccessfulResults !== null;
+  // Get the query from whichever result is available
+  const currentQuery = searchState.keywordResults?.query || searchState.semanticResults?.query || '';
+
+  useEffect(() => {
+    if (hasAnyResults) {
+      // Create a merged result for lastSuccessfulResults tracking
+      const mergedForTracking: SearchResponse = {
+        results: [],
+        pagination: { total: 0, limit: 30, offset: 0, hasMore: false },
+        query: currentQuery,
+        timing: { totalMs: 0, searchMs: 0, enrichMs: 0 },
+        sources: [],
+      };
+      setLastSuccessfulResults(mergedForTracking);
+    } else if (
+      searchState.keywordResults !== null ||
+      searchState.semanticResults !== null
+    ) {
+      // Both returned but empty
+      if (!hasAnyResults && !isSearching) {
+        setLastSuccessfulResults(null);
+      }
+    }
+  }, [searchState.keywordResults, searchState.semanticResults, hasAnyResults, isSearching, currentQuery]);
+
+  const hasCurrentResults = hasAnyResults;
+  const isSearchingWithPreviousResults = isSearching && lastSuccessfulResults !== null;
   const showSearchResults = hasCurrentResults || isSearchingWithPreviousResults;
-  const displayResults = hasCurrentResults ? searchState.results : lastSuccessfulResults;
 
   const handleEntryCreated = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -86,7 +120,14 @@ export default function HomePage() {
 
         {showSearchResults && (
           <div className="absolute inset-0 overflow-y-auto">
-            <SearchResults results={displayResults} isSearching={searchState.isSearching} error={searchState.error} />
+            <SearchResults
+              keywordResults={searchState.keywordResults}
+              semanticResults={searchState.semanticResults}
+              isKeywordSearching={searchState.isKeywordSearching}
+              isSemanticSearching={searchState.isSemanticSearching}
+              keywordError={searchState.keywordError}
+              semanticError={searchState.semanticError}
+            />
           </div>
         )}
       </div>
@@ -96,17 +137,15 @@ export default function HomePage() {
           <PinnedTags onTagClick={handlePinnedTagClick} onRefresh={refreshTrigger} />
           <OmniInput
             onEntryCreated={handleEntryCreated}
-            onSearchStateChange={setSearchState}
+            onSearchResultsChange={setSearchState}
             maxHeight={inputMaxHeight ?? undefined}
             searchStatus={{
-              isSearching: searchState.isSearching,
-              hasNoResults:
-                searchState.results !== null && searchState.results.results.length === 0 && !searchState.isSearching,
-              hasError: searchState.error !== null && !searchState.isSearching,
-              resultCount:
-                hasCurrentResults && !searchState.isSearching && searchState.results
-                  ? searchState.results.results.length
-                  : undefined,
+              isSearching,
+              hasNoResults: !hasAnyResults && !isSearching && (searchState.keywordResults !== null || searchState.semanticResults !== null),
+              hasError: error !== null,
+              resultCount: hasCurrentResults && !isSearching
+                ? (searchState.keywordResults?.results?.length ?? 0) + (searchState.semanticResults?.results?.length ?? 0)
+                : undefined,
             }}
           />
         </div>

@@ -36,4 +36,5 @@ export interface SearchResponse {
     searchMs: number;
     enrichMs: number;
   };
+  sources: ('keyword' | 'semantic')[];
 }

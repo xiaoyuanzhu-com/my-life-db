@@ -34,6 +34,7 @@ export interface SearchResponse {
   pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   query: string;
   timing: { totalMs: number; searchMs: number; enrichMs: number };
+  sources: ("keyword" | "semantic")[];
 }
 
 type SearchHit = {
@@ -58,6 +59,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const typeFilter = url.searchParams.get("type") || undefined;
     const pathFilter = url.searchParams.get("path") || undefined;
 
+    // Parse search types: "keyword", "semantic", or "keyword,semantic" (default)
+    const typesParam = url.searchParams.get("types") || "keyword,semantic";
+    const searchTypes = typesParam.split(",").map(t => t.trim().toLowerCase());
+    const useKeyword = searchTypes.includes("keyword");
+    const useSemantic = searchTypes.includes("semantic");
+
     if (!query) {
       return Response.json(
         { error: 'Query parameter "q" is required', code: "QUERY_REQUIRED" },
@@ -72,6 +79,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
       );
     }
 
+    if (!useKeyword && !useSemantic) {
+      return Response.json(
+        { error: 'Invalid types parameter. Use "keyword", "semantic", or "keyword,semantic"', code: "INVALID_TYPES" },
+        { status: 400 }
+      );
+    }
+
     const filters: string[] = [];
     if (typeFilter) {
       filters.push(`mimeType STARTS WITH "${escapeFilterValue(typeFilter)}"`);
@@ -80,10 +94,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       filters.push(`filePath STARTS WITH "${escapeFilterValue(pathFilter)}"`);
     }
     const filter = filters.length > 0 ? filters.join(" AND ") : undefined;
-
-    const queryWords = query.split(/\s+/).filter((word) => word.length > 0);
-    const wordCount = queryWords.length;
-    const useSemanticOnly = wordCount > 10;
 
     const searchStart = Date.now();
     const highlightTerms = extractSearchTerms(query);
@@ -94,26 +104,34 @@ export async function loader({ request }: LoaderFunctionArgs) {
       offset: number;
       query: string;
     };
+    const sources: ("keyword" | "semantic")[] = [];
 
-    if (useSemanticOnly) {
+    // Build Qdrant filter once if needed
+    const buildQdrantFilter = () => {
+      const qdrantFilter: Record<string, unknown> = {};
+      if (typeFilter) {
+        qdrantFilter.must = qdrantFilter.must || [];
+        (qdrantFilter.must as unknown[]).push({ key: "mimeType", match: { value: typeFilter } });
+      }
+      if (pathFilter) {
+        qdrantFilter.must = qdrantFilter.must || [];
+        (qdrantFilter.must as unknown[]).push({ key: "filePath", match: { value: pathFilter } });
+      }
+      return Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined;
+    };
+
+    // Semantic-only search
+    if (useSemantic && !useKeyword) {
       try {
         const queryEmbedding = await embedText(query);
         const qdrantClient = await getQdrantClient();
-        const qdrantFilter: Record<string, unknown> = {};
-        if (typeFilter) {
-          qdrantFilter.must = qdrantFilter.must || [];
-          (qdrantFilter.must as unknown[]).push({ key: "mimeType", match: { value: typeFilter } });
-        }
-        if (pathFilter) {
-          qdrantFilter.must = qdrantFilter.must || [];
-          (qdrantFilter.must as unknown[]).push({ key: "filePath", match: { value: pathFilter } });
-        }
+        const qdrantFilter = buildQdrantFilter();
 
         const qdrantResult = (await qdrantClient.search({
           vector: queryEmbedding.vector,
           limit,
           scoreThreshold: 0.7,
-          filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
+          filter: qdrantFilter,
           withPayload: true,
         })) as {
           result: { id: string; score: number; payload: { filePath: string; text: string; sourceType?: string } }[];
@@ -135,6 +153,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         }
 
+        sources.push("semantic");
         searchResult = {
           hits: Array.from(filePathMap.values()).slice(offset, offset + limit),
           estimatedTotalHits: filePathMap.size,
@@ -142,19 +161,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
           offset,
           query,
         };
-      } catch {
-        const client = await getMeiliClient();
-        searchResult = await client.search<SearchHit>(query, {
-          limit,
-          offset,
-          filter,
-          attributesToHighlight: ["content", "summary", "tags"],
-          attributesToCrop: ["content"],
-          cropLength: 200,
-          matchingStrategy: "all",
-        });
+      } catch (err) {
+        log.error({ err }, "semantic search failed");
+        throw err;
       }
-    } else {
+    }
+    // Keyword-only search
+    else if (useKeyword && !useSemantic) {
+      const client = await getMeiliClient();
+      searchResult = await client.search<SearchHit>(query, {
+        limit,
+        offset,
+        filter,
+        attributesToHighlight: ["content", "summary", "tags"],
+        attributesToCrop: ["content"],
+        cropLength: 200,
+        matchingStrategy: "all",
+      });
+      sources.push("keyword");
+    }
+    // Both keyword and semantic (hybrid)
+    else {
       try {
         const [meiliResult, qdrantHits] = await Promise.all([
           (async () => {
@@ -173,21 +200,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
             try {
               const queryEmbedding = await embedText(query);
               const qdrantClient = await getQdrantClient();
-              const qdrantFilter: Record<string, unknown> = {};
-              if (typeFilter) {
-                qdrantFilter.must = qdrantFilter.must || [];
-                (qdrantFilter.must as unknown[]).push({ key: "mimeType", match: { value: typeFilter } });
-              }
-              if (pathFilter) {
-                qdrantFilter.must = qdrantFilter.must || [];
-                (qdrantFilter.must as unknown[]).push({ key: "filePath", match: { value: pathFilter } });
-              }
+              const qdrantFilter = buildQdrantFilter();
 
               const qdrantResult = (await qdrantClient.search({
                 vector: queryEmbedding.vector,
                 limit: limit * 2,
                 scoreThreshold: 0.7,
-                filter: Object.keys(qdrantFilter).length > 0 ? qdrantFilter : undefined,
+                filter: qdrantFilter,
                 withPayload: true,
               })) as {
                 result: { id: string; score: number; payload: { filePath: string; text: string; sourceType?: string } }[];
@@ -219,6 +238,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         }
 
+        sources.push("keyword", "semantic");
         const mergedHits = Array.from(filePathMap.values());
         searchResult = {
           hits: mergedHits.slice(offset, offset + limit),
@@ -228,6 +248,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           query,
         };
       } catch {
+        // Fallback to keyword-only if hybrid fails
         const client = await getMeiliClient();
         searchResult = await client.search<SearchHit>(query, {
           limit,
@@ -238,6 +259,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           cropLength: 200,
           matchingStrategy: "all",
         });
+        sources.push("keyword");
       }
     }
 
@@ -279,6 +301,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
       query: searchResult.query,
       timing: { totalMs, searchMs, enrichMs },
+      sources,
     });
   } catch (error) {
     log.error({ err: error }, "search failed");

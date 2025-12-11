@@ -4,16 +4,29 @@ import type { SearchResponse } from '~/routes/api.search';
 import type { SearchResultItem } from '~/types/search';
 
 interface SearchResultsProps {
-  results: SearchResponse | null;
-  isSearching: boolean;
-  error: string | null;
+  keywordResults: SearchResponse | null;
+  semanticResults: SearchResponse | null;
+  isKeywordSearching: boolean;
+  isSemanticSearching: boolean;
+  keywordError: string | null;
+  semanticError: string | null;
 }
 
 const SEARCH_BATCH_SIZE = 30;
 
-export function SearchResults({ results, isSearching, error }: SearchResultsProps) {
-  const [mergedResults, setMergedResults] = useState<SearchResultItem[]>([]);
-  const [pagination, setPagination] = useState<SearchResponse['pagination'] | null>(null);
+export function SearchResults({
+  keywordResults,
+  semanticResults,
+  isKeywordSearching,
+  isSemanticSearching,
+  keywordError,
+  semanticError,
+}: SearchResultsProps) {
+  // Track accumulated results from each source (for pagination)
+  const [accumulatedKeyword, setAccumulatedKeyword] = useState<SearchResultItem[]>([]);
+  const [accumulatedSemantic, setAccumulatedSemantic] = useState<SearchResultItem[]>([]);
+  const [keywordPagination, setKeywordPagination] = useState<SearchResponse['pagination'] | null>(null);
+  const [semanticPagination, setSemanticPagination] = useState<SearchResponse['pagination'] | null>(null);
   const [currentQuery, setCurrentQuery] = useState('');
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -22,6 +35,12 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   const loadingRef = useRef(false);
   const autoScrollRef = useRef(true);
   const scrollAdjustmentRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const keywordAbortRef = useRef<AbortController | null>(null);
+  const semanticAbortRef = useRef<AbortController | null>(null);
+
+  // Derive query from available results (used for display in future if needed)
+  const _query = keywordResults?.query || semanticResults?.query || '';
+
   const highlightTerms = useMemo(() => {
     if (!currentQuery.trim()) {
       return [];
@@ -37,43 +56,100 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
     );
   }, [currentQuery]);
 
-  // Sync incoming search results with local merged list
+  // Sync keyword results
   useEffect(() => {
-    if (!results) {
-      setMergedResults([]);
-      setPagination(null);
+    if (!keywordResults) {
+      setAccumulatedKeyword([]);
+      setKeywordPagination(null);
+      return;
+    }
+
+    const isNewQuery =
+      keywordResults.query !== lastQueryRef.current ||
+      keywordResults.pagination.offset === 0;
+
+    if (isNewQuery) {
+      setAccumulatedKeyword(keywordResults.results);
+      autoScrollRef.current = true;
+      scrollAdjustmentRef.current = null;
+    } else {
+      setAccumulatedKeyword(prev => {
+        const prevPaths = new Set(prev.map(item => item.path));
+        const additions = keywordResults.results.filter(item => !prevPaths.has(item.path));
+        return [...prev, ...additions];
+      });
+    }
+
+    setKeywordPagination(keywordResults.pagination);
+    setCurrentQuery(keywordResults.query);
+    lastQueryRef.current = keywordResults.query;
+  }, [keywordResults]);
+
+  // Sync semantic results
+  useEffect(() => {
+    if (!semanticResults) {
+      setAccumulatedSemantic([]);
+      setSemanticPagination(null);
+      return;
+    }
+
+    const isNewQuery =
+      semanticResults.query !== lastQueryRef.current ||
+      semanticResults.pagination.offset === 0;
+
+    if (isNewQuery) {
+      setAccumulatedSemantic(semanticResults.results);
+      autoScrollRef.current = true;
+      scrollAdjustmentRef.current = null;
+    } else {
+      setAccumulatedSemantic(prev => {
+        const prevPaths = new Set(prev.map(item => item.path));
+        const additions = semanticResults.results.filter(item => !prevPaths.has(item.path));
+        return [...prev, ...additions];
+      });
+    }
+
+    setSemanticPagination(semanticResults.pagination);
+    if (!currentQuery) {
+      setCurrentQuery(semanticResults.query);
+      lastQueryRef.current = semanticResults.query;
+    }
+  }, [semanticResults, currentQuery]);
+
+  // Reset when both are cleared
+  useEffect(() => {
+    if (!keywordResults && !semanticResults) {
+      setAccumulatedKeyword([]);
+      setAccumulatedSemantic([]);
+      setKeywordPagination(null);
+      setSemanticPagination(null);
       setCurrentQuery('');
       lastQueryRef.current = null;
       setIsLoadingMore(false);
       loadingRef.current = false;
       autoScrollRef.current = true;
       scrollAdjustmentRef.current = null;
-      return;
+    }
+  }, [keywordResults, semanticResults]);
+
+  // Merge results: dedupe by path, sort by createdAt
+  const mergedResults = useMemo(() => {
+    const pathMap = new Map<string, SearchResultItem>();
+
+    // Add keyword results first (priority)
+    for (const item of accumulatedKeyword) {
+      pathMap.set(item.path, item);
     }
 
-    const isNewQuery =
-      results.query !== lastQueryRef.current ||
-      results.pagination.offset === 0;
-
-    if (isNewQuery) {
-      setMergedResults(results.results);
-      autoScrollRef.current = true;
-      scrollAdjustmentRef.current = null;
-      setIsLoadingMore(false);
-      loadingRef.current = false;
-    } else {
-      setMergedResults(prev => {
-        const prevPaths = new Set(prev.map(item => item.path));
-        const additions = results.results.filter(item => !prevPaths.has(item.path));
-        return [...prev, ...additions];
-      });
+    // Add semantic results (only new paths)
+    for (const item of accumulatedSemantic) {
+      if (!pathMap.has(item.path)) {
+        pathMap.set(item.path, item);
+      }
     }
 
-    setPagination(results.pagination);
-    setCurrentQuery(results.query);
-    lastQueryRef.current = results.query;
-    setLoadMoreError(null);
-  }, [results]);
+    return Array.from(pathMap.values());
+  }, [accumulatedKeyword, accumulatedSemantic]);
 
   const orderedResults = useMemo(() => {
     return mergedResults
@@ -82,7 +158,9 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   }, [mergedResults]);
 
   const hasResults = orderedResults.length > 0;
-  const canLoadMore = Boolean(pagination?.hasMore);
+  const isSearching = isKeywordSearching || isSemanticSearching;
+  const canLoadMore = Boolean(keywordPagination?.hasMore || semanticPagination?.hasMore);
+  const error = (keywordError && semanticError) ? (keywordError || semanticError) : null;
 
   const loadMore = useCallback(async () => {
     if (!currentQuery || !canLoadMore || isLoadingMore || loadingRef.current) {
@@ -102,39 +180,115 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
       };
     }
 
-    try {
-      const offset = mergedResults.length;
+    // Cancel any previous load more requests
+    keywordAbortRef.current?.abort();
+    semanticAbortRef.current?.abort();
+
+    const keywordController = new AbortController();
+    const semanticController = new AbortController();
+    keywordAbortRef.current = keywordController;
+    semanticAbortRef.current = semanticController;
+
+    let keywordDone = false;
+    let semanticDone = false;
+    let hasError = false;
+
+    const checkComplete = () => {
+      if (keywordDone && semanticDone) {
+        setIsLoadingMore(false);
+        loadingRef.current = false;
+      }
+    };
+
+    // Fire keyword load more if it has more
+    if (keywordPagination?.hasMore) {
+      const keywordOffset = accumulatedKeyword.length;
       const params = new URLSearchParams({
         q: currentQuery,
+        types: 'keyword',
         limit: String(SEARCH_BATCH_SIZE),
-        offset: String(offset),
+        offset: String(keywordOffset),
       });
 
-      const response = await fetch(`/api/search?${params.toString()}`);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      const data: SearchResponse = await response.json();
-      if (data.query !== currentQuery) {
-        return;
-      }
-
-      setMergedResults(prev => {
-        const prevPaths = new Set(prev.map(item => item.path));
-        const additions = data.results.filter(item => !prevPaths.has(item.path));
-        return [...prev, ...additions];
-      });
-      setPagination(data.pagination);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load more results';
-      setLoadMoreError(message);
-    } finally {
-      setIsLoadingMore(false);
-      loadingRef.current = false;
+      fetch(`/api/search?${params.toString()}`, { signal: keywordController.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data: SearchResponse) => {
+          if (keywordController.signal.aborted || data.query !== currentQuery) return;
+          setAccumulatedKeyword(prev => {
+            const prevPaths = new Set(prev.map(item => item.path));
+            const additions = data.results.filter(item => !prevPaths.has(item.path));
+            return [...prev, ...additions];
+          });
+          setKeywordPagination(data.pagination);
+        })
+        .catch((err) => {
+          if (err instanceof Error && err.name === 'AbortError') return;
+          console.error('Load more keyword error:', err);
+          if (!hasError) {
+            hasError = true;
+            setLoadMoreError(err instanceof Error ? err.message : 'Failed to load more results');
+          }
+        })
+        .finally(() => {
+          keywordDone = true;
+          checkComplete();
+        });
+    } else {
+      keywordDone = true;
     }
-  }, [currentQuery, canLoadMore, isLoadingMore, mergedResults.length]);
+
+    // Fire semantic load more if it has more
+    if (semanticPagination?.hasMore) {
+      const semanticOffset = accumulatedSemantic.length;
+      const params = new URLSearchParams({
+        q: currentQuery,
+        types: 'semantic',
+        limit: String(SEARCH_BATCH_SIZE),
+        offset: String(semanticOffset),
+      });
+
+      fetch(`/api/search?${params.toString()}`, { signal: semanticController.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data: SearchResponse) => {
+          if (semanticController.signal.aborted || data.query !== currentQuery) return;
+          setAccumulatedSemantic(prev => {
+            const prevPaths = new Set(prev.map(item => item.path));
+            const additions = data.results.filter(item => !prevPaths.has(item.path));
+            return [...prev, ...additions];
+          });
+          setSemanticPagination(data.pagination);
+        })
+        .catch((err) => {
+          if (err instanceof Error && err.name === 'AbortError') return;
+          console.error('Load more semantic error:', err);
+          if (!hasError) {
+            hasError = true;
+            setLoadMoreError(err instanceof Error ? err.message : 'Failed to load more results');
+          }
+        })
+        .finally(() => {
+          semanticDone = true;
+          checkComplete();
+        });
+    } else {
+      semanticDone = true;
+    }
+
+    // If neither has more, we're done immediately
+    checkComplete();
+  }, [currentQuery, canLoadMore, isLoadingMore, keywordPagination?.hasMore, semanticPagination?.hasMore, accumulatedKeyword.length, accumulatedSemantic.length]);
 
   // Keep user anchored when older results prepend, or auto-scroll for new queries
   useEffect(() => {
@@ -193,8 +347,8 @@ export function SearchResults({ results, isSearching, error }: SearchResultsProp
   const showEmptyState =
     !isSearching &&
     !error &&
-    results !== null &&
-    results.results.length === 0;
+    (keywordResults !== null || semanticResults !== null) &&
+    !hasResults;
 
   return (
     <div

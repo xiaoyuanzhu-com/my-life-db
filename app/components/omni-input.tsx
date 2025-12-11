@@ -9,10 +9,13 @@ import * as tus from 'tus-js-client';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
-  onSearchStateChange?: (state: {
-    results: SearchResponse | null;
-    isSearching: boolean;
-    error: string | null;
+  onSearchResultsChange?: (state: {
+    keywordResults: SearchResponse | null;
+    semanticResults: SearchResponse | null;
+    isKeywordSearching: boolean;
+    isSemanticSearching: boolean;
+    keywordError: string | null;
+    semanticError: string | null;
   }) => void;
   maxHeight?: number;
   searchStatus?: {
@@ -36,7 +39,7 @@ interface UploadProgress {
   percentage: number;
 }
 
-export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, maxHeight }: OmniInputProps) {
+export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus, maxHeight }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,12 +49,16 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Search state
-  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  // Search state - separate tracking for keyword and semantic
+  const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
+  const [semanticResults, setSemanticResults] = useState<SearchResponse | null>(null);
+  const [isKeywordSearching, setIsKeywordSearching] = useState(false);
+  const [isSemanticSearching, setIsSemanticSearching] = useState(false);
+  const [keywordError, setKeywordError] = useState<string | null>(null);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchAbortControllerRef = useRef<AbortController | null>(null);
+  const keywordAbortRef = useRef<AbortController | null>(null);
+  const semanticAbortRef = useRef<AbortController | null>(null);
 
   // SessionStorage key for persisting text
   const STORAGE_KEY = 'omni-input:text';
@@ -90,67 +97,109 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
     return 100; // Fast for 3+ chars
   }, []);
 
-  // Perform search
+  // Perform search - fires keyword and semantic in parallel
   const performSearch = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
-      setSearchResults(null);
-      setSearchError(null);
+      setKeywordResults(null);
+      setSemanticResults(null);
+      setKeywordError(null);
+      setSemanticError(null);
       return;
     }
 
-    // Cancel previous search
-    if (searchAbortControllerRef.current) {
-      searchAbortControllerRef.current.abort();
-    }
+    // Cancel previous searches
+    keywordAbortRef.current?.abort();
+    semanticAbortRef.current?.abort();
 
-    setIsSearching(true);
-    setSearchError(null);
+    const keywordController = new AbortController();
+    const semanticController = new AbortController();
+    keywordAbortRef.current = keywordController;
+    semanticAbortRef.current = semanticController;
 
-    const abortController = new AbortController();
-    searchAbortControllerRef.current = abortController;
+    // Start both searches
+    setIsKeywordSearching(true);
+    setIsSemanticSearching(true);
+    setKeywordError(null);
+    setSemanticError(null);
 
-    try {
-      const params = new URLSearchParams({ q: query, limit: String(SEARCH_BATCH_SIZE) });
-      const response = await fetch(`/api/search?${params}`, {
-        signal: abortController.signal,
-      });
+    // Fire keyword search
+    const fetchKeyword = async () => {
+      try {
+        const params = new URLSearchParams({ q: query, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
+        const response = await fetch(`/api/search?${params}`, {
+          signal: keywordController.signal,
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+
+        const data: SearchResponse = await response.json();
+        if (!keywordController.signal.aborted) {
+          setKeywordResults(data);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        console.error('Keyword search error:', err);
+        const errorMsg = err instanceof Error ? err.message : 'Keyword search failed';
+        if (!keywordController.signal.aborted) {
+          setKeywordError(errorMsg);
+        }
+      } finally {
+        if (!keywordController.signal.aborted) {
+          setIsKeywordSearching(false);
+        }
       }
+    };
 
-      const data: SearchResponse = await response.json();
+    // Fire semantic search
+    const fetchSemantic = async () => {
+      try {
+        const params = new URLSearchParams({ q: query, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
+        const response = await fetch(`/api/search?${params}`, {
+          signal: semanticController.signal,
+        });
 
-      // Only update if this search wasn't cancelled
-      if (!abortController.signal.aborted) {
-        setSearchResults(data);
-      }
-    } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
 
-      console.error('Search error:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Search failed';
-      setSearchError(errorMsg);
-      setSearchResults(null);
-    } finally {
-      if (!abortController.signal.aborted) {
-        setIsSearching(false);
+        const data: SearchResponse = await response.json();
+        if (!semanticController.signal.aborted) {
+          setSemanticResults(data);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        console.error('Semantic search error:', err);
+        const errorMsg = err instanceof Error ? err.message : 'Semantic search failed';
+        if (!semanticController.signal.aborted) {
+          setSemanticError(errorMsg);
+        }
+      } finally {
+        if (!semanticController.signal.aborted) {
+          setIsSemanticSearching(false);
+        }
       }
-    }
+    };
+
+    // Fire both in parallel
+    fetchKeyword();
+    fetchSemantic();
   }, []);
 
   // Notify parent of search state changes
   useEffect(() => {
-    onSearchStateChange?.({
-      results: searchResults,
-      isSearching,
-      error: searchError,
+    onSearchResultsChange?.({
+      keywordResults,
+      semanticResults,
+      isKeywordSearching,
+      isSemanticSearching,
+      keywordError,
+      semanticError,
     });
-  }, [searchResults, isSearching, searchError, onSearchStateChange]);
+  }, [keywordResults, semanticResults, isKeywordSearching, isSemanticSearching, keywordError, semanticError, onSearchResultsChange]);
 
   // Effect to trigger adaptive debounced search
   useEffect(() => {
@@ -164,9 +213,12 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
 
     // Clear results immediately if empty
     if (!query) {
-      setSearchResults(null);
-      setSearchError(null);
-      setIsSearching(false);
+      setKeywordResults(null);
+      setSemanticResults(null);
+      setKeywordError(null);
+      setSemanticError(null);
+      setIsKeywordSearching(false);
+      setIsSemanticSearching(false);
       return;
     }
 
@@ -214,8 +266,10 @@ export function OmniInput({ onEntryCreated, onSearchStateChange, searchStatus, m
       setContent('');
       setSelectedFiles([]);
       setUploadProgress(new Map());
-      setSearchResults(null); // Clear search results on submit
-      setSearchError(null);
+      setKeywordResults(null);
+      setSemanticResults(null);
+      setKeywordError(null);
+      setSemanticError(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
