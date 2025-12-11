@@ -8,6 +8,9 @@ export default defineConfig(({ isSsrBuild }) => ({
     reactRouter(),
     tsconfigPaths(),
   ],
+  server: {
+    port: 12345,
+  },
   // Handle better-sqlite3 and other native modules
   build: {
     rollupOptions: {

@@ -30,8 +30,8 @@ function getLevelOrder(level: LogLevel): number {
 
 function createPinoLogger(): PinoLike {
   const configuredLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
-  // Default to pretty logs in non-production unless explicitly disabled
-  const pretty = process.env.LOG_PRETTY ? process.env.LOG_PRETTY === 'true' : process.env.NODE_ENV !== 'production';
+  // Default to pretty logs (console format) unless explicitly disabled
+  const pretty = process.env.LOG_PRETTY !== 'false';
   const usePino = process.env.USE_PINO !== 'false';
   const isDev = process.env.NODE_ENV !== 'production';
 

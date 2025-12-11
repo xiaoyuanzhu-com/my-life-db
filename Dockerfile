@@ -40,9 +40,9 @@ RUN mkdir -p /app/data && chown node:node /app/data && chmod 775 /app/data
 # Use built-in non-root node user (uid/gid 1000) from the base image to avoid gid conflicts
 USER node
 
-EXPOSE 3000
+EXPOSE 12345
 
-ENV PORT=3000
+ENV PORT=12345
 ENV HOSTNAME="0.0.0.0"
 ENV MY_DATA_DIR=/app/data
 

@@ -9,7 +9,7 @@ import compression from "compression";
 import express from "express";
 import { createRequestHandler } from "@react-router/express";
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 12345;
 
 async function main() {
   // Import the React Router server build
