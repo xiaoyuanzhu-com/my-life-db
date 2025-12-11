@@ -1,8 +1,9 @@
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { builtinModules } from "node:module";
 
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     reactRouter(),
     tsconfigPaths(),
@@ -11,15 +12,23 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: [
-        "better-sqlite3",
-        "chokidar",
-        "fsevents",
-        "pino",
-        "pino-pretty",
-        // TUS upload server dependencies
-        "@tus/server",
-        "@tus/file-store",
-        "@tus/utils",
+        // Only externalize for SSR builds
+        ...(isSsrBuild
+          ? [
+              "better-sqlite3",
+              "chokidar",
+              "fsevents",
+              "pino",
+              "pino-pretty",
+              // TUS upload server dependencies
+              "@tus/server",
+              "@tus/file-store",
+              "@tus/utils",
+              // Externalize all Node.js built-in modules for production server
+              ...builtinModules,
+              ...builtinModules.map((m) => `node:${m}`),
+            ]
+          : []),
       ],
       onLog(level, log, handler) {
         // Suppress "Generated an empty chunk" warnings for API routes (server-only routes)
@@ -32,4 +41,4 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["better-sqlite3"],
   },
-});
+}));

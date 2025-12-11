@@ -32,6 +32,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/server.js ./
 
 # Create data directory owned by app user; group-writable for default UID/GID
 RUN mkdir -p /app/data && chown node:node /app/data && chmod 775 /app/data
@@ -45,4 +46,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV MY_DATA_DIR=/app/data
 
-CMD ["node", "./build/server/index.js"]
+CMD ["node", "server.js"]

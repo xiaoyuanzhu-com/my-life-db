@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "react-router dev",
     "build": "react-router build",
-    "start": "node ./build/server/index.js",
+    "start": "NODE_ENV=production node server.js",
     "lint": "eslint",
     "typecheck": "react-router typegen && tsc"
   },
