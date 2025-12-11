@@ -49,5 +49,5 @@ export const FEED_CONSTANTS = {
   DEFAULT_ITEM_HEIGHT: 200,
 
   /** Threshold for "at bottom" detection (px) */
-  BOTTOM_STICK_THRESHOLD: 48,
+  BOTTOM_STICK_THRESHOLD: 50,
 } as const;

@@ -30,11 +30,14 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
   // Refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const scrollAnchor = useRef<{ path: string; top: number } | null>(null);
   const stickToBottomRef = useRef(true);
   const lastScrollMetrics = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
+  const contentStabilizedRef = useRef(false);
+  const stabilizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Computed values
   const pageIndices = useMemo(() =>
@@ -325,8 +328,29 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    // Update stick-to-bottom state
-    stickToBottomRef.current = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
+    const prevStickToBottom = stickToBottomRef.current;
+    // Only allow disabling stickToBottom when content has stabilized (images loaded)
+    // This prevents scroll events from async image loading from disabling stick-to-bottom
+    const newStickToBottom = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
+
+    if (newStickToBottom) {
+      // Always allow enabling stickToBottom
+      stickToBottomRef.current = true;
+    } else if (contentStabilizedRef.current) {
+      // Only disable when content is stable (user actually scrolled up)
+      stickToBottomRef.current = false;
+    }
+    // If content not stabilized and user appears to scroll away, keep stickToBottom true
+
+    if (prevStickToBottom !== stickToBottomRef.current) {
+      console.log('[scroll:handleScroll] stickToBottom changed:', prevStickToBottom, '->', stickToBottomRef.current, {
+        scrollTop,
+        scrollHeight,
+        clientHeight,
+        distanceFromBottom,
+        contentStabilized: contentStabilizedRef.current,
+      });
+    }
     updateScrollMetrics();
 
     // Determine current viewport page for eviction
@@ -430,42 +454,82 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   }, [pages, restoreScrollAnchor]);
 
   // Auto-scroll to bottom on initial load or when sticking to bottom
-  useEffect(() => {
+  // Use useLayoutEffect to scroll synchronously before paint, avoiding race with ResizeObserver
+  useLayoutEffect(() => {
     if (isInitialLoad || pages.size === 0) return;
 
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    console.log('[scroll:layoutEffect]', {
+      stickToBottom: stickToBottomRef.current,
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+      distanceFromBottom: container.scrollHeight - container.scrollTop - container.clientHeight,
+    });
+
     if (stickToBottomRef.current) {
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-        updateScrollMetrics();
-      });
+      container.scrollTop = container.scrollHeight;
+      console.log('[scroll:layoutEffect] scrolled to bottom, new scrollTop:', container.scrollTop);
+      updateScrollMetrics();
     }
   }, [pages, isInitialLoad, updateScrollMetrics]);
 
   // Keep view pinned to bottom while content height changes
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    const content = contentRef.current;
+    if (!container || !content) return;
 
     const observer = new ResizeObserver(() => {
       if (!container) return;
 
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      const prev = lastScrollMetrics.current;
-      const prevDistance = prev ? prev.scrollHeight - prev.scrollTop - prev.clientHeight : null;
-      const heightIncreased = prev ? container.scrollHeight > prev.scrollHeight : false;
-      const wasAtBottom = prevDistance !== null ? prevDistance < BOTTOM_STICK_THRESHOLD : stickToBottomRef.current;
+      // Content is changing - mark as not stabilized
+      contentStabilizedRef.current = false;
+      if (stabilizeTimeoutRef.current) {
+        clearTimeout(stabilizeTimeoutRef.current);
+      }
+      // Mark as stabilized after 500ms of no resize events
+      stabilizeTimeoutRef.current = setTimeout(() => {
+        contentStabilizedRef.current = true;
+        console.log('[scroll:resizeObserver] content stabilized');
+      }, 500);
 
-      if (stickToBottomRef.current || (wasAtBottom && heightIncreased) || distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+
+      console.log('[scroll:resizeObserver]', {
+        stickToBottom: stickToBottomRef.current,
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+        clientHeight: container.clientHeight,
+        distanceFromBottom,
+      });
+
+      // Always scroll to bottom if stickToBottomRef is true (simplest check)
+      if (stickToBottomRef.current) {
         container.scrollTop = container.scrollHeight;
+        console.log('[scroll:resizeObserver] stickToBottom=true, scrolled to bottom, new scrollTop:', container.scrollTop);
+        updateScrollMetrics();
+        return;
+      }
+
+      // Also scroll if we're close to bottom (handles edge cases)
+      if (distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
+        container.scrollTop = container.scrollHeight;
+        console.log('[scroll:resizeObserver] nearBottom, scrolled to bottom, new scrollTop:', container.scrollTop);
         updateScrollMetrics();
       }
     });
 
-    observer.observe(container);
-    return () => observer.disconnect();
+    // Observe the content div, not the container - content changes when images load
+    observer.observe(content);
+    return () => {
+      observer.disconnect();
+      if (stabilizeTimeoutRef.current) {
+        clearTimeout(stabilizeTimeoutRef.current);
+      }
+    };
   }, [updateScrollMetrics]);
 
   // Attach scroll listener
@@ -512,7 +576,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       )}
 
       {/* Pages - rendered oldest first (top) to newest last (bottom) */}
-      <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
+      <div ref={contentRef} className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
         {sortedPageIndices.map((pageIndex) => {
           const page = pages.get(pageIndex);
           if (!page) return null;
