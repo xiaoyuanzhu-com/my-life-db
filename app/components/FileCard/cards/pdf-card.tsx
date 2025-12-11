@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Download, Share2, Trash2, Eye } from 'lucide-react';
+import { ExternalLink, Pin, Download, Share2, Trash2 } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
@@ -46,7 +46,6 @@ export function PdfCard({
   const handleShare = () => shareFile(file.path, file.name, file.mimeType);
 
   const actions: ContextMenuAction[] = [
-    { icon: Eye, label: 'Preview', onClick: () => setIsPreviewOpen(true) },
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name) },

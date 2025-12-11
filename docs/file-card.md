@@ -471,7 +471,7 @@ Open, Pin, Copy, Delete
 - pdf.js worker loaded via Vite `?url` import (no CDN dependency)
 
 **Context Menu:**
-Preview, Open, Pin, Save, Share, Delete
+Open, Pin, Save, Share, Delete
 
 ---
 
@@ -521,7 +521,7 @@ Open, Pin, Save, Share, Delete
 - White background for optimal reading
 
 **Context Menu:**
-Preview, Open, Pin, Save, Share, Delete
+Open, Pin, Save, Share, Delete
 
 ---
 
