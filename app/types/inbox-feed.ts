@@ -43,7 +43,7 @@ export const FEED_CONSTANTS = {
   MAX_PAGES: 10,
 
   /** Distance from edge to trigger load (px) */
-  SCROLL_THRESHOLD: 200,
+  SCROLL_THRESHOLD: 1000,
 
   /** Default estimated item height for spacers (px) */
   DEFAULT_ITEM_HEIGHT: 200,
