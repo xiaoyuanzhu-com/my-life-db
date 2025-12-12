@@ -448,7 +448,9 @@ Open, Pin, Save, Share, Delete
 - Double-click opens modal with full content
 
 **Modal:**
-- Full content with scroll
+- Monaco Editor (lazy-loaded via `React.lazy()`)
+- Read-only mode with syntax highlighting based on file extension
+- No line numbers, system monospace font
 - Touch-friendly close button (top-right)
 - Lazy loads full content when opened
 

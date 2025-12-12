@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '~/components/ui/button';
+import { CodeEditor, getLanguageFromFilename } from '~/components/code-editor';
 
 interface FileViewerProps {
   filePath: string;
@@ -33,7 +34,6 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   const [error, setError] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialMount = useRef(true);
 
   const originalContentRef = useRef<string | undefined>(undefined);
@@ -219,13 +219,12 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   return (
     <div className="h-full w-full min-w-0 flex flex-col">
       {fileType === 'text' && fileData.content !== undefined && (
-        <div className="flex-1 min-h-0 p-4">
-          <textarea
-            ref={textareaRef}
+        <div className="flex-1 min-h-0">
+          <CodeEditor
             value={editedContent}
-            onChange={(e) => handleContentChange(e.target.value)}
-            className="w-full h-full p-2 font-mono text-sm bg-background border-0 resize-none focus:outline-none"
-            spellCheck={false}
+            onChange={handleContentChange}
+            language={getLanguageFromFilename(fileData.name)}
+            onSave={handleSave}
           />
         </div>
       )}

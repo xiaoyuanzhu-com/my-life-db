@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,36 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps } from '../types';
 import { fetchFullContent } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
+
+const CodeEditor = lazy(() =>
+  import('~/components/code-editor').then((mod) => ({
+    default: mod.CodeEditor,
+  }))
+);
+
+const getLanguageFromFilename = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const languageMap: Record<string, string> = {
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    json: 'json',
+    md: 'markdown',
+    html: 'html',
+    css: 'css',
+    py: 'python',
+    go: 'go',
+    rs: 'rust',
+    java: 'java',
+    sh: 'shell',
+    yaml: 'yaml',
+    yml: 'yaml',
+    xml: 'xml',
+    sql: 'sql',
+  };
+  return languageMap[ext || ''] || 'plaintext';
+};
 
 interface TextModalProps extends BaseModalProps {
   previewText: string;
@@ -49,15 +79,25 @@ export function TextModal({
           <DialogTitle>{file.name}</DialogTitle>
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {isLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
-          ) : (
-            <div className="prose prose-sm dark:prose-invert max-w-none select-text">
-              <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {displayText}
-              </div>
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Loading...
             </div>
+          ) : (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  Loading editor...
+                </div>
+              }
+            >
+              <CodeEditor
+                value={displayText}
+                language={getLanguageFromFilename(file.name)}
+                readOnly
+              />
+            </Suspense>
           )}
         </div>
       </DialogContent>
