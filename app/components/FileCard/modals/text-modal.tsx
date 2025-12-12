@@ -55,7 +55,6 @@ export function TextModal({
 }: TextModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [editedContent, setEditedContent] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   // Reset edited content when modal opens with new file
   useEffect(() => {
@@ -84,17 +83,15 @@ export function TextModal({
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!editedContent || isSaving) return;
+    if (!editedContent) return;
 
-    setIsSaving(true);
     const success = await saveFileContent(file.path, editedContent);
-    setIsSaving(false);
 
     if (success) {
       onFullContentLoaded(editedContent);
       setEditedContent(null);
     }
-  }, [editedContent, isSaving, file.path, onFullContentLoaded]);
+  }, [editedContent, file.path, onFullContentLoaded]);
 
   const handleClose = useCallback((isOpen: boolean) => {
     if (!isOpen && hasUnsavedChanges) {
@@ -139,18 +136,6 @@ export function TextModal({
             </Suspense>
           )}
         </div>
-        {hasUnsavedChanges && (
-          <div className="px-4 pb-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Unsaved changes</span>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );
