@@ -8,19 +8,26 @@
   - [2. System Architecture](#2-system-architecture)
     - [2.1 Layered Flow](#21-layered-flow)
     - [2.2 Module Responsibilities](#22-module-responsibilities)
-  - [3. Technology Stack](#3-technology-stack)
-  - [4. Data Models](#4-data-models)
-  - [5. API Specifications](#5-api-specifications)
-  - [6. Design Decisions](#6-design-decisions)
-  - [7. Feature Designs](#7-feature-designs)
-    - [7.1 Inbox](#71-inbox)
-    - [7.2 Library](#72-library)
-    - [7.3 Digesters](#73-digesters)
-    - [7.4 Search](#74-search)
-    - [7.5 File System Scan](#75-file-system-scan)
-    - [7.6 Task Queue](#76-task-queue)
-    - [7.7 Misc](#77-misc)
-  - [8. UI Overview](#8-ui-overview)
+  - [3. Server Runtime & Lifecycle](#3-server-runtime--lifecycle)
+    - [3.1 Process Architecture](#31-process-architecture)
+    - [3.2 Entry Point](#32-entry-point)
+    - [3.3 Initialization Sequence](#33-initialization-sequence)
+    - [3.4 Graceful Shutdown](#34-graceful-shutdown)
+    - [3.5 HMR Behavior](#35-hmr-behavior)
+    - [3.6 Real-time Updates](#36-real-time-updates)
+  - [4. Technology Stack](#4-technology-stack)
+  - [5. Data Models](#5-data-models)
+  - [6. API Specifications](#6-api-specifications)
+  - [7. Design Decisions](#7-design-decisions)
+  - [8. Feature Designs](#8-feature-designs)
+    - [8.1 Inbox](#81-inbox)
+    - [8.2 Library](#82-library)
+    - [8.3 Digesters](#83-digesters)
+    - [8.4 Search](#84-search)
+    - [8.5 File System Scan](#85-file-system-scan)
+    - [8.6 Task Queue](#86-task-queue)
+    - [8.7 Misc](#87-misc)
+  - [9. UI Overview](#9-ui-overview)
 
 ---
 
@@ -99,13 +106,130 @@ graph LR
 
 ---
 
-## 3. Technology Stack
+## 3. Server Runtime & Lifecycle
 
-Single stack across client and server: Next.js 15 App Router with React 19 + TypeScript, Tailwind + shadcn UI primitives, Node 20 runtime with better-sqlite3 + Drizzle for SQLite access, optional Meilisearch for keyword search, and zero additional backend services.
+### 3.1 Process Architecture
+
+The application runs as a **single Node.js process** that handles both HTTP requests and background services:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Node.js Process                          │
+│  ┌─────────────────┐  ┌──────────────────────────────────┐  │
+│  │  Express Server │  │     Background Services          │  │
+│  │  ─────────────  │  │  ────────────────────────────    │  │
+│  │  • API Routes   │  │  • FileSystemWatcher (chokidar)  │  │
+│  │  • SSR/Hydrate  │  │  • TaskWorker (polling loop)     │  │
+│  │  • Static Files │  │  • DigestSupervisor              │  │
+│  │                 │  │  • PeriodicScanner               │  │
+│  └─────────────────┘  └──────────────────────────────────┘  │
+│                              │                              │
+│                              ▼                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │                     SQLite (WAL)                     │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why single process:**
+- Simplicity: No IPC, no separate worker deployment
+- SQLite: better-sqlite3 is synchronous and single-connection friendly
+- Local-first: All data is on the same machine, no network overhead
+- Sufficient for personal use with moderate load
+
+### 3.2 Entry Point
+
+A unified `server.js` handles both development and production modes:
+
+```javascript
+// Development: Vite middleware for HMR
+const viteDevServer = await vite.createServer({ server: { middlewareMode: true } });
+app.use(viteDevServer.middlewares);
+app.use(createRequestHandler({
+  build: () => viteDevServer.ssrLoadModule("virtual:react-router/server-build")
+}));
+
+// Production: Static assets + compiled build
+app.use(express.static("build/client"));
+app.use(createRequestHandler({ build: await import("./build/server/index.js") }));
+```
+
+**npm scripts:**
+- `npm run dev` → `node server.js` (development with HMR)
+- `npm run build` → `react-router build` (compile for production)
+- `npm start` → `NODE_ENV=production node server.js` (production)
+
+### 3.3 Initialization Sequence
+
+On server start, `initializeApp()` runs exactly once:
+
+```
+1. Database connection (lazy, on first query)
+2. Run migrations (schema_version table)
+3. initializeDigesters() - register digester implementations
+4. initializeTaskQueue() - start worker polling loop
+5. startFileSystemWatcher() - chokidar watches MY_DATA_DIR
+6. startPeriodicScanner() - hourly full filesystem scan
+7. startDigestSupervisor() - background digest processing
+8. registerShutdownHooks() - SIGTERM/SIGINT handlers
+```
+
+Services use `globalThis` guards to prevent duplicate initialization during HMR in development.
+
+### 3.4 Graceful Shutdown
+
+On SIGTERM/SIGINT:
+
+```
+1. stopDigestSupervisor() - stop processing loop
+2. stopFileSystemWatcher() - close chokidar
+3. stopPeriodicScanner() - clear interval
+4. shutdownWorker() - wait for active tasks (5s timeout)
+5. Close Vite dev server (if running)
+6. Close Express server
+7. process.exit(0)
+```
+
+### 3.5 HMR Behavior
+
+| What changes | What happens |
+|--------------|--------------|
+| React components | Hot reloaded in browser instantly |
+| Route loaders/actions | Reloaded via `ssrLoadModule` on next request |
+| `app/.server/*` modules | Reloaded on next request |
+| `server.js` | Requires manual restart |
+| Initialization code | Requires manual restart |
+
+Background services (file watcher, task worker, etc.) are long-running and don't restart on HMR. Changes to their configuration require a full server restart.
+
+### 3.6 Real-time Updates
+
+The `FileSystemWatcher` detects file changes and broadcasts notifications via Server-Sent Events:
+
+```
+File saved → chokidar detects → upsert DB → notificationService.notify()
+                                                      │
+                                                      ▼
+                                          SSE stream → browser
+                                                      │
+                                                      ▼
+                                          useInboxNotifications hook
+                                                      │
+                                                      ▼
+                                          InboxFeed re-fetches data
+```
+
+Notification types: `inbox-created`, `inbox-updated`, `inbox-deleted`, `pin-changed`
 
 ---
 
-## 4. Data Models
+## 4. Technology Stack
+
+Single stack across client and server: React Router 7 with React 19 + TypeScript, Tailwind + shadcn UI primitives, Node 20 runtime with better-sqlite3 for SQLite access, optional Meilisearch for keyword search, and zero additional backend services.
+
+---
+
+## 5. Data Models
 
 Entries, spaces, clusters, insights, and principles no longer exist. The database now mirrors the filesystem (`files`), digest output (`digests` + `sqlar`), search replicas (`meili_documents`), operational state (`tasks`), user preferences (`settings`), and schema tracking (`schema_version`).
 
@@ -203,7 +327,7 @@ classDiagram
 
 ---
 
-## 5. API Specifications
+## 6. API Specifications
 
 | Endpoint | Description | Notes |
 |----------|-------------|-------|
@@ -221,7 +345,7 @@ classDiagram
 
 ---
 
-## 6. Design Decisions
+## 7. Design Decisions
 
 | Topic | Options Considered | Decision (with rationale) |
 |-------|--------------------|---------------------------|
@@ -234,21 +358,21 @@ classDiagram
 
 ---
 
-## 7. Feature Designs
+## 8. Feature Designs
 
-### 7.1 Inbox
+### 8.1 Inbox
 
 - `POST /api/inbox` calls `saveToInbox`, writes files into `data/inbox/`, and immediately indexes the top-level folder/file in `files`.
 - `GET /api/inbox` filters `listFilesWithDigests('inbox/')` to only show top-level entries, attaches short text previews via `readPrimaryText`, and returns screenshot digests when available.
 - Digest recompute buttons (via `/api/digest/...`) work because every row is addressed by path rather than synthetic IDs, so renames and slugging remain traceable.
 
-### 7.2 Library
+### 8.2 Library
 
 - The stateful library page (`src/app/library/page.tsx`) keeps `openedFiles`, `activeFile`, and expanded folder sets in `localStorage` (`library:*` keys) to survive reloads.
 - `FileTree` lazily fetches nodes through `/api/library/tree`, `FileViewer` streams content via `/api/library/file`, and `FileTabs` mirrors open documents so users can treat the page like a mini IDE.
 - Deep linking (`/library?open=notes/foo.md`) preloads tabs, and every interaction calls `expandParentFolders` to auto-open the correct tree nodes.
 
-### 7.3 Digesters
+### 8.3 Digesters
 
 - **Architecture:** Registry-based sequential executor. `DigesterRegistry` stores implementations (URL crawler → summary → tagging → slugging) and each digester self-filters via `canDigest`.
 - **Interface:** Every digester exposes `id`, `produces`, optional `requires`, and `digest()` returning the digests it created. Binary outputs land in SQLAR with the `{path_hash}/{digest_type}/filename.ext` convention.
@@ -262,24 +386,24 @@ classDiagram
   - Track per-file attempt counts and cap/slow retries to avoid hot-looping permanent failures.
   - Surface digest supervisor health metrics (processed counts, failure streaks) via `/api/tasks` or a dedicated endpoint for easier monitoring.
 
-### 7.4 Search
+### 8.4 Search
 
 - Unified search lives at `/api/search` and `/components/search-results.tsx`.
 - All behavioral details (ranking, debounce strategy, UX flows) are specified in [docs/search-design.md](./search-design.md); this document only tracks how search integrates with the file-centric data model.
 
-### 7.5 File System Scan
+### 8.5 File System Scan
 
 - `startPeriodicScanner()` runs `scanLibrary()` to walk every non-reserved folder, hash sub-10MB files, and upsert `files` rows with timestamps.
 - Scans skip hidden folders, respect reserved names (e.g., `app/`, `.git`), and reuse stored hashes to avoid reading unchanged binaries.
 - Manual rescans can pass `force=true` to refresh metadata when users rewire directories outside the app.
 
-### 7.6 Task Queue
+### 8.6 Task Queue
 
 - The embedded queue (`src/lib/task-queue/*`) stores tasks in SQLite, exposes HTTP endpoints for inspection, and runs a worker loop inside the Next.js server process.
 - Tasks transition through `pending → enriching → enriched/failed/skipped`, mirroring digest statuses so the UI can show unified progress bars.
 - Retry logic uses exponential backoff with jitter, and handlers (e.g., `digest_url_crawl`, `digest_url_slug`) are pure functions that can be re-run without side effects because inputs are file paths.
 
-### 7.7 Misc
+### 8.7 Misc
 
 - **Schema evolution:** Migrations append to `schema_version`, and UI badges draw attention to stale records so users can trigger re-processing.
 - **Settings + vendors:** `/api/settings` persists data dir overrides, Meilisearch hosts, AI vendor preferences, and log levels; initialization (`src/lib/init.ts`) reads them to configure services.
@@ -287,7 +411,7 @@ classDiagram
 
 ---
 
-## 8. UI Overview
+## 9. UI Overview
 
 - **Home (`src/app/page.tsx`):** Chat-like interface with two-container layout: (1) scrollable feed area displaying either `InboxFeed` or `SearchResults` based on search state, and (2) fixed `OmniInput` at bottom with border-top separator. The feed shows newest items at bottom (chat-style ordering) with smart timestamps ("16:04", "Yesterday 23:10", "10/16 09:33") centered above each card. Infinite scroll loads older items in batches when scrolling up. Cards use intrinsic sizing without fixed aspect ratios, adapting to content naturally. Search seamlessly replaces inbox when user types 2+ characters.
 - **OmniInput (`src/components/omni-input.tsx`):** Compact 1-line composer (40px min-height) that persists text in `sessionStorage`, detects input type, performs adaptive debounce search, accepts drag-and-drop files, and notifies parent of search state changes via callback. Input stays visible while feed scrolls independently above it.

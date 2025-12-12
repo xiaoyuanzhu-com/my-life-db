@@ -124,6 +124,8 @@ export class FileSystemWatcher extends EventEmitter {
     // Get relative path from DATA_ROOT
     const relativePath = path.relative(DATA_ROOT, fullPath);
 
+    log.debug({ path: relativePath, eventType }, 'file event received');
+
     // Clear existing debounce timer
     const existingTimer = this.debounceTimers.get(relativePath);
     if (existingTimer) {
@@ -202,7 +204,12 @@ export class FileSystemWatcher extends EventEmitter {
       if (!isNew) {
         // Check if hash changed
         if (hash && existing.hash) {
+          // Both hashes exist - compare them
           contentChanged = hash !== existing.hash;
+        } else if (hash && !existing.hash) {
+          // We have a new hash but no existing hash - assume changed
+          // This handles files that were added before hashing was implemented
+          contentChanged = true;
         } else if (stats.size !== existing.size) {
           // Fallback: size changed (for large files without hash)
           contentChanged = true;
@@ -235,6 +242,10 @@ export class FileSystemWatcher extends EventEmitter {
 
       // Emit notification for inbox files (immediate UI update)
       // File changes should update UI immediately, digestion happens in background
+      // Note: We notify on any change event, not just contentChanged, because:
+      // 1. The watcher only fires on actual file modifications
+      // 2. The textPreview in the database is always updated
+      // 3. The UI should refresh to show the latest content
       if (relativePath.startsWith('inbox/')) {
         if (isNew) {
           notificationService.notify({
@@ -242,7 +253,9 @@ export class FileSystemWatcher extends EventEmitter {
             path: relativePath,
             timestamp: new Date().toISOString(),
           });
-        } else if (contentChanged) {
+        } else {
+          // Always notify on file modification for inbox files
+          // This ensures UI refresh even if content hash couldn't be compared
           notificationService.notify({
             type: 'inbox-updated',
             path: relativePath,
