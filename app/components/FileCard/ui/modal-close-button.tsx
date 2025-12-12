@@ -1,12 +1,13 @@
-import { X } from 'lucide-react';
+import { X, Circle } from 'lucide-react';
 import { cn } from '~/lib/utils';
 
 interface ModalCloseButtonProps {
   onClick: () => void;
   className?: string;
+  isDirty?: boolean;
 }
 
-export function ModalCloseButton({ onClick, className }: ModalCloseButtonProps) {
+export function ModalCloseButton({ onClick, className, isDirty }: ModalCloseButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -22,7 +23,11 @@ export function ModalCloseButton({ onClick, className }: ModalCloseButtonProps) 
       )}
       aria-label="Close"
     >
-      <X className="w-5 h-5" />
+      {isDirty ? (
+        <Circle className="w-4 h-4 fill-current" />
+      ) : (
+        <X className="w-5 h-5" />
+      )}
     </button>
   );
 }

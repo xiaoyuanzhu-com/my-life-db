@@ -1,10 +1,21 @@
-import { useEffect, useState, lazy, Suspense, useCallback } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from '~/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { Button } from '~/components/ui/button';
 import type { BaseModalProps } from '../types';
 import { fetchFullContent, saveFileContent } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
@@ -55,6 +66,10 @@ export function TextModal({
 }: TextModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [editedContent, setEditedContent] = useState<string | null>(null);
+  const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+
+  // Use ref for save handler so Monaco keybinding always calls latest version
+  const saveHandlerRef = useRef<() => Promise<void>>(async () => {});
 
   // Reset edited content when modal opens with new file
   useEffect(() => {
@@ -93,50 +108,105 @@ export function TextModal({
     }
   }, [editedContent, file.path, onFullContentLoaded]);
 
-  const handleClose = useCallback((isOpen: boolean) => {
-    if (!isOpen && hasUnsavedChanges) {
-      const confirmed = window.confirm('You have unsaved changes. Are you sure you want to close?');
-      if (!confirmed) return;
-    }
-    if (!isOpen) {
+  // Keep ref updated with latest save handler
+  useEffect(() => {
+    saveHandlerRef.current = handleSave;
+  }, [handleSave]);
+
+  // Stable callback for Monaco that uses the ref
+  const handleSaveFromEditor = useCallback(() => {
+    saveHandlerRef.current?.();
+  }, []);
+
+  const handleCloseClick = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setIsCloseDialogOpen(true);
+    } else {
       setEditedContent(null);
+      onOpenChange(false);
     }
-    onOpenChange(isOpen);
   }, [hasUnsavedChanges, onOpenChange]);
 
+  const confirmClose = useCallback(() => {
+    setIsCloseDialogOpen(false);
+    setEditedContent(null);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const cancelClose = useCallback(() => {
+    setIsCloseDialogOpen(false);
+  }, []);
+
+  const saveAndClose = useCallback(async () => {
+    if (editedContent) {
+      const success = await saveFileContent(file.path, editedContent);
+      if (success) {
+        onFullContentLoaded(editedContent);
+      }
+    }
+    setIsCloseDialogOpen(false);
+    setEditedContent(null);
+    onOpenChange(false);
+  }, [editedContent, file.path, onFullContentLoaded, onOpenChange]);
+
+  // Handle Dialog's onOpenChange (e.g., pressing Escape)
+  const handleDialogOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      handleCloseClick();
+    }
+  }, [handleCloseClick]);
+
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent
-        className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
-        showCloseButton={false}
-      >
-        <VisuallyHidden>
-          <DialogTitle>{file.name}</DialogTitle>
-        </VisuallyHidden>
-        <ModalCloseButton onClick={() => handleClose(false)} />
-        <div className="flex-1 min-h-0 overflow-hidden p-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Loading...
-            </div>
-          ) : (
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Loading editor...
-                </div>
-              }
-            >
-              <CodeEditor
-                value={displayText}
-                onChange={handleChange}
-                onSave={handleSave}
-                language={getLanguageFromFilename(file.name)}
-              />
-            </Suspense>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+        <DialogContent
+          className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
+          showCloseButton={false}
+        >
+          <VisuallyHidden>
+            <DialogTitle>{file.name}</DialogTitle>
+          </VisuallyHidden>
+          <ModalCloseButton onClick={handleCloseClick} isDirty={hasUnsavedChanges} />
+          <div className="flex-1 min-h-0 overflow-hidden p-4">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Loading...
+              </div>
+            ) : (
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Loading editor...
+                  </div>
+                }
+              >
+                <CodeEditor
+                  value={displayText}
+                  onChange={handleChange}
+                  onSave={handleSaveFromEditor}
+                  language={getLanguageFromFilename(file.name)}
+                />
+              </Suspense>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. What would you like to do?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelClose}>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={confirmClose}>Discard</Button>
+            <AlertDialogAction onClick={saveAndClose}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
