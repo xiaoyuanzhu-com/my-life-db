@@ -4,9 +4,9 @@
  */
 
 import { startWorker, shutdownWorker } from './worker';
-import '@/lib/digest/task-handler';
-import '@/lib/search/meili-tasks';
-import '@/lib/search/qdrant-tasks';
+import '~/.server/digest/task-handler';
+import '~/.server/search/meili-tasks';
+import '~/.server/search/qdrant-tasks';
 import { ensureTaskHandlersRegistered } from '~/.server/task-queue/handler-registry';
 import { getLogger } from '~/.server/log/logger';
 
