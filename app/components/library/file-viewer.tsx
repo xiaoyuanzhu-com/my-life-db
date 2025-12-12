@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '~/components/ui/button';
-import { CodeEditor, getLanguageFromFilename } from '~/components/code-editor';
+import { TextEditor, getLanguageFromFilename } from '~/components/text-editor';
 
 interface FileViewerProps {
   filePath: string;
@@ -220,7 +220,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     <div className="h-full w-full min-w-0 flex flex-col">
       {fileType === 'text' && fileData.content !== undefined && (
         <div className="flex-1 min-h-0">
-          <CodeEditor
+          <TextEditor
             value={editedContent}
             onChange={handleContentChange}
             language={getLanguageFromFilename(fileData.name)}

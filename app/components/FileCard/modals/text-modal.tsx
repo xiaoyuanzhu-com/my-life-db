@@ -20,9 +20,9 @@ import type { BaseModalProps } from '../types';
 import { fetchFullContent, saveFileContent } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 
-const CodeEditor = lazy(() =>
-  import('~/components/code-editor').then((mod) => ({
-    default: mod.CodeEditor,
+const TextEditor = lazy(() =>
+  import('~/components/text-editor').then((mod) => ({
+    default: mod.TextEditor,
   }))
 );
 
@@ -180,7 +180,7 @@ export function TextModal({
                   </div>
                 }
               >
-                <CodeEditor
+                <TextEditor
                   value={displayText}
                   onChange={handleChange}
                   onSave={handleSaveFromEditor}

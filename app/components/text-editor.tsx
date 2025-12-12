@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import Editor, { type OnMount, type OnChange } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 
-interface CodeEditorProps {
+interface TextEditorProps {
   value: string;
   onChange?: (value: string) => void;
   language?: string;
@@ -86,14 +86,14 @@ function useTheme(): 'vs' | 'vs-dark' {
   return theme;
 }
 
-export function CodeEditor({
+export function TextEditor({
   value,
   onChange,
   language = 'plaintext',
   readOnly = false,
   className,
   onSave,
-}: CodeEditorProps) {
+}: TextEditorProps) {
   const theme = useTheme();
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
