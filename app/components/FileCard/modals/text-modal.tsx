@@ -160,14 +160,14 @@ export function TextModal({
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent
-          className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
+          className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 overflow-hidden border-0"
           showCloseButton={false}
         >
           <VisuallyHidden>
             <DialogTitle>{file.name}</DialogTitle>
           </VisuallyHidden>
           <ModalCloseButton onClick={handleCloseClick} isDirty={hasUnsavedChanges} />
-          <div className="flex-1 min-h-0 overflow-hidden p-1">
+          <div className="h-full w-full overflow-hidden rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e]">
             {isLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 Loading...

@@ -147,14 +147,14 @@ export function TextEditor({
         insertSpaces: true,
         renderWhitespace: 'selection',
         bracketPairColorization: { enabled: true },
-        padding: { top: 8, bottom: 8 },
+        padding: { top: 12, bottom: 12 },
         scrollbar: {
           verticalScrollbarSize: 10,
           horizontalScrollbarSize: 10,
         },
         folding: false,
         glyphMargin: false,
-        lineDecorationsWidth: 0,
+        lineDecorationsWidth: 12,
         lineNumbersMinChars: 0,
       }}
       loading={
