@@ -167,7 +167,7 @@ export function TextModal({
             <DialogTitle>{file.name}</DialogTitle>
           </VisuallyHidden>
           <ModalCloseButton onClick={handleCloseClick} isDirty={hasUnsavedChanges} />
-          <div className="flex-1 min-h-0 overflow-hidden p-4">
+          <div className="flex-1 min-h-0 overflow-hidden p-1">
             {isLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 Loading...
