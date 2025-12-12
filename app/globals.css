@@ -194,3 +194,10 @@
 .monaco-editor .scrollbar .slider {
   border-radius: 5px;
 }
+
+/* Content text - monospace font for user content (not UI labels) */
+@layer utilities {
+  .font-content {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+}
