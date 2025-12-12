@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps } from '../types';
-import { fetchFullContent } from '../utils';
+import { fetchFullContent, saveFileContent } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 
 const CodeEditor = lazy(() =>
@@ -54,6 +54,15 @@ export function TextModal({
   onFullContentLoaded,
 }: TextModalProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [editedContent, setEditedContent] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Reset edited content when modal opens with new file
+  useEffect(() => {
+    if (open) {
+      setEditedContent(null);
+    }
+  }, [open, file.path]);
 
   useEffect(() => {
     if (open && !fullContent) {
@@ -67,10 +76,39 @@ export function TextModal({
     }
   }, [open, fullContent, file.path, onFullContentLoaded]);
 
-  const displayText = fullContent || previewText;
+  const displayText = editedContent ?? fullContent ?? previewText;
+  const hasUnsavedChanges = editedContent !== null && editedContent !== fullContent;
+
+  const handleChange = useCallback((value: string) => {
+    setEditedContent(value);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!editedContent || isSaving) return;
+
+    setIsSaving(true);
+    const success = await saveFileContent(file.path, editedContent);
+    setIsSaving(false);
+
+    if (success) {
+      onFullContentLoaded(editedContent);
+      setEditedContent(null);
+    }
+  }, [editedContent, isSaving, file.path, onFullContentLoaded]);
+
+  const handleClose = useCallback((isOpen: boolean) => {
+    if (!isOpen && hasUnsavedChanges) {
+      const confirmed = window.confirm('You have unsaved changes. Are you sure you want to close?');
+      if (!confirmed) return;
+    }
+    if (!isOpen) {
+      setEditedContent(null);
+    }
+    onOpenChange(isOpen);
+  }, [hasUnsavedChanges, onOpenChange]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
         className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 flex flex-col"
         showCloseButton={false}
@@ -78,8 +116,8 @@ export function TextModal({
         <VisuallyHidden>
           <DialogTitle>{file.name}</DialogTitle>
         </VisuallyHidden>
-        <ModalCloseButton onClick={() => onOpenChange(false)} />
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <ModalCloseButton onClick={() => handleClose(false)} />
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
           {isLoading ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Loading...
@@ -94,12 +132,25 @@ export function TextModal({
             >
               <CodeEditor
                 value={displayText}
+                onChange={handleChange}
+                onSave={handleSave}
                 language={getLanguageFromFilename(file.name)}
-                readOnly
               />
             </Suspense>
           )}
         </div>
+        {hasUnsavedChanges && (
+          <div className="px-4 pb-4 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Unsaved changes</span>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

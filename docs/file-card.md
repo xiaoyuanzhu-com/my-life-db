@@ -449,10 +449,14 @@ Open, Pin, Save, Share, Delete
 
 **Modal:**
 - Monaco Editor (lazy-loaded via `React.lazy()`)
-- Read-only mode with syntax highlighting based on file extension
+- Editable with syntax highlighting based on file extension
+- Supports Cmd/Ctrl+S to save changes
+- Shows "Unsaved changes" indicator with Save button when modified
+- Warns before closing with unsaved changes
 - No line numbers, system monospace font
 - Touch-friendly close button (top-right)
 - Lazy loads full content when opened
+- Supported extensions: md, txt, json, yaml, yml, xml, html, css, scss, less, js, jsx, ts, tsx, py, rb, go, rs, java, c, cpp, h, hpp, sh, bash, zsh, sql, php, swift, kt, scala, lua, r
 
 **Context Menu:**
 Open, Pin, Copy, Delete

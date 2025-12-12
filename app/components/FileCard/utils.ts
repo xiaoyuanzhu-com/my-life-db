@@ -301,6 +301,24 @@ export async function fetchFullContent(path: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * Save file content
+ * Returns true if successful
+ */
+export async function saveFileContent(path: string, content: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/raw/${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain' },
+      body: content,
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Failed to save file:', error);
+    return false;
+  }
+}
+
 // =============================================================================
 // Device Detection
 // =============================================================================
