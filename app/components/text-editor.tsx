@@ -156,6 +156,7 @@ export function TextEditor({
         glyphMargin: false,
         lineDecorationsWidth: 12,
         lineNumbersMinChars: 0,
+        renderLineHighlight: 'none',
       }}
       loading={
         <div className="flex items-center justify-center h-full text-muted-foreground">
