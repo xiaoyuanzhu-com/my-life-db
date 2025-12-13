@@ -31,12 +31,12 @@ const log = getLogger({ module: 'DigestCoordinator' });
  * This ensures dependent digesters re-process with updated content
  */
 const CASCADING_RESETS: Record<string, string[]> = {
-  'url-crawl-content': ['url-crawl-summary', 'tags', 'slug', 'search-keyword', 'search-semantic'],
-  'doc-to-markdown': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'image-ocr': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'image-captioning': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'url-crawl-summary': ['tags', 'slug'],
+  'url-crawl-content': ['url-crawl-summary', 'tags', 'search-keyword', 'search-semantic'],
+  'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
+  'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
+  'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['tags', 'search-keyword', 'search-semantic'],
+  'url-crawl-summary': ['tags'],
 };
 
 /**

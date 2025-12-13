@@ -9,6 +9,7 @@ import { INBOX_DIR, generateId } from '~/.server/fs/storage';
 import { upsertFileRecord } from '~/.server/db/files';
 import { ensureAllDigesters } from '~/.server/digest/ensure';
 import { getLogger } from '~/.server/log/logger';
+import { generateTextFilename } from '~/.server/fs/generate-text-filename';
 
 const log = getLogger({ module: 'SaveToInbox' });
 
@@ -60,12 +61,14 @@ export async function saveToInbox(input: SaveToInboxInput): Promise<SaveToInboxR
   const savedPaths: string[] = [];
   const savedFiles: Array<{ name: string; size: number; mimeType: string; hash?: string }> = [];
 
-  // 1. Save text first (if provided) with UUID name
+  // 1. Save text first (if provided) with generated or UUID name
   if (text && text.trim().length > 0) {
-    const uuid = generateId();
+    // Try to generate a human-readable filename, fallback to UUID
+    const generatedName = generateTextFilename(text);
+    const baseName = generatedName ?? generateId();
     const textBuffer = Buffer.from(text, 'utf-8');
     const textFile = {
-      filename: `${uuid}.md`,
+      filename: `${baseName}.md`,
       buffer: textBuffer,
       mimeType: 'text/markdown',
       size: textBuffer.length,

@@ -12,7 +12,6 @@ import {
   readDigestSummary,
   readDigestTags,
   readDigestScreenshot,
-  readDigestSlug,
 } from "~/.server/inbox/digest-artifacts";
 
 const log = getLogger({ module: "ApiInboxById" });
@@ -28,12 +27,11 @@ export async function loader({ params }: LoaderFunctionArgs) {
     }
 
     const enrichment = getDigestStatusView(filePath);
-    const [primaryText, summary, tags, screenshot, slug] = await Promise.all([
+    const [primaryText, summary, tags, screenshot] = await Promise.all([
       readPrimaryText(filePath),
       readDigestSummary(filePath),
       readDigestTags(filePath),
       readDigestScreenshot(filePath),
-      readDigestSlug(filePath),
     ]);
 
     return Response.json({
@@ -45,7 +43,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
       updatedAt: file.modifiedAt,
       enrichment,
       primaryText,
-      digest: { summary, tags, screenshot, slug },
+      digest: { summary, tags, screenshot },
     });
   } catch (error) {
     log.error({ err: error }, "fetch inbox item failed");

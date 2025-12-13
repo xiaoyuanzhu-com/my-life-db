@@ -13,7 +13,6 @@ import { SpeakerEmbeddingDigester } from './digesters/speaker-embedding';
 import { ImageOcrDigester } from './digesters/image-ocr';
 import { ImageCaptioningDigester } from './digesters/image-captioning';
 import { TagsDigester } from './digesters/tags';
-import { SlugDigester } from './digesters/slug';
 import { SearchKeywordDigester } from './digesters/search-keyword';
 import { SearchSemanticDigester } from './digesters/search-semantic';
 import { ensureAllDigestersForExistingFiles } from './ensure';
@@ -76,15 +75,11 @@ export function initializeDigesters(): void {
   //    Produces: tags
   globalDigesterRegistry.register(new TagsDigester());
 
-  // 10. SlugDigester (prefers summary, falls back to content-md)
-  //     Produces: slug
-  globalDigesterRegistry.register(new SlugDigester());
-
-  // 11. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  // 10. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-keyword
   globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 12. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  // 11. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-semantic
   globalDigesterRegistry.register(new SearchSemanticDigester());
 

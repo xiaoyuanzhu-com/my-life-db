@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { DATA_ROOT } from '~/.server/fs/storage';
-import type { InboxDigestScreenshot, InboxDigestSlug } from '~/types';
+import type { InboxDigestScreenshot } from '~/types';
 import { getDigestByPathAndDigester } from '~/.server/db/digests';
 
 /**
@@ -138,38 +138,6 @@ export async function readDigestScreenshot(filePath: string): Promise<InboxDiges
     mimeType,
     src: `/sqlar/${screenshotDigest.sqlarName}`,
   };
-}
-
-/**
- * Read slug digest from database
- *
- * @param filePath - Relative path from DATA_ROOT (e.g., 'inbox/uuid-folder')
- */
-export async function readDigestSlug(filePath: string): Promise<InboxDigestSlug | null> {
-  const slugDigest = getDigestByPathAndDigester(filePath, 'slug');
-  if (!slugDigest?.content) return null;
-
-  try {
-    const payload = JSON.parse(slugDigest.content) as {
-      slug?: unknown;
-      title?: unknown;
-      source?: unknown;
-      generatedAt?: unknown;
-    };
-
-    if (typeof payload.slug !== 'string' || payload.slug.trim().length === 0) {
-      return null;
-    }
-
-    return {
-      slug: payload.slug.trim(),
-      title: typeof payload.title === 'string' ? payload.title : undefined,
-      source: typeof payload.source === 'string' ? payload.source : undefined,
-      generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /**

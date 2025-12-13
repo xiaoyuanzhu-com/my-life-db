@@ -3,10 +3,9 @@ import { useParams, Link } from "react-router";
 import { CrawlButton } from "~/components/inbox/crawl-button";
 import { SummaryButton } from "~/components/inbox/summary-button";
 import { TaggingButton } from "~/components/inbox/tagging-button";
-import { SlugButton } from "~/components/inbox/slug-button";
 import { DigestCoordinator } from "~/components/inbox/digest-coordinator";
 import { IndexButton } from "~/components/inbox/index-button";
-import type { InboxDigestScreenshot, InboxDigestSlug, DigestStatusSummary as DigestStatusView } from "~/types";
+import type { InboxDigestScreenshot, DigestStatusSummary as DigestStatusView } from "~/types";
 
 interface InboxDetail {
   path: string;
@@ -17,7 +16,6 @@ interface InboxDetail {
     summary: string | null;
     tags: string[] | null;
     screenshot: InboxDigestScreenshot | null;
-    slug: InboxDigestSlug | null;
   };
   enrichment: DigestStatusView | null;
 }
@@ -99,7 +97,6 @@ export default function InboxDetailPage() {
             </>
           )}
           <IndexButton itemId={slug!} />
-          <SlugButton itemId={slug!} />
         </div>
 
         <section className="bg-card rounded-lg border">
@@ -123,7 +120,6 @@ export default function InboxDetailPage() {
           initialSummary={data.digest.summary}
           initialTags={data.digest.tags}
           initialScreenshot={data.digest.screenshot}
-          initialSlug={data.digest.slug}
           initialStatus={data.enrichment}
         />
       </div>

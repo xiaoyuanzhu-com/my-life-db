@@ -252,10 +252,3 @@ export interface InboxDigestScreenshot {
   mimeType: string;
   filename: string;
 }
-
-export interface InboxDigestSlug {
-  slug: string;
-  title?: string;
-  source?: string;
-  generatedAt?: string;
-}

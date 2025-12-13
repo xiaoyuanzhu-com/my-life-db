@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import type { InboxDigestScreenshot, InboxDigestSlug, DigestStatusSummary as DigestStatusView, DigestStageStatusSummary as DigestStageStatus } from '~/types';
+import type { InboxDigestScreenshot, DigestStatusSummary as DigestStatusView, DigestStageStatusSummary as DigestStageStatus } from '~/types';
 import { cn } from '~/lib/utils';
 import { DigestProgress } from './digest-progress';
 
@@ -26,7 +26,6 @@ interface DigestCoordinatorProps {
   initialSummary: string | null;
   initialTags: string[] | null;
   initialScreenshot: InboxDigestScreenshot | null;
-  initialSlug: InboxDigestSlug | null;
   initialStatus: DigestStatusView | null;
 }
 
@@ -36,7 +35,6 @@ interface InboxDetailResponse {
     summary?: string | null;
     tags?: string[] | null;
     screenshot?: InboxDigestScreenshot | null;
-    slug?: InboxDigestSlug | null;
   };
 }
 
@@ -53,13 +51,11 @@ export function DigestCoordinator({
   initialSummary,
   initialTags,
   initialScreenshot,
-  initialSlug,
   initialStatus,
 }: DigestCoordinatorProps) {
   const [summary, setSummary] = useState<string | null>(initialSummary);
   const [tags, setTags] = useState<string[] | null>(initialTags);
   const [screenshot, setScreenshot] = useState<InboxDigestScreenshot | null>(initialScreenshot);
-  const [slug, setSlug] = useState<InboxDigestSlug | null>(initialSlug);
   const [status, setStatus] = useState<DigestStatusView | null>(initialStatus);
   const [digesters, setDigesters] = useState<DigesterInfo[]>([]);
   const [isDigestButtonBusy, setIsDigestButtonBusy] = useState(false);
@@ -135,13 +131,11 @@ export function DigestCoordinator({
         digestSummary: digest.summary,
         digestTagsCount: Array.isArray(digest.tags) ? digest.tags.length : null,
         hasScreenshot: Boolean(digest.screenshot),
-        slug: digest.slug?.slug ?? null,
         stageCount: statusPayload.status?.stages?.length ?? 0,
       });
       setSummary(digest.summary ?? null);
       setTags(Array.isArray(digest.tags) ? digest.tags : null);
       setScreenshot(digest.screenshot ?? null);
-      setSlug(digest.slug ?? null);
       setStatus(statusPayload.status ?? null);
       setPollError(null);
     } catch (error) {
@@ -219,7 +213,6 @@ export function DigestCoordinator({
     setSummary(null);
     setTags(null);
     setScreenshot(null);
-    setSlug(null);
     log('handleDigestClick triggered');
     try {
       const res = await fetch(`/api/digest/inbox/${itemIdRef.current}`, { method: 'POST' });
@@ -307,34 +300,6 @@ export function DigestCoordinator({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">Tags not generated yet.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="bg-card rounded-lg border">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Slug</h2>
-          <p className="text-xs text-muted-foreground">Generated handle for this digest</p>
-        </div>
-        <div className="p-6 space-y-2">
-          {slug?.slug ? (
-            <>
-              <code className="inline-block rounded bg-muted px-2 py-1 text-xs font-mono text-foreground">
-                {slug.slug}
-              </code>
-              {slug.title && (
-                <p className="text-xs text-muted-foreground">
-                  Title hint: <span className="text-foreground">{slug.title}</span>
-                </p>
-              )}
-              {slug.source && (
-                <p className="text-xs text-muted-foreground">
-                  Source: <span className="text-foreground">{slug.source}</span>
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">Slug not generated yet.</p>
           )}
         </div>
       </section>
