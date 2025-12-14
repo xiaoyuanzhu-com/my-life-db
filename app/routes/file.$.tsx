@@ -163,8 +163,6 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
         ))}
       </div>
     );
-  } else if (digest.digester === "slug" && parsedContent?.slug) {
-    contentBody = <code className="px-1 py-0.5 bg-muted rounded text-xs">{parsedContent.slug}</code>;
   } else if (digest.digester === "search-keyword") {
     if (digest.error) {
       contentBody = (

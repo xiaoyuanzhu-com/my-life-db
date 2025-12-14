@@ -51,7 +51,7 @@ A filesystem-based personal knowledge management system built with Next.js 15, R
 - ✅ **Filesystem-First**: SQLite metadata + file-based storage
 - ✅ **URL Crawling**: Automatic web page crawling with background enrichment
 - ✅ **Task Queue**: Robust background job execution with retry logic
-- ✅ **AI Slug Generation**: Smart naming for saved URLs (with fallbacks)
+- ✅ **Smart Text Filenames**: Human-readable filenames for text saves
 
 ### Coming Soon
 
@@ -133,9 +133,7 @@ When you add a URL to the inbox, the system automatically:
 - Fetches and parses the web page
 - Extracts metadata (title, description, author, etc.)
 - Converts HTML to Markdown
-- Generates a smart slug using AI (falls back to metadata if AI is unavailable)
 - Saves files: `content.html`, `content.md`, `main-content.md`
-- Renames the folder from UUID to human-readable slug
 
 Monitor enrichment with the task queue API:
 ```bash

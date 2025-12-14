@@ -157,17 +157,12 @@ Digesters execute in registration order. Order matters for dependencies:
    - Outputs: `tags`
    - Generates semantic tags for file content
 
-8. **SlugDigester** (depends on summary or content)
-   - Label: "Slug"
-   - Outputs: `slug`
-   - Generates friendly filename for UUID-named inbox items
-
-9. **SearchKeywordDigester** (depends on text content)
+8. **SearchKeywordDigester** (depends on text content)
    - Label: "Keyword Search"
    - Outputs: `search-keyword`
    - Indexes content in Meilisearch for full-text search
 
-10. **SearchSemanticDigester** (depends on text content)
+9. **SearchSemanticDigester** (depends on text content)
     - Label: "Semantic Search"
     - Outputs: `search-semantic`
     - Generates embeddings and indexes in Qdrant for vector search
@@ -363,7 +358,6 @@ Each file type has a deterministic set of digesters that apply to it. This is ba
 | image-captioning | - | - | ✓ | - | - |
 | url-crawl-summary | ✓ | - | - | - | - |
 | tags | ✓ | ✓ | ✓ | ✓ | ✓ |
-| slug | ✓ | ✓ | ✓ | ✓ | ✓ |
 | search-keyword | ✓ | ✓ | ✓ | ✓ | ✓ |
 | search-semantic | ✓ | ✓ | ✓ | ✓ | ✓ |
 
@@ -378,12 +372,12 @@ Each digester declares which downstream digesters should be reset when it comple
 ```typescript
 // Hardcoded reset mappings
 const CASCADING_RESETS: Record<string, string[]> = {
-  'url-crawl-content': ['url-crawl-summary', 'tags', 'slug', 'search-keyword', 'search-semantic'],
-  'doc-to-markdown': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'image-ocr': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'image-captioning': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['tags', 'slug', 'search-keyword', 'search-semantic'],
-  'url-crawl-summary': ['tags', 'slug'],  // Summary can improve tags/slug
+  'url-crawl-content': ['url-crawl-summary', 'tags', 'search-keyword', 'search-semantic'],
+  'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
+  'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
+  'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['tags', 'search-keyword', 'search-semantic'],
+  'url-crawl-summary': ['tags'],  // Summary can improve tags
 };
 ```
 
@@ -400,7 +394,7 @@ When a digester completes:
 **Example Flow (Image with OCR)**:
 1. `image-ocr` runs, finds text "Meeting Notes 2024"
 2. Coordinator sees `image-ocr` completed with content
-3. Resets `tags`, `slug`, `search-keyword`, `search-semantic` to `todo`
+3. Resets `tags`, `search-keyword`, `search-semantic` to `todo`
 4. `tags` runs, generates tags from OCR text
 5. `search-keyword` runs, indexes OCR text
 
@@ -408,13 +402,13 @@ When a digester completes:
 1. `image-ocr` runs, finds no text (content is empty/null)
 2. `image-captioning` runs, generates "A photo of a sunset over the ocean"
 3. Coordinator sees `image-captioning` completed with content
-4. Resets `tags`, `slug`, `search-keyword`, `search-semantic` to `todo`
+4. Resets `tags`, `search-keyword`, `search-semantic` to `todo`
 5. `tags` runs, generates tags from caption
 6. `search-keyword` runs, indexes caption
 
 ## Dependent Digester Behavior
 
-Digesters that depend on text content (tags, slug, search) follow these rules:
+Digesters that depend on text content (tags, search) follow these rules:
 
 ### Always Complete (Never Skip for "No Content")
 
@@ -562,7 +556,7 @@ Coordinator tracks each output independently with its own status.
 
 1. **Order Matters**: Register digesters in dependency order
    - Content-producing digesters first (url-crawl, doc-to-markdown, image-ocr, etc.)
-   - Content-consuming digesters later (tags, slug, search)
+   - Content-consuming digesters later (tags, search)
 
 2. **Check Fresh State**: Always use `existingDigests` parameter passed to your digester
    - Contains latest digest records including earlier digesters in same run

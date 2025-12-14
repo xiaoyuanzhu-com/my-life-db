@@ -7,9 +7,9 @@
  * Digest summary (minimal info from digests table)
  */
 export interface DigestSummary {
-  type: string; // digester name: 'tags', 'slug', 'doc-to-screenshot', etc.
+  type: string; // digester name: 'tags', 'doc-to-screenshot', etc.
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
-  content: string | null; // Text content (summary, JSON for tags/slug)
+  content: string | null; // Text content (summary, JSON for tags)
   sqlarName: string | null; // Filename in SQLAR (for binary digests)
   error: string | null;
   updatedAt: string;

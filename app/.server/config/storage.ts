@@ -58,7 +58,6 @@ export async function loadSettings(): Promise<UserSettings> {
         'url-crawler': getSettingValue('digesters_url_crawler') !== 'false',
         'url-crawl-summary': getSettingValue('digesters_url_crawl_summary') !== 'false',
         'tags': getSettingValue('digesters_tags') !== 'false',
-        'slug': getSettingValue('digesters_slug') !== 'false',
         'search-keyword': getSettingValue('digesters_search_keyword') !== 'false',
         'search-semantic': getSettingValue('digesters_search_semantic') !== 'false',
       },
@@ -121,7 +120,6 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
       setSettingValue('digesters_url_crawler', String(settings.digesters['url-crawler'] ?? true));
       setSettingValue('digesters_url_crawl_summary', String(settings.digesters['url-crawl-summary'] ?? true));
       setSettingValue('digesters_tags', String(settings.digesters['tags'] ?? true));
-      setSettingValue('digesters_slug', String(settings.digesters['slug'] ?? true));
       setSettingValue('digesters_search_keyword', String(settings.digesters['search-keyword'] ?? true));
       setSettingValue('digesters_search_semantic', String(settings.digesters['search-semantic'] ?? true));
     }

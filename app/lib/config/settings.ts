@@ -36,7 +36,6 @@ export interface UserSettings {
     'url-crawl-summary'?: boolean;
     'speech-recognition'?: boolean;
     'tags'?: boolean;
-    'slug'?: boolean;
     'search-keyword'?: boolean;
     'search-semantic'?: boolean;
   };
@@ -111,7 +110,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
     'url-crawl-summary': true,
     'speech-recognition': true,
     'tags': true,
-    'slug': true,
     'search-keyword': true,
     'search-semantic': true,
   },

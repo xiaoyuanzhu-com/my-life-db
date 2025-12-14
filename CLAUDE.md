@@ -67,7 +67,7 @@ MY_DATA_DIR/
    - Updated by library scanner on schedule
 
 2. **digests** - AI-generated content (rebuildable)
-   - Summary, tags, slug, screenshots, crawled content, etc.
+   - Summary, tags, screenshots, crawled content, etc.
    - References files by path (file_path field)
    - Text content stored in `content` field
    - Binary content stored in SQLAR (see below)
@@ -113,7 +113,7 @@ MY_DATA_DIR/
 - No folder creation for new uploads - pure file-based architecture
 
 **Digest Workflow:**
-- Each file path can have multiple digest types (summary, tags, slug, screenshot, content-md)
+- Each file path can have multiple digest types (summary, tags, screenshot, content-md)
 - Digests created on-demand via `/api/digest/{...path}` endpoint (works for any file)
 - Status tracked in digest.status field: pending → enriching → enriched (or failed)
 - Digest IDs generated from file path hash + digest type for stability
