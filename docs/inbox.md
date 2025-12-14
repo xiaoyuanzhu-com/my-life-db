@@ -229,6 +229,65 @@ InboxPage (routes/inbox.tsx)
 
 The `InboxFeed` component is also used on the home page with the same behavior.
 
+## Send Workflow
+
+See [send.md](./send.md) for the complete local-first send workflow design.
+
+### Current Implementation (Server-First)
+
+**Component:** [omni-input.tsx](../app/components/omni-input.tsx)
+
+#### Submit Flow
+
+1. **Validation** (line 241-244)
+   - Requires either text content or files
+   - Shows error if both are empty
+
+2. **Upload Method Selection** (line 253-263)
+   - Uses `TUS_THRESHOLD` (currently 0) to decide upload method
+   - **All files currently use TUS** for progress tracking and resumability
+
+3. **Upload Types**
+
+   **Text Only:**
+   - Uses regular FormData upload to `/api/inbox`
+   - Appends text: `formData.append('text', text)`
+
+   **Files Only:**
+   - Files > threshold → TUS upload
+   - Files ≤ threshold → Regular FormData upload
+   - Each file uploaded individually via TUS protocol
+   - After completion, calls `/api/upload/finalize` with upload IDs
+
+   **Text + Files:**
+   - Uses TUS if any file exceeds threshold
+   - Text included in finalize request: `{ uploads: [...], text: "..." }`
+
+4. **Progress Tracking**
+   - TUS provides upload progress for each file (line 379-390)
+   - Shows percentage in file chips
+   - Button shows "Uploading..." state
+
+5. **Post-Submit Cleanup** (line 265-276)
+   - Clears text content (also clears sessionStorage)
+   - Clears selected files
+   - Resets upload progress
+   - Clears search results
+   - Calls `onEntryCreated()` callback to refresh inbox feed
+
+6. **Keyboard Shortcut**
+   - Enter (without Shift) submits
+   - Shift+Enter adds new line
+
+#### Limitations
+
+- **No offline support** - upload fails if network unavailable
+- **No persistence** - page refresh loses unsent content (except text in sessionStorage)
+- **No retry** - failed uploads require manual retry
+- **No visibility** - failed items don't appear in inbox until successful
+
+---
+
 ## API Endpoints
 
 ### GET /api/inbox
