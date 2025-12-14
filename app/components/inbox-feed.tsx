@@ -147,9 +147,15 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
       setPages(new Map([[0, pageData]]));
       setIsInitialLoad(false);
+      setError(null); // Clear any previous error on success
     } catch (err) {
       console.error('Failed to load inbox:', err);
       setError(err instanceof Error ? err.message : 'Failed to load inbox');
+      // Keep existing pages (stale data) - don't clear them on error
+      // Only mark initial load complete if we have some data to show
+      if (pages.size > 0) {
+        setIsInitialLoad(false);
+      }
     } finally {
       setLoadingPages(prev => {
         const next = new Set(prev);
@@ -524,8 +530,11 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  // Error state
-  if (error) {
+  // Calculate total server items (used for error/empty state checks)
+  const totalItems = Array.from(pages.values()).reduce((sum, page) => sum + page.items.length, 0);
+
+  // Error state - only block UI if no data to show at all
+  if (error && visiblePendingItems.length === 0 && totalItems === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-sm text-destructive">Failed to load inbox: {error}</p>
@@ -534,7 +543,6 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   }
 
   // Empty state (only if no server items AND no pending items)
-  const totalItems = Array.from(pages.values()).reduce((sum, page) => sum + page.items.length, 0);
   if (totalItems === 0 && visiblePendingItems.length === 0 && !isInitialLoad && loadingPages.size === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -551,6 +559,13 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       ref={scrollContainerRef}
       className="h-full overflow-y-auto pb-4"
     >
+      {/* Offline/error banner when server unreachable but we have content to show */}
+      {error && (totalItems > 0 || visiblePendingItems.length > 0) && (
+        <div className="py-2 text-center bg-muted/50">
+          <p className="text-xs text-muted-foreground">Offline - showing cached data</p>
+        </div>
+      )}
+
       {/* Loading indicator at top */}
       {loadingPages.size > 0 && (
         <div className="py-4 text-center">

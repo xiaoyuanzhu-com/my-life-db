@@ -1,35 +1,18 @@
 /**
  * Card component for displaying pending (local) inbox items
- * Shows upload status, progress, and allows cancel action
+ * Matches FileCard layout: timestamp outside on top, card content below
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { X, FileText, Image, File, Loader2, Check, AlertCircle, Clock } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue';
+import { cardContainerClass } from './FileCard/ui/card-styles';
 
 interface PendingItemCardProps {
   item: PendingInboxItem;
   onCancel: (id: string) => Promise<void>;
-}
-
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith('image/')) {
-    return Image;
-  }
-  if (mimeType === 'text/markdown' || mimeType.startsWith('text/')) {
-    return FileText;
-  }
-  return File;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1000;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 }
 
 export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
@@ -38,7 +21,7 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
   const [textPreview, setTextPreview] = useState<string | null>(null);
 
   // Generate preview for images and text
-  useState(() => {
+  useEffect(() => {
     if (item.type.startsWith('image/')) {
       const url = URL.createObjectURL(item.blob);
       setPreviewUrl(url);
@@ -47,10 +30,10 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
 
     if (item.type === 'text/markdown' || item.type.startsWith('text/')) {
       item.blob.text().then((text) => {
-        setTextPreview(text.slice(0, 500));
+        setTextPreview(text);
       });
     }
-  });
+  }, [item.blob, item.type]);
 
   const handleCancel = async () => {
     setIsCanceling(true);
@@ -61,106 +44,112 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
     }
   };
 
-  const FileIcon = getFileIcon(item.type);
+  // Status marker text (short)
+  const getStatusMarker = (): string => {
+    if (item.status === 'uploading' && item.uploadProgress > 0) {
+      return `${item.uploadProgress}%`;
+    }
+    if (item.errorMessage) {
+      return 'Retry';
+    }
+    if (item.status === 'uploaded') {
+      return 'Done';
+    }
+    return 'Saved';
+  };
+
   const isUploading = item.status === 'uploading' && item.uploadProgress > 0;
-  const hasError = !!item.errorMessage;
-
-  // Status indicator
-  let StatusIcon = Clock;
-  let statusColor = 'text-muted-foreground';
-  let statusText = 'Saved';
-
-  if (isUploading) {
-    StatusIcon = Loader2;
-    statusColor = 'text-primary';
-    statusText = `${item.uploadProgress}%`;
-  } else if (hasError) {
-    StatusIcon = AlertCircle;
-    statusColor = 'text-destructive';
-    statusText = 'Error';
-  } else if (item.status === 'uploaded') {
-    StatusIcon = Check;
-    statusColor = 'text-green-500';
-    statusText = 'Done';
-  }
+  const statusMarker = getStatusMarker();
 
   return (
-    <div className="group relative rounded-lg bg-card p-4">
-      {/* Progress bar background */}
-      {isUploading && (
-        <div
-          className="absolute inset-0 bg-primary/5 rounded-lg transition-all duration-300"
-          style={{ width: `${item.uploadProgress}%` }}
-        />
-      )}
+    <div className="w-full flex flex-col items-end">
+      {/* Timestamp + status marker outside card (like FileCard) */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 mr-5 select-none">
+        <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
+        <span>·</span>
+        <span className="flex items-center gap-1">
+          {isUploading && <Loader2 className="h-3 w-3 animate-spin" />}
+          {statusMarker}
+        </span>
+        {/* Cancel button inline with timestamp */}
+        <button
+          onClick={handleCancel}
+          disabled={isCanceling}
+          className={cn(
+            'p-0.5 rounded hover:bg-muted-foreground/20 transition-colors',
+            isCanceling && 'opacity-50 cursor-not-allowed'
+          )}
+          aria-label="Cancel upload"
+        >
+          {isCanceling ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <X className="h-3 w-3" />
+          )}
+        </button>
+      </div>
 
-      <div className="relative z-10">
-        {/* Header with status */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <StatusIcon className={cn('h-3 w-3', statusColor, isUploading && 'animate-spin')} />
-            <span className={statusColor}>{statusText}</span>
-            <span>-</span>
-            <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
-          </div>
+      {/* Card content */}
+      <div
+        className={cn(
+          cardContainerClass,
+          'max-w-[calc(100%-40px)] w-fit relative'
+        )}
+      >
+        {/* Progress bar overlay */}
+        {isUploading && (
+          <div
+            className="absolute inset-y-0 left-0 bg-primary/10 transition-all duration-300"
+            style={{ width: `${item.uploadProgress}%` }}
+          />
+        )}
 
-          {/* Cancel button */}
-          <button
-            onClick={handleCancel}
-            disabled={isCanceling}
-            className={cn(
-              'p-1 rounded-full hover:bg-muted transition-colors',
-              'opacity-0 group-hover:opacity-100 focus:opacity-100',
-              isCanceling && 'opacity-50 cursor-not-allowed'
-            )}
-            aria-label="Cancel upload"
-          >
-            {isCanceling ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <X className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-
-        {/* Content preview */}
-        {previewUrl ? (
-          // Image preview
-          <div className="rounded-md overflow-hidden">
-            <img
-              src={previewUrl}
-              alt={item.filename}
-              className="max-h-64 w-full object-contain bg-muted"
-            />
-          </div>
-        ) : textPreview ? (
-          // Text preview
-          <div className="text-sm text-foreground/90 whitespace-pre-wrap line-clamp-6">
-            {textPreview}
-          </div>
-        ) : (
-          // Generic file
-          <div className="flex items-center gap-3 p-3 bg-muted rounded-md">
-            <FileIcon className="h-8 w-8 text-muted-foreground" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{item.filename}</p>
-              <p className="text-xs text-muted-foreground">{formatFileSize(item.size)}</p>
+        {/* Content */}
+        <div className="relative">
+          {previewUrl ? (
+            // Image preview
+            <div
+              className="relative flex items-center justify-center"
+              style={{ minWidth: 100, minHeight: 100 }}
+            >
+              <img
+                src={previewUrl}
+                alt={item.filename}
+                className="object-contain"
+                style={{
+                  maxWidth: 'min(calc(100vw - 40px), 448px)',
+                  maxHeight: 320,
+                  width: 'auto',
+                  height: 'auto',
+                }}
+              />
             </div>
-          </div>
-        )}
-
-        {/* Error message */}
-        {hasError && (
-          <div className="mt-2 text-xs text-destructive flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" />
-            <span>{item.errorMessage}</span>
-            {item.nextRetryAt && (
-              <span className="text-muted-foreground">
-                - Retrying {formatDistanceToNow(new Date(item.nextRetryAt), { addSuffix: true })}
-              </span>
-            )}
-          </div>
-        )}
+          ) : textPreview ? (
+            // Text preview (styled like TextCard)
+            <div className="p-4 max-w-full">
+              <div className="prose prose-sm dark:prose-invert max-w-none select-text">
+                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed font-content">
+                  {textPreview.length > 500 ? (
+                    <>
+                      {textPreview.slice(0, 500)}
+                      <span className="text-muted-foreground">...</span>
+                    </>
+                  ) : (
+                    textPreview
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Generic file preview
+            <div className="p-4">
+              <p className="text-sm font-medium truncate">{item.filename}</p>
+              <p className="text-xs text-muted-foreground">
+                {(item.size / 1000).toFixed(1)} KB
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
