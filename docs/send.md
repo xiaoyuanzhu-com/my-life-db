@@ -233,7 +233,7 @@ POST   /api/upload/finalize       # Finalize after upload complete
 
 **Initial Upload (first attempt):**
 1. Client: `POST /api/upload/tus`
-   - Headers: `Upload-Length: {fileSize}`, `Upload-Metadata: filename {base64Name}`, `X-Idempotency-Key: {itemId}`
+   - Headers: `Upload-Length: {fileSize}`, `Upload-Metadata: filename {base64Name}`, `Idempotency-Key: {itemId}`
    - Body: empty
 2. Server: `201 Created`
    - Headers: `Location: /api/upload/tus/{uploadId}`, `Tus-Resumable: 1.0.0`
@@ -305,10 +305,15 @@ Response (201 Created):
 ```
 
 **Idempotency:**
-- MUST support X-Idempotency-Key header (same UUID as item.id)
-- Server checks key before processing
-- If key seen: return cached response (original path)
-- If key new: process normally, cache response
+- MUST support `Idempotency-Key` header (IANA-registered standard, same UUID as item.id)
+- Scope: per-endpoint (`/api/upload/tus`, `/api/upload/finalize`)
+- TTL: 7 days (keys expire after this window)
+- Server checks key before processing:
+  - If key seen + original succeeded: return `200` with cached response (original path)
+  - If key seen + original still processing: return `409 Conflict`
+  - If key seen + different payload: return `409 Conflict` with error message
+  - If key new: process normally, cache result (status + body)
+- Key format: UUID v4, max 200 characters
 - Prevents duplicates on network retry
 
 **Finalize Behavior:**
