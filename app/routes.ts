@@ -5,7 +5,7 @@ export default [
   index("routes/home.tsx"),
   route("login", "routes/login.tsx"),
   route("inbox", "routes/inbox.tsx"),
-  route("inbox/:slug", "routes/inbox.$slug.tsx"),
+  route("inbox/:id", "routes/inbox.$id.tsx"),
   route("library", "routes/library.tsx"),
   route("library/browse", "routes/library.browse.tsx"),
   route("file/*", "routes/file.$.tsx"),

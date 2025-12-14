@@ -318,7 +318,7 @@ classDiagram
 ```
 
 - **Files:** Rebuildable catalog of every folder and file under `MY_DATA_DIR`, including hashes for sub-10MB files.
-- **Digests:** Status tracker for every enrichment a file has undergone (summary, tags, slug, screenshot, OCR, etc.).
+- **Digests:** Status tracker for every enrichment a file has undergone (summary, tags, screenshot, OCR, etc.).
 - **SQLAR:** Stores binary digest payloads such as screenshots or OCR bundles without polluting the user filesystem.
 - **Tasks:** Durable queue with retry tracking; payloads mention file paths or digest IDs instead of legacy item IDs.
 - **Meili documents:** Mirror the textual view of each file to Meilisearch; rows are regenerated whenever digests change.
@@ -364,7 +364,7 @@ classDiagram
 
 - `POST /api/inbox` calls `saveToInbox`, writes files into `data/inbox/`, and immediately indexes the top-level folder/file in `files`.
 - `GET /api/inbox` filters `listFilesWithDigests('inbox/')` to only show top-level entries, attaches short text previews via `readPrimaryText`, and returns screenshot digests when available.
-- Digest recompute buttons (via `/api/digest/...`) work because every row is addressed by path rather than synthetic IDs, so renames and slugging remain traceable.
+- Digest recompute buttons (via `/api/digest/...`) work because every row is addressed by path rather than synthetic IDs, so renames remain traceable.
 
 ### 8.2 Library
 
@@ -374,7 +374,7 @@ classDiagram
 
 ### 8.3 Digesters
 
-- **Architecture:** Registry-based sequential executor. `DigesterRegistry` stores implementations (URL crawler → summary → tagging → slugging) and each digester self-filters via `canDigest`.
+- **Architecture:** Registry-based sequential executor. `DigesterRegistry` stores implementations (URL crawler → summary → tagging) and each digester self-filters via `canDigest`.
 - **Interface:** Every digester exposes `id`, `produces`, optional `requires`, and `digest()` returning the digests it created. Binary outputs land in SQLAR with the `{path_hash}/{digest_type}/filename.ext` convention.
 - **Coordinator flow:** `DigestCoordinator.processFile()` loads file metadata + existing digests, loops over registered digesters, skips already terminal outputs (including max-attempt failures), marks pending ones as `in-progress`, then runs the digester. Results persist immediately so partial progress survives crashes.
 - **Supervisor loop:** `DigestSupervisor` starts ~10 s after boot, repeatedly calls `findFilesNeedingDigestion(limit=1)` for the oldest eligible file, processes it through the coordinator, and resumes immediately. When no work exists it sleeps 60 s; consecutive failures trigger exponential backoff (5 s → 10 s → … capped at 60 s). A periodic sweep resets any `in-progress` digest rows that have been idle >10 min back to `todo`, preventing deadlocks.
@@ -401,7 +401,7 @@ classDiagram
 
 - The embedded queue (`src/lib/task-queue/*`) stores tasks in SQLite, exposes HTTP endpoints for inspection, and runs a worker loop inside the Next.js server process.
 - Tasks transition through `pending → enriching → enriched/failed/skipped`, mirroring digest statuses so the UI can show unified progress bars.
-- Retry logic uses exponential backoff with jitter, and handlers (e.g., `digest_url_crawl`, `digest_url_slug`) are pure functions that can be re-run without side effects because inputs are file paths.
+- Retry logic uses exponential backoff with jitter, and handlers (e.g., `digest_url_crawl`) are pure functions that can be re-run without side effects because inputs are file paths.
 
 ### 8.7 Misc
 

@@ -21,17 +21,17 @@ interface InboxDetail {
 }
 
 export default function InboxDetailPage() {
-  const { slug } = useParams();
+  const { id } = useParams();
   const [data, setData] = useState<InboxDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
-      if (!slug) return;
+      if (!id) return;
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/inbox/${encodeURIComponent(slug)}`);
+        const response = await fetch(`/api/inbox/${encodeURIComponent(id)}`);
         if (!response.ok) {
           if (response.status === 404) {
             setError("Item not found");
@@ -51,7 +51,7 @@ export default function InboxDetailPage() {
     }
 
     loadData();
-  }, [slug]);
+  }, [id]);
 
   if (isLoading) {
     return (
@@ -91,12 +91,12 @@ export default function InboxDetailPage() {
           </span>
           {isUrlType && (
             <>
-              <CrawlButton itemId={slug!} />
-              <SummaryButton itemId={slug!} />
-              <TaggingButton itemId={slug!} />
+              <CrawlButton itemId={id!} />
+              <SummaryButton itemId={id!} />
+              <TaggingButton itemId={id!} />
             </>
           )}
-          <IndexButton itemId={slug!} />
+          <IndexButton itemId={id!} />
         </div>
 
         <section className="bg-card rounded-lg border">
@@ -116,7 +116,7 @@ export default function InboxDetailPage() {
         </section>
 
         <DigestCoordinator
-          itemId={slug!}
+          itemId={id!}
           initialSummary={data.digest.summary}
           initialTags={data.digest.tags}
           initialScreenshot={data.digest.screenshot}
