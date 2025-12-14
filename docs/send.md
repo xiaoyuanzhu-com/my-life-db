@@ -3,9 +3,10 @@
 ## Design Principles
 
 1. **Personal use**: Single user, optimize for common cases
-2. **Performance-first**: Avoid complex coordination unless critical
-3. **Pragmatic**: Accept rare edge cases if cost is high
-4. **Never lose data**: As soon as user hits "Send", content is saved and will eventually reach server
+2. **Robust**: Handle network failures, app restarts, and server downtime gracefully with auto-recovery
+3. **Performance-first**: Avoid complex coordination unless critical
+4. **Pragmatic**: Accept rare edge cases if cost is high
+5. **Never lose data**: As soon as user hits "Send", content is saved and will eventually reach server
 
 ## Mental Model
 
@@ -27,14 +28,14 @@ interface PendingInboxItem {
   id: string;                    // UUID (client-generated, also idempotency key)
   createdAt: string;            // ISO timestamp, used for ordering
 
-  // Content
-  text?: string;                // Optional text content
-  files: Array<{
+  // Content (one of these must be present)
+  text?: string;                // Text-only item (saved as inbox/{id}.md)
+  file?: {                      // Single file item
     name: string;
     type: string;
     size: number;
     blob: Blob;                 // Actual file data
-  }>;
+  };
 
   // Sync state
   status: 'pending' | 'uploading' | 'uploaded' | 'failed';
@@ -50,8 +51,12 @@ interface PendingInboxItem {
   uploadingBy?: string;         // Tab ID currently uploading
   uploadingAt?: string;         // Lock timestamp (for stale detection)
 
+  // TUS resumable upload tracking
+  tusUploadUrl?: string;        // TUS upload URL for resume
+  tusUploadOffset?: number;     // Bytes successfully uploaded
+
   // Server reference (once uploaded)
-  serverPath?: string;          // e.g., 'inbox/photo.jpg'
+  serverPath?: string;          // e.g., 'inbox/photo.jpg' or 'inbox/{id}.md'
   uploadedAt?: string;
   serverVerified?: boolean;     // Saw item in GET /api/inbox?
   verificationAttempts?: number;
@@ -132,7 +137,7 @@ flowchart TB
 **After Click:**
 
 1. **Immediate** (< 50ms):
-   - Save to IndexedDB
+   - Save to IndexedDB (all file sizes)
    - Generate optimistic item
    - Add to inbox feed UI
    - Clear input fields
@@ -140,13 +145,14 @@ flowchart TB
 
 2. **Background** (async):
    - Enqueue for upload
-   - Start upload if network available
+   - Start TUS upload if network available
 
 **User Experience:**
-- Button never blocks on upload
+- Button never blocks
 - Input clears immediately
 - Item appears in feed instantly
-- No "Uploading..." blocking state
+- All files (any size) use same queue + TUS flow
+- No warnings, no confirmations - it just works
 
 ## Upload Queue Processing
 
@@ -175,8 +181,8 @@ flowchart TB
 | Category | Scenario | Behavior | Priority |
 |----------|----------|----------|----------|
 | **Network** | Offline when sending | Save locally, auto-retry when online | Critical |
-| | Server returns 500 | Retry with backoff (30s max) | Critical |
-| | Upload timeout (3min) | Abort, retry | Critical |
+| | Server returns 500 | Retry with exponential backoff (up to 60s) | Critical |
+| | Upload timeout (3min) | Abort, retry with backoff | Critical |
 | | Network switches | Resume from checkpoint (TUS) | High |
 | **App Lifecycle** | Page refresh during upload | Resume from IndexedDB on reload | Critical |
 | | App closed during upload | Resume when app reopens | Critical |
@@ -186,9 +192,9 @@ flowchart TB
 | | Upload succeeds but finalize fails | Retry finalize only, reuse TUS upload IDs | High |
 | | Server confirms but doesn't persist | 24h verification window before cleanup | High |
 | | Upload stuck at 99% (5min) | Timeout, mark failed, allow retry | Medium |
-| **Storage** | File too large (>50MB) | Stream directly, no offline queue | High |
-| | Disk quota exceeded | Try cleanup, fallback to memory-only | High |
-| | IndexedDB unavailable | Fallback to memory + immediate upload | Medium |
+| **Storage** | Very large file (>500MB) | Same flow, may hit IndexedDB quota | Low |
+| | Disk quota exceeded | Yield error, cannot save to cache | High |
+| | IndexedDB unavailable | Block send, show error (robustness requires persistence) | High |
 | **User Actions** | Double-click send | Debounce submit, prevent duplicates | High |
 | | Delete item while uploading | Cancel upload, remove from IndexedDB | High |
 | | Edit pending/uploading item | Cancel upload, update, re-enqueue | Medium |
@@ -198,6 +204,119 @@ flowchart TB
 | | Tab crashes mid-upload | Other tabs detect stale lock (2min), take over | High |
 | **Security** | Sensitive data in IndexedDB | Accept risk (personal device, disk encryption) | Low |
 | | User logs out | Clear queue, delete IndexedDB records | Medium |
+
+## TUS Resumable Upload Protocol
+
+**Why TUS:**
+- Robust network failure recovery (aligns with "Robust" design principle)
+- Resume uploads after network switches, app restarts, tab crashes
+- Efficient bandwidth usage (don't re-upload already transmitted bytes)
+
+**Server Endpoints:**
+```
+POST   /api/upload/tus            # Create TUS upload
+PATCH  /api/upload/tus/:id        # Resume/continue upload
+HEAD   /api/upload/tus/:id        # Check upload status
+POST   /api/upload/finalize       # Finalize after upload complete
+```
+
+**Supported TUS Extensions:**
+- `creation` - Create uploads via POST
+- `termination` - Delete abandoned uploads
+
+**Upload Storage:**
+- Temporary storage: `data/app/my-life-db/uploads/{uploadId}`
+- Cleanup: TUS files deleted after successful finalization
+- Stale uploads: Manual cleanup recommended (no automatic expiration)
+
+**Upload Flow:**
+
+**Initial Upload (first attempt):**
+1. Client: `POST /api/inbox/upload/tus`
+   - Headers: `Upload-Length: {fileSize}`, `Upload-Metadata: filename {base64Name}`, `X-Idempotency-Key: {itemId}`
+   - Body: empty
+2. Server: `201 Created`
+   - Headers: `Location: /api/inbox/upload/tus/{uploadId}`, `Tus-Resumable: 1.0.0`
+3. Client: Store `tusUploadUrl` in IndexedDB
+4. Client: `PATCH /api/inbox/upload/tus/{uploadId}`
+   - Headers: `Upload-Offset: 0`, `Content-Type: application/offset+octet-stream`
+   - Body: file chunks
+5. Server: Progress responses with `Upload-Offset: {bytesReceived}`
+6. Client: Update `tusUploadOffset` in IndexedDB on each progress event
+7. On completion: Call finalize endpoint
+
+**Resume Upload (after interruption):**
+1. Client loads item from IndexedDB, finds `tusUploadUrl` and `tusUploadOffset`
+2. Client: `HEAD {tusUploadUrl}`
+   - Verify server still has upload
+3. Server: `200 OK`
+   - Headers: `Upload-Offset: {serverOffset}`, `Upload-Length: {totalSize}`
+4. Client: Resume from `serverOffset` using `PATCH` (skip already uploaded bytes)
+
+**Fallback (TUS upload expired/lost):**
+1. If `HEAD` returns 404/410: Clear `tusUploadUrl`, start fresh TUS upload
+2. If server doesn't support TUS: Fall back to standard multipart upload
+
+**Progress Tracking:**
+```typescript
+// Update IndexedDB on every PATCH progress event
+await db.put('pending-items', {
+  ...item,
+  tusUploadOffset: bytesUploaded,
+  uploadProgress: Math.floor((bytesUploaded / totalSize) * 100)
+});
+```
+
+**Upload Expiration:**
+- No automatic expiration currently implemented
+- Incomplete uploads accumulate in `uploads/` directory
+- Client handles missing uploads gracefully (start fresh if HEAD returns 404)
+- **Risk:** Repeated failures could fill disk over time
+- **Mitigation:** Personal use = bounded failures; manual cleanup if needed
+- **Future consideration:** Background job to delete uploads >7 days old
+
+**Multiple Files from User:**
+- User selects 3 files → creates 3 separate `PendingInboxItem` entries
+- Each file is independent (separate UUID, separate upload, separate retry)
+- No coordination needed between files
+- If one fails, others continue uploading
+
+**Finalize Endpoint:**
+
+Request to `POST /api/upload/finalize`:
+```typescript
+{
+  text?: string;              // Text content (for text-only items)
+  upload?: {                  // File upload (for file items)
+    uploadId: string;         // TUS upload ID (from Location header)
+    filename: string;         // Original filename
+    size: number;             // File size in bytes
+    type: string;             // MIME type
+  };
+}
+```
+
+Response (201 Created):
+```typescript
+{
+  success: true;
+  path: string;               // Created path (e.g., 'inbox/photo.jpg' or 'inbox/{id}.md')
+}
+```
+
+**Idempotency:**
+- MUST support X-Idempotency-Key header (same UUID as item.id)
+- Server checks key before processing
+- If key seen: return cached response (original paths)
+- If key new: process normally, cache response
+- Prevents duplicates on network retry
+
+**Finalize Behavior:**
+1. Reads completed TUS uploads from `uploads/{uploadId}`
+2. Calls `saveToInbox()` to move files to inbox/
+3. Deletes TUS temporary files
+4. Triggers digest processing for all created paths
+5. Returns paths of created inbox items
 
 ## Idempotency Strategy
 
@@ -279,6 +398,12 @@ const allItems = [
 3. Pending items: Keep indefinitely until uploaded
 
 **Frequency:** On app start + periodically
+
+**Quota Handling:**
+- Request persistent storage on first use (prevents browser eviction)
+- If save fails due to quota: Show error "Cannot save - storage quota exceeded"
+- User must manually delete failed items to free space
+- No automatic cleanup, no export flow - user controls their data
 
 ## Error Recovery UI
 
