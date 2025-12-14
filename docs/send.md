@@ -232,13 +232,13 @@ POST   /api/upload/finalize       # Finalize after upload complete
 **Upload Flow:**
 
 **Initial Upload (first attempt):**
-1. Client: `POST /api/inbox/upload/tus`
+1. Client: `POST /api/upload/tus`
    - Headers: `Upload-Length: {fileSize}`, `Upload-Metadata: filename {base64Name}`, `X-Idempotency-Key: {itemId}`
    - Body: empty
 2. Server: `201 Created`
-   - Headers: `Location: /api/inbox/upload/tus/{uploadId}`, `Tus-Resumable: 1.0.0`
+   - Headers: `Location: /api/upload/tus/{uploadId}`, `Tus-Resumable: 1.0.0`
 3. Client: Store `tusUploadUrl` in IndexedDB
-4. Client: `PATCH /api/inbox/upload/tus/{uploadId}`
+4. Client: `PATCH /api/upload/tus/{uploadId}`
    - Headers: `Upload-Offset: 0`, `Content-Type: application/offset+octet-stream`
    - Body: file chunks
 5. Server: Progress responses with `Upload-Offset: {bytesReceived}`
@@ -307,31 +307,16 @@ Response (201 Created):
 **Idempotency:**
 - MUST support X-Idempotency-Key header (same UUID as item.id)
 - Server checks key before processing
-- If key seen: return cached response (original paths)
+- If key seen: return cached response (original path)
 - If key new: process normally, cache response
 - Prevents duplicates on network retry
 
 **Finalize Behavior:**
-1. Reads completed TUS uploads from `uploads/{uploadId}`
-2. Calls `saveToInbox()` to move files to inbox/
-3. Deletes TUS temporary files
-4. Triggers digest processing for all created paths
-5. Returns paths of created inbox items
-
-## Idempotency Strategy
-
-**Client-side:**
-```
-POST /api/inbox
-Headers:
-  X-Idempotency-Key: {item.id}  // Client-generated UUID
-```
-
-**Server-side:**
-- Check `upload_idempotency` table for existing key
-- If found: Return existing path (not an error)
-- If not found: Process upload, store key → path mapping
-- Cleanup keys after 7 days
+1. Reads completed TUS upload from `uploads/{uploadId}`
+2. Calls `saveToInbox()` to move file to inbox/
+3. Deletes TUS temporary file
+4. Triggers digest processing for created path
+5. Returns path of created inbox item
 
 ## Multi-Tab Lock Mechanism
 
