@@ -5,7 +5,7 @@ import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
 import type { SearchResponse } from '~/routes/api.search';
-import * as tus from 'tus-js-client';
+import { useSendQueue } from '~/lib/send-queue';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
@@ -27,27 +27,19 @@ interface OmniInputProps {
 }
 
 const SEARCH_BATCH_SIZE = 30;
-// Use TUS for all uploads to enable progress tracking and resumability
-// Set to 0 to always use TUS (recommended for homelab with fast network)
-// Alternative: set to 100 * 1024 * 1024 (100MB) for hybrid approach
-const TUS_THRESHOLD = 0;
-
-interface UploadProgress {
-  filename: string;
-  bytesUploaded: number;
-  bytesTotal: number;
-  percentage: number;
-}
 
 export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus, maxHeight }: OmniInputProps) {
   const [content, setContent] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<Map<string, UploadProgress>>(new Map());
-  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Use the local-first send queue
+  const { send } = useSendQueue(() => {
+    // Called when an upload completes - refresh the inbox
+    onEntryCreated?.();
+  });
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
@@ -238,34 +230,22 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!content.trim() && selectedFiles.length === 0) {
+    const trimmed = content.trim();
+    if (!trimmed && selectedFiles.length === 0) {
       setError('Please enter some content or select files');
       return;
     }
 
-    setIsLoading(true);
-    setIsUploading(true);
     setError('');
 
     try {
-      const trimmed = content.trim();
+      // Local-first: save to IndexedDB immediately, upload in background
+      // This is instant and never blocks - items appear in feed immediately
+      await send(trimmed || undefined, selectedFiles);
 
-      // Check if any files need tus upload (larger than threshold)
-      const largeFiles = selectedFiles.filter(f => f.size > TUS_THRESHOLD);
-      const smallFiles = selectedFiles.filter(f => f.size <= TUS_THRESHOLD);
-
-      if (largeFiles.length > 0) {
-        // Use tus for large files
-        await handleTusUpload(trimmed, largeFiles, smallFiles);
-      } else {
-        // Use regular FormData upload for small files
-        await handleRegularUpload(trimmed, smallFiles);
-      }
-
-      // Clear state (will also clear sessionStorage via the effect)
+      // Clear input immediately (< 50ms as per design)
       setContent('');
       setSelectedFiles([]);
-      setUploadProgress(new Map());
       setKeywordResults(null);
       setSemanticResults(null);
       setKeywordError(null);
@@ -273,146 +253,14 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+
+      // Notify parent to refresh feed (will show local items)
       onEntryCreated?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg ? `Failed to save: ${msg}` : 'Failed to save entry. Please try again.');
       console.error('Inbox save failed:', err);
-    } finally {
-      setIsLoading(false);
-      setIsUploading(false);
     }
-  }
-
-  async function handleRegularUpload(text: string, files: File[]) {
-    const formData = new FormData();
-    if (text) {
-      formData.append('text', text);
-    }
-
-    files.forEach((file) => {
-      formData.append('files', file);
-    });
-
-    const response = await fetch('/api/inbox', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      let details = '';
-      try {
-        const data = await response.json();
-        details = data?.error || data?.details || '';
-      } catch {
-        // ignore
-      }
-      throw new Error(details || `HTTP ${response.status}`);
-    }
-  }
-
-  async function handleTusUpload(text: string, largeFiles: File[], smallFiles: File[]) {
-    // Upload all files using tus
-    const allFiles = [...smallFiles, ...largeFiles];
-    const uploadResults: Array<{
-      uploadId: string;
-      filename: string;
-      size: number;
-      type: string;
-    }> = [];
-
-    // Upload each file with tus
-    for (const file of allFiles) {
-      const uploadId = await uploadFileWithTus(file);
-      uploadResults.push({
-        uploadId,
-        filename: file.name,
-        size: file.size,
-        type: file.type,
-      });
-    }
-
-    // Finalize the upload
-    const response = await fetch('/api/upload/finalize', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        uploads: uploadResults,
-        text: text || undefined,
-      }),
-    });
-
-    if (!response.ok) {
-      let details = '';
-      try {
-        const data = await response.json();
-        details = data?.error || '';
-      } catch {
-        // ignore
-      }
-      throw new Error(details || `HTTP ${response.status}`);
-    }
-  }
-
-  function uploadFileWithTus(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const upload = new tus.Upload(file, {
-        endpoint: '/api/upload/tus',
-        retryDelays: [0, 1000, 3000, 5000],
-        // 10MB chunks - balances speed and reliability
-        chunkSize: 10 * 1024 * 1024,
-        metadata: {
-          filename: file.name,
-          filetype: file.type,
-        },
-        onError: (error) => {
-          console.error('[TUS] Upload failed:', error);
-          setUploadProgress(prev => {
-            const next = new Map(prev);
-            next.delete(file.name);
-            return next;
-          });
-          reject(error);
-        },
-        onProgress: (bytesUploaded, bytesTotal) => {
-          const percentage = Math.round((bytesUploaded / bytesTotal) * 100);
-          setUploadProgress(prev => {
-            const next = new Map(prev);
-            next.set(file.name, {
-              filename: file.name,
-              bytesUploaded,
-              bytesTotal,
-              percentage,
-            });
-            return next;
-          });
-        },
-        onSuccess: () => {
-          console.log('[TUS] Upload complete:', file.name);
-          // Extract upload ID from URL
-          const url = upload.url;
-          if (!url) {
-            reject(new Error('No upload URL returned'));
-            return;
-          }
-          const uploadId = url.split('/').pop();
-          if (!uploadId) {
-            reject(new Error('Could not extract upload ID'));
-            return;
-          }
-          resolve(uploadId);
-        },
-      });
-
-      upload.findPreviousUploads().then((previousUploads) => {
-        if (previousUploads.length) {
-          upload.resumeFromPreviousUpload(previousUploads[0]);
-        }
-        upload.start();
-      });
-    });
   }
 
   function handleDragEnter(e: React.DragEvent) {
@@ -459,7 +307,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   function formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 B';
     // Use decimal (1000-based) units to match macOS Finder
-    // macOS shows: 722.9 MB for a file that's actually 689 MiB
     const k = 1000;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -498,7 +345,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             }
           }}
           placeholder="What's up?"
-          disabled={isLoading}
           style={maxHeight ? { maxHeight } : undefined}
           className={cn(
             'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
@@ -511,47 +357,31 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         {/* File chips above control bar */}
         {selectedFiles.length > 0 && (
           <div className="flex flex-col gap-2 px-4 pb-2">
-            {selectedFiles.map((file, index) => {
-              const progress = uploadProgress.get(file.name);
-              const isUploading = progress !== undefined;
-
-              return (
-                <div
-                  key={index}
-                  className={cn(
-                    'flex items-center gap-2 relative overflow-hidden',
-                    'bg-muted rounded-md p-2'
-                  )}
-                >
-                  {/* Progress bar as background */}
-                  {isUploading && (
-                    <div
-                      className="absolute inset-0 bg-primary/10 transition-all duration-300 ease-out"
-                      style={{ width: `${progress.percentage}%` }}
-                    />
-                  )}
-
-                  {/* Content on top of progress bar */}
-                  <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0 relative z-10" />
-                  <div className="flex-1 min-w-0 flex items-center gap-2 relative z-10">
-                    <span className="text-sm truncate flex-1">{file.name}</span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {isUploading ? `${progress.percentage}%` : formatFileSize(file.size)}
-                    </span>
-                  </div>
-                  {!isUploading && (
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      className="hover:bg-background rounded-full p-1 transition-colors flex-shrink-0 relative z-10"
-                      aria-label="Remove file"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
+            {selectedFiles.map((file, index) => (
+              <div
+                key={index}
+                className={cn(
+                  'flex items-center gap-2 relative overflow-hidden',
+                  'bg-muted rounded-md p-2'
+                )}
+              >
+                <Upload className="h-4 w-4 text-muted-foreground flex-shrink-0 relative z-10" />
+                <div className="flex-1 min-w-0 flex items-center gap-2 relative z-10">
+                  <span className="text-sm truncate flex-1">{file.name}</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {formatFileSize(file.size)}
+                  </span>
                 </div>
-              );
-            })}
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="hover:bg-background rounded-full p-1 transition-colors flex-shrink-0 relative z-10"
+                  aria-label="Remove file"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -580,11 +410,10 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
           <Button
             type="submit"
-            disabled={isLoading || isUploading}
             size="sm"
             className="h-7 cursor-pointer"
           >
-            <span>{isUploading ? 'Uploading...' : 'Send'}</span>
+            Send
           </Button>
         </div>
 

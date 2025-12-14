@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { FileCard } from './FileCard';
+import { PendingItemCard } from './pending-item-card';
 import type { InboxResponse } from '~/routes/api.inbox';
 import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
+import { useSendQueue } from '~/lib/send-queue';
 
 interface InboxFeedProps {
   onRefresh?: number;
@@ -27,6 +29,17 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // Local-first send queue - get pending items
+  const { pendingItems, cancel: cancelUpload } = useSendQueue();
+
+  // Filter pending items to only show non-uploaded ones
+  const visiblePendingItems = useMemo(() =>
+    pendingItems
+      .filter(item => item.status !== 'uploaded')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [pendingItems]
+  );
 
   // Refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -455,7 +468,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       container.scrollTop = container.scrollHeight;
       updateScrollMetrics();
     }
-  }, [pages, isInitialLoad, updateScrollMetrics]);
+  }, [pages, isInitialLoad, updateScrollMetrics, visiblePendingItems]);
 
   // Keep view pinned to bottom while content height changes
   useEffect(() => {
@@ -520,9 +533,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     );
   }
 
-  // Empty state
+  // Empty state (only if no server items AND no pending items)
   const totalItems = Array.from(pages.values()).reduce((sum, page) => sum + page.items.length, 0);
-  if (totalItems === 0 && !isInitialLoad && loadingPages.size === 0) {
+  if (totalItems === 0 && visiblePendingItems.length === 0 && !isInitialLoad && loadingPages.size === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-sm text-muted-foreground">No items in inbox</p>
@@ -581,6 +594,19 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
             </div>
           );
         })}
+
+        {/* Pending items (local-first) - always at the bottom (newest) */}
+        {visiblePendingItems.length > 0 && (
+          <div className="space-y-4">
+            {visiblePendingItems.map((item) => (
+              <PendingItemCard
+                key={item.id}
+                item={item}
+                onCancel={cancelUpload}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Initial loading state */}
