@@ -168,8 +168,8 @@ export function TextModal({
     downloadFile(file.path, file.name);
   }, [file.path, file.name]);
 
-  const handleShare = useCallback(async () => {
-    await shareFile(file.path, file.name, file.mimeType);
+  const handleShare = useCallback(() => {
+    shareFile(file.path, file.name, file.mimeType);
   }, [file.path, file.name, file.mimeType]);
 
   const handleToggleDigests = useCallback(() => {

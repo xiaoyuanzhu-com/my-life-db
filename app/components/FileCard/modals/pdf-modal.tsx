@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { Download, Share2, Sparkles } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -8,17 +9,22 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
-import type { BaseModalProps } from '../types';
-import { getRawFileUrl } from '../utils';
+import type { BaseModalProps, ContextMenuAction } from '../types';
+import { getRawFileUrl, downloadFile, shareFile, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
+import { ModalActionButtons } from '../ui/modal-action-buttons';
+import { DigestsPanel } from '../ui/digests-panel';
 
 // Configure pdf.js worker using Vite's ?url import
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
+type ModalView = 'content' | 'digests';
+
 export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageWidth, setPageWidth] = useState<number | null>(null);
+  const [activeView, setActiveView] = useState<ModalView>('content');
 
   // Memoize file source to prevent react-pdf from treating it as a new file on each render
   const src = useMemo(() => ({ url: getRawFileUrl(file.path) }), [file.path]);
@@ -27,28 +33,56 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
     setNumPages(numPages);
   };
 
-  // Calculate page width based on viewport
-  const updatePageWidth = () => {
-    const maxWidth = Math.min(window.innerWidth * 0.9 - 32, 800);
+  // Calculate page width based on viewport and digests panel
+  const updatePageWidth = useCallback((showDigests: boolean) => {
+    const viewportWidth = showDigests ? window.innerWidth * 0.45 : window.innerWidth * 0.9;
+    const maxWidth = Math.min(viewportWidth - 32, 800);
     setPageWidth(maxWidth);
-  };
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    downloadFile(file.path, file.name);
+  }, [file.path, file.name]);
+
+  const handleShare = useCallback(() => {
+    shareFile(file.path, file.name, file.mimeType);
+  }, [file.path, file.name, file.mimeType]);
+
+  const handleToggleDigests = useCallback(() => {
+    setActiveView((prev) => {
+      const newView = prev === 'digests' ? 'content' : 'digests';
+      updatePageWidth(newView === 'digests');
+      return newView;
+    });
+  }, [updatePageWidth]);
+
+  const modalActions: ContextMenuAction[] = [
+    { icon: Download, label: 'Download', onClick: handleDownload },
+    { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
+    { icon: Sparkles, label: 'Digests', onClick: handleToggleDigests },
+  ];
+
+  const showDigests = activeView === 'digests';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[90vw] sm:max-w-[90vw] max-h-[90vh] w-fit p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden flex flex-col"
+        className={`max-h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden flex ${
+          showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] sm:max-w-[90vw] w-fit'
+        }`}
         showCloseButton={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
-          updatePageWidth();
+          updatePageWidth(showDigests);
         }}
       >
         <VisuallyHidden>
           <DialogTitle>{file.name}</DialogTitle>
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
+        <ModalActionButtons actions={modalActions} />
 
-        <div className="flex-1 overflow-auto">
+        <div className={`flex-1 overflow-auto ${showDigests ? 'w-1/2' : ''}`}>
           <Document
             file={src}
             onLoadSuccess={onDocumentLoadSuccess}
@@ -80,6 +114,11 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
               ))}
           </Document>
         </div>
+        {showDigests && (
+          <div className="w-1/2 h-[90vh] bg-background border-l border-border rounded-r-lg">
+            <DigestsPanel file={file} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

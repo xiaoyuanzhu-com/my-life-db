@@ -200,10 +200,13 @@ export async function shareFile(
     return;
   }
 
+  // Build absolute URL for sharing
+  const absoluteUrl = `${window.location.origin}/raw/${path}`;
+
   try {
     const shareData: ShareData = { title: name };
 
-    // Try to share the actual file
+    // Try to share the actual file (works on mobile, not on desktop Chrome)
     try {
       const response = await fetch(`/raw/${path}`, { cache: 'force-cache' });
       if (response.ok) {
@@ -213,13 +216,14 @@ export async function shareFile(
         if (navigator.canShare && navigator.canShare({ files: [fileToShare] })) {
           shareData.files = [fileToShare];
         } else {
-          shareData.url = `/raw/${path}`;
+          // Fallback to URL sharing (desktop Chrome)
+          shareData.url = absoluteUrl;
         }
       } else {
-        shareData.url = `/raw/${path}`;
+        shareData.url = absoluteUrl;
       }
     } catch {
-      shareData.url = `/raw/${path}`;
+      shareData.url = absoluteUrl;
     }
 
     await navigator.share(shareData);
