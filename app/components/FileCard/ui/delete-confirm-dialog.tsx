@@ -15,12 +15,21 @@ export interface DeleteConfirmDialogProps {
   onOpenChange: (open: boolean) => void;
   fileName: string;
   filePath: string;
+  /**
+   * Called immediately when delete is confirmed (optimistic).
+   * If the delete fails, onRestoreItem will be called.
+   */
   onDeleted?: () => void;
+  /**
+   * Called when delete fails after optimistic removal.
+   * Used to restore the item to the UI.
+   */
+  onRestoreItem?: () => void;
 }
 
 /**
  * Shared delete confirmation dialog
- * Handles the delete API call and page refresh
+ * Supports optimistic UI: calls onDeleted immediately, then onRestoreItem on failure.
  */
 export function DeleteConfirmDialog({
   open,
@@ -28,19 +37,36 @@ export function DeleteConfirmDialog({
   fileName,
   filePath,
   onDeleted,
+  onRestoreItem,
 }: DeleteConfirmDialogProps) {
   const handleConfirm = async () => {
     onOpenChange(false);
 
+    // Optimistic: call onDeleted immediately (if provided)
+    if (onDeleted) {
+      onDeleted();
+    }
+
     const success = await deleteFile(filePath);
     if (success) {
-      if (onDeleted) {
-        onDeleted();
-      } else {
+      // If no optimistic handler, fall back to page reload
+      if (!onDeleted) {
         window.location.reload();
       }
+      // Otherwise, optimistic delete already happened - nothing more to do
     } else {
-      alert('Failed to delete file. Please try again.');
+      // Delete failed
+      if (onRestoreItem) {
+        // Optimistic mode: restore the item
+        onRestoreItem();
+        alert('Failed to delete file. Please try again.');
+      } else if (onDeleted) {
+        // onDeleted was called but no restore handler - just show error
+        alert('Failed to delete file. Please try again.');
+      } else {
+        // Non-optimistic mode
+        alert('Failed to delete file. Please try again.');
+      }
     }
   };
 

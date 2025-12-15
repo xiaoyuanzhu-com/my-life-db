@@ -20,6 +20,8 @@ export function FallbackCard({
   file,
   className,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -82,6 +84,8 @@ export function FallbackCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
     </>
   );

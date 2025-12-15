@@ -52,6 +52,8 @@ export function AudioCard({
   file,
   className,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -281,6 +283,8 @@ export function AudioCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
     </>
   );

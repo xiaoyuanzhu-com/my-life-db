@@ -389,7 +389,9 @@ const allItems = [
 
 ## Cancel/Delete Behavior
 
-User can cancel/delete any item at any time:
+### Pending Items (in IndexedDB)
+
+User can cancel/delete any pending item at any time:
 
 1. **If status = 'saved':** Remove from IndexedDB immediately
 2. **If status = 'uploading':**
@@ -397,3 +399,46 @@ User can cancel/delete any item at any time:
    - Optionally send `DELETE` to TUS endpoint (best-effort cleanup)
    - Remove from IndexedDB
 3. **UI:** Item disappears from feed immediately
+
+### Server Items (Optimistic Delete)
+
+**Design:** Optimistic UI with restore on error. No delete queue needed.
+
+**Flow:**
+1. User clicks delete → Remove from UI immediately
+2. Fire server `DELETE` request (no loading indicator)
+3. **Success** → Done
+4. **Error** → Restore item to UI + show error toast
+
+**Why no delete queue:**
+- If app closes mid-delete, item remains on server - user can delete again later
+- No persistence requirement - deletion is not critical like "never lose data"
+- Simple mental model: delete either works or shows error
+- Aligns with design principle #4 (Pragmatic)
+
+**Implementation:**
+```typescript
+async function deleteServerItem(path: string, item: InboxItem) {
+  // 1. Optimistically remove from UI
+  removeFromFeed(path);
+
+  try {
+    // 2. Server request
+    await fetch(`/api/files/${encodeURIComponent(path)}`, { method: 'DELETE' });
+  } catch (error) {
+    // 3. Restore on failure
+    restoreToFeed(item);
+    toast.error('Failed to delete. Please try again.');
+  }
+}
+```
+
+**Edge Cases:**
+
+| Scenario | Behavior |
+|----------|----------|
+| Offline | Request fails, item restored, error shown |
+| Server 500 | Item restored, error shown |
+| Network timeout | Item restored, error shown |
+| App closes during request | Item remains on server (safe) |
+| Delete succeeds but response lost | Item gone from server, UI correct |

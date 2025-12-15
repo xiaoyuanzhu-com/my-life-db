@@ -22,6 +22,8 @@ export function ImageCard({
   className,
   priority = false,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -94,6 +96,8 @@ export function ImageCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
     </>
   );

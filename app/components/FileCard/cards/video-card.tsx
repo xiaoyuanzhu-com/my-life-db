@@ -20,6 +20,8 @@ export function VideoCard({
   file,
   className,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -80,6 +82,8 @@ export function VideoCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
     </>
   );

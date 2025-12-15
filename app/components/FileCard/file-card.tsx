@@ -19,6 +19,8 @@ export function FileCard({
   highlightTerms,
   matchContext,
   priority = false,
+  onDeleted,
+  onRestoreItem,
 }: FileCardProps) {
   const contentType = getFileContentType(file);
   const CardComponent = getCardComponent(contentType);
@@ -35,6 +37,8 @@ export function FileCard({
         highlightTerms={highlightTerms}
         matchContext={matchContext}
         priority={priority}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
     </div>
   );

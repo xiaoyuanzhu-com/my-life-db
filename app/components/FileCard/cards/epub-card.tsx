@@ -27,6 +27,8 @@ export function EpubCard({
   className,
   priority = false,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -108,6 +110,8 @@ export function EpubCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
       {isPreviewOpen && (
         <Suspense

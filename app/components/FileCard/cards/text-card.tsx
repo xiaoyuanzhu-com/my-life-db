@@ -29,6 +29,8 @@ export function TextCard({
   className,
   highlightTerms,
   matchContext,
+  onDeleted,
+  onRestoreItem,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [fullContent, setFullContent] = useState<string | null>(null);
@@ -142,6 +144,8 @@ export function TextCard({
         onOpenChange={setIsDeleteDialogOpen}
         fileName={file.name}
         filePath={file.path}
+        onDeleted={onDeleted}
+        onRestoreItem={onRestoreItem}
       />
       <TextModal
         file={file}

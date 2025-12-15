@@ -27,6 +27,10 @@ export interface BaseCardProps {
   priority?: boolean;
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
+  /** Called immediately when delete is confirmed (for optimistic UI) */
+  onDeleted?: () => void;
+  /** Called when delete fails after optimistic removal (to restore the item) */
+  onRestoreItem?: () => void;
 }
 
 /**
@@ -39,6 +43,10 @@ export interface FileCardProps {
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
   priority?: boolean;
+  /** Called immediately when delete is confirmed (for optimistic UI) */
+  onDeleted?: () => void;
+  /** Called when delete fails after optimistic removal (to restore the item) */
+  onRestoreItem?: () => void;
 }
 
 /**

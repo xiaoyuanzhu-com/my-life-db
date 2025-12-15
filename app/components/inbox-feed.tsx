@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { FileCard } from './FileCard';
 import { PendingItemCard } from './pending-item-card';
-import type { InboxResponse } from '~/routes/api.inbox';
+import type { InboxResponse, InboxItem } from '~/routes/api.inbox';
 import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';
@@ -10,6 +10,46 @@ interface InboxFeedProps {
   onRefresh?: number;
   scrollToCursor?: string;
   onScrollComplete?: () => void;
+}
+
+/**
+ * Hook to manage optimistic delete state.
+ * Tracks deleted paths and provides handlers for FileCard.
+ */
+function useOptimisticDelete() {
+  // Set of paths that have been optimistically deleted
+  const [deletedPaths, setDeletedPaths] = useState<Set<string>>(new Set());
+  // Store items for potential restore (keyed by path)
+  const deletedItemsRef = useRef<Map<string, InboxItem>>(new Map());
+
+  const handleDelete = useCallback((path: string, item: InboxItem) => {
+    // Store the item for potential restore
+    deletedItemsRef.current.set(path, item);
+    // Add to deleted set (optimistic removal)
+    setDeletedPaths(prev => new Set(prev).add(path));
+  }, []);
+
+  const handleRestore = useCallback((path: string) => {
+    // Remove from deleted set (restore to UI)
+    setDeletedPaths(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+    // Clean up stored item
+    deletedItemsRef.current.delete(path);
+  }, []);
+
+  const isDeleted = useCallback((path: string) => {
+    return deletedPaths.has(path);
+  }, [deletedPaths]);
+
+  return {
+    deletedPaths,
+    handleDelete,
+    handleRestore,
+    isDeleted,
+  };
 }
 
 const { BATCH_SIZE, MAX_PAGES, SCROLL_THRESHOLD, DEFAULT_ITEM_HEIGHT, BOTTOM_STICK_THRESHOLD } = FEED_CONSTANTS;
@@ -32,6 +72,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
   // Local-first send queue - get pending items
   const { pendingItems, cancel: cancelUpload } = useSendQueue();
+
+  // Optimistic delete state
+  const { deletedPaths, handleDelete, handleRestore } = useOptimisticDelete();
 
   // Filter pending items to only show non-uploaded ones
   const visiblePendingItems = useMemo(() =>
@@ -580,7 +623,11 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
           if (!page) return null;
 
           // Reverse items within page for chat order (oldest at top of page)
-          const reversedItems = page.items.slice().reverse();
+          // Filter out optimistically deleted items
+          const reversedItems = page.items
+            .filter(item => !deletedPaths.has(item.path))
+            .slice()
+            .reverse();
 
           return (
             <div
@@ -603,6 +650,8 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
                     file={item}
                     showTimestamp={true}
                     priority={pageIndex === 0 && index === reversedItems.length - 1}
+                    onDeleted={() => handleDelete(item.path, item)}
+                    onRestoreItem={() => handleRestore(item.path)}
                   />
                 </div>
               ))}
