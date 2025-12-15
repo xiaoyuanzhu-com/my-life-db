@@ -63,7 +63,7 @@ export function PdfCard({
 
   const cardContent = (
     <div
-      className={cn(cardClickableClass, showMatchContext && 'min-w-[calc(50vw-40px)]', className)}
+      className={cn(cardClickableClass, showMatchContext ? 'w-2/3' : '', className)}
       onClick={() => setIsPreviewOpen(true)}
     >
       {screenshotSrc ? (

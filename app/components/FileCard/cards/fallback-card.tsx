@@ -55,7 +55,7 @@ export function FallbackCard({
 
   const cardContent = (
     <div
-      className={cn(cardClickableClass, showMatchContext && 'min-w-[calc(50vw-40px)]', className)}
+      className={cn(cardClickableClass, showMatchContext ? 'w-2/3' : '', className)}
       onClick={() => setIsPreviewOpen(true)}
     >
       <div className="p-6 flex items-center justify-center min-h-[120px]">

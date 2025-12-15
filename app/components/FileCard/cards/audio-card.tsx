@@ -236,10 +236,11 @@ export function AudioCard({
       ref={containerRef}
       className={cn(
         cardContainerClass,
-        'cursor-pointer h-10 min-w-[100px]',
+        'cursor-pointer h-10',
+        matchContext ? 'w-2/3' : 'min-w-[100px]',
         className
       )}
-      style={{ width: barWidth }}
+      style={{ width: matchContext ? undefined : barWidth }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

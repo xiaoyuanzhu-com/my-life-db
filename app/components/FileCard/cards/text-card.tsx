@@ -113,8 +113,7 @@ export function TextCard({
     <div
       className={cn(
         cardContainerClass,
-        'max-w-[calc(100%-40px)] w-fit',
-        matchContext && 'min-w-[calc(50vw-40px)]',
+        matchContext ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
         className
       )}
       onDoubleClick={handleDoubleClick}

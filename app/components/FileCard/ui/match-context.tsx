@@ -11,7 +11,7 @@ type MatchContextProps = {
  *
  * Width behavior:
  * - No width set - fills parent width as a block element
- * - Parent card should set min-w-[calc(50vw-40px)] to ensure readability
+ * - Parent card should set w-2/3 (66.67% of parent) when matchContext is present
  * - When MatchContext causes card to expand, file content should center (handled by parent)
  */
 export function MatchContext({ context }: MatchContextProps) {
