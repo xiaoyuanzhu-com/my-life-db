@@ -1,4 +1,5 @@
 import { useEffect, useState, lazy, Suspense, useCallback, useRef } from 'react';
+import { Download, Share2, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -16,9 +17,13 @@ import {
 } from '~/components/ui/alert-dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '~/components/ui/button';
-import type { BaseModalProps } from '../types';
-import { fetchFullContent, saveFileContent } from '../utils';
+import type { BaseModalProps, ContextMenuAction } from '../types';
+import { fetchFullContent, saveFileContent, downloadFile, shareFile, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
+import { ModalActionButtons } from '../ui/modal-action-buttons';
+import { DigestsPanel } from '../ui/digests-panel';
+
+type ModalView = 'content' | 'digests';
 
 const TextEditor = lazy(() =>
   import('~/components/text-editor').then((mod) => ({
@@ -67,14 +72,16 @@ export function TextModal({
   const [isLoading, setIsLoading] = useState(false);
   const [editedContent, setEditedContent] = useState<string | null>(null);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+  const [activeView, setActiveView] = useState<ModalView>('content');
 
   // Use ref for save handler so Monaco keybinding always calls latest version
   const saveHandlerRef = useRef<() => Promise<void>>(async () => {});
 
-  // Reset edited content when modal opens with new file
+  // Reset state when modal opens with new file
   useEffect(() => {
     if (open) {
       setEditedContent(null);
+      setActiveView('content');
     }
   }, [open, file.path]);
 
@@ -156,37 +163,73 @@ export function TextModal({
     }
   }, [handleCloseClick]);
 
+  // Modal action handlers
+  const handleDownload = useCallback(() => {
+    downloadFile(file.path, file.name);
+  }, [file.path, file.name]);
+
+  const handleShare = useCallback(async () => {
+    await shareFile(file.path, file.name, file.mimeType);
+  }, [file.path, file.name, file.mimeType]);
+
+  const handleToggleDigests = useCallback(() => {
+    setActiveView((prev) => (prev === 'digests' ? 'content' : 'digests'));
+  }, []);
+
+  // Modal actions
+  const modalActions: ContextMenuAction[] = [
+    { icon: Download, label: 'Download', onClick: handleDownload },
+    { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
+    { icon: Sparkles, label: 'Digests', onClick: handleToggleDigests },
+  ];
+
+  const showDigests = activeView === 'digests';
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent
-          className="max-w-[90vw] h-[90vh] w-full sm:max-w-2xl p-0 overflow-hidden border-0"
+          className={`h-[90vh] p-0 overflow-hidden border-0 ${
+            showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] w-full sm:max-w-2xl'
+          }`}
           showCloseButton={false}
         >
           <VisuallyHidden>
             <DialogTitle>{file.name}</DialogTitle>
           </VisuallyHidden>
           <ModalCloseButton onClick={handleCloseClick} isDirty={hasUnsavedChanges} />
-          <div className="h-full w-full overflow-hidden rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e]">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Loading...
+          <ModalActionButtons actions={modalActions} />
+          <div className="h-full w-full flex overflow-hidden rounded-lg">
+            {/* Content view */}
+            <div className={`h-full overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] ${
+              showDigests ? 'w-1/2' : 'w-full'
+            }`}>
+              {isLoading ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  Loading...
+                </div>
+              ) : (
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      Loading editor...
+                    </div>
+                  }
+                >
+                  <TextEditor
+                    value={displayText}
+                    onChange={handleChange}
+                    onSave={handleSaveFromEditor}
+                    language={getLanguageFromFilename(file.name)}
+                  />
+                </Suspense>
+              )}
+            </div>
+            {/* Digests panel (side-by-side) */}
+            {showDigests && (
+              <div className="w-1/2 h-full border-l border-border">
+                <DigestsPanel file={file} />
               </div>
-            ) : (
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    Loading editor...
-                  </div>
-                }
-              >
-                <TextEditor
-                  value={displayText}
-                  onChange={handleChange}
-                  onSave={handleSaveFromEditor}
-                  language={getLanguageFromFilename(file.name)}
-                />
-              </Suspense>
             )}
           </div>
         </DialogContent>

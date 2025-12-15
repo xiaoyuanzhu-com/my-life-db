@@ -21,7 +21,9 @@ app/components/FileCard/
 │   ├── card-styles.ts          # Unified card styling constants
 │   ├── match-context.tsx       # Search result match context display
 │   ├── text-highlight.tsx      # Text highlighting utilities
-│   └── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
+│   ├── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
+│   ├── modal-action-buttons.tsx   # Floating action buttons for modals
+│   └── digests-panel.tsx          # Shared digests view panel for modals
 ├── cards/
 │   ├── index.ts                # Card registry: getCardComponent(type)
 │   ├── image-card.tsx          # PNG, JPG, JPEG, GIF, WebP, SVG
@@ -187,7 +189,31 @@ export function renderHighlightedSnippet(snippet: string): ReactNode
 
 // ui/delete-confirm-dialog.tsx
 export function DeleteConfirmDialog({ open, onOpenChange, file }: DeleteConfirmDialogProps)
+
+// ui/digests-panel.tsx
+export function DigestsPanel({ file, className }: { file: FileWithDigests; className?: string })
 ```
+
+### DigestsPanel
+
+Shared panel component for displaying AI-generated digests. Shows side-by-side with content when activated via modal action button.
+
+**Features:**
+- Lists all digests for the file with status indicators
+- Shows digest content (text, JSON arrays as tags, structured JSON)
+- Refresh button to trigger digest processing
+- Error display for failed digests
+- Color-coded status: success (green), failed (red), in-progress (blue), to-do/skipped (muted)
+
+**Layout:**
+- Header: Title + completion count + Refresh button
+- Scrollable list of digest cards
+- Footer: Warning message if any digests failed
+
+**Integration:**
+- Used by all modals via `activeView` state toggle
+- Modal expands to full width when digests panel is shown
+- Content and digests displayed side-by-side (50/50 split)
 
 ### Context Menu (Unified Wrapper)
 
@@ -203,6 +229,106 @@ export function ContextMenuWrapper({
 ```
 
 Each card builds its own action list and passes to the wrapper. Shared actions use utilities from `utils.ts`.
+
+### Modal Actions
+
+Modals can display their own action toolbar, using the same `ContextMenuAction` interface. Modal actions differ from context menu actions in purpose and behavior:
+
+**Key Differences:**
+
+| Aspect | Context Menu | Modal Actions |
+|--------|--------------|---------------|
+| Purpose | Quick operations on the card | Extended operations within modal |
+| Location | Popup menu | Persistent toolbar in modal header |
+| View switching | Not applicable | Can toggle modal views (editor, preview, digests) |
+| Typical actions | Open, Pin, Copy, Delete | Download, Share, Preview, Digests |
+
+**Action Interface (Shared):**
+
+```typescript
+// types.ts - same interface for both context menu and modal
+export interface ContextMenuAction {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  variant?: 'default' | 'destructive';
+  disabled?: boolean;
+  hidden?: boolean;
+}
+```
+
+**View-Switching Actions:**
+
+Some modal actions toggle the modal's view mode rather than performing an operation:
+
+```typescript
+// Example: Modal with digests view toggle
+type ModalView = 'content' | 'digests';
+
+const [activeView, setActiveView] = useState<ModalView>('content');
+
+const modalActions: ContextMenuAction[] = [
+  { icon: Download, label: 'Download', onClick: () => downloadFile(file.path, file.name) },
+  { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
+  { icon: Sparkles, label: 'Digests', onClick: () => setActiveView('digests') },
+];
+```
+
+**Modal Action Buttons:**
+
+Action buttons float at the bottom-right of the modal, matching the close button style (same size, same appearance):
+
+```typescript
+// ui/modal-action-buttons.tsx
+export function ModalActionButtons({ actions }: { actions: ContextMenuAction[] }) {
+  const visibleActions = actions.filter(a => !a.hidden);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+      {visibleActions.map((action, i) => {
+        const Icon = action.icon;
+        return (
+          <button
+            key={i}
+            onClick={action.onClick}
+            disabled={action.disabled}
+            className={cn(
+              'w-10 h-10 rounded-full border-none outline-none',
+              'bg-black/50 hover:bg-black/70 disabled:opacity-50',
+              'flex items-center justify-center',
+              'text-white',
+              'transition-colors',
+              'touch-manipulation'
+            )}
+            aria-label={action.label}
+          >
+            <Icon className="w-5 h-5" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+```
+
+**Button Positions:**
+- Close button: `fixed top-4 right-4`
+- Action buttons: `fixed bottom-4 right-4`, horizontal row with `gap-2`
+
+**Standard Modal Actions (All File Types with Modals):**
+
+| Action | Icon | Behavior |
+|--------|------|----------|
+| Download | Download | Downloads file to device |
+| Share | Share2 | Native share API (hidden if unavailable) |
+| Digests | Sparkles | Toggles to digests view |
+
+**Context Menu vs Modal Actions:**
+
+| File Type | Context Menu | Modal Actions |
+|-----------|--------------|---------------|
+| All with modal | Open, Locate, Pin, Save/Copy, Share, Delete | Download, Share, Digests |
+| Audio/Video | (context menu only) | (no modal) |
 
 ### Modal Components
 
@@ -461,8 +587,18 @@ Open, Pin, Save, Share, Delete
 - Lazy loads full content when opened
 - Supported extensions: md, txt, json, yaml, yml, xml, html, css, scss, less, js, jsx, ts, tsx, py, rb, go, rs, java, c, cpp, h, hpp, sh, bash, zsh, sql, php, swift, kt, scala, lua, r
 
+**Modal Views:**
+
+| View | Description |
+|------|-------------|
+| Content | Default. Monaco editor for viewing/editing content |
+| Digests | Shows AI-generated digests: summary, tags, etc. |
+
+**Modal Actions:**
+Download, Share, Digests (standard for all modals)
+
 **Context Menu:**
-Open, Pin, Copy, Delete
+Open, Locate, Pin, Copy, Delete
 
 **Special:**
 - `selectTextOnOpen` enabled
