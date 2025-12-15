@@ -51,6 +51,8 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const keywordAbortRef = useRef<AbortController | null>(null);
   const semanticAbortRef = useRef<AbortController | null>(null);
+  // Track the current query to prevent stale responses from updating state
+  const currentQueryRef = useRef<string>('');
 
   // SessionStorage key for persisting text
   const STORAGE_KEY = 'omni-input:text';
@@ -91,6 +93,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
   // Perform search - fires keyword and semantic in parallel
   const performSearch = useCallback(async (query: string) => {
+    // Update the current query ref to track which query we're searching for
+    currentQueryRef.current = query;
+
     if (!query || query.length < 2) {
       setKeywordResults(null);
       setSemanticResults(null);
@@ -114,10 +119,13 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     setKeywordError(null);
     setSemanticError(null);
 
+    // Capture the query for this search to check staleness
+    const searchQuery = query;
+
     // Fire keyword search
     const fetchKeyword = async () => {
       try {
-        const params = new URLSearchParams({ q: query, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
+        const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
         const response = await fetch(`/api/search?${params}`, {
           signal: keywordController.signal,
         });
@@ -128,18 +136,19 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         }
 
         const data: SearchResponse = await response.json();
-        if (!keywordController.signal.aborted) {
+        // Only update state if this response is for the current query
+        if (currentQueryRef.current === searchQuery) {
           setKeywordResults(data);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error('Keyword search error:', err);
         const errorMsg = err instanceof Error ? err.message : 'Keyword search failed';
-        if (!keywordController.signal.aborted) {
+        if (currentQueryRef.current === searchQuery) {
           setKeywordError(errorMsg);
         }
       } finally {
-        if (!keywordController.signal.aborted) {
+        if (currentQueryRef.current === searchQuery) {
           setIsKeywordSearching(false);
         }
       }
@@ -148,7 +157,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     // Fire semantic search
     const fetchSemantic = async () => {
       try {
-        const params = new URLSearchParams({ q: query, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
+        const params = new URLSearchParams({ q: searchQuery, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
         const response = await fetch(`/api/search?${params}`, {
           signal: semanticController.signal,
         });
@@ -159,18 +168,19 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         }
 
         const data: SearchResponse = await response.json();
-        if (!semanticController.signal.aborted) {
+        // Only update state if this response is for the current query
+        if (currentQueryRef.current === searchQuery) {
           setSemanticResults(data);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error('Semantic search error:', err);
         const errorMsg = err instanceof Error ? err.message : 'Semantic search failed';
-        if (!semanticController.signal.aborted) {
+        if (currentQueryRef.current === searchQuery) {
           setSemanticError(errorMsg);
         }
       } finally {
-        if (!semanticController.signal.aborted) {
+        if (currentQueryRef.current === searchQuery) {
           setIsSemanticSearching(false);
         }
       }
