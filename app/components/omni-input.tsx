@@ -24,11 +24,12 @@ interface OmniInputProps {
     hasError: boolean;
     resultCount?: number;
   };
+  clearSearchTrigger?: number;
 }
 
 const SEARCH_BATCH_SIZE = 30;
 
-export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus, maxHeight }: OmniInputProps) {
+export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus, maxHeight, clearSearchTrigger }: OmniInputProps) {
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -82,6 +83,17 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       console.error('Failed to save content to sessionStorage:', error);
     }
   }, [content]);
+
+  // Clear search when clearSearchTrigger changes (used by "Locate" action)
+  useEffect(() => {
+    if (clearSearchTrigger && clearSearchTrigger > 0) {
+      setContent('');
+      setKeywordResults(null);
+      setSemanticResults(null);
+      setKeywordError(null);
+      setSemanticError(null);
+    }
+  }, [clearSearchTrigger]);
 
   // Adaptive debounce for search
   const getSearchDebounceDelay = useCallback((queryLength: number): number => {

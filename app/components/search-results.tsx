@@ -10,6 +10,7 @@ interface SearchResultsProps {
   isSemanticSearching: boolean;
   keywordError: string | null;
   semanticError: string | null;
+  onLocateInFeed?: (path: string, createdAt: string) => void;
 }
 
 const SEARCH_BATCH_SIZE = 30;
@@ -21,6 +22,7 @@ export function SearchResults({
   isSemanticSearching,
   keywordError,
   semanticError,
+  onLocateInFeed,
 }: SearchResultsProps) {
   // Track accumulated results from each source (for pagination)
   const [accumulatedKeyword, setAccumulatedKeyword] = useState<SearchResultItem[]>([]);
@@ -406,6 +408,7 @@ export function SearchResults({
                 highlightTerms={highlightTerms}
                 matchContext={result.matchContext}
                 priority={index === array.length - 1}
+                onLocateInFeed={onLocateInFeed ? () => onLocateInFeed(result.path, result.createdAt) : undefined}
               />
             ))}
           </div>

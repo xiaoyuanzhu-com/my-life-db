@@ -21,6 +21,7 @@ export function FileCard({
   priority = false,
   onDeleted,
   onRestoreItem,
+  onLocateInFeed,
 }: FileCardProps) {
   const contentType = getFileContentType(file);
   const CardComponent = getCardComponent(contentType);
@@ -39,6 +40,7 @@ export function FileCard({
         priority={priority}
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
+        onLocateInFeed={onLocateInFeed}
       />
     </div>
   );

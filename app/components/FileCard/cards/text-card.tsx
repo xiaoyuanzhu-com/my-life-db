@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Copy, Trash2 } from 'lucide-react';
+import { ExternalLink, Pin, Copy, Trash2, MapPin } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
@@ -31,6 +31,7 @@ export function TextCard({
   matchContext,
   onDeleted,
   onRestoreItem,
+  onLocateInFeed,
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [fullContent, setFullContent] = useState<string | null>(null);
@@ -104,6 +105,7 @@ export function TextCard({
 
   const actions: ContextMenuAction[] = [
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
+    { icon: MapPin, label: 'Locate', onClick: () => onLocateInFeed?.(), hidden: !onLocateInFeed },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Copy, label: copyStatus === 'copied' ? 'Copied' : 'Copy', onClick: handleCopy },
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },

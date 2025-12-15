@@ -27,6 +27,7 @@ export default function HomePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [inputMaxHeight, setInputMaxHeight] = useState<number | null>(null);
   const [lastSuccessfulResults, setLastSuccessfulResults] = useState<SearchResponse | null>(null);
+  const [clearSearchTrigger, setClearSearchTrigger] = useState(0);
 
   // Derive combined state from keyword and semantic results
   const isSearching = searchState.isKeywordSearching || searchState.isSemanticSearching;
@@ -104,6 +105,16 @@ export default function HomePage() {
     setScrollToCursor(undefined);
   }, []);
 
+  const handleLocateInFeed = useCallback((path: string, createdAt: string) => {
+    // Clear search results and input
+    setClearSearchTrigger((prev) => prev + 1);
+    setLastSuccessfulResults(null);
+
+    // Build cursor and trigger scroll
+    const cursor = `${createdAt}:${path}`;
+    setScrollToCursor(cursor);
+  }, []);
+
   useInboxNotifications({
     onInboxChange: handleInboxChange,
   });
@@ -146,6 +157,7 @@ export default function HomePage() {
               isSemanticSearching={searchState.isSemanticSearching}
               keywordError={searchState.keywordError}
               semanticError={searchState.semanticError}
+              onLocateInFeed={handleLocateInFeed}
             />
           </div>
         )}
@@ -164,6 +176,7 @@ export default function HomePage() {
               hasError: error !== null,
               resultCount: hasCurrentResults ? mergedResultCount : undefined,
             }}
+            clearSearchTrigger={clearSearchTrigger}
           />
         </div>
       </div>

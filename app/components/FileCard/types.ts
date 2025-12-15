@@ -31,6 +31,8 @@ export interface BaseCardProps {
   onDeleted?: () => void;
   /** Called when delete fails after optimistic removal (to restore the item) */
   onRestoreItem?: () => void;
+  /** Called when user wants to locate this item in the feed (search results only) */
+  onLocateInFeed?: () => void;
 }
 
 /**
@@ -47,6 +49,8 @@ export interface FileCardProps {
   onDeleted?: () => void;
   /** Called when delete fails after optimistic removal (to restore the item) */
   onRestoreItem?: () => void;
+  /** Called when user wants to locate this item in the feed (search results only) */
+  onLocateInFeed?: () => void;
 }
 
 /**
