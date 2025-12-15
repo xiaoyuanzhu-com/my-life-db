@@ -584,20 +584,7 @@ This endpoint is available but not currently used by the main search UI.
 
 ### 6.3 Future Enhancements
 
-**Recency Boost:**
-```typescript
-const ageInDays = (Date.now() - new Date(file.modifiedAt)) / (1000 * 60 * 60 * 24);
-const recencyBoost = Math.exp(-ageInDays / 30); // Decay over 30 days
-finalScore = baseScore * (1 + 0.2 * recencyBoost);
-```
-
-**Click Tracking:**
-- Log which results users click on
-- Use implicit feedback to adjust ranking weights
-- Personalize results over time
-
 **Query Understanding:**
-- Parse special syntax: `tag:work`, `type:pdf`, `date:2024-11`
 - Auto-suggest corrections for misspellings
 - Expand synonyms (e.g., "note" → "note, memo, journal")
 
@@ -605,53 +592,28 @@ finalScore = baseScore * (1 + 0.2 * recencyBoost);
 
 ## 7. Implementation Phases
 
-### Phase 1: MVP (Current)
+### Phase 1: MVP (Complete)
 - [x] Design document
-- [ ] `/api/search` endpoint with Meilisearch
-- [ ] Adaptive debounce in OmniInput
-- [ ] SearchResults component with file cards
-- [ ] Basic keyboard navigation
+- [x] `/api/search` endpoint with Meilisearch
+- [x] Adaptive debounce in OmniInput
+- [x] SearchResults component with file cards
+- [x] Hybrid search with Qdrant (semantic)
 
 **Success Criteria:**
 - Search returns results in < 500ms (p95)
 - Adaptive debounce feels responsive
 - Results display file metadata correctly
 
-### Phase 2: Enhanced UX
-- [ ] Infinite scroll pagination
-- [ ] Result highlighting (match terms in bold)
-- [ ] File type icons
-- [ ] Click to open file detail view
-- [ ] Loading skeletons and error states
+### Phase 2: Enhanced UX (Complete)
+- [x] Infinite scroll pagination
+- [x] Loading and error states
+- [x] Result highlighting (match terms in `<mark>` tags)
+- [x] Match context display (digest source, semantic similarity)
+- [x] Click to navigate to file in library
 
 **Success Criteria:**
 - Pagination works smoothly
-- Visual polish matches design mockups
 - Error handling is user-friendly
-
-### Phase 3: Advanced Features
-- [ ] Hybrid search with Qdrant (semantic)
-- [ ] Query syntax parsing (`tag:work type:pdf`)
-- [ ] Filter UI (date range, file type, tags)
-- [ ] Search history and suggestions
-- [ ] Keyboard shortcut (Cmd+K to focus)
-
-**Success Criteria:**
-- Hybrid search improves relevance measurably
-- Advanced filters work correctly
-- Power users adopt keyboard shortcuts
-
-### Phase 4: Optimization
-- [ ] Query result caching (Redis or in-memory)
-- [ ] Recency boosting
-- [ ] Click tracking and relevance feedback
-- [ ] Performance monitoring and alerting
-- [ ] Search analytics dashboard
-
-**Success Criteria:**
-- Cached queries return in < 50ms
-- Click-through rate > 70%
-- Search usage > 40% of all navigation
 
 ---
 
@@ -660,8 +622,7 @@ finalScore = baseScore * (1 + 0.2 * recencyBoost);
 ### Performance
 - **Debouncing**: Adaptive timing balances responsiveness and API load
 - **Caching**: Browser caches GET responses for 5 minutes
-- **Pagination**: Load More instead of infinite scroll (simpler, more control)
-- **Lazy Loading**: Only fetch file details on card expand (future)
+- **Pagination**: True infinite scroll (auto-loads at 200px threshold)
 
 ### Security
 - **Input Validation**: Sanitize query to prevent injection (Meilisearch escapes automatically)
@@ -670,9 +631,7 @@ finalScore = baseScore * (1 + 0.2 * recencyBoost);
 - **Path Traversal**: Reject queries with `..` or absolute paths
 
 ### Accessibility
-- **Keyboard Navigation**: Full support with arrow keys, enter, escape
 - **ARIA Labels**: Proper labeling for screen readers
-- **Focus Management**: Clear focus indicators, logical tab order
 - **Status Messages**: Announce "X results found" to screen readers
 - **Color Contrast**: Ensure text meets WCAG AA standards
 
@@ -711,14 +670,8 @@ finalScore = baseScore * (1 + 0.2 * recencyBoost);
 
 ## Success Metrics
 
-### MVP Goals
+### Goals
 - **Search Latency**: p95 < 500ms for keyword search
 - **Result Relevance**: Top 5 results include user's target 80%+ of the time
-- **Adoption**: 60%+ of users try search within first week
 - **Usability**: Users find files without explicit instructions
-
-### Long-Term Goals
-- **Search Usage**: 40%+ of navigation via search (vs browsing folders)
-- **Click-Through Rate**: 70%+ of searches result in clicking a result
 - **Refinement Rate**: < 30% of searches need query refinement
-- **Performance**: p95 latency < 300ms with caching
