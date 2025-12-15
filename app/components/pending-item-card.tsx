@@ -5,10 +5,39 @@
 
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Loader2 } from 'lucide-react';
+import { X, CircleAlert, Loader2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue';
 import { cardContainerClass } from './FileCard/ui/card-styles';
+import { Spinner } from './ui/spinner';
+
+/** Threshold in ms before showing spinner (3 seconds) */
+const SPINNER_DELAY_MS = 3000;
+/** Threshold in bytes for showing progress (1MB) */
+const PROGRESS_SIZE_THRESHOLD = 1_000_000;
+
+/**
+ * Format time until next retry in human-readable format
+ * e.g., "5s", "2m", "1h"
+ */
+function formatRetryTime(nextRetryAt: string): string {
+  const now = Date.now();
+  const retryTime = new Date(nextRetryAt).getTime();
+  const diffMs = Math.max(0, retryTime - now);
+
+  const seconds = Math.ceil(diffMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.ceil(minutes / 60);
+  return `${hours}h`;
+}
 
 interface PendingItemCardProps {
   item: PendingInboxItem;
@@ -19,6 +48,18 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
   const [isCanceling, setIsCanceling] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [textPreview, setTextPreview] = useState<string | null>(null);
+  const [, setTick] = useState(0); // Force re-render for countdown updates
+
+  // Update countdown every second when there's a retry scheduled
+  useEffect(() => {
+    if (!item.nextRetryAt || !item.errorMessage) return;
+
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [item.nextRetryAt, item.errorMessage]);
 
   // Generate preview for images and text
   useEffect(() => {
@@ -44,33 +85,58 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
     }
   };
 
-  // Status marker text (short)
-  const getStatusMarker = (): string => {
-    if (item.status === 'uploading' && item.uploadProgress > 0) {
-      return `${item.uploadProgress}%`;
-    }
-    if (item.errorMessage) {
-      return 'Retry';
-    }
-    if (item.status === 'uploaded') {
-      return 'Done';
-    }
-    return 'Saved';
-  };
+  // Determine status display
+  const hasError = !!item.errorMessage && item.nextRetryAt;
+  const ageMs = Date.now() - new Date(item.createdAt).getTime();
+  const showSpinner = ageMs >= SPINNER_DELAY_MS;
+  const showProgress = item.size >= PROGRESS_SIZE_THRESHOLD;
 
-  const isUploading = item.status === 'uploading' && item.uploadProgress > 0;
-  const statusMarker = getStatusMarker();
+  // Render status indicator with icon and text
+  // States:
+  // 1. Failed with retry: CircleAlert + "retry in Xs"
+  // 2. < 3s since created: no marker
+  // 3. >= 3s since created: Spinner (+ progress% if file > 1MB)
+  const renderStatusIndicator = () => {
+    if (hasError && item.nextRetryAt) {
+      // Failed with retry scheduled: circle-alert with retry time
+      const retryTimeMs = new Date(item.nextRetryAt).getTime() - Date.now();
+      if (retryTimeMs <= 0) {
+        // Retry time reached, show retrying state with spinner
+        return <Spinner className="h-3 w-3" />;
+      }
+      return (
+        <span className="flex items-center gap-1 text-destructive">
+          <CircleAlert className="h-3 w-3" />
+          retry in {formatRetryTime(item.nextRetryAt)}
+        </span>
+      );
+    }
+
+    if (!showSpinner) {
+      // Less than 3s since created: no marker
+      return null;
+    }
+
+    // >= 3s: show spinner, optionally with progress for large files
+    if (showProgress && item.uploadProgress > 0) {
+      return (
+        <span className="flex items-center gap-1">
+          <Spinner className="h-3 w-3" />
+          {item.uploadProgress}%
+        </span>
+      );
+    }
+
+    // Spinner only
+    return <Spinner className="h-3 w-3" />;
+  };
 
   return (
     <div className="w-full flex flex-col items-end">
       {/* Timestamp + status marker outside card (like FileCard) */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 mr-5 select-none">
         <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
-        <span>·</span>
-        <span className="flex items-center gap-1">
-          {isUploading && <Loader2 className="h-3 w-3 animate-spin" />}
-          {statusMarker}
-        </span>
+        {renderStatusIndicator()}
         {/* Cancel button inline with timestamp */}
         <button
           onClick={handleCancel}
@@ -96,8 +162,8 @@ export function PendingItemCard({ item, onCancel }: PendingItemCardProps) {
           'max-w-[calc(100%-40px)] w-fit relative'
         )}
       >
-        {/* Progress bar overlay */}
-        {isUploading && (
+        {/* Progress bar overlay - show for large files during upload */}
+        {showProgress && item.uploadProgress > 0 && (
           <div
             className="absolute inset-y-0 left-0 bg-primary/10 transition-all duration-300"
             style={{ width: `${item.uploadProgress}%` }}

@@ -385,13 +385,14 @@ export class UploadQueueManager {
     }, HEARTBEAT_INTERVAL_MS);
 
     try {
-      // Update item status
+      // Update item status - clear error and retry info when starting upload
       const updatedItem: PendingInboxItem = {
         ...item,
         status: 'uploading',
         uploadProgress: item.tusUploadOffset ? Math.floor((item.tusUploadOffset / item.size) * 100) : 0,
         lastAttemptAt: new Date().toISOString(),
         errorMessage: undefined,
+        nextRetryAt: undefined,
       };
       await saveItem(updatedItem);
       await this.notifyProgress();
