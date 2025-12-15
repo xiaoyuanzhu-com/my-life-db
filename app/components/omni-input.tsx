@@ -437,7 +437,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           className="hidden"
           onChange={handleFileSelect}
           multiple
-          accept="image/*,application/pdf,.doc,.docx,.txt,.md"
         />
       </form>
     </div>
