@@ -172,13 +172,26 @@ defineTaskHandler({
       return { count: 0, message: 'no documents to delete' };
     }
 
+    // Fetch documents to get their Qdrant point IDs
+    const pointIds: string[] = [];
+    for (const docId of documentIds) {
+      const doc = getQdrantDocumentById(docId);
+      if (doc?.qdrantPointId) {
+        pointIds.push(doc.qdrantPointId);
+      } else {
+        log.debug({ documentId: docId }, 'document has no Qdrant point ID, skipping');
+      }
+    }
+
     // Update status to 'deleting'
     batchUpdateEmbeddingStatus(documentIds, 'deleting', { error: undefined });
 
     try {
-      // Delete from Qdrant
-      const client = await getQdrantClient();
-      await client.delete(documentIds);
+      // Delete from Qdrant using point IDs (not document IDs)
+      if (pointIds.length > 0) {
+        const client = await getQdrantClient();
+        await client.delete(pointIds);
+      }
 
       log.debug(
         { documentCount: documentIds.length },
