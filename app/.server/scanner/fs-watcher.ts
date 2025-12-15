@@ -285,6 +285,14 @@ export class FileSystemWatcher extends EventEmitter {
     // Get relative path from DATA_ROOT
     const relativePath = path.relative(DATA_ROOT, fullPath);
 
+    // Skip if already cleaned up (e.g., deleted via API)
+    // This avoids redundant cleanup when deletion originates from our own code
+    const existing = getFileByPath(relativePath);
+    if (!existing) {
+      log.debug({ path: relativePath }, 'file already deleted from DB, skipping watcher cleanup');
+      return;
+    }
+
     try {
       log.info({ path: relativePath, isFolder }, 'file deletion detected');
 

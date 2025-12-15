@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { getFileByPath, upsertFileRecord, deleteFileRecord, deleteFilesByPrefix } from "~/.server/db/files";
-import { deleteDigestsForPath, deleteDigestsByPrefix } from "~/.server/db/digests";
+import { getFileByPath, upsertFileRecord } from "~/.server/db/files";
 import { getStorageConfig } from "~/.server/config/storage";
+import { deleteFile } from "~/.server/files/delete-file";
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
@@ -115,16 +115,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const config = await getStorageConfig();
       const fullPath = path.join(config.dataPath, filePath);
 
-      await fs.rm(fullPath, { recursive: true, force: true });
+      // Use centralized delete function for complete cleanup
+      const result = await deleteFile({
+        fullPath,
+        relativePath: filePath,
+        isFolder: file.isFolder,
+      });
 
-      if (file.isFolder) {
-        deleteFilesByPrefix(`${filePath}/`);
-        deleteDigestsByPrefix(`${filePath}/`);
-      }
-      deleteFileRecord(filePath);
-      deleteDigestsForPath(filePath);
-
-      log.info({ path: filePath }, "deleted inbox item");
+      log.info({ path: filePath, ...result.databaseRecordsDeleted }, "deleted inbox item");
       return Response.json({ success: true });
     } catch (error) {
       log.error({ err: error }, "delete inbox item failed");

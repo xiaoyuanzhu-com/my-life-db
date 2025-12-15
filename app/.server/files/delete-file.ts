@@ -5,10 +5,12 @@
 
 import { deleteFileRecord, deleteFilesByPrefix, listFiles } from '~/.server/db/files';
 import { deleteDigestsForPath, deleteDigestsByPrefix } from '~/.server/db/digests';
-import { deleteMeiliDocumentByFilePath } from '~/.server/db/meili-documents';
-import { deleteQdrantDocumentsByFile } from '~/.server/db/qdrant-documents';
+import { getMeiliDocumentByFilePath, deleteMeiliDocumentByFilePath } from '~/.server/db/meili-documents';
+import { getQdrantDocumentIdsByFile, deleteQdrantDocumentsByFile } from '~/.server/db/qdrant-documents';
 import { sqlarDeletePrefix } from '~/.server/db/sqlar';
 import { deletePendingTasksForFile, deletePendingTasksForPrefix } from '~/.server/task-queue/task-manager';
+import { enqueueMeiliDelete } from '~/.server/search/meili-tasks';
+import { enqueueQdrantDelete } from '~/.server/search/qdrant-tasks';
 import { getLogger } from '~/.server/log/logger';
 import fs from 'fs/promises';
 
@@ -96,12 +98,26 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       // Continue with database cleanup even if filesystem delete fails
     }
 
+    // Collect document IDs for external search deletion BEFORE deleting from local tables
+    const meiliDocumentIds: string[] = [];
+    const qdrantDocumentIds: string[] = [];
+
     if (isFolder) {
       // For folders, delete all children first
       const pathPrefix = `${relativePath}/`;
 
       // Get all child files for cleanup
       const childFiles = listFiles(pathPrefix);
+
+      // Collect search document IDs for children before deletion
+      for (const child of childFiles) {
+        const meiliDoc = getMeiliDocumentByFilePath(child.path);
+        if (meiliDoc) {
+          meiliDocumentIds.push(meiliDoc.documentId);
+        }
+        const childQdrantIds = getQdrantDocumentIdsByFile(child.path);
+        qdrantDocumentIds.push(...childQdrantIds);
+      }
 
       // Delete child file records
       deleteFilesByPrefix(pathPrefix);
@@ -117,7 +133,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
         const sqlarDeleted = sqlarDeletePrefix(`${childHash}/`);
         result.databaseRecordsDeleted.sqlarFiles += sqlarDeleted;
 
-        // Delete Meilisearch documents for children
+        // Delete Meilisearch documents for children (local DB)
         try {
           deleteMeiliDocumentByFilePath(child.path);
           result.databaseRecordsDeleted.meiliDocuments++;
@@ -126,7 +142,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
           log.debug({ filePath: child.path }, 'no meili document to delete');
         }
 
-        // Delete Qdrant documents for children
+        // Delete Qdrant documents for children (local DB)
         const qdrantDeleted = deleteQdrantDocumentsByFile(child.path);
         result.databaseRecordsDeleted.qdrantDocuments += qdrantDeleted;
       }
@@ -135,6 +151,14 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       const tasksDeleted = deletePendingTasksForPrefix(pathPrefix);
       result.databaseRecordsDeleted.tasks += tasksDeleted;
     }
+
+    // Collect search document IDs for the main file/folder before deletion
+    const meiliDoc = getMeiliDocumentByFilePath(relativePath);
+    if (meiliDoc) {
+      meiliDocumentIds.push(meiliDoc.documentId);
+    }
+    const mainQdrantIds = getQdrantDocumentIdsByFile(relativePath);
+    qdrantDocumentIds.push(...mainQdrantIds);
 
     // Delete the folder/file record itself
     deleteFileRecord(relativePath);
@@ -149,7 +173,7 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
     const sqlarDeleted = sqlarDeletePrefix(`${pathHash}/`);
     result.databaseRecordsDeleted.sqlarFiles += sqlarDeleted;
 
-    // Delete Meilisearch document
+    // Delete Meilisearch document (local DB)
     try {
       deleteMeiliDocumentByFilePath(relativePath);
       result.databaseRecordsDeleted.meiliDocuments++;
@@ -158,13 +182,23 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       log.debug({ relativePath }, 'no meili document to delete');
     }
 
-    // Delete Qdrant documents
+    // Delete Qdrant documents (local DB)
     const qdrantDeleted = deleteQdrantDocumentsByFile(relativePath);
     result.databaseRecordsDeleted.qdrantDocuments += qdrantDeleted;
 
     // Delete tasks
     const tasksDeleted = deletePendingTasksForFile(relativePath);
     result.databaseRecordsDeleted.tasks += tasksDeleted;
+
+    // Enqueue external search service deletions
+    if (meiliDocumentIds.length > 0) {
+      enqueueMeiliDelete(meiliDocumentIds);
+      log.debug({ count: meiliDocumentIds.length }, 'enqueued Meilisearch deletions');
+    }
+    if (qdrantDocumentIds.length > 0) {
+      enqueueQdrantDelete(qdrantDocumentIds);
+      log.debug({ count: qdrantDocumentIds.length }, 'enqueued Qdrant deletions');
+    }
 
     result.success = true;
 

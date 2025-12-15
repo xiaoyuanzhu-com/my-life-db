@@ -397,13 +397,42 @@ classDiagram
 - Scans skip hidden folders, respect reserved names (e.g., `app/`, `.git`), and reuse stored hashes to avoid reading unchanged binaries.
 - Manual rescans can pass `force=true` to refresh metadata when users rewire directories outside the app.
 
-### 8.6 Task Queue
+### 8.6 File Deletion
+
+File deletion uses a centralized `deleteFile()` function (`app/.server/files/delete-file.ts`) that ensures complete cleanup across all storage layers:
+
+**Cleanup sequence:**
+1. **Filesystem** - `fs.rm()` with `recursive: true` for folders
+2. **files table** - Delete file record (and children for folders)
+3. **digests table** - Delete all digest rows for the path
+4. **sqlar table** - Delete binary artifacts using `{pathHash}/` prefix
+5. **meili_documents table** - Delete local tracking row
+6. **qdrant_documents table** - Delete local tracking rows
+7. **tasks table** - Delete pending tasks for the file
+8. **External Meilisearch** - Enqueue deletion task via `enqueueMeiliDelete()`
+9. **External Qdrant** - Enqueue deletion task via `enqueueQdrantDelete()`
+
+**Auto-cleanup via CASCADE:**
+- `pins` table - FK to `files.path` with `ON DELETE CASCADE`
+- `people_embeddings` table - FK to `files.path` with `ON DELETE CASCADE`
+
+**Watcher integration:**
+- `FileSystemWatcher` detects `unlink`/`unlinkDir` events and calls `deleteFile()`
+- To avoid redundant cleanup when deletion originates from API, the watcher checks if the file record exists before processing
+- This is safe because DB operations complete before the watcher event fires (chokidar has debouncing)
+
+**Entry points:**
+- `DELETE /api/library/file` - Primary endpoint, uses `deleteFile()`
+- `DELETE /api/inbox/$id` - Legacy endpoint, delegates to `deleteFile()`
+- `FileSystemWatcher.handleFileDelete()` - External deletions (e.g., Finder, other apps)
+
+### 8.7 Task Queue
 
 - The embedded queue (`src/lib/task-queue/*`) stores tasks in SQLite, exposes HTTP endpoints for inspection, and runs a worker loop inside the Next.js server process.
 - Tasks transition through `pending → enriching → enriched/failed/skipped`, mirroring digest statuses so the UI can show unified progress bars.
 - Retry logic uses exponential backoff with jitter, and handlers (e.g., `digest_url_crawl`) are pure functions that can be re-run without side effects because inputs are file paths.
 
-### 8.7 Misc
+### 8.8 Misc
 
 - **Schema evolution:** Migrations append to `schema_version`, and UI badges draw attention to stale records so users can trigger re-processing.
 - **Settings + vendors:** `/api/settings` persists data dir overrides, Meilisearch hosts, AI vendor preferences, and log levels; initialization (`src/lib/init.ts`) reads them to configure services.
