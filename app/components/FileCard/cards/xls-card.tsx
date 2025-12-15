@@ -7,6 +7,7 @@ import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardClickableClass } from '../ui/card-styles';
+import { highlightMatches } from '../ui/text-highlight';
 import { FallbackModal } from '../modals/fallback-modal';
 import {
   downloadFile,
@@ -21,6 +22,7 @@ export function XlsCard({
   file,
   className,
   priority = false,
+  highlightTerms,
   matchContext,
   onDeleted,
   onRestoreItem,
@@ -51,14 +53,17 @@ export function XlsCard({
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },
   ];
 
+  // Check if MatchContext will be shown (skip filePath matches when filename is visible in fallback)
+  const showMatchContext = matchContext && !(matchContext.digest?.type === 'filePath' && !screenshotSrc);
+
   const cardContent = (
     <div
-      className={cn(cardClickableClass, className)}
+      className={cn(cardClickableClass, showMatchContext && 'min-w-[calc(50vw-40px)]', className)}
       onClick={() => setIsPreviewOpen(true)}
     >
       {screenshotSrc ? (
         <div
-          className="relative flex items-center justify-center"
+          className="relative flex items-center justify-center mx-auto"
           style={{ minWidth: 100, minHeight: 100 }}
         >
           <img
@@ -78,7 +83,9 @@ export function XlsCard({
         <div className="p-6 flex items-center justify-center min-h-[120px]">
           <div className="text-center">
             <div className="text-sm font-medium text-foreground/80 break-all">
-              {file.name}
+              {highlightTerms?.length
+                ? highlightMatches(file.name, highlightTerms)
+                : file.name}
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
               Excel Spreadsheet
@@ -86,7 +93,8 @@ export function XlsCard({
           </div>
         </div>
       )}
-      {matchContext && <MatchContext context={matchContext} />}
+      {/* Skip showing match context for file path matches since filename is visible on card (fallback only) */}
+      {showMatchContext && <MatchContext context={matchContext} />}
     </div>
   );
 

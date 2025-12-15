@@ -114,11 +114,12 @@ export function TextCard({
       className={cn(
         cardContainerClass,
         'max-w-[calc(100%-40px)] w-fit',
+        matchContext && 'min-w-[calc(50vw-40px)]',
         className
       )}
       onDoubleClick={handleDoubleClick}
     >
-      <div className="relative">
+      <div className="relative mx-auto">
         <div className="p-4 max-w-full">
           <div className="prose prose-sm dark:prose-invert max-w-none select-text">
             <div className="whitespace-pre-wrap break-words text-sm leading-relaxed font-content">

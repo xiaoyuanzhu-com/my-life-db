@@ -53,10 +53,11 @@ export function VideoCard({
       className={cn(
         cardContainerClass,
         'max-w-[calc(100%-40px)] w-fit',
+        matchContext && 'min-w-[calc(50vw-40px)]',
         className
       )}
     >
-      <div className="relative w-full max-w-md" style={{ aspectRatio: '16/9' }}>
+      <div className="relative w-full max-w-md mx-auto" style={{ aspectRatio: '16/9' }}>
         <video
           controls
           playsInline

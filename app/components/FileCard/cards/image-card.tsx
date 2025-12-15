@@ -56,11 +56,12 @@ export function ImageCard({
       className={cn(
         cardContainerClass,
         'max-w-[calc(100%-40px)] w-fit',
+        matchContext && 'min-w-[calc(50vw-40px)]',
         className
       )}
     >
       <div
-        className="relative flex items-center justify-center cursor-pointer"
+        className="relative flex items-center justify-center cursor-pointer mx-auto"
         style={{ minWidth: 100, minHeight: 100 }}
         onClick={() => setIsPreviewOpen(true)}
       >

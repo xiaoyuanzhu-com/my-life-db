@@ -8,18 +8,26 @@ type MatchContextProps = {
 /**
  * Display search match context below card content
  * Handles both semantic and keyword matches
+ *
+ * Width behavior:
+ * - No width set - fills parent width as a block element
+ * - Parent card should set min-w-[calc(50vw-40px)] to ensure readability
+ * - When MatchContext causes card to expand, file content should center (handled by parent)
  */
 export function MatchContext({ context }: MatchContextProps) {
+  const baseClasses =
+    'border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80';
+
   // Handle semantic match context
   if (context.source === 'semantic') {
     const scorePercent = context.score ? Math.round(context.score * 100) : null;
     return (
-      <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
+      <div className={baseClasses}>
         <p className="mb-1 font-semibold text-muted-foreground">
           Semantic match{scorePercent !== null ? ` (${scorePercent}% similar)` : ''}
           {context.sourceType && ` · ${context.sourceType}`}
         </p>
-        <div className="text-xs text-foreground leading-relaxed italic">
+        <div className="text-xs text-foreground leading-relaxed italic break-words">
           {context.snippet}
         </div>
       </div>
@@ -31,11 +39,11 @@ export function MatchContext({ context }: MatchContextProps) {
   const snippetWithHighlights = renderHighlightedSnippet(context.snippet);
 
   return (
-    <div className="border-t border-border bg-background/80 px-4 py-3 text-xs text-foreground/80">
+    <div className={baseClasses}>
       <p className="mb-1 font-semibold text-muted-foreground">
-        Matched {context.digest?.label ?? 'digest'}
+        Matched in {context.digest?.label ?? 'content'}
       </p>
-      <div className="text-xs text-foreground leading-relaxed">
+      <div className="text-xs text-foreground leading-relaxed break-words">
         {snippetWithHighlights}
       </div>
     </div>

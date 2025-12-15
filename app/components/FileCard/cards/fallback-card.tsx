@@ -7,6 +7,7 @@ import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardClickableClass } from '../ui/card-styles';
+import { highlightMatches } from '../ui/text-highlight';
 import { FallbackModal } from '../modals/fallback-modal';
 import {
   downloadFile,
@@ -19,6 +20,7 @@ import {
 export function FallbackCard({
   file,
   className,
+  highlightTerms,
   matchContext,
   onDeleted,
   onRestoreItem,
@@ -48,15 +50,20 @@ export function FallbackCard({
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },
   ];
 
+  // Check if MatchContext will be shown
+  const showMatchContext = matchContext && matchContext.digest?.type !== 'filePath';
+
   const cardContent = (
     <div
-      className={cn(cardClickableClass, className)}
+      className={cn(cardClickableClass, showMatchContext && 'min-w-[calc(50vw-40px)]', className)}
       onClick={() => setIsPreviewOpen(true)}
     >
       <div className="p-6 flex items-center justify-center min-h-[120px]">
         <div className="text-center">
           <div className="text-sm font-medium text-foreground/80 break-all">
-            {file.name}
+            {highlightTerms?.length
+              ? highlightMatches(file.name, highlightTerms)
+              : file.name}
           </div>
           {file.mimeType && (
             <div className="mt-2 text-xs text-muted-foreground">
@@ -65,7 +72,8 @@ export function FallbackCard({
           )}
         </div>
       </div>
-      {matchContext && <MatchContext context={matchContext} />}
+      {/* Skip showing match context for file path matches since filename is visible on card */}
+      {showMatchContext && <MatchContext context={matchContext} />}
     </div>
   );
 

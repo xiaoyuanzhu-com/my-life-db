@@ -44,7 +44,7 @@ type SearchHit = {
   content: string;
   summary: string | null;
   tags: string | null;
-  _formatted?: { content?: string; summary?: string; tags?: string };
+  _formatted?: { content?: string; summary?: string; tags?: string; filePath?: string };
   _semantic?: { score: number; chunkText: string; sourceType: string };
 };
 
@@ -173,7 +173,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         limit,
         offset,
         filter,
-        attributesToHighlight: ["content", "summary", "tags"],
+        attributesToHighlight: ["content", "summary", "tags", "filePath"],
         attributesToCrop: ["content"],
         cropLength: 200,
         matchingStrategy: "all",
@@ -190,7 +190,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               limit: limit * 2,
               offset: 0,
               filter,
-              attributesToHighlight: ["content", "summary", "tags"],
+              attributesToHighlight: ["content", "summary", "tags", "filePath"],
               attributesToCrop: ["content"],
               cropLength: 200,
               matchingStrategy: "all",
@@ -267,6 +267,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const enrichStart = Date.now();
     const results: SearchResultItem[] = [];
 
+    // Number of lines displayed in text card preview (from text-card.tsx MAX_LINES)
+    const PREVIEW_LINES = 20;
+
     for (const hit of searchResult.hits) {
       const fileWithDigests = getFileWithDigests(hit.filePath);
       if (!fileWithDigests) continue;
@@ -276,13 +279,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
         hit.content.trim().length > 0 ? hit.content.trim().split("\n").slice(0, 60).join("\n") : undefined;
       const textPreview = primaryText ? primaryText.split("\n").slice(0, 60).join("\n") : fallbackPreview;
       const snippet = hit._formatted?.content || hit.content.slice(0, 200) + "...";
-      const primaryContainsTerm = primaryText ? containsAnyTerm(primaryText, highlightTerms) : false;
+
+      // Check if term is visible in the displayed preview (first 20 lines)
+      // If term is beyond preview, we still need to show match context
+      const visiblePreview = primaryText ? primaryText.split("\n").slice(0, PREVIEW_LINES).join("\n") : null;
+      const termVisibleInPreview = visiblePreview ? containsAnyTerm(visiblePreview, highlightTerms) : false;
 
       let matchContext: SearchResultItem["matchContext"] | undefined;
       if (hit._semantic) {
         matchContext = buildSemanticMatchContext({ semantic: hit._semantic, terms: highlightTerms });
-      } else if (!primaryContainsTerm) {
-        matchContext = buildDigestMatchContext({ hit, file: fileWithDigests, terms: highlightTerms, primaryContainsTerm });
+      } else if (!termVisibleInPreview) {
+        // Show context if term is not visible in the preview (either in digest or beyond preview line)
+        matchContext = buildDigestMatchContext({ hit, file: fileWithDigests, terms: highlightTerms, primaryContainsTerm: termVisibleInPreview });
       }
 
       results.push({ ...fileWithDigests, textPreview, score: 1.0, snippet, highlights: hit._formatted, matchContext });
@@ -332,16 +340,42 @@ function hasHighlight(value?: string | null): value is string {
   return Boolean(value && value.includes(HIGHLIGHT_PRE_TAG));
 }
 
-const DIGEST_FIELD_CONFIG = [
-  { field: "summary" as const, digesterTypes: ["summary", "url-crawl-summary", "summarize"], label: "Summary digest" },
-  { field: "tags" as const, digesterTypes: ["tags"], label: "Tags digest" },
+const DIGEST_FIELD_CONFIG: Array<{
+  field: "filePath" | "summary" | "tags" | "content";
+  digesterTypes: string[];
+  label: string;
+  requirePrimaryMiss?: boolean;
+}> = [
+  // File path is checked first - always show context since path isn't displayed on card
+  { field: "filePath", digesterTypes: [], label: "File path" },
+  { field: "summary", digesterTypes: ["summary", "url-crawl-summary", "summarize"], label: "Summary" },
+  { field: "tags", digesterTypes: ["tags"], label: "Tags" },
   {
-    field: "content" as const,
-    digesterTypes: ["url-crawl-content", "content-md", "url-content-md"],
-    label: "Crawled digest",
+    field: "content",
+    // All digest types that can provide content (in priority order from ingest-to-meilisearch.ts)
+    digesterTypes: ["url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "speech-recognition"],
+    label: "File content", // Fallback when no digest found (raw text file)
     requirePrimaryMiss: true,
   },
 ];
+
+function getDigestLabel(type: string, fallback: string): string {
+  const labels: Record<string, string> = {
+    // Summary types
+    "summary": "Summary",
+    "url-crawl-summary": "Summary",
+    "summarize": "Summary",
+    // Tags
+    "tags": "Tags",
+    // Content types (from ingest-to-meilisearch.ts priority order)
+    "url-crawl-content": "Crawled content",
+    "doc-to-markdown": "Document text",
+    "image-ocr": "OCR text",
+    "image-captioning": "Image description",
+    "speech-recognition": "Transcript",
+  };
+  return labels[type] || fallback;
+}
 
 function buildSemanticMatchContext({
   semantic,
@@ -353,8 +387,9 @@ function buildSemanticMatchContext({
   const { score, chunkText, sourceType } = semantic;
   const maxLength = 300;
   const snippet = chunkText.length > maxLength ? chunkText.slice(0, maxLength).trim() + "..." : chunkText;
-  const sourceLabels: Record<string, string> = { content: "File content", summary: "Summary", tags: "Tags" };
-  return { source: "semantic", snippet, terms, score, sourceType: sourceLabels[sourceType] || sourceType };
+  // Use same labels as keyword search for consistency
+  const sourceLabel = getDigestLabel(sourceType, sourceType === "content" ? "File content" : sourceType);
+  return { source: "semantic", snippet, terms, score, sourceType: sourceLabel };
 }
 
 function extractSnippetFromFormatted(formattedText: string, maxLength = 200): string {
@@ -415,13 +450,6 @@ function buildDigestMatchContext({
     };
   }
   return undefined;
-}
-
-function getDigestLabel(type: string, fallback: string): string {
-  if (["summary", "url-crawl-summary", "summarize"].includes(type)) return "Summary digest";
-  if (type === "tags") return "Tags digest";
-  if (["url-crawl-content", "content-md", "url-content-md"].includes(type)) return "Crawled digest";
-  return fallback;
 }
 
 function containsAnyTerm(text: string, terms: string[]): boolean {

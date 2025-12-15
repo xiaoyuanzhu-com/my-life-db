@@ -15,6 +15,7 @@
 5. [API Design](#5-api-design)
 6. [Ranking Strategy](#6-ranking-strategy)
 7. [Implementation Phases](#7-implementation-phases)
+8. [Match Context Display](#8-match-context-display)
 
 ---
 
@@ -614,6 +615,91 @@ This endpoint is available but not currently used by the main search UI.
 **Success Criteria:**
 - Pagination works smoothly
 - Error handling is user-friendly
+
+---
+
+## 8. Match Context Display
+
+When search results match content that isn't directly visible on the card, a "match context" section is displayed below the card to show users where the match occurred.
+
+### 8.1 When Context Is Shown
+
+| Match Location | Shows Context? | Reason |
+|----------------|----------------|--------|
+| File path (filename visible) | No | Filename highlighted on card instead |
+| File path (filename not visible) | Yes | Path not displayed on card |
+| Text in preview (first ~20 lines) | No | Match visible in preview |
+| Text beyond preview | Yes | Match not visible |
+| Summary | Yes | Digest content |
+| Tags | Yes | Digest content |
+| Crawled content (URL) | Yes | Digest content |
+| Document text | Yes | Digest content |
+| OCR text | Yes | Digest content |
+| Image description | Yes | Digest content |
+| Transcript | Yes | Digest content |
+
+### 8.2 Filename Highlighting
+
+Cards that display the filename will highlight matching search terms directly in the filename instead of showing a separate match context section. This provides a cleaner UX when the match is visible on the card.
+
+**Cards with filename always visible:**
+- PDF, Doc, Epub (footer shows truncated filename + fallback shows full filename)
+- Fallback card (always shows filename)
+
+**Cards with filename only in fallback:**
+- PPT, XLS (only show filename when no screenshot available)
+
+**Cards without visible filename:**
+- Image, Video, Audio, Text (filename not displayed on card)
+
+### 8.3 Context Labels
+
+Labels are user-friendly and consistent across keyword and semantic search:
+
+| Content Source | Label |
+|----------------|-------|
+| File path match | "File path" |
+| Raw file content | "File content" |
+| AI summary digest | "Summary" |
+| Tags digest | "Tags" |
+| URL crawl content | "Crawled content" |
+| Document conversion | "Document text" |
+| Image OCR | "OCR text" |
+| Image captioning | "Image description" |
+| Speech recognition | "Transcript" |
+
+### 8.4 Card Width Behavior
+
+When a card has match context, the card width follows these rules:
+
+**Width Logic:**
+- Cards with MatchContext have `min-w-[calc(50vw-40px)]` to ensure readability
+- Cards without MatchContext use natural content width (`w-fit`)
+- File content uses `mx-auto` to center when MatchContext makes card wider
+
+**Implementation:**
+```typescript
+// In each card component
+const showMatchContext = matchContext && matchContext.digest?.type !== 'filePath';
+
+<div className={cn(cardClass, showMatchContext && 'min-w-[calc(50vw-40px)]', className)}>
+  <div className="... mx-auto">  {/* Content centers */}
+    {/* File content */}
+  </div>
+  {showMatchContext && <MatchContext context={matchContext} />}
+</div>
+```
+
+**Visual Behavior:**
+- Small file content (e.g., 226px epub cover) + MatchContext → Card expands to ~50vw, cover centers
+- Large file content (e.g., wide text) + MatchContext → Card fits to text, MatchContext fills width
+- No MatchContext → Card fits naturally to content
+
+### 8.5 Semantic Search Additional Info
+
+Semantic search results also display:
+- Similarity score as percentage (e.g., "85% similar")
+- Source type label
 
 ---
 
