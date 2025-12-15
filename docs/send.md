@@ -110,13 +110,26 @@ flowchart TB
 
 ## Upload States & UI
 
-| Status | Marker | Description | Actions |
-|--------|--------|-------------|---------|
-| `saved` | Saved | Saved locally, waiting to upload | Cancel |
-| `uploading` | Uploading 45% | Upload in progress with percentage | Cancel |
-| `uploaded` | (none - removed from IndexedDB) | Successfully uploaded to server | - |
+### Status Markers
 
-**Marker position:** After timestamp (e.g., "2 min ago - Saved")
+| Condition | Marker | Description |
+|-----------|--------|-------------|
+| Server file | (none) | Already synced to server |
+| Pending, < 3s old | (none) | Just saved, no indicator needed |
+| Pending, ≥ 3s old, file < 1MB | Spinner | Uploading in progress |
+| Pending, ≥ 3s old, file ≥ 1MB | Spinner + progress% | Large file upload with progress |
+| Failed, retry countdown > 0 | CircleAlert + "retry in Xs/Xm/Xh" | Failed, waiting to retry |
+| Failed, retry countdown = 0 | Spinner | Retry in progress |
+
+**Marker position:** After timestamp (e.g., "2 min ago" or "2 min ago [spinner]")
+
+### Design Rationale
+
+- **No marker for first 3s**: Uploads typically complete quickly, avoid visual noise
+- **Spinner only for small files**: Progress percentage not meaningful for fast uploads
+- **Progress for large files (≥1MB)**: Users expect feedback for longer uploads
+- **Retry countdown updates every 1s**: Live feedback on when retry will happen
+- **Spinner when retry reaches 0**: Indicates retry is actively happening
 
 ## Send Button Behavior
 
