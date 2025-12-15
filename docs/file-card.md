@@ -133,6 +133,7 @@ export interface BaseCardProps {
   priority?: boolean;
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
+  onLocateInFeed?: () => void;  // Search results only
 }
 ```
 
@@ -140,12 +141,13 @@ Example card structure:
 
 ```typescript
 // cards/image-card.tsx
-export function ImageCard({ file, className, priority, matchContext }: BaseCardProps) {
+export function ImageCard({ file, className, priority, matchContext, onLocateInFeed }: BaseCardProps) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const actions = [
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
+    { icon: MapPin, label: 'Locate', onClick: () => onLocateInFeed?.(), hidden: !onLocateInFeed },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: () => togglePin(file.path) },
     { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name) },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
@@ -367,6 +369,7 @@ export const cardClickableClass = cardContainerClass + ' cursor-pointer max-w-[c
 | Action | Icon | Behavior | Used By |
 |--------|------|----------|---------|
 | Open | ExternalLink | Navigate to library page | All |
+| Locate | MapPin | Dismiss search, scroll to item in feed | Search results only |
 | Pin/Unpin | Pin | Toggle pinned state, reload page | All |
 | Save | Download | Download file to device | All except Text |
 | Share | Share2 | Native share API (hidden if unavailable) | All except Text |

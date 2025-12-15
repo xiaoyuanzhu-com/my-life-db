@@ -133,6 +133,14 @@ function getDebounceDelay(queryLength: number): number {
 - **Click on card** → Navigate to file detail view (future: open viewer)
 - **Cmd/Ctrl + Click** → Open in new tab (future)
 
+#### Context Menu Actions
+- **Open** → Navigate to file in library
+- **Locate** → Dismiss search results, scroll to item in feed with highlight animation
+- **Pin/Unpin** → Toggle pinned state
+- **Save** → Download file
+- **Share** → Native share API (if available)
+- **Delete** → Show delete confirmation
+
 #### Keyboard Navigation
 - **Arrow Down/Up** → Navigate through results
 - **Enter** → Open selected result
@@ -611,6 +619,7 @@ This endpoint is available but not currently used by the main search UI.
 - [x] Result highlighting (match terms in `<mark>` tags)
 - [x] Match context display (digest source, semantic similarity)
 - [x] Click to navigate to file in library
+- [x] "Locate" action to scroll to item in feed
 
 **Success Criteria:**
 - Pagination works smoothly
