@@ -633,9 +633,9 @@ When search results match content that isn't directly visible on the card, a "ma
 | Summary | Yes | Digest content |
 | Tags | Yes | Digest content |
 | Crawled content (URL) | Yes | Digest content |
-| Document text | Yes | Digest content |
-| OCR text | Yes | Digest content |
-| Image description | Yes | Digest content |
+| Document Text | Yes | Digest content |
+| OCR Text | Yes | Digest content |
+| Image Description | Yes | Digest content |
 | Transcript | Yes | Digest content |
 
 ### 8.2 Filename Highlighting
@@ -658,14 +658,14 @@ Labels are user-friendly and consistent across keyword and semantic search:
 
 | Content Source | Label |
 |----------------|-------|
-| File path match | "File path" |
-| Raw file content | "File content" |
+| File path match | "File Path" |
+| Raw file content | "File Content" |
 | AI summary digest | "Summary" |
 | Tags digest | "Tags" |
-| URL crawl content | "Crawled content" |
-| Document conversion | "Document text" |
-| Image OCR | "OCR text" |
-| Image captioning | "Image description" |
+| URL crawl content | "Crawled Content" |
+| Document conversion | "Document Text" |
+| Image OCR | "OCR Text" |
+| Image captioning | "Image Description" |
 | Speech recognition | "Transcript" |
 
 ### 8.4 Card Width Behavior

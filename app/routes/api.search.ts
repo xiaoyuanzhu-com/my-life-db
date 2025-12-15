@@ -368,10 +368,10 @@ function getDigestLabel(type: string, fallback: string): string {
     // Tags
     "tags": "Tags",
     // Content types (from ingest-to-meilisearch.ts priority order)
-    "url-crawl-content": "Crawled content",
-    "doc-to-markdown": "Document text",
-    "image-ocr": "OCR text",
-    "image-captioning": "Image description",
+    "url-crawl-content": "Crawled Content",
+    "doc-to-markdown": "Document Text",
+    "image-ocr": "OCR Text",
+    "image-captioning": "Image Description",
     "speech-recognition": "Transcript",
   };
   return labels[type] || fallback;
