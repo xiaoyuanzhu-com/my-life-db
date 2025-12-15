@@ -10,6 +10,7 @@ import { upsertFileRecord } from '~/.server/db/files';
 import { ensureAllDigesters } from '~/.server/digest/ensure';
 import { getLogger } from '~/.server/log/logger';
 import { generateTextFilename } from '~/.server/fs/generate-text-filename';
+import { isTextFile } from '~/lib/file-types';
 
 const log = getLogger({ module: 'SaveToInbox' });
 
@@ -117,7 +118,7 @@ async function saveSingleFile(
 
   // Read text preview for text files (first 50 lines)
   let textPreview: string | undefined;
-  if (file.mimeType.startsWith('text/')) {
+  if (isTextFile(file.mimeType, file.filename)) {
     const text = file.buffer.toString('utf-8');
     const lines = text.split('\n').slice(0, 50);
     textPreview = lines.join('\n');

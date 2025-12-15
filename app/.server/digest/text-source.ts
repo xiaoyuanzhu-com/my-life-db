@@ -5,33 +5,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { Digest, FileRecordRow } from '~/types';
+import { isTextFile } from '~/lib/file-types';
 import { getLogger } from '~/.server/log/logger';
 
 const log = getLogger({ module: 'DigestTextSource' });
 
 const DATA_ROOT = process.env.MY_DATA_DIR || './data';
-
-const EXTRA_TEXT_MIME_TYPES = new Set([
-  'application/json',
-  'application/xml',
-  'application/javascript',
-  'application/x-javascript',
-  'application/x-sh',
-  'application/sql',
-]);
-
-const TEXT_EXTENSIONS = new Set([
-  '.md',
-  '.mdx',
-  '.markdown',
-  '.txt',
-  '.log',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.csv',
-  '.tsv',
-]);
 
 export type TextSourceType = 'url-digest' | 'doc-to-markdown' | 'image-ocr' | 'image-captioning' | 'speech-recognition' | 'file';
 
@@ -126,26 +105,10 @@ export function hasUrlCrawlContent(existingDigests: Digest[], minLength = 0): bo
   return markdown ? markdown.trim().length >= minLength : false;
 }
 
-function isTextMimeType(mime: string | null): boolean {
-  if (!mime) return false;
-  const normalized = mime.toLowerCase();
-  if (normalized.startsWith('text/')) return true;
-  return EXTRA_TEXT_MIME_TYPES.has(normalized);
-}
-
-function hasTextExtension(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return TEXT_EXTENSIONS.has(ext);
-}
-
 export function hasLocalTextContent(file: FileRecordRow, _minBytes = 0): boolean {
   if (file.is_folder) return false;
-  const textLike =
-    (file.mime_type ? isTextMimeType(file.mime_type) : false) ||
-    hasTextExtension(file.path);
-  if (!textLike) return false;
-  // Allow any size - even empty files should be processed
-  return true;
+  // Use shared utility for consistent text file detection
+  return isTextFile(file.mime_type, path.basename(file.path));
 }
 
 export function hasDocToMarkdownContent(existingDigests: Digest[], minLength = 0): boolean {

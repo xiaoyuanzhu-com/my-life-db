@@ -7,6 +7,7 @@ import { DATA_ROOT } from '~/.server/fs/storage';
 import { upsertFileRecord, getFileByPath, getAllFilePaths } from '~/.server/db/files';
 import { deleteFile } from '~/.server/files/delete-file';
 import { getLogger } from '~/.server/log/logger';
+import { isTextFile } from '~/lib/file-types';
 
 const log = getLogger({ module: 'LibraryScanner' });
 
@@ -168,7 +169,7 @@ async function scanFile(
 
   // Read text preview for text files (first 50 lines)
   let textPreview: string | undefined;
-  if (mimeType?.startsWith('text/')) {
+  if (isTextFile(mimeType, filename)) {
     try {
       const content = await fs.readFile(fullPath, 'utf-8');
       const lines = content.split('\n').slice(0, 50);

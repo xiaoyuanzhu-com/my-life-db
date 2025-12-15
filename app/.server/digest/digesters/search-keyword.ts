@@ -46,50 +46,17 @@ export class SearchKeywordDigester implements Digester {
   ): Promise<DigestInput[] | null> {
     const now = new Date().toISOString();
 
-    // Check if we have any text content to index
+    // Check if we have any text content to index (for logging purposes)
     const textContent = await getPrimaryTextContent(filePath, file, existingDigests);
 
-    if (!textContent) {
-      // No text available - complete with no content (don't skip)
-      // Cascading resets will trigger re-processing if content becomes available
-      log.debug({ filePath }, 'no text content available for keyword search');
-      return [
-        {
-          filePath,
-          digester: 'search-keyword',
-          status: 'completed',
-          content: null,
-          sqlarName: null,
-          error: null,
-          attempts: 0,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    }
+    log.debug(
+      { filePath, source: textContent?.source ?? 'filename-only' },
+      'indexing for keyword search'
+    );
 
-    log.debug({ filePath, source: textContent.source }, 'indexing for keyword search');
-
-    // Ingest to meili_documents table (creates/updates cache)
+    // Always ingest to meili_documents table - even without text content,
+    // we still want the file to be searchable by filename
     const result = await ingestToMeilisearch(filePath);
-
-    if (!result.hasContent) {
-      // Ingestion returned no content (shouldn't happen if getPrimaryTextContent returned text)
-      log.warn({ filePath }, 'ingestToMeilisearch returned no content');
-      return [
-        {
-          filePath,
-          digester: 'search-keyword',
-          status: 'completed',
-          content: null,
-          sqlarName: null,
-          error: null,
-          attempts: 0,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-    }
 
     // Get document ID
     const documentId = getMeiliDocumentIdForFile(filePath);
@@ -105,7 +72,7 @@ export class SearchKeywordDigester implements Digester {
     const metadata = {
       documentId,
       taskId,
-      textSource: textContent.source,
+      textSource: textContent?.source ?? 'filename-only',
       hasContent: result.hasContent,
       hasSummary: result.hasSummary,
       hasTags: result.hasTags,

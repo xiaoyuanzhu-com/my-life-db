@@ -9,6 +9,7 @@ import {
   getMeiliDocumentIdForFile,
 } from '~/.server/db/meili-documents';
 import { getLogger } from '~/.server/log/logger';
+import { isTextFile } from '~/lib/file-types';
 
 const log = getLogger({ module: 'MeiliIngest' });
 
@@ -40,12 +41,8 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     // Get all digests for this file
     const digests = listDigestsForPath(filePath);
 
-    // 1. Get main content
+    // 1. Get main content (may be null for binary files - that's OK, we still index for filename search)
     const contentText = await getFileContent(filePath);
-    if (!contentText) {
-      log.warn({ filePath }, 'no content found for file');
-      return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
-    }
 
     // 2. Get summary (if exists from digest)
     const summaryDigest =
@@ -78,21 +75,23 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     }
 
     // Create single document with all content
+    // Always index - even if no content, we still want filename searchable
+    const hasContent = !!contentText;
     const allText = [contentText, summaryText, tagsText].filter(Boolean).join(' ');
     upsertMeiliDocument({
       filePath,
-      content: contentText,
+      content: contentText ?? '', // Empty string for binary files
       summary: summaryText,
       tags: tagsText,
-      contentHash: hashString(allText),
-      wordCount: countWords(contentText),
+      contentHash: allText ? hashString(allText) : hashString(filePath), // Use path hash if no content
+      wordCount: contentText ? countWords(contentText) : 0,
       mimeType: fileRecord.mimeType,
     });
 
     log.debug(
       {
         filePath,
-        hasContent: true,
+        hasContent,
         hasSummary: !!summaryText,
         hasTags: !!tagsText,
       },
@@ -101,7 +100,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
 
     return {
       documentId: filePath,
-      hasContent: true,
+      hasContent,
       hasSummary: !!summaryText,
       hasTags: !!tagsText,
     };
@@ -175,8 +174,10 @@ async function getFileContent(filePath: string): Promise<string | null> {
     }
   }
 
-  // 6. Read from filesystem for markdown/text files
-  if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
+  // 6. Read from filesystem for text files (using shared isTextFile utility)
+  const fileRecord = getFileByPath(filePath);
+  const filename = path.basename(filePath);
+  if (isTextFile(fileRecord?.mimeType ?? null, filename)) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';
       const fullPath = path.join(dataDir, filePath);
@@ -189,7 +190,6 @@ async function getFileContent(filePath: string): Promise<string | null> {
   }
 
   // For folders, try to read text.md
-  const fileRecord = getFileByPath(filePath);
   if (fileRecord?.isFolder) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';

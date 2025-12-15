@@ -12,6 +12,7 @@ import { ensureAllDigesters } from '~/.server/digest/ensure';
 import { notificationService } from '~/.server/notifications/notification-service';
 import { deleteFile } from '~/.server/files/delete-file';
 import { getLogger } from '~/.server/log/logger';
+import { isTextFile } from '~/lib/file-types';
 
 const log = getLogger({ module: 'FileSystemWatcher' });
 
@@ -178,17 +179,18 @@ export class FileSystemWatcher extends EventEmitter {
       // Hash small files and read text preview
       let hash: string | undefined;
       let textPreview: string | undefined;
+      const isText = isTextFile(mimeType, filename);
       if (stats.size < HASH_SIZE_THRESHOLD) {
         const buffer = await fs.readFile(fullPath);
         hash = createHash('sha256').update(buffer).digest('hex');
 
         // Read text preview for text files (first 50 lines)
-        if (mimeType.startsWith('text/')) {
+        if (isText) {
           const text = buffer.toString('utf-8');
           const lines = text.split('\n').slice(0, 50);
           textPreview = lines.join('\n');
         }
-      } else if (mimeType.startsWith('text/')) {
+      } else if (isText) {
         // For large text files, still read preview
         try {
           const buffer = await fs.readFile(fullPath, 'utf-8');
