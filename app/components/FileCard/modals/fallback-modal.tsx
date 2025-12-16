@@ -50,22 +50,29 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
-        <div className={`flex flex-col items-center justify-center pb-[10vh] ${showDigests ? 'w-1/2' : 'flex-1'}`}>
-          <div className="text-center space-y-2 text-sm px-6">
-            <div className="break-all">{file.name}</div>
-            {file.size !== null && (
-              <div className="text-muted-foreground">{formatFileSize(file.size)}</div>
-            )}
-            <div className="text-muted-foreground">
-              {new Date(file.createdAt).toLocaleString()}
+        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
+        <div className={`h-full ${
+          showDigests
+            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
+            : 'flex'
+        }`}>
+          <div className={`flex flex-col items-center justify-center pb-[10vh] flex-shrink-0 ${showDigests ? 'w-full md:w-1/2 snap-center' : 'flex-1'}`}>
+            <div className="text-center space-y-2 text-sm px-6">
+              <div className="break-all">{file.name}</div>
+              {file.size !== null && (
+                <div className="text-muted-foreground">{formatFileSize(file.size)}</div>
+              )}
+              <div className="text-muted-foreground">
+                {new Date(file.createdAt).toLocaleString()}
+              </div>
             </div>
           </div>
+          {showDigests && (
+            <div className="w-full md:w-1/2 h-full border-l border-border flex-shrink-0 snap-center">
+              <DigestsPanel file={file} />
+            </div>
+          )}
         </div>
-        {showDigests && (
-          <div className="w-1/2 h-full border-l border-border">
-            <DigestsPanel file={file} />
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );

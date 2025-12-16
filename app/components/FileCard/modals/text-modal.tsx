@@ -18,7 +18,7 @@ import {
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '~/components/ui/button';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { fetchFullContent, saveFileContent, downloadFile, shareFile, canShare } from '../utils';
+import { fetchFullContent, saveFileContent, downloadFile, shareText, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -169,8 +169,9 @@ export function TextModal({
   }, [file.path, file.name]);
 
   const handleShare = useCallback(() => {
-    shareFile(file.path, file.name, file.mimeType);
-  }, [file.path, file.name, file.mimeType]);
+    const textToShare = fullContent || previewText;
+    shareText(file.name, textToShare);
+  }, [file.name, fullContent, previewText]);
 
   const handleToggleDigests = useCallback(() => {
     setActiveView((prev) => (prev === 'digests' ? 'content' : 'digests'));
@@ -199,10 +200,15 @@ export function TextModal({
           </VisuallyHidden>
           <ModalCloseButton onClick={handleCloseClick} isDirty={hasUnsavedChanges} />
           <ModalActionButtons actions={modalActions} />
-          <div className="h-full w-full flex overflow-hidden rounded-lg">
+          {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
+          <div className={`h-full w-full overflow-hidden rounded-lg ${
+            showDigests
+              ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
+              : 'flex'
+          }`}>
             {/* Content view */}
-            <div className={`h-full overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] ${
-              showDigests ? 'w-1/2' : 'w-full'
+            <div className={`h-full overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex-shrink-0 ${
+              showDigests ? 'w-full md:w-1/2 snap-center' : 'w-full'
             }`}>
               {isLoading ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -225,9 +231,9 @@ export function TextModal({
                 </Suspense>
               )}
             </div>
-            {/* Digests panel (side-by-side) */}
+            {/* Digests panel - Desktop: side-by-side, Mobile: next page */}
             {showDigests && (
-              <div className="w-1/2 h-full border-l border-border">
+              <div className="w-full md:w-1/2 h-full border-l border-border flex-shrink-0 snap-center">
                 <DigestsPanel file={file} />
               </div>
             )}

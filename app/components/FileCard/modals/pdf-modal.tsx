@@ -67,7 +67,7 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden flex ${
+        className={`max-h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden ${
           showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] sm:max-w-[90vw] w-fit'
         }`}
         showCloseButton={false}
@@ -82,43 +82,50 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
 
-        <div className={`flex-1 overflow-auto ${showDigests ? 'w-1/2' : ''}`}>
-          <Document
-            file={src}
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                Loading PDF...
-              </div>
-            }
-            error={
-              <div className="flex items-center justify-center h-64 text-destructive">
-                Failed to load PDF
-              </div>
-            }
-          >
-            {pageWidth &&
-              numPages &&
-              Array.from({ length: numPages }, (_, index) => (
-                <Page
-                  key={`page_${index + 1}`}
-                  pageNumber={index + 1}
-                  width={pageWidth}
-                  className="mb-4 last:mb-0"
-                  loading={
-                    <div className="flex items-center justify-center h-64 text-muted-foreground">
-                      Loading page {index + 1}...
-                    </div>
-                  }
-                />
-              ))}
-          </Document>
-        </div>
-        {showDigests && (
-          <div className="w-1/2 h-[90vh] bg-background border-l border-border rounded-r-lg">
-            <DigestsPanel file={file} />
+        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
+        <div className={`h-full ${
+          showDigests
+            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
+            : 'flex'
+        }`}>
+          <div className={`overflow-auto flex-shrink-0 ${showDigests ? 'w-full md:w-1/2 snap-center' : 'flex-1'}`}>
+            <Document
+              file={src}
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={
+                <div className="flex items-center justify-center h-64 text-muted-foreground">
+                  Loading PDF...
+                </div>
+              }
+              error={
+                <div className="flex items-center justify-center h-64 text-destructive">
+                  Failed to load PDF
+                </div>
+              }
+            >
+              {pageWidth &&
+                numPages &&
+                Array.from({ length: numPages }, (_, index) => (
+                  <Page
+                    key={`page_${index + 1}`}
+                    pageNumber={index + 1}
+                    width={pageWidth}
+                    className="mb-4 last:mb-0"
+                    loading={
+                      <div className="flex items-center justify-center h-64 text-muted-foreground">
+                        Loading page {index + 1}...
+                      </div>
+                    }
+                  />
+                ))}
+            </Document>
           </div>
-        )}
+          {showDigests && (
+            <div className="w-full md:w-1/2 h-[90vh] bg-background border-l border-border rounded-r-lg flex-shrink-0 snap-center">
+              <DigestsPanel file={file} />
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

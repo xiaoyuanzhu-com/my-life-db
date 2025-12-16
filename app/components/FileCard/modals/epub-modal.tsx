@@ -125,7 +125,7 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-h-[90vh] h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden flex ${
+        className={`max-h-[90vh] h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden ${
           showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] sm:max-w-[90vw] w-[800px]'
         }`}
         showCloseButton={false}
@@ -138,24 +138,31 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
 
-        <div className={`relative bg-white rounded-lg overflow-auto ${showDigests ? 'w-1/2' : 'flex-1'}`}>
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-white">
-              Loading EPUB...
-            </div>
-          )}
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center text-destructive bg-white">
-              {error}
-            </div>
-          )}
-          <div ref={setViewerRef} className="w-full h-full" />
-        </div>
-        {showDigests && (
-          <div className="w-1/2 h-full bg-background border-l border-border rounded-r-lg">
-            <DigestsPanel file={file} />
+        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
+        <div className={`h-full ${
+          showDigests
+            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
+            : 'flex'
+        }`}>
+          <div className={`relative bg-white rounded-lg overflow-auto flex-shrink-0 ${showDigests ? 'w-full md:w-1/2 snap-center' : 'flex-1'}`}>
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-white">
+                Loading EPUB...
+              </div>
+            )}
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center text-destructive bg-white">
+                {error}
+              </div>
+            )}
+            <div ref={setViewerRef} className="w-full h-full" />
           </div>
-        )}
+          {showDigests && (
+            <div className="w-full md:w-1/2 h-full bg-background border-l border-border rounded-r-lg flex-shrink-0 snap-center">
+              <DigestsPanel file={file} />
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
