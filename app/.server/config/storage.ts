@@ -36,6 +36,16 @@ export async function loadSettings(): Promise<UserSettings> {
         ) as UserSettings['preferences']['digestDay'],
         logLevel: ((getSettingValue('preferences_log_level') as UserSettings['preferences']['logLevel']) || DEFAULT_SETTINGS.preferences.logLevel || 'info'),
         userEmail: getSettingValue('preferences_user_email') || undefined,
+        languages: (() => {
+          const stored = getSettingValue('preferences_languages');
+          if (!stored) return undefined;
+          try {
+            const parsed = JSON.parse(stored);
+            return Array.isArray(parsed) ? parsed : undefined;
+          } catch {
+            return undefined;
+          }
+        })(),
       },
       vendors: {
         openai: {
@@ -97,6 +107,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
     setSettingValue('preferences_digest_day', String(settings.preferences.digestDay));
     if (settings.preferences.logLevel) setSettingValue('preferences_log_level', settings.preferences.logLevel);
     if (settings.preferences.userEmail) setSettingValue('preferences_user_email', settings.preferences.userEmail);
+    if (settings.preferences.languages) setSettingValue('preferences_languages', JSON.stringify(settings.preferences.languages));
 
     // Vendors
     if (settings.vendors?.openai?.baseUrl) setSettingValue('vendors_openai_base_url', settings.vendors.openai.baseUrl);

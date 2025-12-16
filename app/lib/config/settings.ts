@@ -9,6 +9,7 @@ export interface UserSettings {
     digestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
     logLevel?: 'debug' | 'info' | 'warn' | 'error';
     userEmail?: string;
+    languages?: string[]; // Ordered list of languages the user uses (e.g., ['en', 'zh', 'ja'])
   };
 
   // Vendor Configuration

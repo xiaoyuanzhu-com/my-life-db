@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Sparkles, Save, Check, Loader2, RotateCcw } from "lucide-react";
 import { SettingsProvider, useSettingsContext } from "~/components/settings/settings-context";
+import { LanguageSelector } from "~/components/settings/language-selector";
 import type { UserSettings } from "~/lib/config/settings";
 
 interface ModelOption {
@@ -308,6 +309,29 @@ function SettingsContent() {
                 <p className="text-xs text-muted-foreground">
                   A browser refresh or server restart may be required to apply.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Languages</label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Languages you use, in order of preference. Drag to reorder.
+                </p>
+                <LanguageSelector
+                  languages={settings.preferences?.languages || []}
+                  onChange={(languages) =>
+                    setSettings({
+                      ...settings,
+                      preferences: {
+                        ...(settings.preferences || {
+                          theme: "auto",
+                          defaultView: "home",
+                          weeklyDigest: false,
+                          digestDay: 0,
+                        }),
+                        languages: languages.length > 0 ? languages : undefined,
+                      } as UserSettings["preferences"],
+                    })
+                  }
+                />
               </div>
             </CardContent>
           </Card>
