@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
+import { getDigestRenderer } from './digest-renderers';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
 
@@ -17,6 +18,7 @@ interface DigestStage {
   label: string;
   status: DigestStageStatus;
   content: string | null;
+  sqlarName: string | null;
   error: string | null;
 }
 
@@ -81,45 +83,6 @@ function statusIcon(status: DigestStageStatus): React.ReactElement {
   }
 }
 
-function DigestContent({ content }: { content: string | null }) {
-  if (!content) return null;
-
-  // Try to parse as JSON for structured content (tags, etc.)
-  try {
-    const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) {
-      return (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {parsed.map((item, i) => (
-            <span
-              key={i}
-              className="px-2 py-0.5 text-xs bg-muted rounded-full"
-            >
-              {String(item)}
-            </span>
-          ))}
-        </div>
-      );
-    }
-    if (typeof parsed === 'object' && parsed !== null) {
-      return (
-        <pre className="mt-1 text-xs text-muted-foreground overflow-auto max-h-32 p-2 bg-muted rounded">
-          {JSON.stringify(parsed, null, 2)}
-        </pre>
-      );
-    }
-  } catch {
-    // Not JSON, display as text
-  }
-
-  // Plain text content
-  return (
-    <p className="mt-1 text-sm text-muted-foreground line-clamp-3">
-      {content}
-    </p>
-  );
-}
-
 export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,11 +100,12 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
         const data = await response.json();
         if (cancelled) return;
 
-        const fetchedStages = (data.digests || []).map((d: { digester: string; status: string; content: string | null; error: string | null }) => ({
+        const fetchedStages = (data.digests || []).map((d: { digester: string; status: string; content: string | null; sqlarName: string | null; error: string | null }) => ({
           key: d.digester,
           label: formatDigesterLabel(d.digester),
           status: mapApiStatus(d.status),
           content: d.content,
+          sqlarName: d.sqlarName ?? null,
           error: d.error,
         }));
         setStages(fetchedStages);
@@ -153,6 +117,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
           label: formatDigesterLabel(d.type),
           status: mapStatus(d.status),
           content: d.content,
+          sqlarName: d.sqlarName ?? null,
           error: d.error,
         }));
         setStages(fallbackStages);
@@ -170,7 +135,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const hasFailures = stages.some((s) => s.status === 'failed');
 
   return (
-    <div className={cn('flex flex-col h-full bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
+    <div className={cn('flex flex-col h-full bg-background rounded-lg overflow-hidden', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div>
@@ -202,8 +167,8 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                 key={stage.key}
                 className={cn(
                   'p-3 rounded-lg border',
-                  stage.status === 'failed' && 'border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/50',
-                  stage.status === 'success' && 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/50',
+                  stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
+                  stage.status === 'success' && 'border-emerald-500/30 bg-emerald-500/10',
                   stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',
                   (stage.status === 'to-do' || stage.status === 'skipped') && 'border-border bg-muted/50'
                 )}
@@ -213,11 +178,20 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                   <span className="text-sm font-medium">{stage.label}</span>
                 </div>
                 {stage.error && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  <p className="mt-1 text-xs text-destructive">
                     {stage.error}
                   </p>
                 )}
-                <DigestContent content={stage.content} />
+                {(() => {
+                  const Renderer = getDigestRenderer(stage.key);
+                  return (
+                    <Renderer
+                      content={stage.content}
+                      sqlarName={stage.sqlarName}
+                      filePath={file.path}
+                    />
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -226,7 +200,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
 
       {/* Footer with warning if failures */}
       {hasFailures && (
-        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1">
+        <div className="px-4 py-2 bg-amber-500/10 text-amber-600 text-xs flex items-center gap-1">
           <AlertCircle className="h-3.5 w-3.5" />
           Some digests failed.
         </div>
