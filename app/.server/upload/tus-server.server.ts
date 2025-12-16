@@ -18,6 +18,9 @@ async function ensureUploadDir() {
 const tusServer = new Server({
   path: "/api/upload/tus",
   datastore: new FileStore({ directory: UPLOAD_DIR }),
+  // Respect X-Forwarded-Proto and X-Forwarded-Host headers from reverse proxy
+  // This ensures TUS returns HTTPS URLs when behind Caddy/nginx with SSL
+  respectForwardedHeaders: true,
 });
 
 // Handler that wraps TUS server for React Router using handleWeb (for web frameworks)
