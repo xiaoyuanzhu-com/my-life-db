@@ -170,9 +170,9 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const hasFailures = stages.some((s) => s.status === 'failed');
 
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
+    <div className={cn('flex flex-col h-full bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold">Digests</h3>
           <p className="text-xs text-muted-foreground">
@@ -226,7 +226,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
 
       {/* Footer with warning if failures */}
       {hasFailures && (
-        <div className="px-4 py-2 border-t bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1">
+        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1">
           <AlertCircle className="h-3.5 w-3.5" />
           Some digests failed.
         </div>

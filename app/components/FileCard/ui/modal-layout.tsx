@@ -153,7 +153,7 @@ export function ModalLayout({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.2 }}
-              className="absolute top-0 h-full bg-background border-l border-border rounded-r-lg overflow-hidden"
+              className="absolute top-0 h-full overflow-hidden"
               style={{
                 left: layout.contentWidth + gap,
                 width: layout.contentWidth,
@@ -173,7 +173,7 @@ export function ModalLayout({
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={{ left: 0, right: 0.5 }}
               onDragEnd={handleDragEnd}
-              className="absolute inset-0 bg-background border-l border-border rounded-lg overflow-hidden touch-pan-y"
+              className="absolute inset-0 overflow-hidden touch-pan-y"
               style={{
                 width: layout.contentWidth,
               }}
