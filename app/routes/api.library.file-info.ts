@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { getFileByPath } from "~/.server/db/files";
 import { listDigestsForPath } from "~/.server/db/digests";
+import { DIGESTER_ORDER } from "~/.server/digest/constants";
 
 const safeDecodeURIComponent = (value: string): string => {
   try {
@@ -36,7 +37,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       excludeDigesters: ["url-crawl"],
     });
 
-    return Response.json({ file: fileRecord, digests });
+    // Sort digests by backend processing order
+    const orderMap = new Map(DIGESTER_ORDER.map((d, i) => [d, i]));
+    const sortedDigests = [...digests].sort((a, b) => {
+      const orderA = orderMap.get(a.digester) ?? Infinity;
+      const orderB = orderMap.get(b.digester) ?? Infinity;
+      return orderA - orderB;
+    });
+
+    return Response.json({ file: fileRecord, digests: sortedDigests });
   } catch (error) {
     console.error("Error fetching file info:", error);
     return Response.json({ error: "Internal server error" }, { status: 500 });

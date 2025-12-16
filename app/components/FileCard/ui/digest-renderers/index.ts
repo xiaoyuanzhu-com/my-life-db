@@ -11,6 +11,8 @@ import { TagsRenderer } from './tags';
 import { SpeechRecognitionRenderer } from './speech-recognition';
 import { ImageCaptioningRenderer } from './image-captioning';
 import { ImageOcrRenderer } from './image-ocr';
+import { SearchKeywordRenderer } from './search-keyword';
+import { SearchSemanticRenderer } from './search-semantic';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -29,6 +31,8 @@ const renderers: Record<string, DigestRenderer> = {
   'speech-recognition': SpeechRecognitionRenderer,
   'image-captioning': ImageCaptioningRenderer,
   'image-ocr': ImageOcrRenderer,
+  'search-keyword': SearchKeywordRenderer,
+  'search-semantic': SearchSemanticRenderer,
 };
 
 /**
