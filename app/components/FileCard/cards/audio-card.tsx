@@ -11,6 +11,7 @@ import {
   downloadFile,
   shareFile,
   canShare,
+  isIOS,
   togglePin,
   getFileLibraryUrl,
   getFileContentUrl,
@@ -223,7 +224,7 @@ export function AudioCard({
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: MapPin, label: 'Locate', onClick: () => onLocateInFeed?.(), hidden: !onLocateInFeed },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
-    { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name) },
+    { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name), hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },
   ];

@@ -335,6 +335,17 @@ export function isTouchDevice(): boolean {
     ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 }
 
+/**
+ * Check if the current device is iOS (iPhone, iPad, iPod)
+ * On iOS, download triggers a preview instead of saving to Photos,
+ * so we hide download actions and rely on Share instead.
+ */
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 // =============================================================================
 // URL Helpers
 // =============================================================================

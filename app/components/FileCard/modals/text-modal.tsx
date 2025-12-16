@@ -18,7 +18,7 @@ import {
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '~/components/ui/button';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { fetchFullContent, saveFileContent, downloadFile, shareText, canShare } from '../utils';
+import { fetchFullContent, saveFileContent, downloadFile, shareText, canShare, isIOS } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -179,7 +179,7 @@ export function TextModal({
 
   // Modal actions
   const modalActions: ContextMenuAction[] = [
-    { icon: Download, label: 'Download', onClick: handleDownload },
+    { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
     { icon: Sparkles, label: 'Digests', onClick: handleToggleDigests },
   ];

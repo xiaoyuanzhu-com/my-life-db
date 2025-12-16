@@ -7,7 +7,7 @@ import {
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { downloadFile, shareFile, canShare } from '../utils';
+import { downloadFile, shareFile, canShare, isIOS } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -30,7 +30,7 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
   }, []);
 
   const modalActions: ContextMenuAction[] = [
-    { icon: Download, label: 'Download', onClick: handleDownload },
+    { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
     { icon: Sparkles, label: 'Digests', onClick: handleToggleDigests },
   ];
