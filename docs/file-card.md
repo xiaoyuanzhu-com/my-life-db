@@ -319,7 +319,7 @@ export function ModalActionButtons({ actions }: { actions: ContextMenuAction[] }
 
 | Action | Icon | Behavior |
 |--------|------|----------|
-| Download | Download | Downloads file to device |
+| Download | Download | Downloads file to device (hidden on iOS) |
 | Share | Share2 | Native share API (hidden if unavailable) |
 | Digests | Sparkles | Toggles to digests view |
 
@@ -400,8 +400,9 @@ export async function togglePin(path: string): Promise<boolean>
 export async function deleteFile(path: string): Promise<boolean>
 export async function fetchFullContent(path: string): Promise<string | null>
 
-// Touch detection
+// Device detection
 export function isTouchDevice(): boolean
+export function isIOS(): boolean  // Used to hide download actions on iOS
 ```
 
 ## Extensibility
@@ -497,11 +498,13 @@ export const cardClickableClass = cardContainerClass + ' cursor-pointer max-w-[c
 | Open | ExternalLink | Navigate to library page | All |
 | Locate | MapPin | Dismiss search, scroll to item in feed | Search results only |
 | Pin/Unpin | Pin | Toggle pinned state, reload page | All |
-| Save | Download | Download file to device | All except Text |
+| Save | Download | Download file to device (hidden on iOS) | All except Text |
 | Share | Share2 | Native share API (hidden if unavailable) | All except Text |
 | Copy | Copy | Copy text content to clipboard | Text only |
 | Expand/Collapse | ChevronDown/Up | Toggle text truncation | Text only (if >50 lines) |
 | Delete | Trash2 | Show confirmation dialog | All |
+
+**iOS Note:** The Save/Download action is hidden on iOS devices because iOS Safari opens downloads in a preview page instead of saving to Photos. Users should use the Share action instead, which allows saving via the iOS share sheet.
 
 ---
 
