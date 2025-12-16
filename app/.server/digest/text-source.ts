@@ -12,7 +12,30 @@ const log = getLogger({ module: 'DigestTextSource' });
 
 const DATA_ROOT = process.env.MY_DATA_DIR || './data';
 
-export type TextSourceType = 'url-digest' | 'doc-to-markdown' | 'image-ocr' | 'image-captioning' | 'speech-recognition' | 'file';
+/**
+ * Text source types - these should match digester names where applicable
+ * Used to track where indexed text content came from
+ */
+export type TextSourceType =
+  | 'url-crawl-content'    // From URL crawler digest
+  | 'doc-to-markdown'      // From document conversion digest
+  | 'image-ocr'            // From image OCR digest
+  | 'image-captioning'     // From image captioning digest
+  | 'speech-recognition'   // From speech recognition digest
+  | 'file';                // From local text file (no digest)
+
+/**
+ * Human-readable labels for text source types
+ * Used in search result match context display
+ */
+export const TEXT_SOURCE_LABELS: Record<TextSourceType, string> = {
+  'url-crawl-content': 'Crawled Content',
+  'doc-to-markdown': 'Document Text',
+  'image-ocr': 'OCR Text',
+  'image-captioning': 'Image Caption',
+  'speech-recognition': 'Transcript',
+  'file': 'File Content',
+};
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -34,9 +57,7 @@ function extractUrlCrawlMarkdown(digest: Digest | undefined): string | null {
 }
 
 export function getSummaryText(existingDigests: Digest[]): string | null {
-  const summaryDigest =
-    existingDigests.find((d) => d.digester === 'url-crawl-summary') ||
-    existingDigests.find((d) => d.digester === 'summarize');
+  const summaryDigest = existingDigests.find((d) => d.digester === 'url-crawl-summary');
 
   if (!summaryDigest?.content) return null;
   const parsed = parseJson<{ summary?: string }>(summaryDigest.content);
@@ -157,7 +178,7 @@ export async function getPrimaryTextContent(
   // 1. URL crawl content (highest priority for URLs)
   const fromUrlDigest = getUrlCrawlMarkdown(existingDigests);
   if (fromUrlDigest) {
-    return { text: fromUrlDigest, source: 'url-digest' };
+    return { text: fromUrlDigest, source: 'url-crawl-content' };
   }
 
   // 2. Document to markdown (for PDFs, DOCX, etc.)

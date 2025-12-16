@@ -15,7 +15,7 @@ import type BetterSqlite3 from 'better-sqlite3';
  * 'url-crawl-content', 'url-crawl-screenshot', etc.
  */
 export interface Digester {
-  /** Unique digester name (e.g., 'url-crawl', 'summarize') */
+  /** Unique digester name (e.g., 'url-crawl', 'url-crawl-summary') */
   readonly name: string;
 
   /** Human-readable label for UI display (e.g., 'URL Crawler', 'Summary') */

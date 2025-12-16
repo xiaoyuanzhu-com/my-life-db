@@ -45,9 +45,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     const contentText = await getFileContent(filePath);
 
     // 2. Get summary (if exists from digest)
-    const summaryDigest =
-      digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed') ||
-      digests.find(d => d.digester === 'summarize' && d.status === 'completed');
+    const summaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
     let summaryText: string | null = null;
     if (summaryDigest?.content) {
       try {

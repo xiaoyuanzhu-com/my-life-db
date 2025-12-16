@@ -5,6 +5,7 @@ import { embedText } from "~/.server/ai/embeddings";
 import { getFileWithDigests } from "~/.server/db/files-with-digests";
 import { getLogger } from "~/.server/log/logger";
 import { readPrimaryText } from "~/.server/inbox/digest-artifacts";
+import { TEXT_SOURCE_LABELS, type TextSourceType } from "~/.server/digest/text-source";
 import type { FileWithDigests } from "~/types/file-card";
 
 const log = getLogger({ module: "SearchAPI" });
@@ -348,33 +349,36 @@ const DIGEST_FIELD_CONFIG: Array<{
 }> = [
   // File path is checked first - always show context since path isn't displayed on card
   { field: "filePath", digesterTypes: [], label: "File path" },
-  { field: "summary", digesterTypes: ["summary", "url-crawl-summary", "summarize"], label: "Summary" },
+  { field: "summary", digesterTypes: ["url-crawl-summary"], label: "Summary" },
   { field: "tags", digesterTypes: ["tags"], label: "Tags" },
   {
     field: "content",
     // All digest types that can provide content (in priority order from ingest-to-meilisearch.ts)
     digesterTypes: ["url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "speech-recognition"],
-    label: "File content", // Fallback when no digest found (raw text file)
+    label: "File Content", // Fallback when no digest found (raw text file)
     requirePrimaryMiss: true,
   },
 ];
 
+/**
+ * Additional digest labels not covered by TEXT_SOURCE_LABELS
+ * (summary, tags, and other non-content digests)
+ */
+const ADDITIONAL_DIGEST_LABELS: Record<string, string> = {
+  "url-crawl-summary": "Summary",
+  "tags": "Tags",
+};
+
 function getDigestLabel(type: string, fallback: string): string {
-  const labels: Record<string, string> = {
-    // Summary types
-    "summary": "Summary",
-    "url-crawl-summary": "Summary",
-    "summarize": "Summary",
-    // Tags
-    "tags": "Tags",
-    // Content types (from ingest-to-meilisearch.ts priority order)
-    "url-crawl-content": "Crawled Content",
-    "doc-to-markdown": "Document Text",
-    "image-ocr": "OCR Text",
-    "image-captioning": "Image Description",
-    "speech-recognition": "Transcript",
-  };
-  return labels[type] || fallback;
+  // Check TEXT_SOURCE_LABELS first (content sources)
+  if (type in TEXT_SOURCE_LABELS) {
+    return TEXT_SOURCE_LABELS[type as TextSourceType];
+  }
+  // Check additional digest labels (summary, tags)
+  if (type in ADDITIONAL_DIGEST_LABELS) {
+    return ADDITIONAL_DIGEST_LABELS[type];
+  }
+  return fallback;
 }
 
 function buildSemanticMatchContext({

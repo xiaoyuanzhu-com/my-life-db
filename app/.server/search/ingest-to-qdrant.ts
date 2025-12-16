@@ -101,9 +101,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   }
 
   // 3. Index summary from digest
-  const summaryDigest =
-    digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed') ||
-    digests.find(d => d.digester === 'summarize' && d.status === 'completed');
+  const summaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
   if (summaryDigest?.content) {
     // Parse JSON to get summary text
     let summaryText: string;
@@ -235,7 +233,8 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
 
 /**
  * Get file content for indexing
- * Priority: 1) URL digest, 2) Doc-to-markdown digest, 3) Image OCR digest, 4) Filesystem file, 5) Folder text.md
+ * Priority order matches ingest-to-meilisearch.ts:
+ * 1) URL digest, 2) Doc-to-markdown, 3) Image OCR, 4) Image captioning, 5) Speech recognition, 6) Filesystem file, 7) Folder text.md
  */
 async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
   const dataDir = DATA_DIR;
@@ -265,7 +264,28 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     return ocrDigest.content;
   }
 
-  // 4. Try reading from filesystem (markdown or text files)
+  // 4. Check for image-captioning digest (fallback for images without OCR text)
+  const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
+  if (captionDigest?.content && captionDigest.status === 'completed') {
+    return captionDigest.content;
+  }
+
+  // 5. Check for speech-recognition digest
+  const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
+  if (speechDigest?.content && speechDigest.status === 'completed') {
+    // Parse transcript JSON to extract plain text
+    try {
+      const transcriptData = JSON.parse(speechDigest.content);
+      if (transcriptData.segments && Array.isArray(transcriptData.segments)) {
+        return transcriptData.segments.map((s: { text: string }) => s.text).join(' ');
+      }
+      return speechDigest.content;
+    } catch {
+      return speechDigest.content;
+    }
+  }
+
+  // 6. Try reading from filesystem (markdown or text files)
   if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
     try {
       const fullPath = path.join(dataDir, filePath);
@@ -276,7 +296,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     }
   }
 
-  // 5. Try folder's text.md
+  // 7. Try folder's text.md
   if (isFolder) {
     try {
       const textMdPath = path.join(dataDir, filePath, 'text.md');
