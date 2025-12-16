@@ -9,7 +9,7 @@ import {
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { getRawFileUrl, downloadFile, shareFile, canShare } from '../utils';
+import { getFileContentUrl, downloadFile, shareFile, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -36,7 +36,7 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
       setError(null);
 
       try {
-        const url = getRawFileUrl(file.path);
+        const url = getFileContentUrl(file);
         const book = ePub(url);
         bookRef.current = book;
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { FileCard } from './FileCard';
-import { PendingItemCard } from './pending-item-card';
+import { PendingFileCard } from './pending-file-card';
 import type { InboxResponse, InboxItem } from '~/routes/api.inbox';
 import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
@@ -663,7 +663,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         {visiblePendingItems.length > 0 && (
           <div className="space-y-4">
             {visiblePendingItems.map((item) => (
-              <PendingItemCard
+              <PendingFileCard
                 key={item.id}
                 item={item}
                 onCancel={cancelUpload}

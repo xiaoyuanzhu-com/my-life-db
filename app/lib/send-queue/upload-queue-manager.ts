@@ -317,11 +317,13 @@ export class UploadQueueManager {
     // Get item to check for TUS URL
     const item = await getItem(id);
     if (item?.tusUploadUrl) {
-      // Best-effort cleanup of TUS upload
+      // Best-effort cleanup of TUS upload on server
+      // Extract path from URL to avoid Mixed Content issues (http vs https)
       try {
-        await fetch(item.tusUploadUrl, { method: 'DELETE' });
+        const url = new URL(item.tusUploadUrl);
+        await fetch(url.pathname, { method: 'DELETE' });
       } catch {
-        // Ignore errors
+        // Ignore errors - server cleanup is best-effort
       }
     }
 

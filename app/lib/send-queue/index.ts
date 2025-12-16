@@ -11,3 +11,4 @@ export { UploadQueueManager, getUploadQueueManager } from './upload-queue-manage
 export { generateTextFilename, deduplicateFilename } from './filename';
 export { getAllItems as getPendingItems } from './db';
 export { useSendQueue } from './use-send-queue';
+export { pendingItemToFile, usePendingItemAsFile } from './pending-to-file';

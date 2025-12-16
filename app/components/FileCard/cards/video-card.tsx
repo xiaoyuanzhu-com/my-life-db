@@ -13,7 +13,7 @@ import {
   canShare,
   togglePin,
   getFileLibraryUrl,
-  getRawFileUrl,
+  getFileContentUrl,
 } from '../utils';
 
 export function VideoCard({
@@ -27,7 +27,7 @@ export function VideoCard({
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const src = getRawFileUrl(file.path);
+  const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
 
   const handleOpen = () => navigate(href);

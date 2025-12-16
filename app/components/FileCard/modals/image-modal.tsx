@@ -7,7 +7,7 @@ import {
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { getRawFileUrl, downloadFile, shareFile, canShare } from '../utils';
+import { getFileContentUrl, downloadFile, shareFile, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -16,7 +16,7 @@ type ModalView = 'content' | 'digests';
 
 export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
-  const src = getRawFileUrl(file.path);
+  const src = getFileContentUrl(file);
 
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);

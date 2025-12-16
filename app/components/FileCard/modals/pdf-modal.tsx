@@ -10,7 +10,7 @@ import {
 } from '~/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import type { BaseModalProps, ContextMenuAction } from '../types';
-import { getRawFileUrl, downloadFile, shareFile, canShare } from '../utils';
+import { getFileContentUrl, downloadFile, shareFile, canShare } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
@@ -27,7 +27,7 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
 
   // Memoize file source to prevent react-pdf from treating it as a new file on each render
-  const src = useMemo(() => ({ url: getRawFileUrl(file.path) }), [file.path]);
+  const src = useMemo(() => ({ url: getFileContentUrl(file) }), [file]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);

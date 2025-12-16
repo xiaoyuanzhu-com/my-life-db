@@ -41,4 +41,8 @@ export interface FileWithDigests {
 
   // Pin status (from pins table)
   isPinned?: boolean;
+
+  // Local-only: blob URL for pending uploads (not yet on server)
+  // When present, use this instead of /raw/{path} for content
+  blobUrl?: string;
 }

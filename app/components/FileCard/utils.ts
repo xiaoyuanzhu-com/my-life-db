@@ -354,6 +354,13 @@ export function getRawFileUrl(path: string): string {
 }
 
 /**
+ * Get the content URL for a file (supports local blob URLs for pending uploads)
+ */
+export function getFileContentUrl(file: FileWithDigests): string {
+  return file.blobUrl || `/raw/${file.path}`;
+}
+
+/**
  * Get the sqlar URL for a screenshot
  */
 export function getSqlarUrl(sqlarName: string): string {

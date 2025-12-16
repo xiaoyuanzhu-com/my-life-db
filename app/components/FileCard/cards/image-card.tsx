@@ -14,7 +14,7 @@ import {
   canShare,
   togglePin,
   getFileLibraryUrl,
-  getRawFileUrl,
+  getFileContentUrl,
 } from '../utils';
 
 export function ImageCard({
@@ -30,7 +30,7 @@ export function ImageCard({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const src = getRawFileUrl(file.path);
+  const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
 
   const handleOpen = () => navigate(href);

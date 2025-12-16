@@ -13,7 +13,7 @@ import {
   canShare,
   togglePin,
   getFileLibraryUrl,
-  getRawFileUrl,
+  getFileContentUrl,
 } from '../utils';
 
 // Calculate bar width based on duration (in seconds)
@@ -67,7 +67,7 @@ export function AudioCard({
   const dragStartX = useRef<number | null>(null);
   const isDragging = useRef(false);
 
-  const src = getRawFileUrl(file.path);
+  const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
 
   useEffect(() => {
