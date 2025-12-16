@@ -5,6 +5,7 @@
 
 import { CheckCircle2 } from 'lucide-react';
 import type { DigestRendererProps } from './index';
+import { TEXT_SOURCE_LABELS } from '~/types/text-source';
 
 interface SearchKeywordContent {
   documentId: number;
@@ -15,16 +16,6 @@ interface SearchKeywordContent {
   hasTags: boolean;
   enqueuedAt: string;
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  'filename-only': 'Filename',
-  'text-preview': 'Text Preview',
-  'url-crawl-content': 'URL Content',
-  'doc-to-markdown': 'Document Text',
-  'image-ocr': 'OCR Text',
-  'image-captioning': 'Image Caption',
-  'speech-recognition': 'Transcription',
-};
 
 export function SearchKeywordRenderer({ content }: DigestRendererProps) {
   if (!content) {
@@ -48,9 +39,10 @@ export function SearchKeywordRenderer({ content }: DigestRendererProps) {
 
   const indexed: string[] = [];
 
-  // Primary text source
-  if (data.textSource && data.textSource !== 'filename-only') {
-    indexed.push(SOURCE_LABELS[data.textSource] || data.textSource);
+  // Primary text source (use label from shared source of truth)
+  const sourceLabel = TEXT_SOURCE_LABELS[data.textSource as keyof typeof TEXT_SOURCE_LABELS];
+  if (sourceLabel && data.textSource !== 'filename-only') {
+    indexed.push(sourceLabel);
   }
 
   // Additional indexed fields
@@ -58,7 +50,7 @@ export function SearchKeywordRenderer({ content }: DigestRendererProps) {
   if (data.hasTags) indexed.push('Tags');
 
   // Always has filename
-  indexed.push('Filename');
+  indexed.push(TEXT_SOURCE_LABELS['filename-only']);
 
   return (
     <div className="mt-2 space-y-1.5">

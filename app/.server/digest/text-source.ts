@@ -8,34 +8,14 @@ import type { Digest, FileRecordRow } from '~/types';
 import { isTextFile } from '~/lib/file-types';
 import { getLogger } from '~/.server/log/logger';
 
+// Re-export shared types and labels
+export type { TextSourceType } from '~/types/text-source';
+export { TEXT_SOURCE_LABELS } from '~/types/text-source';
+import type { TextSourceType } from '~/types/text-source';
+
 const log = getLogger({ module: 'DigestTextSource' });
 
 const DATA_ROOT = process.env.MY_DATA_DIR || './data';
-
-/**
- * Text source types - these should match digester names where applicable
- * Used to track where indexed text content came from
- */
-export type TextSourceType =
-  | 'url-crawl-content'    // From URL crawler digest
-  | 'doc-to-markdown'      // From document conversion digest
-  | 'image-ocr'            // From image OCR digest
-  | 'image-captioning'     // From image captioning digest
-  | 'speech-recognition'   // From speech recognition digest
-  | 'file';                // From local text file (no digest)
-
-/**
- * Human-readable labels for text source types
- * Used in search result match context display
- */
-export const TEXT_SOURCE_LABELS: Record<TextSourceType, string> = {
-  'url-crawl-content': 'Crawled Content',
-  'doc-to-markdown': 'Document Text',
-  'image-ocr': 'OCR Text',
-  'image-captioning': 'Image Caption',
-  'speech-recognition': 'Transcript',
-  'file': 'File Content',
-};
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
