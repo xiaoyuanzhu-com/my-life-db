@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -6,10 +6,8 @@ import {
   Loader2,
   SkipForward,
   XCircle,
-  RefreshCw,
 } from 'lucide-react';
 import { cn } from '~/lib/utils';
-import { Button } from '~/components/ui/button';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
@@ -44,6 +42,23 @@ function mapStatus(status: DigestSummary['status']): DigestStageStatus {
   }
 }
 
+function mapApiStatus(status: string): DigestStageStatus {
+  switch (status) {
+    case 'todo':
+      return 'to-do';
+    case 'in-progress':
+      return 'in-progress';
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'skipped':
+      return 'skipped';
+    default:
+      return 'to-do';
+  }
+}
+
 function formatDigesterLabel(digester: string): string {
   return digester
     .split('-')
@@ -66,7 +81,7 @@ function statusIcon(status: DigestStageStatus): React.ReactElement {
   }
 }
 
-function DigestContent({ content, digester }: { content: string | null; digester: string }) {
+function DigestContent({ content }: { content: string | null }) {
   if (!content) return null;
 
   // Try to parse as JSON for structured content (tags, etc.)
@@ -107,57 +122,48 @@ function DigestContent({ content, digester }: { content: string | null; digester
 
 export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize stages from file.digests
+  // Fetch digests from API (file.digests may be empty for performance)
   useEffect(() => {
-    const initialStages = file.digests.map((d) => ({
-      key: d.type,
-      label: formatDigesterLabel(d.type),
-      status: mapStatus(d.status),
-      content: d.content,
-      error: d.error,
-    }));
-    setStages(initialStages);
-  }, [file.digests]);
+    let cancelled = false;
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    setError(null);
+    async function fetchDigests() {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(file.path)}`);
+        if (!response.ok) throw new Error('Failed to fetch digests');
 
-    try {
-      const response = await fetch(`/api/digest/${encodeURIComponent(file.path)}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to refresh digests');
-      }
+        if (cancelled) return;
 
-      // Fetch updated status
-      const statusResponse = await fetch(`/api/digest/${encodeURIComponent(file.path)}`);
-      if (statusResponse.ok) {
-        const { status } = await statusResponse.json();
-        if (status?.stages) {
-          setStages(
-            status.stages.map((s: { digester: string; status: string; error: string | null }) => ({
-              key: s.digester,
-              label: formatDigesterLabel(s.digester),
-              status: s.status as DigestStageStatus,
-              content: null, // Will need to fetch full digest content
-              error: s.error,
-            }))
-          );
-        }
+        const fetchedStages = (data.digests || []).map((d: { digester: string; status: string; content: string | null; error: string | null }) => ({
+          key: d.digester,
+          label: formatDigesterLabel(d.digester),
+          status: mapApiStatus(d.status),
+          content: d.content,
+          error: d.error,
+        }));
+        setStages(fetchedStages);
+      } catch {
+        // Fall back to file.digests if API fails
+        if (cancelled) return;
+        const fallbackStages = file.digests.map((d) => ({
+          key: d.type,
+          label: formatDigesterLabel(d.type),
+          status: mapStatus(d.status),
+          content: d.content,
+          error: d.error,
+        }));
+        setStages(fallbackStages);
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh digests');
-    } finally {
-      setIsRefreshing(false);
     }
-  }, [file.path]);
+
+    fetchDigests();
+    return () => { cancelled = true; };
+  }, [file.path, file.digests]);
 
   const completedCount = stages.filter((s) => s.status === 'success').length;
   const totalCount = stages.length;
@@ -175,32 +181,19 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
               : `${completedCount}/${totalCount} complete`}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-        >
-          <RefreshCw className={cn('h-4 w-4 mr-1', isRefreshing && 'animate-spin')} />
-          {isRefreshing ? 'Running...' : 'Refresh'}
-        </Button>
       </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="px-4 py-2 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 text-xs flex items-center gap-1">
-          <AlertCircle className="h-3.5 w-3.5" />
-          {error}
-        </div>
-      )}
 
       {/* Digest list */}
       <div className="flex-1 overflow-y-auto p-4">
-        {stages.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <Loader2 className="h-8 w-8 mb-2 animate-spin" />
+            <p className="text-sm">Loading digests...</p>
+          </div>
+        ) : stages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Circle className="h-8 w-8 mb-2" />
             <p className="text-sm">No digests available</p>
-            <p className="text-xs">Click Refresh to generate digests</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -224,7 +217,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                     {stage.error}
                   </p>
                 )}
-                <DigestContent content={stage.content} digester={stage.key} />
+                <DigestContent content={stage.content} />
               </div>
             ))}
           </div>
@@ -235,7 +228,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
       {hasFailures && (
         <div className="px-4 py-2 border-t bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1">
           <AlertCircle className="h-3.5 w-3.5" />
-          Some digests failed. Click Refresh to retry.
+          Some digests failed.
         </div>
       )}
     </div>
