@@ -134,6 +134,13 @@ MY_DATA_DIR/
   - Automatic dark mode via `prefers-color-scheme`
   - Tailwind theme inline configuration with font variables
 
+**Dark Mode - IMPORTANT:**
+- This project uses **media query-based dark mode**, NOT class-based
+- **DO NOT use Tailwind's `dark:` variant** - it won't work (no `.dark` class on `<html>`)
+- **USE semantic colors** that auto-adapt: `bg-background`, `text-foreground`, `bg-muted`, `border-border`
+- **For status colors**, use opacity: `bg-destructive/10`, `bg-emerald-500/10`, `bg-primary/5`
+- See `docs/tech-design.md` section 4.1 for full details
+
 ### UI Components (shadcn/ui)
 **IMPORTANT:** This project uses shadcn/ui components. Follow these rules:
 

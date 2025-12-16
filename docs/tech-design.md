@@ -227,6 +227,54 @@ Notification types: `inbox-created`, `inbox-updated`, `inbox-deleted`, `pin-chan
 
 Single stack across client and server: React Router 7 with React 19 + TypeScript, Tailwind + shadcn UI primitives, Node 20 runtime with better-sqlite3 for SQLite access, optional Meilisearch for keyword search, and zero additional backend services.
 
+### 4.1 Dark Mode Implementation
+
+**IMPORTANT:** This project uses **CSS media query-based dark mode**, NOT Tailwind's class-based dark mode.
+
+**How it works:**
+- Dark mode is controlled by `@media (prefers-color-scheme: dark)` in `globals.css`
+- CSS custom properties (`--background`, `--foreground`, `--muted`, etc.) automatically switch values based on system preference
+- The `<html>` element does NOT have a `.dark` class
+
+**Tailwind `dark:` variant does NOT work:**
+- The `@custom-variant dark (&:is(.dark *))` in globals.css means `dark:` requires a `.dark` ancestor class
+- Since we use media queries (no `.dark` class), Tailwind's `dark:` prefix has no effect
+- Example: `bg-white dark:bg-zinc-900` will always show white background
+
+**Correct approach - use semantic color variables:**
+```tsx
+// WRONG - dark: variant won't work
+className="bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100"
+
+// CORRECT - semantic variables auto-adapt to dark mode
+className="bg-background text-foreground"
+className="bg-muted text-muted-foreground"
+className="border-border bg-card"
+```
+
+**For status colors, use opacity-based values:**
+```tsx
+// WRONG - dark: variant won't work
+className="bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-900"
+
+// CORRECT - opacity works in both modes
+className="bg-destructive/10 border-destructive/30"
+className="bg-emerald-500/10 border-emerald-500/30"
+className="bg-primary/5 border-primary/20"
+```
+
+**Available semantic colors:**
+| Variable | Usage |
+|----------|-------|
+| `background` / `foreground` | Page background, primary text |
+| `card` / `card-foreground` | Card surfaces |
+| `muted` / `muted-foreground` | Subdued backgrounds, secondary text |
+| `primary` / `primary-foreground` | Primary actions, emphasis |
+| `destructive` | Error states, delete actions |
+| `border` | Borders and dividers |
+| `input` | Form input borders |
+| `ring` | Focus rings |
+
 ---
 
 ## 5. Data Models
