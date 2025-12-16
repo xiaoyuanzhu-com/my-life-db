@@ -29,7 +29,7 @@ function getSpeakerColor(speaker: string): string {
   // Generate consistent color based on speaker name
   const colors = [
     'text-blue-500',
-    'text-emerald-500',
+    'text-teal-500',
     'text-purple-500',
     'text-orange-500',
     'text-pink-500',

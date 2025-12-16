@@ -71,7 +71,7 @@ function formatDigesterLabel(digester: string): string {
 function statusIcon(status: DigestStageStatus): React.ReactElement {
   switch (status) {
     case 'success':
-      return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+      return <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
     case 'failed':
       return <XCircle className="h-4 w-4 text-red-500" />;
     case 'in-progress':
@@ -135,7 +135,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const hasFailures = stages.some((s) => s.status === 'failed');
 
   return (
-    <div className={cn('flex flex-col h-full bg-background rounded-lg overflow-hidden', className)}>
+    <div className={cn('flex flex-col h-full bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div>
@@ -168,7 +168,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                 className={cn(
                   'p-3 rounded-lg border',
                   stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
-                  stage.status === 'success' && 'border-emerald-500/30 bg-emerald-500/10',
+                  stage.status === 'success' && 'border-border bg-muted/30',
                   stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',
                   (stage.status === 'to-do' || stage.status === 'skipped') && 'border-border bg-muted/50'
                 )}
