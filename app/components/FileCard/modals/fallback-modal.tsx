@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Download, Share2, Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -11,11 +11,20 @@ import { downloadFile, shareFile, canShare, isIOS } from '../utils';
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
+import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/modal-layout';
 
 type ModalView = 'content' | 'digests';
 
 export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
+  const layout = useModalLayout();
+
+  // Reset view when modal opens
+  useEffect(() => {
+    if (open) {
+      setActiveView('content');
+    }
+  }, [open]);
 
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);
@@ -29,6 +38,10 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
     setActiveView((prev) => (prev === 'digests' ? 'content' : 'digests'));
   }, []);
 
+  const handleCloseDigests = useCallback(() => {
+    setActiveView('content');
+  }, []);
+
   const modalActions: ContextMenuAction[] = [
     { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
@@ -36,13 +49,13 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
   ];
 
   const showDigests = activeView === 'digests';
+  const containerStyles = getModalContainerStyles(layout, showDigests);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`h-[90vh] p-0 flex ${
-          showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] w-full sm:max-w-2xl'
-        }`}
+        className="p-0"
+        style={containerStyles}
         showCloseButton={false}
       >
         <VisuallyHidden>
@@ -50,29 +63,22 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
-        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
-        <div className={`h-full ${
-          showDigests
-            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
-            : 'flex'
-        }`}>
-          <div className={`flex flex-col items-center justify-center pb-[10vh] flex-shrink-0 ${showDigests ? 'w-full md:w-1/2 snap-center' : 'flex-1'}`}>
-            <div className="text-center space-y-2 text-sm px-6">
-              <div className="break-all">{file.name}</div>
-              {file.size !== null && (
-                <div className="text-muted-foreground">{formatFileSize(file.size)}</div>
-              )}
-              <div className="text-muted-foreground">
-                {new Date(file.createdAt).toLocaleString()}
-              </div>
+        <ModalLayout
+          showDigests={showDigests}
+          onCloseDigests={handleCloseDigests}
+          digestsContent={<DigestsPanel file={file} />}
+          contentClassName="flex flex-col items-center justify-center"
+        >
+          <div className="text-center space-y-2 text-sm px-6">
+            <div className="break-all">{file.name}</div>
+            {file.size !== null && (
+              <div className="text-muted-foreground">{formatFileSize(file.size)}</div>
+            )}
+            <div className="text-muted-foreground">
+              {new Date(file.createdAt).toLocaleString()}
             </div>
           </div>
-          {showDigests && (
-            <div className="w-full md:w-1/2 h-full border-l border-border flex-shrink-0 snap-center">
-              <DigestsPanel file={file} />
-            </div>
-          )}
-        </div>
+        </ModalLayout>
       </DialogContent>
     </Dialog>
   );

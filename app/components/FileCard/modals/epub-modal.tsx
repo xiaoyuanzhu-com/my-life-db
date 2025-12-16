@@ -13,6 +13,7 @@ import { getFileContentUrl, downloadFile, shareFile, canShare, isIOS } from '../
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
+import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/modal-layout';
 
 type ModalView = 'content' | 'digests';
 
@@ -24,6 +25,7 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [activeView, setActiveView] = useState<ModalView>('content');
+  const layout = useModalLayout();
 
   // Initialize epub when viewer is ready
   useEffect(() => {
@@ -114,6 +116,10 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
     setActiveView((prev) => (prev === 'digests' ? 'content' : 'digests'));
   }, []);
 
+  const handleCloseDigests = useCallback(() => {
+    setActiveView('content');
+  }, []);
+
   const modalActions: ContextMenuAction[] = [
     { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
@@ -121,13 +127,13 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
   ];
 
   const showDigests = activeView === 'digests';
+  const containerStyles = getModalContainerStyles(layout, showDigests);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-h-[90vh] h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden ${
-          showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] sm:max-w-[90vw] w-[800px]'
-        }`}
+        className="p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden"
+        style={containerStyles}
         showCloseButton={false}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -137,32 +143,24 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
-
-        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
-        <div className={`h-full ${
-          showDigests
-            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
-            : 'flex'
-        }`}>
-          <div className={`relative bg-white rounded-lg overflow-auto flex-shrink-0 ${showDigests ? 'w-full md:w-1/2 snap-center' : 'flex-1'}`}>
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-white">
-                Loading EPUB...
-              </div>
-            )}
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center text-destructive bg-white">
-                {error}
-              </div>
-            )}
-            <div ref={setViewerRef} className="w-full h-full" />
-          </div>
-          {showDigests && (
-            <div className="w-full md:w-1/2 h-full bg-background border-l border-border rounded-r-lg flex-shrink-0 snap-center">
-              <DigestsPanel file={file} />
+        <ModalLayout
+          showDigests={showDigests}
+          onCloseDigests={handleCloseDigests}
+          digestsContent={<DigestsPanel file={file} />}
+          contentClassName="relative bg-white rounded-lg overflow-auto"
+        >
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-white">
+              Loading EPUB...
             </div>
           )}
-        </div>
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center text-destructive bg-white">
+              {error}
+            </div>
+          )}
+          <div ref={setViewerRef} className="w-full h-full" />
+        </ModalLayout>
       </DialogContent>
     </Dialog>
   );

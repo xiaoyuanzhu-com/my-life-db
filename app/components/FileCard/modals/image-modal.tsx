@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Download, Share2, Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -11,12 +11,21 @@ import { getFileContentUrl, downloadFile, shareFile, canShare, isIOS } from '../
 import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
+import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/modal-layout';
 
 type ModalView = 'content' | 'digests';
 
 export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
+  const layout = useModalLayout();
   const src = getFileContentUrl(file);
+
+  // Reset view when modal opens
+  useEffect(() => {
+    if (open) {
+      setActiveView('content');
+    }
+  }, [open]);
 
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);
@@ -30,6 +39,10 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
     setActiveView((prev) => (prev === 'digests' ? 'content' : 'digests'));
   }, []);
 
+  const handleCloseDigests = useCallback(() => {
+    setActiveView('content');
+  }, []);
+
   const modalActions: ContextMenuAction[] = [
     { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
@@ -37,13 +50,13 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   ];
 
   const showDigests = activeView === 'digests';
+  const containerStyles = getModalContainerStyles(layout, showDigests);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-h-[90vh] p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden ${
-          showDigests ? 'max-w-[90vw] w-full' : 'max-w-[90vw] sm:max-w-[90vw] w-fit'
-        }`}
+        className="p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden"
+        style={containerStyles}
         showCloseButton={false}
       >
         <VisuallyHidden>
@@ -51,16 +64,14 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
         </VisuallyHidden>
         <ModalCloseButton onClick={() => onOpenChange(false)} />
         <ModalActionButtons actions={modalActions} />
-        {/* Desktop: side-by-side, Mobile: horizontal scroll with snap */}
-        <div className={`h-full ${
-          showDigests
-            ? 'flex overflow-x-auto snap-x snap-mandatory md:overflow-x-hidden'
-            : ''
-        }`}>
+        <ModalLayout
+          showDigests={showDigests}
+          onCloseDigests={handleCloseDigests}
+          digestsContent={<DigestsPanel file={file} />}
+          contentClassName="flex items-center justify-center cursor-pointer"
+        >
           <div
-            className={`relative flex items-center justify-center cursor-pointer flex-shrink-0 ${
-              showDigests ? 'w-full md:w-1/2 snap-center' : ''
-            }`}
+            className="w-full h-full flex items-center justify-center"
             onClick={() => !showDigests && onOpenChange(false)}
           >
             <img
@@ -68,19 +79,14 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
               alt={file.name}
               className="object-contain"
               style={{
-                maxWidth: showDigests ? '90vw' : '90vw',
-                maxHeight: '90vh',
+                maxWidth: '100%',
+                maxHeight: '100%',
                 width: 'auto',
                 height: 'auto',
               }}
             />
           </div>
-          {showDigests && (
-            <div className="w-full md:w-1/2 h-[90vh] bg-background border-l border-border rounded-r-lg flex-shrink-0 snap-center">
-              <DigestsPanel file={file} />
-            </div>
-          )}
-        </div>
+        </ModalLayout>
       </DialogContent>
     </Dialog>
   );

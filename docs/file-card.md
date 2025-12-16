@@ -350,6 +350,118 @@ Modals are simple - currently `image-modal.tsx` and `pdf-modal.tsx` exist. Other
   - `bg-transparent` - no background
   - `outline-none` - no focus ring
 
+### Modal Sizing System
+
+The modal sizing system is designed around the A4 paper ratio (1:√2 ≈ 1:1.414) to provide consistent, aesthetically pleasing dimensions across all viewport sizes.
+
+#### Design Principle
+
+**Goal:** Maximize the A4-ratio modal size within the viewport.
+
+The system uses a simple two-mode approach based on which viewport edge constrains the modal first:
+
+| Mode | Condition | Constraining Edge |
+|------|-----------|-------------------|
+| **Landscape** | `vw/vh ≥ 0.707` | Height reaches limit first |
+| **Portrait** | `vw/vh < 0.707` | Width reaches limit first |
+
+The threshold `0.707 ≈ 1/√2` is the aspect ratio at which an A4-ratio modal would perfectly fit both edges simultaneously.
+
+#### Modal Dimensions
+
+**Landscape Mode** (height-constrained):
+```
+Width:  64vh (capped at 100vw)
+Height: 90vh
+Ratio:  64:90 ≈ 1:1.406 (close to A4)
+```
+
+**Portrait Mode** (width-constrained):
+```
+Width:  100vw
+Height: 141vw (capped at 95vh for safety margin)
+Ratio:  100:141 ≈ 1:1.41 (A4 ratio)
+```
+
+#### Digests Panel Layout
+
+When the digests panel is shown, the layout depends on available space:
+
+**Side-by-Side Check:**
+```typescript
+canFitSideBySide = (contentWidth * 2 + gap) <= viewportWidth * 0.95
+// gap = 1rem (16px)
+```
+
+**Side-by-Side Layout** (when fits):
+- Modal expands to accommodate both panes
+- Landscape: `129vh` width (64vh + 1vh gap + 64vh)
+- Content pane: same size as before
+- Digests pane: same size as content pane
+- Horizontal arrangement
+
+**Overlay Layout** (when doesn't fit):
+- Modal size unchanged
+- Digests panel overlays content (same dimensions)
+- User can swipe right to dismiss (framer-motion)
+- Close button returns to content view
+
+#### Layout Mode Summary
+
+| Viewport | Content Only | With Digests |
+|----------|--------------|--------------|
+| Landscape desktop | 64vh × 90vh | 129vh × 90vh (side-by-side) |
+| Portrait phone | 100vw × min(141vw, 95vh) | Overlay with swipe |
+| Tablet (varies) | Depends on aspect ratio | Side-by-side if fits, else overlay |
+
+#### Image Content Sizing
+
+Images within the modal container follow special rules:
+- If image is smaller than container: display at original size, centered
+- If image exceeds container on any edge: scale down proportionally to fit
+- Always preserves aspect ratio
+- Always centered within the container
+
+#### Implementation
+
+The sizing logic is encapsulated in a shared hook and component:
+
+```typescript
+// ui/modal-layout.tsx
+
+type LayoutMode = 'landscape' | 'portrait';
+
+interface ModalLayoutConfig {
+  mode: LayoutMode;
+  contentWidth: number;   // in pixels
+  contentHeight: number;  // in pixels
+  canFitSideBySide: boolean;
+}
+
+function useModalLayout(): ModalLayoutConfig;
+
+// ModalLayout component handles:
+// - Responsive sizing based on viewport
+// - Side-by-side vs overlay digests layout
+// - Framer-motion swipe animations for overlay mode
+```
+
+#### CSS Variables (for reference)
+
+```css
+/* Landscape mode */
+--modal-content-width: 64vh;
+--modal-content-height: 90vh;
+--modal-expanded-width: 129vh; /* with digests */
+
+/* Portrait mode */
+--modal-content-width: 100vw;
+--modal-content-height: min(141vw, 95vh);
+
+/* Shared */
+--modal-gap: 1rem;
+```
+
 ## Props Flow
 
 ```
