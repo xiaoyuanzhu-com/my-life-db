@@ -197,7 +197,7 @@ export function TextModal({
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent
-          className="p-0 overflow-hidden border-0"
+          className="p-0 overflow-hidden border-0 shadow-none !bg-transparent"
           style={containerStyles}
           showCloseButton={false}
         >

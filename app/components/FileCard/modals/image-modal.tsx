@@ -55,7 +55,7 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="p-0 border-none rounded-none shadow-none bg-transparent outline-none overflow-hidden"
+        className="p-0 border-none rounded-none shadow-none !bg-transparent outline-none overflow-hidden"
         style={containerStyles}
         showCloseButton={false}
       >
