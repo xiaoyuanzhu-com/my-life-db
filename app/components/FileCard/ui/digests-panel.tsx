@@ -166,7 +166,7 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
               <div
                 key={stage.key}
                 className={cn(
-                  'p-3 rounded-lg border',
+                  'p-3 rounded-lg border max-h-64 overflow-y-auto',
                   stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
                   stage.status === 'success' && 'border-border bg-muted/30',
                   stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',

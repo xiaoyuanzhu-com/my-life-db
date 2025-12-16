@@ -25,7 +25,7 @@ export function ImageOcrRenderer({ content }: DigestRendererProps) {
 
   return (
     <div className="mt-2 p-2 rounded bg-muted/50">
-      <p className="text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed line-clamp-8">
+      <p className="text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed">
         {trimmed}
       </p>
     </div>
