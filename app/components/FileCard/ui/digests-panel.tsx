@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -68,7 +68,7 @@ function formatDigesterLabel(digester: string): string {
     .join(' ');
 }
 
-function statusIcon(status: DigestStageStatus): React.ReactElement {
+function StatusIcon({ status }: { status: DigestStageStatus }): React.ReactElement {
   switch (status) {
     case 'success':
       return <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
@@ -86,49 +86,87 @@ function statusIcon(status: DigestStageStatus): React.ReactElement {
 export function DigestsPanel({ file, className }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [resettingDigester, setResettingDigester] = useState<string | null>(null);
 
-  // Fetch digests from API (file.digests may be empty for performance)
+  const fetchDigests = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(file.path)}`);
+      if (!response.ok) throw new Error('Failed to fetch digests');
+
+      const data = await response.json();
+
+      const fetchedStages = (data.digests || []).map((d: { digester: string; status: string; content: string | null; sqlarName: string | null; error: string | null }) => ({
+        key: d.digester,
+        label: formatDigesterLabel(d.digester),
+        status: mapApiStatus(d.status),
+        content: d.content,
+        sqlarName: d.sqlarName ?? null,
+        error: d.error,
+      }));
+      setStages(fetchedStages);
+      return fetchedStages;
+    } catch {
+      // Fall back to file.digests if API fails
+      const fallbackStages = file.digests.map((d) => ({
+        key: d.type,
+        label: formatDigesterLabel(d.type),
+        status: mapStatus(d.status),
+        content: d.content,
+        sqlarName: d.sqlarName ?? null,
+        error: d.error,
+      }));
+      setStages(fallbackStages);
+      return fallbackStages;
+    }
+  }, [file.path, file.digests]);
+
+  // Initial fetch
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchDigests() {
+    async function initialFetch() {
       setIsLoading(true);
-      try {
-        const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(file.path)}`);
-        if (!response.ok) throw new Error('Failed to fetch digests');
-
-        const data = await response.json();
-        if (cancelled) return;
-
-        const fetchedStages = (data.digests || []).map((d: { digester: string; status: string; content: string | null; sqlarName: string | null; error: string | null }) => ({
-          key: d.digester,
-          label: formatDigesterLabel(d.digester),
-          status: mapApiStatus(d.status),
-          content: d.content,
-          sqlarName: d.sqlarName ?? null,
-          error: d.error,
-        }));
-        setStages(fetchedStages);
-      } catch {
-        // Fall back to file.digests if API fails
-        if (cancelled) return;
-        const fallbackStages = file.digests.map((d) => ({
-          key: d.type,
-          label: formatDigesterLabel(d.type),
-          status: mapStatus(d.status),
-          content: d.content,
-          sqlarName: d.sqlarName ?? null,
-          error: d.error,
-        }));
-        setStages(fallbackStages);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
+      await fetchDigests();
+      if (!cancelled) setIsLoading(false);
     }
 
-    fetchDigests();
+    initialFetch();
     return () => { cancelled = true; };
-  }, [file.path, file.digests]);
+  }, [fetchDigests]);
+
+  // Poll while any digest is in-progress
+  useEffect(() => {
+    const hasInProgress = stages.some((s) => s.status === 'in-progress');
+    if (!hasInProgress) return;
+
+    const interval = setInterval(() => {
+      fetchDigests();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [stages, fetchDigests]);
+
+  const handleResetDigest = useCallback(async (digester: string) => {
+    setResettingDigester(digester);
+
+    try {
+      const response = await fetch(`/api/digest/${file.path}?digester=${encodeURIComponent(digester)}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to reset ${digester}`);
+      }
+
+      // Refresh digests after reset
+      await fetchDigests();
+    } catch (err) {
+      console.error('Failed to reset digest:', err);
+    } finally {
+      setResettingDigester(null);
+    }
+  }, [file.path, fetchDigests]);
 
   const completedCount = stages.filter((s) => s.status === 'success').length;
   const totalCount = stages.length;
@@ -174,7 +212,29 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  {statusIcon(stage.status)}
+                  {(() => {
+                    const isResetting = resettingDigester === stage.key;
+                    const canReset = stage.status !== 'in-progress' && stage.status !== 'to-do' && !isResetting;
+
+                    if (isResetting) {
+                      return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
+                    }
+
+                    return (
+                      <button
+                        onClick={() => canReset && handleResetDigest(stage.key)}
+                        disabled={!canReset}
+                        className={cn(
+                          'flex-shrink-0 p-0 bg-transparent border-none outline-none',
+                          canReset && 'cursor-pointer hover:opacity-70 transition-opacity',
+                          !canReset && 'cursor-default'
+                        )}
+                        title={canReset ? 'Click to re-run' : undefined}
+                      >
+                        <StatusIcon status={stage.status} />
+                      </button>
+                    );
+                  })()}
                   <span className="text-sm font-medium">{stage.label}</span>
                 </div>
                 {stage.error && (
