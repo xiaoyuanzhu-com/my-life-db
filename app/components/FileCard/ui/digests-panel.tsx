@@ -183,13 +183,26 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
     <div className={cn('flex flex-col h-full bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <div>
+        <div className="flex items-center gap-2">
+          {totalCount > 0 && (
+            <button
+              onClick={() => stages.forEach((s) => handleResetDigest(s.key))}
+              disabled={stages.some((s) => s.status === 'in-progress') || resettingDigester !== null}
+              className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Re-run all digests"
+            >
+              {hasFailures && completedCount === 0 ? (
+                <XCircle className="h-4 w-4 text-muted-foreground" />
+              ) : hasFailures ? (
+                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+              ) : completedCount === totalCount ? (
+                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <Circle className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          )}
           <h3 className="text-sm font-semibold">Digests</h3>
-          <p className="text-xs text-muted-foreground">
-            {totalCount === 0
-              ? 'No digests yet'
-              : `${completedCount}/${totalCount} complete`}
-          </p>
         </div>
       </div>
 
@@ -269,14 +282,6 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
           </div>
         )}
       </div>
-
-      {/* Footer with warning if failures */}
-      {hasFailures && (
-        <div className="px-4 py-2 bg-amber-500/10 text-amber-600 text-xs flex items-center gap-1">
-          <AlertCircle className="h-3.5 w-3.5" />
-          Some digests failed.
-        </div>
-      )}
     </div>
   );
 }
