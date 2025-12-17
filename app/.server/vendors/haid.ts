@@ -8,6 +8,11 @@ const DEFAULT_CHROME_CDP_URL = 'http://172.16.2.2:9223/';
 
 export interface HaidSpeechRecognitionOptions {
   audioPath: string;
+  model?: string;
+  diarization?: boolean;
+  lib?: string;
+  minSpeakers?: number;
+  maxSpeakers?: number;
 }
 
 export interface HaidSpeechRecognitionWord {
@@ -203,7 +208,7 @@ export async function speechRecognitionWithHaid(
   }
 
   const config = await resolveHaidConfig();
-  const endpoint = `${config.baseUrl}/api/whisperx/transcribe`;
+  const endpoint = `${config.baseUrl}/api/automatic-speech-recognition`;
 
   // Read audio file and convert to base64
   const fs = await import('fs');
@@ -218,8 +223,11 @@ export async function speechRecognitionWithHaid(
     },
     body: JSON.stringify({
       audio: audioBase64,
-      asr_model: DEFAULT_ASR_MODEL,
-      diarize: true,
+      model: options.model ?? DEFAULT_ASR_MODEL,
+      diarization: options.diarization ?? true,
+      lib: options.lib ?? 'whisperx',
+      min_speakers: options.minSpeakers ?? 1,
+      max_speakers: options.maxSpeakers ?? 4,
     }),
   });
 
