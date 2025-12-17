@@ -4,6 +4,7 @@
  */
 
 import type { DigestRendererProps } from './index';
+import { TEXT_SOURCE_LABELS } from '~/types/text-source';
 
 interface SourceChunkInfo {
   chunkCount: number;
@@ -17,12 +18,6 @@ interface SearchSemanticContent {
   documentIds: number;
   enqueuedAt: string;
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  'content': 'Content',
-  'summary': 'Summary',
-  'tags': 'Tags',
-};
 
 export function SearchSemanticRenderer({ content }: DigestRendererProps) {
   if (!content) {
@@ -44,10 +39,20 @@ export function SearchSemanticRenderer({ content }: DigestRendererProps) {
     );
   }
 
-  // Get source keys from the sources object
-  const sourceKeys = data.sources ? Object.keys(data.sources) : [];
+  // Build list of indexed sources using shared labels (same as keyword search)
+  const indexed: string[] = [];
 
-  if (sourceKeys.length === 0) {
+  // Primary text source (use label from shared source of truth)
+  const sourceLabel = TEXT_SOURCE_LABELS[data.textSource as keyof typeof TEXT_SOURCE_LABELS];
+  if (sourceLabel) {
+    indexed.push(sourceLabel);
+  }
+
+  // Additional indexed fields from sources object
+  if (data.sources?.summary) indexed.push('Summary');
+  if (data.sources?.tags) indexed.push('Tags');
+
+  if (indexed.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic">
         Not indexed (no text content)
@@ -58,12 +63,12 @@ export function SearchSemanticRenderer({ content }: DigestRendererProps) {
   return (
     <div className="mt-2">
       <div className="flex flex-wrap gap-1.5">
-        {sourceKeys.map((source) => (
+        {indexed.map((source, i) => (
           <span
-            key={source}
+            key={i}
             className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary/15 text-primary"
           >
-            {SOURCE_LABELS[source] || source}
+            {source}
           </span>
         ))}
       </div>
