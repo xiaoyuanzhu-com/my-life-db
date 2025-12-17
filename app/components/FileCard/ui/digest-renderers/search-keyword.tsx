@@ -3,7 +3,6 @@
  * Displays which sources are indexed for keyword search
  */
 
-import { CheckCircle2 } from 'lucide-react';
 import type { DigestRendererProps } from './index';
 import { TEXT_SOURCE_LABELS } from '~/types/text-source';
 
@@ -58,9 +57,8 @@ export function SearchKeywordRenderer({ content }: DigestRendererProps) {
         {indexed.map((source, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground"
+            className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary/15 text-primary"
           >
-            <CheckCircle2 className="h-3 w-3" />
             {source}
           </span>
         ))}

@@ -3,7 +3,6 @@
  * Displays which sources are indexed for semantic vector search
  */
 
-import { CheckCircle2 } from 'lucide-react';
 import type { DigestRendererProps } from './index';
 
 interface SourceChunkInfo {
@@ -62,9 +61,8 @@ export function SearchSemanticRenderer({ content }: DigestRendererProps) {
         {sourceKeys.map((source) => (
           <span
             key={source}
-            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground"
+            className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary/15 text-primary"
           >
-            <CheckCircle2 className="h-3 w-3" />
             {SOURCE_LABELS[source] || source}
           </span>
         ))}
