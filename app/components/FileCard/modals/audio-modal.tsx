@@ -27,31 +27,42 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const layout = useModalLayout();
   const src = getFileContentUrl(file);
 
-  // Reset view and state when modal opens
+  // Callback ref to capture audio element when it mounts
+  const audioRef = useCallback((node: HTMLAudioElement | null) => {
+    setAudioElement(node);
+  }, []);
+
+  // Reset view and state when modal opens/closes
   useEffect(() => {
     if (open) {
       setActiveView('content');
       setIsPlaying(false);
       setCurrentTime(0);
+      setDuration(0);
+    } else {
+      // Stop playback when modal closes
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
     }
-  }, [open]);
+  }, [open, audioElement]);
 
-  // Audio event handlers
+  // Audio event handlers - attach when audio element is available
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    if (!audioElement) return;
 
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
+      setDuration(audioElement.duration);
     };
 
     const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
+      setCurrentTime(audioElement.currentTime);
     };
 
     const handleEnded = () => {
@@ -62,42 +73,45 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
 
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
+    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audioElement.addEventListener('timeupdate', handleTimeUpdate);
+    audioElement.addEventListener('ended', handleEnded);
+    audioElement.addEventListener('play', handlePlay);
+    audioElement.addEventListener('pause', handlePause);
+
+    // If metadata already loaded, get duration immediately
+    if (audioElement.readyState >= 1) {
+      setDuration(audioElement.duration);
+    }
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
+      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
+      audioElement.removeEventListener('ended', handleEnded);
+      audioElement.removeEventListener('play', handlePlay);
+      audioElement.removeEventListener('pause', handlePause);
     };
-  }, []);
+  }, [audioElement]);
 
   const handlePlayPause = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    if (!audioElement) return;
 
     if (isPlaying) {
-      audio.pause();
+      audioElement.pause();
     } else {
-      audio.play();
+      audioElement.play();
     }
-  }, [isPlaying]);
+  }, [isPlaying, audioElement]);
 
   const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const audio = audioRef.current;
     const progress = progressRef.current;
-    if (!audio || !progress || !duration) return;
+    if (!audioElement || !progress || !duration) return;
 
     const rect = progress.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-    audio.currentTime = ratio * duration;
-  }, [duration]);
+    audioElement.currentTime = ratio * duration;
+  }, [duration, audioElement]);
 
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);
