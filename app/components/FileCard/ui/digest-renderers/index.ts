@@ -13,6 +13,8 @@ import { ImageCaptioningRenderer } from './image-captioning';
 import { ImageOcrRenderer } from './image-ocr';
 import { SearchKeywordRenderer } from './search-keyword';
 import { SearchSemanticRenderer } from './search-semantic';
+import { DocToMarkdownRenderer } from './doc-to-markdown';
+import { DocToScreenshotRenderer } from './doc-to-screenshot';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -33,6 +35,8 @@ const renderers: Record<string, DigestRenderer> = {
   'image-ocr': ImageOcrRenderer,
   'search-keyword': SearchKeywordRenderer,
   'search-semantic': SearchSemanticRenderer,
+  'doc-to-markdown': DocToMarkdownRenderer,
+  'doc-to-screenshot': DocToScreenshotRenderer,
 };
 
 /**
