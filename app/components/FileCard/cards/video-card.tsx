@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { VideoModal } from '../modals/video-modal';
 import { cardContainerClass } from '../ui/card-styles';
 import {
   downloadFile,
@@ -27,6 +28,7 @@ export function VideoCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -58,6 +60,7 @@ export function VideoCard({
         matchContext ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
         className
       )}
+      onDoubleClick={() => setIsModalOpen(true)}
     >
       <div className="relative w-full max-w-md mx-auto" style={{ aspectRatio: '16/9' }}>
         <video
@@ -80,6 +83,11 @@ export function VideoCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
+      <VideoModal
+        file={file}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+      />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

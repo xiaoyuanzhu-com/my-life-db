@@ -37,6 +37,8 @@ app/components/FileCard/
 └── modals/
     ├── index.ts                # Modal registry: getModalComponent(type)
     ├── image-modal.tsx         # Full-screen image viewer
+    ├── video-modal.tsx         # Full-screen video player
+    ├── audio-modal.tsx         # Audio player with controls
     ├── pdf-modal.tsx           # Scrollable PDF viewer
     ├── epub-modal.tsx          # EPUB reader with pagination
     └── fallback-modal.tsx      # Generic file info modal
@@ -328,14 +330,15 @@ export function ModalActionButtons({ actions }: { actions: ContextMenuAction[] }
 | File Type | Context Menu | Modal Actions |
 |-----------|--------------|---------------|
 | All with modal | Open, Locate, Pin, Save/Copy, Share, Delete | Download, Share, Digests |
-| Audio/Video | (context menu only) | (no modal) |
 
 ### Modal Components
 
-Modals are simple - currently `image-modal.tsx` and `pdf-modal.tsx` exist. Others can be added as needed:
+Modals provide enhanced viewing experiences:
 
 ```typescript
 // modals/image-modal.tsx - Full-screen image viewer
+// modals/video-modal.tsx - Full-screen video player with autoplay
+// modals/audio-modal.tsx - Audio player with controls
 // modals/pdf-modal.tsx - Scrollable PDF viewer
 // modals/fallback-modal.tsx - Generic file info display
 ```
@@ -647,9 +650,13 @@ Open, Pin, Save, Share, Delete
 - Native `<video>` with controls
 - Black background for letterboxing
 - `playsInline`, `muted`, `preload="metadata"`
+- Double-click opens modal
 
 **Modal:**
-None (native fullscreen via video controls)
+- Full-screen video player
+- Auto-plays on open
+- Black background for cinematic viewing
+- Standard modal actions (Download, Share, Digests)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete
@@ -666,16 +673,22 @@ Open, Pin, Save, Share, Delete
 - Shows audio duration (e.g., `5"` for 5 seconds)
 - Click to play, click again to pause
 - Background color fill shows playback progress
+- Double-click opens modal
 
 **Interaction:**
 - Tap/click (no drag): Toggle play/pause
+- Double-click (within 300ms): Opens modal, pauses playback
 - Drag (≥10px movement): Scrub seek with visual preview, seek applied on release
 - Dragging outside the bar continues tracking until mouse release
 - Progress indicated by background color fill (left to right)
 - Duration displayed on right side
 
 **Modal:**
-None
+- Centered audio icon with filename
+- Large play/pause button
+- Seekable progress bar
+- Time display (current/total)
+- Standard modal actions (Download, Share, Digests)
 
 **Context Menu:**
 Open, Pin, Save, Share, Delete

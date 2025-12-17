@@ -6,6 +6,7 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
+import { AudioModal } from '../modals/audio-modal';
 import { cardContainerClass } from '../ui/card-styles';
 import {
   downloadFile,
@@ -59,6 +60,7 @@ export function AudioCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -67,6 +69,7 @@ export function AudioCard({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | null>(null);
   const isDragging = useRef(false);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -98,6 +101,10 @@ export function AudioCard({
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      // Clean up click timer on unmount
+      if (clickTimer.current) {
+        clearTimeout(clickTimer.current);
+      }
     };
   }, []);
 
@@ -132,6 +139,8 @@ export function AudioCard({
     }
   };
 
+  const DOUBLE_CLICK_DELAY = 250; // ms - delay before treating as single click
+
   const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     setSeekPreview(null); // Clear preview
@@ -151,13 +160,25 @@ export function AudioCard({
         setIsPlaying(true);
       }
     } else {
-      // Simple click - toggle play/pause
-      if (isPlaying) {
-        audio.pause();
-        setIsPlaying(false);
+      // Handle click with delayed single-click detection
+      if (clickTimer.current) {
+        // Second click within delay - it's a double-click
+        clearTimeout(clickTimer.current);
+        clickTimer.current = null;
+        setIsModalOpen(true);
       } else {
-        audio.play();
-        setIsPlaying(true);
+        // First click - wait to see if it's a double-click
+        clickTimer.current = setTimeout(() => {
+          clickTimer.current = null;
+          // Single click confirmed - toggle play/pause
+          if (isPlaying) {
+            audio.pause();
+            setIsPlaying(false);
+          } else {
+            audio.play();
+            setIsPlaying(true);
+          }
+        }, DOUBLE_CLICK_DELAY);
       }
     }
 
@@ -282,6 +303,11 @@ export function AudioCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
+      <AudioModal
+        file={file}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+      />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
