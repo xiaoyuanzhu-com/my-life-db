@@ -1,6 +1,8 @@
 
 import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
+import { loadSettings } from '~/.server/config/storage';
+import { getNativeLanguageDisplayName } from '~/lib/i18n/languages';
 
 const log = getLogger({ module: 'TagsDigester' });
 
@@ -53,14 +55,37 @@ function parseJsonFromResponse(content: string): unknown {
 export interface TaggingInput {
   text: string;
   maxTags?: number;
+  languages?: string[]; // Optional override; if not provided, uses user settings
 }
 
 export interface TaggingOutput {
   tags: string[];
 }
 
+// Default to English if no language preferences set
+const DEFAULT_LANGUAGES = ['en'];
+
 export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOutput> {
-  const maxTags = input.maxTags ?? 10;
+  const maxTags = input.maxTags ?? 20;
+
+  // Get user language preferences
+  let languages = input.languages;
+  if (!languages || languages.length === 0) {
+    try {
+      const settings = await loadSettings();
+      languages = settings.preferences.languages;
+    } catch (error) {
+      log.warn({ error }, 'failed to load user language settings, using default');
+    }
+  }
+
+  // Fall back to English if still no languages
+  if (!languages || languages.length === 0) {
+    languages = DEFAULT_LANGUAGES;
+  }
+
+  // Use native language names (e.g., "English, 简体中文, 日本語")
+  const languageNames = languages.map(getNativeLanguageDisplayName);
 
   const schema = {
     type: 'object',
@@ -76,15 +101,28 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
     additionalProperties: false,
   };
 
+  // Build the language instruction
+  let languageInstruction: string;
+  if (languages.length === 1) {
+    languageInstruction = `Generate all tags in ${languageNames[0]}.`;
+  } else {
+    languageInstruction = `Generate tags in each of these languages: ${languageNames.join(', ')}. Include 5-10 tags per language. Tags across languages should have similar meanings where possible, but don't force exact translations - it's fine to have semantic variations if there's no good equivalent.`;
+  }
+
   const systemPrompt = [
     'You are an expert knowledge organizer.',
-    'Extract 5-10 short, descriptive tags that help classify the content.',
-    'Prefer single or double-word tags; no hashtags or numbering.',
+    'Extract short, descriptive tags that help classify the content.',
+    'Tag format rules:',
+    '- Use lowercase with spaces for multi-word tags (e.g., "open source", "machine learning")',
+    '- Honor established naming conventions for proper nouns and technical terms (e.g., "iOS", "JavaScript", "GitHub", "macOS")',
+    '- Prefer single words when possible, use 2-3 word phrases when needed for clarity',
+    '- No hashtags, numbering, or punctuation',
+    languageInstruction,
   ].join(' ');
 
   const prompt = [
-    'Analyze the following content and produce tags as a JSON array.',
-    'Respond using the provided schema.',
+    'Analyze the following content and produce tags.',
+    'Respond using the provided JSON schema.',
     '',
     input.text,
   ].join('\n');
@@ -92,13 +130,12 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
   const res = await callOpenAICompletion({
     systemPrompt,
     prompt,
-    // No maxTokens limit - let the model stop naturally after completing the JSON
-    // This is safe because jsonSchema ensures bounded, structured output
     jsonSchema: schema,
     temperature: 0.1, // Low temperature for more consistent tags across runs
   });
 
   let tags: string[] = [];
+
   try {
     const payload = parseJsonFromResponse(res.content) as { tags?: unknown } | unknown[];
 
@@ -108,10 +145,8 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
     let tagsArray: unknown[] | undefined;
 
     if (Array.isArray(payload)) {
-      // Direct array format
       tagsArray = payload;
     } else if (typeof payload === 'object' && payload !== null && 'tags' in payload) {
-      // Correct object format with tags property
       tagsArray = Array.isArray((payload as { tags?: unknown }).tags)
         ? (payload as { tags: unknown[] }).tags
         : undefined;
@@ -119,11 +154,12 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
 
     if (tagsArray) {
       tags = tagsArray
-        .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
-        .filter((tag) => tag.length > 0);
+        .filter((tag): tag is string => typeof tag === 'string')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
+        .slice(0, maxTags);
     }
   } catch (error) {
-    // fall back to simple parsing if JSON schema fails unexpectedly
     const err = error instanceof Error ? error : new Error(String(error));
     log.error(
       {
@@ -133,16 +169,7 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
       },
       'failed to parse JSON response from LLM'
     );
-    tags = res.content
-      .split(/[\n,]/)
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
   }
 
-  // Deduplicate and limit to maxTags
-  const unique = Array.from(new Set(tags.map((tag) => tag.toLowerCase()))).slice(0, maxTags);
-
-  return {
-    tags: unique,
-  };
+  return { tags };
 }
