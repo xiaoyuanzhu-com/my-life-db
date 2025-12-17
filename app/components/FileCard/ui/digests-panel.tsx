@@ -22,9 +22,16 @@ interface DigestStage {
   error: string | null;
 }
 
+interface AudioSyncProps {
+  currentTime: number;
+  onSeek: (time: number) => void;
+}
+
 interface DigestsPanelProps {
   file: FileWithDigests;
   className?: string;
+  /** Audio sync props for speech-recognition renderer */
+  audioSync?: AudioSyncProps;
 }
 
 function mapStatus(status: DigestSummary['status']): DigestStageStatus {
@@ -83,7 +90,7 @@ function StatusIcon({ status }: { status: DigestStageStatus }): React.ReactEleme
   }
 }
 
-export function DigestsPanel({ file, className }: DigestsPanelProps) {
+export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
@@ -244,11 +251,16 @@ export function DigestsPanel({ file, className }: DigestsPanelProps) {
                 )}
                 {(() => {
                   const Renderer = getDigestRenderer(stage.key);
+                  // Pass audioSync to speech-recognition renderer
+                  const extraProps = stage.key === 'speech-recognition' && audioSync
+                    ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
+                    : {};
                   return (
                     <Renderer
                       content={stage.content}
                       sqlarName={stage.sqlarName}
                       filePath={file.path}
+                      {...extraProps}
                     />
                   );
                 })()}

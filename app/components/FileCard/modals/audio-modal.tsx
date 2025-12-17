@@ -28,6 +28,7 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const progressRef = useRef<HTMLDivElement>(null);
   const layout = useModalLayout();
   const src = getFileContentUrl(file);
@@ -44,6 +45,7 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
+      setPlaybackSpeed(1);
     } else {
       // Stop playback when modal closes
       if (audioElement) {
@@ -113,6 +115,22 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
     audioElement.currentTime = ratio * duration;
   }, [duration, audioElement]);
 
+  const handleSeek = useCallback((time: number) => {
+    if (!audioElement) return;
+    audioElement.currentTime = time;
+  }, [audioElement]);
+
+  const handleSpeedChange = useCallback(() => {
+    const speeds = [0.5, 1, 1.5, 2];
+    const currentIndex = speeds.indexOf(playbackSpeed);
+    const nextIndex = (currentIndex + 1) % speeds.length;
+    const newSpeed = speeds[nextIndex];
+    setPlaybackSpeed(newSpeed);
+    if (audioElement) {
+      audioElement.playbackRate = newSpeed;
+    }
+  }, [playbackSpeed, audioElement]);
+
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);
   }, [file.path, file.name]);
@@ -154,10 +172,15 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
         <ModalLayout
           showDigests={showDigests}
           onCloseDigests={handleCloseDigests}
-          digestsContent={<DigestsPanel file={file} />}
+          digestsContent={
+            <DigestsPanel
+              file={file}
+              audioSync={{ currentTime, onSeek: handleSeek }}
+            />
+          }
           contentClassName="flex items-center justify-center"
         >
-          <div className="w-full h-full flex items-center justify-center bg-background">
+          <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
             <div className="w-full max-w-md px-8 space-y-6">
               {/* Audio icon */}
               <div className="flex justify-center">
@@ -189,8 +212,20 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
                 <span>{formatTime(duration)}</span>
               </div>
 
-              {/* Play/Pause button */}
-              <div className="flex justify-center">
+              {/* Play/Pause and Speed controls */}
+              <div className="flex justify-center items-center gap-4">
+                <button
+                  onClick={handleSpeedChange}
+                  className={cn(
+                    'w-12 h-12 rounded-full flex items-center justify-center',
+                    'bg-muted text-muted-foreground',
+                    'hover:bg-muted/80 transition-colors',
+                    'text-sm font-medium touch-manipulation'
+                  )}
+                  aria-label={`Playback speed: ${playbackSpeed}x`}
+                >
+                  {playbackSpeed}x
+                </button>
                 <button
                   onClick={handlePlayPause}
                   className={cn(
@@ -207,6 +242,8 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
                     <Play className="w-6 h-6 ml-1" />
                   )}
                 </button>
+                {/* Spacer for symmetry */}
+                <div className="w-12 h-12" />
               </div>
 
               {/* Hidden audio element */}
