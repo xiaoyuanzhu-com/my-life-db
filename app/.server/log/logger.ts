@@ -5,8 +5,8 @@ import pino from 'pino';
 // - LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error' (default: 'info')
 // - LOG_PRETTY: 'true' to enable pino-pretty transport if available
 // - USE_PINO: 'false' to force console fallback
-// - DEBUG_MODULES: comma-separated list of modules to enable debug logging for
-//   e.g., DEBUG_MODULES=VendorOpenAI,TagsDigester
+// - DEBUG: comma-separated list of modules to enable debug logging for
+//   e.g., DEBUG=VendorOpenAI,TagsDigester
 
 type PinoLike = {
   info: (obj: unknown, msg?: string) => void;
@@ -93,13 +93,13 @@ function createPinoLogger(): PinoLike {
 let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
 const baseLogger: PinoLike = createPinoLogger();
 
-// Parse DEBUG_MODULES env var for per-module debug logging
+// Parse DEBUG env var for per-module debug logging
 const debugModules: Set<string> = new Set(
-  (process.env.DEBUG_MODULES || '').split(',').map((m) => m.trim()).filter(Boolean)
+  (process.env.DEBUG || '').split(',').map((m) => m.trim()).filter(Boolean)
 );
 
 function should(method: LogLevel, module?: string): boolean {
-  // If DEBUG_MODULES contains this module, allow debug level for it
+  // If DEBUG contains this module, allow debug level for it
   if (method === 'debug' && module && debugModules.has(module)) {
     return true;
   }

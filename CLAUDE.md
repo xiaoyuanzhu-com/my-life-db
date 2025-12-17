@@ -206,6 +206,23 @@ app/types/
 
 **IMPORTANT:** Do NOT create git commits automatically. Only commit when explicitly instructed by the user with commands like "commit it" or "commit this".
 
+## Debugging
+
+### Per-Module Debug Logging
+
+Enable debug logs for specific modules without setting global log level to debug:
+
+```bash
+DEBUG=VendorOpenAI npm run dev
+DEBUG=VendorOpenAI,TagsDigester npm run dev
+```
+
+Common modules:
+- `VendorOpenAI` - LLM request/response logging
+- `TagsDigester` - Tag generation
+- `DigestSupervisor` - Digest processing loop
+- `LibraryScanner` - File scanning
+
 ## Design Preferences
 
 - **Minimal Borders**: Avoid using too many dividers and borders in the UI. Keep the design clean and minimal.
