@@ -3,54 +3,9 @@ import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
 import { loadSettings } from '~/.server/config/storage';
 import { getNativeLanguageDisplayName } from '~/lib/i18n/languages';
+import { parseJsonFromLlmResponse } from '~/.server/utils/parse-json';
 
 const log = getLogger({ module: 'TagsDigester' });
-
-/**
- * Attempts to extract and parse JSON from a string that may contain additional text.
- * Handles cases where LLM returns JSON wrapped in markdown, with extra text, etc.
- */
-function parseJsonFromResponse(content: string): unknown {
-  // Try direct parse first
-  try {
-    return JSON.parse(content);
-  } catch {
-    // If direct parse fails, try to extract JSON from the content
-
-    // Try to find JSON in markdown code blocks
-    const markdownJsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (markdownJsonMatch) {
-      try {
-        return JSON.parse(markdownJsonMatch[1]);
-      } catch {
-        // Continue to next strategy
-      }
-    }
-
-    // Try to find JSON object by looking for { ... }
-    const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonObjectMatch) {
-      try {
-        return JSON.parse(jsonObjectMatch[0]);
-      } catch {
-        // Continue to next strategy
-      }
-    }
-
-    // Try to find JSON array by looking for [ ... ]
-    const jsonArrayMatch = content.match(/\[[\s\S]*\]/);
-    if (jsonArrayMatch) {
-      try {
-        return JSON.parse(jsonArrayMatch[0]);
-      } catch {
-        // All strategies failed
-      }
-    }
-
-    // If all strategies fail, throw the original error
-    throw new Error('Unable to parse JSON from response');
-  }
-}
 
 export interface TaggingInput {
   text: string;
@@ -87,6 +42,7 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
   // Use native language names (e.g., "English, 简体中文, 日本語")
   const languageNames = languages.map(getNativeLanguageDisplayName);
 
+  // JSON schema for models that support structured output
   const schema = {
     type: 'object',
     properties: {
@@ -101,28 +57,30 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
     additionalProperties: false,
   };
 
-  // Build the language instruction
-  let languageInstruction: string;
+  // Build the system prompt with language requirements
+  let systemPrompt: string;
   if (languages.length === 1) {
-    languageInstruction = `Generate all tags in ${languageNames[0]}.`;
+    systemPrompt = [
+      'You are an expert knowledge organizer.',
+      `Generate 5-10 tags in ${languageNames[0]} that help classify the content.`,
+      'Tag format: lowercase with spaces (e.g., "open source"), but honor conventions for proper nouns (e.g., "iOS", "JavaScript").',
+      'No hashtags or numbering.',
+      'Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}',
+    ].join(' ');
   } else {
-    languageInstruction = `Generate tags in each of these languages: ${languageNames.join(', ')}. Include 5-10 tags per language. Tags across languages should have similar meanings where possible, but don't force exact translations - it's fine to have semantic variations if there's no good equivalent.`;
+    systemPrompt = [
+      'You are an expert knowledge organizer.',
+      `Generate tags in EACH of these languages: ${languageNames.join(', ')}.`,
+      'Generate 5-10 tags PER language - the output should contain tags in ALL listed languages.',
+      'Tags across languages should have similar meanings, but semantic variations are fine if no direct equivalent exists.',
+      'Tag format: lowercase with spaces (e.g., "open source", "机器学习"), but honor conventions for proper nouns (e.g., "iOS", "JavaScript").',
+      'No hashtags or numbering.',
+      'Respond with JSON in format: {"tags": ["tag1", "tag2", "标签1", "标签2", ...]}',
+    ].join(' ');
   }
-
-  const systemPrompt = [
-    'You are an expert knowledge organizer.',
-    'Extract short, descriptive tags that help classify the content.',
-    'Tag format rules:',
-    '- Use lowercase with spaces for multi-word tags (e.g., "open source", "machine learning")',
-    '- Honor established naming conventions for proper nouns and technical terms (e.g., "iOS", "JavaScript", "GitHub", "macOS")',
-    '- Prefer single words when possible, use 2-3 word phrases when needed for clarity',
-    '- No hashtags, numbering, or punctuation',
-    languageInstruction,
-  ].join(' ');
 
   const prompt = [
     'Analyze the following content and produce tags.',
-    'Respond using the provided JSON schema.',
     '',
     input.text,
   ].join('\n');
@@ -137,23 +95,10 @@ export async function generateTagsDigest(input: TaggingInput): Promise<TaggingOu
   let tags: string[] = [];
 
   try {
-    const payload = parseJsonFromResponse(res.content) as { tags?: unknown } | unknown[];
+    const payload = parseJsonFromLlmResponse(res.content) as { tags?: unknown };
 
-    // Handle both formats:
-    // 1. Correct format: {"tags": ["tag1", "tag2"]}
-    // 2. Array format: ["tag1", "tag2"] (some models ignore schema)
-    let tagsArray: unknown[] | undefined;
-
-    if (Array.isArray(payload)) {
-      tagsArray = payload;
-    } else if (typeof payload === 'object' && payload !== null && 'tags' in payload) {
-      tagsArray = Array.isArray((payload as { tags?: unknown }).tags)
-        ? (payload as { tags: unknown[] }).tags
-        : undefined;
-    }
-
-    if (tagsArray) {
-      tags = tagsArray
+    if (payload && typeof payload === 'object' && 'tags' in payload && Array.isArray(payload.tags)) {
+      tags = payload.tags
         .filter((tag): tag is string => typeof tag === 'string')
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0)

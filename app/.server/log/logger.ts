@@ -5,6 +5,8 @@ import pino from 'pino';
 // - LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error' (default: 'info')
 // - LOG_PRETTY: 'true' to enable pino-pretty transport if available
 // - USE_PINO: 'false' to force console fallback
+// - DEBUG_MODULES: comma-separated list of modules to enable debug logging for
+//   e.g., DEBUG_MODULES=VendorOpenAI,TagsDigester
 
 type PinoLike = {
   info: (obj: unknown, msg?: string) => void;
@@ -91,17 +93,27 @@ function createPinoLogger(): PinoLike {
 let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel | undefined) || 'info';
 const baseLogger: PinoLike = createPinoLogger();
 
-function should(method: LogLevel): boolean {
+// Parse DEBUG_MODULES env var for per-module debug logging
+const debugModules: Set<string> = new Set(
+  (process.env.DEBUG_MODULES || '').split(',').map((m) => m.trim()).filter(Boolean)
+);
+
+function should(method: LogLevel, module?: string): boolean {
+  // If DEBUG_MODULES contains this module, allow debug level for it
+  if (method === 'debug' && module && debugModules.has(module)) {
+    return true;
+  }
   return getLevelOrder(method) >= getLevelOrder(currentLevel);
 }
 
 function createConsoleWrapper(bindings: Record<string, unknown> = {}): PinoLike {
   const prefix = Object.keys(bindings).length > 0 ? `[${Object.entries(bindings).map(([k,v]) => `${k}=${String(v)}`).join(' ')}]` : '';
+  const module = bindings.module as string | undefined;
   return {
-    info: (obj, msg) => { if (should('info')) console.log(prefix, msg || '', obj ?? ''); },
-    warn: (obj, msg) => { if (should('warn')) console.warn(prefix, msg || '', obj ?? ''); },
-    error: (obj, msg) => { if (should('error')) console.error(prefix, msg || '', obj ?? ''); },
-    debug: (obj, msg) => { if (should('debug')) console.debug(prefix, msg || '', obj ?? ''); },
+    info: (obj, msg) => { if (should('info', module)) console.log(prefix, msg || '', obj ?? ''); },
+    warn: (obj, msg) => { if (should('warn', module)) console.warn(prefix, msg || '', obj ?? ''); },
+    error: (obj, msg) => { if (should('error', module)) console.error(prefix, msg || '', obj ?? ''); },
+    debug: (obj, msg) => { if (should('debug', module)) console.debug(prefix, msg || '', obj ?? ''); },
     child: (more) => createConsoleWrapper({ ...bindings, ...more }),
   };
 }

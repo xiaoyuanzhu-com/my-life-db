@@ -166,6 +166,18 @@ export async function callOpenAICompletion(
     };
   }
 
+  // Debug log the request
+  log.debug(
+    {
+      model,
+      systemPrompt: options.systemPrompt,
+      prompt: options.prompt,
+      hasJsonSchema: !!options.jsonSchema,
+      jsonSchema: options.jsonSchema,
+    },
+    'openai request'
+  );
+
   let response;
   try {
     response = await client.chat.completions.create(requestParams);
@@ -230,6 +242,16 @@ export async function callOpenAICompletion(
     completionTokens: response.usage.completion_tokens,
     totalTokens: response.usage.total_tokens,
   } : undefined;
+
+  // Debug log the response
+  log.debug(
+    {
+      content,
+      finishReason,
+      usage,
+    },
+    'openai response'
+  );
 
   return {
     content,
