@@ -55,9 +55,8 @@ export class DocToScreenshotDigester implements Digester {
   readonly description = 'Convert PDF, Word, Excel, PowerPoint, and EPUB documents to screenshot images';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if file is a folder
@@ -86,7 +85,7 @@ export class DocToScreenshotDigester implements Digester {
     file: FileRecordRow,
     _existingDigests: Digest[],
     db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     log.debug({ filePath, name: file.name }, 'converting document to screenshot');
 
     // Convert document to screenshot

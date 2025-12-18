@@ -50,9 +50,8 @@ export class DocToMarkdownDigester implements Digester {
   readonly description = 'Convert PDF, Word, Excel, PowerPoint, and EPUB documents to markdown';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if file is a folder
@@ -81,7 +80,7 @@ export class DocToMarkdownDigester implements Digester {
     file: FileRecordRow,
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     log.debug({ filePath, name: file.name }, 'converting document to markdown');
 
     // Convert document to markdown

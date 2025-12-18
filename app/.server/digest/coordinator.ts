@@ -35,7 +35,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['speaker-embedding', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],
 };
 
@@ -168,8 +168,8 @@ export class DigestCoordinator {
           continue;
         }
 
-        // Check if can digest
-        const can = await digester.canDigest(filePath, file, existingDigests, this.db);
+        // Check if can digest (file type check only - no existingDigests)
+        const can = await digester.canDigest(filePath, file, this.db);
 
         if (!can) {
           this.markDigests(filePath, pendingOutputs, 'skipped', 'Not applicable');
@@ -185,9 +185,9 @@ export class DigestCoordinator {
         const outputs = await digester.digest(filePath, file, existingDigests, this.db);
 
         if (!outputs || outputs.length === 0) {
-          this.markDigests(filePath, pendingOutputs, 'skipped', 'Digester returned no output');
-          log.info({ filePath }, `[${digesterName}] skipped`);
-          skipped++;
+          this.markDigests(filePath, pendingOutputs, 'failed', 'Digester returned no output');
+          log.info({ filePath }, `[${digesterName}] failed (no output)`);
+          failed++;
           continue;
         }
 
@@ -205,7 +205,8 @@ export class DigestCoordinator {
 
         const missingOutputs = pendingOutputs.filter((name) => !producedNames.has(name));
         if (missingOutputs.length > 0) {
-          this.markDigests(filePath, missingOutputs, 'skipped', 'Output not produced');
+          this.markDigests(filePath, missingOutputs, 'failed', 'Output not produced by digester');
+          log.warn({ filePath, missingOutputs }, `[${digesterName}] missing outputs`);
         }
 
         processed++;

@@ -49,9 +49,8 @@ export class ImageCaptioningDigester implements Digester {
   readonly description = 'Generate descriptive captions for images using AI';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if file is a folder
@@ -80,7 +79,7 @@ export class ImageCaptioningDigester implements Digester {
     file: FileRecordRow,
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     log.debug({ filePath, name: file.name }, 'generating caption for image');
 
     // Get absolute path to image file

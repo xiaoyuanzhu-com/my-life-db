@@ -28,7 +28,6 @@ export class TagsDigester implements Digester {
   async canDigest(
     _filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Always try to run for non-folder files
@@ -41,7 +40,7 @@ export class TagsDigester implements Digester {
     file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     const now = new Date().toISOString();
 
     // Check if we have any text content

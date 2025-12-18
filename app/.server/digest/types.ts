@@ -13,6 +13,11 @@ import type BetterSqlite3 from 'better-sqlite3';
  *
  * Example: 'url-crawl' digester creates multiple digests with names like
  * 'url-crawl-content', 'url-crawl-screenshot', etc.
+ *
+ * Design Principle: Users should see a deterministic set of digests for each file type.
+ * - `skipped` = file type doesn't match (only from canDigest returning false)
+ * - `failed` = digester applies but couldn't complete
+ * - `completed` = digester ran successfully (content may be null)
  */
 export interface Digester {
   /** Unique digester name (e.g., 'url-crawl', 'url-crawl-summary') */
@@ -31,35 +36,34 @@ export interface Digester {
   getOutputDigesters?(): string[];
 
   /**
-   * Check if this digester can process the given file.
-   * @returns true if applicable, false to skip
+   * Check if this digester applies to the given file TYPE.
+   *
+   * MUST be deterministic based on file type only:
+   * - Check MIME type, file extension, or content structure (e.g., "is this a URL?")
+   * - NEVER check existingDigests or processing status of other digesters
+   *
+   * @returns true if applicable, false to skip (marks as 'skipped' - terminal)
    */
   canDigest(
     filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
     db: BetterSqlite3.Database
   ): Promise<boolean>;
 
   /**
    * Execute digest operation.
-   * @returns Array of digests created (each with their own unique digester name), or null to skip
+   *
+   * MUST return all outputs declared in getOutputDigesters().
+   * MUST throw errors for failures (dependencies not ready, service errors).
+   * MAY return completed with null content if nothing to extract.
+   *
+   * @returns Array of digests created (each with their own unique digester name)
+   * @throws Error if processing fails (will be retried up to 3 times)
    */
   digest(
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
     db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null>;
-
-  /**
-   * Optional hook to signal reprocessing even when outputs are already completed/skipped.
-   * Return true when upstream inputs changed and outputs should be regenerated.
-   */
-  shouldReprocessCompleted?(
-    filePath: string,
-    file: FileRecordRow,
-    existingDigests: Digest[],
-    db: BetterSqlite3.Database
-  ): Promise<boolean> | boolean;
+  ): Promise<DigestInput[]>;
 }

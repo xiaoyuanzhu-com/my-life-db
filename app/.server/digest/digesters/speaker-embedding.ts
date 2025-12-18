@@ -2,7 +2,7 @@
  * Speaker Embedding Digester
  * Extracts speaker embeddings from speech recognition results and auto-clusters them
  *
- * Depends on: speech-recognition digest
+ * Depends on: speech-recognition digest (checked in digest(), not canDigest())
  * Produces: speaker-embedding (metadata about extracted embeddings)
  *
  * This digester reads the speech recognition result which contains
@@ -24,6 +24,37 @@ const log = getLogger({ module: 'SpeakerEmbeddingDigester' });
 // Filters out short segments that may be noise
 const MIN_SPEAKER_DURATION = 2.0;
 
+// Supported audio MIME types (same as speech-recognition)
+const SUPPORTED_MIME_TYPES = new Set([
+  'audio/mpeg',      // .mp3
+  'audio/wav',       // .wav
+  'audio/x-wav',     // .wav alternative
+  'audio/ogg',       // .ogg
+  'audio/mp4',       // .m4a
+  'audio/x-m4a',     // .m4a alternative
+  'audio/aac',       // .aac
+  'audio/flac',      // .flac
+  'audio/x-flac',    // .flac alternative
+  'audio/webm',      // .webm audio
+  'audio/opus',      // .opus
+  'audio/aiff',      // .aiff
+  'audio/x-aiff',    // .aiff alternative
+]);
+
+// File extensions as fallback check
+const SUPPORTED_EXTENSIONS = new Set([
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.webm',
+  '.opus',
+  '.aiff',
+  '.wma',
+]);
+
 /**
  * Speaker Embedding Digester
  * Extracts speaker embeddings from ASR results and auto-clusters them into people
@@ -34,9 +65,8 @@ export class SpeakerEmbeddingDigester implements Digester {
   readonly description = 'Extract and cluster speaker voice embeddings for identification';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if file is a folder
@@ -44,54 +74,78 @@ export class SpeakerEmbeddingDigester implements Digester {
       return false;
     }
 
-    // Requires completed speech-recognition digest
-    const speechDigest = existingDigests.find(
-      (d) => d.digester === 'speech-recognition' && d.status === 'completed'
-    );
-    if (!speechDigest) {
-      return false;
-    }
-
-    // Check if speech recognition has speaker data
-    try {
-      const speechResult = JSON.parse(speechDigest.content || '{}') as HaidSpeechRecognitionResponse;
-      if (!speechResult.speakers || speechResult.speakers.length === 0) {
-        log.debug({ filePath }, 'no speakers in speech recognition result');
-        return false;
-      }
-
-      // At least one speaker should have sufficient duration
-      const hasSufficientSpeakers = speechResult.speakers.some(
-        (s) => s.total_duration >= MIN_SPEAKER_DURATION && s.embedding && s.embedding.length > 0
-      );
-      if (!hasSufficientSpeakers) {
-        log.debug({ filePath }, 'no speakers with sufficient duration');
-        return false;
-      }
-
+    // Check MIME type - same as speech-recognition
+    if (file.mime_type && SUPPORTED_MIME_TYPES.has(file.mime_type)) {
       return true;
-    } catch (error) {
-      log.warn({ filePath, error }, 'failed to parse speech recognition result');
-      return false;
     }
+
+    // Fallback: check file extension
+    const fileName = file.name.toLowerCase();
+    for (const ext of SUPPORTED_EXTENSIONS) {
+      if (fileName.endsWith(ext)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async digest(
     filePath: string,
-    file: FileRecordRow,
+    _file: FileRecordRow,
     existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
+    const now = new Date().toISOString();
+
+    // Check dependency: speech-recognition must be completed
     const speechDigest = existingDigests.find(
       (d) => d.digester === 'speech-recognition' && d.status === 'completed'
     );
     if (!speechDigest?.content) {
-      throw new Error('Speech recognition digest not found');
+      // Dependency not ready - throw error (will retry)
+      throw new Error('Speech recognition not completed yet');
     }
 
     const speechResult = JSON.parse(speechDigest.content) as HaidSpeechRecognitionResponse;
+
+    // No speakers in result - complete with null (not an error)
     if (!speechResult.speakers || speechResult.speakers.length === 0) {
-      throw new Error('No speakers in speech recognition result');
+      log.debug({ filePath }, 'no speakers in speech recognition result');
+      return [
+        {
+          filePath,
+          digester: 'speaker-embedding',
+          status: 'completed',
+          content: null,
+          sqlarName: null,
+          error: null,
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    }
+
+    // Check if any speakers have sufficient duration and embeddings
+    const hasSufficientSpeakers = speechResult.speakers.some(
+      (s) => s.total_duration >= MIN_SPEAKER_DURATION && s.embedding && s.embedding.length > 0
+    );
+    if (!hasSufficientSpeakers) {
+      log.debug({ filePath }, 'no speakers with sufficient duration or embeddings');
+      return [
+        {
+          filePath,
+          digester: 'speaker-embedding',
+          status: 'completed',
+          content: JSON.stringify({ reason: 'no_sufficient_speakers' }),
+          sqlarName: null,
+          error: null,
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
     }
 
     log.debug({ filePath, speakerCount: speechResult.speakers.length }, 'processing speaker embeddings');
@@ -199,8 +253,6 @@ export class SpeakerEmbeddingDigester implements Digester {
       }
     }
 
-    const now = new Date().toISOString();
-
     // Store summary of processing
     return [
       {
@@ -220,28 +272,5 @@ export class SpeakerEmbeddingDigester implements Digester {
         updatedAt: now,
       },
     ];
-  }
-
-  /**
-   * Re-process if speech recognition was updated
-   */
-  shouldReprocessCompleted(
-    _filePath: string,
-    _file: FileRecordRow,
-    existingDigests: Digest[],
-    _db: BetterSqlite3.Database
-  ): boolean {
-    const speechDigest = existingDigests.find((d) => d.digester === 'speech-recognition');
-    const embeddingDigest = existingDigests.find((d) => d.digester === 'speaker-embedding');
-
-    if (!speechDigest || !embeddingDigest) {
-      return false;
-    }
-
-    // Re-process if speech recognition was updated after embedding extraction
-    const speechUpdated = new Date(speechDigest.updatedAt);
-    const embeddingUpdated = new Date(embeddingDigest.updatedAt);
-
-    return speechUpdated > embeddingUpdated;
   }
 }

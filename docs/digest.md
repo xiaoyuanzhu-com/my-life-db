@@ -82,6 +82,20 @@ Example: a1b2c3d4e5f6/screenshot/page.png
 
 ## Digester Architecture
 
+### Core Design Principle: Deterministic Digest Sets
+
+**Users should see a deterministic set of digests for each file based on file type alone.**
+
+When a user sees a file, they should know exactly which digests to expect:
+- Image file → `image-ocr`, `image-captioning`, `tags`, `search-keyword`, `search-semantic`
+- Audio file → `speech-recognition`, `speaker-embedding`, `tags`, `search-keyword`, `search-semantic`
+- URL file → `url-crawl-content`, `url-crawl-screenshot`, `url-crawl-summary`, `tags`, `search-keyword`, `search-semantic`
+
+This means:
+1. **`skipped` status** = "This digester doesn't apply to this file type" (deterministic)
+2. **`failed` status** = "This digester applies but couldn't complete" (transient)
+3. **`completed` status** = "This digester ran successfully" (may have null content)
+
 ### Digester Interface
 
 Each digester implements this interface:
@@ -90,33 +104,49 @@ Each digester implements this interface:
 interface Digester {
   readonly name: string;
   readonly label: string;  // Human-readable label for UI display
+  readonly description: string;
 
-  // Check if this digester applies to the file
+  // Check if this digester applies to the file TYPE
+  // MUST be deterministic based on file type only (MIME, extension, content structure)
+  // MUST NOT check processing status of other digesters
   canDigest(
     filePath: string,
     file: FileRecordRow,
-    existingDigests: Digest[],
     db: Database
   ): Promise<boolean>;
 
   // Execute processing and return outputs
+  // MUST return all declared outputs (from getOutputDigesters)
+  // MUST throw errors for failures (dependencies not ready, service errors)
+  // MAY return completed with null content if nothing to extract
   digest(
     filePath: string,
     file: FileRecordRow,
     existingDigests: Digest[],
     db: Database
-  ): Promise<DigestInput[] | null>;
+  ): Promise<DigestInput[]>;
 
   // Optional: Specify multiple output digest names
   getOutputDigesters?(): string[];
 }
 ```
 
-**Key Concepts**:
-- **Multiple Outputs**: A digester can produce multiple digest records (e.g., UrlCrawlerDigester produces content-md, content-html, screenshot, url-metadata)
-- **Dependency Access**: Later digesters can read outputs from earlier digesters via `existingDigests`
-- **Smart Skipping**: `canDigest()` determines if digester should run based on file metadata and existing digests
-- **Dependency Failures**: Digesters that depend on other digesters should throw errors (not return false) when dependencies are missing or failed. This marks them as `failed` (retryable) instead of `skipped` (terminal), allowing them to retry when dependencies become available.
+**Key Rules**:
+
+1. **`canDigest()` - File Type Check Only**
+   - Check MIME type, file extension, or file content structure (e.g., "is this a URL?")
+   - **NEVER** check `existingDigests` or processing status of other digesters
+   - Returns `false` → digester marked `skipped` (terminal, deterministic)
+
+2. **`digest()` - Must Produce All Outputs or Throw**
+   - If dependencies not ready → **throw error** (will retry)
+   - If external service fails → **throw error** (will retry)
+   - If no content to extract → return `completed` with null content
+   - **MUST** return all outputs declared in `getOutputDigesters()`
+
+3. **Multiple Outputs**: A digester can produce multiple digest records (e.g., UrlCrawlerDigester produces `url-crawl-content`, `url-crawl-screenshot`)
+
+4. **Dependency Access**: Later digesters can read outputs from earlier digesters via `existingDigests` parameter in `digest()`
 
 ### Registered Digesters (Execution Order)
 
@@ -376,7 +406,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['speaker-embedding', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],  // Summary can improve tags
 };
 ```
@@ -562,30 +592,41 @@ Coordinator tracks each output independently with its own status.
    - Contains latest digest records including earlier digesters in same run
    - Never cache or reuse digest state across calls
 
-3. **Deterministic `canDigest`**: Base on file type, not content availability
-   - Check MIME type and file extension
-   - Don't check if upstream digesters have content yet
-   - Example: `image-ocr` returns true for all images, regardless of whether text will be found
+3. **`canDigest()` Must Be Deterministic by File Type**
+   - Check MIME type, file extension, or content structure only
+   - **NEVER** check `existingDigests` or upstream digester status
+   - Example: `speaker-embedding` returns true for all audio/video files
+   - Example: `url-crawl` returns true for text files containing URLs
 
-4. **Complete vs Skip**: Use the right terminal state
-   - **`skipped`**: File type is fundamentally incompatible (e.g., `url-crawl` on a PDF)
-   - **`completed` with null content**: File type is compatible but no output produced
-   - Never use `skipped` for "no content available" - that prevents cascading resets
+4. **`skipped` vs `failed` vs `completed`**
+   - **`skipped`**: File type doesn't match (only from `canDigest() → false`)
+   - **`failed`**: Digester applies but couldn't complete (dependency not ready, service error)
+   - **`completed`**: Digester ran successfully (content may be null if nothing to extract)
 
-5. **Let Errors Propagate**: For external service failures
-   - **ALWAYS** throw errors from `digest()` - never catch and return `DigestInput` with `status: 'failed'`
+   The key insight: users expect a **deterministic set of digests** for each file type.
+   If a file is audio, user expects `speaker-embedding` to exist - either completed or failed, never skipped.
+
+5. **Let Errors Propagate**: For any failures in `digest()`
+   - **ALWAYS** throw errors - never return `DigestInput` with `status: 'failed'`
    - Coordinator catches errors, increments attempts, and marks as failed
    - After 3 attempts, digest stays failed (terminal)
 
    ```typescript
-   // CORRECT: Throw errors for service failures
-   async digest(...): Promise<DigestInput[] | null> {
-     const result = await externalService.process(file); // Let errors propagate
+   // CORRECT: Throw errors for any failures
+   async digest(...): Promise<DigestInput[]> {
+     // Dependency not ready - throw (will retry when ready)
+     const speechDigest = existingDigests.find(d => d.digester === 'speech-recognition');
+     if (!speechDigest || speechDigest.status !== 'completed') {
+       throw new Error('Speech recognition not ready');
+     }
+
+     // External service - let errors propagate
+     const result = await externalService.process(file);
      return [{ digester: 'my-digester', status: 'completed', content: result }];
    }
 
-   // CORRECT: Complete with no content when nothing to index
-   async digest(...): Promise<DigestInput[] | null> {
+   // CORRECT: Complete with no content when nothing to extract
+   async digest(...): Promise<DigestInput[]> {
      const text = getTextContent(file, existingDigests);
      if (!text) {
        return [{ digester: 'search-keyword', status: 'completed', content: null }];
@@ -593,8 +634,8 @@ Coordinator tracks each output independently with its own status.
      // ... index text
    }
 
-   // WRONG: Catching and returning failed status
-   async digest(...): Promise<DigestInput[] | null> {
+   // WRONG: Returning failed status directly
+   async digest(...): Promise<DigestInput[]> {
      try {
        const result = await externalService.process(file);
        return [{ status: 'completed', ... }];
@@ -604,10 +645,10 @@ Coordinator tracks each output independently with its own status.
    }
    ```
 
-6. **Return Null Only for True Skips**: When file type doesn't match
-   - Return `null` only when the file type is fundamentally incompatible
-   - Example: URL crawler returning null for non-URL files
-   - Coordinator marks these as "skipped" (terminal)
+6. **Multi-Output Digesters Must Return All Outputs**
+   - If `getOutputDigesters()` returns `['a', 'b']`, `digest()` must return both
+   - Each output can be `completed` (with or without content)
+   - If any output can't be produced, throw error (don't skip individual outputs)
 
 7. **Cascading Resets are Automatic**: Don't manually reset downstream digesters
    - Define reset mappings in `CASCADING_RESETS` constant

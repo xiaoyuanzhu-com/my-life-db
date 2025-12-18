@@ -59,7 +59,6 @@ export class UrlCrawlerDigester implements Digester {
   async canDigest(
     filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Only process text files
@@ -85,7 +84,7 @@ export class UrlCrawlerDigester implements Digester {
     _file: FileRecordRow,
     _existingDigests: Digest[],
     db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     // Read URL from file
     const fullPath = path.join(process.env.MY_DATA_DIR || './data', filePath);
     const url = (await fs.readFile(fullPath, 'utf-8')).trim();

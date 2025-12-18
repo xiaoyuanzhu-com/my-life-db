@@ -49,9 +49,8 @@ export class ImageOcrDigester implements Digester {
   readonly description = 'Extract text from images using optical character recognition';
 
   async canDigest(
-    filePath: string,
+    _filePath: string,
     file: FileRecordRow,
-    _existingDigests: Digest[],
     _db: BetterSqlite3.Database
   ): Promise<boolean> {
     // Check if file is a folder
@@ -80,7 +79,7 @@ export class ImageOcrDigester implements Digester {
     file: FileRecordRow,
     _existingDigests: Digest[],
     _db: BetterSqlite3.Database
-  ): Promise<DigestInput[] | null> {
+  ): Promise<DigestInput[]> {
     log.debug({ filePath, name: file.name }, 'extracting text from image');
 
     // Get absolute path to image file
