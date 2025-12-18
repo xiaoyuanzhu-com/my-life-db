@@ -202,38 +202,18 @@ export async function shareFile(
   name: string,
   mimeType?: string | null
 ): Promise<void> {
-  if (!navigator.share) {
-    console.error('Web Share API not supported');
-    return;
-  }
-
-  // Build absolute URL for sharing
-  const absoluteUrl = `${window.location.origin}/raw/${path}`;
+  if (!navigator.share) return;
 
   try {
-    const shareData: ShareData = { title: name };
+    const response = await fetch(`/raw/${path}`, { cache: 'force-cache' });
+    if (!response.ok) return;
 
-    // Try to share the actual file (works on mobile, not on desktop Chrome)
-    try {
-      const response = await fetch(`/raw/${path}`, { cache: 'force-cache' });
-      if (response.ok) {
-        const blob = await response.blob();
-        const fileToShare = new File([blob], name, { type: mimeType || blob.type });
+    const blob = await response.blob();
+    const file = new File([blob], name, { type: mimeType || blob.type });
 
-        if (navigator.canShare && navigator.canShare({ files: [fileToShare] })) {
-          shareData.files = [fileToShare];
-        } else {
-          // Fallback to URL sharing (desktop Chrome)
-          shareData.url = absoluteUrl;
-        }
-      } else {
-        shareData.url = absoluteUrl;
-      }
-    } catch {
-      shareData.url = absoluteUrl;
-    }
+    if (!navigator.canShare?.({ files: [file] })) return;
 
-    await navigator.share(shareData);
+    await navigator.share({ title: name, files: [file] });
   } catch (error) {
     if ((error as Error).name !== 'AbortError') {
       console.error('Failed to share:', error);
