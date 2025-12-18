@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { FileWithDigests } from '~/types/file-card';
+import { NavigationModal } from '~/components/FileCard/navigation-modal';
 
 interface ModalNavigationSnapshot {
   /** Currently displayed file in modal (null if modal closed) */
@@ -135,6 +136,7 @@ export function ModalNavigationProvider({ children, files }: ModalNavigationProv
   return (
     <ModalNavigationContext.Provider value={value}>
       {children}
+      <NavigationModal />
     </ModalNavigationContext.Provider>
   );
 }

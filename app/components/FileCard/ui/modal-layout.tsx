@@ -48,6 +48,16 @@ export function useModalLayout(): ModalLayoutConfig {
 }
 
 function calculateLayout(): ModalLayoutConfig {
+  // SSR safety: return default values if window is not available
+  if (typeof window === 'undefined') {
+    return {
+      mode: 'landscape',
+      contentWidth: 640,
+      contentHeight: 900,
+      canFitSideBySide: true,
+    };
+  }
+
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const aspectRatio = vw / vh;

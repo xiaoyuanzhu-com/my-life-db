@@ -30,7 +30,7 @@ export function VideoCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const src = getFileContentUrl(file);
@@ -88,12 +88,14 @@ export function VideoCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      <VideoModal
-        file={file}
-        open={modalOpen}
-        onOpenChange={closeModal}
-        {...navigationProps}
-      />
+      {!useCentralizedModal && (
+        <VideoModal
+          file={file}
+          open={modalOpen}
+          onOpenChange={closeModal}
+          {...navigationProps}
+        />
+      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

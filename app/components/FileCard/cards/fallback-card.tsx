@@ -31,7 +31,7 @@ export function FallbackCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const href = getFileLibraryUrl(file.path);
@@ -89,12 +89,14 @@ export function FallbackCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      <FallbackModal
-        file={file}
-        open={modalOpen}
-        onOpenChange={closeModal}
-        {...navigationProps}
-      />
+      {!useCentralizedModal && (
+        <FallbackModal
+          file={file}
+          open={modalOpen}
+          onOpenChange={closeModal}
+          {...navigationProps}
+        />
+      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

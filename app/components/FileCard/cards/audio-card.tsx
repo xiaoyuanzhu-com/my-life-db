@@ -62,7 +62,7 @@ export function AudioCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -311,12 +311,14 @@ export function AudioCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      <AudioModal
-        file={file}
-        open={modalOpen}
-        onOpenChange={closeModal}
-        {...navigationProps}
-      />
+      {!useCentralizedModal && (
+        <AudioModal
+          file={file}
+          open={modalOpen}
+          onOpenChange={closeModal}
+          {...navigationProps}
+        />
+      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

@@ -35,7 +35,7 @@ export function DocCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
@@ -113,12 +113,14 @@ export function DocCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      <FallbackModal
-        file={file}
-        open={modalOpen}
-        onOpenChange={closeModal}
-        {...navigationProps}
-      />
+      {!useCentralizedModal && (
+        <FallbackModal
+          file={file}
+          open={modalOpen}
+          onOpenChange={closeModal}
+          {...navigationProps}
+        />
+      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

@@ -38,7 +38,7 @@ export function EpubCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
@@ -136,7 +136,7 @@ export function EpubCard({
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
       />
-      {modalOpen && (
+      {!useCentralizedModal && modalOpen && (
         <Suspense
           fallback={
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">

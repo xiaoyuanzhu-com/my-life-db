@@ -67,6 +67,8 @@ export function useCardModalState(file: FileWithDigests) {
     openModal,
     closeModal,
     navigationProps,
+    /** Whether to use the centralized NavigationModal (true when inside provider) */
+    useCentralizedModal: !!navigation,
   };
 }
 

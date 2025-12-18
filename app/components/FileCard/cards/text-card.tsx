@@ -37,7 +37,7 @@ export function TextCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
+  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -153,15 +153,17 @@ export function TextCard({
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
       />
-      <TextModal
-        file={file}
-        open={modalOpen}
-        onOpenChange={closeModal}
-        previewText={previewText}
-        fullContent={fullContent}
-        onFullContentLoaded={handleFullContentLoaded}
-        {...navigationProps}
-      />
+      {!useCentralizedModal && (
+        <TextModal
+          file={file}
+          open={modalOpen}
+          onOpenChange={closeModal}
+          previewText={previewText}
+          fullContent={fullContent}
+          onFullContentLoaded={handleFullContentLoaded}
+          {...navigationProps}
+        />
+      )}
     </>
   );
 }
