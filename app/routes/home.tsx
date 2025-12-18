@@ -3,10 +3,22 @@ import { OmniInput } from "~/components/omni-input";
 import { InboxFeed } from "~/components/inbox-feed";
 import { SearchResults } from "~/components/search-results";
 import { PinnedTags } from "~/components/pinned-tags";
+import { MultiSelectActionBar } from "~/components/multi-select-action-bar";
+import { SelectionProvider, useSelection } from "~/contexts/selection-context";
 import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
+import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
 
 export default function HomePage() {
+  return (
+    <SelectionProvider>
+      <HomePageContent />
+    </SelectionProvider>
+  );
+}
+
+function HomePageContent() {
+  const { isSelectionMode, clearSelection } = useSelection();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [scrollToCursor, setScrollToCursor] = useState<string | undefined>(undefined);
   const [searchState, setSearchState] = useState<{
@@ -166,18 +178,49 @@ export default function HomePage() {
       <div className="flex-none bg-background">
         <div className="max-w-3xl md:max-w-4xl mx-auto w-full px-4 md:px-4 py-4">
           <PinnedTags onTagClick={handlePinnedTagClick} onRefresh={refreshTrigger} />
-          <OmniInput
-            onEntryCreated={handleEntryCreated}
-            onSearchResultsChange={setSearchState}
-            maxHeight={inputMaxHeight ?? undefined}
-            searchStatus={{
-              isSearching,
-              hasNoResults: !hasAnyResults && !isSearching && (searchState.keywordResults !== null || searchState.semanticResults !== null),
-              hasError: error !== null,
-              resultCount: hasCurrentResults ? mergedResultCount : undefined,
-            }}
-            clearSearchTrigger={clearSearchTrigger}
-          />
+
+          {/* Animated container for OmniInput / MultiSelectActionBar */}
+          <div className="relative overflow-hidden">
+            {/* OmniInput - visible when not in selection mode */}
+            <div
+              className={cn(
+                "transition-all duration-200 ease-out",
+                isSelectionMode
+                  ? "opacity-0 -translate-y-4 h-0 pointer-events-none"
+                  : "opacity-100 translate-y-0"
+              )}
+            >
+              <OmniInput
+                onEntryCreated={handleEntryCreated}
+                onSearchResultsChange={setSearchState}
+                maxHeight={inputMaxHeight ?? undefined}
+                searchStatus={{
+                  isSearching,
+                  hasNoResults: !hasAnyResults && !isSearching && (searchState.keywordResults !== null || searchState.semanticResults !== null),
+                  hasError: error !== null,
+                  resultCount: hasCurrentResults ? mergedResultCount : undefined,
+                }}
+                clearSearchTrigger={clearSearchTrigger}
+              />
+            </div>
+
+            {/* MultiSelectActionBar - visible in selection mode */}
+            <div
+              className={cn(
+                "transition-all duration-200 ease-out",
+                isSelectionMode
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-4 h-0 pointer-events-none"
+              )}
+            >
+              <MultiSelectActionBar
+                onDeleted={() => {
+                  setRefreshTrigger((prev) => prev + 1);
+                  clearSelection();
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

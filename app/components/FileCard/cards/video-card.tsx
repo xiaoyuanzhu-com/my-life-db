@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Download, Share2, Trash2, MapPin } from 'lucide-react';
+import { ExternalLink, Pin, Download, Share2, Trash2, MapPin, CheckCircle2 } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { VideoModal } from '../modals/video-modal';
 import { cardContainerClass } from '../ui/card-styles';
+import { useSelectionSafe } from '~/contexts/selection-context';
 import {
   downloadFile,
   shareFile,
@@ -27,6 +28,7 @@ export function VideoCard({
   onLocateInFeed,
 }: BaseCardProps) {
   const navigate = useNavigate();
+  const selection = useSelectionSafe();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -47,6 +49,7 @@ export function VideoCard({
   const actions: ContextMenuAction[] = [
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: MapPin, label: 'Locate', onClick: () => onLocateInFeed?.(), hidden: !onLocateInFeed },
+    { icon: CheckCircle2, label: 'Select', onClick: () => selection?.enterSelectionMode(file.path), hidden: !selection },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Download, label: 'Save', onClick: () => downloadFile(file.path, file.name), hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },

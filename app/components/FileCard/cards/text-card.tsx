@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
-import { ExternalLink, Pin, Copy, Trash2, MapPin } from 'lucide-react';
+import { ExternalLink, Pin, Copy, Trash2, MapPin, CheckCircle2 } from 'lucide-react';
 import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardContainerClass } from '../ui/card-styles';
 import { TextModal } from '../modals/text-modal';
 import { highlightMatches } from '../ui/text-highlight';
+import { useSelectionSafe } from '~/contexts/selection-context';
 import {
   togglePin,
   getFileLibraryUrl,
@@ -34,6 +35,7 @@ export function TextCard({
   onLocateInFeed,
 }: BaseCardProps) {
   const navigate = useNavigate();
+  const selection = useSelectionSafe();
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -106,6 +108,7 @@ export function TextCard({
   const actions: ContextMenuAction[] = [
     { icon: ExternalLink, label: 'Open', onClick: handleOpen },
     { icon: MapPin, label: 'Locate', onClick: () => onLocateInFeed?.(), hidden: !onLocateInFeed },
+    { icon: CheckCircle2, label: 'Select', onClick: () => selection?.enterSelectionMode(file.path), hidden: !selection },
     { icon: Pin, label: file.isPinned ? 'Unpin' : 'Pin', onClick: handleTogglePin },
     { icon: Copy, label: copyStatus === 'copied' ? 'Copied' : 'Copy', onClick: handleCopy },
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },

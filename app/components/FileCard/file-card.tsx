@@ -3,6 +3,7 @@ import { formatTimestamp } from '~/lib/utils/format-timestamp';
 import type { FileCardProps } from './types';
 import { getFileContentType } from './utils';
 import { getCardComponent } from './cards';
+import { SelectionWrapper } from './ui/selection-wrapper';
 
 export type { FileCardProps } from './types';
 
@@ -33,15 +34,17 @@ export function FileCard({
           {formatTimestamp(file.createdAt)}
         </div>
       )}
-      <CardComponent
-        file={file}
-        highlightTerms={highlightTerms}
-        matchContext={matchContext}
-        priority={priority}
-        onDeleted={onDeleted}
-        onRestoreItem={onRestoreItem}
-        onLocateInFeed={onLocateInFeed}
-      />
+      <SelectionWrapper path={file.path}>
+        <CardComponent
+          file={file}
+          highlightTerms={highlightTerms}
+          matchContext={matchContext}
+          priority={priority}
+          onDeleted={onDeleted}
+          onRestoreItem={onRestoreItem}
+          onLocateInFeed={onLocateInFeed}
+        />
+      </SelectionWrapper>
     </div>
   );
 }
