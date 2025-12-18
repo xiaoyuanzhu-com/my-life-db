@@ -10,7 +10,7 @@ import { cardClickableClass } from '../ui/card-styles';
 import { highlightMatches } from '../ui/text-highlight';
 import { FallbackModal } from '../modals/fallback-modal';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
+import { useCardModalState } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -33,26 +33,8 @@ export function PptCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const navigation = useModalNavigationSafe();
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
-  // Use navigation context when available
-  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isPreviewOpen;
-  const handleOpenModal = () => {
-    if (navigation) {
-      navigation.openModal(file);
-    } else {
-      setIsPreviewOpen(true);
-    }
-  };
-  const handleCloseModal = (open: boolean) => {
-    if (navigation && !open) {
-      navigation.closeModal();
-    } else {
-      setIsPreviewOpen(open);
-    }
-  };
 
   const screenshotSrc = getScreenshotUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -84,7 +66,7 @@ export function PptCard({
   const cardContent = (
     <div
       className={cn(cardClickableClass, showMatchContext ? 'w-2/3' : '', className)}
-      onClick={handleOpenModal}
+      onClick={openModal}
     >
       {screenshotSrc ? (
         <div
@@ -131,11 +113,8 @@ export function PptCard({
       <FallbackModal
         file={file}
         open={modalOpen}
-        onOpenChange={handleCloseModal}
-        hasPrev={navigation?.hasPrev}
-        hasNext={navigation?.hasNext}
-        onPrev={navigation?.goToPrev}
-        onNext={navigation?.goToNext}
+        onOpenChange={closeModal}
+        {...navigationProps}
       />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}

@@ -9,7 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardContainerClass } from '../ui/card-styles';
 import { ImageModal } from '../modals/image-modal';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
+import { useCardModalState } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -31,26 +31,8 @@ export function ImageCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const navigation = useModalNavigationSafe();
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
-  // Use navigation context when available
-  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isPreviewOpen;
-  const handleOpenModal = () => {
-    if (navigation) {
-      navigation.openModal(file);
-    } else {
-      setIsPreviewOpen(true);
-    }
-  };
-  const handleCloseModal = (open: boolean) => {
-    if (navigation && !open) {
-      navigation.closeModal();
-    } else {
-      setIsPreviewOpen(open);
-    }
-  };
 
   const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -87,7 +69,7 @@ export function ImageCard({
       <div
         className="relative flex items-center justify-center cursor-pointer mx-auto"
         style={{ minWidth: 100, minHeight: 100 }}
-        onClick={handleOpenModal}
+        onClick={openModal}
       >
         <img
           src={src}
@@ -114,11 +96,8 @@ export function ImageCard({
       <ImageModal
         file={file}
         open={modalOpen}
-        onOpenChange={handleCloseModal}
-        hasPrev={navigation?.hasPrev}
-        hasNext={navigation?.hasNext}
-        onPrev={navigation?.goToPrev}
-        onNext={navigation?.goToNext}
+        onOpenChange={closeModal}
+        {...navigationProps}
       />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}

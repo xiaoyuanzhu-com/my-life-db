@@ -9,7 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { AudioModal } from '../modals/audio-modal';
 import { cardContainerClass } from '../ui/card-styles';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
+import { useCardModalState } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -62,26 +62,8 @@ export function AudioCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const navigation = useModalNavigationSafe();
+  const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // Use navigation context when available
-  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isModalOpen;
-  const handleOpenModal = () => {
-    if (navigation) {
-      navigation.openModal(file);
-    } else {
-      setIsModalOpen(true);
-    }
-  };
-  const handleCloseModal = (open: boolean) => {
-    if (navigation && !open) {
-      navigation.closeModal();
-    } else {
-      setIsModalOpen(open);
-    }
-  };
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -186,7 +168,7 @@ export function AudioCard({
         // Second click within delay - it's a double-click
         clearTimeout(clickTimer.current);
         clickTimer.current = null;
-        handleOpenModal();
+        openModal();
       } else {
         // First click - wait to see if it's a double-click
         clickTimer.current = setTimeout(() => {
@@ -332,11 +314,8 @@ export function AudioCard({
       <AudioModal
         file={file}
         open={modalOpen}
-        onOpenChange={handleCloseModal}
-        hasPrev={navigation?.hasPrev}
-        hasNext={navigation?.hasNext}
-        onPrev={navigation?.goToPrev}
-        onNext={navigation?.goToNext}
+        onOpenChange={closeModal}
+        {...navigationProps}
       />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}

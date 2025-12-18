@@ -24,7 +24,9 @@ app/components/FileCard/
 │   ├── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
 │   ├── modal-action-buttons.tsx   # Floating action buttons for modals
 │   ├── digests-panel.tsx          # Shared digests view panel for modals
-│   └── selection-wrapper.tsx      # Multi-select checkbox overlay
+│   ├── selection-wrapper.tsx      # Multi-select checkbox overlay
+│   ├── modal-layout.tsx           # A4-ratio modal sizing + navigation support
+│   └── use-modal-navigation.ts    # Keyboard/swipe navigation hooks
 ├── cards/
 │   ├── index.ts                # Card registry: getCardComponent(type)
 │   ├── image-card.tsx          # PNG, JPG, JPEG, GIF, WebP, SVG
@@ -346,6 +348,7 @@ Modals provide enhanced viewing experiences:
 
 **Common Modal UX:**
 - Raw file feel - content fills the modal
+- Navigation between files while staying in modal (see Modal Navigation below)
 - Required DialogContent overrides for raw file modals:
   - `p-0` - no padding
   - `border-none` - no border
@@ -464,6 +467,88 @@ function useModalLayout(): ModalLayoutConfig;
 
 /* Shared */
 --modal-gap: 1rem;
+```
+
+### Modal Navigation
+
+When viewing files in modal mode, users can navigate between files without closing the modal:
+
+**Desktop:**
+- Press `←` (left arrow) to go to the previous file
+- Press `→` (right arrow) to go to the next file
+
+**Mobile:**
+- Swipe left to go to the next file
+- Swipe right to go to the previous file
+- Swipe threshold: 100px or velocity > 500
+
+**Implementation:**
+
+The navigation system uses a React context (`ModalNavigationProvider`) that wraps file lists:
+
+```typescript
+// contexts/modal-navigation-context.tsx
+
+interface ModalNavigationState {
+  currentFile: FileWithDigests | null;
+  isOpen: boolean;
+  hasPrev: boolean;
+  hasNext: boolean;
+}
+
+interface ModalNavigationActions {
+  openModal: (file: FileWithDigests) => void;
+  closeModal: () => void;
+  goToPrev: () => void;
+  goToNext: () => void;
+}
+```
+
+**Context Providers:**
+
+| Component | Provider Location |
+|-----------|-------------------|
+| InboxFeed | Wraps entire feed, provides `allFilesForNavigation` in display order |
+| SearchResults | Wraps results, provides `orderedResults` |
+
+**Card Integration:**
+
+Cards use `useModalNavigationSafe()` hook which returns `null` when outside a provider (standalone usage). When navigation context is available:
+
+1. Modal open/close is controlled by context instead of local state
+2. Navigation props (`hasPrev`, `hasNext`, `onPrev`, `onNext`) are passed to modals
+3. Modals pass navigation props to `ModalLayout` for keyboard/swipe handling
+
+**Navigation Hooks:**
+
+```typescript
+// ui/use-modal-navigation.ts
+
+// Keyboard navigation (ArrowLeft/ArrowRight)
+useModalKeyboardNavigation({ isOpen, enabled, hasPrev, hasNext, onPrev, onNext })
+
+// Swipe gesture navigation (framer-motion)
+useModalSwipeNavigation({ enabled, hasPrev, hasNext, onPrev, onNext })
+// Returns: { handleDragEnd } for motion.div onDragEnd
+```
+
+**Navigation Props Interface:**
+
+```typescript
+// types.ts
+export interface ModalNavigationProps {
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
+}
+
+// Added to BaseModalProps
+export interface BaseModalProps extends ModalNavigationProps {
+  file: FileWithDigests;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
 ```
 
 ## Props Flow
