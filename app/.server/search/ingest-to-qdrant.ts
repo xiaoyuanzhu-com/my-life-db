@@ -233,55 +233,53 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
 
 /**
  * Get file content for indexing
- * Priority order matches ingest-to-meilisearch.ts:
- * 1) URL digest, 2) Doc-to-markdown, 3) Image OCR, 4) Image captioning, 5) Speech recognition, 6) Filesystem file, 7) Folder text.md
+ * Collects content from all applicable sources and combines them (matches ingest-to-meilisearch.ts)
  */
 async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
   const dataDir = DATA_DIR;
+  const contentParts: string[] = [];
 
   // 1. Check for URL content digest (url-crawl-content)
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
-    // Parse JSON to get markdown
     try {
       const contentData = JSON.parse(contentDigest.content);
-      return contentData.markdown || contentDigest.content; // Fallback for old format
+      contentParts.push(contentData.markdown || contentDigest.content);
     } catch {
-      // Fallback for old format (plain markdown)
-      return contentDigest.content;
+      contentParts.push(contentDigest.content);
     }
   }
 
   // 2. Check for doc-to-markdown digest
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
-    return docDigest.content;
+    contentParts.push(docDigest.content);
   }
 
   // 3. Check for image-ocr digest
   const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
   if (ocrDigest?.content && ocrDigest.status === 'completed') {
-    return ocrDigest.content;
+    contentParts.push(ocrDigest.content);
   }
 
-  // 4. Check for image-captioning digest (fallback for images without OCR text)
+  // 4. Check for image-captioning digest (always include, not just fallback)
   const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
   if (captionDigest?.content && captionDigest.status === 'completed') {
-    return captionDigest.content;
+    contentParts.push(captionDigest.content);
   }
 
   // 5. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
-    // Parse transcript JSON to extract plain text
     try {
       const transcriptData = JSON.parse(speechDigest.content);
       if (transcriptData.segments && Array.isArray(transcriptData.segments)) {
-        return transcriptData.segments.map((s: { text: string }) => s.text).join(' ');
+        contentParts.push(transcriptData.segments.map((s: { text: string }) => s.text).join(' '));
+      } else {
+        contentParts.push(speechDigest.content);
       }
-      return speechDigest.content;
     } catch {
-      return speechDigest.content;
+      contentParts.push(speechDigest.content);
     }
   }
 
@@ -290,7 +288,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     try {
       const fullPath = path.join(dataDir, filePath);
       const content = await fs.readFile(fullPath, 'utf-8');
-      return content;
+      contentParts.push(content);
     } catch (error) {
       log.debug({ filePath, error }, 'failed to read file');
     }
@@ -301,13 +299,13 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     try {
       const textMdPath = path.join(dataDir, filePath, 'text.md');
       const content = await fs.readFile(textMdPath, 'utf-8');
-      return content;
+      contentParts.push(content);
     } catch (error) {
       log.debug({ filePath, error }, 'failed to read text.md from folder');
     }
   }
 
-  return null;
+  return contentParts.length > 0 ? contentParts.join('\n\n') : null;
 }
 
 /**

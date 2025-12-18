@@ -117,62 +117,61 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
 /**
  * Get file content for indexing
  *
- * Priority:
- * 1. URL: Get from url-crawl-content digest
- * 2. Doc: Get from doc-to-markdown digest
- * 3. Image OCR: Get from image-ocr digest
- * 4. Image Caption: Get from image-captioning digest (fallback for images)
- * 5. Speech: Get from speech-recognition digest
- * 6. Library/Inbox file: Read from filesystem for text files
+ * Collects content from all applicable sources and combines them:
+ * - URL: url-crawl-content digest
+ * - Doc: doc-to-markdown digest
+ * - Image: Both image-ocr AND image-captioning (combined)
+ * - Speech: speech-recognition digest
+ * - Text files: Read from filesystem
  */
 async function getFileContent(filePath: string): Promise<string | null> {
-  // 1. Check for URL digest first
+  const contentParts: string[] = [];
+
+  // 1. Check for URL digest
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
-    // Parse JSON to get markdown
     try {
       const contentData = JSON.parse(contentDigest.content);
-      return contentData.markdown || contentDigest.content; // Fallback for old format
+      contentParts.push(contentData.markdown || contentDigest.content);
     } catch {
-      // Fallback for old format (plain markdown)
-      return contentDigest.content;
+      contentParts.push(contentDigest.content);
     }
   }
 
   // 2. Check for doc-to-markdown digest
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
-    return docDigest.content;
+    contentParts.push(docDigest.content);
   }
 
   // 3. Check for image-ocr digest
   const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
   if (ocrDigest?.content && ocrDigest.status === 'completed') {
-    return ocrDigest.content;
+    contentParts.push(ocrDigest.content);
   }
 
-  // 4. Check for image-captioning digest (fallback for images without OCR text)
+  // 4. Check for image-captioning digest (always include, not just fallback)
   const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
   if (captionDigest?.content && captionDigest.status === 'completed') {
-    return captionDigest.content;
+    contentParts.push(captionDigest.content);
   }
 
   // 5. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
-    // Parse transcript JSON to extract plain text
     try {
       const transcriptData = JSON.parse(speechDigest.content);
       if (transcriptData.segments && Array.isArray(transcriptData.segments)) {
-        return transcriptData.segments.map((s: { text: string }) => s.text).join(' ');
+        contentParts.push(transcriptData.segments.map((s: { text: string }) => s.text).join(' '));
+      } else {
+        contentParts.push(speechDigest.content);
       }
-      return speechDigest.content;
     } catch {
-      return speechDigest.content;
+      contentParts.push(speechDigest.content);
     }
   }
 
-  // 6. Read from filesystem for text files (using shared isTextFile utility)
+  // 6. Read from filesystem for text files
   const fileRecord = getFileByPath(filePath);
   const filename = path.basename(filePath);
   if (isTextFile(fileRecord?.mimeType ?? null, filename)) {
@@ -180,27 +179,25 @@ async function getFileContent(filePath: string): Promise<string | null> {
       const dataDir = process.env.MY_DATA_DIR || './data';
       const fullPath = path.join(dataDir, filePath);
       const content = await fs.readFile(fullPath, 'utf-8');
-      return content;
+      contentParts.push(content);
     } catch (error) {
       log.warn({ filePath, error }, 'failed to read file from filesystem');
-      return null;
     }
   }
 
-  // For folders, try to read text.md
+  // 7. For folders, try to read text.md
   if (fileRecord?.isFolder) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';
       const textMdPath = path.join(dataDir, filePath, 'text.md');
       const content = await fs.readFile(textMdPath, 'utf-8');
-      return content;
+      contentParts.push(content);
     } catch {
       // text.md doesn't exist, that's ok
-      return null;
     }
   }
 
-  return null;
+  return contentParts.length > 0 ? contentParts.join('\n\n') : null;
 }
 
 /**
