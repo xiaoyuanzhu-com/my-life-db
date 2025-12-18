@@ -23,7 +23,8 @@ app/components/FileCard/
 │   ├── text-highlight.tsx      # Text highlighting utilities
 │   ├── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
 │   ├── modal-action-buttons.tsx   # Floating action buttons for modals
-│   └── digests-panel.tsx          # Shared digests view panel for modals
+│   ├── digests-panel.tsx          # Shared digests view panel for modals
+│   └── selection-wrapper.tsx      # Multi-select checkbox overlay
 ├── cards/
 │   ├── index.ts                # Card registry: getCardComponent(type)
 │   ├── image-card.tsx          # PNG, JPG, JPEG, GIF, WebP, SVG
@@ -612,6 +613,7 @@ export const cardClickableClass = cardContainerClass + ' cursor-pointer max-w-[c
 |--------|------|----------|---------|
 | Open | ExternalLink | Navigate to library page | All |
 | Locate | MapPin | Dismiss search, scroll to item in feed | Search results only |
+| Select | CheckCircle2 | Enter selection mode and select item | All (in SelectionProvider) |
 | Pin/Unpin | Pin | Toggle pinned state, reload page | All |
 | Save | Download | Download file to device (hidden on iOS) | All except Text |
 | Share | Share2 | Native share API (hidden if unavailable) | All except Text |
