@@ -274,6 +274,42 @@ export function getTaskStats(): {
 }
 
 /**
+ * Wait for a task to complete (reach terminal state)
+ * @param taskId The task ID to wait for
+ * @param options.timeoutMs Maximum time to wait (default 60000ms)
+ * @param options.pollIntervalMs Poll interval (default 100ms)
+ * @returns The completed task, or null if timeout
+ */
+export async function waitForTask(
+  taskId: string,
+  options?: { timeoutMs?: number; pollIntervalMs?: number }
+): Promise<Task | null> {
+  const timeoutMs = options?.timeoutMs ?? 60_000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 100;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const task = getTaskById(taskId);
+
+    if (!task) {
+      // Task was deleted
+      return null;
+    }
+
+    if (task.status === 'success' || task.status === 'failed') {
+      return task;
+    }
+
+    // Wait before polling again
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  // Timeout reached
+  log.warn({ taskId, timeoutMs }, 'waitForTask timed out');
+  return null;
+}
+
+/**
  * Clean up old completed tasks
  */
 export function cleanupOldTasks(olderThanSeconds: number): number {

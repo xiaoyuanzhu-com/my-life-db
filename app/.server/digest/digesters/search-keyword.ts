@@ -9,6 +9,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToMeilisearch } from '~/.server/search/ingest-to-meilisearch';
 import { enqueueMeiliIndex } from '~/.server/search/meili-tasks';
 import { getMeiliDocumentIdForFile } from '~/.server/db/meili-documents';
+import { waitForTask } from '~/.server/task-queue/task-manager';
 import { getLogger } from '~/.server/log/logger';
 import { getPrimaryTextContent } from '~/.server/digest/text-source';
 
@@ -60,14 +61,31 @@ export class SearchKeywordDigester implements Digester {
     // Get document ID
     const documentId = getMeiliDocumentIdForFile(filePath);
 
-    // Enqueue background task to push to Meilisearch
+    // Enqueue task to push to Meilisearch
     const taskId = enqueueMeiliIndex([documentId]);
 
     if (!taskId) {
       throw new Error('Failed to enqueue keyword search indexing task');
     }
 
+    log.debug(
+      { filePath, taskId, documentId },
+      'waiting for keyword search indexing task'
+    );
+
+    // Wait for the indexing task to complete
+    const task = await waitForTask(taskId, { timeoutMs: 120_000 });
+
+    if (!task) {
+      throw new Error('Keyword search indexing task timed out');
+    }
+
+    if (task.status === 'failed') {
+      throw new Error(task.error || 'Keyword search indexing task failed');
+    }
+
     // Store metadata about indexing
+    const completedAt = new Date().toISOString();
     const metadata = {
       documentId,
       taskId,
@@ -75,12 +93,12 @@ export class SearchKeywordDigester implements Digester {
       hasContent: result.hasContent,
       hasSummary: result.hasSummary,
       hasTags: result.hasTags,
-      enqueuedAt: now,
+      completedAt,
     };
 
     log.debug(
       { filePath, ...metadata },
-      'keyword search indexing enqueued'
+      'keyword search indexing completed'
     );
 
     return [
@@ -93,7 +111,7 @@ export class SearchKeywordDigester implements Digester {
         error: null,
         attempts: 0,
         createdAt: now,
-        updatedAt: now,
+        updatedAt: completedAt,
       },
     ];
   }
