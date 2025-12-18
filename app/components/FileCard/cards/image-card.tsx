@@ -7,9 +7,8 @@ import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardContainerClass } from '../ui/card-styles';
-import { ImageModal } from '../modals/image-modal';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useCardModalState } from '../ui/use-modal-navigation';
+import { useCardModal } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -31,7 +30,7 @@ export function ImageCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
+  const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const src = getFileContentUrl(file);
@@ -93,14 +92,6 @@ export function ImageCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      {!useCentralizedModal && (
-        <ImageModal
-          file={file}
-          open={modalOpen}
-          onOpenChange={closeModal}
-          {...navigationProps}
-        />
-      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

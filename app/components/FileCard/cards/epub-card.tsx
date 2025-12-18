@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
 import { ExternalLink, Pin, Download, Share2, Trash2, MapPin, CheckCircle2 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardClickableClass } from '../ui/card-styles';
 import { highlightMatches } from '../ui/text-highlight';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useCardModalState } from '../ui/use-modal-navigation';
+import { useCardModal } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -21,10 +21,6 @@ import {
   formatFileSize,
   truncateMiddle,
 } from '../utils';
-
-const EpubModal = lazy(() =>
-  import('../modals/epub-modal').then((m) => ({ default: m.EpubModal }))
-);
 
 export function EpubCard({
   file,
@@ -38,7 +34,7 @@ export function EpubCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
+  const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
@@ -136,22 +132,6 @@ export function EpubCard({
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
       />
-      {!useCentralizedModal && modalOpen && (
-        <Suspense
-          fallback={
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
-              Loading...
-            </div>
-          }
-        >
-          <EpubModal
-            file={file}
-            open={modalOpen}
-            onOpenChange={closeModal}
-            {...navigationProps}
-          />
-        </Suspense>
-      )}
     </>
   );
 }

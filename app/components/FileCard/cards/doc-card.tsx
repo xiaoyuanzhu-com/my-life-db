@@ -8,9 +8,8 @@ import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardClickableClass } from '../ui/card-styles';
 import { highlightMatches } from '../ui/text-highlight';
-import { FallbackModal } from '../modals/fallback-modal';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useCardModalState } from '../ui/use-modal-navigation';
+import { useCardModal } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -35,7 +34,7 @@ export function DocCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
+  const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const screenshotSrc = getScreenshotUrl(file);
@@ -113,14 +112,6 @@ export function DocCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      {!useCentralizedModal && (
-        <FallbackModal
-          file={file}
-          open={modalOpen}
-          onOpenChange={closeModal}
-          {...navigationProps}
-        />
-      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

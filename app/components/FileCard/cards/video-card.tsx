@@ -6,10 +6,9 @@ import type { BaseCardProps, ContextMenuAction } from '../types';
 import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
-import { VideoModal } from '../modals/video-modal';
 import { cardContainerClass } from '../ui/card-styles';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useCardModalState } from '../ui/use-modal-navigation';
+import { useCardModal } from '../ui/use-modal-navigation';
 import {
   downloadFile,
   shareFile,
@@ -30,7 +29,7 @@ export function VideoCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
+  const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const src = getFileContentUrl(file);
@@ -88,14 +87,6 @@ export function VideoCard({
       <ContextMenuWrapper actions={actions}>
         {cardContent}
       </ContextMenuWrapper>
-      {!useCentralizedModal && (
-        <VideoModal
-          file={file}
-          open={modalOpen}
-          onOpenChange={closeModal}
-          {...navigationProps}
-        />
-      )}
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

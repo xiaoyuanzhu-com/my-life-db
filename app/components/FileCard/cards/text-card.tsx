@@ -7,10 +7,9 @@ import { ContextMenuWrapper } from '../context-menu';
 import { MatchContext } from '../ui/match-context';
 import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardContainerClass } from '../ui/card-styles';
-import { TextModal } from '../modals/text-modal';
 import { highlightMatches } from '../ui/text-highlight';
 import { useSelectionSafe } from '~/contexts/selection-context';
-import { useCardModalState } from '../ui/use-modal-navigation';
+import { useCardModal } from '../ui/use-modal-navigation';
 import {
   togglePin,
   getFileLibraryUrl,
@@ -37,8 +36,7 @@ export function TextCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
-  const { modalOpen, openModal, closeModal, navigationProps, useCentralizedModal } = useCardModalState(file);
-  const [fullContent, setFullContent] = useState<string | null>(null);
+  const openModal = useCardModal(file);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,30 +77,21 @@ export function TextCard({
       return;
     }
 
-    const textToCopy = fullContent || previewText;
-    if (!textToCopy) return;
+    if (!previewText) return;
 
     if (copyResetTimeoutRef.current) {
       clearTimeout(copyResetTimeoutRef.current);
     }
 
     try {
-      await navigator.clipboard.writeText(textToCopy);
+      await navigator.clipboard.writeText(previewText);
       setCopyStatus('copied');
       copyResetTimeoutRef.current = setTimeout(() => setCopyStatus('idle'), 2000);
     } catch (error) {
       console.error('Failed to copy content:', error);
       setCopyStatus('idle');
     }
-  }, [fullContent, previewText]);
-
-  const handleDoubleClick = () => {
-    openModal();
-  };
-
-  const handleFullContentLoaded = useCallback((content: string) => {
-    setFullContent(content);
-  }, []);
+  }, [previewText]);
 
   const { displayText, shouldTruncate } = getTextDisplay(previewText);
 
@@ -122,7 +111,7 @@ export function TextCard({
         matchContext ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
         className
       )}
-      onDoubleClick={handleDoubleClick}
+      onDoubleClick={openModal}
     >
       <div className="relative mx-auto">
         <div className="p-4 max-w-full">
@@ -153,17 +142,6 @@ export function TextCard({
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
       />
-      {!useCentralizedModal && (
-        <TextModal
-          file={file}
-          open={modalOpen}
-          onOpenChange={closeModal}
-          previewText={previewText}
-          fullContent={fullContent}
-          onFullContentLoaded={handleFullContentLoaded}
-          {...navigationProps}
-        />
-      )}
     </>
   );
 }

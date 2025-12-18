@@ -1,75 +1,28 @@
-import { useEffect, useCallback, useState, useMemo } from 'react';
+import { useEffect, useCallback } from 'react';
 import type { PanInfo } from 'framer-motion';
 import type { ModalNavigationProps } from '../types';
 import type { FileWithDigests } from '~/types/file-card';
 import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
 
 /**
- * Hook to manage modal state for cards, integrating with navigation context when available.
- *
- * When inside a ModalNavigationProvider:
- * - Modal open/close is controlled by the context
- * - Navigation props are provided for prev/next navigation
- *
- * When outside a provider (standalone card usage):
- * - Falls back to local state
- * - No navigation props
+ * Hook to get modal opener for cards.
+ * Cards should always be used within a ModalNavigationProvider.
+ * The provider's NavigationModal handles rendering the modal content.
  *
  * @example
  * ```tsx
- * const { modalOpen, openModal, closeModal, navigationProps } = useCardModalState(file);
- *
- * return (
- *   <>
- *     <div onClick={openModal}>...</div>
- *     <MyModal open={modalOpen} onOpenChange={closeModal} {...navigationProps} />
- *   </>
- * );
+ * const openModal = useCardModal(file);
+ * return <div onClick={openModal}>...</div>;
  * ```
  */
-export function useCardModalState(file: FileWithDigests) {
+export function useCardModal(file: FileWithDigests) {
   const navigation = useModalNavigationSafe();
-  const [localModalOpen, setLocalModalOpen] = useState(false);
 
-  // Compute modal open state
-  const modalOpen = navigation
-    ? navigation.isOpen && navigation.currentFile?.path === file.path
-    : localModalOpen;
-
-  // Open modal handler
-  const openModal = useCallback(() => {
+  return useCallback(() => {
     if (navigation) {
       navigation.openModal(file);
-    } else {
-      setLocalModalOpen(true);
     }
   }, [navigation, file]);
-
-  // Close modal handler (for onOpenChange)
-  const closeModal = useCallback((open: boolean) => {
-    if (navigation && !open) {
-      navigation.closeModal();
-    } else {
-      setLocalModalOpen(open);
-    }
-  }, [navigation]);
-
-  // Navigation props to spread onto modal
-  const navigationProps: ModalNavigationProps = useMemo(() => ({
-    hasPrev: navigation?.hasPrev,
-    hasNext: navigation?.hasNext,
-    onPrev: navigation?.goToPrev,
-    onNext: navigation?.goToNext,
-  }), [navigation?.hasPrev, navigation?.hasNext, navigation?.goToPrev, navigation?.goToNext]);
-
-  return {
-    modalOpen,
-    openModal,
-    closeModal,
-    navigationProps,
-    /** Whether to use the centralized NavigationModal (true when inside provider) */
-    useCentralizedModal: !!navigation,
-  };
 }
 
 interface UseModalNavigationOptions extends ModalNavigationProps {
