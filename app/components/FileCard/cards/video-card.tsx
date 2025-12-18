@@ -67,6 +67,7 @@ export function VideoCard({
     >
       <div className="relative w-full max-w-md mx-auto" style={{ aspectRatio: '16/9' }}>
         <video
+          key={file.path}
           controls
           playsInline
           className="w-full h-full object-contain bg-black"
