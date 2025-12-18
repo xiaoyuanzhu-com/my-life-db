@@ -4,7 +4,7 @@ import { InboxFeed } from "~/components/inbox-feed";
 import { SearchResults } from "~/components/search-results";
 import { PinnedTags } from "~/components/pinned-tags";
 import { MultiSelectActionBar } from "~/components/multi-select-action-bar";
-import { SelectionProvider, useSelection } from "~/contexts/selection-context";
+import { SelectionProvider, useSelectionMode } from "~/contexts/selection-context";
 import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
 import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
@@ -18,7 +18,7 @@ export default function HomePage() {
 }
 
 function HomePageContent() {
-  const { isSelectionMode, clearSelection } = useSelection();
+  const { isSelectionMode, clearSelection } = useSelectionMode();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [scrollToCursor, setScrollToCursor] = useState<string | undefined>(undefined);
   const [searchState, setSearchState] = useState<{

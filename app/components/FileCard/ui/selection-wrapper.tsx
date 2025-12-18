@@ -1,6 +1,6 @@
 import { Circle, CheckCircle2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
-import { useSelectionSafe } from '~/contexts/selection-context';
+import { useSelectionForPath } from '~/contexts/selection-context';
 
 interface SelectionWrapperProps {
   path: string;
@@ -19,15 +19,14 @@ export function SelectionWrapper({
   path,
   children,
 }: SelectionWrapperProps) {
-  const selection = useSelectionSafe();
+  const selection = useSelectionForPath(path);
 
   // If not within SelectionProvider or not in selection mode, render children as-is
   if (!selection || !selection.isSelectionMode) {
     return <>{children}</>;
   }
-
   const { isSelected, toggleSelection } = selection;
-  const selected = isSelected(path);
+  const selected = isSelected;
 
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
