@@ -395,6 +395,73 @@ Each file type has a deterministic set of digesters that apply to it. This is ba
 
 When a content-producing digester completes with new content, it triggers automatic resets of dependent digesters. This ensures downstream digesters re-process with the updated content.
 
+### Dependency Flowchart
+
+```mermaid
+flowchart TD
+    subgraph "Round 1 - Content Extraction"
+        FILE[("📄 File")]
+
+        FILE --> |"audio"| SR["🎤 speech-recognition"]
+        FILE --> |"image"| IO["🔍 image-ocr"]
+        FILE --> |"image"| IC["📷 image-captioning"]
+        FILE --> |"document"| DTM["📝 doc-to-markdown"]
+        FILE --> |"document"| DTS["🖼️ doc-to-screenshot"]
+        FILE --> |"URL file"| UC["🌐 url-crawl"]
+
+        UC --> |"produces"| UCC["url-crawl-content"]
+        UC --> |"produces"| UCSS["url-crawl-screenshot"]
+    end
+
+    subgraph "Round 2 - Dependent Processing"
+        SR --> |"cascades"| SE["👤 speaker-embedding"]
+        UCC --> |"cascades"| UCSUM["📋 url-crawl-summary"]
+    end
+
+    subgraph "Round 3 - Final Processing"
+        SR --> |"cascades"| TAGS["🏷️ tags"]
+        IO --> |"cascades"| TAGS
+        IC --> |"cascades"| TAGS
+        DTM --> |"cascades"| TAGS
+        UCC --> |"cascades"| TAGS
+        UCSUM --> |"cascades"| TAGS
+
+        SR --> |"cascades"| SK["🔎 search-keyword"]
+        IO --> |"cascades"| SK
+        IC --> |"cascades"| SK
+        DTM --> |"cascades"| SK
+        UCC --> |"cascades"| SK
+
+        SR --> |"cascades"| SS["🧠 search-semantic"]
+        IO --> |"cascades"| SS
+        IC --> |"cascades"| SS
+        DTM --> |"cascades"| SS
+        UCC --> |"cascades"| SS
+    end
+
+    style SR fill:#e1f5fe
+    style IO fill:#e1f5fe
+    style IC fill:#e1f5fe
+    style DTM fill:#e1f5fe
+    style DTS fill:#e1f5fe
+    style UC fill:#e1f5fe
+
+    style SE fill:#fff3e0
+    style UCSUM fill:#fff3e0
+
+    style TAGS fill:#e8f5e9
+    style SK fill:#e8f5e9
+    style SS fill:#e8f5e9
+```
+
+**Execution Order Summary:**
+
+| Round | Digesters | Description |
+|-------|-----------|-------------|
+| **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
+| **2** | `speaker-embedding`, `url-crawl-summary` | Depends on Round 1 outputs |
+| **3** | `tags`, `search-keyword`, `search-semantic` | Final processing, cascaded from any content producer |
+
 ### Reset Triggers
 
 Each digester declares which downstream digesters should be reset when it completes:
