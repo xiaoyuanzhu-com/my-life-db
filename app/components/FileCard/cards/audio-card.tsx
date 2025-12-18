@@ -260,42 +260,46 @@ export function AudioCard({
 
   const cardContent = (
     <div
-      ref={containerRef}
       className={cn(
         cardContainerClass,
-        'cursor-pointer h-10',
         matchContext ? 'w-2/3' : 'min-w-[100px]',
         className
       )}
       style={{ width: matchContext ? undefined : barWidth }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
     >
-      {/* Progress background */}
+      {/* Audio bar */}
       <div
-        className={cn(
-          'absolute inset-0 bg-primary/20',
-          seekPreview === null && 'transition-all duration-100'
-        )}
-        style={{ width: `${displayProgress}%` }}
-      />
-
-      {/* Content */}
-      <div className="relative h-full flex items-center justify-between px-3 gap-2">
-        <Volume2
+        ref={containerRef}
+        className="relative h-10 cursor-pointer"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
+        {/* Progress background */}
+        <div
           className={cn(
-            'w-4 h-4 flex-shrink-0 transition-colors',
-            isPlaying ? 'text-primary' : 'text-muted-foreground'
+            'absolute inset-0 bg-primary/20',
+            seekPreview === null && 'transition-all duration-100'
           )}
+          style={{ width: `${displayProgress}%` }}
         />
-        <span className="text-sm text-muted-foreground">
-          {duration > 0 ? formatDuration(duration) : '--"'}
-        </span>
-      </div>
 
-      {/* Hidden audio element */}
-      <audio ref={audioRef} src={src} preload="metadata" />
+        {/* Content */}
+        <div className="relative h-full flex items-center justify-between px-3 gap-2">
+          <Volume2
+            className={cn(
+              'w-4 h-4 flex-shrink-0 transition-colors',
+              isPlaying ? 'text-primary' : 'text-muted-foreground'
+            )}
+          />
+          <span className="text-sm text-muted-foreground">
+            {duration > 0 ? formatDuration(duration) : '--"'}
+          </span>
+        </div>
+
+        {/* Hidden audio element */}
+        <audio ref={audioRef} src={src} preload="metadata" />
+      </div>
 
       {matchContext && <MatchContext context={matchContext} />}
     </div>
