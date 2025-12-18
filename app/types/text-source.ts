@@ -17,13 +17,14 @@ export type TextSourceType =
 
 /**
  * Human-readable labels for text source types
+ * These labels should match the digester labels for consistency
  */
 export const TEXT_SOURCE_LABELS: Record<TextSourceType, string> = {
-  'url-crawl-content': 'Crawled Content',
-  'doc-to-markdown': 'Document Text',
-  'image-ocr': 'OCR Text',
-  'image-captioning': 'Image Caption',
-  'speech-recognition': 'Transcript',
+  'url-crawl-content': 'URL Crawler',
+  'doc-to-markdown': 'Doc to Markdown',
+  'image-ocr': 'Image OCR',
+  'image-captioning': 'Image Captioning',
+  'speech-recognition': 'Speech Recognition',
   'file': 'File Content',
   'filename-only': 'Filename',
 };

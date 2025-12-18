@@ -671,11 +671,11 @@ Labels are user-friendly and consistent across keyword and semantic search:
 | Raw file content | "File Content" |
 | AI summary digest | "Summary" |
 | Tags digest | "Tags" |
-| URL crawl content | "Crawled Content" |
-| Document conversion | "Document Text" |
-| Image OCR | "OCR Text" |
-| Image captioning | "Image Description" |
-| Speech recognition | "Transcript" |
+| URL crawl content | "URL Crawler" |
+| Document conversion | "Doc to Markdown" |
+| Image OCR | "Image OCR" |
+| Image captioning | "Image Captioning" |
+| Speech recognition | "Speech Recognition" |
 
 ### 8.4 Card Width Behavior
 
