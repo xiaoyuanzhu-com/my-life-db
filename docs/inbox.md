@@ -229,6 +229,92 @@ InboxPage (routes/inbox.tsx)
 
 The `InboxFeed` component is also used on the home page with the same behavior.
 
+---
+
+## Multi-Select Mode
+
+The inbox supports multi-select for batch operations on files.
+
+### Entering Selection Mode
+
+- **Context menu**: Right-click (desktop) or long-press (mobile) any file card → "Select"
+- First selected item automatically enters selection mode
+
+### Selection Mode UI
+
+**Visual Indicators:**
+- Circle checkbox appears at left edge of each file card row
+- Unchecked: hollow circle (`Circle` icon)
+- Checked: filled circle with checkmark (`CheckCircle2` icon)
+
+**Input Area Transition:**
+- OmniInput slides up and fades out
+- MultiSelectActionBar slides up in its place
+- Animated with 200ms ease-out transition
+
+### Selection Interactions
+
+| Action | Result |
+|--------|--------|
+| Tap card | Toggle selection |
+| Tap checkbox | Toggle selection |
+| Deselect last item | Exit selection mode |
+
+### MultiSelectActionBar
+
+**Location:** Replaces OmniInput at bottom of screen
+
+**Layout:**
+```
+[X selected] ─────────────── [Share] [Delete] [Cancel]
+```
+
+**Dimensions:**
+- Height: 48px (half of OmniInput)
+- Same styling: `rounded-xl border bg-muted`
+
+**Actions:**
+
+| Action | Icon | Behavior |
+|--------|------|----------|
+| Share | Share2 | Share all selected files via Web Share API (hidden if unsupported) |
+| Delete | Trash2 | Show confirmation dialog, then batch delete |
+| Cancel | X | Clear selection, exit selection mode |
+
+**Share Behavior:**
+- Uses `navigator.canShare({ files })` to check support
+- Fetches all selected files as blobs
+- Shares via native share sheet
+- Hidden on devices that don't support file sharing
+
+**Delete Behavior:**
+- Shows AlertDialog: "Delete X items?"
+- Deletes all selected files in parallel
+- Clears selection and exits selection mode on completion
+
+### Implementation
+
+**Files:**
+- `app/contexts/selection-context.tsx` - Selection state management
+- `app/components/multi-select-action-bar.tsx` - Action bar component
+- `app/components/FileCard/ui/selection-wrapper.tsx` - Checkbox overlay
+
+**SelectionContext API:**
+```typescript
+interface SelectionContextValue {
+  selectedPaths: Set<string>;
+  isSelectionMode: boolean;
+  toggleSelection: (path: string) => void;
+  clearSelection: () => void;
+  enterSelectionMode: (path: string) => void;
+  isSelected: (path: string) => boolean;
+}
+```
+
+**Hooks:**
+- `useSelection()` - Throws if not in SelectionProvider
+- `useSelectionSafe()` - Returns null if not in SelectionProvider
+
 ## Send Workflow
 
 See [send.md](./send.md) for the complete local-first send workflow design.

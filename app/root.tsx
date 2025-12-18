@@ -15,6 +15,7 @@ export const meta: MetaFunction = () => {
     { title: "MyLifeDB" },
     { name: "description", content: "Capture your thoughts effortlessly and transform them into structured, meaningful knowledge" },
     { name: "application-name", content: "MyLifeDB" },
+    { name: "mobile-web-app-capable", content: "yes" },
     { name: "apple-mobile-web-app-capable", content: "yes" },
     { name: "apple-mobile-web-app-status-bar-style", content: "default" },
     { name: "apple-mobile-web-app-title", content: "MyLifeDB" },
