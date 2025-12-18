@@ -5,43 +5,34 @@ import { useSelectionSafe } from '~/contexts/selection-context';
 interface SelectionWrapperProps {
   path: string;
   children: React.ReactNode;
-  className?: string;
-  /** Called when clicking in non-selection mode */
-  onNormalClick?: () => void;
 }
 
 /**
  * Wrapper component that adds selection behavior to card content.
  * In selection mode:
- * - Shows a circle checkbox on the left
- * - Clicking toggles selection instead of normal behavior
+ * - Shows a circle checkbox in the left gutter (absolute positioned)
+ * - Clicking the card toggles selection
  * Outside selection mode:
- * - Renders children normally with optional click handler
+ * - Renders children as-is without any wrapper
  */
 export function SelectionWrapper({
   path,
   children,
-  className,
-  onNormalClick,
 }: SelectionWrapperProps) {
   const selection = useSelectionSafe();
 
-  // If not within SelectionProvider, just render children
-  if (!selection) {
+  // If not within SelectionProvider or not in selection mode, render children as-is
+  if (!selection || !selection.isSelectionMode) {
     return <>{children}</>;
   }
 
-  const { isSelectionMode, isSelected, toggleSelection } = selection;
+  const { isSelected, toggleSelection } = selection;
   const selected = isSelected(path);
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (isSelectionMode) {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleSelection(path);
-    } else if (onNormalClick) {
-      onNormalClick();
-    }
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleSelection(path);
   };
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
@@ -50,25 +41,16 @@ export function SelectionWrapper({
     toggleSelection(path);
   };
 
-  if (!isSelectionMode) {
-    return <>{children}</>;
-  }
-
+  // Only wrap when in selection mode
   return (
-    <div
-      className={cn(
-        'flex items-start gap-2 w-full',
-        className
-      )}
-      onClick={handleClick}
-    >
-      {/* Selection checkbox */}
+    <div className="relative w-full">
+      {/* Selection checkbox - positioned at left edge of full-width container */}
       <button
         type="button"
         onClick={handleCheckboxClick}
         className={cn(
-          'flex-shrink-0 mt-1 p-1 rounded-full transition-colors',
-          'hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+          'absolute left-0 top-1/2 -translate-y-1/2 p-1 rounded-full z-10',
+          'hover:bg-muted/50 focus:outline-none',
           selected ? 'text-primary' : 'text-muted-foreground'
         )}
         aria-label={selected ? 'Deselect item' : 'Select item'}
@@ -80,8 +62,8 @@ export function SelectionWrapper({
         )}
       </button>
 
-      {/* Card content - full width minus checkbox */}
-      <div className="flex-1 min-w-0">
+      {/* Card content - click to toggle selection */}
+      <div onClick={handleCardClick} className="cursor-pointer">
         {children}
       </div>
     </div>

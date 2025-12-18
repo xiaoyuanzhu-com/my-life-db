@@ -28,13 +28,13 @@ export function FileCard({
   const CardComponent = getCardComponent(contentType);
 
   return (
-    <div className={cn('w-full flex flex-col items-end', className)}>
-      {showTimestamp && (
-        <div className="text-xs text-muted-foreground mb-2 mr-5 select-none">
-          {formatTimestamp(file.createdAt)}
-        </div>
-      )}
-      <SelectionWrapper path={file.path}>
+    <SelectionWrapper path={file.path}>
+      <div className={cn('w-full flex flex-col items-end', className)}>
+        {showTimestamp && (
+          <div className="text-xs text-muted-foreground mb-2 mr-5 select-none">
+            {formatTimestamp(file.createdAt)}
+          </div>
+        )}
         <CardComponent
           file={file}
           highlightTerms={highlightTerms}
@@ -44,7 +44,7 @@ export function FileCard({
           onRestoreItem={onRestoreItem}
           onLocateInFeed={onLocateInFeed}
         />
-      </SelectionWrapper>
-    </div>
+      </div>
+    </SelectionWrapper>
   );
 }
