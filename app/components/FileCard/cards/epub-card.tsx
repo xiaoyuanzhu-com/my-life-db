@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { cardClickableClass } from '../ui/card-styles';
 import { highlightMatches } from '../ui/text-highlight';
 import { useSelectionSafe } from '~/contexts/selection-context';
+import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
 import {
   downloadFile,
   shareFile,
@@ -37,8 +38,26 @@ export function EpubCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
+  const navigation = useModalNavigationSafe();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Use navigation context when available
+  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isPreviewOpen;
+  const handleOpenModal = () => {
+    if (navigation) {
+      navigation.openModal(file);
+    } else {
+      setIsPreviewOpen(true);
+    }
+  };
+  const handleCloseModal = (open: boolean) => {
+    if (navigation && !open) {
+      navigation.closeModal();
+    } else {
+      setIsPreviewOpen(open);
+    }
+  };
 
   const screenshotSrc = getScreenshotUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -70,7 +89,7 @@ export function EpubCard({
   const cardContent = (
     <div
       className={cn(cardClickableClass, showMatchContext ? 'w-2/3' : '', className)}
-      onClick={() => setIsPreviewOpen(true)}
+      onClick={handleOpenModal}
     >
       {screenshotSrc ? (
         <div className="flex flex-col w-[226px] mx-auto">
@@ -135,7 +154,7 @@ export function EpubCard({
         onDeleted={onDeleted}
         onRestoreItem={onRestoreItem}
       />
-      {isPreviewOpen && (
+      {modalOpen && (
         <Suspense
           fallback={
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
@@ -145,8 +164,12 @@ export function EpubCard({
         >
           <EpubModal
             file={file}
-            open={isPreviewOpen}
-            onOpenChange={setIsPreviewOpen}
+            open={modalOpen}
+            onOpenChange={handleCloseModal}
+            hasPrev={navigation?.hasPrev}
+            hasNext={navigation?.hasNext}
+            onPrev={navigation?.goToPrev}
+            onNext={navigation?.goToNext}
           />
         </Suspense>
       )}

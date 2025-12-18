@@ -22,7 +22,7 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
+export function AudioModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -179,6 +179,10 @@ export function AudioModal({ file, open, onOpenChange }: BaseModalProps) {
             />
           }
           contentClassName="flex items-center justify-center"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={onPrev}
+          onNext={onNext}
         >
           <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
             <div className="w-full max-w-md px-8 space-y-6">

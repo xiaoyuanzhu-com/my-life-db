@@ -10,6 +10,7 @@ import { cardContainerClass } from '../ui/card-styles';
 import { TextModal } from '../modals/text-modal';
 import { highlightMatches } from '../ui/text-highlight';
 import { useSelectionSafe } from '~/contexts/selection-context';
+import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
 import {
   togglePin,
   getFileLibraryUrl,
@@ -36,11 +37,29 @@ export function TextCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
+  const navigation = useModalNavigationSafe();
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Use navigation context when available
+  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isModalOpen;
+  const handleOpenModal = () => {
+    if (navigation) {
+      navigation.openModal(file);
+    } else {
+      setIsModalOpen(true);
+    }
+  };
+  const handleCloseModal = (open: boolean) => {
+    if (navigation && !open) {
+      navigation.closeModal();
+    } else {
+      setIsModalOpen(open);
+    }
+  };
 
   const href = getFileLibraryUrl(file.path);
   const previewText = file.textPreview || '';
@@ -96,7 +115,7 @@ export function TextCard({
   }, [fullContent, previewText]);
 
   const handleDoubleClick = () => {
-    setIsModalOpen(true);
+    handleOpenModal();
   };
 
   const handleFullContentLoaded = useCallback((content: string) => {
@@ -154,11 +173,15 @@ export function TextCard({
       />
       <TextModal
         file={file}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
+        open={modalOpen}
+        onOpenChange={handleCloseModal}
         previewText={previewText}
         fullContent={fullContent}
         onFullContentLoaded={handleFullContentLoaded}
+        hasPrev={navigation?.hasPrev}
+        hasNext={navigation?.hasNext}
+        onPrev={navigation?.goToPrev}
+        onNext={navigation?.goToNext}
       />
     </>
   );

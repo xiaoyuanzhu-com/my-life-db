@@ -5,6 +5,7 @@ import type { InboxResponse, InboxItem } from '~/routes/api.inbox';
 import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';
+import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
 
 interface InboxFeedProps {
   onRefresh?: number;
@@ -597,88 +598,107 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   // Render pages
   const sortedPageIndices = [...pageIndices].sort((a, b) => b - a); // Descending: oldest (highest) first
 
+  // Compute flat list of files in display order (oldest first) for modal navigation
+  // This matches the render order: oldest pages first, items reversed within each page
+  const allFilesForNavigation = useMemo(() => {
+    const files: InboxItem[] = [];
+    for (const pageIndex of sortedPageIndices) {
+      const page = pages.get(pageIndex);
+      if (!page) continue;
+      // Reverse items within page for chat order, filter deleted items
+      const reversedItems = page.items
+        .filter(item => !deletedPaths.has(item.path))
+        .slice()
+        .reverse();
+      files.push(...reversedItems);
+    }
+    return files;
+  }, [sortedPageIndices, pages, deletedPaths]);
+
   return (
-    <div
-      ref={scrollContainerRef}
-      className="h-full overflow-y-auto pb-4"
-    >
-      {/* Offline/error banner when server unreachable but we have content to show */}
-      {error && (totalItems > 0 || visiblePendingItems.length > 0) && (
-        <div className="py-2 text-center bg-muted/50">
-          <p className="text-xs text-muted-foreground">Offline - showing cached data</p>
-        </div>
-      )}
+    <ModalNavigationProvider files={allFilesForNavigation}>
+      <div
+        ref={scrollContainerRef}
+        className="h-full overflow-y-auto pb-4"
+      >
+        {/* Offline/error banner when server unreachable but we have content to show */}
+        {error && (totalItems > 0 || visiblePendingItems.length > 0) && (
+          <div className="py-2 text-center bg-muted/50">
+            <p className="text-xs text-muted-foreground">Offline - showing cached data</p>
+          </div>
+        )}
 
-      {/* Loading indicator at top */}
-      {loadingPages.size > 0 && (
-        <div className="py-4 text-center">
-          <p className="text-xs text-muted-foreground">Loading...</p>
-        </div>
-      )}
+        {/* Loading indicator at top */}
+        {loadingPages.size > 0 && (
+          <div className="py-4 text-center">
+            <p className="text-xs text-muted-foreground">Loading...</p>
+          </div>
+        )}
 
-      {/* Pages - rendered oldest first (top) to newest last (bottom) */}
-      <div ref={contentRef} className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
-        {sortedPageIndices.map((pageIndex) => {
-          const page = pages.get(pageIndex);
-          if (!page) return null;
+        {/* Pages - rendered oldest first (top) to newest last (bottom) */}
+        <div ref={contentRef} className="space-y-4 max-w-3xl md:max-w-4xl mx-auto px-4">
+          {sortedPageIndices.map((pageIndex) => {
+            const page = pages.get(pageIndex);
+            if (!page) return null;
 
-          // Reverse items within page for chat order (oldest at top of page)
-          // Filter out optimistically deleted items
-          const reversedItems = page.items
-            .filter(item => !deletedPaths.has(item.path))
-            .slice()
-            .reverse();
+            // Reverse items within page for chat order (oldest at top of page)
+            // Filter out optimistically deleted items
+            const reversedItems = page.items
+              .filter(item => !deletedPaths.has(item.path))
+              .slice()
+              .reverse();
 
-          return (
-            <div
-              key={`page-${pageIndex}`}
-              ref={el => {
-                if (el) pageRefs.current.set(pageIndex, el);
-                else pageRefs.current.delete(pageIndex);
-              }}
-              className="space-y-4"
-            >
-              {reversedItems.map((item, index) => (
-                <div
-                  key={item.path}
-                  ref={el => {
-                    if (el) itemRefs.current.set(item.path, el);
-                    else itemRefs.current.delete(item.path);
-                  }}
-                >
-                  <FileCard
-                    file={item}
-                    showTimestamp={true}
-                    priority={pageIndex === 0 && index === reversedItems.length - 1}
-                    onDeleted={() => handleDelete(item.path, item)}
-                    onRestoreItem={() => handleRestore(item.path)}
-                  />
-                </div>
+            return (
+              <div
+                key={`page-${pageIndex}`}
+                ref={el => {
+                  if (el) pageRefs.current.set(pageIndex, el);
+                  else pageRefs.current.delete(pageIndex);
+                }}
+                className="space-y-4"
+              >
+                {reversedItems.map((item, index) => (
+                  <div
+                    key={item.path}
+                    ref={el => {
+                      if (el) itemRefs.current.set(item.path, el);
+                      else itemRefs.current.delete(item.path);
+                    }}
+                  >
+                    <FileCard
+                      file={item}
+                      showTimestamp={true}
+                      priority={pageIndex === 0 && index === reversedItems.length - 1}
+                      onDeleted={() => handleDelete(item.path, item)}
+                      onRestoreItem={() => handleRestore(item.path)}
+                    />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Pending items (local-first) - always at the bottom (newest) */}
+          {visiblePendingItems.length > 0 && (
+            <div className="space-y-4">
+              {visiblePendingItems.map((item) => (
+                <PendingFileCard
+                  key={item.id}
+                  item={item}
+                  onCancel={cancelUpload}
+                />
               ))}
             </div>
-          );
-        })}
+          )}
+        </div>
 
-        {/* Pending items (local-first) - always at the bottom (newest) */}
-        {visiblePendingItems.length > 0 && (
-          <div className="space-y-4">
-            {visiblePendingItems.map((item) => (
-              <PendingFileCard
-                key={item.id}
-                item={item}
-                onCancel={cancelUpload}
-              />
-            ))}
+        {/* Initial loading state */}
+        {isInitialLoad && loadingPages.size > 0 && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-muted-foreground">Loading inbox...</p>
           </div>
         )}
       </div>
-
-      {/* Initial loading state */}
-      {isInitialLoad && loadingPages.size > 0 && (
-        <div className="flex items-center justify-center h-full">
-          <p className="text-sm text-muted-foreground">Loading inbox...</p>
-        </div>
-      )}
-    </div>
+    </ModalNavigationProvider>
   );
 }

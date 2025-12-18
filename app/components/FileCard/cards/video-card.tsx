@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '../ui/delete-confirm-dialog';
 import { VideoModal } from '../modals/video-modal';
 import { cardContainerClass } from '../ui/card-styles';
 import { useSelectionSafe } from '~/contexts/selection-context';
+import { useModalNavigationSafe } from '~/contexts/modal-navigation-context';
 import {
   downloadFile,
   shareFile,
@@ -29,8 +30,26 @@ export function VideoCard({
 }: BaseCardProps) {
   const navigate = useNavigate();
   const selection = useSelectionSafe();
+  const navigation = useModalNavigationSafe();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Use navigation context when available
+  const modalOpen = navigation ? navigation.isOpen && navigation.currentFile?.path === file.path : isModalOpen;
+  const handleOpenModal = () => {
+    if (navigation) {
+      navigation.openModal(file);
+    } else {
+      setIsModalOpen(true);
+    }
+  };
+  const handleCloseModal = (open: boolean) => {
+    if (navigation && !open) {
+      navigation.closeModal();
+    } else {
+      setIsModalOpen(open);
+    }
+  };
 
   const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
@@ -63,7 +82,7 @@ export function VideoCard({
         matchContext ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
         className
       )}
-      onDoubleClick={() => setIsModalOpen(true)}
+      onDoubleClick={handleOpenModal}
     >
       <div className="relative w-full max-w-md mx-auto" style={{ aspectRatio: '16/9' }}>
         <video
@@ -89,8 +108,12 @@ export function VideoCard({
       </ContextMenuWrapper>
       <VideoModal
         file={file}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
+        open={modalOpen}
+        onOpenChange={handleCloseModal}
+        hasPrev={navigation?.hasPrev}
+        hasNext={navigation?.hasNext}
+        onPrev={navigation?.goToPrev}
+        onNext={navigation?.goToNext}
       />
       <DeleteConfirmDialog
         open={isDeleteDialogOpen}

@@ -17,7 +17,7 @@ import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/moda
 
 type ModalView = 'content' | 'digests';
 
-export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
+export function EpubModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -148,6 +148,10 @@ export function EpubModal({ file, open, onOpenChange }: BaseModalProps) {
           onCloseDigests={handleCloseDigests}
           digestsContent={<DigestsPanel file={file} />}
           contentClassName="relative bg-white rounded-lg overflow-auto"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={onPrev}
+          onNext={onNext}
         >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-white">

@@ -22,7 +22,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 type ModalView = 'content' | 'digests';
 
-export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
+export function PdfModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<ModalView>('content');
   const layout = useModalLayout();
@@ -87,6 +87,10 @@ export function PdfModal({ file, open, onOpenChange }: BaseModalProps) {
           onCloseDigests={handleCloseDigests}
           digestsContent={<DigestsPanel file={file} />}
           contentClassName="overflow-auto"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={onPrev}
+          onNext={onNext}
         >
           <Document
             file={src}

@@ -69,6 +69,10 @@ export function TextModal({
   previewText,
   fullContent,
   onFullContentLoaded,
+  hasPrev,
+  hasNext,
+  onPrev,
+  onNext,
 }: TextModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [editedContent, setEditedContent] = useState<string | null>(null);
@@ -211,6 +215,10 @@ export function TextModal({
             onCloseDigests={handleCloseDigests}
             digestsContent={<DigestsPanel file={file} />}
             contentClassName="overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg"
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+            onPrev={onPrev}
+            onNext={onNext}
           >
             {isLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">

@@ -15,7 +15,7 @@ import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/moda
 
 type ModalView = 'content' | 'digests';
 
-export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
+export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
   const layout = useModalLayout();
   const src = getFileContentUrl(file);
@@ -69,6 +69,10 @@ export function ImageModal({ file, open, onOpenChange }: BaseModalProps) {
           onCloseDigests={handleCloseDigests}
           digestsContent={<DigestsPanel file={file} />}
           contentClassName="flex items-center justify-center cursor-pointer"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={onPrev}
+          onNext={onNext}
         >
           <div
             className="w-full h-full flex items-center justify-center"

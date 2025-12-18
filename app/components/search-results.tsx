@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
 import type { SearchResponse } from '~/routes/api.search';
 import type { SearchResultItem } from '~/types/search';
+import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
 
 interface SearchResultsProps {
   keywordResults: SearchResponse | null;
@@ -353,67 +354,69 @@ export function SearchResults({
     !hasResults;
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className="h-full overflow-y-auto pb-4"
-    >
-      <div>
-        {!hasResults && isSearching && (
-          <div className="flex flex-1 items-center justify-center min-h-full">
-            <p className="text-sm text-muted-foreground">Searching…</p>
-          </div>
-        )}
+    <ModalNavigationProvider files={orderedResults}>
+      <div
+        ref={scrollContainerRef}
+        className="h-full overflow-y-auto pb-4"
+      >
+        <div>
+          {!hasResults && isSearching && (
+            <div className="flex flex-1 items-center justify-center min-h-full">
+              <p className="text-sm text-muted-foreground">Searching…</p>
+            </div>
+          )}
 
-        {!hasResults && error && !isSearching && (
-          <div className="flex flex-1 items-center justify-center min-h-full">
-            <p className="text-sm text-destructive">
-              Failed to search related files, got error: {error}
-            </p>
-          </div>
-        )}
+          {!hasResults && error && !isSearching && (
+            <div className="flex flex-1 items-center justify-center min-h-full">
+              <p className="text-sm text-destructive">
+                Failed to search related files, got error: {error}
+              </p>
+            </div>
+          )}
 
-        {!hasResults && showEmptyState && (
-          <div className="flex flex-1 items-center justify-center min-h-full">
-            <p className="text-sm text-muted-foreground">No related files</p>
-          </div>
-        )}
+          {!hasResults && showEmptyState && (
+            <div className="flex flex-1 items-center justify-center min-h-full">
+              <p className="text-sm text-muted-foreground">No related files</p>
+            </div>
+          )}
 
-        {hasResults && (
-          <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto pt-4 px-4">
-            {(isLoadingMore || loadMoreError) && (
-              <div className="py-2 text-center text-xs">
-                {isLoadingMore && (
-                  <p className="text-muted-foreground">Loading older results…</p>
-                )}
-                {loadMoreError && (
-                  <div className="flex flex-col items-center gap-2 text-destructive">
-                    <p>Failed to load more results: {loadMoreError}</p>
-                    <button
-                      type="button"
-                      onClick={loadMore}
-                      className="rounded-md border border-destructive/50 px-3 py-1 text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+          {hasResults && (
+            <div className="space-y-4 max-w-3xl md:max-w-4xl mx-auto pt-4 px-4">
+              {(isLoadingMore || loadMoreError) && (
+                <div className="py-2 text-center text-xs">
+                  {isLoadingMore && (
+                    <p className="text-muted-foreground">Loading older results…</p>
+                  )}
+                  {loadMoreError && (
+                    <div className="flex flex-col items-center gap-2 text-destructive">
+                      <p>Failed to load more results: {loadMoreError}</p>
+                      <button
+                        type="button"
+                        onClick={loadMore}
+                        className="rounded-md border border-destructive/50 px-3 py-1 text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {orderedResults.map((result, index, array) => (
-              <FileCard
-                key={result.path}
-                file={result}
-                showTimestamp={true}
-                highlightTerms={highlightTerms}
-                matchContext={result.matchContext}
-                priority={index === array.length - 1}
-                onLocateInFeed={onLocateInFeed ? () => onLocateInFeed(result.path, result.createdAt) : undefined}
-              />
-            ))}
-          </div>
-        )}
+              {orderedResults.map((result, index, array) => (
+                <FileCard
+                  key={result.path}
+                  file={result}
+                  showTimestamp={true}
+                  highlightTerms={highlightTerms}
+                  matchContext={result.matchContext}
+                  priority={index === array.length - 1}
+                  onLocateInFeed={onLocateInFeed ? () => onLocateInFeed(result.path, result.createdAt) : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </ModalNavigationProvider>
   );
 }

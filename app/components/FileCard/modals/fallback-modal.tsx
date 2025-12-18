@@ -15,7 +15,7 @@ import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/moda
 
 type ModalView = 'content' | 'digests';
 
-export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
+export function FallbackModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
   const layout = useModalLayout();
 
@@ -68,6 +68,10 @@ export function FallbackModal({ file, open, onOpenChange }: BaseModalProps) {
           onCloseDigests={handleCloseDigests}
           digestsContent={<DigestsPanel file={file} />}
           contentClassName="flex flex-col items-center justify-center"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={onPrev}
+          onNext={onNext}
         >
           <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
             <div className="text-center space-y-2 text-sm px-6">

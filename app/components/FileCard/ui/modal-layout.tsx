@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { motion, AnimatePresence, type PanInfo } from 'framer-motion';
 import { cn } from '~/lib/utils';
+import type { ModalNavigationProps } from '../types';
+import { useModalKeyboardNavigation, useModalSwipeNavigation } from './use-modal-navigation';
 
 // Constants
 const A4_RATIO = 1.414; // √2
@@ -80,13 +82,15 @@ function calculateLayout(): ModalLayoutConfig {
 }
 
 // Props for the ModalLayout component
-export interface ModalLayoutProps {
+export interface ModalLayoutProps extends ModalNavigationProps {
   children: ReactNode;
   digestsContent?: ReactNode;
   showDigests: boolean;
   onCloseDigests: () => void;
   className?: string;
   contentClassName?: string;
+  /** Whether navigation is enabled (swipe and keyboard). Defaults to true when not showing digests. */
+  navigationEnabled?: boolean;
 }
 
 /**
@@ -94,6 +98,7 @@ export interface ModalLayoutProps {
  * - Responsive sizing based on viewport (A4 ratio)
  * - Side-by-side vs overlay digests layout
  * - Framer-motion swipe animations for overlay mode
+ * - Keyboard and swipe navigation between files
  */
 export function ModalLayout({
   children,
@@ -102,12 +107,39 @@ export function ModalLayout({
   onCloseDigests,
   className,
   contentClassName,
+  navigationEnabled,
+  hasPrev,
+  hasNext,
+  onPrev,
+  onNext,
 }: ModalLayoutProps) {
   const layout = useModalLayout();
   const gap = GAP_REM * 16;
 
-  // Swipe handler for overlay mode
-  const handleDragEnd = useCallback(
+  // Navigation is enabled when explicitly set, or when digests are not showing
+  const isNavigationEnabled = navigationEnabled ?? !showDigests;
+
+  // Enable keyboard navigation (left/right arrows)
+  useModalKeyboardNavigation({
+    isOpen: true, // ModalLayout is only rendered when modal is open
+    enabled: isNavigationEnabled,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+  });
+
+  // Get swipe navigation handlers
+  const { handleDragEnd: handleNavigationDragEnd } = useModalSwipeNavigation({
+    enabled: isNavigationEnabled,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+  });
+
+  // Swipe handler for digests overlay mode
+  const handleDigestsDragEnd = useCallback(
     (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
       // Swipe right to close (positive x offset)
       if (info.offset.x > 100 || info.velocity.x > 500) {
@@ -122,6 +154,9 @@ export function ModalLayout({
     ? layout.contentWidth * 2 + gap
     : layout.contentWidth;
 
+  // Check if navigation is available
+  const hasNavigation = (hasPrev || hasNext) && isNavigationEnabled;
+
   return (
     <div
       className={cn('relative overflow-hidden', className)}
@@ -132,15 +167,26 @@ export function ModalLayout({
         maxHeight: '100vh',
       }}
     >
-      {/* Main content pane */}
-      <div
-        className={cn('h-full', contentClassName)}
-        style={{
-          width: layout.contentWidth,
-        }}
-      >
-        {children}
-      </div>
+      {/* Main content pane - wrapped in motion.div for swipe navigation */}
+      {hasNavigation ? (
+        <motion.div
+          className={cn('h-full', contentClassName)}
+          style={{ width: layout.contentWidth }}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={{ left: hasNext ? 0.3 : 0, right: hasPrev ? 0.3 : 0 }}
+          onDragEnd={handleNavigationDragEnd}
+        >
+          {children}
+        </motion.div>
+      ) : (
+        <div
+          className={cn('h-full', contentClassName)}
+          style={{ width: layout.contentWidth }}
+        >
+          {children}
+        </div>
+      )}
 
       {/* Digests panel */}
       <AnimatePresence>
@@ -172,7 +218,7 @@ export function ModalLayout({
               drag="x"
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={{ left: 0, right: 0.5 }}
-              onDragEnd={handleDragEnd}
+              onDragEnd={handleDigestsDragEnd}
               className="absolute inset-0 overflow-hidden touch-pan-y"
               style={{
                 width: layout.contentWidth,

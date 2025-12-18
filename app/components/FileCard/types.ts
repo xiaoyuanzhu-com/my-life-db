@@ -54,9 +54,23 @@ export interface FileCardProps {
 }
 
 /**
+ * Navigation controls for modal navigation
+ */
+export interface ModalNavigationProps {
+  /** Whether there's a previous file to navigate to */
+  hasPrev?: boolean;
+  /** Whether there's a next file to navigate to */
+  hasNext?: boolean;
+  /** Navigate to previous file */
+  onPrev?: () => void;
+  /** Navigate to next file */
+  onNext?: () => void;
+}
+
+/**
  * Props for modal components
  */
-export interface BaseModalProps {
+export interface BaseModalProps extends ModalNavigationProps {
   file: FileWithDigests;
   open: boolean;
   onOpenChange: (open: boolean) => void;
