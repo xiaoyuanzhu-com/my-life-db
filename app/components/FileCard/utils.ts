@@ -182,9 +182,16 @@ export function downloadFile(path: string, filename: string): void {
 
 /**
  * Check if Web Share API is available
+ * Uses navigator.canShare when available for better detection
  */
 export function canShare(): boolean {
-  return typeof navigator !== 'undefined' && !!navigator.share;
+  if (typeof navigator === 'undefined') return false;
+  // Prefer canShare() as it's more reliable, fall back to checking share exists
+  if (navigator.canShare) {
+    // Test with minimal share data to verify sharing is actually supported
+    return navigator.canShare({ title: 'test' });
+  }
+  return !!navigator.share;
 }
 
 /**
