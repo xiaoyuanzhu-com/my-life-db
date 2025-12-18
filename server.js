@@ -18,6 +18,11 @@ async function main() {
   // Trust proxy
   app.set("trust proxy", true);
 
+  // Ignore Chrome DevTools and other well-known requests
+  app.use("/.well-known", (_req, res) => {
+    res.status(404).end();
+  });
+
   // Compression (production only - Vite handles this in dev)
   if (!isDev) {
     app.use(compression());
