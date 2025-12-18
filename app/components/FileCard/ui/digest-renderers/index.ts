@@ -15,6 +15,7 @@ import { SearchKeywordRenderer } from './search-keyword';
 import { SearchSemanticRenderer } from './search-semantic';
 import { DocToMarkdownRenderer } from './doc-to-markdown';
 import { DocToScreenshotRenderer } from './doc-to-screenshot';
+import { SpeakerEmbeddingRenderer } from './speaker-embedding';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -37,6 +38,7 @@ const renderers: Record<string, DigestRenderer> = {
   'search-semantic': SearchSemanticRenderer,
   'doc-to-markdown': DocToMarkdownRenderer,
   'doc-to-screenshot': DocToScreenshotRenderer,
+  'speaker-embedding': SpeakerEmbeddingRenderer,
 };
 
 /**
