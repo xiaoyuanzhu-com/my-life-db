@@ -26,7 +26,7 @@ type ModalView = 'content' | 'digests';
  * Keeps the Dialog mounted while navigating between files to prevent flash.
  */
 export function NavigationModal() {
-  const { currentFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
+  const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
   const [activeView, setActiveView] = useState<ModalView>('content');
   const layout = useModalLayout();
 
@@ -116,6 +116,9 @@ export function NavigationModal() {
             </AnimatePresence>
           </ModalLayout>
         )}
+
+        {/* Preload adjacent images for smoother navigation */}
+        <PreloadAdjacentFiles prevFile={prevFile} nextFile={nextFile} />
       </DialogContent>
     </Dialog>
   );
@@ -162,7 +165,6 @@ function ModalContentRenderer({
           <video
             key={file.path}
             controls
-            autoPlay
             playsInline
             className="w-full h-full object-contain"
           >
@@ -177,7 +179,7 @@ function ModalContentRenderer({
         <div className="w-full h-full flex items-center justify-center bg-muted">
           <div className="text-center p-8">
             <div className="text-lg font-medium mb-4">{file.name}</div>
-            <audio controls autoPlay className="w-full max-w-md">
+            <audio controls className="w-full max-w-md">
               <source src={src} type={file.mimeType || 'audio/mpeg'} />
               Your browser does not support the audio tag.
             </audio>
@@ -229,4 +231,39 @@ function LoadingFallback() {
       <div className="text-muted-foreground">Loading...</div>
     </div>
   );
+}
+
+/**
+ * Preload adjacent files for smoother navigation.
+ * Uses requestIdleCallback to defer preloading until the browser is idle,
+ * so it doesn't compete with current content loading.
+ */
+function PreloadAdjacentFiles({
+  prevFile,
+  nextFile,
+}: {
+  prevFile: ReturnType<typeof useModalNavigation>['prevFile'];
+  nextFile: ReturnType<typeof useModalNavigation>['nextFile'];
+}) {
+  useEffect(() => {
+    const files = [prevFile, nextFile].filter(Boolean);
+    if (files.length === 0) return;
+
+    // Use requestIdleCallback to preload when browser is idle
+    const idleCallback = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 200));
+    const cancelCallback = window.cancelIdleCallback ?? clearTimeout;
+
+    const id = idleCallback(() => {
+      files.forEach((file) => {
+        if (!file) return;
+        const src = getFileContentUrl(file);
+        // Low priority fetch to cache the resource
+        fetch(src, { priority: 'low' } as RequestInit).catch(() => {});
+      });
+    });
+
+    return () => cancelCallback(id);
+  }, [prevFile, nextFile]);
+
+  return null;
 }

@@ -13,6 +13,10 @@ import { NavigationModal } from '~/components/FileCard/navigation-modal';
 interface ModalNavigationSnapshot {
   /** Currently displayed file in modal (null if modal closed) */
   currentFile: FileWithDigests | null;
+  /** Previous file for pre-rendering */
+  prevFile: FileWithDigests | null;
+  /** Next file for pre-rendering */
+  nextFile: FileWithDigests | null;
   /** Whether modal is open */
   isOpen: boolean;
   /** Whether there's a previous file to navigate to */
@@ -23,6 +27,8 @@ interface ModalNavigationSnapshot {
 
 const emptySnapshot: ModalNavigationSnapshot = {
   currentFile: null,
+  prevFile: null,
+  nextFile: null,
   isOpen: false,
   hasPrev: false,
   hasNext: false,
@@ -86,9 +92,13 @@ export function ModalNavigationProvider({ children, files }: ModalNavigationProv
     const currentIndex = filesRef.current.findIndex((f) => f.path === currentFile.path);
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex >= 0 && currentIndex < filesRef.current.length - 1;
+    const prevFile = hasPrev ? filesRef.current[currentIndex - 1] : null;
+    const nextFile = hasNext ? filesRef.current[currentIndex + 1] : null;
 
     stateRef.current = {
       currentFile,
+      prevFile,
+      nextFile,
       isOpen: true,
       hasPrev,
       hasNext,
@@ -155,6 +165,8 @@ export function useModalNavigation() {
 
   return useMemo(() => ({
     currentFile: snapshot.currentFile,
+    prevFile: snapshot.prevFile,
+    nextFile: snapshot.nextFile,
     isOpen: snapshot.isOpen,
     hasPrev: snapshot.hasPrev,
     hasNext: snapshot.hasNext,
@@ -164,6 +176,8 @@ export function useModalNavigation() {
     goToNext: context.goToNext,
   }), [
     snapshot.currentFile,
+    snapshot.prevFile,
+    snapshot.nextFile,
     snapshot.isOpen,
     snapshot.hasPrev,
     snapshot.hasNext,
@@ -191,6 +205,8 @@ export function useModalNavigationSafe() {
 
   return {
     currentFile: snapshot.currentFile,
+    prevFile: snapshot.prevFile,
+    nextFile: snapshot.nextFile,
     isOpen: snapshot.isOpen,
     hasPrev: snapshot.hasPrev,
     hasNext: snapshot.hasNext,
