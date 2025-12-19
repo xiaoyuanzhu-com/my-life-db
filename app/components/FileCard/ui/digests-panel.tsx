@@ -229,11 +229,12 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                 return null;
               }
 
-              // Check if this is speech-recognition and cleanup is available
+              // Check if this is speech-recognition and cleanup exists (any state)
               const cleanupStage = stage.key === 'speech-recognition'
-                ? stages.find((s) => s.key === 'speech-recognition-cleanup' && s.status === 'success')
+                ? stages.find((s) => s.key === 'speech-recognition-cleanup')
                 : undefined;
               const hasCleanup = cleanupStage !== undefined;
+              const cleanupCompleted = cleanupStage?.status === 'success';
 
               return (
                 <div
@@ -249,7 +250,8 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                   <div className="flex items-center gap-2">
                     {(() => {
                       // Determine which digest to show status/re-run for
-                      const useCleanup = stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript;
+                      // Only use cleanup content when it's completed AND toggle is on
+                      const useCleanup = stage.key === 'speech-recognition' && cleanupCompleted && showCleanedTranscript;
                       const activeKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
                       const activeStatus = useCleanup ? cleanupStage!.status : stage.status;
                       const isResetting = resettingDigester === activeKey;
@@ -269,12 +271,28 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                       );
                     })()}
                     <span className="text-sm font-medium">
-                      {stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript
+                      {stage.key === 'speech-recognition' && cleanupCompleted && showCleanedTranscript
                         ? 'Speech Recognition Cleanup'
                         : stage.label}
                     </span>
-                    {/* Toggle for cleaned vs raw transcript */}
-                    {hasCleanup && (
+                    {/* Cleanup status indicator (when not completed) */}
+                    {hasCleanup && !cleanupCompleted && (
+                      <button
+                        onClick={() => handleResetDigest('speech-recognition-cleanup')}
+                        disabled={resettingDigester === 'speech-recognition-cleanup'}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+                        title={`Cleanup: ${cleanupStage!.status}. Click to re-run.`}
+                      >
+                        {resettingDigester === 'speech-recognition-cleanup' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <StatusIcon status={cleanupStage!.status} />
+                        )}
+                        <span>Cleanup</span>
+                      </button>
+                    )}
+                    {/* Toggle for cleaned vs raw transcript (only when cleanup completed) */}
+                    {cleanupCompleted && (
                       <button
                         onClick={() => setShowCleanedTranscript((v) => !v)}
                         className={cn(
@@ -297,7 +315,8 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                   )}
                   {(() => {
                     // For speech-recognition, decide which content to show based on toggle
-                    const useCleanup = stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript;
+                    // Only use cleanup content when it's completed AND toggle is on
+                    const useCleanup = stage.key === 'speech-recognition' && cleanupCompleted && showCleanedTranscript;
                     const rendererKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
                     const contentToRender = useCleanup ? cleanupStage!.content : stage.content;
 
