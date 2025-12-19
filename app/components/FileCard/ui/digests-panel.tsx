@@ -5,6 +5,7 @@ import {
   Circle,
   Loader2,
   SkipForward,
+  Sparkles,
   XCircle,
 } from 'lucide-react';
 import { cn } from '~/lib/utils';
@@ -94,6 +95,8 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
+  // Toggle for showing cleaned transcript instead of raw speech-recognition
+  const [showCleanedTranscript, setShowCleanedTranscript] = useState(true);
 
   const fetchDigests = useCallback(async () => {
     try {
@@ -220,59 +223,101 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
           </div>
         ) : (
           <div className="space-y-3">
-            {stages.map((stage) => (
-              <div
-                key={stage.key}
-                className={cn(
-                  'p-3 rounded-lg border max-h-64 overflow-y-auto',
-                  stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
-                  stage.status === 'success' && 'border-border bg-muted/30',
-                  stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',
-                  (stage.status === 'to-do' || stage.status === 'skipped') && 'border-border bg-muted/50'
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const isResetting = resettingDigester === stage.key;
+            {stages.map((stage) => {
+              // Skip speech-recognition-cleanup as it's rendered via toggle on speech-recognition
+              if (stage.key === 'speech-recognition-cleanup') {
+                return null;
+              }
 
-                    if (isResetting) {
-                      return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
-                    }
+              // Check if this is speech-recognition and cleanup is available
+              const cleanupStage = stage.key === 'speech-recognition'
+                ? stages.find((s) => s.key === 'speech-recognition-cleanup' && s.status === 'success')
+                : null;
+              const hasCleanup = cleanupStage !== null;
 
-                    return (
+              return (
+                <div
+                  key={stage.key}
+                  className={cn(
+                    'p-3 rounded-lg border max-h-64 overflow-y-auto',
+                    stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
+                    stage.status === 'success' && 'border-border bg-muted/30',
+                    stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',
+                    (stage.status === 'to-do' || stage.status === 'skipped') && 'border-border bg-muted/50'
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      // Determine which digest to show status/re-run for
+                      const useCleanup = stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript;
+                      const activeKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
+                      const activeStatus = useCleanup ? cleanupStage!.status : stage.status;
+                      const isResetting = resettingDigester === activeKey;
+
+                      if (isResetting) {
+                        return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
+                      }
+
+                      return (
+                        <button
+                          onClick={() => handleResetDigest(activeKey)}
+                          className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity"
+                          title="Click to re-run"
+                        >
+                          <StatusIcon status={activeStatus} />
+                        </button>
+                      );
+                    })()}
+                    <span className="text-sm font-medium">
+                      {stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript
+                        ? 'Speech Recognition Cleanup'
+                        : stage.label}
+                    </span>
+                    {/* Toggle for cleaned vs raw transcript */}
+                    {hasCleanup && (
                       <button
-                        onClick={() => handleResetDigest(stage.key)}
-                        className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity"
-                        title="Click to re-run"
+                        onClick={() => setShowCleanedTranscript((v) => !v)}
+                        className={cn(
+                          'ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors',
+                          showCleanedTranscript
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        )}
+                        title={showCleanedTranscript ? 'Click to show raw transcript' : 'Click to show cleaned transcript'}
                       >
-                        <StatusIcon status={stage.status} />
+                        <Sparkles className="h-3 w-3" />
+                        <span>{showCleanedTranscript ? 'Cleaned' : 'Raw'}</span>
                       </button>
+                    )}
+                  </div>
+                  {stage.error && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {stage.error}
+                    </p>
+                  )}
+                  {(() => {
+                    // For speech-recognition, decide which content to show based on toggle
+                    const useCleanup = stage.key === 'speech-recognition' && hasCleanup && showCleanedTranscript;
+                    const rendererKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
+                    const contentToRender = useCleanup ? cleanupStage!.content : stage.content;
+
+                    const Renderer = getDigestRenderer(rendererKey);
+                    // Pass audioSync to speech-recognition and speech-recognition-cleanup renderers
+                    const extraProps = (stage.key === 'speech-recognition') && audioSync
+                      ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
+                      : {};
+                    return (
+                      <Renderer
+                        content={contentToRender}
+                        sqlarName={stage.sqlarName}
+                        filePath={file.path}
+                        {...extraProps}
+                      />
                     );
                   })()}
-                  <span className="text-sm font-medium">{stage.label}</span>
                 </div>
-                {stage.error && (
-                  <p className="mt-1 text-xs text-destructive">
-                    {stage.error}
-                  </p>
-                )}
-                {(() => {
-                  const Renderer = getDigestRenderer(stage.key);
-                  // Pass audioSync to speech-recognition renderer
-                  const extraProps = stage.key === 'speech-recognition' && audioSync
-                    ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
-                    : {};
-                  return (
-                    <Renderer
-                      content={stage.content}
-                      sqlarName={stage.sqlarName}
-                      filePath={file.path}
-                      {...extraProps}
-                    />
-                  );
-                })()}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
