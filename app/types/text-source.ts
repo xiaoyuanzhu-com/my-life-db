@@ -28,3 +28,16 @@ export const TEXT_SOURCE_LABELS: Record<TextSourceType, string> = {
   'file': 'File Content',
   'filename-only': 'Filename',
 };
+
+/**
+ * Summary source types - tracks which digester produced the summary
+ */
+export type SummarySourceType = 'url-crawl-summary' | 'speech-recognition-summary';
+
+/**
+ * Human-readable labels for summary source types
+ */
+export const SUMMARY_SOURCE_LABELS: Record<SummarySourceType, string> = {
+  'url-crawl-summary': 'Summary',
+  'speech-recognition-summary': 'Speech Recognition Summary',
+};

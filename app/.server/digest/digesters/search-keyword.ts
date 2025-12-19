@@ -92,6 +92,7 @@ export class SearchKeywordDigester implements Digester {
       textSource: textContent?.source ?? 'filename-only',
       hasContent: result.hasContent,
       hasSummary: result.hasSummary,
+      summarySource: result.summarySource,
       hasTags: result.hasTags,
       completedAt,
     };

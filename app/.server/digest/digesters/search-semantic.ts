@@ -128,6 +128,7 @@ export class SearchSemanticDigester implements Digester {
       textSource: textContent.source,
       totalChunks: result.totalChunks,
       sources: result.sources,
+      summarySource: result.summarySource,
       documentIds: documentIds.length,
       completedAt,
     };

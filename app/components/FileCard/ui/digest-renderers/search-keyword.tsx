@@ -4,7 +4,8 @@
  */
 
 import type { DigestRendererProps } from './index';
-import { TEXT_SOURCE_LABELS } from '~/types/text-source';
+import { TEXT_SOURCE_LABELS, SUMMARY_SOURCE_LABELS } from '~/types/text-source';
+import type { SummarySourceType } from '~/types/text-source';
 
 interface SearchKeywordContent {
   documentId: number;
@@ -12,6 +13,7 @@ interface SearchKeywordContent {
   textSource: string;
   hasContent: boolean;
   hasSummary: boolean;
+  summarySource: string | null;
   hasTags: boolean;
   enqueuedAt: string;
 }
@@ -45,7 +47,12 @@ export function SearchKeywordRenderer({ content }: DigestRendererProps) {
   }
 
   // Additional indexed fields
-  if (data.hasSummary) indexed.push('Summary');
+  if (data.hasSummary) {
+    const summaryLabel = data.summarySource
+      ? SUMMARY_SOURCE_LABELS[data.summarySource as SummarySourceType] ?? 'Summary'
+      : 'Summary';
+    indexed.push(summaryLabel);
+  }
   if (data.hasTags) indexed.push('Tags');
 
   // Always has filename

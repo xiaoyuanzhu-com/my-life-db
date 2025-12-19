@@ -4,7 +4,8 @@
  */
 
 import type { DigestRendererProps } from './index';
-import { TEXT_SOURCE_LABELS } from '~/types/text-source';
+import { TEXT_SOURCE_LABELS, SUMMARY_SOURCE_LABELS } from '~/types/text-source';
+import type { SummarySourceType } from '~/types/text-source';
 
 interface SourceChunkInfo {
   chunkCount: number;
@@ -15,6 +16,7 @@ interface SearchSemanticContent {
   textSource: string;
   totalChunks: number;
   sources: Record<string, SourceChunkInfo>;
+  summarySource: string | null;
   documentIds: number;
   enqueuedAt: string;
 }
@@ -49,7 +51,12 @@ export function SearchSemanticRenderer({ content }: DigestRendererProps) {
   }
 
   // Additional indexed fields from sources object
-  if (data.sources?.summary) indexed.push('Summary');
+  if (data.sources?.summary) {
+    const summaryLabel = data.summarySource
+      ? SUMMARY_SOURCE_LABELS[data.summarySource as SummarySourceType] ?? 'Summary'
+      : 'Summary';
+    indexed.push(summaryLabel);
+  }
   if (data.sources?.tags) indexed.push('Tags');
 
   if (indexed.length === 0) {

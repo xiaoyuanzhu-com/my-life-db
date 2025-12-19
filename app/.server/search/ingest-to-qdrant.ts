@@ -22,6 +22,7 @@ export interface QdrantIngestResult {
     summary?: { chunkCount: number };
     tags?: { chunkCount: number };
   };
+  summarySource: string | null;
   totalChunks: number;
 }
 
@@ -62,6 +63,7 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   const result: QdrantIngestResult = {
     filePath,
     sources: {},
+    summarySource: null,
     totalChunks: 0,
   };
 
@@ -103,7 +105,15 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
   // 3. Index summary from digest (url-crawl-summary or speech-recognition-summary)
   const urlSummaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
   const speechSummaryDigest = digests.find(d => d.digester === 'speech-recognition-summary' && d.status === 'completed');
-  const summaryDigest = urlSummaryDigest || speechSummaryDigest;
+
+  // Prefer url-crawl-summary, fall back to speech-recognition-summary
+  let summaryDigest = urlSummaryDigest;
+  let summarySource: string | null = urlSummaryDigest ? 'url-crawl-summary' : null;
+  if (!summaryDigest && speechSummaryDigest) {
+    summaryDigest = speechSummaryDigest;
+    summarySource = 'speech-recognition-summary';
+  }
+
   if (summaryDigest?.content) {
     // Parse JSON to get summary text
     let summaryText: string;
@@ -139,10 +149,11 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     }
 
     result.sources.summary = { chunkCount: chunks.length };
+    result.summarySource = summarySource;
     result.totalChunks += chunks.length;
 
     log.debug(
-      { filePath, sourceType: 'summary', chunkCount: chunks.length },
+      { filePath, sourceType: 'summary', summarySource, chunkCount: chunks.length },
       'indexed summary chunks'
     );
   }

@@ -17,6 +17,7 @@ export interface MeiliIngestResult {
   documentId: string;
   hasContent: boolean;
   hasSummary: boolean;
+  summarySource: string | null;
   hasTags: boolean;
 }
 
@@ -35,7 +36,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     const fileRecord = getFileByPath(filePath);
     if (!fileRecord) {
       log.warn({ filePath }, 'file not found in files table');
-      return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
+      return { documentId: filePath, hasContent: false, hasSummary: false, summarySource: null, hasTags: false };
     }
 
     // Get all digests for this file
@@ -47,17 +48,25 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     // 2. Get summary (if exists from digest)
     // Check url-crawl-summary first, then speech-recognition-summary
     let summaryText: string | null = null;
+    let summarySource: string | null = null;
     const urlSummaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
     const speechSummaryDigest = digests.find(d => d.digester === 'speech-recognition-summary' && d.status === 'completed');
 
-    const summaryDigest = urlSummaryDigest || speechSummaryDigest;
-    if (summaryDigest?.content) {
+    if (urlSummaryDigest?.content) {
+      summarySource = 'url-crawl-summary';
       try {
-        const summaryData = JSON.parse(summaryDigest.content);
-        summaryText = summaryData.summary || summaryDigest.content; // Fallback for old format
+        const summaryData = JSON.parse(urlSummaryDigest.content);
+        summaryText = summaryData.summary || urlSummaryDigest.content;
       } catch {
-        // Fallback for old format (plain text)
-        summaryText = summaryDigest.content;
+        summaryText = urlSummaryDigest.content;
+      }
+    } else if (speechSummaryDigest?.content) {
+      summarySource = 'speech-recognition-summary';
+      try {
+        const summaryData = JSON.parse(speechSummaryDigest.content);
+        summaryText = summaryData.summary || speechSummaryDigest.content;
+      } catch {
+        summaryText = speechSummaryDigest.content;
       }
     }
 
@@ -104,6 +113,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
       documentId: filePath,
       hasContent,
       hasSummary: !!summaryText,
+      summarySource,
       hasTags: !!tagsText,
     };
   } catch (error) {
@@ -114,7 +124,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
       },
       'failed to ingest file to meilisearch'
     );
-    return { documentId: filePath, hasContent: false, hasSummary: false, hasTags: false };
+    return { documentId: filePath, hasContent: false, hasSummary: false, summarySource: null, hasTags: false };
   }
 }
 
