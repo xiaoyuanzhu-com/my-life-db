@@ -232,8 +232,8 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
               // Check if this is speech-recognition and cleanup is available
               const cleanupStage = stage.key === 'speech-recognition'
                 ? stages.find((s) => s.key === 'speech-recognition-cleanup' && s.status === 'success')
-                : null;
-              const hasCleanup = cleanupStage !== null;
+                : undefined;
+              const hasCleanup = cleanupStage !== undefined;
 
               return (
                 <div
