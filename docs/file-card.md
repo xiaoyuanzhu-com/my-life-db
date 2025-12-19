@@ -14,7 +14,7 @@ app/components/FileCard/
 ├── types.ts                    # Shared types (BaseCardProps, FileContentType, etc.)
 ├── utils.ts                    # Content detection, file actions (download, share, etc.)
 ├── file-card.tsx               # Thin dispatcher (~50 lines)
-├── file-modal.tsx              # Modal dispatcher
+├── navigation-modal.tsx        # Centralized modal with content routing
 ├── desktop-context-menu.tsx    # Desktop context menu wrapper (shadcn)
 ├── mobile-context-menu.tsx     # Mobile context menu implementation
 ├── ui/
@@ -22,6 +22,7 @@ app/components/FileCard/
 │   ├── match-context.tsx       # Search result match context display
 │   ├── text-highlight.tsx      # Text highlighting utilities
 │   ├── delete-confirm-dialog.tsx  # Shared delete confirmation dialog
+│   ├── modal-close-button.tsx     # Floating close button for modals
 │   ├── modal-action-buttons.tsx   # Floating action buttons for modals
 │   ├── digests-panel.tsx          # Shared digests view panel for modals
 │   ├── selection-wrapper.tsx      # Multi-select checkbox overlay
@@ -37,14 +38,21 @@ app/components/FileCard/
 │   ├── doc-card.tsx            # Word documents (renders screenshot)
 │   ├── ppt-card.tsx            # PowerPoint files (renders screenshot)
 │   └── fallback-card.tsx       # Unknown file types (shows filename)
-└── modals/
-    ├── index.ts                # Modal registry: getModalComponent(type)
-    ├── image-modal.tsx         # Full-screen image viewer
-    ├── video-modal.tsx         # Full-screen video player
-    ├── audio-modal.tsx         # Audio player with controls
-    ├── pdf-modal.tsx           # Scrollable PDF viewer
-    ├── epub-modal.tsx          # EPUB reader with pagination
-    └── fallback-modal.tsx      # Generic file info modal
+├── modal-contents/             # Content components for NavigationModal
+│   ├── audio-content.tsx       # Custom audio player (speed, progress, sync)
+│   ├── video-content.tsx       # Video player with autoplay
+│   ├── image-content.tsx       # Image viewer with click-to-close
+│   ├── text-content.tsx        # Monaco editor with save support
+│   ├── pdf-content.tsx         # PDF viewer (react-pdf)
+│   └── epub-content.tsx        # EPUB reader (epub.js)
+└── modals/                     # [DEPRECATED] Legacy per-card modals
+    ├── index.ts                # Modal registry (kept for backwards compat)
+    ├── image-modal.tsx         # [Legacy] Full-screen image viewer
+    ├── video-modal.tsx         # [Legacy] Full-screen video player
+    ├── audio-modal.tsx         # [Legacy] Audio player with controls
+    ├── pdf-modal.tsx           # [Legacy] Scrollable PDF viewer
+    ├── epub-modal.tsx          # [Legacy] EPUB reader with pagination
+    └── fallback-modal.tsx      # [Legacy] Generic file info modal
 ```
 
 ## Type Detection
@@ -334,16 +342,46 @@ export function ModalActionButtons({ actions }: { actions: ContextMenuAction[] }
 |-----------|--------------|---------------|
 | All with modal | Open, Locate, Pin, Save/Copy, Share, Delete | Download, Share, Digests |
 
-### Modal Components
+### Modal Architecture
 
-Modals provide enhanced viewing experiences:
+The modal system uses a **centralized architecture** with content components:
+
+```
+NavigationModal (shell)
+├── Dialog, actions, navigation, layout
+├── DigestsPanel (with audio sync for transcripts)
+└── ModalContentRenderer
+    ├── AudioContent   - Custom player with speed, progress
+    ├── VideoContent   - Native video with autoplay
+    ├── ImageContent   - Click-to-close image viewer
+    ├── TextContent    - Monaco editor with save
+    ├── PdfContent     - react-pdf viewer
+    └── EpubContent    - epub.js reader
+```
+
+**Why Centralized?**
+- Single Dialog stays mounted during file navigation (prevents flash)
+- Consistent actions (Download, Share, Digests) across all types
+- Shared layout, navigation, and digests panel logic
+- Content components are lazy-loaded for performance
+
+**Content Component Interface:**
 
 ```typescript
-// modals/image-modal.tsx - Full-screen image viewer
-// modals/video-modal.tsx - Full-screen video player with autoplay
-// modals/audio-modal.tsx - Audio player with controls
-// modals/pdf-modal.tsx - Scrollable PDF viewer
-// modals/fallback-modal.tsx - Generic file info display
+// Basic content component
+interface ContentProps {
+  file: FileWithDigests;
+}
+
+// Audio content exposes sync state for transcript highlighting
+interface AudioContentProps extends ContentProps {
+  onAudioSyncChange?: (sync: AudioSyncState | null) => void;
+}
+
+// Text content exposes dirty state for unsaved changes
+interface TextContentProps extends ContentProps {
+  onDirtyStateChange?: (isDirty: boolean) => void;
+}
 ```
 
 **Common Modal UX:**
@@ -773,8 +811,10 @@ Open, Pin, Save, Share, Delete
 **Modal:**
 - Centered audio icon with filename
 - Large play/pause button
+- Playback speed control (0.5x, 1x, 1.5x, 2x)
 - Seekable progress bar
 - Time display (current/total)
+- Audio sync with transcript highlighting (click transcript to seek)
 - Standard modal actions (Download, Share, Digests)
 
 **Context Menu:**

@@ -4,6 +4,107 @@
 
 The inbox uses a **chat-style UI** where newest items appear at the bottom and users scroll up to see older items.
 
+## Interaction Modes
+
+The inbox has four mutually exclusive interaction modes:
+
+| Mode | Trigger | UI Changes | Exit |
+|------|---------|------------|------|
+| **Default** | Initial state | OmniInput visible, feed scrollable | - |
+| **Search** | Type in OmniInput | SearchResults overlay replaces feed | Clear input or locate item |
+| **Selection** | Long-press → "Select" | Checkboxes appear, MultiSelectActionBar replaces OmniInput | Cancel or deselect all |
+| **Modal** | Click/tap file card | Full-screen modal with navigation | Close modal or click outside |
+
+### Mode Priority
+
+Modes are exclusive - only one can be active at a time:
+
+```
+Default ←→ Search
+    ↕         ↕
+Selection   Modal
+```
+
+- **Search** and **Default** toggle based on input/results
+- **Selection** can be entered from Default (not from Search or Modal)
+- **Modal** can be opened from Default, Search, or Selection mode
+- Exiting Modal returns to previous mode
+
+### Default Mode
+
+The base state with full inbox functionality:
+
+- OmniInput at bottom for text/file input and search
+- InboxFeed shows files in chat-style layout
+- PinnedTags bar above input
+- Right-click/long-press opens context menu
+
+### Search Mode
+
+Active when search results exist:
+
+- SearchResults component overlays (replaces) InboxFeed
+- Feed remains mounted but invisible (`visibility: hidden`)
+- "Locate in Feed" action clears search and scrolls to item
+- Clearing input returns to Default mode
+
+**State tracking:**
+```typescript
+const isSearching = searchState.isKeywordSearching || searchState.isSemanticSearching;
+const showSearchResults = hasCurrentResults || isSearchingWithPreviousResults;
+```
+
+### Selection Mode
+
+For batch operations on multiple files:
+
+- Entered via context menu "Select" action
+- Circle checkboxes appear on all file cards
+- OmniInput slides out, MultiSelectActionBar slides in
+- Available actions: Share, Delete, Cancel
+- Deselecting last item exits selection mode
+
+**State tracking:**
+```typescript
+// SelectionContext
+interface SelectionState {
+  selectedPaths: Set<string>;
+  isSelectionMode: boolean;  // true when selectedPaths.size > 0
+}
+```
+
+### Modal Mode
+
+Full-screen file preview with navigation:
+
+- Managed by `ModalNavigationProvider` context
+- Single `NavigationModal` rendered at provider level
+- Keyboard (←/→) and swipe navigation between files
+- Digests panel toggle for AI-generated content
+- Modal stays mounted while navigating (prevents flash)
+
+**State tracking:**
+```typescript
+// ModalNavigationContext
+interface ModalNavigationSnapshot {
+  currentFile: FileWithDigests | null;
+  isOpen: boolean;
+  hasPrev: boolean;
+  hasNext: boolean;
+}
+```
+
+### Mode Transitions
+
+| From | To | Trigger |
+|------|----|---------|
+| Default | Search | Type query with results |
+| Search | Default | Clear input, locate item |
+| Default | Selection | Context menu → Select |
+| Selection | Default | Cancel, deselect all, delete all |
+| Any | Modal | Click file card |
+| Modal | Previous | Close modal |
+
 ## Data Model
 
 ### Cursor-Based Pagination

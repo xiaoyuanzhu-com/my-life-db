@@ -14,10 +14,15 @@ import { ModalActionButtons } from './ui/modal-action-buttons';
 import { DigestsPanel } from './ui/digests-panel';
 import { ModalLayout, useModalLayout, getModalContainerStyles } from './ui/modal-layout';
 import { useModalNavigation } from '~/contexts/modal-navigation-context';
+import type { AudioSyncState } from './modal-contents/audio-content';
 
-// Lazy load heavy modal content
-const PdfModalContent = lazy(() => import('./modal-contents/pdf-content').then(m => ({ default: m.PdfContent })));
-const EpubModalContent = lazy(() => import('./modal-contents/epub-content').then(m => ({ default: m.EpubContent })));
+// Lazy load modal content components
+const AudioContent = lazy(() => import('./modal-contents/audio-content').then(m => ({ default: m.AudioContent })));
+const VideoContent = lazy(() => import('./modal-contents/video-content').then(m => ({ default: m.VideoContent })));
+const ImageContent = lazy(() => import('./modal-contents/image-content').then(m => ({ default: m.ImageContent })));
+const TextContent = lazy(() => import('./modal-contents/text-content').then(m => ({ default: m.TextContent })));
+const PdfContent = lazy(() => import('./modal-contents/pdf-content').then(m => ({ default: m.PdfContent })));
+const EpubContent = lazy(() => import('./modal-contents/epub-content').then(m => ({ default: m.EpubContent })));
 
 type ModalView = 'content' | 'digests';
 
@@ -28,15 +33,20 @@ type ModalView = 'content' | 'digests';
 export function NavigationModal() {
   const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
   const [activeView, setActiveView] = useState<ModalView>('content');
+  const [audioSync, setAudioSync] = useState<AudioSyncState | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const layout = useModalLayout();
 
-  // Reset view when file changes
+  // Reset view and state when file changes
   useEffect(() => {
     setActiveView('content');
+    setAudioSync(null);
+    setIsDirty(false);
   }, [currentFile?.path]);
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
+      // TODO: Handle unsaved changes confirmation for text files
       closeModal();
     }
   }, [closeModal]);
@@ -73,6 +83,15 @@ export function NavigationModal() {
   // Determine content type for the current file
   const contentType = currentFile ? getFileContentType(currentFile) : null;
 
+  // Build digests panel props (with audio sync for audio files)
+  const digestsPanelProps = useMemo(() => {
+    if (!currentFile) return null;
+    return {
+      file: currentFile,
+      ...(contentType === 'audio' && audioSync ? { audioSync } : {}),
+    };
+  }, [currentFile, contentType, audioSync]);
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
@@ -83,14 +102,14 @@ export function NavigationModal() {
         <VisuallyHidden>
           <DialogTitle>{currentFile?.name ?? 'File Preview'}</DialogTitle>
         </VisuallyHidden>
-        <ModalCloseButton onClick={() => handleOpenChange(false)} />
+        <ModalCloseButton onClick={() => handleOpenChange(false)} isDirty={isDirty} />
         <ModalActionButtons actions={modalActions} />
 
-        {currentFile && (
+        {currentFile && digestsPanelProps && (
           <ModalLayout
             showDigests={showDigests}
             onCloseDigests={handleCloseDigests}
-            digestsContent={<DigestsPanel file={currentFile} />}
+            digestsContent={<DigestsPanel {...digestsPanelProps} />}
             contentClassName="flex items-center justify-center"
             hasPrev={hasPrev}
             hasNext={hasNext}
@@ -106,12 +125,16 @@ export function NavigationModal() {
                 transition={{ duration: 0.15 }}
                 className="w-full h-full flex items-center justify-center"
               >
-                <ModalContentRenderer
-                  contentType={contentType}
-                  file={currentFile}
-                  showDigests={showDigests}
-                  onClose={() => handleOpenChange(false)}
-                />
+                <Suspense fallback={<LoadingFallback />}>
+                  <ModalContentRenderer
+                    contentType={contentType}
+                    file={currentFile}
+                    showDigests={showDigests}
+                    onClose={() => handleOpenChange(false)}
+                    onAudioSyncChange={setAudioSync}
+                    onDirtyStateChange={setIsDirty}
+                  />
+                </Suspense>
               </motion.div>
             </AnimatePresence>
           </ModalLayout>
@@ -130,84 +153,49 @@ function ModalContentRenderer({
   file,
   showDigests,
   onClose,
+  onAudioSyncChange,
+  onDirtyStateChange,
 }: {
   contentType: string | null;
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
   showDigests: boolean;
   onClose: () => void;
+  onAudioSyncChange: (sync: AudioSyncState | null) => void;
+  onDirtyStateChange: (isDirty: boolean) => void;
 }) {
-  const src = getFileContentUrl(file);
-
   switch (contentType) {
     case 'image':
       return (
-        <div
-          className="w-full h-full flex items-center justify-center cursor-pointer"
-          onClick={() => !showDigests && onClose()}
-        >
-          <img
-            src={src}
-            alt={file.name}
-            className="object-contain"
-            style={{
-              maxWidth: '100%',
-              maxHeight: '100%',
-              width: 'auto',
-              height: 'auto',
-            }}
-          />
-        </div>
+        <ImageContent
+          file={file}
+          showDigests={showDigests}
+          onClose={onClose}
+        />
       );
 
     case 'video':
-      return (
-        <div className="w-full h-full flex items-center justify-center bg-black">
-          <video
-            key={file.path}
-            controls
-            playsInline
-            className="w-full h-full object-contain"
-          >
-            <source src={src} type={file.mimeType || 'video/mp4'} />
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      );
+      return <VideoContent file={file} />;
 
     case 'audio':
       return (
-        <div className="w-full h-full flex items-center justify-center bg-muted">
-          <div className="text-center p-8">
-            <div className="text-lg font-medium mb-4">{file.name}</div>
-            <audio controls className="w-full max-w-md">
-              <source src={src} type={file.mimeType || 'audio/mpeg'} />
-              Your browser does not support the audio tag.
-            </audio>
-          </div>
-        </div>
+        <AudioContent
+          file={file}
+          onAudioSyncChange={onAudioSyncChange}
+        />
       );
 
     case 'pdf':
-      return (
-        <Suspense fallback={<LoadingFallback />}>
-          <PdfModalContent file={file} />
-        </Suspense>
-      );
+      return <PdfContent file={file} />;
 
     case 'epub':
-      return (
-        <Suspense fallback={<LoadingFallback />}>
-          <EpubModalContent file={file} />
-        </Suspense>
-      );
+      return <EpubContent file={file} />;
 
     case 'text':
       return (
-        <div className="w-full h-full overflow-auto bg-background p-4">
-          <pre className="whitespace-pre-wrap break-words text-sm font-mono">
-            {file.textPreview || 'No preview available'}
-          </pre>
-        </div>
+        <TextContent
+          file={file}
+          onDirtyStateChange={onDirtyStateChange}
+        />
       );
 
     default:
