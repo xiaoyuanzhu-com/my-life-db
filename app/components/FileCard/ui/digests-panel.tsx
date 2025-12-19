@@ -367,7 +367,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                             <StatusIcon status={summaryStage!.status} />
                           </button>
                         )}
-                        <span className="text-sm font-medium">Speech Summary</span>
+                        <span className="text-sm font-medium">Speech Recognition Summary</span>
                       </div>
                       <div className="overflow-y-auto min-h-0 flex-1">
                         {summaryStage!.error && (
