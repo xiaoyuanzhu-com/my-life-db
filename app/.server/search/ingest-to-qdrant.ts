@@ -100,8 +100,10 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
     );
   }
 
-  // 3. Index summary from digest
-  const summaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
+  // 3. Index summary from digest (url-crawl-summary or speech-recognition-summary)
+  const urlSummaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
+  const speechSummaryDigest = digests.find(d => d.digester === 'speech-recognition-summary' && d.status === 'completed');
+  const summaryDigest = urlSummaryDigest || speechSummaryDigest;
   if (summaryDigest?.content) {
     // Parse JSON to get summary text
     let summaryText: string;

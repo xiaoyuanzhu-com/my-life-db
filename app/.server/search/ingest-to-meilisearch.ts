@@ -45,8 +45,12 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     const contentText = await getFileContent(filePath);
 
     // 2. Get summary (if exists from digest)
-    const summaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
+    // Check url-crawl-summary first, then speech-recognition-summary
     let summaryText: string | null = null;
+    const urlSummaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
+    const speechSummaryDigest = digests.find(d => d.digester === 'speech-recognition-summary' && d.status === 'completed');
+
+    const summaryDigest = urlSummaryDigest || speechSummaryDigest;
     if (summaryDigest?.content) {
       try {
         const summaryData = JSON.parse(summaryDigest.content);

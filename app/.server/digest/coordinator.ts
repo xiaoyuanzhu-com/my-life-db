@@ -52,6 +52,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
   'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'speech-recognition-summary', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],
+  'speech-recognition-summary': ['tags', 'search-keyword', 'search-semantic'],
 };
 
 /**

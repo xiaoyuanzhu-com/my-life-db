@@ -177,7 +177,12 @@ Digesters execute in registration order. Order matters for dependencies:
    - Outputs: `speech-recognition-cleanup`
    - Uses LLM to polish and fix speech recognition results
 
-6. **ImageOcrDigester** (no dependencies)
+6. **SpeechRecognitionSummaryDigester** (depends on speech-recognition)
+   - Label: "Speech Recognition Summary"
+   - Outputs: `speech-recognition-summary`
+   - Generates markdown summary of speech transcripts
+
+7. **ImageOcrDigester** (no dependencies)
    - Label: "Image OCR"
    - Outputs: `image-ocr`
    - Extracts text from images using OCR
@@ -426,6 +431,7 @@ flowchart TD
     subgraph "Round 2 - Dependent Processing"
         SR --> |"cascades"| SE["👤 speaker-embedding"]
         SR --> |"cascades"| TC["✨ speech-recognition-cleanup"]
+        SR --> |"cascades"| SRSUM["📋 speech-recognition-summary"]
         UCC --> |"cascades"| UCSUM["📋 url-crawl-summary"]
     end
 
@@ -436,18 +442,21 @@ flowchart TD
         DTM --> |"cascades"| TAGS
         UCC --> |"cascades"| TAGS
         UCSUM --> |"cascades"| TAGS
+        SRSUM --> |"cascades"| TAGS
 
         SR --> |"cascades"| SK["🔎 search-keyword"]
         IO --> |"cascades"| SK
         IC --> |"cascades"| SK
         DTM --> |"cascades"| SK
         UCC --> |"cascades"| SK
+        SRSUM --> |"cascades"| SK
 
         SR --> |"cascades"| SS["🧠 search-semantic"]
         IO --> |"cascades"| SS
         IC --> |"cascades"| SS
         DTM --> |"cascades"| SS
         UCC --> |"cascades"| SS
+        SRSUM --> |"cascades"| SS
     end
 
     style SR fill:#e1f5fe
@@ -459,6 +468,7 @@ flowchart TD
 
     style SE fill:#fff3e0
     style TC fill:#fff3e0
+    style SRSUM fill:#fff3e0
     style UCSUM fill:#fff3e0
 
     style TAGS fill:#e8f5e9
@@ -471,7 +481,7 @@ flowchart TD
 | Round | Digesters | Description |
 |-------|-----------|-------------|
 | **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
-| **2** | `speaker-embedding`, `speech-recognition-cleanup`, `url-crawl-summary` | Depends on Round 1 outputs |
+| **2** | `speaker-embedding`, `speech-recognition-cleanup`, `speech-recognition-summary`, `url-crawl-summary` | Depends on Round 1 outputs |
 | **3** | `tags`, `search-keyword`, `search-semantic` | Final processing, cascaded from any content producer |
 
 ### Reset Triggers
@@ -485,8 +495,9 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'speech-recognition-summary', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],  // Summary can improve tags
+  'speech-recognition-summary': ['tags', 'search-keyword', 'search-semantic'],
 };
 ```
 

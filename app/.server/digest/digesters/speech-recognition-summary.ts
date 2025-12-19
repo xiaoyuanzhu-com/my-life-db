@@ -105,7 +105,7 @@ const JSON_SCHEMA = {
  */
 export class SpeechRecognitionSummaryDigester implements Digester {
   readonly name = 'speech-recognition-summary';
-  readonly label = 'Speech Summary';
+  readonly label = 'Speech Recognition Summary';
   readonly description = 'Generate summary from speech recognition transcript';
 
   async canDigest(
