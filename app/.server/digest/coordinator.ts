@@ -26,6 +26,21 @@ import { deleteEmbeddingsForSource } from '~/.server/db/people';
 const log = getLogger({ module: 'DigestCoordinator' });
 
 /**
+ * In-memory tracking of files currently being processed by THIS server instance.
+ * This allows us to distinguish between:
+ * - File actively being processed on this server (in the set)
+ * - Stale lock from crashed process (has DB lock but not in set)
+ */
+const activeProcessingFiles = new Set<string>();
+
+/**
+ * Check if a file is currently being processed by this server instance
+ */
+export function isFileActivelyProcessing(filePath: string): boolean {
+  return activeProcessingFiles.has(filePath);
+}
+
+/**
  * Cascading reset mappings
  * When a digester completes with content, reset these downstream digesters
  * This ensures dependent digesters re-process with updated content
@@ -82,11 +97,22 @@ export class DigestCoordinator {
    * @param options.digester If provided, only reset and reprocess this specific digester
    */
   async processFile(filePath: string, options?: { reset?: boolean; digester?: string }): Promise<void> {
-    // Try to acquire database-level lock (prevents concurrent processing across processes)
-    if (!tryAcquireLock(filePath, 'DigestCoordinator')) {
-      log.debug({ filePath }, 'file is already being processed, skipping');
+    // Check in-memory tracking first - if file is being processed on THIS server, skip immediately
+    if (activeProcessingFiles.has(filePath)) {
+      log.debug({ filePath }, 'file is actively being processed on this server, skipping');
       return;
     }
+
+    // Try to acquire database-level lock (prevents concurrent processing across processes)
+    const lockAcquired = tryAcquireLock(filePath, 'DigestCoordinator');
+
+    if (!lockAcquired) {
+      log.debug({ filePath }, 'file is already being processed (db lock), skipping');
+      return;
+    }
+
+    // Add to in-memory tracking
+    activeProcessingFiles.add(filePath);
 
     try {
       log.debug({ filePath }, 'processing file');
@@ -225,7 +251,8 @@ export class DigestCoordinator {
       'processing complete'
     );
   } finally {
-      // Always release the database lock
+      // Always remove from in-memory tracking and release the database lock
+      activeProcessingFiles.delete(filePath);
       releaseLock(filePath);
     }
   }
