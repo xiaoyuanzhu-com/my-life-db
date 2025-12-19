@@ -126,13 +126,15 @@ export function ModalLayout({
   const layout = useModalLayout();
   const gap = GAP_REM * 16;
 
-  // Navigation is enabled when explicitly set, or when digests are not showing
-  const isNavigationEnabled = navigationEnabled ?? !showDigests;
+  // Swipe navigation disabled when digests are showing (conflicts with swipe-to-dismiss)
+  const isSwipeNavigationEnabled = navigationEnabled ?? !showDigests;
+  // Keyboard navigation always enabled (no conflict with digests)
+  const isKeyboardNavigationEnabled = navigationEnabled ?? true;
 
   // Enable keyboard navigation (left/right arrows)
   useModalKeyboardNavigation({
     isOpen: true, // ModalLayout is only rendered when modal is open
-    enabled: isNavigationEnabled,
+    enabled: isKeyboardNavigationEnabled,
     hasPrev,
     hasNext,
     onPrev,
@@ -141,7 +143,7 @@ export function ModalLayout({
 
   // Get swipe navigation handlers
   const { handleDragEnd: handleNavigationDragEnd } = useModalSwipeNavigation({
-    enabled: isNavigationEnabled,
+    enabled: isSwipeNavigationEnabled,
     hasPrev,
     hasNext,
     onPrev,
@@ -164,8 +166,8 @@ export function ModalLayout({
     ? layout.contentWidth * 2 + gap
     : layout.contentWidth;
 
-  // Check if navigation is available
-  const hasNavigation = (hasPrev || hasNext) && isNavigationEnabled;
+  // Check if swipe navigation is available
+  const hasSwipeNavigation = (hasPrev || hasNext) && isSwipeNavigationEnabled;
 
   return (
     <div
@@ -178,7 +180,7 @@ export function ModalLayout({
       }}
     >
       {/* Main content pane - wrapped in motion.div for swipe navigation */}
-      {hasNavigation ? (
+      {hasSwipeNavigation ? (
         <motion.div
           className={cn('h-full', contentClassName)}
           style={{ width: layout.contentWidth }}
