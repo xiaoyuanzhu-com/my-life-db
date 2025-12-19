@@ -240,14 +240,14 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                 <div
                   key={stage.key}
                   className={cn(
-                    'p-3 rounded-lg border max-h-64 overflow-y-auto',
+                    'p-3 rounded-lg border max-h-64 flex flex-col',
                     stage.status === 'failed' && 'border-destructive/30 bg-destructive/10',
                     stage.status === 'success' && 'border-border bg-muted/30',
                     stage.status === 'in-progress' && 'border-primary/20 bg-primary/5',
                     (stage.status === 'to-do' || stage.status === 'skipped') && 'border-border bg-muted/50'
                   )}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {(() => {
                       // Determine which digest to show status/re-run for
                       // Only use cleanup content when it's completed AND toggle is on
@@ -308,32 +308,34 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                       </button>
                     )}
                   </div>
-                  {stage.error && (
-                    <p className="mt-1 text-xs text-destructive">
-                      {stage.error}
-                    </p>
-                  )}
-                  {(() => {
-                    // For speech-recognition, decide which content to show based on toggle
-                    // Only use cleanup content when it's completed AND toggle is on
-                    const useCleanup = stage.key === 'speech-recognition' && cleanupCompleted && showCleanedTranscript;
-                    const rendererKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
-                    const contentToRender = useCleanup ? cleanupStage!.content : stage.content;
+                  <div className="overflow-y-auto min-h-0 flex-1">
+                    {stage.error && (
+                      <p className="mt-1 text-xs text-destructive">
+                        {stage.error}
+                      </p>
+                    )}
+                    {(() => {
+                      // For speech-recognition, decide which content to show based on toggle
+                      // Only use cleanup content when it's completed AND toggle is on
+                      const useCleanup = stage.key === 'speech-recognition' && cleanupCompleted && showCleanedTranscript;
+                      const rendererKey = useCleanup ? 'speech-recognition-cleanup' : stage.key;
+                      const contentToRender = useCleanup ? cleanupStage!.content : stage.content;
 
-                    const Renderer = getDigestRenderer(rendererKey);
-                    // Pass audioSync to speech-recognition and speech-recognition-cleanup renderers
-                    const extraProps = (stage.key === 'speech-recognition') && audioSync
-                      ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
-                      : {};
-                    return (
-                      <Renderer
-                        content={contentToRender}
-                        sqlarName={stage.sqlarName}
-                        filePath={file.path}
-                        {...extraProps}
-                      />
-                    );
-                  })()}
+                      const Renderer = getDigestRenderer(rendererKey);
+                      // Pass audioSync to speech-recognition and speech-recognition-cleanup renderers
+                      const extraProps = (stage.key === 'speech-recognition') && audioSync
+                        ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
+                        : {};
+                      return (
+                        <Renderer
+                          content={contentToRender}
+                          sqlarName={stage.sqlarName}
+                          filePath={file.path}
+                          {...extraProps}
+                        />
+                      );
+                    })()}
+                  </div>
                 </div>
               );
             })}
