@@ -167,32 +167,42 @@ Digesters execute in registration order. Order matters for dependencies:
    - Outputs: `speech-recognition`
    - Transcribes audio/video files to text
 
-4. **SpeakerEmbeddingDigester** (no dependencies)
+4. **SpeakerEmbeddingDigester** (depends on speech-recognition)
    - Label: "Speaker ID"
    - Outputs: `speaker-embedding`
    - Extracts speaker embeddings for speaker identification
 
-5. **ImageOcrDigester** (no dependencies)
+5. **TranscriptCleanupDigester** (depends on speech-recognition)
+   - Label: "Transcript Cleanup"
+   - Outputs: `transcript-cleanup`
+   - Uses LLM to polish and fix speech recognition results
+
+6. **ImageOcrDigester** (no dependencies)
    - Label: "Image OCR"
    - Outputs: `image-ocr`
    - Extracts text from images using OCR
 
-6. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
+7. **ImageCaptioningDigester** (no dependencies)
+   - Label: "Image Captioning"
+   - Outputs: `image-captioning`
+   - Generates captions for images
+
+8. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
    - Label: "Summary"
    - Outputs: `url-crawl-summary`
    - Generates AI summary of crawled content
 
-7. **TagsDigester** (depends on text content)
+9. **TagsDigester** (depends on text content)
    - Label: "Tags"
    - Outputs: `tags`
    - Generates semantic tags for file content
 
-8. **SearchKeywordDigester** (depends on text content)
-   - Label: "Keyword Search"
-   - Outputs: `search-keyword`
-   - Indexes content in Meilisearch for full-text search
+10. **SearchKeywordDigester** (depends on text content)
+    - Label: "Keyword Search"
+    - Outputs: `search-keyword`
+    - Indexes content in Meilisearch for full-text search
 
-9. **SearchSemanticDigester** (depends on text content)
+11. **SearchSemanticDigester** (depends on text content)
     - Label: "Semantic Search"
     - Outputs: `search-semantic`
     - Generates embeddings and indexes in Qdrant for vector search
@@ -415,6 +425,7 @@ flowchart TD
 
     subgraph "Round 2 - Dependent Processing"
         SR --> |"cascades"| SE["👤 speaker-embedding"]
+        SR --> |"cascades"| TC["✨ transcript-cleanup"]
         UCC --> |"cascades"| UCSUM["📋 url-crawl-summary"]
     end
 
@@ -447,6 +458,7 @@ flowchart TD
     style UC fill:#e1f5fe
 
     style SE fill:#fff3e0
+    style TC fill:#fff3e0
     style UCSUM fill:#fff3e0
 
     style TAGS fill:#e8f5e9
@@ -459,7 +471,7 @@ flowchart TD
 | Round | Digesters | Description |
 |-------|-----------|-------------|
 | **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
-| **2** | `speaker-embedding`, `url-crawl-summary` | Depends on Round 1 outputs |
+| **2** | `speaker-embedding`, `transcript-cleanup`, `url-crawl-summary` | Depends on Round 1 outputs |
 | **3** | `tags`, `search-keyword`, `search-semantic` | Final processing, cascaded from any content producer |
 
 ### Reset Triggers
@@ -473,7 +485,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['speaker-embedding', 'tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['speaker-embedding', 'transcript-cleanup', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],  // Summary can improve tags
 };
 ```
