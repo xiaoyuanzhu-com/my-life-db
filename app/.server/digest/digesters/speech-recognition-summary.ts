@@ -71,14 +71,24 @@ Length handling:
 - Long transcript: high-level summary first, then detailed breakdown by topic.
 
 Output format (Markdown):
-- Title (inferred from content, in the transcript's language)
-- Key Points / Takeaways (bullet points of the main substance)
-- Detailed Notes (grouped by topic, if needed)
-- Decisions / Conclusions (if any)
-- Action Items / Follow-ups (if any)
-- Open Questions / Uncertainties (if any)
 
-Omit any section that has no content. Return valid JSON with a single "summary" field containing the markdown.`;
+1. **Key Takeaway** (REQUIRED, at the very top, before title):
+   - One sentence capturing THE most important insight, decision, or realization.
+   - This is what's worth remembering months later - not a generic description.
+   - Format: "> 💡 **[the insight]**" (blockquote with emoji and bold)
+
+2. **Title** (inferred from content, in the transcript's language)
+
+3. **Summary** (grouped by topic):
+   - Use minimal heading levels (prefer flat structure)
+   - Keep bullet points concise
+   - Highlight key insights inline with **bold**
+
+4. **Optional sections** (only if clearly present):
+   - Action Items
+   - Open Questions
+
+Omit any section without content. Return valid JSON with a single "summary" field containing the markdown.`;
 
 const JSON_SCHEMA = {
   type: 'object',
