@@ -21,14 +21,14 @@ interface TranscriptViewerProps {
 // Speaker colors for differentiation
 // Using border-left style for better dark mode compatibility
 const SPEAKER_COLORS = [
-  { border: 'border-l-blue-500', text: 'text-blue-600 dark:text-blue-400', avatar: 'bg-blue-500' },
-  { border: 'border-l-green-500', text: 'text-green-600 dark:text-green-400', avatar: 'bg-green-500' },
-  { border: 'border-l-purple-500', text: 'text-purple-600 dark:text-purple-400', avatar: 'bg-purple-500' },
-  { border: 'border-l-orange-500', text: 'text-orange-600 dark:text-orange-400', avatar: 'bg-orange-500' },
-  { border: 'border-l-pink-500', text: 'text-pink-600 dark:text-pink-400', avatar: 'bg-pink-500' },
-  { border: 'border-l-teal-500', text: 'text-teal-600 dark:text-teal-400', avatar: 'bg-teal-500' },
-  { border: 'border-l-red-500', text: 'text-red-600 dark:text-red-400', avatar: 'bg-red-500' },
-  { border: 'border-l-indigo-500', text: 'text-indigo-600 dark:text-indigo-400', avatar: 'bg-indigo-500' },
+  { border: 'border-l-blue-500', text: 'text-blue-500', avatar: 'bg-blue-500' },
+  { border: 'border-l-green-500', text: 'text-green-500', avatar: 'bg-green-500' },
+  { border: 'border-l-purple-500', text: 'text-purple-500', avatar: 'bg-purple-500' },
+  { border: 'border-l-orange-500', text: 'text-orange-500', avatar: 'bg-orange-500' },
+  { border: 'border-l-pink-500', text: 'text-pink-500', avatar: 'bg-pink-500' },
+  { border: 'border-l-teal-500', text: 'text-teal-500', avatar: 'bg-teal-500' },
+  { border: 'border-l-red-500', text: 'text-red-500', avatar: 'bg-red-500' },
+  { border: 'border-l-indigo-500', text: 'text-indigo-500', avatar: 'bg-indigo-500' },
 ];
 
 function formatTime(seconds: number): string {

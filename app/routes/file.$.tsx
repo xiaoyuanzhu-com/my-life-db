@@ -55,15 +55,15 @@ function getStatusIcon(status: string) {
 function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
-      return "text-green-600 dark:text-green-400";
+      return "text-green-500";
     case "in-progress":
-      return "text-blue-600 dark:text-blue-400";
+      return "text-blue-500";
     case "failed":
-      return "text-red-600 dark:text-red-400";
+      return "text-red-500";
     case "todo":
-      return "text-yellow-600 dark:text-yellow-400";
+      return "text-yellow-500";
     case "skipped":
-      return "text-gray-600 dark:text-gray-400";
+      return "text-muted-foreground";
     default:
       return "text-muted-foreground";
   }
@@ -166,7 +166,7 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
   } else if (digest.digester === "search-keyword") {
     if (digest.error) {
       contentBody = (
-        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+        <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
           {digest.error}
         </div>
       );
@@ -176,7 +176,7 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
   } else if (digest.digester === "search-semantic") {
     if (digest.error) {
       contentBody = (
-        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+        <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
           {digest.error}
         </div>
       );
@@ -199,7 +199,7 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
     );
   } else if (digest.error) {
     contentBody = (
-      <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs text-red-700 dark:text-red-300">
+      <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
         {digest.error}
       </div>
     );

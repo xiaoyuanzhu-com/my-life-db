@@ -115,7 +115,7 @@ export function TextCard({
     >
       <div className="relative mx-auto">
         <div className="p-4 max-w-full">
-          <div className="prose prose-sm dark:prose-invert max-w-none select-text">
+          <div className="prose prose-sm max-w-none select-text text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-foreground/90">
             <div className="whitespace-pre-wrap break-words text-sm leading-relaxed font-content">
               {highlightTerms && highlightTerms.length > 0
                 ? highlightMatches(displayText, highlightTerms)

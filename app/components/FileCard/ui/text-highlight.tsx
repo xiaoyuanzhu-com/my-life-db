@@ -28,7 +28,7 @@ export function highlightMatches(text: string, terms: string[]): ReactNode {
     return (
       <mark
         key={`match-${index}`}
-        className="rounded-sm bg-yellow-300/90 px-0.5 py-0 text-slate-900 ring-1 ring-yellow-400 dark:bg-yellow-200/95 dark:text-slate-900 dark:ring-yellow-300"
+        className="rounded-sm bg-yellow-300/90 px-0.5 py-0 text-slate-900 ring-1 ring-yellow-400"
       >
         {part}
       </mark>
@@ -57,7 +57,7 @@ export function renderHighlightedSnippet(snippet: string): ReactNode {
         elements.push(
           <mark
             key={`match-${i}`}
-            className="rounded-sm bg-yellow-300/90 px-0.5 py-0 text-slate-900 ring-1 ring-yellow-400 dark:bg-yellow-200/95 dark:text-slate-900 dark:ring-yellow-300"
+            className="rounded-sm bg-yellow-300/90 px-0.5 py-0 text-slate-900 ring-1 ring-yellow-400"
           >
             {part}
           </mark>
