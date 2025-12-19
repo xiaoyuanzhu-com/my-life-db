@@ -1,9 +1,9 @@
 /**
- * Transcript Cleanup Digester
+ * Speech Recognition Cleanup Digester
  * Post-processes speech recognition results using LLM to fix transcription errors
  *
  * Depends on: speech-recognition digest (checked in digest(), not canDigest())
- * Produces: transcript-cleanup (cleaned JSON in same format as speech-recognition)
+ * Produces: speech-recognition-cleanup (cleaned JSON in same format as speech-recognition)
  *
  * Before sending to LLM:
  * - Removes speaker embeddings from the JSON
@@ -21,7 +21,7 @@ import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
 import { parseJsonFromLlmResponse } from '~/.server/utils/parse-json';
 
-const log = getLogger({ module: 'TranscriptCleanupDigester' });
+const log = getLogger({ module: 'SpeechRecognitionCleanupDigester' });
 
 // Supported audio MIME types (same as speech-recognition)
 const SUPPORTED_MIME_TYPES = new Set([
@@ -243,11 +243,11 @@ const JSON_SCHEMA = {
 };
 
 /**
- * Transcript Cleanup Digester
+ * Speech Recognition Cleanup Digester
  * Post-processes speech recognition results using LLM
  */
-export class TranscriptCleanupDigester implements Digester {
-  readonly name = 'transcript-cleanup';
+export class SpeechRecognitionCleanupDigester implements Digester {
+  readonly name = 'speech-recognition-cleanup';
   readonly label = 'Speech Recognition Cleanup';
   readonly description = 'Polish and fix speech recognition results using LLM';
 
@@ -302,7 +302,7 @@ export class TranscriptCleanupDigester implements Digester {
       return [
         {
           filePath,
-          digester: 'transcript-cleanup',
+          digester: 'speech-recognition-cleanup',
           status: 'completed',
           content: null,
           sqlarName: null,
@@ -338,7 +338,7 @@ export class TranscriptCleanupDigester implements Digester {
     return [
       {
         filePath,
-        digester: 'transcript-cleanup',
+        digester: 'speech-recognition-cleanup',
         status: 'completed',
         content: JSON.stringify(cleanedResult, null, 2),
         sqlarName: null,

@@ -10,7 +10,7 @@ import { DocToMarkdownDigester } from './digesters/doc-to-markdown';
 import { DocToScreenshotDigester } from './digesters/doc-to-screenshot';
 import { SpeechRecognitionDigester } from './digesters/speech-recognition';
 import { SpeakerEmbeddingDigester } from './digesters/speaker-embedding';
-import { TranscriptCleanupDigester } from './digesters/transcript-cleanup';
+import { SpeechRecognitionCleanupDigester } from './digesters/speech-recognition-cleanup';
 import { ImageOcrDigester } from './digesters/image-ocr';
 import { ImageCaptioningDigester } from './digesters/image-captioning';
 import { TagsDigester } from './digesters/tags';
@@ -60,9 +60,9 @@ export function initializeDigesters(): void {
   //    Produces: speaker-embedding (extracts speaker embeddings and auto-clusters into people)
   globalDigesterRegistry.register(new SpeakerEmbeddingDigester());
 
-  // 6. TranscriptCleanupDigester (depends on speech-recognition)
-  //    Produces: transcript-cleanup (LLM-polished transcript)
-  globalDigesterRegistry.register(new TranscriptCleanupDigester());
+  // 6. SpeechRecognitionCleanupDigester (depends on speech-recognition)
+  //    Produces: speech-recognition-cleanup (LLM-polished transcript)
+  globalDigesterRegistry.register(new SpeechRecognitionCleanupDigester());
 
   // 7. ImageOcrDigester (no dependencies)
   //    Produces: image-ocr (extracts text from images)

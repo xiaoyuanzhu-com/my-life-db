@@ -172,9 +172,9 @@ Digesters execute in registration order. Order matters for dependencies:
    - Outputs: `speaker-embedding`
    - Extracts speaker embeddings for speaker identification
 
-5. **TranscriptCleanupDigester** (depends on speech-recognition)
-   - Label: "Transcript Cleanup"
-   - Outputs: `transcript-cleanup`
+5. **SpeechRecognitionCleanupDigester** (depends on speech-recognition)
+   - Label: "Speech Recognition Cleanup"
+   - Outputs: `speech-recognition-cleanup`
    - Uses LLM to polish and fix speech recognition results
 
 6. **ImageOcrDigester** (no dependencies)
@@ -425,7 +425,7 @@ flowchart TD
 
     subgraph "Round 2 - Dependent Processing"
         SR --> |"cascades"| SE["👤 speaker-embedding"]
-        SR --> |"cascades"| TC["✨ transcript-cleanup"]
+        SR --> |"cascades"| TC["✨ speech-recognition-cleanup"]
         UCC --> |"cascades"| UCSUM["📋 url-crawl-summary"]
     end
 
@@ -471,7 +471,7 @@ flowchart TD
 | Round | Digesters | Description |
 |-------|-----------|-------------|
 | **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
-| **2** | `speaker-embedding`, `transcript-cleanup`, `url-crawl-summary` | Depends on Round 1 outputs |
+| **2** | `speaker-embedding`, `speech-recognition-cleanup`, `url-crawl-summary` | Depends on Round 1 outputs |
 | **3** | `tags`, `search-keyword`, `search-semantic` | Final processing, cascaded from any content producer |
 
 ### Reset Triggers
@@ -485,7 +485,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
-  'speech-recognition': ['speaker-embedding', 'transcript-cleanup', 'tags', 'search-keyword', 'search-semantic'],
+  'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],  // Summary can improve tags
 };
 ```

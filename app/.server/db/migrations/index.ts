@@ -36,6 +36,7 @@ import migration033 from './033_rename_person_to_people';
 import migration034 from './034_create_processing_locks';
 import migration035 from './035_add_screenshot_sqlar_to_files';
 import migration036 from './036_delete_slug_digests';
+import migration037 from './037_rename_transcript_cleanup_digester';
 import { getLogger } from '~/.server/log/logger';
 
 const log = getLogger({ module: 'DBMigrations' });
@@ -85,6 +86,7 @@ export const migrations: Migration[] = [
   migration034,
   migration035,
   migration036,
+  migration037,
 ];
 
 /**
