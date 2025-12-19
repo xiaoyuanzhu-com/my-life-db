@@ -11,6 +11,7 @@ import { DocToScreenshotDigester } from './digesters/doc-to-screenshot';
 import { SpeechRecognitionDigester } from './digesters/speech-recognition';
 import { SpeakerEmbeddingDigester } from './digesters/speaker-embedding';
 import { SpeechRecognitionCleanupDigester } from './digesters/speech-recognition-cleanup';
+import { SpeechRecognitionSummaryDigester } from './digesters/speech-recognition-summary';
 import { ImageOcrDigester } from './digesters/image-ocr';
 import { ImageCaptioningDigester } from './digesters/image-captioning';
 import { TagsDigester } from './digesters/tags';
@@ -64,27 +65,31 @@ export function initializeDigesters(): void {
   //    Produces: speech-recognition-cleanup (LLM-polished transcript)
   globalDigesterRegistry.register(new SpeechRecognitionCleanupDigester());
 
-  // 7. ImageOcrDigester (no dependencies)
+  // 7. SpeechRecognitionSummaryDigester (depends on speech-recognition)
+  //    Produces: speech-recognition-summary (markdown summary of transcript)
+  globalDigesterRegistry.register(new SpeechRecognitionSummaryDigester());
+
+  // 8. ImageOcrDigester (no dependencies)
   //    Produces: image-ocr (extracts text from images)
   globalDigesterRegistry.register(new ImageOcrDigester());
 
-  // 8. ImageCaptioningDigester (no dependencies)
+  // 9. ImageCaptioningDigester (no dependencies)
   //    Produces: image-captioning (generates captions for images)
   globalDigesterRegistry.register(new ImageCaptioningDigester());
 
-  // 9. SummaryDigester (depends on content-md)
-  //    Produces: summary
+  // 10. SummaryDigester (depends on content-md)
+  //     Produces: summary
   globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
-  // 10. TagsDigester (depends on content-md, independent of summary)
+  // 11. TagsDigester (depends on content-md, independent of summary)
   //     Produces: tags
   globalDigesterRegistry.register(new TagsDigester());
 
-  // 11. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  // 12. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-keyword
   globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 12. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  // 13. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-semantic
   globalDigesterRegistry.register(new SearchSemanticDigester());
 

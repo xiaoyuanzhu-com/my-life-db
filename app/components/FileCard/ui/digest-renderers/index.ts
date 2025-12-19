@@ -17,6 +17,7 @@ import { DocToMarkdownRenderer } from './doc-to-markdown';
 import { DocToScreenshotRenderer } from './doc-to-screenshot';
 import { SpeakerEmbeddingRenderer } from './speaker-embedding';
 import { SpeechRecognitionCleanupRenderer } from './speech-recognition-cleanup';
+import { SpeechRecognitionSummaryRenderer } from './speech-recognition-summary';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -41,6 +42,7 @@ const renderers: Record<string, DigestRenderer> = {
   'doc-to-screenshot': DocToScreenshotRenderer,
   'speaker-embedding': SpeakerEmbeddingRenderer,
   'speech-recognition-cleanup': SpeechRecognitionCleanupRenderer,
+  'speech-recognition-summary': SpeechRecognitionSummaryRenderer,
 };
 
 /**
