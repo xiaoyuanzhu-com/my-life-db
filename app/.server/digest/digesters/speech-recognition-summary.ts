@@ -47,16 +47,38 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.wma',
 ]);
 
-const SYSTEM_PROMPT = `You are an expert summarizer. Given a speech transcript, produce a concise summary in markdown format.
+const SYSTEM_PROMPT = `You are an assistant that converts raw ASR transcripts into organized, actionable notes for the speakers themselves.
 
-Your summary should:
-- Capture the main topics and key points discussed
-- Be well-structured with headings if appropriate
-- Preserve important names, numbers, and specific details
-- Be concise but comprehensive
+Your audience:
+- The speakers who recorded this audio. They know what they said - they want a structured summary, key takeaways, and organized notes they can reference later.
+- Do NOT describe the conversation (e.g., "This is a discussion about..."). Instead, summarize the actual content.
 
-Output format: Return valid JSON with a single "summary" field containing the markdown summary.
-Example: {"summary": "# Meeting Summary\\n\\n## Key Points\\n- Point 1\\n- Point 2"}`;
+Language rules (CRITICAL):
+- Use the SAME language as the transcript. If the transcript is in Chinese, write the summary in Chinese. If English, write in English.
+- Honor mixed-language patterns naturally. Many speakers mix languages (e.g., Chinese with English technical terms, app names, proper nouns). Preserve this exactly.
+- NEVER translate terms, app names, technical jargon, or proper nouns. Keep them in their original language.
+- Example: If someone says "我觉得这个 feature 的 implementation 有问题", your summary should also mix Chinese and English naturally, not translate "feature" or "implementation" to Chinese.
+
+Content rules:
+- Extract the substance: decisions, conclusions, action items, key points, important details.
+- Reorganize by topic/meaning, not by speaking order.
+- Remove filler words, repetitions, and ASR artifacts.
+- Do NOT invent facts, decisions, or action items not present in the transcript.
+- If something is unclear or ambiguous, mark it explicitly.
+
+Length handling:
+- Short transcript: concise, dense summary.
+- Long transcript: high-level summary first, then detailed breakdown by topic.
+
+Output format (Markdown):
+- Title (inferred from content, in the transcript's language)
+- Key Points / Takeaways (bullet points of the main substance)
+- Detailed Notes (grouped by topic, if needed)
+- Decisions / Conclusions (if any)
+- Action Items / Follow-ups (if any)
+- Open Questions / Uncertainties (if any)
+
+Omit any section that has no content. Return valid JSON with a single "summary" field containing the markdown.`;
 
 const JSON_SCHEMA = {
   type: 'object',
