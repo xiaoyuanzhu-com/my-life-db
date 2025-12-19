@@ -15,11 +15,11 @@ import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import type {
   HaidSpeechRecognitionResponse,
-  HaidSpeechRecognitionSegment,
   HaidSpeechRecognitionSpeaker,
 } from '~/.server/vendors/haid';
 import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
+import { parseJsonFromLlmResponse } from '~/.server/utils/parse-json';
 
 const log = getLogger({ module: 'TranscriptCleanupDigester' });
 
@@ -96,7 +96,17 @@ function buildSpeakerSimilarityMatrix(
 }
 
 /**
- * Prepare transcript for LLM by removing embeddings and adding similarity matrix
+ * Segment without words for LLM processing
+ */
+interface PreparedSegment {
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+}
+
+/**
+ * Prepare transcript for LLM by removing embeddings, words, and adding similarity matrix
  */
 interface PreparedTranscript {
   request_id: string;
@@ -104,7 +114,7 @@ interface PreparedTranscript {
   text: string;
   language: string;
   model: string;
-  segments: HaidSpeechRecognitionSegment[];
+  segments: PreparedSegment[];
   speakers?: Array<{
     speaker_id: string;
     total_duration: number;
@@ -122,7 +132,13 @@ function prepareTranscriptForLlm(
     text: speechResult.text,
     language: speechResult.language,
     model: speechResult.model,
-    segments: speechResult.segments,
+    // Strip words from segments to reduce token usage
+    segments: speechResult.segments.map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      text: seg.text,
+      speaker: seg.speaker,
+    })),
   };
 
   if (speechResult.speakers && speechResult.speakers.length > 0) {
@@ -141,14 +157,29 @@ function prepareTranscriptForLlm(
 }
 
 /**
- * Merge cleaned segments back with original embeddings
+ * Merge cleaned segments back with original embeddings and words
  */
 function mergeCleanedWithOriginal(
   cleaned: PreparedTranscript,
   original: HaidSpeechRecognitionResponse
 ): HaidSpeechRecognitionResponse {
+  // Create a map of original segments by index for word restoration
+  const mergedSegments = cleaned.segments.map((cleanedSeg, index) => {
+    const originalSeg = original.segments[index];
+    return {
+      ...cleanedSeg,
+      // Restore original words (LLM only edits segment-level text)
+      words: originalSeg?.words ?? [],
+    };
+  });
+
   return {
-    ...cleaned,
+    request_id: cleaned.request_id,
+    processing_time_ms: cleaned.processing_time_ms,
+    text: cleaned.text,
+    language: cleaned.language,
+    model: cleaned.model,
+    segments: mergedSegments,
     speakers: original.speakers, // Restore original speakers with embeddings
   };
 }
@@ -181,22 +212,8 @@ const JSON_SCHEMA = {
           end: { type: 'number' },
           text: { type: 'string' },
           speaker: { type: 'string' },
-          words: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                word: { type: 'string' },
-                start: { type: 'number' },
-                end: { type: 'number' },
-                speaker: { type: ['string', 'null'] },
-              },
-              required: ['word', 'start', 'end'],
-              additionalProperties: false,
-            },
-          },
         },
-        required: ['start', 'end', 'text', 'speaker', 'words'],
+        required: ['start', 'end', 'text', 'speaker'],
         additionalProperties: false,
       },
     },
@@ -311,7 +328,7 @@ export class TranscriptCleanupDigester implements Digester {
     });
 
     // Parse cleaned result
-    const cleanedPrepared = JSON.parse(response.content) as PreparedTranscript;
+    const cleanedPrepared = parseJsonFromLlmResponse(response.content) as PreparedTranscript;
 
     // Merge cleaned segments back with original embeddings
     const cleanedResult = mergeCleanedWithOriginal(cleanedPrepared, speechResult);

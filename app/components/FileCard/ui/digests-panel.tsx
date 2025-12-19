@@ -234,9 +234,9 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                 <div className="flex items-center gap-2">
                   {(() => {
                     const isResetting = resettingDigester === stage.key;
-                    const canReset = stage.status !== 'in-progress' && stage.status !== 'to-do' && !isResetting;
+                    const canReset = stage.status !== 'in-progress' && !isResetting;
 
-                    if (isResetting) {
+                    if (isResetting || stage.status === 'in-progress') {
                       return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
                     }
 
@@ -249,7 +249,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                           canReset && 'cursor-pointer hover:opacity-70 transition-opacity',
                           !canReset && 'cursor-default'
                         )}
-                        title={canReset ? 'Click to re-run' : undefined}
+                        title={canReset ? 'Click to run' : undefined}
                       >
                         <StatusIcon status={stage.status} />
                       </button>
