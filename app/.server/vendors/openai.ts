@@ -15,6 +15,8 @@ export interface OpenAICompletionOptions {
   temperature?: number;
   maxTokens?: number;
   jsonSchema?: Record<string, unknown>; // JSON Schema for structured output
+  frequencyPenalty?: number; // -2.0 to 2.0, penalizes repeated tokens
+  presencePenalty?: number;  // -2.0 to 2.0, penalizes tokens that appeared
 }
 
 export interface OpenAICompletionResponse {
@@ -149,6 +151,14 @@ export async function callOpenAICompletion(
 
   if (options.maxTokens) {
     requestParams.max_completion_tokens = options.maxTokens;
+  }
+
+  if (options.frequencyPenalty !== undefined) {
+    requestParams.frequency_penalty = options.frequencyPenalty;
+  }
+
+  if (options.presencePenalty !== undefined) {
+    requestParams.presence_penalty = options.presencePenalty;
   }
 
   // Enable structured JSON output if schema provided

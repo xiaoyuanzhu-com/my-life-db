@@ -325,6 +325,8 @@ export class TranscriptCleanupDigester implements Digester {
       prompt: JSON.stringify(prepared, null, 2),
       jsonSchema: JSON_SCHEMA,
       temperature: 0.3,
+      frequencyPenalty: 0.5, // Reduce repetition of tokens
+      presencePenalty: 0.3,  // Discourage repeating any token that appeared
     });
 
     // Parse cleaned result
