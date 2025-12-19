@@ -207,7 +207,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         return next;
       });
     }
-  }, [loadingPages]);
+  }, [loadingPages, pages.size]);
 
   // Load older page
   const loadOlderPage = useCallback(async (fromPageIndex: number) => {
@@ -577,6 +577,27 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   // Calculate total server items (used for error/empty state checks)
   const totalItems = Array.from(pages.values()).reduce((sum, page) => sum + page.items.length, 0);
 
+  // Render pages - compute sorted indices before early returns to satisfy React hooks rules
+  const sortedPageIndices = [...pageIndices].sort((a, b) => b - a); // Descending: oldest (highest) first
+
+  // Compute flat list of files in display order (oldest first) for modal navigation
+  // This matches the render order: oldest pages first, items reversed within each page
+  // Must be called unconditionally (before early returns) to satisfy React hooks rules
+  const allFilesForNavigation = useMemo(() => {
+    const files: InboxItem[] = [];
+    for (const pageIndex of sortedPageIndices) {
+      const page = pages.get(pageIndex);
+      if (!page) continue;
+      // Reverse items within page for chat order, filter deleted items
+      const reversedItems = page.items
+        .filter(item => !deletedPaths.has(item.path))
+        .slice()
+        .reverse();
+      files.push(...reversedItems);
+    }
+    return files;
+  }, [sortedPageIndices, pages, deletedPaths]);
+
   // Error state - only block UI if no data to show at all
   if (error && visiblePendingItems.length === 0 && totalItems === 0) {
     return (
@@ -594,26 +615,6 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       </div>
     );
   }
-
-  // Render pages
-  const sortedPageIndices = [...pageIndices].sort((a, b) => b - a); // Descending: oldest (highest) first
-
-  // Compute flat list of files in display order (oldest first) for modal navigation
-  // This matches the render order: oldest pages first, items reversed within each page
-  const allFilesForNavigation = useMemo(() => {
-    const files: InboxItem[] = [];
-    for (const pageIndex of sortedPageIndices) {
-      const page = pages.get(pageIndex);
-      if (!page) continue;
-      // Reverse items within page for chat order, filter deleted items
-      const reversedItems = page.items
-        .filter(item => !deletedPaths.has(item.path))
-        .slice()
-        .reverse();
-      files.push(...reversedItems);
-    }
-    return files;
-  }, [sortedPageIndices, pages, deletedPaths]);
 
   return (
     <ModalNavigationProvider files={allFilesForNavigation}>

@@ -73,7 +73,7 @@ export function EpubContent({ file }: EpubContentProps) {
         bookRef.current = null;
       }
     };
-  }, [isReady, file.path]);
+  }, [isReady, file]);
 
   // Ref callback to detect when viewer div is mounted
   const setViewerRef = useCallback((node: HTMLDivElement | null) => {

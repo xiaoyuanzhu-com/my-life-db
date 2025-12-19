@@ -85,7 +85,7 @@ export function EpubModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, 
         bookRef.current = null;
       }
     };
-  }, [open, isReady, file.path]);
+  }, [open, isReady, file]);
 
   // Reset ready state when dialog closes
   useEffect(() => {

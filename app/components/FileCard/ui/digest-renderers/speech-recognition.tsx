@@ -7,7 +7,6 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { User } from 'lucide-react';
 import { cn } from '~/lib/utils';
-import type { DigestRendererProps } from './index';
 
 interface Segment {
   start: number;

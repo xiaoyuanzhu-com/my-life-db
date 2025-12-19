@@ -139,16 +139,20 @@ export function useSelectionSafe() {
   );
   const isSelected = useCallback((path: string) => snapshot.selectedPaths.has(path), [snapshot.selectedPaths]);
 
-  if (!context) return null;
+  // useMemo must be called unconditionally (before early return) to satisfy React hooks rules
+  const result = useMemo(() => {
+    if (!context) return null;
+    return {
+      selectedPaths: snapshot.selectedPaths,
+      isSelectionMode: snapshot.isSelectionMode,
+      toggleSelection: context.toggleSelection,
+      clearSelection: context.clearSelection,
+      enterSelectionMode: context.enterSelectionMode,
+      isSelected,
+    };
+  }, [context, snapshot.selectedPaths, snapshot.isSelectionMode, isSelected]);
 
-  return useMemo(() => ({
-    selectedPaths: snapshot.selectedPaths,
-    isSelectionMode: snapshot.isSelectionMode,
-    toggleSelection: context.toggleSelection,
-    clearSelection: context.clearSelection,
-    enterSelectionMode: context.enterSelectionMode,
-    isSelected,
-  }), [snapshot.selectedPaths, snapshot.isSelectionMode, context.toggleSelection, context.clearSelection, context.enterSelectionMode, isSelected]);
+  return result;
 }
 
 /**
