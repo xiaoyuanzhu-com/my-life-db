@@ -50,6 +50,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
+  'image-objects': ['tags', 'search-keyword', 'search-semantic'],
   'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'speech-recognition-summary', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],
   'speech-recognition-summary': ['tags', 'search-keyword', 'search-semantic'],

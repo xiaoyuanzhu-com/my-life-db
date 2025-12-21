@@ -14,6 +14,7 @@ import { SpeechRecognitionCleanupDigester } from './digesters/speech-recognition
 import { SpeechRecognitionSummaryDigester } from './digesters/speech-recognition-summary';
 import { ImageOcrDigester } from './digesters/image-ocr';
 import { ImageCaptioningDigester } from './digesters/image-captioning';
+import { ImageObjectsDigester } from './digesters/image-objects';
 import { TagsDigester } from './digesters/tags';
 import { SearchKeywordDigester } from './digesters/search-keyword';
 import { SearchSemanticDigester } from './digesters/search-semantic';
@@ -77,19 +78,23 @@ export function initializeDigesters(): void {
   //    Produces: image-captioning (generates captions for images)
   globalDigesterRegistry.register(new ImageCaptioningDigester());
 
-  // 10. SummaryDigester (depends on content-md)
+  // 10. ImageObjectsDigester (no dependencies)
+  //     Produces: image-objects (detects objects with descriptions, categories, tags, bounding boxes)
+  globalDigesterRegistry.register(new ImageObjectsDigester());
+
+  // 11. SummaryDigester (depends on content-md)
   //     Produces: summary
   globalDigesterRegistry.register(new UrlCrawlSummaryDigester());
 
-  // 11. TagsDigester (depends on content-md, independent of summary)
+  // 12. TagsDigester (depends on content-md, independent of summary)
   //     Produces: tags
   globalDigesterRegistry.register(new TagsDigester());
 
-  // 12. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
+  // 13. SearchKeywordDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-keyword
   globalDigesterRegistry.register(new SearchKeywordDigester());
 
-  // 13. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
+  // 14. SearchSemanticDigester (depends on content-md, uses summary + tags if available)
   //     Produces: search-semantic
   globalDigesterRegistry.register(new SearchSemanticDigester());
 

@@ -87,7 +87,7 @@ Example: a1b2c3d4e5f6/screenshot/page.png
 **Users should see a deterministic set of digests for each file based on file type alone.**
 
 When a user sees a file, they should know exactly which digests to expect:
-- Image file → `image-ocr`, `image-captioning`, `tags`, `search-keyword`, `search-semantic`
+- Image file → `image-ocr`, `image-captioning`, `image-objects`, `tags`, `search-keyword`, `search-semantic`
 - Audio file → `speech-recognition`, `speaker-embedding`, `tags`, `search-keyword`, `search-semantic`
 - URL file → `url-crawl-content`, `url-crawl-screenshot`, `url-crawl-summary`, `tags`, `search-keyword`, `search-semantic`
 
@@ -187,27 +187,34 @@ Digesters execute in registration order. Order matters for dependencies:
    - Outputs: `image-ocr`
    - Extracts text from images using OCR
 
-7. **ImageCaptioningDigester** (no dependencies)
+8. **ImageCaptioningDigester** (no dependencies)
    - Label: "Image Captioning"
    - Outputs: `image-captioning`
    - Generates captions for images
 
-8. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
-   - Label: "Summary"
-   - Outputs: `url-crawl-summary`
-   - Generates AI summary of crawled content
+9. **ImageObjectsDigester** (no dependencies)
+   - Label: "Image Objects"
+   - Outputs: `image-objects`
+   - Detects objects in images with descriptions, categories, tags, and bounding boxes
+   - Uses vision model (google/gemini-2.5-flash-preview)
+   - Returns JSON with object name, description (including visible text), category, tags, and normalized bounding box coordinates
 
-9. **TagsDigester** (depends on text content)
-   - Label: "Tags"
-   - Outputs: `tags`
-   - Generates semantic tags for file content
+10. **UrlCrawlSummaryDigester** (depends on url-crawl-content)
+    - Label: "Summary"
+    - Outputs: `url-crawl-summary`
+    - Generates AI summary of crawled content
 
-10. **SearchKeywordDigester** (depends on text content)
+11. **TagsDigester** (depends on text content)
+    - Label: "Tags"
+    - Outputs: `tags`
+    - Generates semantic tags for file content
+
+12. **SearchKeywordDigester** (depends on text content)
     - Label: "Keyword Search"
     - Outputs: `search-keyword`
     - Indexes content in Meilisearch for full-text search
 
-11. **SearchSemanticDigester** (depends on text content)
+13. **SearchSemanticDigester** (depends on text content)
     - Label: "Semantic Search"
     - Outputs: `search-semantic`
     - Generates embeddings and indexes in Qdrant for vector search
@@ -401,6 +408,7 @@ Each file type has a deterministic set of digesters that apply to it. This is ba
 | speaker-embedding | - | - | - | ✓ | - |
 | image-ocr | - | - | ✓ | - | - |
 | image-captioning | - | - | ✓ | - | - |
+| image-objects | - | - | ✓ | - | - |
 | url-crawl-summary | ✓ | - | - | - | - |
 | tags | ✓ | ✓ | ✓ | ✓ | ✓ |
 | search-keyword | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -420,6 +428,7 @@ flowchart TD
         FILE --> |"audio"| SR["🎤 speech-recognition"]
         FILE --> |"image"| IO["🔍 image-ocr"]
         FILE --> |"image"| IC["📷 image-captioning"]
+        FILE --> |"image"| IOBJ["🎯 image-objects"]
         FILE --> |"document"| DTM["📝 doc-to-markdown"]
         FILE --> |"document"| DTS["🖼️ doc-to-screenshot"]
         FILE --> |"URL file"| UC["🌐 url-crawl"]
@@ -439,6 +448,7 @@ flowchart TD
         SR --> |"cascades"| TAGS["🏷️ tags"]
         IO --> |"cascades"| TAGS
         IC --> |"cascades"| TAGS
+        IOBJ --> |"cascades"| TAGS
         DTM --> |"cascades"| TAGS
         UCC --> |"cascades"| TAGS
         UCSUM --> |"cascades"| TAGS
@@ -447,6 +457,7 @@ flowchart TD
         SR --> |"cascades"| SK["🔎 search-keyword"]
         IO --> |"cascades"| SK
         IC --> |"cascades"| SK
+        IOBJ --> |"cascades"| SK
         DTM --> |"cascades"| SK
         UCC --> |"cascades"| SK
         SRSUM --> |"cascades"| SK
@@ -454,6 +465,7 @@ flowchart TD
         SR --> |"cascades"| SS["🧠 search-semantic"]
         IO --> |"cascades"| SS
         IC --> |"cascades"| SS
+        IOBJ --> |"cascades"| SS
         DTM --> |"cascades"| SS
         UCC --> |"cascades"| SS
         SRSUM --> |"cascades"| SS
@@ -462,6 +474,7 @@ flowchart TD
     style SR fill:#e1f5fe
     style IO fill:#e1f5fe
     style IC fill:#e1f5fe
+    style IOBJ fill:#e1f5fe
     style DTM fill:#e1f5fe
     style DTS fill:#e1f5fe
     style UC fill:#e1f5fe
@@ -480,7 +493,7 @@ flowchart TD
 
 | Round | Digesters | Description |
 |-------|-----------|-------------|
-| **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
+| **1** | `speech-recognition`, `image-ocr`, `image-captioning`, `image-objects`, `doc-to-markdown`, `doc-to-screenshot`, `url-crawl` | Content extraction from source files |
 | **2** | `speaker-embedding`, `speech-recognition-cleanup`, `speech-recognition-summary`, `url-crawl-summary` | Depends on Round 1 outputs |
 | **3** | `tags`, `search-keyword`, `search-semantic` | Final processing, cascaded from any content producer |
 
@@ -495,6 +508,7 @@ const CASCADING_RESETS: Record<string, string[]> = {
   'doc-to-markdown': ['tags', 'search-keyword', 'search-semantic'],
   'image-ocr': ['tags', 'search-keyword', 'search-semantic'],
   'image-captioning': ['tags', 'search-keyword', 'search-semantic'],
+  'image-objects': ['tags', 'search-keyword', 'search-semantic'],
   'speech-recognition': ['speaker-embedding', 'speech-recognition-cleanup', 'speech-recognition-summary', 'tags', 'search-keyword', 'search-semantic'],
   'url-crawl-summary': ['tags'],  // Summary can improve tags
   'speech-recognition-summary': ['tags', 'search-keyword', 'search-semantic'],

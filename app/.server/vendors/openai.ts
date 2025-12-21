@@ -17,6 +17,11 @@ export interface OpenAICompletionOptions {
   jsonSchema?: Record<string, unknown>; // JSON Schema for structured output
   frequencyPenalty?: number; // -2.0 to 2.0, penalizes repeated tokens
   presencePenalty?: number;  // -2.0 to 2.0, penalizes tokens that appeared
+  images?: Array<{
+    type: 'base64' | 'url';
+    data: string; // base64 data or URL
+    mediaType?: string; // e.g., 'image/jpeg', 'image/png'
+  }>;
 }
 
 export interface OpenAICompletionResponse {
@@ -138,10 +143,45 @@ export async function callOpenAICompletion(
     });
   }
 
-  messages.push({
-    role: 'user',
-    content: options.prompt,
-  });
+  // Build user message content (text or multimodal with images)
+  if (options.images && options.images.length > 0) {
+    const contentParts: OpenAI.Chat.ChatCompletionContentPart[] = [];
+
+    // Add images first
+    for (const image of options.images) {
+      if (image.type === 'base64') {
+        contentParts.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${image.mediaType || 'image/jpeg'};base64,${image.data}`,
+          },
+        });
+      } else {
+        contentParts.push({
+          type: 'image_url',
+          image_url: {
+            url: image.data,
+          },
+        });
+      }
+    }
+
+    // Add text prompt
+    contentParts.push({
+      type: 'text',
+      text: options.prompt,
+    });
+
+    messages.push({
+      role: 'user',
+      content: contentParts,
+    });
+  } else {
+    messages.push({
+      role: 'user',
+      content: options.prompt,
+    });
+  }
 
   const requestParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
     model,
