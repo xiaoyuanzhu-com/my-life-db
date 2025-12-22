@@ -42,61 +42,71 @@ const SUPPORTED_EXTENSIONS = new Set([
 
 // JSON Schema for structured output
 const IMAGE_OBJECTS_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  title: 'ImageObjectAnnotations',
   type: 'object',
+  additionalProperties: false,
+  required: ['objects'],
   properties: {
     objects: {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: false,
+        required: ['id', 'title', 'name', 'category', 'description', 'bbox', 'certainty'],
         properties: {
+          id: {
+            type: 'string',
+            description: 'Unique identifier within this response (e.g., obj_001)',
+          },
+          title: {
+            type: 'string',
+            description: 'Concise, human-readable, unique title; may implicitly express Type',
+          },
           name: {
             type: 'string',
-            description: 'Name of the detected object',
-          },
-          description: {
-            type: 'string',
-            description: 'Detailed description of the object, including any visible text',
+            description: 'Stable generic noun (e.g., book, laptop, bottle)',
           },
           category: {
             type: 'string',
-            description: 'Category of the object (e.g., person, animal, vehicle, furniture, text, food, electronics)',
+            description: 'High-level classification (e.g., electronics, book, text)',
           },
-          bounding_box: {
-            type: 'object',
-            properties: {
-              x: { type: 'number', description: 'X coordinate of top-left corner (0-1 normalized)' },
-              y: { type: 'number', description: 'Y coordinate of top-left corner (0-1 normalized)' },
-              width: { type: 'number', description: 'Width of bounding box (0-1 normalized)' },
-              height: { type: 'number', description: 'Height of bounding box (0-1 normalized)' },
+          description: {
+            type: 'string',
+            description: 'Visible attributes and readable text verbatim; no hallucination',
+          },
+          bbox: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 4,
+            items: {
+              type: 'number',
+              minimum: 0,
+              maximum: 1,
             },
-            required: ['x', 'y', 'width', 'height'],
-            additionalProperties: false,
+            description: '[x1, y1, x2, y2] normalized to [0,1]',
           },
-          confidence: {
-            type: 'number',
-            description: 'Confidence score for the detection (0-1)',
+          certainty: {
+            type: 'string',
+            enum: ['certain', 'likely', 'uncertain'],
+            description: 'Confidence level based on visual evidence',
           },
         },
-        required: ['name', 'description', 'category', 'bounding_box'],
-        additionalProperties: false,
       },
     },
   },
-  required: ['objects'],
-  additionalProperties: false,
 };
 
+export type Certainty = 'certain' | 'likely' | 'uncertain';
+
 export interface DetectedObject {
+  id: string;
+  title: string;
   name: string;
-  description: string;
   category: string;
-  bounding_box: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  confidence?: number;
+  description: string;
+  bbox: [number, number, number, number];
+  certainty: Certainty;
 }
 
 export interface ImageObjectsResult {
@@ -172,19 +182,144 @@ export class ImageObjectsDigester implements Digester {
       mediaType = mimeMap[ext] || 'image/jpeg';
     }
 
+    // System prompt for image object detection
+    const systemPrompt = `## SYSTEM PROMPT — Image Object Detection for Search & Indexing
+
+You are a high-precision image annotation system for object search and spatial indexing.
+
+Your task is to identify **all meaningful visible objects** in an image and return structured JSON annotations.
+
+This system supports **fuzzy identification**: objects that are partially visible or unclear should still be included when there is visual evidence, using conservative language and uncertainty markers.
+
+---
+
+### Inclusion rules
+- Include:
+  - Physical objects, UI elements, signs, labels, and readable text.
+  - Objects that are partially occluded, low-resolution, or unclear **if they can be reasonably identified**.
+- Exclude:
+  - Pure background textures with no standalone identity.
+  - Speculation with no visual basis.
+
+---
+
+### Uncertainty handling
+- Do NOT hallucinate specific brands, models, or text that are not readable.
+- If an object is unclear:
+  - Include it with a generic identification.
+  - Use conservative language such as "appears to be", "likely", or "possibly".
+  - Set the \`certainty\` field appropriately.
+- If text is present but unreadable, explicitly say so.
+
+---
+
+### Bounding boxes
+- Format: \`[x1, y1, x2, y2]\`
+- Coordinates are normalized to \`[0,1]\`
+- \`(0,0)\` is top-left; \`(1,1)\` is bottom-right
+- Must satisfy: \`x1 < x2\`, \`y1 < y2\`
+- Boxes must tightly enclose **only the visible pixels** of the object
+- If partially out of frame, box the visible portion only
+
+---
+
+### Object Semantics: Type vs Category (IMPORTANT)
+
+These are **two distinct concepts** and MUST NOT be conflated.
+
+#### Category (mandatory, machine-facing)
+- \`category\` is a **stable, high-level classification** used for grouping and filtering.
+- Use a small, consistent vocabulary.
+- Do NOT over-specify.
+
+Examples: electronics, book, text, furniture, person, food, sign, clothing, container, tool, animal, plant, vehicle, ui_element
+
+#### Type (human-facing, used in title)
+- \`Type\` is a **human-readable object label**.
+- It appears ONLY in the \`title\`.
+- \`Type\` may be **implicit** and does NOT need to be explicitly written if the title already expresses it.
+
+##### When Type is implicit (no prefix)
+Use a bare noun title when self-explanatory:
+- "MacBook"
+- "Lip Balm"
+- "Water Bottle"
+- "Desk Lamp"
+
+##### When Type must be explicit
+Use \`<Type>: <Identifier>\` only when it improves clarity:
+- "Book: 爱你就像爱生命"
+- "Sign: EXIT"
+- "Label: INGREDIENTS"
+- "Poster: WWDC 2023"
+- "Text: 常识"
+
+##### What NOT to do
+- Do NOT mirror \`category\` into the title (e.g., "Electronics: MacBook").
+- Do NOT force all titles into \`<Type>: ...\` format.
+
+---
+
+### Title rules
+- Titles must be:
+  - Concise (2–6 words when possible)
+  - Human-readable
+  - Search-friendly
+  - **Unique within the image**
+- If multiple similar objects exist, append numeric suffixes in left-to-right order:
+  - "MacBook 1", "MacBook 2"
+  - "Book 1", "Book 2"
+
+---
+
+### Naming & descriptions
+- \`name\`: stable, generic noun phrase (e.g., "book", "laptop", "bottle").
+- \`description\`:
+  - Describe visible attributes only.
+  - Include readable text verbatim (preserve case and symbols).
+  - If unreadable, state that clearly.
+- Text handling:
+  - If text is likely searchable, also create a separate object with \`category: text\`.
+
+---
+
+### Deduplication
+- Each physical object appears exactly once.
+- Do NOT merge distinct objects.
+- Do NOT duplicate objects across categories.
+
+---
+
+### Output requirements
+- Output ONLY valid JSON.
+- No markdown, no explanations, no commentary.
+- Must conform exactly to the provided JSON schema.`;
+
+    // User prompt
+    const userPrompt = `Analyze the image and return JSON annotations for all visible objects.
+
+**Output for each object:**
+- id: unique identifier (e.g., obj_001, obj_002)
+- title: human-readable label, unique within this image
+- name: generic noun (e.g., "laptop", "book")
+- category: high-level type (e.g., electronics, book, text, furniture, person)
+- description: visible attributes; include readable text verbatim
+- bbox: [x1, y1, x2, y2] normalized to [0,1], tight around visible pixels
+- certainty: "certain" | "likely" | "uncertain"
+
+**Rules:**
+- Include partially visible or unclear objects when there is visual evidence
+- Do NOT hallucinate unreadable text, brands, or models
+- Bounding boxes must satisfy x1 < x2 and y1 < y2
+- Add numeric suffixes for duplicate titles (e.g., "Book 1", "Book 2")
+
+Output ONLY valid JSON matching the schema. No markdown or explanation.`;
+
     // Call vision model
     const result = await callOpenAICompletion({
       model: 'google/gemini-3-flash-preview',
-      systemPrompt: `You are an expert image analysis system. Your task is to detect and describe all visible objects in the image.
-
-For each object:
-1. Provide a clear name for the object
-2. Write a detailed description including any visible text (signs, labels, text on objects)
-3. Assign an appropriate category
-4. Estimate the bounding box coordinates (normalized 0-1, where 0,0 is top-left)
-
-Be thorough but focus on meaningful objects. Include text elements as separate objects when they are significant.`,
-      prompt: 'Analyze this image and detect all objects. For each object, provide: name, description (include any visible text), category, and bounding box coordinates. Return the results in JSON format.',
+      systemPrompt,
+      prompt: userPrompt,
       images: [
         {
           type: 'base64',

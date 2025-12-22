@@ -5,12 +5,8 @@
 
 import type { DigestRendererProps } from './index';
 
-export interface BoundingBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+/** Bounding box as [x1, y1, x2, y2] normalized to [0,1] */
+export type BoundingBox = [number, number, number, number];
 
 export interface ImageObjectsRendererProps extends DigestRendererProps {
   /** Callback when an object is clicked, passing its bounding box */
@@ -18,11 +14,13 @@ export interface ImageObjectsRendererProps extends DigestRendererProps {
 }
 
 interface DetectedObject {
+  id: string;
+  title: string;
   name: string;
-  description: string;
   category: string;
-  bounding_box: BoundingBox;
-  confidence?: number;
+  description: string;
+  bbox: BoundingBox;
+  certainty: 'certain' | 'likely' | 'uncertain';
 }
 
 interface ImageObjectsContent {
@@ -30,12 +28,13 @@ interface ImageObjectsContent {
 }
 
 /**
- * Calculate center point of a bounding box
+ * Calculate center point of a bounding box [x1, y1, x2, y2]
  */
 function getCenter(box: BoundingBox): { cx: number; cy: number } {
+  const [x1, y1, x2, y2] = box;
   return {
-    cx: box.x + box.width / 2,
-    cy: box.y + box.height / 2,
+    cx: (x1 + x2) / 2,
+    cy: (y1 + y2) / 2,
   };
 }
 
@@ -48,8 +47,8 @@ function sortByPosition(objects: DetectedObject[]): DetectedObject[] {
   const ROW_TOLERANCE = 0.1; // 10% tolerance for considering objects on same row
 
   return [...objects].sort((a, b) => {
-    const centerA = getCenter(a.bounding_box);
-    const centerB = getCenter(b.bounding_box);
+    const centerA = getCenter(a.bbox);
+    const centerB = getCenter(b.bbox);
 
     // If centers are on approximately the same row, sort by x
     if (Math.abs(centerA.cy - centerB.cy) < ROW_TOLERANCE) {
@@ -95,23 +94,23 @@ export function ImageObjectsRenderer({ content, onHighlightBoundingBox }: ImageO
   const sortedObjects = sortByPosition(objects);
 
   const handleClick = (obj: DetectedObject) => {
-    console.log('Object clicked:', obj.name, 'callback exists:', !!onHighlightBoundingBox);
+    console.log('Object clicked:', obj.title, 'callback exists:', !!onHighlightBoundingBox);
     if (onHighlightBoundingBox) {
-      onHighlightBoundingBox(obj.bounding_box);
+      onHighlightBoundingBox(obj.bbox);
     }
   };
 
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {sortedObjects.map((obj, i) => (
+      {sortedObjects.map((obj) => (
         <button
-          key={i}
+          key={obj.id}
           type="button"
           className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary/15 text-primary hover:bg-primary/25 transition-colors cursor-pointer"
           title={obj.description}
           onClick={() => handleClick(obj)}
         >
-          {obj.name}
+          {obj.title}
         </button>
       ))}
     </div>
