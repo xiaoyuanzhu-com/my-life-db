@@ -14,7 +14,7 @@ app/components/FileCard/
 ├── types.ts                    # Shared types (BaseCardProps, FileContentType, etc.)
 ├── utils.ts                    # Content detection, file actions (download, share, etc.)
 ├── file-card.tsx               # Thin dispatcher (~50 lines)
-├── navigation-modal.tsx        # Centralized modal with content routing
+├── file-modal.tsx              # Centralized modal (shell + content routing)
 ├── desktop-context-menu.tsx    # Desktop context menu wrapper (shadcn)
 ├── mobile-context-menu.tsx     # Mobile context menu implementation
 ├── ui/
@@ -38,21 +38,14 @@ app/components/FileCard/
 │   ├── doc-card.tsx            # Word documents (renders screenshot)
 │   ├── ppt-card.tsx            # PowerPoint files (renders screenshot)
 │   └── fallback-card.tsx       # Unknown file types (shows filename)
-├── modal-contents/             # Content components for NavigationModal
-│   ├── audio-content.tsx       # Custom audio player (speed, progress, sync)
-│   ├── video-content.tsx       # Video player with autoplay
-│   ├── image-content.tsx       # Image viewer with click-to-close
-│   ├── text-content.tsx        # Monaco editor with save support
-│   ├── pdf-content.tsx         # PDF viewer (react-pdf)
-│   └── epub-content.tsx        # EPUB reader (epub.js)
-└── modals/                     # [DEPRECATED] Legacy per-card modals
-    ├── index.ts                # Modal registry (kept for backwards compat)
-    ├── image-modal.tsx         # [Legacy] Full-screen image viewer
-    ├── video-modal.tsx         # [Legacy] Full-screen video player
-    ├── audio-modal.tsx         # [Legacy] Audio player with controls
-    ├── pdf-modal.tsx           # [Legacy] Scrollable PDF viewer
-    ├── epub-modal.tsx          # [Legacy] EPUB reader with pagination
-    └── fallback-modal.tsx      # [Legacy] Generic file info modal
+└── modal-contents/             # Pure content renderers (no Dialog wrapper)
+    ├── audio-content.tsx       # Custom audio player (speed, progress, sync)
+    ├── video-content.tsx       # Video player with autoplay
+    ├── image-content.tsx       # Image viewer with bounding box overlay
+    ├── text-content.tsx        # Monaco editor with save + unsaved dialog
+    ├── pdf-content.tsx         # PDF viewer (react-pdf)
+    ├── epub-content.tsx        # EPUB reader (epub.js)
+    └── fallback-content.tsx    # File info display
 ```
 
 ## Type Detection
@@ -344,26 +337,45 @@ export function ModalActionButtons({ actions }: { actions: ContextMenuAction[] }
 
 ### Modal Architecture
 
-The modal system uses a **centralized architecture** with content components:
+The modal system uses a **centralized architecture** where navigation is transparent to content:
 
 ```
-NavigationModal (shell)
-├── Dialog, actions, navigation, layout
-├── DigestsPanel (with audio sync for transcripts)
-└── ModalContentRenderer
-    ├── AudioContent   - Custom player with speed, progress
-    ├── VideoContent   - Native video with autoplay
-    ├── ImageContent   - Click-to-close image viewer
-    ├── TextContent    - Monaco editor with save
-    ├── PdfContent     - react-pdf viewer
-    └── EpubContent    - epub.js reader
+ModalNavigationProvider (context)
+├── children (cards, feed)
+└── FileModal (single centralized modal)
+    ├── Dialog (always mounted when open)
+    ├── ModalShell (close button, action buttons)
+    └── ModalLayout (A4 sizing, digests side-by-side/overlay, navigation)
+        ├── ContentPane (keyboard/swipe navigation)
+        │   └── <TypeContent /> (pure content renderer)
+        └── DigestsPane (when visible)
+            └── <DigestsPanel />
 ```
 
-**Why Centralized?**
-- Single Dialog stays mounted during file navigation (prevents flash)
-- Consistent actions (Download, Share, Digests) across all types
-- Shared layout, navigation, and digests panel logic
-- Content components are lazy-loaded for performance
+**Design Principles:**
+
+1. **Navigation as container feature**: Content components have no knowledge of navigation.
+   The `FileModal` consumes navigation context, `ModalLayout` handles keyboard/swipe.
+
+2. **Content components are pure renderers**: Each `*-content.tsx` only renders content.
+   - No Dialog wrapper
+   - No action buttons
+   - No layout concerns
+   - Just the file content with type-specific features
+
+3. **Communication via callbacks**: Content ↔ Modal ↔ DigestsPanel sync via props:
+   ```
+   FileModal
+   ├─ audioSync state ← AudioContent.onAudioSyncChange
+   │                  → DigestsPanel.audioSync (transcript highlighting)
+   ├─ imageObjectsSync → DigestsPanel (onHighlightBoundingBox)
+   │                   ← highlightedBox → ImageContent
+   └─ isDirty ← TextContent.onDirtyStateChange → close button indicator
+   ```
+
+4. **Each modal is an A4 rounded content with bg**: Content fills the rounded container.
+
+5. **Digests is another A4 div**: Shown side-by-side (wide screens) or as overlay (narrow).
 
 **Content Component Interface:**
 
@@ -378,21 +390,28 @@ interface AudioContentProps extends ContentProps {
   onAudioSyncChange?: (sync: AudioSyncState | null) => void;
 }
 
-// Text content exposes dirty state for unsaved changes
+// Image content receives highlight box from digests panel
+interface ImageContentProps extends ContentProps {
+  showDigests?: boolean;
+  onClose?: () => void;
+  highlightedBox?: BoundingBox | null;
+}
+
+// Text content exposes dirty state and handles its own unsaved dialog
 interface TextContentProps extends ContentProps {
   onDirtyStateChange?: (isDirty: boolean) => void;
 }
 ```
 
 **Common Modal UX:**
-- Raw file feel - content fills the modal
+- Raw file feel - content fills the A4-ratio container with rounded corners and background
 - Navigation between files while staying in modal (see Modal Navigation below)
 - Required DialogContent overrides for raw file modals:
   - `p-0` - no padding
   - `border-none` - no border
-  - `rounded-none` - no rounded corners
+  - `rounded-none` - no rounded corners (container has rounding)
   - `shadow-none` - no shadow
-  - `bg-transparent` - no background
+  - `bg-transparent` - no background (content provides bg)
   - `outline-none` - no focus ring
 
 ### Modal Sizing System
@@ -654,7 +673,8 @@ To add a new file type:
 2. Create `cards/new-type-card.tsx` implementing `BaseCardProps`
 3. Update `getFileContentType()` in `utils.ts` with detection logic
 4. Register in `cards/index.ts` registry
-5. (Optional) Create modal in `modals/` if custom preview needed
+5. Create `modal-contents/new-type-content.tsx` as pure content renderer
+6. Add case to `ModalContentRenderer` switch in `file-modal.tsx`
 
 ---
 
