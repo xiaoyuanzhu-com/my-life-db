@@ -97,12 +97,12 @@ export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev,
             className="w-full h-full flex items-center justify-center"
             onClick={() => !showDigests && onOpenChange(false)}
           >
-            <div className="relative">
+            <div className="rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] p-4 relative">
               <img
                 ref={imageRef}
                 src={src}
                 alt={file.name}
-                className="object-contain block"
+                className="object-contain block rounded"
                 style={{
                   maxWidth: '100%',
                   maxHeight: '100%',
@@ -115,8 +115,8 @@ export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev,
                 <div
                   className="absolute pointer-events-none animate-pulse-glow"
                   style={{
-                    left: `${highlightedBox.x * 100}%`,
-                    top: `${highlightedBox.y * 100}%`,
+                    left: `calc(1rem + ${highlightedBox.x * 100}%)`,
+                    top: `calc(1rem + ${highlightedBox.y * 100}%)`,
                     width: `${highlightedBox.width * 100}%`,
                     height: `${highlightedBox.height * 100}%`,
                   }}

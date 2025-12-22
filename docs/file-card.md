@@ -462,10 +462,12 @@ canFitSideBySide = (contentWidth * 2 + gap) <= viewportWidth * 0.95
 #### Image Content Sizing
 
 Images within the modal container follow special rules:
+- Container: Rounded corners (`rounded-lg`), theme background, padding (`p-4`)
 - If image is smaller than container: display at original size, centered
 - If image exceeds container on any edge: scale down proportionally to fit
 - Always preserves aspect ratio
 - Always centered within the container
+- Image itself has subtle rounding (`rounded`)
 
 #### Implementation
 

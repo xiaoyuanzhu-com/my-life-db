@@ -68,30 +68,32 @@ export function ImageContent({ file, showDigests, onClose, highlightedBox }: Ima
   const overlayStyle = getOverlayStyle();
 
   return (
-    <div
-      className="w-full h-full flex items-center justify-center cursor-pointer"
-      onClick={() => !showDigests && onClose?.()}
-    >
-      <div className="relative">
-        <img
-          ref={imgRef}
-          src={src}
-          alt={file.name}
-          className="object-contain block"
-          style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
-            width: 'auto',
-            height: 'auto',
-          }}
-        />
-        {/* Bounding box overlay */}
-        {highlightedBox && overlayStyle && (
-          <div
-            className="absolute pointer-events-none animate-pulse-glow"
-            style={overlayStyle}
+    <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
+      <div
+        className="w-full h-full flex items-center justify-center cursor-pointer p-4"
+        onClick={() => !showDigests && onClose?.()}
+      >
+        <div className="relative">
+          <img
+            ref={imgRef}
+            src={src}
+            alt={file.name}
+            className="object-contain block rounded"
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'auto',
+              height: 'auto',
+            }}
           />
-        )}
+          {/* Bounding box overlay */}
+          {highlightedBox && overlayStyle && (
+            <div
+              className="absolute pointer-events-none animate-pulse-glow"
+              style={overlayStyle}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
