@@ -20,6 +20,7 @@ export const DIGESTER_ORDER: string[] = [
   // 4. Image processors
   'image-ocr',
   'image-captioning',
+  'image-objects',
   // 5. Content summarization (depends on content from above)
   'url-crawl-summary',
   // 6. Tags (depends on content)
