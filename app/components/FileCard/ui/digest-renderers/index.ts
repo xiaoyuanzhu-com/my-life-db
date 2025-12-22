@@ -18,6 +18,7 @@ import { DocToScreenshotRenderer } from './doc-to-screenshot';
 import { SpeakerEmbeddingRenderer } from './speaker-embedding';
 import { SpeechRecognitionCleanupRenderer } from './speech-recognition-cleanup';
 import { SpeechRecognitionSummaryRenderer } from './speech-recognition-summary';
+import { ImageObjectsRenderer } from './image-objects';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -43,6 +44,7 @@ const renderers: Record<string, DigestRenderer> = {
   'speaker-embedding': SpeakerEmbeddingRenderer,
   'speech-recognition-cleanup': SpeechRecognitionCleanupRenderer,
   'speech-recognition-summary': SpeechRecognitionSummaryRenderer,
+  'image-objects': ImageObjectsRenderer,
 };
 
 /**
@@ -53,3 +55,4 @@ export function getDigestRenderer(digestType: string): DigestRenderer {
 }
 
 export { FallbackRenderer };
+export type { BoundingBox } from './image-objects';

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Download, Share2, Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -12,20 +12,38 @@ import { ModalCloseButton } from '../ui/modal-close-button';
 import { ModalActionButtons } from '../ui/modal-action-buttons';
 import { DigestsPanel } from '../ui/digests-panel';
 import { ModalLayout, useModalLayout, getModalContainerStyles } from '../ui/modal-layout';
+import type { BoundingBox } from '../ui/digest-renderers';
 
 type ModalView = 'content' | 'digests';
 
 export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev, onNext }: BaseModalProps) {
   const [activeView, setActiveView] = useState<ModalView>('content');
+  const [highlightedBox, setHighlightedBox] = useState<BoundingBox | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const layout = useModalLayout();
   const src = getFileContentUrl(file);
 
-  // Reset view when modal opens
+  // Reset view and highlighted box when modal opens
   useEffect(() => {
     if (open) {
       setActiveView('content');
+      setHighlightedBox(null);
     }
   }, [open]);
+
+  // Clear highlight after animation (3 seconds)
+  useEffect(() => {
+    if (highlightedBox) {
+      const timer = setTimeout(() => setHighlightedBox(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightedBox]);
+
+  const handleHighlightBoundingBox = useCallback((box: BoundingBox | null) => {
+    console.log('Highlighting bounding box:', box);
+    setHighlightedBox(box);
+  }, []);
 
   const handleDownload = useCallback(() => {
     downloadFile(file.path, file.name);
@@ -67,7 +85,7 @@ export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev,
         <ModalLayout
           showDigests={showDigests}
           onCloseDigests={handleCloseDigests}
-          digestsContent={<DigestsPanel file={file} />}
+          digestsContent={<DigestsPanel file={file} imageObjectsSync={{ onHighlightBoundingBox: handleHighlightBoundingBox }} />}
           contentClassName="flex items-center justify-center cursor-pointer"
           hasPrev={hasPrev}
           hasNext={hasNext}
@@ -75,20 +93,36 @@ export function ImageModal({ file, open, onOpenChange, hasPrev, hasNext, onPrev,
           onNext={onNext}
         >
           <div
+            ref={containerRef}
             className="w-full h-full flex items-center justify-center"
             onClick={() => !showDigests && onOpenChange(false)}
           >
-            <img
-              src={src}
-              alt={file.name}
-              className="object-contain"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: 'auto',
-                height: 'auto',
-              }}
-            />
+            <div className="relative">
+              <img
+                ref={imageRef}
+                src={src}
+                alt={file.name}
+                className="object-contain block"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: 'auto',
+                  height: 'auto',
+                }}
+              />
+              {/* Bounding box overlay - positioned relative to image */}
+              {highlightedBox && (
+                <div
+                  className="absolute pointer-events-none animate-pulse-glow"
+                  style={{
+                    left: `${highlightedBox.x * 100}%`,
+                    top: `${highlightedBox.y * 100}%`,
+                    width: `${highlightedBox.width * 100}%`,
+                    height: `${highlightedBox.height * 100}%`,
+                  }}
+                />
+              )}
+            </div>
           </div>
         </ModalLayout>
       </DialogContent>

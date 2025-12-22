@@ -15,6 +15,7 @@ import { DigestsPanel } from './ui/digests-panel';
 import { ModalLayout, useModalLayout, getModalContainerStyles } from './ui/modal-layout';
 import { useModalNavigation } from '~/contexts/modal-navigation-context';
 import type { AudioSyncState } from './modal-contents/audio-content';
+import type { BoundingBox } from './ui/digest-renderers';
 
 // Lazy load modal content components
 const AudioContent = lazy(() => import('./modal-contents/audio-content').then(m => ({ default: m.AudioContent })));
@@ -34,6 +35,7 @@ export function NavigationModal() {
   const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
   const [activeView, setActiveView] = useState<ModalView>('content');
   const [audioSync, setAudioSync] = useState<AudioSyncState | null>(null);
+  const [highlightedBox, setHighlightedBox] = useState<BoundingBox | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const layout = useModalLayout();
 
@@ -41,8 +43,22 @@ export function NavigationModal() {
   useEffect(() => {
     setActiveView('content');
     setAudioSync(null);
+    setHighlightedBox(null);
     setIsDirty(false);
   }, [currentFile?.path]);
+
+  // Clear highlight after animation (3 seconds)
+  useEffect(() => {
+    if (highlightedBox) {
+      const timer = setTimeout(() => setHighlightedBox(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightedBox]);
+
+  const handleHighlightBoundingBox = useCallback((box: BoundingBox | null) => {
+    console.log('NavigationModal: handleHighlightBoundingBox called with:', box);
+    setHighlightedBox(box);
+  }, []);
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -83,14 +99,15 @@ export function NavigationModal() {
   // Determine content type for the current file
   const contentType = currentFile ? getFileContentType(currentFile) : null;
 
-  // Build digests panel props (with audio sync for audio files)
+  // Build digests panel props (with audio sync for audio files, image objects sync for images)
   const digestsPanelProps = useMemo(() => {
     if (!currentFile) return null;
     return {
       file: currentFile,
       ...(contentType === 'audio' && audioSync ? { audioSync } : {}),
+      ...(contentType === 'image' ? { imageObjectsSync: { onHighlightBoundingBox: handleHighlightBoundingBox } } : {}),
     };
-  }, [currentFile, contentType, audioSync]);
+  }, [currentFile, contentType, audioSync, handleHighlightBoundingBox]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -133,6 +150,7 @@ export function NavigationModal() {
                     onClose={() => handleOpenChange(false)}
                     onAudioSyncChange={setAudioSync}
                     onDirtyStateChange={setIsDirty}
+                    highlightedBox={highlightedBox}
                   />
                 </Suspense>
               </motion.div>
@@ -155,6 +173,7 @@ function ModalContentRenderer({
   onClose,
   onAudioSyncChange,
   onDirtyStateChange,
+  highlightedBox,
 }: {
   contentType: string | null;
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
@@ -162,6 +181,7 @@ function ModalContentRenderer({
   onClose: () => void;
   onAudioSyncChange: (sync: AudioSyncState | null) => void;
   onDirtyStateChange: (isDirty: boolean) => void;
+  highlightedBox?: BoundingBox | null;
 }) {
   switch (contentType) {
     case 'image':
@@ -170,6 +190,7 @@ function ModalContentRenderer({
           file={file}
           showDigests={showDigests}
           onClose={onClose}
+          highlightedBox={highlightedBox}
         />
       );
 

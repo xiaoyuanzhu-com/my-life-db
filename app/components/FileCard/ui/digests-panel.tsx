@@ -11,6 +11,7 @@ import {
 import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 import { getDigestRenderer } from './digest-renderers';
+import type { BoundingBox } from './digest-renderers/image-objects';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
 
@@ -28,11 +29,17 @@ interface AudioSyncProps {
   onSeek: (time: number) => void;
 }
 
+interface ImageObjectsSyncProps {
+  onHighlightBoundingBox: (box: BoundingBox | null) => void;
+}
+
 interface DigestsPanelProps {
   file: FileWithDigests;
   className?: string;
   /** Audio sync props for speech-recognition renderer */
   audioSync?: AudioSyncProps;
+  /** Image objects sync props for image-objects renderer */
+  imageObjectsSync?: ImageObjectsSyncProps;
 }
 
 function mapStatus(status: DigestSummary['status']): DigestStageStatus {
@@ -91,7 +98,7 @@ function StatusIcon({ status }: { status: DigestStageStatus }): React.ReactEleme
   }
 }
 
-export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) {
+export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
@@ -329,9 +336,17 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
 
                         const Renderer = getDigestRenderer(rendererKey);
                         // Pass audioSync to speech-recognition and speech-recognition-cleanup renderers
-                        const extraProps = (stage.key === 'speech-recognition') && audioSync
-                          ? { currentTime: audioSync.currentTime, onSeek: audioSync.onSeek }
-                          : {};
+                        const extraProps: Record<string, unknown> = {};
+                        if (stage.key === 'speech-recognition' && audioSync) {
+                          extraProps.currentTime = audioSync.currentTime;
+                          extraProps.onSeek = audioSync.onSeek;
+                        }
+                        if (stage.key === 'image-objects') {
+                          console.log('DigestsPanel: image-objects stage, imageObjectsSync:', !!imageObjectsSync);
+                        }
+                        if (stage.key === 'image-objects' && imageObjectsSync) {
+                          extraProps.onHighlightBoundingBox = imageObjectsSync.onHighlightBoundingBox;
+                        }
                         return (
                           <Renderer
                             content={contentToRender}

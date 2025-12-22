@@ -202,3 +202,20 @@
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
 }
+
+/* Pulse glow animation for bounding box highlight */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 12px 4px rgba(59, 130, 246, 0.8);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1s ease-in-out infinite;
+  border: 2px solid rgba(59, 130, 246, 0.8);
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.1);
+}
