@@ -8,19 +8,29 @@ import type { DigestRendererProps } from './index';
 /** Bounding box as [x1, y1, x2, y2] normalized to [0,1] */
 export type BoundingBox = [number, number, number, number];
 
+/** RLE mask format from SAM */
+export interface RleMask {
+  size: [number, number]; // [height, width]
+  counts: number[];
+}
+
+/** Highlight region data - includes bbox and optional RLE mask */
+export interface HighlightRegion {
+  bbox: BoundingBox;
+  rle: RleMask | null;
+}
+
 export interface ImageObjectsRendererProps extends DigestRendererProps {
-  /** Callback when an object is clicked, passing its bounding box */
-  onHighlightBoundingBox?: (box: BoundingBox | null) => void;
+  /** Callback when an object is clicked, passing highlight region data */
+  onHighlightRegion?: (region: HighlightRegion | null) => void;
 }
 
 interface DetectedObject {
-  id: string;
   title: string;
-  name: string;
   category: string;
   description: string;
   bbox: BoundingBox;
-  certainty: 'certain' | 'likely' | 'uncertain';
+  rle: RleMask | null;
 }
 
 interface ImageObjectsContent {
@@ -60,9 +70,7 @@ function sortByPosition(objects: DetectedObject[]): DetectedObject[] {
   });
 }
 
-export function ImageObjectsRenderer({ content, onHighlightBoundingBox }: ImageObjectsRendererProps) {
-  console.log('ImageObjectsRenderer mounted, onHighlightBoundingBox:', !!onHighlightBoundingBox);
-
+export function ImageObjectsRenderer({ content, onHighlightRegion }: ImageObjectsRendererProps) {
   if (!content) {
     return (
       <p className="text-sm text-muted-foreground italic">
@@ -94,17 +102,16 @@ export function ImageObjectsRenderer({ content, onHighlightBoundingBox }: ImageO
   const sortedObjects = sortByPosition(objects);
 
   const handleClick = (obj: DetectedObject) => {
-    console.log('Object clicked:', obj.title, 'callback exists:', !!onHighlightBoundingBox);
-    if (onHighlightBoundingBox) {
-      onHighlightBoundingBox(obj.bbox);
+    if (onHighlightRegion) {
+      onHighlightRegion({ bbox: obj.bbox, rle: obj.rle });
     }
   };
 
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {sortedObjects.map((obj) => (
+      {sortedObjects.map((obj, index) => (
         <button
-          key={obj.id}
+          key={index}
           type="button"
           className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary/15 text-primary hover:bg-primary/25 transition-colors cursor-pointer"
           title={obj.description}

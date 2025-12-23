@@ -11,7 +11,7 @@ import {
 import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 import { getDigestRenderer } from './digest-renderers';
-import type { BoundingBox } from './digest-renderers/image-objects';
+import type { HighlightRegion } from './digest-renderers/image-objects';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
 
@@ -30,7 +30,7 @@ interface AudioSyncProps {
 }
 
 interface ImageObjectsSyncProps {
-  onHighlightBoundingBox: (box: BoundingBox | null) => void;
+  onHighlightRegion: (region: HighlightRegion | null) => void;
 }
 
 interface DigestsPanelProps {
@@ -341,11 +341,8 @@ export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: D
                           extraProps.currentTime = audioSync.currentTime;
                           extraProps.onSeek = audioSync.onSeek;
                         }
-                        if (stage.key === 'image-objects') {
-                          console.log('DigestsPanel: image-objects stage, imageObjectsSync:', !!imageObjectsSync);
-                        }
                         if (stage.key === 'image-objects' && imageObjectsSync) {
-                          extraProps.onHighlightBoundingBox = imageObjectsSync.onHighlightBoundingBox;
+                          extraProps.onHighlightRegion = imageObjectsSync.onHighlightRegion;
                         }
                         return (
                           <Renderer

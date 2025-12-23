@@ -55,4 +55,4 @@ export function getDigestRenderer(digestType: string): DigestRenderer {
 }
 
 export { FallbackRenderer };
-export type { BoundingBox } from './image-objects';
+export type { BoundingBox, RleMask, HighlightRegion } from './image-objects';

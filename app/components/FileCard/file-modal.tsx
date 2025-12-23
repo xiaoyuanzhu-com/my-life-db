@@ -16,7 +16,7 @@ import { ModalLayout, useModalLayout, getModalContainerStyles } from './ui/modal
 import { useModalNavigation } from '~/contexts/modal-navigation-context';
 import type { AudioSyncState } from './modal-contents/audio-content';
 import type { TextContentHandle } from './modal-contents/text-content';
-import type { BoundingBox } from './ui/digest-renderers';
+import type { HighlightRegion } from './ui/digest-renderers';
 
 // Lazy load modal content components
 const AudioContent = lazy(() => import('./modal-contents/audio-content').then(m => ({ default: m.AudioContent })));
@@ -44,7 +44,7 @@ export function FileModal() {
   const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
   const [activeView, setActiveView] = useState<ModalView>('content');
   const [audioSync, setAudioSync] = useState<AudioSyncState | null>(null);
-  const [highlightedBox, setHighlightedBox] = useState<BoundingBox | null>(null);
+  const [highlightedRegion, setHighlightedRegion] = useState<HighlightRegion | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const layout = useModalLayout();
 
@@ -55,20 +55,20 @@ export function FileModal() {
   useEffect(() => {
     setActiveView('content');
     setAudioSync(null);
-    setHighlightedBox(null);
+    setHighlightedRegion(null);
     setIsDirty(false);
   }, [currentFile?.path]);
 
   // Clear highlight after animation (3 seconds)
   useEffect(() => {
-    if (highlightedBox) {
-      const timer = setTimeout(() => setHighlightedBox(null), 3000);
+    if (highlightedRegion) {
+      const timer = setTimeout(() => setHighlightedRegion(null), 3000);
       return () => clearTimeout(timer);
     }
-  }, [highlightedBox]);
+  }, [highlightedRegion]);
 
-  const handleHighlightBoundingBox = useCallback((box: BoundingBox | null) => {
-    setHighlightedBox(box);
+  const handleHighlightRegion = useCallback((region: HighlightRegion | null) => {
+    setHighlightedRegion(region);
   }, []);
 
   // Handle close request - delegates to TextContent if it has unsaved changes
@@ -136,9 +136,9 @@ export function FileModal() {
     return {
       file: currentFile,
       ...(contentType === 'audio' && audioSync ? { audioSync } : {}),
-      ...(contentType === 'image' ? { imageObjectsSync: { onHighlightBoundingBox: handleHighlightBoundingBox } } : {}),
+      ...(contentType === 'image' ? { imageObjectsSync: { onHighlightRegion: handleHighlightRegion } } : {}),
     };
-  }, [currentFile, contentType, audioSync, handleHighlightBoundingBox]);
+  }, [currentFile, contentType, audioSync, handleHighlightRegion]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -183,7 +183,7 @@ export function FileModal() {
                     onDirtyStateChange={setIsDirty}
                     onTextCloseConfirmed={handleTextCloseConfirmed}
                     textContentRef={textContentRef}
-                    highlightedBox={highlightedBox}
+                    highlightedRegion={highlightedRegion}
                   />
                 </Suspense>
               </motion.div>
@@ -208,7 +208,7 @@ function ModalContentRenderer({
   onDirtyStateChange,
   onTextCloseConfirmed,
   textContentRef,
-  highlightedBox,
+  highlightedRegion,
 }: {
   contentType: string | null;
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
@@ -218,7 +218,7 @@ function ModalContentRenderer({
   onDirtyStateChange: (isDirty: boolean) => void;
   onTextCloseConfirmed: () => void;
   textContentRef: React.RefObject<TextContentHandle | null>;
-  highlightedBox?: BoundingBox | null;
+  highlightedRegion?: HighlightRegion | null;
 }) {
   switch (contentType) {
     case 'image':
@@ -227,7 +227,7 @@ function ModalContentRenderer({
           file={file}
           showDigests={showDigests}
           onClose={onClose}
-          highlightedBox={highlightedBox}
+          highlightedRegion={highlightedRegion}
         />
       );
 
