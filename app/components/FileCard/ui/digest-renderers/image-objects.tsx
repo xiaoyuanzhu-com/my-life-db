@@ -38,6 +38,13 @@ interface ImageObjectsContent {
 }
 
 /**
+ * Check if a value is a valid bounding box array
+ */
+function isValidBbox(box: unknown): box is BoundingBox {
+  return Array.isArray(box) && box.length === 4 && box.every(n => typeof n === 'number');
+}
+
+/**
  * Calculate center point of a bounding box [x1, y1, x2, y2]
  */
 function getCenter(box: BoundingBox): { cx: number; cy: number } {
@@ -82,7 +89,8 @@ export function ImageObjectsRenderer({ content, onHighlightRegion }: ImageObject
   let objects: DetectedObject[] = [];
   try {
     const data: ImageObjectsContent = JSON.parse(content);
-    objects = data.objects ?? [];
+    // Filter out objects with invalid bounding boxes
+    objects = (data.objects ?? []).filter(obj => isValidBbox(obj.bbox));
   } catch {
     return (
       <p className="text-sm text-muted-foreground italic">
