@@ -303,12 +303,12 @@ function renderAnimatedMask(
   }
 
   // Border width in pixels (for resting state border - OUTSIDE the polygon)
-  const borderWidth = 2;
+  const borderWidth = 4;
   // Glow ring thickness - thicker when small (blur effect), thinner when large
-  const baseGlowWidth = 6;
-  const glowWidth = baseGlowWidth + (1 - expandProgress) * 16; // 6-22px
+  const baseGlowWidth = 12;
+  const glowWidth = baseGlowWidth + (1 - expandProgress) * 32; // 12-44px
   // Outer glow spread beyond the ring
-  const outerGlowSpread = 4;
+  const outerGlowSpread = 8;
 
   // The ring position: starts at maxDist (center) and moves to 0 (edge)
   // expandProgress=0 -> ringPosition=maxDist (at center)
@@ -481,7 +481,7 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
         maskHeight,
         imageDimensions.width,
         imageDimensions.height,
-        20 // maxSearchDist for border
+        30 // maxSearchDist for border (4px) + glow (8px) + some margin
       );
       const maxDist = findMaxDistance(distField);
 
