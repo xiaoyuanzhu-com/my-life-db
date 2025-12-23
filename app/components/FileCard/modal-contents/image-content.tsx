@@ -36,6 +36,163 @@ function decodeRle(rle: RleMask): Uint8Array {
   return mask;
 }
 
+/**
+ * Flood fill from a starting index, marking visited pixels
+ * Returns the count of pixels in this region
+ */
+function floodFill(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  startIdx: number,
+  visited: Uint8Array
+): number {
+  const stack: number[] = [startIdx];
+  let count = 0;
+
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    if (visited[idx]) continue;
+    if (!mask[idx]) continue;
+
+    visited[idx] = 1;
+    count++;
+
+    // Convert linear index to x, y (column-major: idx = x * height + y)
+    const x = Math.floor(idx / height);
+    const y = idx % height;
+
+    // Check 8 neighbors (including diagonals)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIdx = nx * height + ny;
+          if (mask[neighborIdx] && !visited[neighborIdx]) {
+            stack.push(neighborIdx);
+          }
+        }
+      }
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Extract the largest connected region from a mask.
+ * If the largest region covers >= threshold (95%) of total pixels, returns a mask with only that region.
+ * Otherwise returns null (indicating we should fall back to bbox).
+ */
+function extractLargestRegion(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  threshold: number = 0.95
+): Uint8Array | null {
+  // Count total mask pixels
+  let totalMaskPixels = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i]) totalMaskPixels++;
+  }
+
+  if (totalMaskPixels === 0) return null;
+
+  // Find all connected regions and track the largest
+  const visited = new Uint8Array(mask.length);
+  let largestRegionStart = -1;
+  let largestRegionSize = 0;
+
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] && !visited[i]) {
+      const regionSize = floodFill(mask, width, height, i, visited);
+      if (regionSize > largestRegionSize) {
+        largestRegionSize = regionSize;
+        largestRegionStart = i;
+      }
+    }
+  }
+
+  // Check if largest region covers enough of the mask
+  const coverage = largestRegionSize / totalMaskPixels;
+
+  if (coverage >= threshold) {
+    // Single region or dominant region
+    if (largestRegionSize === totalMaskPixels) {
+      // Already a single region - use original mask
+      return mask;
+    }
+
+    // Extract only the largest region by re-flood-filling
+    const regionMask = new Uint8Array(mask.length);
+    const regionVisited = new Uint8Array(mask.length);
+    const stack: number[] = [largestRegionStart];
+
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      if (regionVisited[idx]) continue;
+      if (!mask[idx]) continue;
+
+      regionVisited[idx] = 1;
+      regionMask[idx] = 1;
+
+      const x = Math.floor(idx / height);
+      const y = idx % height;
+
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const neighborIdx = nx * height + ny;
+            if (mask[neighborIdx] && !regionVisited[neighborIdx]) {
+              stack.push(neighborIdx);
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`[RLE] Using largest region: ${largestRegionSize}/${totalMaskPixels} pixels (${(coverage * 100).toFixed(1)}%)`);
+    return regionMask;
+  }
+
+  // Multiple significant regions - fall back to bbox
+  console.log(`[RLE] Multiple regions, largest covers only ${(coverage * 100).toFixed(1)}% - falling back to bbox`);
+  return null;
+}
+
+/**
+ * Create a rectangular mask from a bounding box (for bbox-only highlights)
+ * Returns a mask in column-major order matching the RLE format
+ */
+function createBboxMask(
+  bbox: [number, number, number, number],
+  width: number,
+  height: number
+): Uint8Array {
+  const [x1, y1, x2, y2] = bbox;
+  const mask = new Uint8Array(width * height);
+
+  // Convert normalized coords to pixel coords
+  const px1 = Math.floor(x1 * width);
+  const py1 = Math.floor(y1 * height);
+  const px2 = Math.ceil(x2 * width);
+  const py2 = Math.ceil(y2 * height);
+
+  // Fill the rectangular region (column-major: idx = x * height + y)
+  for (let x = px1; x < px2 && x < width; x++) {
+    for (let y = py1; y < py2 && y < height; y++) {
+      mask[x * height + y] = 1;
+    }
+  }
+
+  return mask;
+}
+
 
 // Color 1: #0ea5e9 (sky blue) - fill color
 const COLOR1 = { r: 14, g: 165, b: 233 };
@@ -440,9 +597,9 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Animate RLE mask with SAM3-style glowing effect
+  // Animate highlight with SAM3-style glowing effect (works for both RLE and bbox)
   useEffect(() => {
-    if (!canvasRef.current || !imageDimensions) return;
+    if (!canvasRef.current || !imageDimensions || !highlightedRegion) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -459,39 +616,82 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
     canvas.height = imageDimensions.height;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // If we have an RLE mask, animate it
-    if (highlightedRegion?.rle) {
+    // Determine the mask to use
+    let mask: Uint8Array;
+    let maskWidth: number;
+    let maskHeight: number;
+
+    if (highlightedRegion.rle) {
       const rle = highlightedRegion.rle;
-      const [maskHeight, maskWidth] = rle.size;
+      [maskHeight, maskWidth] = rle.size;
 
-      // Decode mask directly (no processing - use raw RLE mask)
-      const mask = decodeRle(rle);
+      console.log(`[RLE] Processing mask: ${maskWidth}x${maskHeight}, counts length: ${rle.counts.length}`);
 
-      // Compute distance fields using processed mask
-      const distField = computeDistanceField(
+      // Decode and try to extract the largest region
+      const decodedMask = decodeRle(rle);
+      const extractedMask = extractLargestRegion(decodedMask, maskWidth, maskHeight);
+
+      if (extractedMask) {
+        // Use the RLE mask (either original or largest region)
+        mask = extractedMask;
+      } else {
+        // Multiple significant regions - fall back to bbox
+        console.log('[RLE] Falling back to bbox mask');
+        maskWidth = imageDimensions.width;
+        maskHeight = imageDimensions.height;
+        mask = createBboxMask(highlightedRegion.bbox, maskWidth, maskHeight);
+      }
+    } else {
+      // No RLE - use bbox directly
+      console.log('[BBOX] Using bbox mask');
+      maskWidth = imageDimensions.width;
+      maskHeight = imageDimensions.height;
+      mask = createBboxMask(highlightedRegion.bbox, maskWidth, maskHeight);
+    }
+
+    // Compute distance fields
+    const distField = computeDistanceField(
+      mask,
+      maskWidth,
+      maskHeight,
+      imageDimensions.width,
+      imageDimensions.height
+    );
+    const outerDistField = computeOuterDistanceField(
+      mask,
+      maskWidth,
+      maskHeight,
+      imageDimensions.width,
+      imageDimensions.height,
+      30 // maxSearchDist for border (4px) + glow (8px) + some margin
+    );
+    const maxDist = findMaxDistance(distField);
+
+    // 3 cycles of 1.6s each = 4.8s
+    const animationDuration = 4800;
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+
+      renderAnimatedMask(
+        canvas,
         mask,
         maskWidth,
         maskHeight,
-        imageDimensions.width,
-        imageDimensions.height
-      );
-      const outerDistField = computeOuterDistanceField(
-        mask,
-        maskWidth,
-        maskHeight,
+        distField,
+        outerDistField,
+        maxDist,
         imageDimensions.width,
         imageDimensions.height,
-        30 // maxSearchDist for border (4px) + glow (8px) + some margin
+        elapsed
       );
-      const maxDist = findMaxDistance(distField);
 
-      // 3 cycles of 1.6s each = 4.8s
-      const animationDuration = 4800;
-      const startTime = performance.now();
-
-      const animate = (currentTime: number) => {
-        const elapsed = currentTime - startTime;
-
+      // Keep animating until animation completes, then render one final frame
+      if (elapsed < animationDuration) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        // Render final resting state (timeMs > totalAnimDuration ensures glowIntensity = 0)
         renderAnimatedMask(
           canvas,
           mask,
@@ -502,32 +702,13 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
           maxDist,
           imageDimensions.width,
           imageDimensions.height,
-          elapsed
+          animationDuration + 1000 // Ensure we're past animation
         );
+        animationRef.current = null;
+      }
+    };
 
-        // Keep animating until animation completes, then render one final frame
-        if (elapsed < animationDuration) {
-          animationRef.current = requestAnimationFrame(animate);
-        } else {
-          // Render final resting state (timeMs > totalAnimDuration ensures glowIntensity = 0)
-          renderAnimatedMask(
-            canvas,
-            mask,
-            maskWidth,
-            maskHeight,
-            distField,
-            outerDistField,
-            maxDist,
-            imageDimensions.width,
-            imageDimensions.height,
-            animationDuration + 1000 // Ensure we're past animation
-          );
-          animationRef.current = null;
-        }
-      };
-
-      animationRef.current = requestAnimationFrame(animate);
-    }
+    animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animationRef.current) {
@@ -535,22 +716,6 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
       }
     };
   }, [highlightedRegion, imageDimensions]);
-
-  // Calculate bbox overlay style (fallback when no RLE)
-  const getBboxOverlayStyle = () => {
-    if (!highlightedRegion || highlightedRegion.rle) return undefined;
-
-    const [x1, y1, x2, y2] = highlightedRegion.bbox;
-
-    return {
-      left: `${x1 * 100}%`,
-      top: `${y1 * 100}%`,
-      width: `${(x2 - x1) * 100}%`,
-      height: `${(y2 - y1) * 100}%`,
-    };
-  };
-
-  const bboxOverlayStyle = getBboxOverlayStyle();
 
   return (
     <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
@@ -572,8 +737,9 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
             }}
             onLoad={handleImageLoad}
           />
-          {/* RLE mask overlay (rendered to canvas with burning animation) */}
-          {highlightedRegion?.rle && imageDimensions && (
+          {/* Highlight overlay (rendered to canvas with glowing animation) */}
+          {/* Works for both RLE masks and bbox fallback */}
+          {highlightedRegion && imageDimensions && (
             <canvas
               ref={canvasRef}
               className="absolute top-0 left-0 pointer-events-none"
@@ -581,13 +747,6 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
                 width: imageDimensions.width,
                 height: imageDimensions.height,
               }}
-            />
-          )}
-          {/* Bounding box overlay (fallback when no RLE) */}
-          {highlightedRegion && !highlightedRegion.rle && bboxOverlayStyle && (
-            <div
-              className="absolute pointer-events-none animate-pulse-glow"
-              style={bboxOverlayStyle}
             />
           )}
         </div>
