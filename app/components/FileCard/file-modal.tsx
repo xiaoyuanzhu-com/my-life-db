@@ -59,13 +59,8 @@ export function FileModal() {
     setIsDirty(false);
   }, [currentFile?.path]);
 
-  // Clear highlight after animation (3 seconds)
-  useEffect(() => {
-    if (highlightedRegion) {
-      const timer = setTimeout(() => setHighlightedRegion(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [highlightedRegion]);
+  // Highlight stays visible until user clicks another object or closes modal
+  // Animation runs for ~5s then rests in final state with fill + border
 
   const handleHighlightRegion = useCallback((region: HighlightRegion | null) => {
     setHighlightedRegion(region);

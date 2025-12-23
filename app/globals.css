@@ -219,3 +219,17 @@
   border-radius: 4px;
   background: rgba(59, 130, 246, 0.1);
 }
+
+/* Fade out animation for RLE mask canvas (burning ashes effect) */
+@keyframes mask-fade-out {
+  0% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-mask-fade {
+  animation: mask-fade-out 3s ease-out forwards;
+}
