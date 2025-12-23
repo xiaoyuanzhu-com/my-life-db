@@ -502,16 +502,50 @@ function buildDigestMatchContext({
     if (!hasHighlight(formattedValue)) continue;
     if (config.requirePrimaryMiss && primaryContainsTerm) continue;
 
-    const digest = file.digests.find((d) => config.digesterTypes.includes(d.type));
     const snippet = extractSnippetFromFormatted(formattedValue);
     if (!snippet?.trim()) continue;
+
+    // For content field with multiple potential sources, find which digest actually contains the matched text
+    let matchedDigest = file.digests.find((d) => config.digesterTypes.includes(d.type));
+
+    if (config.field === "content" && config.digesterTypes.length > 1) {
+      // Check each potential digest to find which one actually contains the search terms
+      for (const digesterType of config.digesterTypes) {
+        const digest = file.digests.find((d) => d.type === digesterType && d.content);
+        if (digest?.content) {
+          // For image-objects, parse and check objects array
+          if (digesterType === "image-objects") {
+            try {
+              const data = JSON.parse(digest.content);
+              const objects = data.objects || [];
+              const objectsText = objects.map((obj: { title?: string; description?: string }) =>
+                [obj.title, obj.description].filter(Boolean).join(' ')
+              ).join(' ').toLowerCase();
+              if (terms.some(term => objectsText.includes(term.toLowerCase()))) {
+                matchedDigest = digest;
+                break;
+              }
+            } catch {
+              // Skip if can't parse
+            }
+          } else {
+            // For other digests, check content directly
+            const contentLower = digest.content.toLowerCase();
+            if (terms.some(term => contentLower.includes(term.toLowerCase()))) {
+              matchedDigest = digest;
+              break;
+            }
+          }
+        }
+      }
+    }
 
     return {
       source: "digest",
       snippet,
       terms,
-      digest: digest
-        ? { type: digest.type, label: getDigestLabel(digest.type, config.label) }
+      digest: matchedDigest
+        ? { type: matchedDigest.type, label: getDigestLabel(matchedDigest.type, config.label) }
         : { type: config.field, label: config.label },
     };
   }

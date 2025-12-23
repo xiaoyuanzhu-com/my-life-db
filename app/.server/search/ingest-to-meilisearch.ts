@@ -16,6 +16,8 @@ const log = getLogger({ module: 'MeiliIngest' });
 export interface MeiliIngestResult {
   documentId: string;
   hasContent: boolean;
+  /** Sources that contributed to the content field (e.g., 'image-ocr', 'image-captioning', 'image-objects') */
+  contentSources: string[];
   hasSummary: boolean;
   summarySource: string | null;
   hasTags: boolean;
@@ -36,14 +38,14 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     const fileRecord = getFileByPath(filePath);
     if (!fileRecord) {
       log.warn({ filePath }, 'file not found in files table');
-      return { documentId: filePath, hasContent: false, hasSummary: false, summarySource: null, hasTags: false };
+      return { documentId: filePath, hasContent: false, contentSources: [], hasSummary: false, summarySource: null, hasTags: false };
     }
 
     // Get all digests for this file
     const digests = listDigestsForPath(filePath);
 
     // 1. Get main content (may be null for binary files - that's OK, we still index for filename search)
-    const contentText = await getFileContent(filePath);
+    const { text: contentText, sources: contentSources } = await getFileContent(filePath);
 
     // 2. Get summary (if exists from digest)
     // Check url-crawl-summary first, then speech-recognition-summary
@@ -112,6 +114,7 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
     return {
       documentId: filePath,
       hasContent,
+      contentSources,
       hasSummary: !!summaryText,
       summarySource,
       hasTags: !!tagsText,
@@ -124,8 +127,13 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
       },
       'failed to ingest file to meilisearch'
     );
-    return { documentId: filePath, hasContent: false, hasSummary: false, summarySource: null, hasTags: false };
+    return { documentId: filePath, hasContent: false, contentSources: [], hasSummary: false, summarySource: null, hasTags: false };
   }
+}
+
+interface FileContentResult {
+  text: string | null;
+  sources: string[];
 }
 
 /**
@@ -134,12 +142,15 @@ export async function ingestToMeilisearch(filePath: string): Promise<MeiliIngest
  * Collects content from all applicable sources and combines them:
  * - URL: url-crawl-content digest
  * - Doc: doc-to-markdown digest
- * - Image: Both image-ocr AND image-captioning (combined)
+ * - Image: Both image-ocr AND image-captioning AND image-objects (combined)
  * - Speech: speech-recognition digest
  * - Text files: Read from filesystem
+ *
+ * @returns Object with combined text and array of source types that contributed
  */
-async function getFileContent(filePath: string): Promise<string | null> {
+async function getFileContent(filePath: string): Promise<FileContentResult> {
   const contentParts: string[] = [];
+  const sources: string[] = [];
 
   // 1. Check for URL digest
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
@@ -150,24 +161,28 @@ async function getFileContent(filePath: string): Promise<string | null> {
     } catch {
       contentParts.push(contentDigest.content);
     }
+    sources.push('url-crawl-content');
   }
 
   // 2. Check for doc-to-markdown digest
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
     contentParts.push(docDigest.content);
+    sources.push('doc-to-markdown');
   }
 
   // 3. Check for image-ocr digest
   const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
   if (ocrDigest?.content && ocrDigest.status === 'completed') {
     contentParts.push(ocrDigest.content);
+    sources.push('image-ocr');
   }
 
   // 4. Check for image-captioning digest (always include, not just fallback)
   const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
   if (captionDigest?.content && captionDigest.status === 'completed') {
     contentParts.push(captionDigest.content);
+    sources.push('image-captioning');
   }
 
   // 5. Check for image-objects digest
@@ -185,6 +200,7 @@ async function getFileContent(filePath: string): Promise<string | null> {
         }).filter(Boolean);
         if (objectTexts.length > 0) {
           contentParts.push(objectTexts.join('\n'));
+          sources.push('image-objects');
         }
       }
     } catch (error) {
@@ -192,7 +208,7 @@ async function getFileContent(filePath: string): Promise<string | null> {
     }
   }
 
-  // 7. Check for speech-recognition digest
+  // 6. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
     try {
@@ -205,9 +221,10 @@ async function getFileContent(filePath: string): Promise<string | null> {
     } catch {
       contentParts.push(speechDigest.content);
     }
+    sources.push('speech-recognition');
   }
 
-  // 8. Read from filesystem for text files
+  // 7. Read from filesystem for text files
   const fileRecord = getFileByPath(filePath);
   const filename = path.basename(filePath);
   if (isTextFile(fileRecord?.mimeType ?? null, filename)) {
@@ -216,24 +233,29 @@ async function getFileContent(filePath: string): Promise<string | null> {
       const fullPath = path.join(dataDir, filePath);
       const content = await fs.readFile(fullPath, 'utf-8');
       contentParts.push(content);
+      sources.push('file');
     } catch (error) {
       log.warn({ filePath, error }, 'failed to read file from filesystem');
     }
   }
 
-  // 9. For folders, try to read text.md
+  // 8. For folders, try to read text.md
   if (fileRecord?.isFolder) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';
       const textMdPath = path.join(dataDir, filePath, 'text.md');
       const content = await fs.readFile(textMdPath, 'utf-8');
       contentParts.push(content);
+      sources.push('file');
     } catch {
       // text.md doesn't exist, that's ok
     }
   }
 
-  return contentParts.length > 0 ? contentParts.join('\n\n') : null;
+  return {
+    text: contentParts.length > 0 ? contentParts.join('\n\n') : null,
+    sources,
+  };
 }
 
 /**

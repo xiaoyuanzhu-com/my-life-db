@@ -90,6 +90,8 @@ export class SearchKeywordDigester implements Digester {
       documentId,
       taskId,
       textSource: textContent?.source ?? 'filename-only',
+      // Array of all content sources that contributed to indexing
+      contentSources: result.contentSources,
       hasContent: result.hasContent,
       hasSummary: result.hasSummary,
       summarySource: result.summarySource,

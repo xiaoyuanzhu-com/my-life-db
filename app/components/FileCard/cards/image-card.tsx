@@ -18,6 +18,12 @@ import {
   getFileLibraryUrl,
   getFileContentUrl,
 } from '../utils';
+import {
+  prepareHighlightState,
+  renderHighlightFrame,
+  ANIMATION_DURATION,
+  type AnimatedHighlightState,
+} from '../ui/animated-highlight';
 
 export function ImageCard({
   file,
@@ -34,6 +40,8 @@ export function ImageCard({
   const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const src = getFileContentUrl(file);
@@ -64,6 +72,74 @@ export function ImageCard({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Animate highlight with SAM3-style glowing effect
+  useEffect(() => {
+    if (!canvasRef.current || !imageDimensions || !matchedObject) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Cancel any existing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+
+    // Clear the canvas
+    canvas.width = imageDimensions.width;
+    canvas.height = imageDimensions.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Prepare the highlight state (expensive computation done once)
+    const highlightRegion = {
+      bbox: matchedObject.bbox,
+      rle: matchedObject.rle,
+    };
+    const state: AnimatedHighlightState = prepareHighlightState(
+      highlightRegion,
+      imageDimensions.width,
+      imageDimensions.height
+    );
+
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+
+      renderHighlightFrame(
+        canvas,
+        state,
+        imageDimensions.width,
+        imageDimensions.height,
+        elapsed
+      );
+
+      // Keep animating until animation completes, then render one final frame
+      if (elapsed < ANIMATION_DURATION) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        // Render final resting state
+        renderHighlightFrame(
+          canvas,
+          state,
+          imageDimensions.width,
+          imageDimensions.height,
+          ANIMATION_DURATION + 1000 // Ensure we're past animation
+        );
+        animationRef.current = null;
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [matchedObject, imageDimensions]);
+
   const handleOpen = () => navigate(href);
 
   const handleTogglePin = async () => {
@@ -84,17 +160,6 @@ export function ImageCard({
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
     { icon: Trash2, label: 'Delete', onClick: () => setIsDeleteDialogOpen(true), variant: 'destructive' },
   ];
-
-  // Calculate highlight overlay style from matchedObject bbox
-  const highlightStyle = matchedObject && imageDimensions ? (() => {
-    const [x1, y1, x2, y2] = matchedObject.bbox;
-    return {
-      left: `${x1 * 100}%`,
-      top: `${y1 * 100}%`,
-      width: `${(x2 - x1) * 100}%`,
-      height: `${(y2 - y1) * 100}%`,
-    };
-  })() : null;
 
   const cardContent = (
     <div
@@ -124,11 +189,15 @@ export function ImageCard({
             loading={priority ? 'eager' : 'lazy'}
             onLoad={handleImageLoad}
           />
-          {/* Highlight overlay for matched object */}
-          {highlightStyle && (
-            <div
-              className="absolute pointer-events-none border-2 border-sky-500 bg-sky-500/20 rounded-sm"
-              style={highlightStyle}
+          {/* Animated highlight overlay (rendered to canvas with glowing animation) */}
+          {matchedObject && imageDimensions && (
+            <canvas
+              ref={canvasRef}
+              className="absolute top-0 left-0 pointer-events-none"
+              style={{
+                width: imageDimensions.width,
+                height: imageDimensions.height,
+              }}
             />
           )}
         </div>

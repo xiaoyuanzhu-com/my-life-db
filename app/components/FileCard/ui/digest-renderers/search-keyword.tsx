@@ -5,12 +5,14 @@
 
 import type { DigestRendererProps } from './index';
 import { TEXT_SOURCE_LABELS, SUMMARY_SOURCE_LABELS } from '~/types/text-source';
-import type { SummarySourceType } from '~/types/text-source';
+import type { SummarySourceType, TextSourceType } from '~/types/text-source';
 
 interface SearchKeywordContent {
   documentId: number;
   taskId: number;
   textSource: string;
+  /** Array of all content sources that contributed (new format) */
+  contentSources?: string[];
   hasContent: boolean;
   hasSummary: boolean;
   summarySource: string | null;
@@ -40,10 +42,21 @@ export function SearchKeywordRenderer({ content }: DigestRendererProps) {
 
   const indexed: string[] = [];
 
-  // Primary text source (use label from shared source of truth)
-  const sourceLabel = TEXT_SOURCE_LABELS[data.textSource as keyof typeof TEXT_SOURCE_LABELS];
-  if (sourceLabel && data.textSource !== 'filename-only') {
-    indexed.push(sourceLabel);
+  // Use contentSources array if available (new format), fall back to textSource (old format)
+  if (data.contentSources && data.contentSources.length > 0) {
+    // Add all content sources with their labels
+    for (const source of data.contentSources) {
+      const sourceLabel = TEXT_SOURCE_LABELS[source as TextSourceType];
+      if (sourceLabel) {
+        indexed.push(sourceLabel);
+      }
+    }
+  } else {
+    // Fall back to old format: single primary text source
+    const sourceLabel = TEXT_SOURCE_LABELS[data.textSource as keyof typeof TEXT_SOURCE_LABELS];
+    if (sourceLabel && data.textSource !== 'filename-only') {
+      indexed.push(sourceLabel);
+    }
   }
 
   // Additional indexed fields
