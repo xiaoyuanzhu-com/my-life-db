@@ -4,8 +4,9 @@
  */
 
 import type { DigestRendererProps } from './index';
+import { getSqlarUrl } from '../../utils';
 
-export function UrlCrawlScreenshotRenderer({ sqlarName, filePath }: DigestRendererProps) {
+export function UrlCrawlScreenshotRenderer({ sqlarName }: DigestRendererProps) {
   if (!sqlarName) {
     return (
       <p className="text-sm text-muted-foreground italic">
@@ -14,7 +15,7 @@ export function UrlCrawlScreenshotRenderer({ sqlarName, filePath }: DigestRender
     );
   }
 
-  const screenshotUrl = `/api/digest/${encodeURIComponent(filePath)}/screenshot`;
+  const screenshotUrl = getSqlarUrl(sqlarName);
 
   return (
     <div className="mt-2">
