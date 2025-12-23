@@ -227,6 +227,8 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
     // Clear results immediately if empty
     if (!query) {
+      // Update ref so any in-flight responses are ignored as stale
+      currentQueryRef.current = '';
       setKeywordResults(null);
       setSemanticResults(null);
       setKeywordError(null);
