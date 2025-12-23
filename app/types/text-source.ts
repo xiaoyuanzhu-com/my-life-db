@@ -11,6 +11,7 @@ export type TextSourceType =
   | 'doc-to-markdown'      // From document conversion digest
   | 'image-ocr'            // From image OCR digest
   | 'image-captioning'     // From image captioning digest
+  | 'image-objects'        // From image objects detection digest
   | 'speech-recognition'   // From speech recognition digest
   | 'file'                 // From local text file (no digest)
   | 'filename-only';       // No text content, only filename indexed
@@ -24,6 +25,7 @@ export const TEXT_SOURCE_LABELS: Record<TextSourceType, string> = {
   'doc-to-markdown': 'Doc to Markdown',
   'image-ocr': 'Image OCR',
   'image-captioning': 'Image Captioning',
+  'image-objects': 'Image Objects',
   'speech-recognition': 'Speech Recognition',
   'file': 'File Content',
   'filename-only': 'Filename',

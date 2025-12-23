@@ -281,7 +281,29 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     contentParts.push(captionDigest.content);
   }
 
-  // 5. Check for speech-recognition digest
+  // 5. Check for image-objects digest
+  const objectsDigest = getDigestByPathAndDigester(filePath, 'image-objects');
+  if (objectsDigest?.content && objectsDigest.status === 'completed') {
+    try {
+      const objectsData = JSON.parse(objectsDigest.content);
+      if (objectsData.objects && Array.isArray(objectsData.objects)) {
+        // Extract searchable text from objects: title + description
+        const objectTexts = objectsData.objects.map((obj: { title?: string; description?: string }) => {
+          const parts = [];
+          if (obj.title) parts.push(obj.title);
+          if (obj.description) parts.push(obj.description);
+          return parts.join(': ');
+        }).filter(Boolean);
+        if (objectTexts.length > 0) {
+          contentParts.push(objectTexts.join('\n'));
+        }
+      }
+    } catch (error) {
+      log.warn({ filePath, error }, 'failed to parse image-objects digest');
+    }
+  }
+
+  // 6. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
     try {
@@ -296,7 +318,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     }
   }
 
-  // 6. Try reading from filesystem (markdown or text files)
+  // 7. Try reading from filesystem (markdown or text files)
   if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
     try {
       const fullPath = path.join(dataDir, filePath);
@@ -307,7 +329,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     }
   }
 
-  // 7. Try folder's text.md
+  // 8. Try folder's text.md
   if (isFolder) {
     try {
       const textMdPath = path.join(dataDir, filePath, 'text.md');

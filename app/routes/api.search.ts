@@ -16,6 +16,19 @@ function escapeFilterValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+/** RLE mask format from SAM */
+interface RleMask {
+  size: [number, number]; // [height, width]
+  counts: number[];
+}
+
+/** Matched object from image-objects digest for highlighting */
+export interface MatchedObject {
+  title: string;
+  bbox: [number, number, number, number]; // normalized [0,1] coordinates [x1, y1, x2, y2]
+  rle: RleMask | null;
+}
+
 export interface SearchResultItem extends FileWithDigests {
   score: number;
   snippet: string;
@@ -28,6 +41,8 @@ export interface SearchResultItem extends FileWithDigests {
     sourceType?: string;
     digest?: { type: string; label: string };
   };
+  /** Matched object from image-objects for highlighting in image */
+  matchedObject?: MatchedObject;
 }
 
 export interface SearchResponse {
@@ -294,7 +309,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
         matchContext = buildDigestMatchContext({ hit, file: fileWithDigests, terms: highlightTerms, primaryContainsTerm: termVisibleInPreview });
       }
 
-      results.push({ ...fileWithDigests, textPreview, score: 1.0, snippet, highlights: hit._formatted, matchContext });
+      // For image files, check if we matched on image-objects and include the matched object for highlighting
+      let matchedObject: MatchedObject | undefined;
+      if (fileWithDigests.mimeType?.startsWith('image/')) {
+        matchedObject = findMatchingObject(fileWithDigests, highlightTerms);
+      }
+
+      results.push({ ...fileWithDigests, textPreview, score: 1.0, snippet, highlights: hit._formatted, matchContext, matchedObject });
     }
 
     const enrichMs = Date.now() - enrichStart;
@@ -337,6 +358,47 @@ function extractSearchTerms(query: string): string[] {
   );
 }
 
+/** DetectedObject structure from image-objects digest */
+interface DetectedObject {
+  title: string;
+  category?: string;
+  description?: string;
+  bbox: [number, number, number, number];
+  rle: RleMask | null;
+}
+
+/**
+ * Find the first object in image-objects digest that matches any search term
+ * Returns the object with its bbox and rle for highlighting
+ */
+function findMatchingObject(file: FileWithDigests, terms: string[]): MatchedObject | undefined {
+  // Find the image-objects digest
+  const objectsDigest = file.digests.find(d => d.type === 'image-objects' && d.content);
+  if (!objectsDigest?.content) return undefined;
+
+  try {
+    const data = JSON.parse(objectsDigest.content);
+    const objects: DetectedObject[] = data.objects || [];
+
+    // Find the first object that matches any search term
+    for (const obj of objects) {
+      const searchableText = [obj.title, obj.description].filter(Boolean).join(' ').toLowerCase();
+      const matchesTerm = terms.some(term => searchableText.includes(term.toLowerCase()));
+      if (matchesTerm) {
+        return {
+          title: obj.title,
+          bbox: obj.bbox,
+          rle: obj.rle,
+        };
+      }
+    }
+  } catch (e) {
+    log.warn({ err: e, filePath: file.path }, 'failed to parse image-objects digest for matching');
+  }
+
+  return undefined;
+}
+
 function hasHighlight(value?: string | null): value is string {
   return Boolean(value && value.includes(HIGHLIGHT_PRE_TAG));
 }
@@ -354,7 +416,7 @@ const DIGEST_FIELD_CONFIG: Array<{
   {
     field: "content",
     // All digest types that can provide content (in priority order from ingest-to-meilisearch.ts)
-    digesterTypes: ["url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "speech-recognition"],
+    digesterTypes: ["url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "image-objects", "speech-recognition"],
     label: "File Content", // Fallback when no digest found (raw text file)
     requirePrimaryMiss: true,
   },

@@ -170,7 +170,29 @@ async function getFileContent(filePath: string): Promise<string | null> {
     contentParts.push(captionDigest.content);
   }
 
-  // 5. Check for speech-recognition digest
+  // 5. Check for image-objects digest
+  const objectsDigest = getDigestByPathAndDigester(filePath, 'image-objects');
+  if (objectsDigest?.content && objectsDigest.status === 'completed') {
+    try {
+      const objectsData = JSON.parse(objectsDigest.content);
+      if (objectsData.objects && Array.isArray(objectsData.objects)) {
+        // Extract searchable text from objects: title + description
+        const objectTexts = objectsData.objects.map((obj: { title?: string; description?: string }) => {
+          const parts = [];
+          if (obj.title) parts.push(obj.title);
+          if (obj.description) parts.push(obj.description);
+          return parts.join(': ');
+        }).filter(Boolean);
+        if (objectTexts.length > 0) {
+          contentParts.push(objectTexts.join('\n'));
+        }
+      }
+    } catch (error) {
+      log.warn({ filePath, error }, 'failed to parse image-objects digest');
+    }
+  }
+
+  // 7. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
     try {
@@ -185,7 +207,7 @@ async function getFileContent(filePath: string): Promise<string | null> {
     }
   }
 
-  // 6. Read from filesystem for text files
+  // 8. Read from filesystem for text files
   const fileRecord = getFileByPath(filePath);
   const filename = path.basename(filePath);
   if (isTextFile(fileRecord?.mimeType ?? null, filename)) {
@@ -199,7 +221,7 @@ async function getFileContent(filePath: string): Promise<string | null> {
     }
   }
 
-  // 7. For folders, try to read text.md
+  // 9. For folders, try to read text.md
   if (fileRecord?.isFolder) {
     try {
       const dataDir = process.env.MY_DATA_DIR || './data';

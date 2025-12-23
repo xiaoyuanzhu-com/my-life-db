@@ -1,5 +1,18 @@
 import type { FileWithDigests } from './file-card';
 
+/** RLE mask format from SAM */
+export interface RleMask {
+  size: [number, number]; // [height, width]
+  counts: number[];
+}
+
+/** Matched object from image-objects digest for highlighting */
+export interface MatchedObject {
+  title: string;
+  bbox: [number, number, number, number]; // normalized [0,1] coordinates [x1, y1, x2, y2]
+  rle: RleMask | null;
+}
+
 export interface SearchResultItem extends FileWithDigests {
   // Search metadata
   score: number;
@@ -20,6 +33,8 @@ export interface SearchResultItem extends FileWithDigests {
       label: string;
     };
   };
+  /** Matched object from image-objects for highlighting in image */
+  matchedObject?: MatchedObject;
 }
 
 export interface SearchResponse {
