@@ -7,6 +7,7 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { callOpenAICompletion } from '~/.server/vendors/openai';
+import { segmentImageWithHaid, type HaidSamMask } from '~/.server/vendors/haid';
 import { DATA_ROOT } from '~/.server/fs/storage';
 import { getLogger } from '~/.server/log/logger';
 import path from 'path';
@@ -53,19 +54,11 @@ const IMAGE_OBJECTS_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'title', 'name', 'category', 'description', 'bbox', 'certainty'],
+        required: ['title', 'category', 'description', 'bbox'],
         properties: {
-          id: {
-            type: 'string',
-            description: 'Unique identifier within this response (e.g., obj_001)',
-          },
           title: {
             type: 'string',
             description: 'Concise, human-readable, unique title; may implicitly express Type',
-          },
-          name: {
-            type: 'string',
-            description: 'Stable generic noun (e.g., book, laptop, bottle)',
           },
           category: {
             type: 'string',
@@ -86,31 +79,128 @@ const IMAGE_OBJECTS_SCHEMA = {
             },
             description: '[x1, y1, x2, y2] normalized to [0,1]',
           },
-          certainty: {
-            type: 'string',
-            enum: ['certain', 'likely', 'uncertain'],
-            description: 'Confidence level based on visual evidence',
-          },
         },
       },
     },
   },
 };
 
-export type Certainty = 'certain' | 'likely' | 'uncertain';
+/** RLE (Run-Length Encoding) mask format from SAM */
+export interface RleMask {
+  size: [number, number]; // [height, width]
+  counts: number[];
+}
 
 export interface DetectedObject {
-  id: string;
   title: string;
-  name: string;
   category: string;
   description: string;
   bbox: [number, number, number, number];
-  certainty: Certainty;
+  rle: RleMask | null; // Segmentation mask, null if no matching mask found
 }
 
 export interface ImageObjectsResult {
   objects: DetectedObject[];
+}
+
+/**
+ * Calculate IoU (Intersection over Union) between two bounding boxes
+ * Both boxes should be in [x1, y1, x2, y2] format (pixel coordinates)
+ */
+function calculateIoU(
+  boxA: [number, number, number, number],
+  boxB: [number, number, number, number]
+): number {
+  const [ax1, ay1, ax2, ay2] = boxA;
+  const [bx1, by1, bx2, by2] = boxB;
+
+  // Calculate intersection
+  const ix1 = Math.max(ax1, bx1);
+  const iy1 = Math.max(ay1, by1);
+  const ix2 = Math.min(ax2, bx2);
+  const iy2 = Math.min(ay2, by2);
+
+  // No intersection
+  if (ix1 >= ix2 || iy1 >= iy2) {
+    return 0;
+  }
+
+  const intersectionArea = (ix2 - ix1) * (iy2 - iy1);
+  const areaA = (ax2 - ax1) * (ay2 - ay1);
+  const areaB = (bx2 - bx1) * (by2 - by1);
+  const unionArea = areaA + areaB - intersectionArea;
+
+  return unionArea > 0 ? intersectionArea / unionArea : 0;
+}
+
+/**
+ * Convert normalized bbox [0,1] to pixel coordinates
+ */
+function normalizedToPixelBox(
+  normalizedBox: [number, number, number, number],
+  imageWidth: number,
+  imageHeight: number
+): [number, number, number, number] {
+  return [
+    normalizedBox[0] * imageWidth,
+    normalizedBox[1] * imageHeight,
+    normalizedBox[2] * imageWidth,
+    normalizedBox[3] * imageHeight,
+  ];
+}
+
+/**
+ * Match detected objects to SAM masks based on bbox overlap
+ * Uses IoU (Intersection over Union) as the matching metric
+ * Each mask can only be matched to one object (best match wins)
+ * Returns a Map from object index to matched mask
+ */
+function matchObjectsToMasks(
+  bboxes: Array<[number, number, number, number]>, // normalized [0,1]
+  masks: HaidSamMask[],
+  imageWidth: number,
+  imageHeight: number,
+  minIoU: number = 0.3 // minimum IoU threshold for a valid match
+): Map<number, HaidSamMask> {
+  const result = new Map<number, HaidSamMask>();
+  const usedMasks = new Set<number>();
+
+  // Calculate IoU for all object-mask pairs
+  const scores: Array<{ objectIndex: number; maskIndex: number; iou: number }> = [];
+
+  for (let objIdx = 0; objIdx < bboxes.length; objIdx++) {
+    const objPixelBox = normalizedToPixelBox(bboxes[objIdx], imageWidth, imageHeight);
+
+    for (let maskIdx = 0; maskIdx < masks.length; maskIdx++) {
+      const mask = masks[maskIdx];
+      const maskBox = mask.box as [number, number, number, number];
+      const iou = calculateIoU(objPixelBox, maskBox);
+
+      if (iou >= minIoU) {
+        scores.push({ objectIndex: objIdx, maskIndex: maskIdx, iou });
+      }
+    }
+  }
+
+  // Sort by IoU descending - best matches first
+  scores.sort((a, b) => b.iou - a.iou);
+
+  // Greedy matching: assign best matches first
+  const assignedObjects = new Set<number>();
+
+  for (const { objectIndex, maskIndex, iou } of scores) {
+    if (assignedObjects.has(objectIndex) || usedMasks.has(maskIndex)) {
+      continue;
+    }
+
+    result.set(objectIndex, masks[maskIndex]);
+    assignedObjects.add(objectIndex);
+    usedMasks.add(maskIndex);
+
+    log.debug({ objectIndex, maskIndex, iou }, 'matched object to mask');
+  }
+
+  return result;
 }
 
 /**
@@ -332,15 +422,64 @@ Output ONLY valid JSON matching the schema. No markdown or explanation.`;
       maxTokens: 4096,
     });
 
-    // Parse the JSON response
-    let parsedResult: ImageObjectsResult;
+    // Parse the JSON response (without RLE initially)
+    let parsedObjects: Array<Omit<DetectedObject, 'rle'>>;
     try {
-      parsedResult = JSON.parse(result.content);
+      const parsed = JSON.parse(result.content);
+      parsedObjects = parsed.objects;
     } catch (parseError) {
       log.error({ filePath, content: result.content, error: parseError }, 'failed to parse image objects response');
       throw new Error(`Failed to parse image objects response: ${parseError}`);
     }
 
+    // Call SAM API for segmentation masks
+    let indexToMask = new Map<number, HaidSamMask>();
+    try {
+      log.info({ filePath, objectCount: parsedObjects.length }, 'calling SAM for segmentation masks');
+
+      const samResponse = await segmentImageWithHaid({
+        imageBase64: base64Image,
+        prompt: 'auto',
+        pointsPerSide: 32,
+        autoMinAreaRatio: 0.001,
+      });
+
+      log.info({
+        filePath,
+        maskCount: samResponse.masks.length,
+        imageSize: `${samResponse.image_width}x${samResponse.image_height}`,
+      }, 'SAM segmentation completed');
+
+      // Match objects to masks by index
+      indexToMask = matchObjectsToMasks(
+        parsedObjects.map(obj => obj.bbox),
+        samResponse.masks,
+        samResponse.image_width,
+        samResponse.image_height,
+        0.3 // minimum IoU threshold
+      );
+
+      log.info({
+        filePath,
+        objectCount: parsedObjects.length,
+        maskCount: samResponse.masks.length,
+        matchedCount: indexToMask.size,
+      }, 'matched objects to SAM masks');
+    } catch (samError) {
+      // Log error but continue without RLE - it's optional
+      log.warn({ filePath, error: samError, message: samError instanceof Error ? samError.message : String(samError) }, 'SAM segmentation failed, continuing without RLE masks');
+    }
+
+    // Build final result with RLE masks
+    const objectsWithRle: DetectedObject[] = parsedObjects.map((obj, index) => {
+      const matchedMask = indexToMask.get(index);
+      return {
+        ...obj,
+        rle: matchedMask ? matchedMask.rle : null,
+      };
+    });
+
+    const finalResult: ImageObjectsResult = { objects: objectsWithRle };
     const now = new Date().toISOString();
 
     // Store the detected objects as JSON
@@ -349,7 +488,7 @@ Output ONLY valid JSON matching the schema. No markdown or explanation.`;
         filePath,
         digester: 'image-objects',
         status: 'completed',
-        content: JSON.stringify(parsedResult, null, 2),
+        content: JSON.stringify(finalResult, null, 2),
         sqlarName: null,
         error: null,
         attempts: 0,

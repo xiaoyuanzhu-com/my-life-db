@@ -425,6 +425,114 @@ export async function imageCaptioningWithHaid(
   return data;
 }
 
+// ============================================================================
+// SAM (Segment Anything Model) API
+// ============================================================================
+
+export interface HaidSamRle {
+  size: [number, number]; // [height, width]
+  counts: number[];
+}
+
+export interface HaidSamMask {
+  rle: HaidSamRle;
+  score: number;
+  box: [number, number, number, number]; // [x1, y1, x2, y2] in pixels
+}
+
+export interface HaidSamOptions {
+  imageBase64: string;
+  prompt?: string; // Text prompt or 'auto' for automatic segmentation
+  lib?: string;
+  confidenceThreshold?: number;
+  maxMasks?: number;
+  // Auto mode options
+  pointsPerSide?: number;
+  pointsPerBatch?: number;
+  autoIouThreshold?: number;
+  autoMinAreaRatio?: number;
+}
+
+export interface HaidSamResponse {
+  request_id: string;
+  processing_time_ms: number;
+  model: string;
+  prompt: string;
+  image_width: number;
+  image_height: number;
+  masks: HaidSamMask[];
+}
+
+const DEFAULT_SAM_LIB = 'facebookresearch/sam3';
+
+export async function segmentImageWithHaid(
+  options: HaidSamOptions
+): Promise<HaidSamResponse> {
+  if (!options.imageBase64) {
+    throw new Error('HAID SAM requires a base64-encoded image');
+  }
+
+  const config = await resolveHaidConfig();
+  const endpoint = `${config.baseUrl}/api/sam`;
+
+  const requestBody: Record<string, unknown> = {
+    image: options.imageBase64,
+    prompt: options.prompt ?? 'auto',
+    lib: options.lib ?? DEFAULT_SAM_LIB,
+  };
+
+  // Add threshold and max masks if provided
+  if (options.confidenceThreshold !== undefined) {
+    requestBody.confidence_threshold = options.confidenceThreshold;
+  }
+  if (options.maxMasks !== undefined) {
+    requestBody.max_masks = options.maxMasks;
+  }
+
+  // Add auto mode options if using auto segmentation
+  if (!options.prompt || options.prompt === 'auto') {
+    if (options.pointsPerSide !== undefined) {
+      requestBody.points_per_side = options.pointsPerSide;
+    }
+    if (options.pointsPerBatch !== undefined) {
+      requestBody.points_per_batch = options.pointsPerBatch;
+    }
+    if (options.autoIouThreshold !== undefined) {
+      requestBody.auto_iou_threshold = options.autoIouThreshold;
+    }
+    if (options.autoMinAreaRatio !== undefined) {
+      requestBody.auto_min_area_ratio = options.autoMinAreaRatio;
+    }
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `HAID SAM error (${response.status}): ${errorText || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+
+  log.info({
+    prompt: options.prompt ?? 'auto',
+    processingTimeMs: data.processing_time_ms,
+    maskCount: data.masks?.length ?? 0,
+    imageSize: `${data.image_width}x${data.image_height}`,
+  }, 'SAM segmentation completed');
+
+  return data;
+}
+
 async function resolveHaidConfig(): Promise<{
   baseUrl: string;
   apiKey?: string;
