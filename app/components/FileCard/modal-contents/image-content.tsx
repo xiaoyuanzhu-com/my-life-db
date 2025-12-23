@@ -156,12 +156,10 @@ function extractLargestRegion(
       }
     }
 
-    console.log(`[RLE] Using largest region: ${largestRegionSize}/${totalMaskPixels} pixels (${(coverage * 100).toFixed(1)}%)`);
     return regionMask;
   }
 
   // Multiple significant regions - fall back to bbox
-  console.log(`[RLE] Multiple regions, largest covers only ${(coverage * 100).toFixed(1)}% - falling back to bbox`);
   return null;
 }
 
@@ -625,8 +623,6 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
       const rle = highlightedRegion.rle;
       [maskHeight, maskWidth] = rle.size;
 
-      console.log(`[RLE] Processing mask: ${maskWidth}x${maskHeight}, counts length: ${rle.counts.length}`);
-
       // Decode and try to extract the largest region
       const decodedMask = decodeRle(rle);
       const extractedMask = extractLargestRegion(decodedMask, maskWidth, maskHeight);
@@ -636,14 +632,12 @@ export function ImageContent({ file, showDigests, onClose, highlightedRegion }: 
         mask = extractedMask;
       } else {
         // Multiple significant regions - fall back to bbox
-        console.log('[RLE] Falling back to bbox mask');
         maskWidth = imageDimensions.width;
         maskHeight = imageDimensions.height;
         mask = createBboxMask(highlightedRegion.bbox, maskWidth, maskHeight);
       }
     } else {
       // No RLE - use bbox directly
-      console.log('[BBOX] Using bbox mask');
       maskWidth = imageDimensions.width;
       maskHeight = imageDimensions.height;
       mask = createBboxMask(highlightedRegion.bbox, maskWidth, maskHeight);
