@@ -22,8 +22,8 @@ const RESERVED_FOLDERS = ['app', '.app', '.git', '.mylifedb', 'node_modules'];
 // Hash files smaller than 10MB (same as scanner)
 const HASH_SIZE_THRESHOLD = 10 * 1024 * 1024; // 10MB
 
-// Debounce time to batch rapid file changes
-const DEBOUNCE_MS = 500;
+// Chokidar stabilization threshold - wait for file writes to complete
+const STABILITY_THRESHOLD_MS = 500;
 
 export interface FileChangeEvent {
   filePath: string; // Relative path from DATA_ROOT
@@ -36,10 +36,16 @@ export interface FileChangeEvent {
 /**
  * File system watcher service
  * Emits 'file-change' events when files are added or modified
+ *
+ * Design principles:
+ * 1. Filesystem is source of truth - always check actual file state
+ * 2. Per-path serialization - events for same path processed sequentially
+ * 3. No application debounce - rely on chokidar's awaitWriteFinish
  */
 export class FileSystemWatcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
-  private debounceTimers = new Map<string, NodeJS.Timeout>();
+  // Per-path promise chain to serialize events for the same path
+  private pathQueues = new Map<string, Promise<void>>();
 
   /**
    * Start watching the data directory
@@ -76,18 +82,18 @@ export class FileSystemWatcher extends EventEmitter {
       persistent: true,
       ignoreInitial: true, // Don't emit for existing files on startup
       awaitWriteFinish: {
-        stabilityThreshold: DEBOUNCE_MS,
+        stabilityThreshold: STABILITY_THRESHOLD_MS,
         pollInterval: 100,
       },
       depth: undefined, // Watch all nested directories
     });
 
-    // Listen for file events
+    // Listen for file events - all events go through unified handler
     this.watcher
-      .on('add', filePath => this.handleFileEvent(filePath, 'add'))
-      .on('change', filePath => this.handleFileEvent(filePath, 'change'))
-      .on('unlink', filePath => this.handleFileDelete(filePath, false))
-      .on('unlinkDir', filePath => this.handleFileDelete(filePath, true))
+      .on('add', filePath => this.queuePathProcessing(filePath))
+      .on('change', filePath => this.queuePathProcessing(filePath))
+      .on('unlink', filePath => this.queuePathProcessing(filePath))
+      .on('unlinkDir', filePath => this.queuePathProcessing(filePath))
       .on('error', error => {
         log.error({ err: error }, 'file system watcher error');
       })
@@ -106,197 +112,205 @@ export class FileSystemWatcher extends EventEmitter {
 
     log.debug({}, 'stopping file system watcher');
 
-    // Clear all pending debounce timers
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
-
     await this.watcher.close();
     this.watcher = null;
+    this.pathQueues.clear();
 
     log.debug({}, 'file system watcher stopped');
   }
 
   /**
-   * Handle file add/change events with debouncing
+   * Queue path processing to ensure events for the same path are serialized.
+   * Different paths can process in parallel.
    */
-  private handleFileEvent(fullPath: string, eventType: 'add' | 'change'): void {
-    // Get relative path from DATA_ROOT
+  private queuePathProcessing(fullPath: string): void {
     const relativePath = path.relative(DATA_ROOT, fullPath);
 
-    log.debug({ path: relativePath, eventType }, 'file event received');
+    log.debug({ path: relativePath }, 'queuing path for processing');
 
-    // Clear existing debounce timer
-    const existingTimer = this.debounceTimers.get(relativePath);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
+    // Get existing queue for this path, or start with resolved promise
+    const existingQueue = this.pathQueues.get(relativePath) ?? Promise.resolve();
 
-    // Set new debounce timer
-    const timer = setTimeout(() => {
-      this.debounceTimers.delete(relativePath);
-      void this.processFileChange(relativePath, fullPath, eventType);
-    }, DEBOUNCE_MS);
-
-    this.debounceTimers.set(relativePath, timer);
-  }
-
-  /**
-   * Process a file change (after debouncing)
-   */
-  private async processFileChange(
-    relativePath: string,
-    fullPath: string,
-    eventType: 'add' | 'change'
-  ): Promise<void> {
-    try {
-      log.debug({ path: relativePath, eventType }, 'processing file change');
-
-      // Check if file existed in DB before
-      const existing = getFileByPath(relativePath);
-      const isNew = !existing;
-
-      // Get file stats
-      const stats = await fs.stat(fullPath);
-
-      // Check if it's a directory (we track folders too)
-      if (stats.isDirectory()) {
-        upsertFileRecord({
-          path: relativePath,
-          name: path.basename(relativePath),
-          isFolder: true,
-          modifiedAt: stats.mtime.toISOString(),
-        });
-        log.debug({ path: relativePath }, 'indexed folder');
-        return;
-      }
-
-      // Process regular file
-      const filename = path.basename(relativePath);
-      const mimeType = this.getMimeType(filename);
-
-      // Hash small files and read text preview
-      let hash: string | undefined;
-      let textPreview: string | undefined;
-      const isText = isTextFile(mimeType, filename);
-      if (stats.size < HASH_SIZE_THRESHOLD) {
-        const buffer = await fs.readFile(fullPath);
-        hash = createHash('sha256').update(buffer).digest('hex');
-
-        // Read text preview for text files (first 50 lines)
-        if (isText) {
-          const text = buffer.toString('utf-8');
-          const lines = text.split('\n').slice(0, 50);
-          textPreview = lines.join('\n');
-        }
-      } else if (isText) {
-        // For large text files, still read preview
-        try {
-          const buffer = await fs.readFile(fullPath, 'utf-8');
-          const lines = buffer.split('\n').slice(0, 50);
-          textPreview = lines.join('\n');
-        } catch {
-          // Ignore errors reading text preview
-        }
-      }
-
-      // Detect if content changed (hash comparison)
-      let contentChanged = false;
-      if (!isNew) {
-        // Check if hash changed
-        if (hash && existing.hash) {
-          // Both hashes exist - compare them
-          contentChanged = hash !== existing.hash;
-        } else if (hash && !existing.hash) {
-          // We have a new hash but no existing hash - assume changed
-          // This handles files that were added before hashing was implemented
-          contentChanged = true;
-        } else if (stats.size !== existing.size) {
-          // Fallback: size changed (for large files without hash)
-          contentChanged = true;
-        }
-      }
-
-      // Determine if we should invalidate digests
-      const shouldInvalidateDigests = contentChanged;
-
-      // Update files table
-      upsertFileRecord({
-        path: relativePath,
-        name: filename,
-        isFolder: false,
-        size: stats.size,
-        mimeType,
-        hash,
-        modifiedAt: stats.mtime.toISOString(),
-        textPreview,
+    // Chain new processing onto the queue
+    const newQueue = existingQueue
+      .then(() => this.processPath(relativePath, fullPath))
+      .catch(error => {
+        log.error({ err: error, path: relativePath }, 'error in path processing queue');
       });
 
-      log.info(
-        { path: relativePath, isNew, contentChanged, size: stats.size },
-        isNew ? 'new file detected' : contentChanged ? 'file content changed' : 'file metadata updated'
-      );
+    this.pathQueues.set(relativePath, newQueue);
 
-      if (isNew) {
-        ensureAllDigesters(relativePath);
+    // Clean up completed queues to prevent memory leak
+    newQueue.finally(() => {
+      // Only delete if this is still the current queue (no new events queued)
+      if (this.pathQueues.get(relativePath) === newQueue) {
+        this.pathQueues.delete(relativePath);
       }
+    });
+  }
 
-      // Emit notification for inbox files (immediate UI update)
-      // File changes should update UI immediately, digestion happens in background
-      // Note: We notify on any change event, not just contentChanged, because:
-      // 1. The watcher only fires on actual file modifications
-      // 2. The textPreview in the database is always updated
-      // 3. The UI should refresh to show the latest content
-      if (relativePath.startsWith('inbox/')) {
-        if (isNew) {
-          notificationService.notify({
-            type: 'inbox-created',
-            path: relativePath,
-            timestamp: new Date().toISOString(),
-          });
-        } else {
-          // Always notify on file modification for inbox files
-          // This ensures UI refresh even if content hash couldn't be compared
-          notificationService.notify({
-            type: 'inbox-updated',
-            path: relativePath,
-            timestamp: new Date().toISOString(),
-          });
-        }
+  /**
+   * Process a path by checking filesystem state.
+   * This is the unified handler for add/change/delete events.
+   * Filesystem is source of truth - we check if file exists.
+   */
+  private async processPath(relativePath: string, fullPath: string): Promise<void> {
+    try {
+      // Check actual filesystem state
+      const exists = await this.fileExists(fullPath);
+      const existsInDb = getFileByPath(relativePath) !== null;
+
+      if (exists) {
+        await this.processFileExists(relativePath, fullPath, !existsInDb);
+      } else {
+        await this.processFileDeleted(relativePath, fullPath, existsInDb);
       }
-
-      // Emit file-change event for digest processing
-      const event: FileChangeEvent = {
-        filePath: relativePath,
-        eventType,
-        isNew,
-        contentChanged,
-        shouldInvalidateDigests,
-      };
-      this.emit('file-change', event);
     } catch (error) {
-      log.error({ err: error, path: relativePath }, 'failed to process file change');
+      log.error({ err: error, path: relativePath }, 'failed to process path');
     }
   }
 
   /**
-   * Handle file/folder deletion events
+   * Check if a file/folder exists on disk
    */
-  private async handleFileDelete(fullPath: string, isFolder: boolean): Promise<void> {
-    // Get relative path from DATA_ROOT
-    const relativePath = path.relative(DATA_ROOT, fullPath);
+  private async fileExists(fullPath: string): Promise<boolean> {
+    try {
+      await fs.access(fullPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-    // Skip if already cleaned up (e.g., deleted via API)
-    // This avoids redundant cleanup when deletion originates from our own code
+  /**
+   * Process when file exists on filesystem
+   */
+  private async processFileExists(
+    relativePath: string,
+    fullPath: string,
+    isNew: boolean
+  ): Promise<void> {
+    log.debug({ path: relativePath, isNew }, 'processing existing file');
+
+    // Get file stats
+    const stats = await fs.stat(fullPath);
+
+    // Check if it's a directory (we track folders too)
+    if (stats.isDirectory()) {
+      upsertFileRecord({
+        path: relativePath,
+        name: path.basename(relativePath),
+        isFolder: true,
+        modifiedAt: stats.mtime.toISOString(),
+      });
+      log.debug({ path: relativePath }, 'indexed folder');
+      return;
+    }
+
+    // Get existing record for comparison
     const existing = getFileByPath(relativePath);
-    if (!existing) {
-      log.debug({ path: relativePath }, 'file already deleted from DB, skipping watcher cleanup');
+
+    // Process regular file
+    const filename = path.basename(relativePath);
+    const mimeType = this.getMimeType(filename);
+
+    // Hash small files and read text preview
+    let hash: string | undefined;
+    let textPreview: string | undefined;
+    const isText = isTextFile(mimeType, filename);
+    if (stats.size < HASH_SIZE_THRESHOLD) {
+      const buffer = await fs.readFile(fullPath);
+      hash = createHash('sha256').update(buffer).digest('hex');
+
+      // Read text preview for text files (first 50 lines)
+      if (isText) {
+        const text = buffer.toString('utf-8');
+        const lines = text.split('\n').slice(0, 50);
+        textPreview = lines.join('\n');
+      }
+    } else if (isText) {
+      // For large text files, still read preview
+      try {
+        const buffer = await fs.readFile(fullPath, 'utf-8');
+        const lines = buffer.split('\n').slice(0, 50);
+        textPreview = lines.join('\n');
+      } catch {
+        // Ignore errors reading text preview
+      }
+    }
+
+    // Detect if content changed (hash comparison)
+    let contentChanged = false;
+    if (existing) {
+      if (hash && existing.hash) {
+        contentChanged = hash !== existing.hash;
+      } else if (hash && !existing.hash) {
+        contentChanged = true;
+      } else if (stats.size !== existing.size) {
+        contentChanged = true;
+      }
+    }
+
+    // Update files table
+    upsertFileRecord({
+      path: relativePath,
+      name: filename,
+      isFolder: false,
+      size: stats.size,
+      mimeType,
+      hash,
+      modifiedAt: stats.mtime.toISOString(),
+      textPreview,
+    });
+
+    log.info(
+      { path: relativePath, isNew, contentChanged, size: stats.size },
+      isNew ? 'new file detected' : contentChanged ? 'file content changed' : 'file metadata updated'
+    );
+
+    if (isNew) {
+      ensureAllDigesters(relativePath);
+    }
+
+    // Emit notification for inbox files (immediate UI update)
+    if (relativePath.startsWith('inbox/')) {
+      notificationService.notify({
+        type: 'inbox-changed',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Emit file-change event for digest processing
+    const event: FileChangeEvent = {
+      filePath: relativePath,
+      eventType: isNew ? 'add' : 'change',
+      isNew,
+      contentChanged,
+      shouldInvalidateDigests: contentChanged,
+    };
+    this.emit('file-change', event);
+  }
+
+  /**
+   * Process when file no longer exists on filesystem
+   */
+  private async processFileDeleted(
+    relativePath: string,
+    fullPath: string,
+    existsInDb: boolean
+  ): Promise<void> {
+    // Skip if file was never in DB (e.g., temp file that was created and deleted quickly)
+    if (!existsInDb) {
+      log.debug({ path: relativePath }, 'deleted file was not in DB, skipping');
       return;
     }
 
     try {
-      log.info({ path: relativePath, isFolder }, 'file deletion detected');
+      log.info({ path: relativePath }, 'file deletion detected');
+
+      // Check if it's a folder by looking at the DB record
+      const existing = getFileByPath(relativePath);
+      const isFolder = existing?.isFolder ?? false;
 
       // Call centralized delete function
       const result = await deleteFile({
@@ -317,13 +331,12 @@ export class FileSystemWatcher extends EventEmitter {
       // Emit notification for inbox deletions (immediate UI update)
       if (relativePath.startsWith('inbox/')) {
         notificationService.notify({
-          type: 'inbox-deleted',
-          path: relativePath,
+          type: 'inbox-changed',
           timestamp: new Date().toISOString(),
         });
       }
     } catch (error) {
-      log.error({ err: error, path: relativePath, isFolder }, 'failed to process file deletion');
+      log.error({ err: error, path: relativePath }, 'failed to process file deletion');
     }
   }
 

@@ -157,20 +157,11 @@ export async function action({ request }: ActionFunctionArgs) {
 
     log.info({ paths: result.paths, fileCount: result.files.length }, "created inbox items");
 
-    for (let i = 0; i < result.paths.length; i++) {
-      const filePath = result.paths[i];
-      const file = result.files[i];
+    // Notify UI of inbox change (single notification for all files)
+    if (result.paths.length > 0) {
       notificationService.notify({
-        type: "inbox-created",
-        path: filePath,
+        type: "inbox-changed",
         timestamp: new Date().toISOString(),
-        metadata: file
-          ? {
-              name: file.name,
-              size: file.size,
-              mimeType: file.mimeType,
-            }
-          : undefined,
       });
     }
 

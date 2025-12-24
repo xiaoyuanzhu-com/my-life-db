@@ -51,10 +51,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (filePath.startsWith("inbox/")) {
       notificationService.notify({
-        type: "inbox-deleted",
-        path: filePath,
+        type: "inbox-changed",
         timestamp: new Date().toISOString(),
-        metadata: { name: file.name },
       });
     }
 

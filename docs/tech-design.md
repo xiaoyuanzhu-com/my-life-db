@@ -219,7 +219,7 @@ File saved → chokidar detects → upsert DB → notificationService.notify()
                                           InboxFeed re-fetches data
 ```
 
-Notification types: `inbox-created`, `inbox-updated`, `inbox-deleted`, `pin-changed`
+Notification types: `inbox-changed`, `pin-changed`
 
 ---
 

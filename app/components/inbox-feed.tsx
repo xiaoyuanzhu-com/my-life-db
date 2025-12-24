@@ -16,6 +16,10 @@ interface InboxFeedProps {
 /**
  * Hook to manage optimistic delete state.
  * Tracks deleted paths and provides handlers for FileCard.
+ *
+ * When fresh data is loaded, we reconcile the optimistic state:
+ * - If the path is in fresh data, remove from deletedPaths (file was re-added)
+ * - If the path is not in fresh data, remove from deletedPaths (confirmed deleted)
  */
 function useOptimisticDelete() {
   // Set of paths that have been optimistically deleted
@@ -45,11 +49,19 @@ function useOptimisticDelete() {
     return deletedPaths.has(path);
   }, [deletedPaths]);
 
+  // Clear optimistic state when fresh data arrives
+  // This ensures re-added files show up correctly
+  const clearOptimisticState = useCallback(() => {
+    setDeletedPaths(new Set());
+    deletedItemsRef.current.clear();
+  }, []);
+
   return {
     deletedPaths,
     handleDelete,
     handleRestore,
     isDeleted,
+    clearOptimisticState,
   };
 }
 
@@ -75,7 +87,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const { pendingItems, cancel: cancelUpload } = useSendQueue();
 
   // Optimistic delete state
-  const { deletedPaths, handleDelete, handleRestore } = useOptimisticDelete();
+  const { deletedPaths, handleDelete, handleRestore, clearOptimisticState } = useOptimisticDelete();
 
   // Filter pending items to only show non-uploaded ones
   const visiblePendingItems = useMemo(() =>
@@ -95,6 +107,10 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const lastScrollMetrics = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
   const contentStabilizedRef = useRef(false);
   const stabilizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref-based loading guard for loadNewestPage to avoid race conditions
+  const loadingNewestPageRef = useRef(false);
+  // Flag to queue a refresh if one arrives while loading
+  const pendingRefreshRef = useRef(false);
 
   // Computed values
   const pageIndices = useMemo(() =>
@@ -168,10 +184,18 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     };
   }, []);
 
-  // Load newest page (initial load)
+  // Load newest page (initial load or refresh)
+  // Uses ref-based guard to prevent race conditions
   const loadNewestPage = useCallback(async () => {
-    if (loadingPages.has(0)) return;
+    // Use ref for synchronous check - prevents race condition
+    if (loadingNewestPageRef.current) {
+      // Queue a refresh for when current load completes
+      pendingRefreshRef.current = true;
+      return;
+    }
 
+    loadingNewestPageRef.current = true;
+    pendingRefreshRef.current = false;
     setLoadingPages(prev => new Set(prev).add(0));
     setError(null);
 
@@ -192,6 +216,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       setPages(new Map([[0, pageData]]));
       setIsInitialLoad(false);
       setError(null); // Clear any previous error on success
+      // Clear optimistic delete state - fresh data is the source of truth
+      // This ensures re-added files (from another device) show up correctly
+      clearOptimisticState();
     } catch (err) {
       console.error('Failed to load inbox:', err);
       setError(err instanceof Error ? err.message : 'Failed to load inbox');
@@ -206,8 +233,16 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         next.delete(0);
         return next;
       });
+      loadingNewestPageRef.current = false;
+
+      // If a refresh was queued while we were loading, do it now
+      if (pendingRefreshRef.current) {
+        pendingRefreshRef.current = false;
+        // Use setTimeout to avoid recursion in the same call stack
+        setTimeout(() => loadNewestPage(), 0);
+      }
     }
-  }, [loadingPages, pages.size]);
+  }, [pages.size, clearOptimisticState]);
 
   // Load older page
   const loadOlderPage = useCallback(async (fromPageIndex: number) => {

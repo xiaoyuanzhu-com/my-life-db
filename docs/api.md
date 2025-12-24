@@ -742,8 +742,7 @@ Server-Sent Events stream for real-time updates.
 | Type | Description |
 |------|-------------|
 | `connected` | Initial connection confirmation |
-| `inbox-created` | New inbox item created |
-| `inbox-deleted` | Inbox item deleted |
+| `inbox-changed` | Inbox content changed (add/update/delete) |
 | `pin-changed` | Pin state changed |
 
 **Headers:**

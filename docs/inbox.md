@@ -416,6 +416,217 @@ interface SelectionContextValue {
 - `useSelection()` - Throws if not in SelectionProvider
 - `useSelectionSafe()` - Returns null if not in SelectionProvider
 
+## Real-Time Sync
+
+The inbox automatically updates when files change on disk, including changes from other devices via cloud sync.
+
+### Architecture Overview
+
+```
+Filesystem Change (local or synced)
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  FileSystemWatcher (chokidar)       │
+│  - awaitWriteFinish: 500ms          │
+│  - Per-path event queue             │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  processPath()                      │
+│  - Check filesystem state           │
+│  - Upsert/delete DB record          │
+│  - Emit inbox-changed notification  │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  NotificationService (EventEmitter) │
+│  - Broadcasts to all SSE clients    │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  SSE: /api/notifications/stream     │
+│  - Push to browser                  │
+│  - 30s heartbeat                    │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  useInboxNotifications hook         │
+│  - 200ms debounce                   │
+│  - Triggers refresh                 │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  InboxFeed.loadNewestPage()         │
+│  - Ref-based loading guard          │
+│  - Pending refresh queue            │
+│  - Clears optimistic state          │
+└─────────────────────────────────────┘
+```
+
+### Design Principles
+
+1. **Filesystem is source of truth** - Always check actual file state, not event type
+2. **Per-path serialization** - Events for same path processed sequentially (no race conditions)
+3. **Single notification type** - `inbox-changed` for all changes (add/update/delete)
+4. **Client debounce** - Batch rapid notifications into single refresh
+5. **Optimistic UI reconciliation** - Fresh data clears optimistic state
+
+### Server-Side: File System Watcher
+
+**File:** `app/.server/scanner/fs-watcher.ts`
+
+The watcher uses chokidar with `awaitWriteFinish` to detect stable files:
+
+```typescript
+chokidar.watch(DATA_ROOT, {
+  awaitWriteFinish: {
+    stabilityThreshold: 500,  // Wait 500ms for file to stabilize
+    pollInterval: 100,
+  },
+});
+```
+
+**Per-path queue** ensures events for the same path are serialized:
+
+```typescript
+// Map<path, Promise> - each path has its own queue
+private pathQueues = new Map<string, Promise<void>>();
+
+private queuePathProcessing(fullPath: string): void {
+  const existingQueue = this.pathQueues.get(relativePath) ?? Promise.resolve();
+  const newQueue = existingQueue.then(() => this.processPath(...));
+  this.pathQueues.set(relativePath, newQueue);
+}
+```
+
+**Unified processing** - all events (add/change/unlink) go through same handler:
+
+```typescript
+private async processPath(relativePath: string, fullPath: string): Promise<void> {
+  const exists = await this.fileExists(fullPath);  // Check actual state
+
+  if (exists) {
+    // Upsert file record, notify UI
+  } else {
+    // Delete file record, notify UI
+  }
+}
+```
+
+### Notification System
+
+**File:** `app/.server/notifications/notification-service.ts`
+
+Single notification type for inbox changes:
+
+```typescript
+type NotificationEventType = 'inbox-changed' | 'pin-changed';
+
+interface NotificationEvent {
+  type: NotificationEventType;
+  timestamp: string;
+}
+```
+
+All inbox operations emit `inbox-changed` - the client always fetches fresh data.
+
+### Client-Side: SSE Hook
+
+**File:** `app/hooks/use-inbox-notifications.ts`
+
+The hook connects to SSE and debounces rapid notifications:
+
+```typescript
+const DEBOUNCE_MS = 200;
+
+// Debounce batches rapid notifications
+const debouncedOnChange = useMemo(
+  () => debounce(onInboxChange, DEBOUNCE_MS),
+  [onInboxChange]
+);
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === 'connected') return;
+  debouncedOnChange();  // Debounced refresh
+};
+```
+
+### Client-Side: Refresh Logic
+
+**File:** `app/components/inbox-feed.tsx`
+
+**Ref-based loading guard** prevents race conditions:
+
+```typescript
+const loadingNewestPageRef = useRef(false);
+const pendingRefreshRef = useRef(false);
+
+const loadNewestPage = useCallback(async () => {
+  // Synchronous check prevents race condition
+  if (loadingNewestPageRef.current) {
+    pendingRefreshRef.current = true;  // Queue for later
+    return;
+  }
+
+  loadingNewestPageRef.current = true;
+  try {
+    const data = await fetch('/api/inbox?limit=30');
+    setPages(new Map([[0, data]]));
+    clearOptimisticState();  // Fresh data is truth
+  } finally {
+    loadingNewestPageRef.current = false;
+    if (pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      setTimeout(() => loadNewestPage(), 0);  // Process queued refresh
+    }
+  }
+}, []);
+```
+
+### Optimistic Delete Reconciliation
+
+When user deletes a file, it's immediately hidden (optimistic UI). When fresh data arrives:
+
+```typescript
+// Clear optimistic state - fresh data is source of truth
+const clearOptimisticState = useCallback(() => {
+  setDeletedPaths(new Set());
+  deletedItemsRef.current.clear();
+}, []);
+```
+
+This ensures files re-added from another device show correctly.
+
+### Timing Summary
+
+| Event | Latency |
+|-------|---------|
+| File write stabilization (chokidar) | ~500ms |
+| Server processing | ~10ms |
+| SSE broadcast | ~1ms |
+| Client debounce | 200ms |
+| **Total (typical)** | **~700ms** |
+
+### Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| Add then delete quickly | File not shown (per-path queue) |
+| Delete then add quickly | File shown (filesystem check) |
+| Rapid add-delete-add | Final state matches filesystem |
+| Notification during load | Queued, processed after current load |
+| SSE disconnect | Auto-reconnect after 5 seconds |
+| Multiple devices syncing | All clients update via SSE |
+
+---
+
 ## Send Workflow
 
 See [send.md](./send.md) for the complete local-first send workflow design.

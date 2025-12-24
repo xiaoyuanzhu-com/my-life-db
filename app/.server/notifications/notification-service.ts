@@ -7,21 +7,15 @@ const log = getLogger({ module: 'NotificationService' });
 
 // Notification event types
 export type NotificationEventType =
-  | 'inbox-created'
-  | 'inbox-updated'
-  | 'inbox-deleted'
+  | 'inbox-changed'  // Unified inbox notification (replaces inbox-created/updated/deleted)
   | 'pin-changed';
 
 // Notification payload structure
 export interface NotificationEvent {
   type: NotificationEventType;
-  path: string;
   timestamp: string;
-  metadata?: {
-    name?: string;
-    size?: number;
-    mimeType?: string;
-  };
+  // path is optional - inbox-changed doesn't need it (client fetches fresh data)
+  path?: string;
 }
 
 // Declare global type for HMR persistence
