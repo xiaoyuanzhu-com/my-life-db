@@ -14,15 +14,98 @@ interface InboxFeedProps {
 }
 
 /**
- * Hook to manage optimistic delete state.
+ * Hook to track newly arrived items for animation.
+ * Items that appear in a refresh but weren't in the previous data are "new".
+ *
+ * Two-phase animation to prevent flash:
+ * 1. pendingPaths: items start hidden (opacity: 0)
+ * 2. animatingPaths: animation plays (slide up + fade in)
+ */
+function useNewItemsAnimation() {
+  // Items waiting for animation to start (hidden)
+  const [pendingPaths, setPendingPaths] = useState<Set<string>>(new Set());
+  // Items currently animating (slide up)
+  const [animatingPaths, setAnimatingPaths] = useState<Set<string>>(new Set());
+  // Previous paths to detect new arrivals
+  const previousPathsRef = useRef<Set<string>>(new Set());
+  // Flag to skip animation on initial load
+  const isInitialLoadRef = useRef(true);
+
+  // Called when fresh data arrives - detect new items
+  const detectNewItems = useCallback((items: InboxItem[]) => {
+    const currentPaths = new Set(items.map(item => item.path));
+
+    // On initial load, just record paths without animating
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      previousPathsRef.current = currentPaths;
+      return;
+    }
+
+    // Find paths that are new (in current but not in previous)
+    const newlyArrived = new Set<string>();
+    for (const path of currentPaths) {
+      if (!previousPathsRef.current.has(path)) {
+        newlyArrived.add(path);
+      }
+    }
+
+    // Update state if there are new items
+    if (newlyArrived.size > 0) {
+      // Phase 1: Mark as pending (hidden)
+      setPendingPaths(newlyArrived);
+
+      // Phase 2: Start animation on next frame
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setPendingPaths(new Set());
+          setAnimatingPaths(newlyArrived);
+
+          // Clear animation state after animation completes
+          setTimeout(() => {
+            setAnimatingPaths(new Set());
+          }, 400);
+        });
+      });
+    }
+
+    // Update previous paths for next comparison
+    previousPathsRef.current = currentPaths;
+  }, []);
+
+  // Returns animation class for an item
+  const getAnimationClass = useCallback((path: string) => {
+    if (pendingPaths.has(path)) {
+      return 'animate-new-item-initial'; // Hidden, waiting
+    }
+    if (animatingPaths.has(path)) {
+      return 'animate-slide-up-fade'; // Animating in
+    }
+    return '';
+  }, [pendingPaths, animatingPaths]);
+
+  return { detectNewItems, getAnimationClass };
+}
+
+// Animation duration for delete collapse (must match CSS)
+const DELETE_ANIMATION_MS = 300;
+
+/**
+ * Hook to manage optimistic delete state with animation.
  * Tracks deleted paths and provides handlers for FileCard.
+ *
+ * Delete flow:
+ * 1. Item added to animatingPaths (triggers collapse animation)
+ * 2. After animation, item moved to deletedPaths (removed from DOM)
  *
  * When fresh data is loaded, we reconcile the optimistic state:
  * - If the path is in fresh data, remove from deletedPaths (file was re-added)
  * - If the path is not in fresh data, remove from deletedPaths (confirmed deleted)
  */
 function useOptimisticDelete() {
-  // Set of paths that have been optimistically deleted
+  // Set of paths currently animating out
+  const [animatingPaths, setAnimatingPaths] = useState<Set<string>>(new Set());
+  // Set of paths that have been optimistically deleted (hidden from DOM)
   const [deletedPaths, setDeletedPaths] = useState<Set<string>>(new Set());
   // Store items for potential restore (keyed by path)
   const deletedItemsRef = useRef<Map<string, InboxItem>>(new Map());
@@ -30,12 +113,27 @@ function useOptimisticDelete() {
   const handleDelete = useCallback((path: string, item: InboxItem) => {
     // Store the item for potential restore
     deletedItemsRef.current.set(path, item);
-    // Add to deleted set (optimistic removal)
-    setDeletedPaths(prev => new Set(prev).add(path));
+    // Start animation
+    setAnimatingPaths(prev => new Set(prev).add(path));
+
+    // After animation completes, move to deleted set
+    setTimeout(() => {
+      setAnimatingPaths(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      setDeletedPaths(prev => new Set(prev).add(path));
+    }, DELETE_ANIMATION_MS);
   }, []);
 
   const handleRestore = useCallback((path: string) => {
-    // Remove from deleted set (restore to UI)
+    // Remove from both sets (cancel animation if in progress)
+    setAnimatingPaths(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
     setDeletedPaths(prev => {
       const next = new Set(prev);
       next.delete(path);
@@ -49,23 +147,33 @@ function useOptimisticDelete() {
     return deletedPaths.has(path);
   }, [deletedPaths]);
 
+  const isAnimatingOut = useCallback((path: string) => {
+    return animatingPaths.has(path);
+  }, [animatingPaths]);
+
   // Clear optimistic state when fresh data arrives
   // This ensures re-added files show up correctly
   const clearOptimisticState = useCallback(() => {
+    setAnimatingPaths(new Set());
     setDeletedPaths(new Set());
     deletedItemsRef.current.clear();
   }, []);
 
   return {
     deletedPaths,
+    animatingPaths,
     handleDelete,
     handleRestore,
     isDeleted,
+    isAnimatingOut,
     clearOptimisticState,
   };
 }
 
-const { BATCH_SIZE, MAX_PAGES, SCROLL_THRESHOLD, DEFAULT_ITEM_HEIGHT, BOTTOM_STICK_THRESHOLD } = FEED_CONSTANTS;
+const { BATCH_SIZE, MAX_PAGES, SCROLL_THRESHOLD, DEFAULT_ITEM_HEIGHT } = FEED_CONSTANTS;
+
+// Use 100vh for bottom stick threshold (1 full viewport height)
+const getBottomStickThreshold = () => typeof window !== 'undefined' ? window.innerHeight : 800;
 
 /**
  * Parse cursor string to extract path
@@ -87,7 +195,10 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const { pendingItems, cancel: cancelUpload } = useSendQueue();
 
   // Optimistic delete state
-  const { deletedPaths, handleDelete, handleRestore, clearOptimisticState } = useOptimisticDelete();
+  const { deletedPaths, handleDelete, handleRestore, isAnimatingOut, clearOptimisticState } = useOptimisticDelete();
+
+  // New items animation
+  const { detectNewItems, getAnimationClass } = useNewItemsAnimation();
 
   // Filter pending items to only show non-uploaded ones
   const visiblePendingItems = useMemo(() =>
@@ -213,6 +324,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         loadedAt: Date.now(),
       };
 
+      // Detect new items for animation before updating state
+      detectNewItems(data.items);
+
       setPages(new Map([[0, pageData]]));
       setIsInitialLoad(false);
       setError(null); // Clear any previous error on success
@@ -242,7 +356,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         setTimeout(() => loadNewestPage(), 0);
       }
     }
-  }, [pages.size, clearOptimisticState]);
+  }, [pages.size, clearOptimisticState, detectNewItems]);
 
   // Load older page
   const loadOlderPage = useCallback(async (fromPageIndex: number) => {
@@ -428,7 +542,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
     // Only allow disabling stickToBottom when content has stabilized (images loaded)
     // This prevents scroll events from async image loading from disabling stick-to-bottom
-    const nearBottom = distanceFromBottom < BOTTOM_STICK_THRESHOLD;
+    const nearBottom = distanceFromBottom < getBottomStickThreshold();
 
     if (nearBottom) {
       // Always allow enabling stickToBottom
@@ -584,7 +698,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
       }
 
       // Also scroll if we're close to bottom (handles edge cases)
-      if (distanceFromBottom < BOTTOM_STICK_THRESHOLD) {
+      if (distanceFromBottom < getBottomStickThreshold()) {
         container.scrollTop = container.scrollHeight;
         updateScrollMetrics();
       }
@@ -693,23 +807,30 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
                 }}
                 className="space-y-4"
               >
-                {reversedItems.map((item, index) => (
-                  <div
-                    key={item.path}
-                    ref={el => {
-                      if (el) itemRefs.current.set(item.path, el);
-                      else itemRefs.current.delete(item.path);
-                    }}
-                  >
-                    <FileCard
-                      file={item}
-                      showTimestamp={true}
-                      priority={pageIndex === 0 && index === reversedItems.length - 1}
-                      onDeleted={() => handleDelete(item.path, item)}
-                      onRestoreItem={() => handleRestore(item.path)}
-                    />
-                  </div>
-                ))}
+                {reversedItems.map((item, index) => {
+                  // Delete animation takes priority over new item animation
+                  const animClass = isAnimatingOut(item.path)
+                    ? 'animate-collapse-fade'
+                    : getAnimationClass(item.path);
+                  return (
+                    <div
+                      key={item.path}
+                      ref={el => {
+                        if (el) itemRefs.current.set(item.path, el);
+                        else itemRefs.current.delete(item.path);
+                      }}
+                      className={animClass}
+                    >
+                      <FileCard
+                        file={item}
+                        showTimestamp={true}
+                        priority={pageIndex === 0 && index === reversedItems.length - 1}
+                        onDeleted={() => handleDelete(item.path, item)}
+                        onRestoreItem={() => handleRestore(item.path)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             );
           })}

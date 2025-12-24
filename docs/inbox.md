@@ -625,6 +625,70 @@ This ensures files re-added from another device show correctly.
 | SSE disconnect | Auto-reconnect after 5 seconds |
 | Multiple devices syncing | All clients update via SSE |
 
+### Item Animations
+
+Smooth animations for adding and removing items provide visual feedback.
+
+#### New Item Animation (Slide Up)
+
+New items slide up from the bottom with a fade-in. Two-phase animation prevents flash:
+
+```typescript
+// useNewItemsAnimation hook tracks new arrivals
+const { detectNewItems, getAnimationClass } = useNewItemsAnimation();
+
+// Phase 1: Items start hidden (pendingPaths)
+// Phase 2: Animation triggered via requestAnimationFrame (animatingPaths)
+
+// Applied in render:
+className={getAnimationClass(item.path)}
+// Returns: 'animate-new-item-initial' | 'animate-slide-up-fade' | ''
+```
+
+```css
+/* Initial hidden state */
+.animate-new-item-initial {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* Slide up animation */
+@keyframes slide-up-fade {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+```
+
+- Duration: 350ms
+- Skipped on initial page load
+- Two-phase approach prevents flash (hidden → animate)
+
+#### Delete Animation (Collapse)
+
+Deleted items fade out and collapse smoothly:
+
+```typescript
+// useOptimisticDelete hook manages animation state
+// 1. Item added to animatingPaths → triggers animation
+// 2. After 300ms, moved to deletedPaths → removed from DOM
+
+const { isAnimatingOut } = useOptimisticDelete();
+
+// Applied in render:
+className={isAnimatingOut(item.path) ? 'animate-collapse-fade' : ''}
+```
+
+```css
+@keyframes collapse-fade {
+  0% { opacity: 1; transform: scale(1); max-height: 500px; }
+  50% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 0; max-height: 0; margin-bottom: 0; }
+}
+```
+
+- Duration: 300ms
+- Fade out first, then collapse height
+
 ---
 
 ## Send Workflow
