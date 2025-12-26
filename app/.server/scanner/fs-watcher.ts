@@ -33,6 +33,13 @@ export interface FileChangeEvent {
   shouldInvalidateDigests: boolean; // True if digests should be reset
 }
 
+export interface FileSystemWatcherOptions {
+  /** Custom handler for file change events (instead of EventEmitter) */
+  onFileChange?: (event: FileChangeEvent) => void;
+  /** Skip calling notificationService (for worker thread mode) */
+  skipNotifications?: boolean;
+}
+
 /**
  * File system watcher service
  * Emits 'file-change' events when files are added or modified
@@ -46,6 +53,12 @@ export class FileSystemWatcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
   // Per-path promise chain to serialize events for the same path
   private pathQueues = new Map<string, Promise<void>>();
+  private options: FileSystemWatcherOptions;
+
+  constructor(options: FileSystemWatcherOptions = {}) {
+    super();
+    this.options = options;
+  }
 
   /**
    * Start watching the data directory
@@ -273,7 +286,7 @@ export class FileSystemWatcher extends EventEmitter {
     }
 
     // Emit notification for inbox files (immediate UI update)
-    if (relativePath.startsWith('inbox/')) {
+    if (!this.options.skipNotifications && relativePath.startsWith('inbox/')) {
       notificationService.notify({
         type: 'inbox-changed',
         timestamp: new Date().toISOString(),
@@ -288,7 +301,13 @@ export class FileSystemWatcher extends EventEmitter {
       contentChanged,
       shouldInvalidateDigests: contentChanged,
     };
-    this.emit('file-change', event);
+
+    // Use custom handler if provided, otherwise emit event
+    if (this.options.onFileChange) {
+      this.options.onFileChange(event);
+    } else {
+      this.emit('file-change', event);
+    }
   }
 
   /**
@@ -329,7 +348,7 @@ export class FileSystemWatcher extends EventEmitter {
       );
 
       // Emit notification for inbox deletions (immediate UI update)
-      if (relativePath.startsWith('inbox/')) {
+      if (!this.options.skipNotifications && relativePath.startsWith('inbox/')) {
         notificationService.notify({
           type: 'inbox-changed',
           timestamp: new Date().toISOString(),
@@ -390,9 +409,9 @@ let globalWatcher: FileSystemWatcher | null = null;
 /**
  * Start the file system watcher (singleton)
  */
-export function startFileSystemWatcher(): FileSystemWatcher {
+export function startFileSystemWatcher(options?: FileSystemWatcherOptions): FileSystemWatcher {
   if (!globalWatcher) {
-    globalWatcher = new FileSystemWatcher();
+    globalWatcher = new FileSystemWatcher(options);
     globalWatcher.start();
   }
   return globalWatcher;
