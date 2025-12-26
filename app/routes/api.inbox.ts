@@ -10,7 +10,7 @@ import {
 } from "~/.server/db/files";
 import { isPinned } from "~/.server/db/pins";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
-import { initializeDigesters } from "~/.server/digest/initialization";
+import { initializeDigesters, ensureAllDigesters } from "~/.server/digest";
 import { getLogger } from "~/.server/log/logger";
 import { notificationService } from "~/.server/notifications/notification-service";
 
@@ -164,8 +164,11 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    // Digest processing is handled automatically by FileSystemWatcher
-    // when it detects the new files on disk
+    // Trigger immediate digest processing
+    // DigestCoordinator has lock protection against duplicate processing
+    for (const filePath of result.paths) {
+      ensureAllDigesters(filePath);
+    }
 
     return Response.json(
       { path: result.path, paths: result.paths },
