@@ -44,9 +44,9 @@ export function startFsWorker(): Promise<void> {
     const workerPath = path.resolve(__dirname, 'fs-worker.ts');
 
     try {
-      // Use tsx to run TypeScript workers
+      // Use tsx/esm loader to run TypeScript workers
       worker = new Worker(workerPath, {
-        execArgv: ['--import', 'tsx'],
+        execArgv: ['--import', 'tsx/esm'],
       });
 
       const timeout = setTimeout(() => {
