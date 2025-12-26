@@ -8,12 +8,10 @@
  * to prevent re-initialization on module reload.
  */
 
-import { initializeTaskQueue } from "./task-queue/startup";
 import { startPeriodicScanner, stopPeriodicScanner } from "./scanner/library-scanner";
 import { startFileSystemWatcher, stopFileSystemWatcher } from "./scanner/fs-watcher";
 import { initializeDigesters } from "./digest/initialization";
 import { startDigestSupervisor, stopDigestSupervisor } from "./digest/supervisor";
-import { shutdownWorker } from "./task-queue/worker";
 import { getLogger } from "~/.server/log/logger";
 
 declare global {
@@ -36,7 +34,6 @@ export function initializeApp() {
 
   try {
     initializeDigesters();
-    initializeTaskQueue({ startWorker: true });
     startFileSystemWatcher();
     startPeriodicScanner();
     startDigestSupervisor();
@@ -68,7 +65,6 @@ export async function shutdownApp(): Promise<void> {
     stopDigestSupervisor();
     await stopFileSystemWatcher();
     stopPeriodicScanner();
-    await shutdownWorker({ reason: "app-shutdown", timeoutMs: 5000 });
 
     globalThis.__mylifedb_app_initialized = false;
     log.debug({}, "application shutdown complete");
