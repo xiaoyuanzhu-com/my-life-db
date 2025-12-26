@@ -7,7 +7,6 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { INBOX_DIR, generateId } from '~/.server/fs/storage';
 import { upsertFileRecord } from '~/.server/db/files';
-import { ensureAllDigesters } from '~/.server/digest/ensure';
 import { getLogger } from '~/.server/log/logger';
 import { generateTextFilename } from '~/.server/fs/generate-text-filename';
 import { isTextFile } from '~/lib/file-types';
@@ -135,8 +134,6 @@ async function saveSingleFile(
     modifiedAt: now,
     textPreview,
   });
-
-  ensureAllDigesters(relativePath);
 
   log.info({ path: relativePath, size: file.size }, 'saved single file to inbox');
 
