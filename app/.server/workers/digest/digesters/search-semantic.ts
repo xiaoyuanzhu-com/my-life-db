@@ -7,7 +7,7 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToQdrant } from '~/.server/search/ingest-to-qdrant';
-import { indexInQdrant } from '~/.server/search/qdrant-tasks';
+import { indexInQdrant } from '~/.server/search/qdrant-indexer';
 import { getQdrantDocumentIdsByFile } from '~/.server/db/qdrant-documents';
 import { getLogger } from '~/.server/log/logger';
 import { getPrimaryTextContent } from '../utils/text-source';

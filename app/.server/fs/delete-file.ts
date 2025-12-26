@@ -8,8 +8,8 @@ import { deleteDigestsForPath, deleteDigestsByPrefix } from '~/.server/db/digest
 import { getMeiliDocumentByFilePath, deleteMeiliDocumentByFilePath } from '~/.server/db/meili-documents';
 import { getQdrantDocumentIdsByFile, deleteQdrantDocumentsByFile } from '~/.server/db/qdrant-documents';
 import { sqlarDeletePrefix } from '~/.server/db/sqlar';
-import { deleteFromMeilisearch } from '~/.server/search/meili-tasks';
-import { deleteFromQdrant } from '~/.server/search/qdrant-tasks';
+import { deleteFromMeilisearch } from '~/.server/search/meili-indexer';
+import { deleteFromQdrant } from '~/.server/search/qdrant-indexer';
 import { getLogger } from '~/.server/log/logger';
 import fs from 'fs/promises';
 

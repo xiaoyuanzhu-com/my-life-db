@@ -9,7 +9,7 @@ import {
 import { getFileByPath } from '~/.server/db/files';
 import { listDigestsForPath, getDigestByPathAndDigester } from '~/.server/db/digests';
 import { getLogger } from '~/.server/log/logger';
-import { deleteFromQdrant as deleteQdrantVectors } from './qdrant-tasks';
+import { deleteFromQdrant as deleteQdrantVectors } from './qdrant-indexer';
 
 const log = getLogger({ module: 'IngestQdrant' });
 

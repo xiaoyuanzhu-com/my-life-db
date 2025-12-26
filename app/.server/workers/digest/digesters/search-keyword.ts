@@ -7,7 +7,7 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToMeilisearch } from '~/.server/search/ingest-to-meilisearch';
-import { indexInMeilisearch } from '~/.server/search/meili-tasks';
+import { indexInMeilisearch } from '~/.server/search/meili-indexer';
 import { getMeiliDocumentIdForFile } from '~/.server/db/meili-documents';
 import { getLogger } from '~/.server/log/logger';
 import { getPrimaryTextContent } from '../utils/text-source';
