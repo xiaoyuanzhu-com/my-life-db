@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { getMeiliClient } from "~/.server/search/meili-client";
 import { getQdrantClient } from "~/.server/search/qdrant-client";
-import { embedText } from "~/.server/ai/embeddings";
+import { embedText } from "~/.server/vendors/embeddings";
 import { getFileWithDigests } from "~/.server/db/files-with-digests";
 import { getLogger } from "~/.server/log/logger";
 import { readPrimaryText } from "~/.server/inbox/digest-artifacts";

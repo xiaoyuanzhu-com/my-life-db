@@ -9,7 +9,7 @@ import { EventEmitter } from 'events';
 import { DATA_ROOT } from '~/.server/fs/storage';
 import { upsertFileRecord, getFileByPath } from '~/.server/db/files';
 import { notificationService } from '~/.server/notifications/notification-service';
-import { deleteFile } from '~/.server/files/delete-file';
+import { deleteFile } from '~/.server/fs/delete-file';
 import { getLogger } from '~/.server/log/logger';
 import { isTextFile } from '~/lib/file-types';
 

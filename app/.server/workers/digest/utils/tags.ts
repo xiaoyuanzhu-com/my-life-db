@@ -3,7 +3,7 @@ import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
 import { loadSettings } from '~/.server/config/storage';
 import { getNativeLanguageDisplayName } from '~/lib/i18n/languages';
-import { parseJsonFromLlmResponse } from '~/.server/utils/parse-json';
+import { parseJsonFromLlmResponse } from './parse-json';
 
 const log = getLogger({ module: 'TagsDigester' });
 

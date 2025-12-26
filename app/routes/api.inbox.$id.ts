@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { getFileByPath, upsertFileRecord } from "~/.server/db/files";
 import { getStorageConfig } from "~/.server/config/storage";
-import { deleteFile } from "~/.server/files/delete-file";
+import { deleteFile } from "~/.server/fs/delete-file";
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";

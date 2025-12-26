@@ -12,7 +12,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import type { HaidSpeechRecognitionResponse } from '~/.server/vendors/haid';
 import { callOpenAICompletion } from '~/.server/vendors/openai';
 import { getLogger } from '~/.server/log/logger';
-import { parseJsonFromLlmResponse } from '~/.server/utils/parse-json';
+import { parseJsonFromLlmResponse } from '../utils/parse-json';
 
 const log = getLogger({ module: 'SpeechRecognitionSummaryDigester' });
 

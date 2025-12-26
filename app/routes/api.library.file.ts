@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getFileByPath } from "~/.server/db/files";
-import { deleteFile } from "~/.server/files/delete-file";
+import { deleteFile } from "~/.server/fs/delete-file";
 import { notificationService } from "~/.server/notifications/notification-service";
 import { getStorageConfig } from "~/.server/config/storage";
 import path from "path";

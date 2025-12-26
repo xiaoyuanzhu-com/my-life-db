@@ -11,7 +11,7 @@ import {
   type QdrantDocument,
 } from '~/.server/db/qdrant-documents';
 import { getQdrantClient, ensureQdrantCollection } from './qdrant-client';
-import { embedTexts } from '~/.server/ai/embeddings';
+import { embedTexts } from '~/.server/vendors/embeddings';
 import { getLogger } from '~/.server/log/logger';
 
 const log = getLogger({ module: 'QdrantTasks' });
