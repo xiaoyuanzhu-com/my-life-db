@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { getFileByPath } from "~/.server/db/files";
 import { listDigestsForPath } from "~/.server/db/digests";
-import { DIGESTER_ORDER } from "~/.server/digest/constants";
+import { DIGESTER_ORDER } from "~/.server/workers/digest/constants";
 
 const safeDecodeURIComponent = (value: string): string => {
   try {

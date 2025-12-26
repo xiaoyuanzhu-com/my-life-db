@@ -6,7 +6,7 @@
 import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { crawlUrlDigest } from '~/.server/digest/url-crawl';
+import { crawlUrlDigest } from '../utils/url-crawl';
 import { processHtmlContent, extractMainContent, sanitizeContent } from '~/.server/crawl/content-enricher';
 import { sqlarStore } from '~/.server/db/sqlar';
 import { getLogger } from '~/.server/log/logger';

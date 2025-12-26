@@ -9,12 +9,12 @@
 import { parentPort } from 'worker_threads';
 import type { DigestWorkerInMessage, DigestWorkerOutMessage } from '../types';
 import { getDatabaseInternal } from '~/.server/db/connection';
-import { initializeDigesters } from '~/.server/digest/initialization';
-import { DigestCoordinator } from '~/.server/digest/coordinator';
-import { findFilesNeedingDigestion } from '~/.server/digest/file-selection';
+import { initializeDigesters } from './initialization';
+import { DigestCoordinator } from './coordinator';
+import { findFilesNeedingDigestion } from './file-selection';
 import { resetStaleInProgressDigests, listDigestsForPath } from '~/.server/db/digests';
 import { cleanupStaleLocks, isLocked } from '~/.server/db/processing-locks';
-import { ensureAllDigesters } from '~/.server/digest/ensure';
+import { ensureAllDigesters } from './ensure';
 import { getLogger } from '~/.server/log/logger';
 
 const log = getLogger({ module: 'DigestWorker' });

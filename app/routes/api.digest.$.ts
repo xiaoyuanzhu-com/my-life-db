@@ -1,8 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { getFileByPath } from "~/.server/db/files";
 import { getDigestStatusView } from "~/.server/inbox/status-view";
-import { initializeDigesters } from "~/.server/digest/initialization";
-import { processFileDigests } from "~/.server/digest/task-handler";
+import { requestDigest } from "~/.server/workers/digest/client";
 import { getLogger } from "~/.server/log/logger";
 
 const safeDecodeURIComponent = (value: string): string => {
@@ -38,9 +37,6 @@ export async function loader({ params }: LoaderFunctionArgs) {
 }
 
 export async function action({ params, request }: ActionFunctionArgs) {
-  // Ensure digesters are registered
-  initializeDigesters();
-
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -49,8 +45,6 @@ export async function action({ params, request }: ActionFunctionArgs) {
   try {
     const splat = params["*"] || "";
     filePath = splat.split("/").map(safeDecodeURIComponent).join("/");
-    const url = new URL(request.url);
-    const digester = url.searchParams.get("digester");
 
     if (!filePath) {
       return Response.json({ error: "Missing file path" }, { status: 400 });
@@ -61,25 +55,16 @@ export async function action({ params, request }: ActionFunctionArgs) {
       return Response.json({ error: "File not found" }, { status: 404 });
     }
 
-    await processFileDigests(filePath, {
-      reset: true,
-      digester: digester || undefined,
-    });
+    // Queue digest processing via worker
+    requestDigest(filePath, true);
 
     return Response.json({
       success: true,
-      message: digester
-        ? `Digest "${digester}" processing complete.`
-        : "Digest processing complete.",
+      message: "Digest processing queued.",
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const statusCode =
-      error instanceof Error && error.message.includes("No digest workflow available")
-        ? 400
-        : 500;
-
-    log.error({ err: error, filePath }, "failed to enqueue digest workflow");
-    return Response.json({ error: errorMessage }, { status: statusCode });
+    log.error({ err: error, filePath }, "failed to queue digest processing");
+    return Response.json({ error: errorMessage }, { status: 500 });
   }
 }

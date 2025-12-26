@@ -10,7 +10,7 @@ import { ingestToMeilisearch } from '~/.server/search/ingest-to-meilisearch';
 import { indexInMeilisearch } from '~/.server/search/meili-tasks';
 import { getMeiliDocumentIdForFile } from '~/.server/db/meili-documents';
 import { getLogger } from '~/.server/log/logger';
-import { getPrimaryTextContent } from '~/.server/digest/text-source';
+import { getPrimaryTextContent } from '../utils/text-source';
 
 const log = getLogger({ module: 'SearchKeywordDigester' });
 

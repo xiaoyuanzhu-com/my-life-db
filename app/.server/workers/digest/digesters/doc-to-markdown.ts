@@ -1,16 +1,15 @@
 /**
- * Doc To Screenshot Digester
- * Converts document files (PDF, PowerPoint, Word, Excel, EPUB) to screenshot images
+ * Doc To Markdown Digester
+ * Converts document files (PDF, PowerPoint, Word, Excel, EPUB) to markdown
  */
 
 import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { convertDocToScreenshot } from '~/.server/digest/doc-to-screenshot';
-import { sqlarStore } from '~/.server/db/sqlar';
+import { convertDocToMarkdown } from '../utils/doc-to-markdown';
 import { getLogger } from '~/.server/log/logger';
 
-const log = getLogger({ module: 'DocToScreenshotDigester' });
+const log = getLogger({ module: 'DocToMarkdownDigester' });
 
 // Supported document MIME types
 const SUPPORTED_MIME_TYPES = new Set([
@@ -41,18 +40,14 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.epub',
 ]);
 
-function hashPath(filePath: string): string {
-  return Buffer.from(filePath).toString('base64url').slice(0, 12);
-}
-
 /**
- * Doc To Screenshot Digester
- * Converts document files to screenshot images using HAID service
+ * Doc To Markdown Digester
+ * Converts document files to markdown using HAID service
  */
-export class DocToScreenshotDigester implements Digester {
-  readonly name = 'doc-to-screenshot';
-  readonly label = 'Doc to Screenshot';
-  readonly description = 'Convert PDF, Word, Excel, PowerPoint, and EPUB documents to screenshot images';
+export class DocToMarkdownDigester implements Digester {
+  readonly name = 'doc-to-markdown';
+  readonly label = 'Doc to Markdown';
+  readonly description = 'Convert PDF, Word, Excel, PowerPoint, and EPUB documents to markdown';
 
   async canDigest(
     _filePath: string,
@@ -84,33 +79,26 @@ export class DocToScreenshotDigester implements Digester {
     filePath: string,
     file: FileRecordRow,
     _existingDigests: Digest[],
-    db: BetterSqlite3.Database
+    _db: BetterSqlite3.Database
   ): Promise<DigestInput[]> {
-    log.debug({ filePath, name: file.name }, 'converting document to screenshot');
+    log.debug({ filePath, name: file.name }, 'converting document to markdown');
 
-    // Convert document to screenshot
+    // Convert document to markdown
     // Let errors propagate - coordinator handles retry logic
-    const result = await convertDocToScreenshot({
+    const result = await convertDocToMarkdown({
       filePath,
       filename: file.name,
     });
 
     const now = new Date().toISOString();
-    const pathHash = hashPath(filePath);
-
-    // Store screenshot in SQLAR
-    const sqlarName = `${pathHash}/doc-to-screenshot/screenshot.png`;
-    await sqlarStore(db, sqlarName, result.screenshot);
-
-    log.debug({ filePath, sqlarName, screenshotSize: result.screenshot.length }, 'stored document screenshot in sqlar');
 
     return [
       {
         filePath,
-        digester: 'doc-to-screenshot',
+        digester: 'doc-to-markdown',
         status: 'completed',
-        content: null,
-        sqlarName,
+        content: result.markdown,
+        sqlarName: null,
         error: null,
         attempts: 0,
         createdAt: now,

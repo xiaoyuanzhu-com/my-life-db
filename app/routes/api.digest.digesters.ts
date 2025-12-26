@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { globalDigesterRegistry } from "~/.server/digest/registry";
-import { initializeDigesters } from "~/.server/digest/initialization";
+import { globalDigesterRegistry } from "~/.server/workers/digest/registry";
+import { initializeDigesters } from "~/.server/workers/digest/initialization";
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   initializeDigesters();

@@ -6,9 +6,9 @@
 import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { generateTagsDigest } from '~/.server/digest/tags';
+import { generateTagsDigest } from '../utils/tags';
 import { getLogger } from '~/.server/log/logger';
-import { getPrimaryTextContent } from '~/.server/digest/text-source';
+import { getPrimaryTextContent } from '../utils/text-source';
 
 const log = getLogger({ module: 'TagsDigester' });
 

@@ -1,15 +1,11 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getFileByPath } from "~/.server/db/files";
-import { initializeDigesters } from "~/.server/digest/initialization";
-import { processFileDigests } from "~/.server/digest/task-handler";
+import { requestDigest } from "~/.server/workers/digest/client";
 import { getLogger } from "~/.server/log/logger";
 
 const log = getLogger({ module: "ApiInboxReenrich" });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure digesters are registered
-  initializeDigesters();
-
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -23,12 +19,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return Response.json({ error: "Inbox item not found" }, { status: 404 });
     }
 
-    log.info({ filePath }, "reenriching inbox item");
-    await processFileDigests(filePath, { reset: true });
+    log.info({ filePath }, "requesting reenrich for inbox item");
+    requestDigest(filePath, true);
 
     return Response.json({
       success: true,
-      message: "Digest processing complete. All applicable digesters have run.",
+      message: "Digest processing queued.",
     });
   } catch (error) {
     log.error({ err: error }, "reenrich inbox item failed");

@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { withDatabase } from "~/.server/db/client";
 import { getLogger } from "~/.server/log/logger";
-import { ensureAllDigestersForExistingFiles } from "~/.server/digest/ensure";
+import { ensureAllDigestersForExistingFiles } from "~/.server/workers/digest/ensure";
 import { deleteAllEmbeddings } from "~/.server/db/people";
 import { getMeiliClient } from "~/.server/search/meili-client";
 import { getQdrantClient } from "~/.server/search/qdrant-client";

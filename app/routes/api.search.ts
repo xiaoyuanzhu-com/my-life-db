@@ -5,7 +5,7 @@ import { embedText } from "~/.server/ai/embeddings";
 import { getFileWithDigests } from "~/.server/db/files-with-digests";
 import { getLogger } from "~/.server/log/logger";
 import { readPrimaryText } from "~/.server/inbox/digest-artifacts";
-import { TEXT_SOURCE_LABELS, type TextSourceType } from "~/.server/digest/text-source";
+import { TEXT_SOURCE_LABELS, type TextSourceType } from "~/.server/workers/digest/utils/text-source";
 import type { FileWithDigests } from "~/types/file-card";
 
 const log = getLogger({ module: "SearchAPI" });

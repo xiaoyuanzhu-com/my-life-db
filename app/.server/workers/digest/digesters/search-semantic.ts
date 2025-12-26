@@ -10,7 +10,7 @@ import { ingestToQdrant } from '~/.server/search/ingest-to-qdrant';
 import { indexInQdrant } from '~/.server/search/qdrant-tasks';
 import { getQdrantDocumentIdsByFile } from '~/.server/db/qdrant-documents';
 import { getLogger } from '~/.server/log/logger';
-import { getPrimaryTextContent } from '~/.server/digest/text-source';
+import { getPrimaryTextContent } from '../utils/text-source';
 
 const log = getLogger({ module: 'SearchSemanticDigester' });
 

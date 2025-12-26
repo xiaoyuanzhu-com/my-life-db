@@ -8,7 +8,7 @@
 import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
-import { summarizeTextDigest } from '~/.server/digest/text-summary';
+import { summarizeTextDigest } from '../utils/text-summary';
 import { getLogger } from '~/.server/log/logger';
 import { promises as fs } from 'fs';
 import path from 'path';
