@@ -6,6 +6,7 @@
 
 import { Worker } from 'worker_threads';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { getLogger } from '~/.server/log/logger';
 import type { DigestWorkerInMessage, DigestWorkerOutMessage } from './types';
 
@@ -28,6 +29,7 @@ export function startDigestWorker(): Promise<void> {
 
     log.info({}, 'starting digest worker');
 
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const workerPath = path.resolve(__dirname, 'digest-worker.js');
 
     try {

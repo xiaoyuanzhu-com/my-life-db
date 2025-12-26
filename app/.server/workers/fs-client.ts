@@ -6,6 +6,7 @@
 
 import { Worker } from 'worker_threads';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { notificationService } from '~/.server/notifications/notification-service';
 import { getLogger } from '~/.server/log/logger';
 import type { FsWorkerInMessage, FsWorkerOutMessage, DigestWorkerInMessage } from './types';
@@ -39,6 +40,7 @@ export function startFsWorker(): Promise<void> {
 
     log.info({}, 'starting fs worker');
 
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const workerPath = path.resolve(__dirname, 'fs-worker.js');
 
     try {
