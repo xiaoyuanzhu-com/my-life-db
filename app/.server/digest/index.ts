@@ -13,6 +13,5 @@ export { ensureAllDigesters, ensureAllDigestersForExistingFiles } from './ensure
 // Types
 export type { Digester } from './types';
 
-// Task handlers (for integration)
-export { digestBatchHandler, processFileDigests } from './task-handler';
-export type { DigestBatchPayload } from './task-handler';
+// Processing helper (for API endpoints)
+export { processFileDigests } from './task-handler';

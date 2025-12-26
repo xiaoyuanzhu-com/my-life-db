@@ -50,14 +50,6 @@ export default [
   route("api/settings", "routes/api.settings.ts"),
   route("api/stats", "routes/api.stats.ts"),
 
-  route("api/tasks", "routes/api.tasks.ts"),
-  route("api/tasks/stats", "routes/api.tasks.stats.ts"),
-  route("api/tasks/status", "routes/api.tasks.status.ts"),
-  route("api/tasks/worker/pause", "routes/api.tasks.worker.pause.ts"),
-  route("api/tasks/worker/resume", "routes/api.tasks.worker.resume.ts"),
-  route("api/tasks/worker/status", "routes/api.tasks.worker.status.ts"),
-  route("api/tasks/:id", "routes/api.tasks.$id.ts"),
-
   route("api/upload/finalize", "routes/api.upload.finalize.ts"),
   route("api/upload/tus/*?", "routes/api.upload.tus.ts"),
 

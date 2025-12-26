@@ -152,29 +152,6 @@ type Pages = {
   "/api/stats": {
     params: {};
   };
-  "/api/tasks": {
-    params: {};
-  };
-  "/api/tasks/stats": {
-    params: {};
-  };
-  "/api/tasks/status": {
-    params: {};
-  };
-  "/api/tasks/worker/pause": {
-    params: {};
-  };
-  "/api/tasks/worker/resume": {
-    params: {};
-  };
-  "/api/tasks/worker/status": {
-    params: {};
-  };
-  "/api/tasks/:id": {
-    params: {
-      "id": string;
-    };
-  };
   "/api/upload/finalize": {
     params: {};
   };
@@ -197,7 +174,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/inbox" | "/inbox/:id" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/tasks" | "/api/tasks/stats" | "/api/tasks/status" | "/api/tasks/worker/pause" | "/api/tasks/worker/resume" | "/api/tasks/worker/status" | "/api/tasks/:id" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
+    page: "/" | "/login" | "/inbox" | "/inbox/:id" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -343,34 +320,6 @@ type RouteFiles = {
     id: "routes/api.stats";
     page: "/api/stats";
   };
-  "routes/api.tasks.ts": {
-    id: "routes/api.tasks";
-    page: "/api/tasks";
-  };
-  "routes/api.tasks.stats.ts": {
-    id: "routes/api.tasks.stats";
-    page: "/api/tasks/stats";
-  };
-  "routes/api.tasks.status.ts": {
-    id: "routes/api.tasks.status";
-    page: "/api/tasks/status";
-  };
-  "routes/api.tasks.worker.pause.ts": {
-    id: "routes/api.tasks.worker.pause";
-    page: "/api/tasks/worker/pause";
-  };
-  "routes/api.tasks.worker.resume.ts": {
-    id: "routes/api.tasks.worker.resume";
-    page: "/api/tasks/worker/resume";
-  };
-  "routes/api.tasks.worker.status.ts": {
-    id: "routes/api.tasks.worker.status";
-    page: "/api/tasks/worker/status";
-  };
-  "routes/api.tasks.$id.ts": {
-    id: "routes/api.tasks.$id";
-    page: "/api/tasks/:id";
-  };
   "routes/api.upload.finalize.ts": {
     id: "routes/api.upload.finalize";
     page: "/api/upload/finalize";
@@ -427,13 +376,6 @@ type RouteModules = {
   "routes/api.search": typeof import("./app/routes/api.search.ts");
   "routes/api.settings": typeof import("./app/routes/api.settings.ts");
   "routes/api.stats": typeof import("./app/routes/api.stats.ts");
-  "routes/api.tasks": typeof import("./app/routes/api.tasks.ts");
-  "routes/api.tasks.stats": typeof import("./app/routes/api.tasks.stats.ts");
-  "routes/api.tasks.status": typeof import("./app/routes/api.tasks.status.ts");
-  "routes/api.tasks.worker.pause": typeof import("./app/routes/api.tasks.worker.pause.ts");
-  "routes/api.tasks.worker.resume": typeof import("./app/routes/api.tasks.worker.resume.ts");
-  "routes/api.tasks.worker.status": typeof import("./app/routes/api.tasks.worker.status.ts");
-  "routes/api.tasks.$id": typeof import("./app/routes/api.tasks.$id.ts");
   "routes/api.upload.finalize": typeof import("./app/routes/api.upload.finalize.ts");
   "routes/api.upload.tus": typeof import("./app/routes/api.upload.tus.ts");
   "routes/api.directories": typeof import("./app/routes/api.directories.ts");
