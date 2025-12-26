@@ -41,10 +41,13 @@ export function startFsWorker(): Promise<void> {
     log.info({}, 'starting fs worker');
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workerPath = path.resolve(__dirname, 'fs-worker.js');
+    const workerPath = path.resolve(__dirname, 'fs-worker.ts');
 
     try {
-      worker = new Worker(workerPath);
+      // Use tsx to run TypeScript workers
+      worker = new Worker(workerPath, {
+        execArgv: ['--import', 'tsx'],
+      });
 
       const timeout = setTimeout(() => {
         reject(new Error('FS worker startup timeout'));

@@ -30,10 +30,13 @@ export function startDigestWorker(): Promise<void> {
     log.info({}, 'starting digest worker');
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workerPath = path.resolve(__dirname, 'digest-worker.js');
+    const workerPath = path.resolve(__dirname, 'digest-worker.ts');
 
     try {
-      worker = new Worker(workerPath);
+      // Use tsx to run TypeScript workers
+      worker = new Worker(workerPath, {
+        execArgv: ['--import', 'tsx'],
+      });
 
       const timeout = setTimeout(() => {
         reject(new Error('Digest worker startup timeout'));
