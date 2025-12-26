@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
-import { requestDigest } from "~/.server/workers/digest-client";
+import { requestDigest } from "~/.server/workers/digest/client";
 
 const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), "data");
 const UPLOAD_DIR = path.join(DATA_ROOT, "app", "my-life-db", "uploads");

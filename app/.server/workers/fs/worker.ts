@@ -7,10 +7,10 @@
  */
 
 import { parentPort } from 'worker_threads';
-import type { FsWorkerInMessage, FsWorkerOutMessage } from './types';
+import type { FsWorkerInMessage, FsWorkerOutMessage } from '../types';
 import { getDatabaseInternal } from '~/.server/db/connection';
-import { FileSystemWatcher, type FileChangeEvent } from '~/.server/scanner/fs-watcher';
-import { startPeriodicScanner, stopPeriodicScanner } from '~/.server/scanner/library-scanner';
+import { FileSystemWatcher, type FileChangeEvent } from './watcher';
+import { startPeriodicScanner, stopPeriodicScanner } from './scanner';
 import { getLogger } from '~/.server/log/logger';
 
 const log = getLogger({ module: 'FsWorker' });

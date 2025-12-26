@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { notificationService } from '~/.server/notifications/notification-service';
 import { getLogger } from '~/.server/log/logger';
-import type { FsWorkerInMessage, FsWorkerOutMessage, DigestWorkerInMessage } from './types';
+import type { FsWorkerInMessage, FsWorkerOutMessage, DigestWorkerInMessage } from '../types';
 
 const log = getLogger({ module: 'FsClient' });
 
@@ -41,7 +41,7 @@ export function startFsWorker(): Promise<void> {
     log.info({}, 'starting fs worker');
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workerPath = path.resolve(__dirname, 'fs-worker.ts');
+    const workerPath = path.resolve(__dirname, 'worker.ts');
     const workerUrl = `file://${workerPath}`;
 
     try {

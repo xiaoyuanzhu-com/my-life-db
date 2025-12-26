@@ -7,7 +7,7 @@
  */
 
 import { parentPort } from 'worker_threads';
-import type { DigestWorkerInMessage, DigestWorkerOutMessage } from './types';
+import type { DigestWorkerInMessage, DigestWorkerOutMessage } from '../types';
 import { getDatabaseInternal } from '~/.server/db/connection';
 import { initializeDigesters } from '~/.server/digest/initialization';
 import { DigestCoordinator } from '~/.server/digest/coordinator';

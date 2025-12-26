@@ -8,8 +8,8 @@
  * to prevent re-initialization on module reload.
  */
 
-import { startFsWorker, stopFsWorker, setFileChangeHandler } from "./workers/fs-client";
-import { startDigestWorker, stopDigestWorker, sendFileChange } from "./workers/digest-client";
+import { startFsWorker, stopFsWorker, setFileChangeHandler } from "./workers/fs/client";
+import { startDigestWorker, stopDigestWorker, sendFileChange } from "./workers/digest/client";
 import { getLogger } from "~/.server/log/logger";
 
 declare global {

@@ -10,7 +10,7 @@ import {
 } from "~/.server/db/files";
 import { isPinned } from "~/.server/db/pins";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
-import { requestDigest } from "~/.server/workers/digest-client";
+import { requestDigest } from "~/.server/workers/digest/client";
 import { getLogger } from "~/.server/log/logger";
 import { notificationService } from "~/.server/notifications/notification-service";
 
