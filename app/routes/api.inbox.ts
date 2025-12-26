@@ -11,7 +11,6 @@ import {
 import { isPinned } from "~/.server/db/pins";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
 import { initializeDigesters } from "~/.server/digest/initialization";
-import { processFileDigests } from "~/.server/digest/task-handler";
 import { getLogger } from "~/.server/log/logger";
 import { notificationService } from "~/.server/notifications/notification-service";
 
@@ -165,12 +164,8 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    for (const filePath of result.paths) {
-      processFileDigests(filePath).catch((error) => {
-        log.error({ path: filePath, error }, "digest processing failed");
-      });
-    }
-    log.info({ paths: result.paths }, "auto-started digest processing for all files");
+    // Digest processing is handled automatically by FileSystemWatcher
+    // when it detects the new files on disk
 
     return Response.json(
       { path: result.path, paths: result.paths },

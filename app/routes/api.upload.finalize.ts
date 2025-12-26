@@ -4,7 +4,6 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
 import { initializeDigesters } from "~/.server/digest/initialization";
-import { processFileDigests } from "~/.server/digest";
 
 const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), "data");
 const UPLOAD_DIR = path.join(DATA_ROOT, "app", "my-life-db", "uploads");
@@ -78,11 +77,8 @@ export async function action({ request }: ActionFunctionArgs) {
       files: files.length > 0 ? files : undefined,
     });
 
-    for (const filePath of result.paths) {
-      processFileDigests(filePath).catch((error: unknown) => {
-        console.error("[FINALIZE] Error processing digests:", error);
-      });
-    }
+    // Digest processing is handled automatically by FileSystemWatcher
+    // when it detects the new files on disk
 
     return Response.json(
       { success: true, path: result.path, paths: result.paths },
