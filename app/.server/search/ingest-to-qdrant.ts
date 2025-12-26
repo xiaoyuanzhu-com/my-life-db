@@ -9,7 +9,7 @@ import {
 import { getFileByPath } from '~/.server/db/files';
 import { listDigestsForPath, getDigestByPathAndDigester } from '~/.server/db/digests';
 import { getLogger } from '~/.server/log/logger';
-import { enqueueQdrantDelete } from './qdrant-tasks';
+import { deleteFromQdrant as deleteQdrantVectors } from './qdrant-tasks';
 
 const log = getLogger({ module: 'IngestQdrant' });
 
@@ -222,12 +222,14 @@ export async function deleteFromQdrant(filePath: string): Promise<number> {
   // Delete from database
   const deletedCount = deleteQdrantDocumentsByFile(filePath);
 
-  // Enqueue Qdrant deletion task to remove vectors from collection
+  // Delete vectors from Qdrant collection (fire-and-forget)
   if (documentIds.length > 0) {
-    enqueueQdrantDelete(documentIds);
+    deleteQdrantVectors(documentIds).catch((err: unknown) => {
+      log.error({ err, filePath, count: documentIds.length }, 'Qdrant vector deletion failed');
+    });
     log.debug(
-      { filePath, deletedCount, queuedForQdrantDeletion: documentIds.length },
-      'deleted Qdrant chunks and queued vector deletion'
+      { filePath, deletedCount, triggeredQdrantDeletion: documentIds.length },
+      'deleted Qdrant chunks and triggered vector deletion'
     );
   } else {
     log.debug({ filePath, deletedCount }, 'deleted Qdrant chunks (no vectors to delete)');

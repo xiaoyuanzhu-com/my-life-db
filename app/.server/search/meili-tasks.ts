@@ -1,5 +1,8 @@
-import { tq } from '~/.server/task-queue';
-import { defineTaskHandler, ensureTaskRuntimeReady } from '~/.server/task-queue/handler-registry';
+/**
+ * Meilisearch indexing functions
+ * Direct async calls (no task queue)
+ */
+
 import {
   getMeiliDocumentById,
   batchUpdateMeiliStatus,
@@ -43,198 +46,170 @@ export interface MeiliSearchPayload {
   updatedAt: string;
 }
 
-type MeiliIndexInput = { documentIds: string[] };
-type MeiliDeleteInput = { documentIds: string[] };
-
-const TASK_TYPES = {
-  meili_index: 'meili_index',
-  meili_delete: 'meili_delete',
-} as const;
-
 /**
- * Enqueue documents for Meilisearch indexing
+ * Index documents in Meilisearch
+ * Direct async function - throws on failure
  */
-export function enqueueMeiliIndex(documentIds: string[]): string | null {
-  if (!documentIds || documentIds.length === 0) return null;
-  ensureTaskRuntimeReady([TASK_TYPES.meili_index]);
-  return tq(TASK_TYPES.meili_index).add({ documentIds });
-}
+export async function indexInMeilisearch(documentIds: string[]): Promise<{
+  count: number;
+  message: string;
+}> {
+  const uniqueIds = deduplicate(documentIds);
+  if (uniqueIds.length === 0) {
+    return { count: 0, message: 'no documents to index' };
+  }
 
-/**
- * Enqueue documents for Meilisearch deletion
- */
-export function enqueueMeiliDelete(documentIds: string[]): string | null {
-  if (!documentIds || documentIds.length === 0) return null;
-  ensureTaskRuntimeReady([TASK_TYPES.meili_delete]);
-  return tq(TASK_TYPES.meili_delete).add({ documentIds });
-}
-
-/**
- * Index documents in Meilisearch (task handler)
- */
-defineTaskHandler({
-  type: TASK_TYPES.meili_index,
-  module: 'MeiliTasks',
-  handler: async (input: MeiliIndexInput) => {
-    const documentIds = deduplicate(input.documentIds);
-    if (documentIds.length === 0) {
-      return { count: 0, message: 'no documents to index' };
+  // Fetch documents from database
+  const documents: MeiliDocument[] = [];
+  for (const docId of uniqueIds) {
+    const doc = getMeiliDocumentById(docId);
+    if (doc) {
+      documents.push(doc);
+    } else {
+      log.warn({ documentId: docId }, 'document not found for indexing');
     }
+  }
 
-    // Fetch documents from database
-    const documents: MeiliDocument[] = [];
-    for (const docId of documentIds) {
-      const doc = getMeiliDocumentById(docId);
-      if (doc) {
-        documents.push(doc);
-      } else {
-        log.warn({ documentId: docId }, 'document not found for indexing');
-      }
-    }
+  if (documents.length === 0) {
+    return { count: 0, message: 'no valid documents found' };
+  }
 
-    if (documents.length === 0) {
-      return { count: 0, message: 'no valid documents found' };
-    }
+  // Update status to 'indexing'
+  batchUpdateMeiliStatus(uniqueIds, 'indexing');
 
-    // Update status to 'indexing'
-    batchUpdateMeiliStatus(documentIds, 'indexing');
+  try {
+    // Get Meilisearch client
+    const client = await getMeiliClient();
 
-    try {
-      // Get Meilisearch client
-      const client = await getMeiliClient();
+    // Convert to Meilisearch payload
+    const payload = documents.map(mapToMeiliPayload);
 
-      // Convert to Meilisearch payload
-      const payload = documents.map(mapToMeiliPayload);
+    // Index in Meilisearch
+    const taskUid = await client.addDocuments(payload);
+    log.debug(
+      { taskUid, documentCount: documents.length },
+      'submitted documents to Meilisearch'
+    );
 
-      // Index in Meilisearch
-      const taskUid = await client.addDocuments(payload);
+    // Wait for Meilisearch task to complete
+    const task = await client.waitForTask(taskUid, { timeoutMs: 60_000 });
+
+    if (task.status === 'succeeded') {
+      // Update status to 'indexed'
+      batchUpdateMeiliStatus(uniqueIds, 'indexed', {
+        taskId: String(taskUid),
+      });
+
       log.debug(
         { taskUid, documentCount: documents.length },
-        'submitted documents to Meilisearch'
+        'Meilisearch indexing succeeded'
       );
 
-      // Wait for Meilisearch task to complete
-      const task = await client.waitForTask(taskUid, { timeoutMs: 60_000 });
-
-      if (task.status === 'succeeded') {
-        // Update status to 'indexed'
-        batchUpdateMeiliStatus(documentIds, 'indexed', {
-          taskId: String(taskUid),
-        });
-
-        log.debug(
-          { taskUid, documentCount: documents.length },
-          'Meilisearch indexing succeeded'
-        );
-
-        return {
-          count: documents.length,
-          taskUid,
-          message: 'indexing succeeded',
-        };
-      }
-
-      // Task failed
-      const errorMessage = task.error?.message ?? 'unknown Meilisearch task failure';
-      batchUpdateMeiliStatus(documentIds, 'error', {
-        taskId: String(taskUid),
-        error: errorMessage,
-      });
-
-      throw new Error(errorMessage);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Update status to 'error'
-      batchUpdateMeiliStatus(documentIds, 'error', { error: errorMessage });
-
-      log.error(
-        { err: error, documentCount: documents.length },
-        'Meilisearch indexing failed'
-      );
-
-      throw error;
+      return {
+        count: documents.length,
+        message: 'indexing succeeded',
+      };
     }
-  },
-});
+
+    // Task failed
+    const errorMessage = task.error?.message ?? 'unknown Meilisearch task failure';
+    batchUpdateMeiliStatus(uniqueIds, 'error', {
+      taskId: String(taskUid),
+      error: errorMessage,
+    });
+
+    throw new Error(errorMessage);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Update status to 'error'
+    batchUpdateMeiliStatus(uniqueIds, 'error', { error: errorMessage });
+
+    log.error(
+      { err: error, documentCount: documents.length },
+      'Meilisearch indexing failed'
+    );
+
+    throw error;
+  }
+}
 
 /**
- * Delete documents from Meilisearch (task handler)
+ * Delete documents from Meilisearch
+ * Direct async function - throws on failure
  */
-defineTaskHandler({
-  type: TASK_TYPES.meili_delete,
-  module: 'MeiliTasks',
-  handler: async (input: MeiliDeleteInput) => {
-    const documentIds = deduplicate(input.documentIds);
-    if (documentIds.length === 0) {
-      return { count: 0, message: 'no documents to delete' };
+export async function deleteFromMeilisearch(documentIds: string[]): Promise<{
+  count: number;
+  message: string;
+}> {
+  const uniqueIds = deduplicate(documentIds);
+  if (uniqueIds.length === 0) {
+    return { count: 0, message: 'no documents to delete' };
+  }
+
+  // Update status to 'deleting'
+  batchUpdateMeiliStatus(uniqueIds, 'deleting');
+
+  try {
+    // Get Meilisearch client
+    const client = await getMeiliClient();
+
+    // Delete from Meilisearch
+    const taskUid = await client.deleteDocuments(uniqueIds);
+
+    if (taskUid === 0) {
+      // No task created (empty batch)
+      batchUpdateMeiliStatus(uniqueIds, 'deleted');
+      return { count: 0, message: 'no documents deleted (empty batch)' };
     }
 
-    // Update status to 'deleting'
-    batchUpdateMeiliStatus(documentIds, 'deleting');
+    log.debug(
+      { taskUid, documentCount: uniqueIds.length },
+      'submitted delete to Meilisearch'
+    );
 
-    try {
-      // Get Meilisearch client
-      const client = await getMeiliClient();
+    // Wait for Meilisearch task to complete
+    const task = await client.waitForTask(taskUid, { timeoutMs: 60_000 });
 
-      // Delete from Meilisearch
-      const taskUid = await client.deleteDocuments(documentIds);
-
-      if (taskUid === 0) {
-        // No task created (empty batch)
-        batchUpdateMeiliStatus(documentIds, 'deleted');
-        return { count: 0, message: 'no documents deleted (empty batch)' };
-      }
-
-      log.debug(
-        { taskUid, documentCount: documentIds.length },
-        'submitted delete to Meilisearch'
-      );
-
-      // Wait for Meilisearch task to complete
-      const task = await client.waitForTask(taskUid, { timeoutMs: 60_000 });
-
-      if (task.status === 'succeeded') {
-        // Update status to 'deleted'
-        batchUpdateMeiliStatus(documentIds, 'deleted', {
-          taskId: String(taskUid),
-        });
-
-        log.debug(
-          { taskUid, documentCount: documentIds.length },
-          'Meilisearch deletion succeeded'
-        );
-
-        return {
-          count: documentIds.length,
-          taskUid,
-          message: 'deletion succeeded',
-        };
-      }
-
-      // Task failed
-      const errorMessage = task.error?.message ?? 'Meilisearch delete task failed';
-      batchUpdateMeiliStatus(documentIds, 'error', {
+    if (task.status === 'succeeded') {
+      // Update status to 'deleted'
+      batchUpdateMeiliStatus(uniqueIds, 'deleted', {
         taskId: String(taskUid),
-        error: errorMessage,
       });
 
-      throw new Error(errorMessage);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Update status to 'error'
-      batchUpdateMeiliStatus(documentIds, 'error', { error: errorMessage });
-
-      log.error(
-        { err: error, documentCount: documentIds.length },
-        'Meilisearch deletion failed'
+      log.debug(
+        { taskUid, documentCount: uniqueIds.length },
+        'Meilisearch deletion succeeded'
       );
 
-      throw error;
+      return {
+        count: uniqueIds.length,
+        message: 'deletion succeeded',
+      };
     }
-  },
-});
+
+    // Task failed
+    const errorMessage = task.error?.message ?? 'Meilisearch delete task failed';
+    batchUpdateMeiliStatus(uniqueIds, 'error', {
+      taskId: String(taskUid),
+      error: errorMessage,
+    });
+
+    throw new Error(errorMessage);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Update status to 'error'
+    batchUpdateMeiliStatus(uniqueIds, 'error', { error: errorMessage });
+
+    log.error(
+      { err: error, documentCount: uniqueIds.length },
+      'Meilisearch deletion failed'
+    );
+
+    throw error;
+  }
+}
 
 /**
  * Convert MeiliDocument to Meilisearch payload

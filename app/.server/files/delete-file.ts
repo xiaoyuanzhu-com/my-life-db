@@ -8,9 +8,8 @@ import { deleteDigestsForPath, deleteDigestsByPrefix } from '~/.server/db/digest
 import { getMeiliDocumentByFilePath, deleteMeiliDocumentByFilePath } from '~/.server/db/meili-documents';
 import { getQdrantDocumentIdsByFile, deleteQdrantDocumentsByFile } from '~/.server/db/qdrant-documents';
 import { sqlarDeletePrefix } from '~/.server/db/sqlar';
-import { deletePendingTasksForFile, deletePendingTasksForPrefix } from '~/.server/task-queue/task-manager';
-import { enqueueMeiliDelete } from '~/.server/search/meili-tasks';
-import { enqueueQdrantDelete } from '~/.server/search/qdrant-tasks';
+import { deleteFromMeilisearch } from '~/.server/search/meili-tasks';
+import { deleteFromQdrant } from '~/.server/search/qdrant-tasks';
 import { getLogger } from '~/.server/log/logger';
 import fs from 'fs/promises';
 
@@ -53,7 +52,6 @@ export interface DeleteFileResult {
     sqlarFiles: number;
     meiliDocuments: number;
     qdrantDocuments: number;
-    tasks: number;
   };
 }
 
@@ -83,7 +81,6 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
       sqlarFiles: 0,
       meiliDocuments: 0,
       qdrantDocuments: 0,
-      tasks: 0,
     },
   };
 
@@ -146,10 +143,6 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
         const qdrantDeleted = deleteQdrantDocumentsByFile(child.path);
         result.databaseRecordsDeleted.qdrantDocuments += qdrantDeleted;
       }
-
-      // Delete tasks for children
-      const tasksDeleted = deletePendingTasksForPrefix(pathPrefix);
-      result.databaseRecordsDeleted.tasks += tasksDeleted;
     }
 
     // Collect search document IDs for the main file/folder before deletion
@@ -186,18 +179,18 @@ export async function deleteFile(options: DeleteFileOptions): Promise<DeleteFile
     const qdrantDeleted = deleteQdrantDocumentsByFile(relativePath);
     result.databaseRecordsDeleted.qdrantDocuments += qdrantDeleted;
 
-    // Delete tasks
-    const tasksDeleted = deletePendingTasksForFile(relativePath);
-    result.databaseRecordsDeleted.tasks += tasksDeleted;
-
-    // Enqueue external search service deletions
+    // Delete from external search services (fire-and-forget)
     if (meiliDocumentIds.length > 0) {
-      enqueueMeiliDelete(meiliDocumentIds);
-      log.debug({ count: meiliDocumentIds.length }, 'enqueued Meilisearch deletions');
+      deleteFromMeilisearch(meiliDocumentIds).catch((err) => {
+        log.error({ err, count: meiliDocumentIds.length }, 'Meilisearch deletion failed');
+      });
+      log.debug({ count: meiliDocumentIds.length }, 'triggered Meilisearch deletions');
     }
     if (qdrantDocumentIds.length > 0) {
-      enqueueQdrantDelete(qdrantDocumentIds);
-      log.debug({ count: qdrantDocumentIds.length }, 'enqueued Qdrant deletions');
+      deleteFromQdrant(qdrantDocumentIds).catch((err: unknown) => {
+        log.error({ err, count: qdrantDocumentIds.length }, 'Qdrant deletion failed');
+      });
+      log.debug({ count: qdrantDocumentIds.length }, 'triggered Qdrant deletions');
     }
 
     result.success = true;

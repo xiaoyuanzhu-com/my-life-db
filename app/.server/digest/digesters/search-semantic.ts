@@ -7,9 +7,8 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToQdrant } from '~/.server/search/ingest-to-qdrant';
-import { enqueueQdrantIndex } from '~/.server/search/qdrant-tasks';
+import { indexInQdrant } from '~/.server/search/qdrant-tasks';
 import { getQdrantDocumentIdsByFile } from '~/.server/db/qdrant-documents';
-import { waitForTask } from '~/.server/task-queue/task-manager';
 import { getLogger } from '~/.server/log/logger';
 import { getPrimaryTextContent } from '~/.server/digest/text-source';
 
@@ -98,33 +97,13 @@ export class SearchSemanticDigester implements Digester {
       throw new Error('No semantic search documents created after ingestion');
     }
 
-    // Enqueue task to generate embeddings and push to Qdrant
-    const taskId = enqueueQdrantIndex(documentIds);
-
-    if (!taskId) {
-      throw new Error('Failed to enqueue semantic search indexing task');
-    }
-
-    log.debug(
-      { filePath, taskId, documentIds: documentIds.length },
-      'waiting for semantic search indexing task'
-    );
-
-    // Wait for the indexing task to complete
-    const task = await waitForTask(taskId, { timeoutMs: 120_000 });
-
-    if (!task) {
-      throw new Error('Semantic search indexing task timed out');
-    }
-
-    if (task.status === 'failed') {
-      throw new Error(task.error || 'Semantic search indexing task failed');
-    }
+    // Index in Qdrant (direct async call)
+    log.debug({ filePath, documentIds: documentIds.length }, 'indexing in Qdrant');
+    await indexInQdrant(documentIds);
 
     // Store metadata about indexing
     const completedAt = new Date().toISOString();
     const metadata = {
-      taskId,
       textSource: textContent.source,
       totalChunks: result.totalChunks,
       sources: result.sources,

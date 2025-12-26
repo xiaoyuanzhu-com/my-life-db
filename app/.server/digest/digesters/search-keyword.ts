@@ -7,9 +7,8 @@ import type { Digester } from '../types';
 import type { Digest, DigestInput, FileRecordRow } from '~/types';
 import type BetterSqlite3 from 'better-sqlite3';
 import { ingestToMeilisearch } from '~/.server/search/ingest-to-meilisearch';
-import { enqueueMeiliIndex } from '~/.server/search/meili-tasks';
+import { indexInMeilisearch } from '~/.server/search/meili-tasks';
 import { getMeiliDocumentIdForFile } from '~/.server/db/meili-documents';
-import { waitForTask } from '~/.server/task-queue/task-manager';
 import { getLogger } from '~/.server/log/logger';
 import { getPrimaryTextContent } from '~/.server/digest/text-source';
 
@@ -61,34 +60,14 @@ export class SearchKeywordDigester implements Digester {
     // Get document ID
     const documentId = getMeiliDocumentIdForFile(filePath);
 
-    // Enqueue task to push to Meilisearch
-    const taskId = enqueueMeiliIndex([documentId]);
-
-    if (!taskId) {
-      throw new Error('Failed to enqueue keyword search indexing task');
-    }
-
-    log.debug(
-      { filePath, taskId, documentId },
-      'waiting for keyword search indexing task'
-    );
-
-    // Wait for the indexing task to complete
-    const task = await waitForTask(taskId, { timeoutMs: 120_000 });
-
-    if (!task) {
-      throw new Error('Keyword search indexing task timed out');
-    }
-
-    if (task.status === 'failed') {
-      throw new Error(task.error || 'Keyword search indexing task failed');
-    }
+    // Index in Meilisearch (direct async call)
+    log.debug({ filePath, documentId }, 'indexing in Meilisearch');
+    await indexInMeilisearch([documentId]);
 
     // Store metadata about indexing
     const completedAt = new Date().toISOString();
     const metadata = {
       documentId,
-      taskId,
       textSource: textContent?.source ?? 'filename-only',
       // Array of all content sources that contributed to indexing
       contentSources: result.contentSources,
