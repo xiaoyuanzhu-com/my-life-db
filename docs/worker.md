@@ -1,68 +1,83 @@
-# Worker Thread Design
+# Worker Thread Architecture
 
-## Current Non-API Background Tasks
+## Overview
 
-### 1. FileSystemWatcher
-**Location:** `app/.server/scanner/fs-watcher.ts`
+The application uses worker threads to isolate background processing from the API server:
 
-| Aspect | Details |
-|--------|---------|
-| Trigger | chokidar file events (realtime) |
-| Frequency | Continuous, 500ms stabilization |
-| CPU | Low (event-driven) |
-| I/O | Filesystem stat, hash (<10MB files) |
-| DB | Read/write `files` table |
-| External | None |
-| Notifications | Emits `inbox-changed` to SSE clients |
+```mermaid
+graph TB
+    subgraph "Main Thread"
+        API[Express API]
+        NS[NotificationService]
+        DB1[(SQLite conn)]
+    end
 
-**Operations:**
-- Detect file add/change/delete
-- Hash files <10MB (SHA256)
-- Read text preview (first 50 lines)
-- Upsert `files` table
-- Call `ensureAllDigesters()` for new files
-- Call `deleteFile()` for deletions
-- Emit `inbox-changed` notifications
+    subgraph "FS Worker"
+        FSW[FileSystemWatcher]
+        SCAN[LibraryScanner]
+        DB2[(SQLite conn)]
+    end
+
+    subgraph "Digest Worker"
+        SUP[DigestSupervisor]
+        COORD[DigestCoordinator]
+        DB3[(SQLite conn)]
+    end
+
+    subgraph "External Services"
+        MEILI[Meilisearch]
+        QDRANT[Qdrant]
+        OPENAI[OpenAI]
+        HOMELAB[Homelab AI]
+    end
+
+    API -->|requestDigest| SUP
+    FSW -->|file-change| SUP
+    FSW -->|inbox-changed| API
+    API --> NS
+
+    COORD --> MEILI
+    COORD --> QDRANT
+    COORD --> OPENAI
+    COORD --> HOMELAB
+```
+
+## Workers
+
+### FS Worker
+**Purpose:** File system monitoring and scanning
+
+**Components:**
+- FileSystemWatcher - realtime file change detection (chokidar)
+- LibraryScanner - periodic full filesystem scan (hourly)
+
+**Messages received:**
+| Type | Payload | Description |
+|------|---------|-------------|
+| `shutdown` | - | Graceful shutdown |
+
+**Messages sent:**
+| Type | Payload | Description |
+|------|---------|-------------|
+| `ready` | - | Worker initialized |
+| `inbox-changed` | `{ timestamp }` | File added/removed in inbox |
+| `file-change` | `{ filePath, isNew, contentChanged }` | File changed (forwarded to digest worker) |
+| `shutdown-complete` | - | Shutdown done |
 
 ---
 
-### 2. DigestSupervisor
-**Location:** `app/.server/digest/supervisor.ts`
+### Digest Worker
+**Purpose:** All digest processing
 
-| Aspect | Details |
-|--------|---------|
-| Trigger | Polling loop + FS watcher events |
-| Frequency | 1s idle sleep, 3s start delay |
-| CPU | Varies by digester |
-| I/O | Heavy (file reads, external API calls) |
-| DB | Read/write `digests`, `files`, `sqlar` |
-| External | Meilisearch, Qdrant, OpenAI, Homelab AI |
-| Notifications | None directly |
+**Components:**
+- DigestSupervisor - orchestrates processing loop
+- DigestCoordinator - processes files through digesters
 
-**Operations:**
-- Query `digests` table for pending work
-- Process files through DigestCoordinator
-- Reset stale in-progress digests (every 60s)
-- Exponential backoff on failures
-
----
-
-### 3. DigestCoordinator
-**Location:** `app/.server/digest/coordinator.ts`
-
-| Aspect | Details |
-|--------|---------|
-| Trigger | Called by DigestSupervisor |
-| CPU | High (AI inference, image processing) |
-| I/O | Heavy (file reads, HTTP to external services) |
-| DB | Read/write `digests`, `sqlar`, `processing_locks` |
-| External | All vendor APIs |
-
-**Digesters (in order):**
+**Digesters:**
 1. `doc-to-screenshot` - Render document to image
 2. `doc-to-markdown` - Convert doc to markdown
-3. `image-captioning` - AI caption via Homelab
-4. `image-objects` - Object detection via Homelab
+3. `image-captioning` - AI caption (Homelab)
+4. `image-objects` - Object detection (Homelab)
 5. `image-ocr` - OCR text extraction
 6. `speech-recognition` - Whisper transcription
 7. `speaker-embedding` - Speaker diarization
@@ -74,167 +89,123 @@
 13. `search-keyword` - Index to Meilisearch
 14. `search-semantic` - Embed to Qdrant
 
----
+**Messages received:**
+| Type | Payload | Description |
+|------|---------|-------------|
+| `digest` | `{ filePath, reset? }` | Process file through digesters |
+| `file-change` | `{ filePath, isNew, contentChanged }` | From FS worker |
+| `shutdown` | - | Graceful shutdown |
 
-### 4. LibraryScanner
-**Location:** `app/.server/scanner/library-scanner.ts`
-
-| Aspect | Details |
-|--------|---------|
-| Trigger | Timer (setInterval) |
-| Frequency | 1 hour, 10s initial delay |
-| CPU | Low-Medium |
-| I/O | Filesystem walk, hash files |
-| DB | Read/write `files` table |
-| External | None |
-| Notifications | None |
-
-**Operations:**
-- Full recursive scan of DATA_ROOT
-- Hash files <10MB
-- Detect orphan files (in DB but not on disk)
-- Call `deleteFile()` for orphans
+**Messages sent:**
+| Type | Payload | Description |
+|------|---------|-------------|
+| `ready` | - | Worker initialized |
+| `digest-started` | `{ filePath }` | Processing started |
+| `digest-complete` | `{ filePath, success }` | Processing finished |
+| `shutdown-complete` | - | Shutdown done |
 
 ---
 
-### 5. Search Indexing
-**Location:** `app/.server/search/meili-tasks.ts`, `app/.server/search/qdrant-tasks.ts`
+## SQLite Strategy
 
-| Aspect | Details |
-|--------|---------|
-| Trigger | Called by digesters |
-| CPU | Low |
-| I/O | HTTP to Meilisearch/Qdrant |
-| DB | Read `search_documents` |
-| External | Meilisearch, Qdrant |
+Each worker creates its own database connection. The `app/.server/db/` module provides all typed functions - only the connection initialization differs per worker.
 
----
+```typescript
+// Each worker calls once at startup
+import { initDatabase } from '~/.server/db/client';
+initDatabase();
 
-## External Service Dependencies
-
-| Service | Used By | Purpose |
-|---------|---------|---------|
-| Meilisearch | search-keyword digester | Keyword search indexing |
-| Qdrant | search-semantic digester | Vector embeddings |
-| OpenAI | tags, url-crawl-summary, speech-* | LLM inference |
-| Homelab AI | image-captioning, image-objects | Local AI inference |
-
----
-
-## Proposed Worker Scope
-
-### Option A: Single Digest Worker
-
-Move all digest-related processing to one worker:
-
-```mermaid
-graph LR
-    subgraph "Main Thread"
-        API[Express API]
-        NS[NotificationService]
-    end
-
-    subgraph "Digest Worker"
-        FSW[FileSystemWatcher]
-        SUP[DigestSupervisor]
-        COORD[DigestCoordinator]
-        SCAN[LibraryScanner]
-    end
-
-    API -->|requestDigest| SUP
-    FSW -->|inbox-changed| NS
-    COORD -->|read/write| DB[(SQLite)]
+// Then uses existing functions normally
+import { getFileByPath, upsertFileRecord } from '~/.server/db/files';
 ```
 
-**Interface (Main → Worker):**
-- `{ type: 'digest', filePath, reset? }` - Request digest processing
-- `{ type: 'shutdown' }` - Graceful shutdown
-
-**Interface (Worker → Main):**
-- `{ type: 'ready' }` - Worker initialized
-- `{ type: 'inbox-changed', timestamp }` - For SSE broadcast
-- `{ type: 'shutdown-complete' }` - Shutdown done
-
-**Pros:**
-- Complete isolation of heavy work
-- API thread stays responsive
-- Simple single-worker model
-
-**Cons:**
-- Digest processing still sequential (one file at a time)
-- Long-running digests block other files
-
----
-
-### Option B: Separate FS Watcher + Digest Workers
-
-```mermaid
-graph LR
-    subgraph "Main Thread"
-        API[Express API]
-        NS[NotificationService]
-    end
-
-    subgraph "Watcher Worker"
-        FSW[FileSystemWatcher]
-        SCAN[LibraryScanner]
-    end
-
-    subgraph "Digest Worker"
-        SUP[DigestSupervisor]
-        COORD[DigestCoordinator]
-    end
-
-    API -->|requestDigest| SUP
-    FSW -->|file-change| SUP
-    FSW -->|inbox-changed| NS
+**SQLite configuration for concurrent access:**
+```sql
+PRAGMA journal_mode = WAL;      -- Write-ahead logging
+PRAGMA busy_timeout = 5000;     -- Wait up to 5s for locks
+PRAGMA synchronous = NORMAL;    -- Balance durability/speed
 ```
 
-**Pros:**
-- FS events not blocked by digest processing
-- Can add more digest workers later
-
-**Cons:**
-- More complex IPC
-- Two workers to manage
-
 ---
 
-### Option C: Main + Digest Worker (FS Watcher stays in main)
+## Message Flow
 
+### File Upload
 ```mermaid
-graph LR
-    subgraph "Main Thread"
-        API[Express API]
-        NS[NotificationService]
-        FSW[FileSystemWatcher]
-    end
+sequenceDiagram
+    participant Client
+    participant API as Main Thread
+    participant DW as Digest Worker
 
-    subgraph "Digest Worker"
-        SUP[DigestSupervisor]
-        COORD[DigestCoordinator]
-        SCAN[LibraryScanner]
-    end
+    Client->>API: POST /api/inbox
+    API->>API: saveToInbox()
+    API->>DW: { type: 'digest', filePath }
+    API-->>Client: 201 Created
 
-    API -->|requestDigest| SUP
-    FSW -->|requestDigest| SUP
-    FSW -->|inbox-changed| NS
+    Note over DW: Processes async
+    DW->>DW: DigestCoordinator.processFile()
 ```
 
-**Pros:**
-- FS watcher has direct access to NotificationService (no IPC for notifications)
-- Simpler notification flow
-- Digest work fully isolated
+### File Detected by Watcher
+```mermaid
+sequenceDiagram
+    participant FS as Filesystem
+    participant FW as FS Worker
+    participant API as Main Thread
+    participant DW as Digest Worker
 
-**Cons:**
-- FS watcher shares event loop with API (but it's lightweight)
+    FS->>FW: chokidar 'add' event
+    FW->>FW: upsertFileRecord()
+    FW->>API: { type: 'inbox-changed' }
+    FW->>DW: { type: 'file-change', filePath }
+    API->>API: notificationService.notify()
+
+    Note over DW: Processes async
+    DW->>DW: DigestCoordinator.processFile()
+```
 
 ---
 
-## Recommendation
+## Startup Sequence
 
-**Option A (Single Digest Worker)** is the simplest and addresses the main problem (API blocking during heavy digest work).
+```mermaid
+sequenceDiagram
+    participant Server as Express Server
+    participant Main as Main Thread
+    participant FW as FS Worker
+    participant DW as Digest Worker
 
-The FileSystemWatcher is lightweight (event-driven, quick DB writes) and its notification needs are simpler if it stays in main thread OR if we add simple IPC for `inbox-changed` events.
+    Server->>Main: initializeApp()
+    Main->>Main: initDatabase()
+    Main->>FW: new Worker('fs-worker.js')
+    Main->>DW: new Worker('digest-worker.js')
 
-Moving everything to one worker keeps the architecture simple while fully isolating CPU/IO-intensive digest processing.
+    FW->>FW: initDatabase()
+    FW->>FW: startFileSystemWatcher()
+    FW->>FW: startPeriodicScanner()
+    FW-->>Main: { type: 'ready' }
+
+    DW->>DW: initDatabase()
+    DW->>DW: initializeDigesters()
+    DW->>DW: startDigestSupervisor()
+    DW-->>Main: { type: 'ready' }
+
+    Main->>Main: All workers ready
+```
+
+---
+
+## File Structure
+
+```
+app/.server/
+├── workers/
+│   ├── fs-worker.ts        # FS worker entry point
+│   ├── fs-client.ts        # Main thread client for FS worker
+│   ├── digest-worker.ts    # Digest worker entry point
+│   ├── digest-client.ts    # Main thread client for digest worker
+│   └── types.ts            # Shared message types
+├── db/
+│   └── client.ts           # Updated for multi-connection
+└── init.ts                 # Updated to start workers
+```

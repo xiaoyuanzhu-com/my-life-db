@@ -72,15 +72,16 @@ async function main() {
       `Server running at http://localhost:${PORT} (${isDev ? "development" : "production"})`
     );
 
-    // Initialize application services
+    // Initialize application services (async)
     if (initModule?.initializeApp) {
-      try {
-        console.log("Initializing application services...");
-        initModule.initializeApp();
-        console.log("Application services initialized");
-      } catch (error) {
-        console.error("Failed to initialize application:", error);
-      }
+      console.log("Initializing application services...");
+      initModule.initializeApp()
+        .then(() => {
+          console.log("Application services initialized");
+        })
+        .catch((error) => {
+          console.error("Failed to initialize application:", error);
+        });
     } else {
       console.warn("Init module not available, services may not start");
     }

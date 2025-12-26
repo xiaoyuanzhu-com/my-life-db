@@ -8,7 +8,6 @@ import { createHash } from 'crypto';
 import { EventEmitter } from 'events';
 import { DATA_ROOT } from '~/.server/fs/storage';
 import { upsertFileRecord, getFileByPath } from '~/.server/db/files';
-import { ensureAllDigesters } from '~/.server/digest/ensure';
 import { notificationService } from '~/.server/notifications/notification-service';
 import { deleteFile } from '~/.server/files/delete-file';
 import { getLogger } from '~/.server/log/logger';
@@ -280,10 +279,6 @@ export class FileSystemWatcher extends EventEmitter {
       { path: relativePath, isNew, contentChanged, size: stats.size },
       isNew ? 'new file detected' : contentChanged ? 'file content changed' : 'file metadata updated'
     );
-
-    if (isNew) {
-      ensureAllDigesters(relativePath);
-    }
 
     // Emit notification for inbox files (immediate UI update)
     if (!this.options.skipNotifications && relativePath.startsWith('inbox/')) {

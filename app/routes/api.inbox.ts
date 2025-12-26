@@ -10,7 +10,7 @@ import {
 } from "~/.server/db/files";
 import { isPinned } from "~/.server/db/pins";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
-import { initializeDigesters, ensureAllDigesters } from "~/.server/digest";
+import { requestDigest } from "~/.server/workers/digest-client";
 import { getLogger } from "~/.server/log/logger";
 import { notificationService } from "~/.server/notifications/notification-service";
 
@@ -118,9 +118,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  // Ensure digesters are registered
-  initializeDigesters();
-
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -164,10 +161,9 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    // Trigger immediate digest processing
-    // DigestCoordinator has lock protection against duplicate processing
+    // Trigger digest processing via worker
     for (const filePath of result.paths) {
-      ensureAllDigesters(filePath);
+      requestDigest(filePath);
     }
 
     return Response.json(

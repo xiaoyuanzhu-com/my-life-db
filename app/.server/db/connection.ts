@@ -56,6 +56,12 @@ export function getDatabaseInternal(): BetterSqlite3.Database {
     // Enable WAL mode for better concurrency
     db.pragma('journal_mode = WAL');
 
+    // Wait up to 5 seconds for locks (for multi-connection access)
+    db.pragma('busy_timeout = 5000');
+
+    // Balance durability and speed
+    db.pragma('synchronous = NORMAL');
+
     // Optimize page cache (64MB)
     db.pragma('cache_size = -64000');
   }

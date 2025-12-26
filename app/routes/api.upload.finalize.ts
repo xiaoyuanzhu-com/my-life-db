@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { saveToInbox } from "~/.server/inbox/save-to-inbox";
-import { initializeDigesters, ensureAllDigesters } from "~/.server/digest";
+import { requestDigest } from "~/.server/workers/digest-client";
 
 const DATA_ROOT = process.env.MY_DATA_DIR || path.join(process.cwd(), "data");
 const UPLOAD_DIR = path.join(DATA_ROOT, "app", "my-life-db", "uploads");
@@ -19,9 +19,6 @@ interface FinalizeRequest {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  // Ensure digesters are registered
-  initializeDigesters();
-
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -77,10 +74,9 @@ export async function action({ request }: ActionFunctionArgs) {
       files: files.length > 0 ? files : undefined,
     });
 
-    // Trigger immediate digest processing
-    // DigestCoordinator has lock protection against duplicate processing
+    // Trigger digest processing via worker
     for (const filePath of result.paths) {
-      ensureAllDigesters(filePath);
+      requestDigest(filePath);
     }
 
     return Response.json(

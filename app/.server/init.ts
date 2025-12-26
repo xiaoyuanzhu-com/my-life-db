@@ -8,10 +8,8 @@
  * to prevent re-initialization on module reload.
  */
 
-import { startPeriodicScanner, stopPeriodicScanner } from "./scanner/library-scanner";
-import { startFileSystemWatcher, stopFileSystemWatcher } from "./scanner/fs-watcher";
-import { initializeDigesters } from "./digest/initialization";
-import { startDigestSupervisor, stopDigestSupervisor } from "./digest/supervisor";
+import { startFsWorker, stopFsWorker, setFileChangeHandler } from "./workers/fs-client";
+import { startDigestWorker, stopDigestWorker, sendFileChange } from "./workers/digest-client";
 import { getLogger } from "~/.server/log/logger";
 
 declare global {
@@ -23,7 +21,7 @@ declare global {
  * Initialize application services
  * Called from server.ts on startup
  */
-export function initializeApp() {
+export async function initializeApp(): Promise<void> {
   // HMR guard for development
   if (globalThis.__mylifedb_app_initialized) {
     return;
@@ -33,10 +31,20 @@ export function initializeApp() {
   log.info({}, "initializing application services");
 
   try {
-    initializeDigesters();
-    startFileSystemWatcher();
-    startPeriodicScanner();
-    startDigestSupervisor();
+    // Set up file-change forwarding from FS worker to digest worker
+    setFileChangeHandler((msg) => {
+      if (msg.type === 'file-change') {
+        sendFileChange(msg.filePath, msg.isNew, msg.contentChanged);
+      }
+    });
+
+    // Start workers (they initialize their own DB connections)
+    log.info({}, "starting worker threads");
+    await Promise.all([
+      startFsWorker(),
+      startDigestWorker(),
+    ]);
+
     registerShutdownHooks();
 
     globalThis.__mylifedb_app_initialized = true;
@@ -62,9 +70,10 @@ export async function shutdownApp(): Promise<void> {
   log.debug({}, "shutting down application services");
 
   try {
-    stopDigestSupervisor();
-    await stopFileSystemWatcher();
-    stopPeriodicScanner();
+    await Promise.all([
+      stopFsWorker(),
+      stopDigestWorker(),
+    ]);
 
     globalThis.__mylifedb_app_initialized = false;
     log.debug({}, "application shutdown complete");
