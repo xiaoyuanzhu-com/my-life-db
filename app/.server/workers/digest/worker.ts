@@ -121,14 +121,17 @@ async function runProcessingLoop(): Promise<void> {
 
 /**
  * Process a specific file (triggered by message)
+ * @param filePath - Relative path from DATA_ROOT
+ * @param reset - If true, reset digests before processing
+ * @param digester - If provided, only reset and reprocess this specific digester
  */
-async function processFile(filePath: string, reset = false): Promise<void> {
+async function processFile(filePath: string, reset = false, digester?: string): Promise<void> {
   try {
     // Ensure digest placeholders exist
     ensureAllDigesters(filePath);
 
     send({ type: 'digest-started', filePath });
-    await coordinator.processFile(filePath, { reset });
+    await coordinator.processFile(filePath, { reset, digester });
 
     const success = !hasOutstandingFailures(filePath);
     send({ type: 'digest-complete', filePath, success });
@@ -200,7 +203,7 @@ function sleep(ms: number): Promise<void> {
 port.on('message', async (message: DigestWorkerInMessage) => {
   switch (message.type) {
     case 'digest':
-      await processFile(message.filePath, message.reset);
+      await processFile(message.filePath, message.reset, message.digester);
       break;
 
     case 'file-change':

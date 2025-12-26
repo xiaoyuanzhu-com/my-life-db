@@ -55,12 +55,18 @@ export async function action({ params, request }: ActionFunctionArgs) {
       return Response.json({ error: "File not found" }, { status: 404 });
     }
 
+    // Check for specific digester parameter
+    const url = new URL(request.url);
+    const digester = url.searchParams.get("digester") || undefined;
+
     // Queue digest processing via worker
-    requestDigest(filePath, true);
+    requestDigest(filePath, true, digester);
 
     return Response.json({
       success: true,
-      message: "Digest processing queued.",
+      message: digester
+        ? `Digest "${digester}" processing queued.`
+        : "Digest processing queued.",
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

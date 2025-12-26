@@ -25,7 +25,7 @@ export type FsWorkerOutMessage =
 
 /** Messages sent TO the digest worker */
 export type DigestWorkerInMessage =
-  | { type: 'digest'; filePath: string; reset?: boolean }
+  | { type: 'digest'; filePath: string; reset?: boolean; digester?: string }
   | { type: 'file-change'; filePath: string; isNew: boolean; contentChanged: boolean }
   | { type: 'shutdown' };
 

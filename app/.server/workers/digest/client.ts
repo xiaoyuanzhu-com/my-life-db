@@ -117,15 +117,18 @@ export async function stopDigestWorker(): Promise<void> {
 
 /**
  * Request digest processing for a file
+ * @param filePath - Relative path from DATA_ROOT
+ * @param reset - If true, reset digests before processing
+ * @param digester - If provided, only reset and reprocess this specific digester
  */
-export function requestDigest(filePath: string, reset = false): void {
+export function requestDigest(filePath: string, reset = false, digester?: string): void {
   if (!worker || !isReady) {
     log.warn({ filePath }, 'digest worker not ready, cannot request digest');
     return;
   }
 
-  log.debug({ filePath, reset }, 'requesting digest');
-  sendMessage({ type: 'digest', filePath, reset });
+  log.debug({ filePath, reset, digester }, 'requesting digest');
+  sendMessage({ type: 'digest', filePath, reset, digester });
 }
 
 /**
