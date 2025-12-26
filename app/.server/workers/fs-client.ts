@@ -42,12 +42,18 @@ export function startFsWorker(): Promise<void> {
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const workerPath = path.resolve(__dirname, 'fs-worker.ts');
+    const workerUrl = `file://${workerPath}`;
 
     try {
-      // Use tsx/esm loader to run TypeScript workers
-      worker = new Worker(workerPath, {
-        execArgv: ['--import', 'tsx/esm'],
-      });
+      // Use tsx/esm/api to dynamically register TypeScript support for workers
+      // See: https://electrovir.com/2025-08-09-typescript-worker/
+      const isTypeScript = import.meta.filename?.endsWith('.ts') ?? false;
+      worker = isTypeScript
+        ? new Worker(
+            `import('tsx/esm/api').then(({ register }) => { register(); import('${workerUrl}') })`,
+            { eval: true }
+          )
+        : new Worker(workerPath);
 
       const timeout = setTimeout(() => {
         reject(new Error('FS worker startup timeout'));
