@@ -309,7 +309,7 @@ export interface HaidImageOcrResponse {
   output_format: string;
 }
 
-const DEFAULT_OCR_MODEL = 'opendatalab/MinerU2.5-2509-1.2B';
+const DEFAULT_OCR_MODEL = 'deepseek-ai/DeepSeek-OCR';
 
 export async function imageOcrWithHaid(
   options: HaidImageOcrOptions
