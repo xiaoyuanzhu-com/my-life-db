@@ -104,10 +104,8 @@ export class SearchSemanticDigester implements Digester {
     // Store metadata about indexing
     const completedAt = new Date().toISOString();
     const metadata = {
-      textSource: textContent.source,
-      totalChunks: result.totalChunks,
       sources: result.sources,
-      summarySource: result.summarySource,
+      totalChunks: result.totalChunks,
       documentIds: documentIds.length,
       completedAt,
     };

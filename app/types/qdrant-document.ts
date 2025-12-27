@@ -13,8 +13,9 @@ export type EmbeddingStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 
 
 /**
  * Source type for chunks
+ * Can be a digester name (e.g., 'image-ocr', 'image-captioning') or special values like 'summary', 'tags', 'file'
  */
-export type SourceType = 'content' | 'summary' | 'tags';
+export type SourceType = string;
 
 /**
  * QdrantDocument record row (snake_case - matches SQLite schema exactly)

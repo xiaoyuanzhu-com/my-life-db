@@ -4,21 +4,36 @@
  */
 
 import type { DigestRendererProps } from './index';
-import { TEXT_SOURCE_LABELS, SUMMARY_SOURCE_LABELS } from '~/types/text-source';
-import type { SummarySourceType } from '~/types/text-source';
+import { TEXT_SOURCE_LABELS } from '~/types/text-source';
+import type { TextSourceType } from '~/types/text-source';
 
-interface SourceChunkInfo {
-  chunkCount: number;
+/**
+ * New format: sources is Record<string, number> mapping source type to chunk count
+ * e.g., { "image-ocr": 1, "image-captioning": 1, "tags": 1 }
+ */
+interface SearchSemanticContent {
+  sources: Record<string, number>;
+  totalChunks: number;
+  documentIds: number;
+  completedAt: string;
 }
 
-interface SearchSemanticContent {
-  taskId: number;
-  textSource: string;
-  totalChunks: number;
-  sources: Record<string, SourceChunkInfo>;
-  summarySource: string | null;
-  documentIds: number;
-  enqueuedAt: string;
+/**
+ * Get human-readable label for a source type
+ */
+function getSourceLabel(sourceType: string): string {
+  // Check if it's a known text source type
+  if (sourceType in TEXT_SOURCE_LABELS) {
+    return TEXT_SOURCE_LABELS[sourceType as TextSourceType];
+  }
+  // Special cases
+  if (sourceType === 'summary') return 'Summary';
+  if (sourceType === 'tags') return 'Tags';
+  // Fall back to formatted source type
+  return sourceType
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 export function SearchSemanticRenderer({ content }: DigestRendererProps) {
@@ -41,23 +56,14 @@ export function SearchSemanticRenderer({ content }: DigestRendererProps) {
     );
   }
 
-  // Build list of indexed sources using shared labels (same as keyword search)
+  // Build list of indexed sources from the sources object
   const indexed: string[] = [];
 
-  // Primary text source (use label from shared source of truth)
-  const sourceLabel = TEXT_SOURCE_LABELS[data.textSource as keyof typeof TEXT_SOURCE_LABELS];
-  if (sourceLabel) {
-    indexed.push(sourceLabel);
+  if (data.sources) {
+    for (const sourceType of Object.keys(data.sources)) {
+      indexed.push(getSourceLabel(sourceType));
+    }
   }
-
-  // Additional indexed fields from sources object
-  if (data.sources?.summary) {
-    const summaryLabel = data.summarySource
-      ? SUMMARY_SOURCE_LABELS[data.summarySource as SummarySourceType] ?? 'Summary'
-      : 'Summary';
-    indexed.push(summaryLabel);
-  }
-  if (data.sources?.tags) indexed.push('Tags');
 
   if (indexed.length === 0) {
     return (

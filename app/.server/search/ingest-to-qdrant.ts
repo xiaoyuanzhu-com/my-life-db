@@ -17,12 +17,8 @@ const DATA_DIR = process.env.MY_DATA_DIR || './data';
 
 export interface QdrantIngestResult {
   filePath: string;
-  sources: {
-    content?: { chunkCount: number };
-    summary?: { chunkCount: number };
-    tags?: { chunkCount: number };
-  };
-  summarySource: string | null;
+  /** Map of source type to chunk count (e.g., 'image-ocr': 2, 'image-captioning': 1) */
+  sources: Record<string, number>;
   totalChunks: number;
 }
 
@@ -40,46 +36,42 @@ export interface ChunkResult {
 /**
  * Ingest a file to Qdrant (chunked documents for vector search)
  *
- * This function:
- * 1. Gets file metadata from the files table
- * 2. Chunks main content (from URL digest or filesystem)
- * 3. Chunks summary from digest (if available)
- * 4. Chunks tags from digest (if available)
- * 5. Creates qdrant_documents entries for each chunk
+ * This function indexes each content source independently:
+ * - Each digest type (image-ocr, image-captioning, etc.) gets its own chunks
+ * - Summary and tags also indexed separately
+ * - File content (for .md/.txt) indexed as 'file' source
  *
- * Each file+source can generate multiple chunks (800-1000 tokens with overlap)
+ * Each source can generate multiple chunks (800-1000 tokens with overlap)
  */
 export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResult> {
   log.debug({ filePath }, 'starting Qdrant ingestion');
 
-  // 1. Get file metadata
+  // Get file metadata
   const fileRecord = getFileByPath(filePath);
   if (!fileRecord) {
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const digests = listDigestsForPath(filePath);
-
   const result: QdrantIngestResult = {
     filePath,
     sources: {},
-    summarySource: null,
     totalChunks: 0,
   };
 
-  // 2. Index main content (URL digest or filesystem file)
-  const contentText = await getFileContent(filePath, fileRecord.isFolder);
-  if (contentText && contentText.trim().length > 0) {
-    const chunks = chunkText(contentText, { targetTokens: 900, overlapPercent: 0.15 });
+  // Helper to index a source
+  const indexSource = (sourceType: string, text: string) => {
+    if (!text || text.trim().length === 0) return;
+
+    const chunks = chunkText(text, { targetTokens: 900, overlapPercent: 0.15 });
 
     for (const chunk of chunks) {
-      const documentId = `${filePath}:content:${chunk.chunkIndex}`;
+      const documentId = `${filePath}:${sourceType}:${chunk.chunkIndex}`;
       const contentHash = hashString(chunk.chunkText);
 
       upsertQdrantDocument({
         documentId,
         filePath,
-        sourceType: 'content',
+        sourceType,
         chunkIndex: chunk.chunkIndex,
         chunkCount: chunk.chunkCount,
         chunkText: chunk.chunkText,
@@ -93,118 +85,55 @@ export async function ingestToQdrant(filePath: string): Promise<QdrantIngestResu
       });
     }
 
-    result.sources.content = { chunkCount: chunks.length };
+    result.sources[sourceType] = chunks.length;
     result.totalChunks += chunks.length;
 
     log.debug(
-      { filePath, sourceType: 'content', chunkCount: chunks.length },
-      'indexed content chunks'
+      { filePath, sourceType, chunkCount: chunks.length },
+      'indexed chunks'
     );
+  };
+
+  // Collect all content sources
+  const contentSources = await getContentSources(filePath, fileRecord.isFolder);
+
+  // Index each source independently
+  for (const { sourceType, text } of contentSources) {
+    indexSource(sourceType, text);
   }
 
-  // 3. Index summary from digest (url-crawl-summary or speech-recognition-summary)
+  // Index summary (url-crawl-summary or speech-recognition-summary)
+  const digests = listDigestsForPath(filePath);
   const urlSummaryDigest = digests.find(d => d.digester === 'url-crawl-summary' && d.status === 'completed');
   const speechSummaryDigest = digests.find(d => d.digester === 'speech-recognition-summary' && d.status === 'completed');
-
-  // Prefer url-crawl-summary, fall back to speech-recognition-summary
-  let summaryDigest = urlSummaryDigest;
-  let summarySource: string | null = urlSummaryDigest ? 'url-crawl-summary' : null;
-  if (!summaryDigest && speechSummaryDigest) {
-    summaryDigest = speechSummaryDigest;
-    summarySource = 'speech-recognition-summary';
-  }
+  const summaryDigest = urlSummaryDigest || speechSummaryDigest;
 
   if (summaryDigest?.content) {
-    // Parse JSON to get summary text
     let summaryText: string;
     try {
       const summaryData = JSON.parse(summaryDigest.content);
-      summaryText = summaryData.summary || summaryDigest.content; // Fallback for old format
+      summaryText = summaryData.summary || summaryDigest.content;
     } catch {
-      // Fallback for old format (plain text)
       summaryText = summaryDigest.content;
     }
-
-    const chunks = chunkText(summaryText, { targetTokens: 900, overlapPercent: 0.15 });
-
-    for (const chunk of chunks) {
-      const documentId = `${filePath}:summary:${chunk.chunkIndex}`;
-      const contentHash = hashString(chunk.chunkText);
-
-      upsertQdrantDocument({
-        documentId,
-        filePath,
-        sourceType: 'summary',
-        chunkIndex: chunk.chunkIndex,
-        chunkCount: chunk.chunkCount,
-        chunkText: chunk.chunkText,
-        spanStart: chunk.spanStart,
-        spanEnd: chunk.spanEnd,
-        overlapTokens: chunk.overlapTokens,
-        wordCount: chunk.wordCount,
-        tokenCount: chunk.tokenCount,
-        contentHash,
-        embeddingVersion: 0,
-      });
-    }
-
-    result.sources.summary = { chunkCount: chunks.length };
-    result.summarySource = summarySource;
-    result.totalChunks += chunks.length;
-
-    log.debug(
-      { filePath, sourceType: 'summary', summarySource, chunkCount: chunks.length },
-      'indexed summary chunks'
-    );
+    indexSource('summary', summaryText);
   }
 
-  // 4. Index tags from digest (usually single chunk)
+  // Index tags
   const tagsDigest = digests.find(d => d.digester === 'tags' && d.status === 'completed');
   if (tagsDigest?.content) {
     try {
       const tagsData = JSON.parse(tagsDigest.content);
-      const tags = tagsData.tags || tagsData; // Handle both {tags: [...]} and plain [...]
+      const tags = tagsData.tags || tagsData;
       const tagText = Array.isArray(tags) ? tags.join(', ') : String(tags);
-
-      if (tagText.trim().length > 0) {
-        const chunks = chunkText(tagText, { targetTokens: 900, overlapPercent: 0.15 });
-
-        for (const chunk of chunks) {
-          const documentId = `${filePath}:tags:${chunk.chunkIndex}`;
-          const contentHash = hashString(chunk.chunkText);
-
-          upsertQdrantDocument({
-            documentId,
-            filePath,
-            sourceType: 'tags',
-            chunkIndex: chunk.chunkIndex,
-            chunkCount: chunk.chunkCount,
-            chunkText: chunk.chunkText,
-            spanStart: chunk.spanStart,
-            spanEnd: chunk.spanEnd,
-            overlapTokens: chunk.overlapTokens,
-            wordCount: chunk.wordCount,
-            tokenCount: chunk.tokenCount,
-            contentHash,
-            embeddingVersion: 0,
-          });
-        }
-
-        result.sources.tags = { chunkCount: chunks.length };
-        result.totalChunks += chunks.length;
-
-        log.debug(
-          { filePath, sourceType: 'tags', chunkCount: chunks.length },
-          'indexed tag chunks'
-        );
-      }
+      indexSource('tags', tagText);
     } catch (error) {
       log.warn({ filePath, error }, 'failed to parse tags digest');
     }
   }
 
   log.debug(
-    { filePath, totalChunks: result.totalChunks },
+    { filePath, sources: Object.keys(result.sources), totalChunks: result.totalChunks },
     'completed Qdrant ingestion'
   );
 
@@ -246,41 +175,56 @@ export async function reindexQdrant(filePath: string): Promise<QdrantIngestResul
   return await ingestToQdrant(filePath);
 }
 
+interface ContentSource {
+  sourceType: string;
+  text: string;
+}
+
 /**
- * Get file content for indexing
- * Collects content from all applicable sources and combines them (matches ingest-to-meilisearch.ts)
+ * Get all content sources for indexing
+ *
+ * Returns each source separately (not combined) for independent indexing:
+ * - URL: url-crawl-content digest
+ * - Doc: doc-to-markdown digest
+ * - Image: image-ocr, image-captioning, image-objects (each separate)
+ * - Speech: speech-recognition digest
+ * - Text files: Read from filesystem
+ *
+ * @returns Array of content sources with their text
  */
-async function getFileContent(filePath: string, isFolder: boolean): Promise<string | null> {
+async function getContentSources(filePath: string, isFolder: boolean): Promise<ContentSource[]> {
   const dataDir = DATA_DIR;
-  const contentParts: string[] = [];
+  const sources: ContentSource[] = [];
 
   // 1. Check for URL content digest (url-crawl-content)
   const contentDigest = getDigestByPathAndDigester(filePath, 'url-crawl-content');
   if (contentDigest?.content && contentDigest.status === 'completed') {
+    let text: string;
     try {
       const contentData = JSON.parse(contentDigest.content);
-      contentParts.push(contentData.markdown || contentDigest.content);
+      text = contentData.markdown || contentDigest.content;
     } catch {
-      contentParts.push(contentDigest.content);
+      text = contentDigest.content;
     }
+    sources.push({ sourceType: 'url-crawl-content', text });
   }
 
   // 2. Check for doc-to-markdown digest
   const docDigest = getDigestByPathAndDigester(filePath, 'doc-to-markdown');
   if (docDigest?.content && docDigest.status === 'completed') {
-    contentParts.push(docDigest.content);
+    sources.push({ sourceType: 'doc-to-markdown', text: docDigest.content });
   }
 
   // 3. Check for image-ocr digest
   const ocrDigest = getDigestByPathAndDigester(filePath, 'image-ocr');
   if (ocrDigest?.content && ocrDigest.status === 'completed') {
-    contentParts.push(ocrDigest.content);
+    sources.push({ sourceType: 'image-ocr', text: ocrDigest.content });
   }
 
-  // 4. Check for image-captioning digest (always include, not just fallback)
+  // 4. Check for image-captioning digest
   const captionDigest = getDigestByPathAndDigester(filePath, 'image-captioning');
   if (captionDigest?.content && captionDigest.status === 'completed') {
-    contentParts.push(captionDigest.content);
+    sources.push({ sourceType: 'image-captioning', text: captionDigest.content });
   }
 
   // 5. Check for image-objects digest
@@ -289,7 +233,6 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     try {
       const objectsData = JSON.parse(objectsDigest.content);
       if (objectsData.objects && Array.isArray(objectsData.objects)) {
-        // Extract searchable text from objects: title + description
         const objectTexts = objectsData.objects.map((obj: { title?: string; description?: string }) => {
           const parts = [];
           if (obj.title) parts.push(obj.title);
@@ -297,7 +240,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
           return parts.join(': ');
         }).filter(Boolean);
         if (objectTexts.length > 0) {
-          contentParts.push(objectTexts.join('\n'));
+          sources.push({ sourceType: 'image-objects', text: objectTexts.join('\n') });
         }
       }
     } catch (error) {
@@ -308,16 +251,18 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
   // 6. Check for speech-recognition digest
   const speechDigest = getDigestByPathAndDigester(filePath, 'speech-recognition');
   if (speechDigest?.content && speechDigest.status === 'completed') {
+    let text: string;
     try {
       const transcriptData = JSON.parse(speechDigest.content);
       if (transcriptData.segments && Array.isArray(transcriptData.segments)) {
-        contentParts.push(transcriptData.segments.map((s: { text: string }) => s.text).join(' '));
+        text = transcriptData.segments.map((s: { text: string }) => s.text).join(' ');
       } else {
-        contentParts.push(speechDigest.content);
+        text = speechDigest.content;
       }
     } catch {
-      contentParts.push(speechDigest.content);
+      text = speechDigest.content;
     }
+    sources.push({ sourceType: 'speech-recognition', text });
   }
 
   // 7. Try reading from filesystem (markdown or text files)
@@ -325,7 +270,7 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     try {
       const fullPath = path.join(dataDir, filePath);
       const content = await fs.readFile(fullPath, 'utf-8');
-      contentParts.push(content);
+      sources.push({ sourceType: 'file', text: content });
     } catch (error) {
       log.debug({ filePath, error }, 'failed to read file');
     }
@@ -336,13 +281,13 @@ async function getFileContent(filePath: string, isFolder: boolean): Promise<stri
     try {
       const textMdPath = path.join(dataDir, filePath, 'text.md');
       const content = await fs.readFile(textMdPath, 'utf-8');
-      contentParts.push(content);
+      sources.push({ sourceType: 'file', text: content });
     } catch (error) {
       log.debug({ filePath, error }, 'failed to read text.md from folder');
     }
   }
 
-  return contentParts.length > 0 ? contentParts.join('\n\n') : null;
+  return sources;
 }
 
 /**
