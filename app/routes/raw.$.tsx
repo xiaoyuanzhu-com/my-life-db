@@ -90,9 +90,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
 
     const { realPath } = validation;
+    const stat = await fs.stat(realPath);
+
+    // Cannot serve directories
+    if (stat.isDirectory()) {
+      return Response.json({ error: "Cannot serve directory" }, { status: 400 });
+    }
+
     const ext = path.extname(realPath).toLowerCase();
     const contentType = contentTypeMap[ext] || "application/octet-stream";
-    const stat = await fs.stat(realPath);
     const fileSize = stat.size;
     const etag = `"${stat.mtimeMs.toString(16)}-${fileSize.toString(16)}"`;
 
