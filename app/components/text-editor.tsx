@@ -6,6 +6,7 @@ interface TextEditorProps {
   value: string;
   onChange?: (value: string) => void;
   language?: string;
+  filename?: string; // Auto-detect language from filename
   readOnly?: boolean;
   className?: string;
   onSave?: () => void;
@@ -89,13 +90,19 @@ function useTheme(): 'vs' | 'vs-dark' {
 export function TextEditor({
   value,
   onChange,
-  language = 'plaintext',
+  language,
+  filename,
   readOnly = false,
   className,
   onSave,
 }: TextEditorProps) {
   const theme = useTheme();
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+
+  // Auto-detect language from filename if not explicitly provided
+  const detectedLanguage = filename && !language
+    ? getLanguageFromFilename(filename)
+    : language || 'plaintext';
 
   const handleEditorDidMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -129,7 +136,7 @@ export function TextEditor({
     <Editor
       className={className}
       value={value}
-      language={language}
+      language={detectedLanguage}
       theme={theme}
       onChange={handleChange}
       onMount={handleEditorDidMount}
@@ -146,7 +153,7 @@ export function TextEditor({
         tabSize: 2,
         insertSpaces: true,
         renderWhitespace: 'selection',
-        bracketPairColorization: { enabled: true },
+        bracketPairColorization: { enabled: false },
         padding: { top: 12, bottom: 12 },
         scrollbar: {
           verticalScrollbarSize: 10,
@@ -157,6 +164,7 @@ export function TextEditor({
         lineDecorationsWidth: 12,
         lineNumbersMinChars: 0,
         renderLineHighlight: 'none',
+        'semanticHighlighting.enabled': false,
       }}
       loading={
         <div className="flex items-center justify-center h-full text-muted-foreground">

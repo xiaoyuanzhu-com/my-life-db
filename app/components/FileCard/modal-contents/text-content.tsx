@@ -19,29 +19,6 @@ const TextEditor = lazy(() =>
   }))
 );
 
-const getLanguageFromFilename = (filename: string): string => {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const languageMap: Record<string, string> = {
-    js: 'javascript',
-    jsx: 'javascript',
-    ts: 'typescript',
-    tsx: 'typescript',
-    json: 'json',
-    md: 'markdown',
-    html: 'html',
-    css: 'css',
-    py: 'python',
-    go: 'go',
-    rs: 'rust',
-    java: 'java',
-    sh: 'shell',
-    yaml: 'yaml',
-    yml: 'yaml',
-    xml: 'xml',
-    sql: 'sql',
-  };
-  return languageMap[ext || ''] || 'plaintext';
-};
 
 export interface TextContentHandle {
   /** Attempt to close. Returns true if closed, false if blocked by unsaved changes dialog. */
@@ -169,7 +146,7 @@ export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
               value={displayText}
               onChange={handleChange}
               onSave={handleSaveFromEditor}
-              language={getLanguageFromFilename(file.name)}
+              filename={file.name}
             />
           </Suspense>
         </div>
