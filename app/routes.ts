@@ -23,6 +23,7 @@ export default [
   // OAuth Routes
   route("api/oauth/authorize", "routes/api.oauth.authorize.ts"),
   route("api/oauth/callback", "routes/api.oauth.callback.ts"),
+  route("api/oauth/refresh", "routes/api.oauth.refresh.ts"),
   route("api/oauth/token", "routes/api.oauth.token.ts"),
 
   route("api/inbox", "routes/api.inbox.ts"),

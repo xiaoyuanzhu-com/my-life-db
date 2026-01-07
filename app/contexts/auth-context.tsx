@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { fetchWithRefresh } from '~/lib/fetch-with-refresh';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -23,9 +24,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Verify token is valid by calling a protected endpoint
         // Cookie is sent automatically by browser
-        const response = await fetch('/api/settings', {
-          credentials: 'same-origin', // Ensure cookies are sent
-        });
+        // fetchWithRefresh will automatically refresh if token expired
+        const response = await fetchWithRefresh('/api/settings');
 
         setIsAuthenticated(response.ok);
       } catch {
