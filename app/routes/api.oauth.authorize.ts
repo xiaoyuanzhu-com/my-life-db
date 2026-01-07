@@ -24,7 +24,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const redirectUri = customRedirectUri || config.redirectUri;
 
     // Build authorization URL
-    const authUrl = new URL(`${config.issuerUrl}authorize`);
+    // Ensure proper URL joining with trailing slash
+    const baseUrl = config.issuerUrl.endsWith('/') ? config.issuerUrl : `${config.issuerUrl}/`;
+    const authUrl = new URL(`${baseUrl}authorize/`);
     authUrl.searchParams.set('client_id', config.clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
