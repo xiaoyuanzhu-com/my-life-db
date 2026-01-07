@@ -56,6 +56,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   async function loadSettings() {
     try {
       const response = await fetch("/api/settings");
+      if (response.status === 401) {
+        // Auth required but not authenticated - redirect to login
+        window.location.href = '/login';
+        return;
+      }
       const data = await response.json();
       setSettings(data);
       setOriginalSettings(data);

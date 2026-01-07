@@ -1,32 +1,28 @@
 import { useState, FormEvent } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLoaderData } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { getAuthMode } from "~/.server/auth/oauth-config";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const authMode = getAuthMode();
 
-  // If OAuth mode, redirect to OAuth authorize endpoint
-  if (authMode === 'oauth') {
-    return Response.redirect('/api/oauth/authorize', 302);
-  }
-
   // If no auth required, redirect to home
   if (authMode === 'none') {
     return Response.redirect('/', 302);
   }
 
-  // Password mode: show login form
-  return null;
+  // Return auth mode for client to determine UI
+  return { authMode };
 }
 
 export default function LoginPage() {
+  const { authMode } = useLoaderData<{ authMode: string }>();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handlePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
@@ -51,6 +47,32 @@ export default function LoginPage() {
     }
   };
 
+  const handleOAuthSignIn = () => {
+    window.location.href = '/api/oauth/authorize';
+  };
+
+  // OAuth mode: show OAuth sign in prompt
+  if (authMode === 'oauth') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md text-center space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">MyLifeDB</h1>
+            <p className="text-muted-foreground">Sign in to continue</p>
+          </div>
+
+          <button
+            onClick={handleOAuthSignIn}
+            className="w-full px-4 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Password mode: show password login form
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
@@ -59,7 +81,7 @@ export default function LoginPage() {
           <p className="text-muted-foreground">Enter your password to continue</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div>
             <input
               type="password"

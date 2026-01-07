@@ -312,6 +312,13 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
     try {
       const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}`);
+
+      // Auth required but not authenticated - redirect to login
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data: InboxResponse = await response.json();

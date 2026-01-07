@@ -142,6 +142,12 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           signal: keywordController.signal,
         });
 
+        // Auth required but not authenticated - redirect to login
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.error || `HTTP ${response.status}`);
@@ -173,6 +179,12 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         const response = await fetch(`/api/search?${params}`, {
           signal: semanticController.signal,
         });
+
+        // Auth required but not authenticated - redirect to login
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));

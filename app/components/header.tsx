@@ -26,7 +26,14 @@ export function Header() {
   // Load user email from settings
   useEffect(() => {
     fetch('/api/settings')
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.status === 401) {
+          // Auth required but not authenticated - redirect to login
+          window.location.href = '/login';
+          return;
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data?.preferences?.userEmail) {
           setUserEmail(data.preferences.userEmail);

@@ -14,6 +14,11 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
   const loadPinnedItems = useCallback(async () => {
     try {
       const response = await fetch('/api/inbox/pinned');
+      if (response.status === 401) {
+        // Auth required but not authenticated - redirect to login
+        window.location.href = '/login';
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
         setPinnedItems(data.items);
