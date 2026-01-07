@@ -4,6 +4,7 @@
  */
 
 import type { LoaderFunctionArgs } from 'react-router';
+import * as oauth from 'oauth4webapi';
 import { getOAuthConfig, isOAuthEnabled } from '~/.server/auth/oauth-config';
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -18,20 +19,28 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const config = getOAuthConfig();
     const url = new URL(request.url);
-    
+
     // Get redirect_uri from query params (for iOS app custom scheme)
     const customRedirectUri = url.searchParams.get('redirect_uri');
     const redirectUri = customRedirectUri || config.redirectUri;
 
-    // Build authorization URL
-    // Ensure proper URL joining with trailing slash
-    const baseUrl = config.issuerUrl.endsWith('/') ? config.issuerUrl : `${config.issuerUrl}/`;
-    const authUrl = new URL(`${baseUrl}authorize/`);
+    // Discover OAuth server metadata to get correct authorization endpoint
+    const issuer = new URL(config.issuerUrl);
+    const authServer = await oauth.discoveryRequest(issuer).then((response) =>
+      oauth.processDiscoveryResponse(issuer, response)
+    );
+
+    if (!authServer.authorization_endpoint) {
+      throw new Error('OAuth server metadata missing authorization_endpoint');
+    }
+
+    // Build authorization URL using discovered endpoint
+    const authUrl = new URL(authServer.authorization_endpoint);
     authUrl.searchParams.set('client_id', config.clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', 'openid profile email');
-    
+
     // Add state parameter (optional, for CSRF protection)
     const state = crypto.randomUUID();
     authUrl.searchParams.set('state', state);
