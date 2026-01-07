@@ -158,6 +158,7 @@ class QdrantClient {
 }
 
 let cachedClient: QdrantClient | null = null;
+let collectionEnsured = false;
 
 export async function getQdrantClient(): Promise<QdrantClient> {
   if (cachedClient) return cachedClient;
@@ -192,6 +193,18 @@ export async function getQdrantClient(): Promise<QdrantClient> {
   });
 
   log.info({ url, collection }, 'initialized Qdrant client');
+
+  // Ensure collection exists on first access (similar to Meilisearch ensureIndex)
+  if (!collectionEnsured) {
+    try {
+      await cachedClient.ensureCollection(1024); // Default vector size
+      collectionEnsured = true;
+    } catch (error) {
+      log.error({ err: error }, 'failed to ensure Qdrant collection exists');
+      // Don't throw - allow the client to be used, operations will fail gracefully
+    }
+  }
+
   return cachedClient;
 }
 
