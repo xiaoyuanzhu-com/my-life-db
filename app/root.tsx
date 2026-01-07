@@ -29,10 +29,10 @@ export const meta: MetaFunction = () => {
 
 export const links: LinksFunction = () => {
   return [
-    { rel: "icon", type: "image/png", sizes: "16x16", href: "/public/favicon-16x16.png" },
-    { rel: "icon", type: "image/png", sizes: "32x32", href: "/public/favicon-32x32.png" },
-    { rel: "apple-touch-icon", href: "/public/apple-touch-icon.png" },
-    { rel: "manifest", href: "/public/manifest.webmanifest" },
+    { rel: "icon", type: "image/png", sizes: "16x16", href: "/static/favicon-16x16.png" },
+    { rel: "icon", type: "image/png", sizes: "32x32", href: "/static/favicon-32x32.png" },
+    { rel: "apple-touch-icon", href: "/static/apple-touch-icon.png" },
+    { rel: "manifest", href: "/static/manifest.webmanifest" },
   ];
 };
 

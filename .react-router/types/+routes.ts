@@ -68,6 +68,15 @@ type Pages = {
   "/api/auth/logout": {
     params: {};
   };
+  "/api/oauth/authorize": {
+    params: {};
+  };
+  "/api/oauth/callback": {
+    params: {};
+  };
+  "/api/oauth/token": {
+    params: {};
+  };
   "/api/inbox": {
     params: {};
   };
@@ -174,7 +183,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/inbox" | "/inbox/:id" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
+    page: "/" | "/login" | "/inbox" | "/inbox/:id" | "/library" | "/library/browse" | "/file/*" | "/people" | "/people/:id" | "/settings" | "/settings/*" | "/raw/*" | "/sqlar/*" | "/api/auth/login" | "/api/auth/logout" | "/api/oauth/authorize" | "/api/oauth/callback" | "/api/oauth/token" | "/api/inbox" | "/api/inbox/pinned" | "/api/inbox/:id" | "/api/inbox/:id/reenrich" | "/api/inbox/:id/status" | "/api/digest/digesters" | "/api/digest/stats" | "/api/digest/reset/:digester" | "/api/digest/*" | "/api/library/file" | "/api/library/file-info" | "/api/library/pin" | "/api/library/tree" | "/api/notifications/stream" | "/api/people" | "/api/people/:id" | "/api/people/:id/merge" | "/api/people/embeddings/:id/assign" | "/api/people/embeddings/:id/unassign" | "/api/search" | "/api/settings" | "/api/stats" | "/api/upload/finalize" | "/api/upload/tus" | "/api/upload/tus/*" | "/api/directories" | "/api/vendors/openai/models";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -231,6 +240,18 @@ type RouteFiles = {
   "routes/api.auth.logout.ts": {
     id: "routes/api.auth.logout";
     page: "/api/auth/logout";
+  };
+  "routes/api.oauth.authorize.ts": {
+    id: "routes/api.oauth.authorize";
+    page: "/api/oauth/authorize";
+  };
+  "routes/api.oauth.callback.ts": {
+    id: "routes/api.oauth.callback";
+    page: "/api/oauth/callback";
+  };
+  "routes/api.oauth.token.ts": {
+    id: "routes/api.oauth.token";
+    page: "/api/oauth/token";
   };
   "routes/api.inbox.ts": {
     id: "routes/api.inbox";
@@ -354,6 +375,9 @@ type RouteModules = {
   "routes/sqlar.$": typeof import("./app/routes/sqlar.$.tsx");
   "routes/api.auth.login": typeof import("./app/routes/api.auth.login.ts");
   "routes/api.auth.logout": typeof import("./app/routes/api.auth.logout.ts");
+  "routes/api.oauth.authorize": typeof import("./app/routes/api.oauth.authorize.ts");
+  "routes/api.oauth.callback": typeof import("./app/routes/api.oauth.callback.ts");
+  "routes/api.oauth.token": typeof import("./app/routes/api.oauth.token.ts");
   "routes/api.inbox": typeof import("./app/routes/api.inbox.ts");
   "routes/api.inbox.pinned": typeof import("./app/routes/api.inbox.pinned.ts");
   "routes/api.inbox.$id": typeof import("./app/routes/api.inbox.$id.ts");

@@ -63,7 +63,7 @@ export function Header() {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <img
-              src="/public/my-life-db-logo.png"
+              src="/static/my-life-db-logo.png"
               alt="MyLifeDB Logo"
               width={48}
               height={48}

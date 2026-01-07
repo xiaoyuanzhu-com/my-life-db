@@ -8,8 +8,10 @@
 import compression from "compression";
 import express from "express";
 import { createRequestHandler } from "@react-router/express";
+import { networkInterfaces } from "os";
 
 const PORT = process.env.PORT || 12345;
+const HOST = process.env.HOST || '0.0.0.0';
 const isDev = process.env.NODE_ENV !== "production";
 
 async function main() {
@@ -23,6 +25,10 @@ async function main() {
     res.status(404).end();
   });
 
+  // Serve public directory at /static/ prefix BEFORE Vite middleware
+  // This avoids Vite warnings while maintaining JWT bypass at gateway
+  app.use("/static", express.static("public", { maxAge: isDev ? 0 : "1h" }));
+
   // Compression (production only - Vite handles this in dev)
   if (!isDev) {
     app.use(compression());
@@ -35,8 +41,14 @@ async function main() {
     // Development: Use Vite middleware for HMR
     const vite = await import("vite");
     viteDevServer = await vite.createServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        host: HOST,
+        port: PORT,
+        strictPort: true,
+      },
     });
+    // Vite middleware runs after static file middleware
     app.use(viteDevServer.middlewares);
 
     // Load init module through Vite (handles TypeScript + path aliases)
@@ -67,10 +79,27 @@ async function main() {
   }
 
   // Start server
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(
-      `Server running at http://localhost:${PORT} (${isDev ? "development" : "production"})`
+      `Server running at http://${HOST}:${PORT} (${isDev ? "development" : "production"})`
     );
+
+    // Show network URLs with actual IP addresses
+    const ifaces = networkInterfaces();
+    const addresses = [];
+
+    for (const name of Object.keys(ifaces)) {
+      for (const iface of ifaces[name]) {
+        // Skip internal (i.e., 127.0.0.1) and non-IPv4 addresses
+        if (!iface.internal && iface.family === 'IPv4') {
+          addresses.push(`http://${iface.address}:${PORT}`);
+        }
+      }
+    }
+
+    if (addresses.length > 0) {
+      console.log(`Network: ${addresses.join(', ')}`);
+    }
 
     // Initialize application services (async)
     if (initModule?.initializeApp) {
