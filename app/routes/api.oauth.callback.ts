@@ -60,7 +60,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     );
 
     // Process the token response
-    const result = await oauth.processAuthorizationCodeOpenIDResponse(
+    const result = await oauth.processAuthorizationCodeResponse(
       authServer,
       client,
       response
