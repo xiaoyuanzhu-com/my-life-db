@@ -30,6 +30,7 @@ ENV NODE_ENV=production
 
 # Copy build output and dependencies
 COPY --from=builder /app/build ./build
+COPY --from=builder /app/static ./static
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/server.js ./

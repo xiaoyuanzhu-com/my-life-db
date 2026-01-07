@@ -12,7 +12,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     port: 12345,
   },
   // Disable Vite's default public directory behavior to avoid warnings
-  // Files will be served at /static/ instead (handled in server.js)
+  // Files in static/ directory will be served at /static/ (handled in server.js)
   publicDir: false,
   // Handle better-sqlite3 and other native modules
   build: {

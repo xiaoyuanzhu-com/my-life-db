@@ -25,9 +25,9 @@ async function main() {
     res.status(404).end();
   });
 
-  // Serve public directory at /static/ prefix BEFORE Vite middleware
+  // Serve static directory at /static/ prefix BEFORE Vite middleware
   // This avoids Vite warnings while maintaining JWT bypass at gateway
-  app.use("/static", express.static("public", { maxAge: isDev ? 0 : "1h" }));
+  app.use("/static", express.static("static", { maxAge: isDev ? 0 : "1h" }));
 
   // Compression (production only - Vite handles this in dev)
   if (!isDev) {
