@@ -24,9 +24,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // OAuth client configuration
     const client: oauth.Client = {
       client_id: config.clientId,
-      client_secret: config.clientSecret,
       token_endpoint_auth_method: 'client_secret_post',
     };
+
+    // Client authentication method
+    const clientAuth = oauth.ClientSecretPost(config.clientSecret);
 
     // Discover OAuth server metadata
     const issuer = new URL(config.issuerUrl);
@@ -51,8 +53,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const response = await oauth.authorizationCodeGrantRequest(
       authServer,
       client,
+      clientAuth,
       params,
-      config.redirectUri
+      config.redirectUri,
+      oauth.nopkce // Not using PKCE
     );
 
     // Process the token response
