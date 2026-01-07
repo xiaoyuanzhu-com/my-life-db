@@ -20,20 +20,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check authentication status on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const accessToken = localStorage.getItem('access_token');
-
-      if (!accessToken) {
-        setIsAuthenticated(false);
-        setIsLoading(false);
-        return;
-      }
-
       try {
         // Verify token is valid by calling a protected endpoint
+        // Cookie is sent automatically by browser
         const response = await fetch('/api/settings', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
+          credentials: 'same-origin', // Ensure cookies are sent
         });
 
         setIsAuthenticated(response.ok);

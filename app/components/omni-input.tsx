@@ -3,7 +3,6 @@ import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '~/lib/utils';
-import { authFetch } from '~/lib/auth-fetch';
 import { SearchStatus } from './search-status';
 import type { SearchResponse } from '~/routes/api.search';
 import { useSendQueue } from '~/lib/send-queue';
@@ -139,8 +138,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     const fetchKeyword = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await authFetch(`/api/search?${params}`, {
+        const response = await fetch(`/api/search?${params}`, {
           signal: keywordController.signal,
+          credentials: 'same-origin',
         });
 
         if (!response.ok) {
@@ -171,8 +171,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     const fetchSemantic = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await authFetch(`/api/search?${params}`, {
+        const response = await fetch(`/api/search?${params}`, {
           signal: semanticController.signal,
+          credentials: 'same-origin',
         });
 
         if (!response.ok) {

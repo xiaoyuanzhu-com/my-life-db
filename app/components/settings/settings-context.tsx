@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { authFetch } from "~/lib/auth-fetch";
 import type { UserSettings } from "~/lib/config/settings";
 
 interface SettingsContextType {
@@ -56,7 +55,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   async function loadSettings() {
     try {
-      const response = await authFetch("/api/settings");
+      const response = await fetch("/api/settings", {
+        credentials: 'same-origin',
+      });
       const data = await response.json();
       setSettings(data);
       setOriginalSettings(data);
@@ -80,10 +81,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // Strip out unchanged masked API keys before sending
       const cleanedSettings = stripUnchangedMaskedKeys(updatedSettings, originalSettings);
 
-      const response = await authFetch("/api/settings", {
+      const response = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cleanedSettings),
+        credentials: 'same-origin',
       });
 
       if (response.ok) {

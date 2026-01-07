@@ -6,7 +6,6 @@ import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
-import { getAuthHeaders } from '~/lib/auth-headers';
 
 interface InboxFeedProps {
   onRefresh?: number;
@@ -313,7 +312,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
 
     try {
       const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}`, {
-        headers: getAuthHeaders(),
+        credentials: 'same-origin',
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

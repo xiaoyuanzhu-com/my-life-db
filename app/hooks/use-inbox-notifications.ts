@@ -87,7 +87,18 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
       eventSourceRef.current.close();
     }
 
-    const eventSource = new EventSource('/api/notifications/stream');
+    // EventSource automatically sends cookies (primary auth method for web)
+    // For backward compatibility (mobile apps, debugging), also support query param
+    const accessToken = localStorage.getItem('access_token');
+
+    // Prefer cookie-based auth (sent automatically by browser)
+    // Fallback to query param if localStorage token exists (mobile/debugging)
+    let url = '/api/notifications/stream';
+    if (accessToken) {
+      url += `?token=${encodeURIComponent(accessToken)}`;
+    }
+
+    const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {

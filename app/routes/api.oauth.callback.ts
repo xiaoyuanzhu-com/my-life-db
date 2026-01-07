@@ -81,33 +81,56 @@ export async function loader({ request }: LoaderFunctionArgs) {
       );
     }
 
-    // For web clients: store tokens in localStorage and redirect
+    // Set tokens as HttpOnly cookies (secure for web)
+    const headers = new Headers();
+
+    // Set access token cookie
+    headers.append('Set-Cookie',
+      `access_token=${accessToken}; ` +
+      `HttpOnly; ` +
+      `Secure; ` +
+      `SameSite=Lax; ` +
+      `Path=/; ` +
+      `Max-Age=86400` // 24 hours
+    );
+
+    // Set refresh token cookie if present
+    if (refreshToken) {
+      headers.append('Set-Cookie',
+        `refresh_token=${refreshToken}; ` +
+        `HttpOnly; ` +
+        `Secure; ` +
+        `SameSite=Lax; ` +
+        `Path=/; ` +
+        `Max-Age=2592000` // 30 days
+      );
+    }
+
+    // Set username cookie (not HttpOnly, for UI display)
+    headers.append('Set-Cookie',
+      `username=${username}; ` +
+      `Secure; ` +
+      `SameSite=Lax; ` +
+      `Path=/; ` +
+      `Max-Age=86400` // 24 hours
+    );
+
+    // Redirect to home page (cookies are already set in headers)
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Authentication Successful</title>
+  <meta http-equiv="refresh" content="0;url=/">
 </head>
 <body>
-  <script>
-    // Store tokens in localStorage
-    localStorage.setItem('access_token', '${accessToken}');
-    ${refreshToken ? `localStorage.setItem('refresh_token', '${refreshToken}');` : ''}
-    localStorage.setItem('username', '${username}');
-
-    // Redirect to home page
-    window.location.href = '/';
-  </script>
   <p>Authentication successful. Redirecting...</p>
 </body>
 </html>
     `;
 
-    return new Response(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
+    headers.set('Content-Type', 'text/html');
+    return new Response(html, { headers });
   } catch (error) {
     console.error('OAuth callback error:', error);
     return Response.json(
