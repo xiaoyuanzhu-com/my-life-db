@@ -5,6 +5,7 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
+  useLocation,
 } from "react-router";
 import type { LinksFunction, MetaFunction } from "react-router";
 import { Header } from "~/components/header";
@@ -44,7 +45,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
-        <Header />
+        <ConditionalHeader />
         <main className="min-h-0 flex flex-col w-full min-w-0">
           {children}
         </main>
@@ -53,6 +54,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </body>
     </html>
   );
+}
+
+function ConditionalHeader() {
+  const location = useLocation();
+
+  // Don't render Header on login page
+  if (location.pathname === '/login') {
+    return null;
+  }
+
+  return <Header />;
 }
 
 export default function App() {

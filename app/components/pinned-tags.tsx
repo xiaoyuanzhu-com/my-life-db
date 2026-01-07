@@ -15,8 +15,10 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
     try {
       const response = await fetch('/api/inbox/pinned');
       if (response.status === 401) {
-        // Auth required but not authenticated - redirect to login
-        window.location.href = '/login';
+        // Auth required but not authenticated - redirect to login (only if not already there)
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return;
       }
       if (response.ok) {

@@ -142,9 +142,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           signal: keywordController.signal,
         });
 
-        // Auth required but not authenticated - redirect to login
+        // Auth required but not authenticated - redirect to login (only if not already there)
         if (response.status === 401) {
-          window.location.href = '/login';
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
           return;
         }
 
@@ -180,9 +182,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           signal: semanticController.signal,
         });
 
-        // Auth required but not authenticated - redirect to login
+        // Auth required but not authenticated - redirect to login (only if not already there)
         if (response.status === 401) {
-          window.location.href = '/login';
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
           return;
         }
 

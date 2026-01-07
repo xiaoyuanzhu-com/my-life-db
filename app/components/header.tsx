@@ -25,11 +25,16 @@ export function Header() {
 
   // Load user email from settings
   useEffect(() => {
+    // Don't make API calls on login page
+    if (pathname === '/login') return;
+
     fetch('/api/settings')
       .then((res) => {
         if (res.status === 401) {
-          // Auth required but not authenticated - redirect to login
-          window.location.href = '/login';
+          // Auth required but not authenticated - redirect to login (only if not already there)
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
           return;
         }
         return res.json();
@@ -42,7 +47,7 @@ export function Header() {
       .catch((error) => {
         console.error('Failed to load user email:', error);
       });
-  }, []);
+  }, [pathname]);
 
   const gravatarUrl = userEmail ? getGravatarUrlSync(userEmail, 128) : null;
 
