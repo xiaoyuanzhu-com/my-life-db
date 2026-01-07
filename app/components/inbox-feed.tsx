@@ -6,6 +6,7 @@ import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
+import { getAuthHeaders } from '~/lib/auth-headers';
 
 interface InboxFeedProps {
   onRefresh?: number;
@@ -311,15 +312,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     setError(null);
 
     try {
-      const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}`);
-
-      // Auth required but not authenticated - redirect to login (only if not already there)
-      if (response.status === 401) {
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-        return;
-      }
+      const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}`, {
+        headers: getAuthHeaders(),
+      });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 

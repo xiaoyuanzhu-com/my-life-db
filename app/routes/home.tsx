@@ -9,6 +9,11 @@ import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
 import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
 
+export async function loader() {
+  // Always allow access to home - auth will be checked client-side
+  return null;
+}
+
 export default function HomePage() {
   return (
     <SelectionProvider>

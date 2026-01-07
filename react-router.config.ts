@@ -1,7 +1,7 @@
 import type { Config } from "@react-router/dev/config";
 
 export default {
-  // Use SSR for server-side rendering
+  // Keep SSR enabled for API routes support
   ssr: true,
   // App directory location
   appDirectory: "app",

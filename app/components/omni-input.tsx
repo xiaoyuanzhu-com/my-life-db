@@ -3,6 +3,7 @@ import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { authFetch } from '~/lib/auth-fetch';
 import { SearchStatus } from './search-status';
 import type { SearchResponse } from '~/routes/api.search';
 import { useSendQueue } from '~/lib/send-queue';
@@ -138,17 +139,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     const fetchKeyword = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await fetch(`/api/search?${params}`, {
+        const response = await authFetch(`/api/search?${params}`, {
           signal: keywordController.signal,
         });
-
-        // Auth required but not authenticated - redirect to login (only if not already there)
-        if (response.status === 401) {
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-          return;
-        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -178,17 +171,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     const fetchSemantic = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await fetch(`/api/search?${params}`, {
+        const response = await authFetch(`/api/search?${params}`, {
           signal: semanticController.signal,
         });
-
-        // Auth required but not authenticated - redirect to login (only if not already there)
-        if (response.status === 401) {
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-          return;
-        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));

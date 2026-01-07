@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Pin, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { authFetch } from '~/lib/auth-fetch';
 import type { PinnedItem } from '~/types/pin';
 
 interface PinnedTagsProps {
@@ -13,14 +14,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
 
   const loadPinnedItems = useCallback(async () => {
     try {
-      const response = await fetch('/api/inbox/pinned');
-      if (response.status === 401) {
-        // Auth required but not authenticated - redirect to login (only if not already there)
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-        return;
-      }
+      const response = await authFetch('/api/inbox/pinned');
       if (response.ok) {
         const data = await response.json();
         setPinnedItems(data.items);
@@ -38,7 +32,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
     e.stopPropagation();
 
     try {
-      const response = await fetch('/api/library/pin', {
+      const response = await authFetch('/api/library/pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),

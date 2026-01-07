@@ -52,6 +52,26 @@ function extractSessionCookie(request: Request): string | null {
 }
 
 /**
+ * Extract access token from cookies
+ */
+function extractAccessTokenCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const accessTokenCookie = cookies.find(c => c.startsWith('access_token='));
+
+  if (!accessTokenCookie) {
+    return null;
+  }
+
+  return accessTokenCookie.split('=')[1];
+}
+
+/**
  * Authenticate request based on current auth mode
  */
 export async function authenticateRequest(request: Request): Promise<AuthResult> {
@@ -62,14 +82,15 @@ export async function authenticateRequest(request: Request): Promise<AuthResult>
     return { authenticated: true };
   }
 
-  // OAuth mode: validate JWT from Authorization header
+  // OAuth mode: validate JWT from cookie or Authorization header
   if (authMode === 'oauth') {
-    const token = extractBearerToken(request);
+    // Try cookie first, then Authorization header (for API clients)
+    const token = extractAccessTokenCookie(request) || extractBearerToken(request);
 
     if (!token) {
       return {
         authenticated: false,
-        error: 'Missing Authorization header',
+        error: 'Missing access token',
       };
     }
 

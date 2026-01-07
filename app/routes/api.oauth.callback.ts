@@ -81,7 +81,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       );
     }
 
-    // For web clients: return HTML that stores token in localStorage and redirects
+    // For web clients: store tokens in localStorage and redirect
     const html = `
 <!DOCTYPE html>
 <html>

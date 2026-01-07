@@ -82,9 +82,6 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
   const connect = useCallback(() => {
     if (!enabled) return;
 
-    // Don't connect on login page
-    if (window.location.pathname === '/login') return;
-
     // Close existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -112,14 +109,7 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
     eventSource.onerror = (event) => {
       eventSource.close();
 
-      // Check if this was a 401 error - if so, redirect to login instead of retrying
-      // EventSource doesn't expose status codes directly, but we can check if we're on login page
-      if (window.location.pathname === '/login') {
-        // Already on login page, don't retry
-        return;
-      }
-
-      // For other errors, attempt reconnection after 5 seconds
+      // Attempt reconnection after 5 seconds
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();
       }, 5000);
