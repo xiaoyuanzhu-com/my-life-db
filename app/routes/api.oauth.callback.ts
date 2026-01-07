@@ -39,16 +39,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     // Validate callback parameters (validates state, code, error params)
+    // This will throw if there's an error parameter in the callback
     const params = oauth.validateAuthResponse(
       authServer,
       client,
       url.searchParams,
       oauth.skipStateCheck // We're not tracking state in this simple implementation
     );
-
-    if (oauth.isOAuth2Error(params)) {
-      throw new Error(`OAuth error: ${params.error} - ${params.error_description || ''}`);
-    }
 
     // Exchange authorization code for tokens
     const response = await oauth.authorizationCodeGrantRequest(
@@ -58,15 +55,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       config.redirectUri
     );
 
+    // Process the token response
     const result = await oauth.processAuthorizationCodeOpenIDResponse(
       authServer,
       client,
       response
     );
-
-    if (oauth.isOAuth2Error(result)) {
-      throw new Error(`OAuth error: ${result.error} - ${result.error_description}`);
-    }
 
     const accessToken = result.access_token;
     const refreshToken = result.refresh_token;
