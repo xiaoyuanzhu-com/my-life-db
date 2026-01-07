@@ -74,9 +74,9 @@ export async function fetchWithRefresh(
       console.log('🔄 Retrying original request with new token...');
       response = await fetch(input, fetchOptions);
     } else {
-      // Refresh failed - redirect to login
-      console.log('❌ Token refresh failed, redirecting to login...');
-      window.location.href = '/api/oauth/authorize';
+      // Refresh failed - return 401 and let UI handle it (show login button)
+      console.log('❌ Token refresh failed, returning 401');
+      // Return the 401 response - components will check isAuthenticated and show login UI
     }
   }
 

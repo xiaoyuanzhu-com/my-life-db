@@ -24,7 +24,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Verify token is valid by calling a protected endpoint
         // Cookie is sent automatically by browser
-        // fetchWithRefresh will automatically refresh if token expired
+        // fetchWithRefresh will try to refresh expired tokens automatically
+        // If refresh fails, it returns 401 (no redirect) and we show login UI
         const response = await fetchWithRefresh('/api/settings');
 
         setIsAuthenticated(response.ok);
