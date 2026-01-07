@@ -21,17 +21,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const config = getOAuthConfig();
     const url = new URL(request.url);
 
-    // Get authorization code from query params
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-
-    if (!code) {
-      return Response.json(
-        { error: 'Missing authorization code' },
-        { status: 400 }
-      );
-    }
-
     // OAuth client configuration
     const client: oauth.Client = {
       client_id: config.clientId,
@@ -49,18 +38,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
       throw new Error('OAuth server metadata missing token_endpoint');
     }
 
-    // Exchange authorization code for tokens
-    const params = new URLSearchParams();
-    params.set('grant_type', 'authorization_code');
-    params.set('code', code);
-    params.set('redirect_uri', config.redirectUri);
-    params.set('client_id', config.clientId);
-    params.set('client_secret', config.clientSecret);
+    // Validate callback parameters (validates state, code, error params)
+    const params = oauth.validateAuthResponse(
+      authServer,
+      client,
+      url.searchParams,
+      oauth.skipStateCheck // We're not tracking state in this simple implementation
+    );
 
+    if (oauth.isOAuth2Error(params)) {
+      throw new Error(`OAuth error: ${params.error} - ${params.error_description || ''}`);
+    }
+
+    // Exchange authorization code for tokens
     const response = await oauth.authorizationCodeGrantRequest(
       authServer,
       client,
-      params
+      params,
+      config.redirectUri
     );
 
     const result = await oauth.processAuthorizationCodeOpenIDResponse(
