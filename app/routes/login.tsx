@@ -1,5 +1,24 @@
 import { useState, FormEvent } from "react";
 import { useNavigate } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
+import { getAuthMode } from "~/.server/auth/oauth-config";
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const authMode = getAuthMode();
+
+  // If OAuth mode, redirect to OAuth authorize endpoint
+  if (authMode === 'oauth') {
+    return Response.redirect('/api/oauth/authorize', 302);
+  }
+
+  // If no auth required, redirect to home
+  if (authMode === 'none') {
+    return Response.redirect('/', 302);
+  }
+
+  // Password mode: show login form
+  return null;
+}
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");

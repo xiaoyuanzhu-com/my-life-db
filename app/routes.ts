@@ -21,6 +21,11 @@ export default [
   route("api/auth/login", "routes/api.auth.login.ts"),
   route("api/auth/logout", "routes/api.auth.logout.ts"),
 
+  // OAuth Routes
+  route("api/oauth/authorize", "routes/api.oauth.authorize.ts"),
+  route("api/oauth/callback", "routes/api.oauth.callback.ts"),
+  route("api/oauth/token", "routes/api.oauth.token.ts"),
+
   route("api/inbox", "routes/api.inbox.ts"),
   route("api/inbox/pinned", "routes/api.inbox.pinned.ts"),
   route("api/inbox/:id", "routes/api.inbox.$id.ts"),
