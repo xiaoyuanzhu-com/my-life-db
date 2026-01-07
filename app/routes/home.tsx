@@ -6,6 +6,7 @@ import { PinnedTags } from "~/components/pinned-tags";
 import { MultiSelectActionBar } from "~/components/multi-select-action-bar";
 import { SelectionProvider, useSelectionMode } from "~/contexts/selection-context";
 import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
+import { useAuth } from "~/contexts/auth-context";
 import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
 
@@ -23,6 +24,7 @@ export default function HomePage() {
 }
 
 function HomePageContent() {
+  const { isAuthenticated, isLoading } = useAuth();
   const { isSelectionMode, clearSelection } = useSelectionMode();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [scrollToCursor, setScrollToCursor] = useState<string | undefined>(undefined);
@@ -157,6 +159,26 @@ function HomePageContent() {
       resizeObserver.disconnect();
     };
   }, []);
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return null;
+  }
+
+  // Show welcome page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-0 flex-1 overflow-hidden flex flex-col items-center justify-center p-8 text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to MyLifeDB</h1>
+        <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+          Capture your thoughts effortlessly and transform them into structured, meaningful knowledge.
+        </p>
+        <p className="text-muted-foreground">
+          Please sign in using the button in the header to get started.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden flex flex-col">
