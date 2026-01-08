@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/xiaoyuanzhu-com/my-life-db/internal/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/log"
 )
 
@@ -29,9 +31,15 @@ func NewWorker() *Worker {
 func (w *Worker) Start() {
 	logger.Info().Msg("starting digest worker")
 
-	// Start processing loop
-	w.wg.Add(1)
-	go w.processLoop()
+	// Initialize the digester registry
+	InitializeRegistry()
+
+	// Start multiple processing goroutines for parallelism
+	numWorkers := 3
+	for i := 0; i < numWorkers; i++ {
+		w.wg.Add(1)
+		go w.processLoop(i)
+	}
 
 	// Start supervisor loop
 	w.wg.Add(1)
@@ -69,7 +77,7 @@ func (w *Worker) RequestDigest(filePath string) {
 }
 
 // processLoop processes files from the queue
-func (w *Worker) processLoop() {
+func (w *Worker) processLoop(id int) {
 	defer w.wg.Done()
 
 	for {
@@ -92,15 +100,133 @@ func (w *Worker) processFile(filePath string) {
 
 	logger.Debug().Str("path", filePath).Msg("processing file")
 
-	// TODO: Implement full digest pipeline
-	// 1. Get file record from database
-	// 2. Determine applicable digesters
-	// 3. Run digesters in dependency order
-	// 4. Store results in database
-	// 5. Update search indexes
+	// Get file record
+	file, err := db.GetFileByPath(filePath)
+	if err != nil || file == nil {
+		logger.Error().Str("path", filePath).Msg("file not found")
+		return
+	}
 
-	// For now, just log
-	logger.Debug().Str("path", filePath).Msg("digest processing complete")
+	// Get all digesters
+	digesters := GlobalRegistry.GetAll()
+
+	processed := 0
+	skipped := 0
+	failed := 0
+
+	for _, digester := range digesters {
+		digesterName := digester.Name()
+		outputNames := getOutputNames(digester)
+
+		// Load existing digests
+		existingDigests := db.ListDigestsForPath(filePath)
+		digestsByName := make(map[string]db.Digest)
+		for _, d := range existingDigests {
+			digestsByName[d.Digester] = d
+		}
+
+		// Check if outputs are in progress
+		inProgress := false
+		for _, name := range outputNames {
+			if d, ok := digestsByName[name]; ok && d.Status == "in-progress" {
+				inProgress = true
+				break
+			}
+		}
+		if inProgress {
+			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("in progress, skipping")
+			skipped++
+			continue
+		}
+
+		// Check for pending outputs
+		pendingOutputs := make([]string, 0)
+		for _, name := range outputNames {
+			if d, ok := digestsByName[name]; !ok {
+				pendingOutputs = append(pendingOutputs, name)
+			} else if d.Status == "todo" {
+				pendingOutputs = append(pendingOutputs, name)
+			} else if d.Status == "failed" && d.Attempts < MaxDigestAttempts {
+				pendingOutputs = append(pendingOutputs, name)
+			}
+		}
+
+		if len(pendingOutputs) == 0 {
+			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("already completed")
+			skipped++
+			continue
+		}
+
+		// Check if can digest
+		can, err := digester.CanDigest(filePath, file, nil)
+		if err != nil {
+			logger.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("canDigest error")
+			failed++
+			continue
+		}
+
+		if !can {
+			// Mark as skipped
+			for _, name := range pendingOutputs {
+				markDigest(filePath, name, DigestStatusSkipped, "Not applicable")
+			}
+			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("skipped")
+			skipped++
+			continue
+		}
+
+		// Mark as in-progress
+		for _, name := range pendingOutputs {
+			markDigestInProgress(filePath, name)
+		}
+
+		// Execute digester
+		outputs, err := digester.Digest(filePath, file, existingDigests, nil)
+		if err != nil {
+			for _, name := range pendingOutputs {
+				markDigest(filePath, name, DigestStatusFailed, err.Error())
+			}
+			logger.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("digest failed")
+			failed++
+			continue
+		}
+
+		if len(outputs) == 0 {
+			for _, name := range pendingOutputs {
+				markDigest(filePath, name, DigestStatusFailed, "No output")
+			}
+			failed++
+			continue
+		}
+
+		// Save outputs
+		producedNames := make(map[string]bool)
+		finalStatus := "completed"
+		for _, output := range outputs {
+			producedNames[output.Digester] = true
+			saveDigestOutput(filePath, output)
+			if output.Status == DigestStatusFailed {
+				finalStatus = "failed"
+			}
+		}
+
+		// Mark missing outputs as failed
+		for _, name := range pendingOutputs {
+			if !producedNames[name] {
+				markDigest(filePath, name, DigestStatusFailed, "Output not produced")
+			}
+		}
+
+		processed++
+		logger.Info().Str("path", filePath).Str("digester", digesterName).Str("status", finalStatus).Msg("processed")
+	}
+
+	logger.Info().
+		Str("path", filePath).
+		Int("processed", processed).
+		Int("skipped", skipped).
+		Int("failed", failed).
+		Msg("file processing complete")
 }
 
 // supervisorLoop periodically checks for pending digests
@@ -122,6 +248,113 @@ func (w *Worker) supervisorLoop() {
 
 // checkPendingDigests finds and queues files with pending digests
 func (w *Worker) checkPendingDigests() {
-	// TODO: Query database for files with pending/failed digests
-	// and queue them for reprocessing
+	// Get files with pending or failed (retriable) digests
+	files := db.GetFilesWithPendingDigests()
+	for _, path := range files {
+		select {
+		case w.queue <- path:
+		default:
+			// Queue full
+		}
+	}
+}
+
+// Helper functions
+
+func getOutputNames(d Digester) []string {
+	outputs := d.GetOutputDigesters()
+	if len(outputs) > 0 {
+		return outputs
+	}
+	return []string{d.Name()}
+}
+
+func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
+	id := getOrCreateDigestID(filePath, digester)
+	now := db.NowUTC()
+
+	var errPtr *string
+	if errorMsg != "" {
+		errPtr = &errorMsg
+	}
+
+	db.UpdateDigestMap(id, map[string]interface{}{
+		"status":     string(status),
+		"error":      errPtr,
+		"updated_at": now,
+	})
+}
+
+func markDigestInProgress(filePath, digester string) {
+	id := getOrCreateDigestID(filePath, digester)
+	now := db.NowUTC()
+
+	existing, _ := db.GetDigestByID(id)
+	attempts := 0
+	if existing != nil {
+		attempts = existing.Attempts + 1
+	}
+
+	db.UpdateDigestMap(id, map[string]interface{}{
+		"status":     "in-progress",
+		"attempts":   attempts,
+		"updated_at": now,
+	})
+}
+
+func saveDigestOutput(filePath string, output DigestInput) {
+	id := getOrCreateDigestID(filePath, output.Digester)
+
+	existing, _ := db.GetDigestByID(id)
+
+	update := map[string]interface{}{
+		"status":     string(output.Status),
+		"updated_at": output.UpdatedAt,
+	}
+
+	if output.Content != nil {
+		update["content"] = *output.Content
+	}
+	if output.SqlarName != nil {
+		update["sqlar_name"] = *output.SqlarName
+	}
+	if output.Error != nil {
+		update["error"] = *output.Error
+	}
+
+	if output.Status == DigestStatusCompleted || output.Status == DigestStatusSkipped {
+		update["attempts"] = 0
+	} else if output.Status == DigestStatusFailed {
+		attempts := 1
+		if existing != nil {
+			attempts = existing.Attempts + 1
+			if attempts > MaxDigestAttempts {
+				attempts = MaxDigestAttempts
+			}
+		}
+		update["attempts"] = attempts
+	}
+
+	db.UpdateDigestMap(id, update)
+}
+
+func getOrCreateDigestID(filePath, digester string) string {
+	existing := db.GetDigestByPathAndDigester(filePath, digester)
+	if existing != nil {
+		return existing.ID
+	}
+
+	id := uuid.New().String()
+	now := db.NowUTC()
+
+	db.CreateDigest(&db.Digest{
+		ID:        id,
+		FilePath:  filePath,
+		Digester:  digester,
+		Status:    "todo",
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+
+	return id
 }

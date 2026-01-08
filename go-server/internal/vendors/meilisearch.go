@@ -202,3 +202,25 @@ func getString(m map[string]interface{}, key string) string {
 	}
 	return ""
 }
+
+// GetMeilisearch returns the Meilisearch client (wrapper for digest workers)
+func GetMeilisearch() *MeiliClient {
+	return GetMeiliClient()
+}
+
+// IndexDocumentSimple indexes a document with path, name, and content (simplified interface)
+func (m *MeiliClient) IndexDocumentSimple(path, name, content string) error {
+	if m == nil {
+		return nil
+	}
+
+	doc := map[string]interface{}{
+		"documentId": path,
+		"filePath":   path,
+		"name":       name,
+		"content":    content,
+	}
+
+	_, err := m.index.AddDocuments([]map[string]interface{}{doc}, "documentId")
+	return err
+}

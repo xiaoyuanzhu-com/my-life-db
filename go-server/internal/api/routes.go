@@ -18,6 +18,7 @@ func SetupRoutes(e *echo.Echo) {
 	api.GET("/oauth/callback", OAuthCallback)
 	api.GET("/oauth/refresh", OAuthRefresh)
 	api.GET("/oauth/token", OAuthToken)
+	api.POST("/oauth/logout", OAuthLogout)
 
 	// Inbox routes
 	api.GET("/inbox", GetInbox)

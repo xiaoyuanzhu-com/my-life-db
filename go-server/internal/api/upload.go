@@ -1,11 +1,17 @@
 package api
 
 import (
+	"encoding/base64"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/labstack/echo/v4"
+	"github.com/tus/tusd/v2/pkg/filestore"
+	tusd "github.com/tus/tusd/v2/pkg/handler"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/log"
@@ -14,101 +20,62 @@ import (
 
 var uploadLogger = log.GetLogger("ApiUpload")
 
-// TUS upload handling
-// For full TUS protocol support, we'll integrate with tusd library
+var (
+	tusHandler     http.Handler
+	tusHandlerOnce sync.Once
+	uploadDir      string
+)
+
+// InitTUSHandler initializes the TUS upload handler
+func InitTUSHandler() (http.Handler, error) {
+	var initErr error
+	tusHandlerOnce.Do(func() {
+		cfg := config.Get()
+		uploadDir = filepath.Join(cfg.DataDir, "app", "my-life-db", "uploads")
+
+		// Ensure upload directory exists
+		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			initErr = err
+			return
+		}
+
+		// Create file store
+		store := filestore.New(uploadDir)
+
+		// Create TUS handler
+		composer := tusd.NewStoreComposer()
+		store.UseIn(composer)
+
+		handler, err := tusd.NewHandler(tusd.Config{
+			BasePath:                "/api/upload/tus/",
+			StoreComposer:           composer,
+			RespectForwardedHeaders: true,
+			MaxSize:                 10 * 1024 * 1024 * 1024, // 10GB
+		})
+		if err != nil {
+			initErr = err
+			return
+		}
+
+		tusHandler = handler
+		uploadLogger.Info().Str("dir", uploadDir).Msg("TUS handler initialized")
+	})
+	return tusHandler, initErr
+}
 
 // TUSHandler handles all TUS protocol requests
 func TUSHandler(c echo.Context) error {
-	// This is a placeholder for TUS protocol handling
-	// In a complete implementation, we would use github.com/tus/tusd/v2
-	//
-	// For now, fall back to simple upload handling
-
-	switch c.Request().Method {
-	case http.MethodOptions:
-		// TUS OPTIONS request - return supported extensions
-		c.Response().Header().Set("Tus-Resumable", "1.0.0")
-		c.Response().Header().Set("Tus-Version", "1.0.0")
-		c.Response().Header().Set("Tus-Extension", "creation,creation-with-upload,termination")
-		c.Response().Header().Set("Tus-Max-Size", "10737418240") // 10GB
-		return c.NoContent(http.StatusNoContent)
-
-	case http.MethodPost:
-		// TUS creation request
-		return handleTUSCreate(c)
-
-	case http.MethodPatch:
-		// TUS upload chunk
-		return handleTUSPatch(c)
-
-	case http.MethodHead:
-		// TUS status check
-		return handleTUSHead(c)
-
-	case http.MethodDelete:
-		// TUS termination
-		return handleTUSDelete(c)
-
-	default:
-		return c.JSON(http.StatusMethodNotAllowed, map[string]string{
-			"error": "Method not allowed",
+	handler, err := InitTUSHandler()
+	if err != nil {
+		uploadLogger.Error().Err(err).Msg("failed to initialize TUS handler")
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to initialize upload handler",
 		})
 	}
-}
 
-func handleTUSCreate(c echo.Context) error {
-	// In a full implementation, this would:
-	// 1. Parse Upload-Metadata header
-	// 2. Create a temporary file
-	// 3. Return the upload URL
-
-	uploadLength := c.Request().Header.Get("Upload-Length")
-	uploadMetadata := c.Request().Header.Get("Upload-Metadata")
-
-	uploadLogger.Info().
-		Str("length", uploadLength).
-		Str("metadata", uploadMetadata).
-		Msg("TUS create request")
-
-	// Generate upload ID
-	uploadID := db.NowUTC() // Simple ID based on timestamp
-
-	// Return upload location
-	c.Response().Header().Set("Tus-Resumable", "1.0.0")
-	c.Response().Header().Set("Location", "/api/upload/tus/"+uploadID)
-
-	return c.NoContent(http.StatusCreated)
-}
-
-func handleTUSPatch(c echo.Context) error {
-	// In a full implementation, this would:
-	// 1. Append data to the temporary file
-	// 2. Update Upload-Offset
-
-	uploadOffset := c.Request().Header.Get("Upload-Offset")
-
-	uploadLogger.Debug().
-		Str("offset", uploadOffset).
-		Msg("TUS patch request")
-
-	c.Response().Header().Set("Tus-Resumable", "1.0.0")
-	c.Response().Header().Set("Upload-Offset", uploadOffset)
-
-	return c.NoContent(http.StatusNoContent)
-}
-
-func handleTUSHead(c echo.Context) error {
-	// Return current upload status
-	c.Response().Header().Set("Tus-Resumable", "1.0.0")
-	c.Response().Header().Set("Upload-Offset", "0")
-	c.Response().Header().Set("Upload-Length", "0")
-
-	return c.NoContent(http.StatusOK)
-}
-
-func handleTUSDelete(c echo.Context) error {
-	// Delete the upload
-	return c.NoContent(http.StatusNoContent)
+	// Strip the /api/upload/tus prefix and pass to handler
+	handler.ServeHTTP(c.Response().Writer, c.Request())
+	return nil
 }
 
 // FinalizeUpload handles POST /api/upload/finalize
@@ -140,23 +107,46 @@ func FinalizeUpload(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create destination directory"})
 	}
 
-	// Get unique filename
+	// Get unique filename using helpers from inbox.go
 	filename := sanitizeFilename(body.Filename)
 	filename = deduplicateFilename(destDir, filename)
 
-	// In a full implementation, this would move the TUS upload file to the destination
-	destPath := filepath.Join(destination, filename)
-	fullPath := filepath.Join(cfg.DataDir, destPath)
+	// Source file from TUS uploads
+	srcPath := filepath.Join(uploadDir, body.UploadID)
 
-	// Create empty file as placeholder
-	if err := os.WriteFile(fullPath, []byte{}, 0644); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to finalize upload"})
+	// Check if TUS upload file exists
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
+		// Fallback: check for file with .bin extension
+		srcPath = srcPath + ".bin"
+		srcInfo, err = os.Stat(srcPath)
+		if err != nil {
+			uploadLogger.Error().Str("uploadId", body.UploadID).Err(err).Msg("upload file not found")
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Upload file not found"})
+		}
 	}
+
+	// Move file to destination
+	destPath := filepath.Join(destination, filename)
+	fullDestPath := filepath.Join(cfg.DataDir, destPath)
+
+	// Try rename first (same filesystem)
+	if err := os.Rename(srcPath, fullDestPath); err != nil {
+		// Fallback to copy + delete
+		if err := copyUploadFile(srcPath, fullDestPath); err != nil {
+			uploadLogger.Error().Err(err).Msg("failed to move upload file")
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to finalize upload"})
+		}
+		os.Remove(srcPath)
+	}
+
+	// Clean up TUS info file
+	os.Remove(srcPath + ".info")
 
 	// Create file record
 	now := db.NowUTC()
 	mimeType := detectMimeType(filename)
-	size := int64(0)
+	size := srcInfo.Size()
 
 	db.UpsertFile(&db.FileRecord{
 		Path:          destPath,
@@ -172,6 +162,7 @@ func FinalizeUpload(c echo.Context) error {
 	uploadLogger.Info().
 		Str("path", destPath).
 		Str("filename", filename).
+		Int64("size", size).
 		Msg("upload finalized")
 
 	// Notify UI
@@ -181,4 +172,47 @@ func FinalizeUpload(c echo.Context) error {
 		"success": true,
 		"path":    destPath,
 	})
+}
+
+// Helper functions specific to upload
+
+func copyUploadFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// parseMetadata parses the Upload-Metadata header
+func parseMetadata(header string) map[string]string {
+	metadata := make(map[string]string)
+	if header == "" {
+		return metadata
+	}
+
+	pairs := strings.Split(header, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		parts := strings.SplitN(pair, " ", 2)
+		if len(parts) == 2 {
+			key := parts[0]
+			value, err := base64.StdEncoding.DecodeString(parts[1])
+			if err == nil {
+				metadata[key] = string(value)
+			}
+		} else if len(parts) == 1 {
+			metadata[parts[0]] = ""
+		}
+	}
+	return metadata
 }

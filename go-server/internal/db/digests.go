@@ -321,3 +321,86 @@ func GetDistinctDigesters() ([]string, error) {
 
 	return digesters, nil
 }
+
+// ListDigestsForPath returns all digests for a file path (alias for GetDigestsForFile)
+func ListDigestsForPath(filePath string) []Digest {
+	digests, err := GetDigestsForFile(filePath)
+	if err != nil {
+		return nil
+	}
+	return digests
+}
+
+// GetDigestByPathAndDigester returns a digest by file path and digester name
+func GetDigestByPathAndDigester(filePath, digester string) *Digest {
+	d, err := GetDigestByFileAndDigester(filePath, digester)
+	if err != nil {
+		return nil
+	}
+	return d
+}
+
+// UpdateDigestMap updates a digest using a map of fields
+func UpdateDigestMap(id string, fields map[string]interface{}) error {
+	d, err := GetDigestByID(id)
+	if err != nil || d == nil {
+		return err
+	}
+
+	// Apply updates
+	if status, ok := fields["status"].(string); ok {
+		d.Status = status
+	}
+	if content, ok := fields["content"].(string); ok {
+		d.Content = &content
+	}
+	if sqlarName, ok := fields["sqlar_name"].(string); ok {
+		d.SqlarName = &sqlarName
+	}
+	if errorStr, ok := fields["error"]; ok {
+		if errorStr == nil {
+			d.Error = nil
+		} else if s, ok := errorStr.(string); ok {
+			d.Error = &s
+		} else if sp, ok := errorStr.(*string); ok {
+			d.Error = sp
+		}
+	}
+	if attempts, ok := fields["attempts"].(int); ok {
+		d.Attempts = attempts
+	}
+	if updatedAt, ok := fields["updated_at"].(string); ok {
+		d.UpdatedAt = updatedAt
+	}
+
+	return UpdateDigest(d)
+}
+
+// GetFilesWithPendingDigests returns file paths that have pending or failed digests
+func GetFilesWithPendingDigests() []string {
+	query := `
+		SELECT DISTINCT file_path
+		FROM digests
+		WHERE status IN ('todo', 'failed')
+		  AND attempts < 3
+		ORDER BY created_at ASC
+		LIMIT 100
+	`
+
+	rows, err := GetDB().Query(query)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		paths = append(paths, path)
+	}
+
+	return paths
+}
