@@ -206,3 +206,49 @@ The user typically has a development server running. Check before starting a new
 ## Design Preferences
 
 - **Minimal Borders**: Keep the UI clean with few dividers and borders.
+
+## Development Principles (CRITICAL)
+
+### Respect User Configuration
+1. **Honor user settings exactly as provided** - Never automatically "fix" or convert user-provided configuration values
+2. **User agency over assumptions** - If a setting seems wrong, let the error surface rather than silently correcting it
+3. **Explicit is better than implicit** - If conversion/transformation is needed, ask the user first or document it clearly
+4. **Configuration is intentional** - Assume the user knows what they're doing; they can debug their own config errors
+
+### When Working with External Services
+1. **Pass through settings as-is** - Only add minimal normalization (e.g., trimming trailing slashes for robustness)
+2. **Don't assume defaults for user-provided values** - Only apply defaults when values are completely absent
+3. **Avoid "helpful" transformations** - Don't convert ports, URLs, or other values based on your knowledge of how services "should" work
+4. **Let libraries handle their own requirements** - If a library needs data in a specific format, document that requirement rather than auto-converting
+
+### Problem-Solving Approach
+1. **Listen before acting** - If the user says something is configured, trust that first
+2. **Simple solutions first** - Avoid overengineering; prefer straightforward pass-through of values
+3. **Ask when uncertain** - When you discover a potential issue (like port mismatches), ask rather than assume
+4. **Incomplete information is not permission to guess** - Stop and clarify rather than filling in gaps with assumptions
+
+### Examples of Good vs Bad Behavior
+
+**BAD:**
+```go
+// User configured port 6333, but I "know" Qdrant uses 6334 for gRPC
+if port == "6333" {
+    port = "6334"  // Automatic "correction"
+}
+```
+
+**GOOD:**
+```go
+// Use exactly what the user configured
+portNum, _ := strconv.Atoi(port)
+```
+
+**BAD:**
+- Researching how a service works, then "correcting" user config based on that research
+- Adding complex parsing/transformation logic "for convenience"
+- Silently falling back to different values than configured
+
+**GOOD:**
+- Pass through configuration values with minimal normalization
+- Trust errors will guide the user to fix their config
+- Document requirements clearly if the library needs specific formats

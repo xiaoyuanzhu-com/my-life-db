@@ -2,6 +2,8 @@ package vendors
 
 import (
 	"context"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -65,14 +67,39 @@ func GetQdrantClient() *QdrantClient {
 			return
 		}
 
-		// Strip trailing slash to avoid URL parsing issues
+		// Parse the URL to extract host and port
+		// The Qdrant Go client expects Host (without protocol) and Port separately
 		qdrantHost = strings.TrimSuffix(qdrantHost, "/")
+
+		// Parse URL to extract host and port
+		parsedURL, err := url.Parse(qdrantHost)
+		if err != nil {
+			log.Error().Err(err).Str("url", qdrantHost).Msg("failed to parse Qdrant URL")
+			return
+		}
+
+		// Extract hostname and port
+		hostname := parsedURL.Hostname()
+		port := parsedURL.Port()
+		if port == "" {
+			// Default to gRPC port 6334 if no port specified
+			port = "6334"
+		}
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			log.Error().Err(err).Str("port", port).Msg("invalid Qdrant port")
+			return
+		}
 
 		// Use API key from config (typically from env var)
 		cfg := config.Get()
+		useTLS := parsedURL.Scheme == "https"
+
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: qdrantHost,
-			// APIKey: cfg.QdrantAPIKey, // Add if using cloud Qdrant
+			Host:   hostname,
+			Port:   portNum,
+			APIKey: cfg.QdrantAPIKey,
+			UseTLS: useTLS,
 		})
 		if err != nil {
 			log.Error().Err(err).Msg("failed to create Qdrant client")
@@ -107,7 +134,7 @@ func GetQdrantClient() *QdrantClient {
 			collection: cfg.QdrantCollection,
 		}
 
-		log.Info().Str("host", qdrantHost).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
+		log.Info().Str("host", hostname).Int("port", portNum).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
 	})
 
 	return qdrantClient
