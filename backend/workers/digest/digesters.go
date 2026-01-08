@@ -742,9 +742,10 @@ func (d *SearchSemanticDigester) Digest(filePath string, file *db.FileRecord, ex
 		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	openai := vendors.GetOpenAI()
-	if openai == nil {
-		errMsg := "OpenAI not configured"
+	// Use HAID for embeddings (matching Node.js implementation)
+	haid := vendors.GetHAID()
+	if haid == nil {
+		errMsg := "HAID service not configured"
 		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
@@ -754,12 +755,19 @@ func (d *SearchSemanticDigester) Digest(filePath string, file *db.FileRecord, ex
 		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	// Generate embedding
-	embedding, err := openai.GenerateEmbedding(text)
+	// Generate embedding using HAID
+	embeddings, err := haid.Embed([]string{text})
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
+
+	if len(embeddings) == 0 {
+		errMsg := "HAID returned no embeddings"
+		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	embedding := embeddings[0]
 
 	// Store in Qdrant
 	err = qdrant.UpsertPoint(filePath, embedding, map[string]interface{}{

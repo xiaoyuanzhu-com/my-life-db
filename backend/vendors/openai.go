@@ -10,6 +10,7 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -47,25 +48,53 @@ type CompletionResponse struct {
 // GetOpenAIClient returns the singleton OpenAI client
 func GetOpenAIClient() *OpenAIClient {
 	openaiClientOnce.Do(func() {
-		cfg := config.Get()
-		if cfg.OpenAIAPIKey == "" {
+		// Load settings from database first, fall back to env vars
+		settings, err := db.LoadUserSettings()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to load user settings for OpenAI")
+			return
+		}
+
+		apiKey := ""
+		baseURL := ""
+		model := ""
+
+		if settings.Vendors != nil && settings.Vendors.OpenAI != nil {
+			apiKey = settings.Vendors.OpenAI.APIKey
+			baseURL = settings.Vendors.OpenAI.BaseURL
+			model = settings.Vendors.OpenAI.Model
+		}
+
+		// Fall back to env vars if not in DB
+		if apiKey == "" {
+			cfg := config.Get()
+			apiKey = cfg.OpenAIAPIKey
+			if baseURL == "" {
+				baseURL = cfg.OpenAIBaseURL
+			}
+			if model == "" {
+				model = cfg.OpenAIModel
+			}
+		}
+
+		if apiKey == "" {
 			log.Warn().Msg("OPENAI_API_KEY not configured, OpenAI disabled")
 			return
 		}
 
-		clientConfig := openai.DefaultConfig(cfg.OpenAIAPIKey)
-		if cfg.OpenAIBaseURL != "" && cfg.OpenAIBaseURL != "https://api.openai.com/v1" {
-			clientConfig.BaseURL = cfg.OpenAIBaseURL
+		clientConfig := openai.DefaultConfig(apiKey)
+		if baseURL != "" && baseURL != "https://api.openai.com/v1" {
+			clientConfig.BaseURL = baseURL
 		}
 
 		client := openai.NewClientWithConfig(clientConfig)
 
 		openaiClient = &OpenAIClient{
 			client: client,
-			model:  cfg.OpenAIModel,
+			model:  model,
 		}
 
-		log.Info().Str("model", cfg.OpenAIModel).Msg("OpenAI initialized")
+		log.Info().Str("model", model).Str("baseURL", baseURL).Msg("OpenAI initialized")
 	})
 
 	return openaiClient
