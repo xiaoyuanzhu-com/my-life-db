@@ -21,8 +21,8 @@ func GetFileByPath(path string) (*FileRecord, error) {
 
 	var f FileRecord
 	var isFolder int
-	var size, hash, mimeType, textPreview, screenshotSqlar sql.NullString
-	var lastScannedAt sql.NullString
+	var size sql.NullInt64
+	var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
 
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -37,15 +37,11 @@ func GetFileByPath(path string) (*FileRecord, error) {
 	}
 
 	f.IsFolder = isFolder == 1
-	if size.Valid {
-		s, _ := size.Int64, nil
-		sizeInt := s
-		f.Size = &sizeInt
-	}
-	f.Hash = StringPtr(sql.NullString{String: hash.String, Valid: hash.Valid})
-	f.MimeType = StringPtr(sql.NullString{String: mimeType.String, Valid: mimeType.Valid})
-	f.TextPreview = StringPtr(sql.NullString{String: textPreview.String, Valid: textPreview.Valid})
-	f.ScreenshotSqlar = StringPtr(sql.NullString{String: screenshotSqlar.String, Valid: screenshotSqlar.Valid})
+	f.Size = IntPtr(size)
+	f.Hash = StringPtr(hash)
+	f.MimeType = StringPtr(mimeType)
+	f.TextPreview = StringPtr(textPreview)
+	f.ScreenshotSqlar = StringPtr(screenshotSqlar)
 	f.LastScannedAt = lastScannedAt.String
 
 	return &f, nil
