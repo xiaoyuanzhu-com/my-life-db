@@ -5,38 +5,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 MyLifeDB is a filesystem-based personal knowledge management system with:
-- **Frontend**: React Router 7 + React 19 + TypeScript + Tailwind CSS 4 (in `frontend/`)
-- **Backend**: Go HTTP server with SQLite (in `backend/`)
+- **Frontend**: React Router 7 (SPA mode) + React 19 + TypeScript + Tailwind CSS 4 + Vite (in `frontend/`)
+- **Backend**: Go 1.25 HTTP server (Gin) with SQLite (in `backend/`)
 
-The backend provides all API endpoints, background workers, and static file serving. The frontend is a React SPA that communicates with the backend API.
+The backend provides all API endpoints, background workers (file system watcher, digest processor), SSE notifications, and static file serving. The frontend is a client-rendered React SPA that communicates with the backend API.
 
 ## Common Commands
 
 ### Frontend (in `frontend/` directory)
 ```bash
-npm run dev          # Start dev server with Vite HMR (http://localhost:12345)
-npm run build        # Build production React app
-npm run build:client # Build client-only (for Go backend)
-npm run lint         # Run ESLint
-npm run typecheck    # Generate types + run TypeScript compiler
+npm run dev        # Start Vite dev server (http://localhost:12345)
+npm run build      # Build production React app → dist/
+npm run lint       # Run ESLint
+npm run typecheck  # Run TypeScript compiler
 ```
 
 ### Backend (in `backend/` directory)
 ```bash
-make dev             # Run Go server in development mode
-make build           # Build frontend + Go server
-make build-server    # Build Go server only → ../bin/server
-make test            # Run Go tests
-make lint            # Run Go linter
+go run .                              # Run Go server in development mode
+CGO_ENABLED=1 go build -o ../bin/server .  # Build Go server → ../bin/server
+go test -v ./...                      # Run Go tests
+go vet ./...                          # Run Go linter
 ```
 
-### Full Stack
+### Full Stack Development
 ```bash
-# Development: Run Go backend (serves built frontend)
-cd backend && make dev
+# Terminal 1: Build frontend once or run in watch mode
+cd frontend && npm run build
+
+# Terminal 2: Run Go backend (serves built frontend from frontend/dist/)
+cd backend && go run .
 
 # Production: Build everything, then run
-cd backend && make build && ../bin/server
+cd frontend && npm run build && cd ../backend && CGO_ENABLED=1 go build -o ../bin/server . && cd .. && ./bin/server
 ```
 
 ## Architecture
@@ -44,24 +45,42 @@ cd backend && make build && ../bin/server
 ### Project Structure
 ```
 my-life-db/
-├── frontend/           # React Router 7 SPA
+├── frontend/           # React Router 7 SPA (client-rendered)
 │   ├── app/
-│   │   ├── .server/    # Server-side code (SSR loaders, init)
-│   │   ├── components/ # UI components
-│   │   ├── routes/     # File-based routing (api.*.ts, pages)
+│   │   ├── components/ # UI components (shadcn/ui + custom)
+│   │   ├── routes/     # File-based routing (home, inbox, library, etc.)
+│   │   ├── contexts/   # React contexts (auth, etc.)
+│   │   ├── hooks/      # Custom React hooks
 │   │   ├── lib/        # Client utilities
-│   │   └── types/      # TypeScript types
-│   ├── server.js       # Express + Vite dev server
+│   │   ├── types/      # TypeScript types
+│   │   └── root.tsx    # Root layout with Header + AuthProvider
+│   ├── vite.config.ts  # Vite bundler config
 │   └── package.json
-├── backend/            # Go HTTP server
-│   ├── api/            # HTTP handlers (35+ endpoints)
-│   ├── db/             # SQLite database layer
-│   ├── workers/        # Background workers (fs watcher, digest)
-│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI)
-│   ├── notifications/  # SSE service
-│   └── main.go
+├── backend/            # Go 1.25 HTTP server (Gin framework)
+│   ├── api/            # HTTP handlers (~40 endpoints in routes.go)
+│   ├── auth/           # OAuth implementation
+│   ├── config/         # Configuration management
+│   ├── db/             # SQLite database layer + migrations
+│   ├── log/            # Structured logging (zerolog)
+│   ├── models/         # Domain models
+│   ├── notifications/  # SSE service for real-time updates
+│   ├── utils/          # Shared utilities
+│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI, HAID)
+│   ├── workers/
+│   │   ├── digest/     # Digest processor worker + digester registry
+│   │   └── fs/         # File system watcher (fsnotify)
+│   ├── go.mod
+│   └── main.go         # Entry point
 └── docs/               # Product and technical design docs
 ```
+
+### Background Workers
+
+The backend runs two concurrent workers:
+
+1. **FS Worker** (`workers/fs/`): Watches the data directory for file changes using fsnotify, scans periodically (hourly), and notifies the digest worker of changes.
+
+2. **Digest Worker** (`workers/digest/`): Processes files through registered digesters (e.g., markdown, PDF, EPUB, images). Uses a registry pattern with 3 parallel processing goroutines. Supervisors ensure pending digests are eventually processed.
 
 ### Data Storage
 ```
@@ -79,8 +98,9 @@ MY_DATA_DIR/
 
 ### Database (SQLite)
 - Location: `MY_DATA_DIR/app/my-life-db/database.sqlite`
-- Uses better-sqlite3 (frontend) or mattn/go-sqlite3 (backend)
-- Core tables: `files`, `digests`, `sqlar`, `meili_documents`, `settings`
+- Driver: mattn/go-sqlite3 with CGO_ENABLED=1 (required for build)
+- Core tables: `files`, `digests`, `sqlar` (archive format), `pins`, `people`, `settings`
+- Migration system in `db/migrations.go`
 
 ## Naming Conventions
 
@@ -92,6 +112,21 @@ MY_DATA_DIR/
 | Constants | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
 | DB columns | `snake_case` | `file_path`, `created_at` |
 | Go files | `snake_case.go` | `inbox.go`, `file_watcher.go` |
+
+## Frontend Architecture
+
+### React Router 7 (SPA Mode)
+- **Client-side only**: No SSR, all rendering happens in the browser
+- **File-based routing**: Routes defined in `frontend/app/routes/` (e.g., `home.tsx`, `inbox.tsx`, `library.browse.tsx`)
+- **Root layout**: `root.tsx` provides the app shell (Header + AuthProvider + Outlet)
+- **Data fetching**: Uses TanStack Query for API calls, NOT React Router loaders
+- **No server-side code**: All API calls go to the Go backend
+
+### Key Frontend Patterns
+- Use `@tanstack/react-query` for data fetching and caching
+- Context providers in `app/contexts/` (e.g., AuthContext)
+- Custom hooks in `app/hooks/`
+- shadcn/ui components in `app/components/ui/`
 
 ## Dark Mode (IMPORTANT)
 
@@ -125,18 +160,40 @@ Never create shadcn components manually.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | PORT | 12345 | Server port |
-| MY_DATA_DIR | ./data | Data directory |
-| MEILI_HOST | | Meilisearch URL |
-| QDRANT_HOST | | Qdrant URL |
-| OPENAI_API_KEY | | OpenAI API key |
-| DEBUG | | Comma-separated module names for debug logging |
+| HOST | 0.0.0.0 | Server host |
+| ENV | development | Environment (development/production) |
+| MY_DATA_DIR | ./data | Data directory root |
+| MEILI_HOST | | Meilisearch URL (optional) |
+| QDRANT_URL | | Qdrant URL (optional) |
+| QDRANT_API_KEY | | Qdrant API key (optional) |
+| OPENAI_API_KEY | | OpenAI API key (optional) |
+| HAID_BASE_URL | | HAID embedding service URL (optional) |
+| HAID_API_KEY | | HAID API key (optional) |
 
-## Debug Logging
+## API Routes
 
-Enable debug logs for specific modules:
-```bash
-DEBUG=VendorOpenAI,DigestWorker ./bin/server
-```
+All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Key endpoints:
+
+| Group | Routes | Description |
+|-------|--------|-------------|
+| Auth | `/api/auth/*` | Login/logout |
+| OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh) |
+| Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment |
+| Library | `/api/library/*` | File management, tree structure, pinning |
+| Digest | `/api/digest/*` | Digester registry, stats, trigger digests |
+| People | `/api/people`, `/api/people/:id` | Person management + embeddings |
+| Search | `/api/search` | Full-text search |
+| Upload | `/api/upload/tus/*` | TUS protocol file uploads |
+| Notifications | `/api/notifications/stream` | SSE event stream |
+| Raw Files | `/raw/*path` | Serve/save raw files from data directory |
+| SQLAR | `/sqlar/*path` | Serve files from SQLAR archives |
+
+## Logging
+
+The backend uses structured logging via zerolog:
+- Info/Error/Debug logs go to stdout
+- Includes Gin request logging middleware
+- Logs are in JSON format in production, pretty-printed in development
 
 ## Git Workflow
 
