@@ -150,7 +150,7 @@ func SetSettingJSON(key string, v interface{}) error {
 }
 
 // Helper function to pick setting value: DB > Env > Default
-func pickSetting(dbKey string, envKey string, defaultValue string) string {
+func pickFromMap(dbKey string, envKey string, defaultValue string) string {
 	// First try DB
 	if val, err := GetSetting(dbKey); err == nil && val != "" {
 		return val
@@ -167,29 +167,51 @@ func pickSetting(dbKey string, envKey string, defaultValue string) string {
 
 // LoadUserSettings loads settings from DB and converts to structured UserSettings
 func LoadUserSettings() (*models.UserSettings, error) {
+	// Load all settings once to avoid N+1 queries
+	allSettings, err := GetAllSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	// Helper to pick from pre-loaded settings map
+	pickFromMap := func(dbKey, envKey, defaultValue string) string {
+		// First try the pre-loaded settings map
+		if val, ok := allSettings[dbKey]; ok && val != "" {
+			return val
+		}
+		// Then try env
+		if envKey != "" {
+			if envVal := os.Getenv(envKey); envVal != "" {
+				return envVal
+			}
+		}
+		// Finally use default
+		return defaultValue
+	}
+
 	// Build preferences
 	preferences := models.Preferences{
-		Theme:        pickSetting("preferences_theme", "", "auto"),
-		DefaultView:  pickSetting("preferences_default_view", "", "home"),
-		WeeklyDigest: pickSetting("preferences_weekly_digest", "", "false") == "true",
+		Theme:        pickFromMap("preferences_theme", "", "auto"),
+		DefaultView:  pickFromMap("preferences_default_view", "", "home"),
+		WeeklyDigest: pickFromMap("preferences_weekly_digest", "", "false") == "true",
 		DigestDay:    0,
-		LogLevel:     pickSetting("preferences_log_level", "", "info"),
+		LogLevel:     pickFromMap("preferences_log_level", "", "info"),
 	}
 
 	// Parse digest day
-	if dayStr := pickSetting("preferences_digest_day", "", "0"); dayStr != "" {
+	if dayStr := pickFromMap("preferences_digest_day", "", "0"); dayStr != "" {
 		if day, err := strconv.Atoi(dayStr); err == nil {
 			preferences.DigestDay = day
 		}
 	}
 
 	// Optional preference fields
-	if email := pickSetting("preferences_user_email", "", ""); email != "" {
+	if email := pickFromMap("preferences_user_email", "", ""); email != "" {
 		preferences.UserEmail = email
 	}
 
 	// Parse languages array
-	if langStr := pickSetting("preferences_languages", "", ""); langStr != "" {
+	if langStr := pickFromMap("preferences_languages", "", ""); langStr != "" {
 		var langs []string
 		if err := json.Unmarshal([]byte(langStr), &langs); err == nil && len(langs) > 0 {
 			preferences.Languages = langs
@@ -199,43 +221,43 @@ func LoadUserSettings() (*models.UserSettings, error) {
 	// Build vendors
 	vendors := &models.Vendors{
 		OpenAI: &models.OpenAI{
-			BaseURL: pickSetting("vendors_openai_base_url", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
-			APIKey:  pickSetting("vendors_openai_api_key", "OPENAI_API_KEY", ""),
-			Model:   pickSetting("vendors_openai_model", "OPENAI_MODEL", "gpt-4o-mini"),
+			BaseURL: pickFromMap("vendors_openai_base_url", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:  pickFromMap("vendors_openai_api_key", "OPENAI_API_KEY", ""),
+			Model:   pickFromMap("vendors_openai_model", "OPENAI_MODEL", "gpt-4o-mini"),
 		},
 		HomelabAI: &models.HomelabAI{
-			BaseURL:      pickSetting("vendors_homelab_ai_base_url", "HAID_BASE_URL", "https://haid.home.iloahz.com"),
-			ChromeCdpURL: pickSetting("vendors_homelab_ai_chrome_cdp_url", "HAID_CHROME_CDP_URL", "http://172.16.2.2:9223/"),
+			BaseURL:      pickFromMap("vendors_homelab_ai_base_url", "HAID_BASE_URL", "https://haid.home.iloahz.com"),
+			ChromeCdpURL: pickFromMap("vendors_homelab_ai_chrome_cdp_url", "HAID_CHROME_CDP_URL", "http://172.16.2.2:9223/"),
 		},
 		Meilisearch: &models.Meilisearch{
-			Host: pickSetting("vendors_meilisearch_host", "MEILI_HOST", ""),
+			Host: pickFromMap("vendors_meilisearch_host", "MEILI_HOST", ""),
 		},
 		Qdrant: &models.Qdrant{
-			Host: pickSetting("vendors_qdrant_host", "QDRANT_URL", ""),
+			Host: pickFromMap("vendors_qdrant_host", "QDRANT_URL", ""),
 		},
 	}
 
 	// Build digesters
 	digesters := map[string]bool{
-		"url-crawler":       pickSetting("digesters_url_crawler", "", "true") != "false",
-		"url-crawl-summary": pickSetting("digesters_url_crawl_summary", "", "true") != "false",
-		"tags":              pickSetting("digesters_tags", "", "true") != "false",
-		"search-keyword":    pickSetting("digesters_search_keyword", "", "true") != "false",
-		"search-semantic":   pickSetting("digesters_search_semantic", "", "true") != "false",
+		"url-crawler":       pickFromMap("digesters_url_crawler", "", "true") != "false",
+		"url-crawl-summary": pickFromMap("digesters_url_crawl_summary", "", "true") != "false",
+		"tags":              pickFromMap("digesters_tags", "", "true") != "false",
+		"search-keyword":    pickFromMap("digesters_search_keyword", "", "true") != "false",
+		"search-semantic":   pickFromMap("digesters_search_semantic", "", "true") != "false",
 	}
 
 	// Build extraction
 	extraction := models.Extraction{
-		AutoEnrich:            pickSetting("extraction_auto_enrich", "", "false") == "true",
-		IncludeEntities:       pickSetting("extraction_include_entities", "", "true") != "false",
-		IncludeSentiment:      pickSetting("extraction_include_sentiment", "", "true") != "false",
-		IncludeActionItems:    pickSetting("extraction_include_action_items", "", "true") != "false",
-		IncludeRelatedEntries: pickSetting("extraction_include_related_entries", "", "false") == "true",
+		AutoEnrich:            pickFromMap("extraction_auto_enrich", "", "false") == "true",
+		IncludeEntities:       pickFromMap("extraction_include_entities", "", "true") != "false",
+		IncludeSentiment:      pickFromMap("extraction_include_sentiment", "", "true") != "false",
+		IncludeActionItems:    pickFromMap("extraction_include_action_items", "", "true") != "false",
+		IncludeRelatedEntries: pickFromMap("extraction_include_related_entries", "", "false") == "true",
 		MinConfidence:         0.5,
 	}
 
 	// Parse min confidence
-	if confStr := pickSetting("extraction_min_confidence", "", "0.5"); confStr != "" {
+	if confStr := pickFromMap("extraction_min_confidence", "", "0.5"); confStr != "" {
 		if conf, err := strconv.ParseFloat(confStr, 64); err == nil {
 			extraction.MinConfidence = conf
 		}
@@ -243,20 +265,20 @@ func LoadUserSettings() (*models.UserSettings, error) {
 
 	// Build storage
 	storage := models.Storage{
-		DataPath:    pickSetting("storage_data_path", "MY_DATA_DIR", "./data"),
-		AutoBackup:  pickSetting("storage_auto_backup", "", "false") == "true",
+		DataPath:    pickFromMap("storage_data_path", "MY_DATA_DIR", "./data"),
+		AutoBackup:  pickFromMap("storage_auto_backup", "", "false") == "true",
 		MaxFileSize: 50,
 	}
 
 	// Parse max file size
-	if sizeStr := pickSetting("storage_max_file_size", "", "50"); sizeStr != "" {
+	if sizeStr := pickFromMap("storage_max_file_size", "", "50"); sizeStr != "" {
 		if size, err := strconv.Atoi(sizeStr); err == nil {
 			storage.MaxFileSize = size
 		}
 	}
 
 	// Optional storage fields
-	if backupPath := pickSetting("storage_backup_path", "", ""); backupPath != "" {
+	if backupPath := pickFromMap("storage_backup_path", "", ""); backupPath != "" {
 		storage.BackupPath = backupPath
 	}
 

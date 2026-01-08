@@ -38,8 +38,10 @@ func GetDB() *sql.DB {
 		}
 
 		// Configure connection pool for better concurrency
-		db.SetMaxOpenConns(1) // SQLite works best with single writer
-		db.SetMaxIdleConns(1)
+		// WAL mode allows multiple readers + one writer concurrently
+		db.SetMaxOpenConns(5) // Allow concurrent reads
+		db.SetMaxIdleConns(2)
+		db.SetConnMaxLifetime(0) // Connections never expire
 
 		// Verify connection
 		if err := db.Ping(); err != nil {

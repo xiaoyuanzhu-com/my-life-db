@@ -110,20 +110,20 @@ func main() {
 
 	log.Info().Msg("shutting down server")
 
-	// Shutdown notification service first to close SSE connections
-	notifications.GetService().Shutdown()
-
-	// Stop workers
+	// Stop workers first (they may hold db connections)
 	fsWorker.Stop()
 	digestWorker.Stop()
 
-	// Shutdown server with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Shutdown server with timeout to close HTTP connections (including SSE)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")
 	}
+
+	// Shutdown notification service after server stops
+	notifications.GetService().Shutdown()
 
 	// Close database
 	if err := db.Close(); err != nil {
