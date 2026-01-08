@@ -1,6 +1,6 @@
 # Multi-stage build for Go server with React frontend
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 
 # Install dependencies
@@ -12,7 +12,7 @@ COPY frontend/ .
 RUN npm run build:client
 
 # Stage 2: Build Go server
-FROM golang:1.23-alpine AS go-builder
+FROM golang:1.25-alpine AS go-builder
 WORKDIR /app
 
 # Install build dependencies for CGO (SQLite)
