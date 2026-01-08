@@ -22,10 +22,10 @@ npm run typecheck  # Run TypeScript compiler
 
 ### Backend (in `backend/` directory)
 ```bash
-go run .                              # Run Go server in development mode
-CGO_ENABLED=1 go build -o ../bin/server .  # Build Go server → ../bin/server
-go test -v ./...                      # Run Go tests
-go vet ./...                          # Run Go linter
+go run .          # Run Go server in development mode
+go build .        # Build Go server → my-life-db binary
+go test -v ./...  # Run Go tests
+go vet ./...      # Run Go linter
 ```
 
 ### Full Stack Development
@@ -37,7 +37,7 @@ cd frontend && npm run build
 cd backend && go run .
 
 # Production: Build everything, then run
-cd frontend && npm run build && cd ../backend && CGO_ENABLED=1 go build -o ../bin/server . && cd .. && ./bin/server
+cd frontend && npm run build && cd ../backend && go build . && ./my-life-db
 ```
 
 ## Architecture
