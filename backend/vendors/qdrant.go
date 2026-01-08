@@ -6,6 +6,7 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -40,14 +41,33 @@ type QdrantSearchResult struct {
 // GetQdrantClient returns the singleton Qdrant client
 func GetQdrantClient() *QdrantClient {
 	qdrantClientOnce.Do(func() {
-		cfg := config.Get()
-		if cfg.QdrantHost == "" {
-			log.Warn().Msg("QDRANT_HOST not configured, Qdrant disabled")
+		// Load settings from database first, fall back to env vars
+		settings, err := db.LoadUserSettings()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to load user settings for Qdrant")
 			return
 		}
 
+		qdrantHost := ""
+		if settings.Vendors != nil && settings.Vendors.Qdrant != nil {
+			qdrantHost = settings.Vendors.Qdrant.Host
+		}
+
+		// If not in DB, fall back to env var
+		if qdrantHost == "" {
+			cfg := config.Get()
+			qdrantHost = cfg.QdrantHost
+		}
+
+		if qdrantHost == "" {
+			log.Warn().Msg("Qdrant host not configured, Qdrant disabled")
+			return
+		}
+
+		// Use API key from config (typically from env var)
+		cfg := config.Get()
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: cfg.QdrantHost,
+			Host: qdrantHost,
 			// APIKey: cfg.QdrantAPIKey, // Add if using cloud Qdrant
 		})
 		if err != nil {
@@ -83,7 +103,7 @@ func GetQdrantClient() *QdrantClient {
 			collection: cfg.QdrantCollection,
 		}
 
-		log.Info().Str("host", cfg.QdrantHost).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
+		log.Info().Str("host", qdrantHost).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
 	})
 
 	return qdrantClient

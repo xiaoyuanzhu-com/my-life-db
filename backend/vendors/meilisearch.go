@@ -5,6 +5,7 @@ import (
 
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -51,13 +52,32 @@ type MeiliHit struct {
 // GetMeiliClient returns the singleton Meilisearch client
 func GetMeiliClient() *MeiliClient {
 	meiliClientOnce.Do(func() {
-		cfg := config.Get()
-		if cfg.MeiliHost == "" {
-			log.Warn().Msg("MEILI_HOST not configured, Meilisearch disabled")
+		// Load settings from database first, fall back to env vars
+		settings, err := db.LoadUserSettings()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to load user settings for Meilisearch")
 			return
 		}
 
-		client := meilisearch.New(cfg.MeiliHost, meilisearch.WithAPIKey(cfg.MeiliAPIKey))
+		meiliHost := ""
+		if settings.Vendors != nil && settings.Vendors.Meilisearch != nil {
+			meiliHost = settings.Vendors.Meilisearch.Host
+		}
+
+		// If not in DB, fall back to env var
+		if meiliHost == "" {
+			cfg := config.Get()
+			meiliHost = cfg.MeiliHost
+		}
+
+		if meiliHost == "" {
+			log.Warn().Msg("Meilisearch host not configured, Meilisearch disabled")
+			return
+		}
+
+		// Use API key from config (typically from env var)
+		cfg := config.Get()
+		client := meilisearch.New(meiliHost, meilisearch.WithAPIKey(cfg.MeiliAPIKey))
 
 		// Verify connection
 		if _, err := client.Health(); err != nil {
@@ -73,7 +93,7 @@ func GetMeiliClient() *MeiliClient {
 			indexUID: cfg.MeiliIndex,
 		}
 
-		log.Info().Str("host", cfg.MeiliHost).Str("index", cfg.MeiliIndex).Msg("Meilisearch initialized")
+		log.Info().Str("host", meiliHost).Str("index", cfg.MeiliIndex).Msg("Meilisearch initialized")
 	})
 
 	return meiliClient
