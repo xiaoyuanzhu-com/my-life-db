@@ -20,14 +20,12 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
-var logger = log.GetLogger("Server")
-
 func main() {
 	cfg := config.Get()
 
 	// Initialize database
 	_ = db.GetDB()
-	logger.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
+	log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
 
 	// Set Gin mode based on environment
 	if cfg.IsDevelopment() {
@@ -74,7 +72,7 @@ func main() {
 	})
 
 	// Start background workers
-	logger.Info().Msg("starting background workers")
+	log.Info().Msg("starting background workers")
 	fsWorker := fs.NewWorker(cfg.DataDir)
 	digestWorker := digest.NewWorker()
 
@@ -95,7 +93,7 @@ func main() {
 
 	// Start server
 	go func() {
-		logger.Info().
+		log.Info().
 			Str("addr", addr).
 			Str("env", cfg.Env).
 			Msg("server starting")
@@ -104,7 +102,7 @@ func main() {
 		printNetworkAddresses(cfg.Port)
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal().Err(err).Msg("server error")
+			log.Fatal().Err(err).Msg("server error")
 		}
 	}()
 
@@ -113,7 +111,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info().Msg("shutting down server")
+	log.Info().Msg("shutting down server")
 
 	// Stop workers
 	fsWorker.Stop()
@@ -124,18 +122,18 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error().Err(err).Msg("server shutdown error")
+		log.Error().Err(err).Msg("server shutdown error")
 	}
 
 	// Close database
 	if err := db.Close(); err != nil {
-		logger.Error().Err(err).Msg("database close error")
+		log.Error().Err(err).Msg("database close error")
 	}
 
 	// Shutdown notification service
 	notifications.GetService().Shutdown()
 
-	logger.Info().Msg("server stopped")
+	log.Info().Msg("server stopped")
 }
 
 // corsMiddleware creates a CORS middleware for Gin
@@ -191,7 +189,7 @@ func printNetworkAddresses(port int) {
 
 	if len(addresses) > 0 {
 		for _, addr := range addresses {
-			logger.Info().Str("url", addr).Msg("network")
+			log.Info().Str("url", addr).Msg("network")
 		}
 	}
 }

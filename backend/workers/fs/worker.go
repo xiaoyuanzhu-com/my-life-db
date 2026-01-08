@@ -11,8 +11,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var logger = log.GetLogger("FSWorker")
-
 // FileChangeEvent represents a file system change
 type FileChangeEvent struct {
 	FilePath       string
@@ -58,11 +56,11 @@ func (w *Worker) Start() error {
 		return err
 	}
 
-	logger.Info().Str("dataRoot", w.dataRoot).Msg("starting file system worker")
+	log.Info().Str("dataRoot", w.dataRoot).Msg("starting file system worker")
 
 	// Watch the data root directory recursively
 	if err := w.watchRecursive(w.dataRoot); err != nil {
-		logger.Error().Err(err).Msg("failed to watch data directory")
+		log.Error().Err(err).Msg("failed to watch data directory")
 	}
 
 	// Start the watch loop
@@ -88,7 +86,7 @@ func (w *Worker) Stop() {
 		w.watcher.Close()
 	}
 	w.wg.Wait()
-	logger.Info().Msg("file system worker stopped")
+	log.Info().Msg("file system worker stopped")
 }
 
 // watchRecursive adds all directories under root to the watcher
@@ -109,7 +107,7 @@ func (w *Worker) watchRecursive(root string) error {
 
 		if info.IsDir() {
 			if err := w.watcher.Add(path); err != nil {
-				logger.Warn().Err(err).Str("path", path).Msg("failed to watch directory")
+				log.Warn().Err(err).Str("path", path).Msg("failed to watch directory")
 			}
 		}
 
@@ -148,7 +146,7 @@ func (w *Worker) watchLoop() {
 			if !ok {
 				return
 			}
-			logger.Error().Err(err).Msg("watcher error")
+			log.Error().Err(err).Msg("watcher error")
 
 		case <-w.stopChan:
 			return
@@ -215,7 +213,7 @@ func (w *Worker) scanLoop() {
 
 // scanDirectory scans a directory for files
 func (w *Worker) scanDirectory(root string) {
-	logger.Info().Str("root", root).Msg("starting directory scan")
+	log.Info().Str("root", root).Msg("starting directory scan")
 
 	count := 0
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -242,8 +240,8 @@ func (w *Worker) scanDirectory(root string) {
 	})
 
 	if err != nil {
-		logger.Error().Err(err).Msg("scan error")
+		log.Error().Err(err).Msg("scan error")
 	}
 
-	logger.Info().Int("files", count).Msg("directory scan complete")
+	log.Info().Int("files", count).Msg("directory scan complete")
 }

@@ -10,8 +10,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var peopleLogger = log.GetLogger("ApiPeople")
-
 // PersonResponse represents a person with their clusters
 type PersonResponse struct {
 	ID          string             `json:"id"`
@@ -29,7 +27,7 @@ func GetPeople(c *gin.Context) {
 		ORDER BY display_name
 	`)
 	if err != nil {
-		peopleLogger.Error().Err(err).Msg("failed to get people")
+		log.Error().Err(err).Msg("failed to get people")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get people"})
 		return
 	}
@@ -79,7 +77,7 @@ func CreatePerson(c *gin.Context) {
 		VALUES (?, ?, ?, ?)
 	`, person.ID, person.DisplayName, person.CreatedAt, person.UpdatedAt)
 	if err != nil {
-		peopleLogger.Error().Err(err).Msg("failed to create person")
+		log.Error().Err(err).Msg("failed to create person")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create person"})
 		return
 	}
@@ -174,7 +172,7 @@ func DeletePerson(c *gin.Context) {
 		UPDATE people_clusters SET people_id = NULL WHERE people_id = ?
 	`, id)
 	if err != nil {
-		peopleLogger.Warn().Err(err).Msg("failed to unassign clusters")
+		log.Warn().Err(err).Msg("failed to unassign clusters")
 	}
 
 	// Delete person

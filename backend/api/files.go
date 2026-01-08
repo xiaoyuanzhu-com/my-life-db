@@ -16,8 +16,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
-var filesLogger = log.GetLogger("ApiFiles")
-
 // ServeRawFile handles GET /raw/*path
 func ServeRawFile(c *gin.Context) {
 	// Get path from URL (everything after /raw/)
@@ -85,7 +83,7 @@ func SaveRawFile(c *gin.Context) {
 	// Ensure parent directory exists
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		filesLogger.Error().Err(err).Msg("failed to create directory")
+		log.Error().Err(err).Msg("failed to create directory")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
 		return
 	}
@@ -99,7 +97,7 @@ func SaveRawFile(c *gin.Context) {
 
 	// Write file
 	if err := os.WriteFile(fullPath, body, 0644); err != nil {
-		filesLogger.Error().Err(err).Msg("failed to write file")
+		log.Error().Err(err).Msg("failed to write file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
 		return
 	}
@@ -194,13 +192,13 @@ func DeleteLibraryFile(c *gin.Context) {
 	// Delete file or folder
 	if info.IsDir() {
 		if err := os.RemoveAll(fullPath); err != nil {
-			filesLogger.Error().Err(err).Msg("failed to delete folder")
+			log.Error().Err(err).Msg("failed to delete folder")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
 			return
 		}
 	} else {
 		if err := os.Remove(fullPath); err != nil {
-			filesLogger.Error().Err(err).Msg("failed to delete file")
+			log.Error().Err(err).Msg("failed to delete file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
 			return
 		}
@@ -224,7 +222,7 @@ func GetLibraryFileInfo(c *gin.Context) {
 
 	file, err := db.GetFileWithDigests(path)
 	if err != nil {
-		filesLogger.Error().Err(err).Msg("failed to get file info")
+		log.Error().Err(err).Msg("failed to get file info")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})
 		return
 	}
@@ -253,7 +251,7 @@ func PinFile(c *gin.Context) {
 	}
 
 	if err := db.AddPin(body.Path); err != nil {
-		filesLogger.Error().Err(err).Msg("failed to pin file")
+		log.Error().Err(err).Msg("failed to pin file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
 		return
 	}
@@ -270,7 +268,7 @@ func UnpinFile(c *gin.Context) {
 	}
 
 	if err := db.RemovePin(path); err != nil {
-		filesLogger.Error().Err(err).Msg("failed to unpin file")
+		log.Error().Err(err).Msg("failed to unpin file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // QueryParam represents a parameter for database queries
@@ -20,7 +21,7 @@ func logQuery(kind string, sql string, params []QueryParam) {
 	if !shouldLogQueries {
 		return
 	}
-	logger.Debug().
+	log.Debug().
 		Str("kind", kind).
 		Str("sql", sql).
 		Interface("params", params).

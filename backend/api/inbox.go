@@ -19,8 +19,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
-var inboxLogger = log.GetLogger("ApiInbox")
-
 // InboxItem represents an inbox item in API responses
 type InboxItem struct {
 	Path            string      `json:"path"`
@@ -95,7 +93,7 @@ func GetInbox(c *gin.Context) {
 	}
 
 	if err != nil {
-		inboxLogger.Error().Err(err).Msg("list inbox items failed")
+		log.Error().Err(err).Msg("list inbox items failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list inbox items"})
 		return
 	}
@@ -167,7 +165,7 @@ func CreateInboxItem(c *gin.Context) {
 
 	// Ensure inbox directory exists
 	if err := os.MkdirAll(inboxDir, 0755); err != nil {
-		inboxLogger.Error().Err(err).Msg("failed to create inbox directory")
+		log.Error().Err(err).Msg("failed to create inbox directory")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inbox directory"})
 		return
 	}
@@ -183,7 +181,7 @@ func CreateInboxItem(c *gin.Context) {
 		fullPath := filepath.Join(cfg.DataDir, textPath)
 
 		if err := os.WriteFile(fullPath, []byte(text), 0644); err != nil {
-			inboxLogger.Error().Err(err).Msg("failed to save text file")
+			log.Error().Err(err).Msg("failed to save text file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save text"})
 			return
 		}
@@ -203,7 +201,7 @@ func CreateInboxItem(c *gin.Context) {
 			CreatedAt:     nowStr,
 			LastScannedAt: nowStr,
 		}); err != nil {
-			inboxLogger.Error().Err(err).Msg("failed to create file record")
+			log.Error().Err(err).Msg("failed to create file record")
 		}
 
 		savedPaths = append(savedPaths, textPath)
@@ -251,7 +249,7 @@ func CreateInboxItem(c *gin.Context) {
 			CreatedAt:     nowStr,
 			LastScannedAt: nowStr,
 		}); err != nil {
-			inboxLogger.Error().Err(err).Msg("failed to create file record")
+			log.Error().Err(err).Msg("failed to create file record")
 		}
 
 		savedPaths = append(savedPaths, filePath)
@@ -262,7 +260,7 @@ func CreateInboxItem(c *gin.Context) {
 		return
 	}
 
-	inboxLogger.Info().
+	log.Info().
 		Strs("paths", savedPaths).
 		Int("fileCount", len(savedPaths)).
 		Msg("created inbox items")
@@ -290,7 +288,7 @@ func GetInboxItem(c *gin.Context) {
 	path := "inbox/" + id
 	file, err = db.GetFileWithDigests(path)
 	if err != nil {
-		inboxLogger.Error().Err(err).Str("path", path).Msg("failed to get inbox item")
+		log.Error().Err(err).Str("path", path).Msg("failed to get inbox item")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get inbox item"})
 		return
 	}
@@ -328,7 +326,7 @@ func UpdateInboxItem(c *gin.Context) {
 
 	// Write content to file
 	if err := os.WriteFile(fullPath, []byte(body.Content), 0644); err != nil {
-		inboxLogger.Error().Err(err).Msg("failed to update file")
+		log.Error().Err(err).Msg("failed to update file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update file"})
 		return
 	}
@@ -358,13 +356,13 @@ func DeleteInboxItem(c *gin.Context) {
 	// Delete file/folder
 	if info.IsDir() {
 		if err := os.RemoveAll(fullPath); err != nil {
-			inboxLogger.Error().Err(err).Msg("failed to delete folder")
+			log.Error().Err(err).Msg("failed to delete folder")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
 			return
 		}
 	} else {
 		if err := os.Remove(fullPath); err != nil {
-			inboxLogger.Error().Err(err).Msg("failed to delete file")
+			log.Error().Err(err).Msg("failed to delete file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
 			return
 		}
@@ -385,7 +383,7 @@ func DeleteInboxItem(c *gin.Context) {
 func GetPinnedInboxItems(c *gin.Context) {
 	files, err := db.GetPinnedFiles()
 	if err != nil {
-		inboxLogger.Error().Err(err).Msg("failed to get pinned files")
+		log.Error().Err(err).Msg("failed to get pinned files")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get pinned files"})
 		return
 	}

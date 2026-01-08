@@ -16,7 +16,6 @@ import (
 var (
 	openaiClient     *OpenAIClient
 	openaiClientOnce sync.Once
-	openaiLogger     = log.GetLogger("OpenAI")
 )
 
 // OpenAIClient wraps the OpenAI client
@@ -50,7 +49,7 @@ func GetOpenAIClient() *OpenAIClient {
 	openaiClientOnce.Do(func() {
 		cfg := config.Get()
 		if cfg.OpenAIAPIKey == "" {
-			openaiLogger.Warn().Msg("OPENAI_API_KEY not configured, OpenAI disabled")
+			log.Warn().Msg("OPENAI_API_KEY not configured, OpenAI disabled")
 			return
 		}
 
@@ -66,7 +65,7 @@ func GetOpenAIClient() *OpenAIClient {
 			model:  cfg.OpenAIModel,
 		}
 
-		openaiLogger.Info().Str("model", cfg.OpenAIModel).Msg("OpenAI initialized")
+		log.Info().Str("model", cfg.OpenAIModel).Msg("OpenAI initialized")
 	})
 
 	return openaiClient
@@ -109,7 +108,7 @@ func (o *OpenAIClient) Complete(opts CompletionOptions) (*CompletionResponse, er
 
 	resp, err := o.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		openaiLogger.Error().Err(err).Msg("completion failed")
+		log.Error().Err(err).Msg("completion failed")
 		return nil, err
 	}
 
@@ -145,7 +144,7 @@ func (o *OpenAIClient) Embed(texts []string) ([][]float32, error) {
 		Input: texts,
 	})
 	if err != nil {
-		openaiLogger.Error().Err(err).Msg("embedding failed")
+		log.Error().Err(err).Msg("embedding failed")
 		return nil, err
 	}
 
@@ -265,7 +264,7 @@ Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}`
 	// Parse JSON from LLM response using robust parser
 	parsed, err := parseJSONFromLLMResponse(resp.Content)
 	if err != nil {
-		openaiLogger.Error().Err(err).Str("content", resp.Content).Msg("failed to parse tags JSON")
+		log.Error().Err(err).Str("content", resp.Content).Msg("failed to parse tags JSON")
 		return []string{}, nil
 	}
 

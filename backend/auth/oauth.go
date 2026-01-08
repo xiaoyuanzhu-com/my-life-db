@@ -17,8 +17,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var logger = log.GetLogger("Auth")
-
 // AuthMode represents the authentication mode
 type AuthMode string
 
@@ -165,7 +163,7 @@ func FetchJWKS() (*JWKS, error) {
 	jwksCacheTime = time.Now()
 	jwksCacheLock.Unlock()
 
-	logger.Info().Str("url", cfg.JWKSURL).Int("keys", len(jwks.Keys)).Msg("JWKS fetched")
+	log.Info().Str("url", cfg.JWKSURL).Int("keys", len(jwks.Keys)).Msg("JWKS fetched")
 
 	return &jwks, nil
 }

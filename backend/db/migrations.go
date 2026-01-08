@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // Migration represents a database migration
@@ -55,7 +57,7 @@ func runMigrations(db *sql.DB) error {
 			continue
 		}
 
-		logger.Info().
+		log.Info().
 			Int("version", m.Version).
 			Str("description", m.Description).
 			Msg("applying migration")
@@ -87,7 +89,7 @@ func runMigrations(db *sql.DB) error {
 			return fmt.Errorf("failed to commit migration %d: %w", m.Version, err)
 		}
 
-		logger.Info().
+		log.Info().
 			Int("version", m.Version).
 			Msg("migration applied successfully")
 	}

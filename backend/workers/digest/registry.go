@@ -2,6 +2,8 @@ package digest
 
 import (
 	"sync"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // Registry manages all registered digesters
@@ -87,5 +89,5 @@ func InitializeRegistry() {
 	GlobalRegistry.Register(&SearchKeywordDigester{})
 	GlobalRegistry.Register(&SearchSemanticDigester{})
 
-	logger.Info().Int("count", len(GlobalRegistry.digesters)).Msg("digesters registered")
+	log.Info().Int("count", len(GlobalRegistry.digesters)).Msg("digesters registered")
 }

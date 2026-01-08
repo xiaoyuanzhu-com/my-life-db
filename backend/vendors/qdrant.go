@@ -12,7 +12,6 @@ import (
 var (
 	qdrantClient     *QdrantClient
 	qdrantClientOnce sync.Once
-	qdrantLogger     = log.GetLogger("Qdrant")
 )
 
 // QdrantClient wraps the Qdrant client
@@ -43,7 +42,7 @@ func GetQdrantClient() *QdrantClient {
 	qdrantClientOnce.Do(func() {
 		cfg := config.Get()
 		if cfg.QdrantHost == "" {
-			qdrantLogger.Warn().Msg("QDRANT_HOST not configured, Qdrant disabled")
+			log.Warn().Msg("QDRANT_HOST not configured, Qdrant disabled")
 			return
 		}
 
@@ -52,14 +51,14 @@ func GetQdrantClient() *QdrantClient {
 			// APIKey: cfg.QdrantAPIKey, // Add if using cloud Qdrant
 		})
 		if err != nil {
-			qdrantLogger.Error().Err(err).Msg("failed to create Qdrant client")
+			log.Error().Err(err).Msg("failed to create Qdrant client")
 			return
 		}
 
 		// Ensure collection exists
 		exists, err := client.CollectionExists(context.Background(), cfg.QdrantCollection)
 		if err != nil {
-			qdrantLogger.Error().Err(err).Msg("failed to check collection")
+			log.Error().Err(err).Msg("failed to check collection")
 			return
 		}
 
@@ -73,10 +72,10 @@ func GetQdrantClient() *QdrantClient {
 				}),
 			})
 			if err != nil {
-				qdrantLogger.Error().Err(err).Msg("failed to create collection")
+				log.Error().Err(err).Msg("failed to create collection")
 				return
 			}
-			qdrantLogger.Info().Str("collection", cfg.QdrantCollection).Msg("created Qdrant collection")
+			log.Info().Str("collection", cfg.QdrantCollection).Msg("created Qdrant collection")
 		}
 
 		qdrantClient = &QdrantClient{
@@ -84,7 +83,7 @@ func GetQdrantClient() *QdrantClient {
 			collection: cfg.QdrantCollection,
 		}
 
-		qdrantLogger.Info().Str("host", cfg.QdrantHost).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
+		log.Info().Str("host", cfg.QdrantHost).Str("collection", cfg.QdrantCollection).Msg("Qdrant initialized")
 	})
 
 	return qdrantClient

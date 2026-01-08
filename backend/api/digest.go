@@ -9,8 +9,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var digestLogger = log.GetLogger("ApiDigest")
-
 // Available digesters
 var availableDigesters = []map[string]string{
 	{"name": "tags", "description": "Generate tags using AI"},
@@ -38,7 +36,7 @@ func GetDigesters(c *gin.Context) {
 func GetDigestStats(c *gin.Context) {
 	stats, err := db.GetDigestStats()
 	if err != nil {
-		digestLogger.Error().Err(err).Msg("failed to get digest stats")
+		log.Error().Err(err).Msg("failed to get digest stats")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest stats"})
 		return
 	}
@@ -56,12 +54,12 @@ func ResetDigester(c *gin.Context) {
 
 	affected, err := db.ResetDigesterAll(digester)
 	if err != nil {
-		digestLogger.Error().Err(err).Str("digester", digester).Msg("failed to reset digester")
+		log.Error().Err(err).Str("digester", digester).Msg("failed to reset digester")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digester"})
 		return
 	}
 
-	digestLogger.Info().Str("digester", digester).Int64("affected", affected).Msg("reset digester")
+	log.Info().Str("digester", digester).Int64("affected", affected).Msg("reset digester")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
@@ -80,7 +78,7 @@ func GetDigest(c *gin.Context) {
 
 	digests, err := db.GetDigestsForFile(path)
 	if err != nil {
-		digestLogger.Error().Err(err).Str("path", path).Msg("failed to get digests")
+		log.Error().Err(err).Str("path", path).Msg("failed to get digests")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digests"})
 		return
 	}

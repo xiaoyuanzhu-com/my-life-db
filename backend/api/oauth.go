@@ -15,8 +15,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var oauthLogger = log.GetLogger("ApiOAuth")
-
 // TokenResponse represents the OAuth token response
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -66,7 +64,7 @@ func OAuthCallback(c *gin.Context) {
 		errMsg := c.Query("error")
 		errDesc := c.Query("error_description")
 		if errMsg != "" {
-			oauthLogger.Error().Str("error", errMsg).Str("description", errDesc).Msg("OAuth callback error")
+			log.Error().Str("error", errMsg).Str("description", errDesc).Msg("OAuth callback error")
 			c.Redirect(http.StatusFound, "/?error="+url.QueryEscape(errMsg))
 			return
 		}
@@ -95,7 +93,7 @@ func OAuthCallback(c *gin.Context) {
 	// Exchange code for tokens
 	tokens, err := exchangeCodeForTokens(cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, code, redirectURI)
 	if err != nil {
-		oauthLogger.Error().Err(err).Msg("failed to exchange code for tokens")
+		log.Error().Err(err).Msg("failed to exchange code for tokens")
 		c.Redirect(http.StatusFound, "/?error=token_exchange_failed")
 		return
 	}
@@ -105,7 +103,7 @@ func OAuthCallback(c *gin.Context) {
 	if tokens.IDToken != "" {
 		payload, err = auth.ValidateJWT(tokens.IDToken)
 		if err != nil {
-			oauthLogger.Error().Err(err).Msg("failed to validate ID token")
+			log.Error().Err(err).Msg("failed to validate ID token")
 			c.Redirect(http.StatusFound, "/?error=invalid_token")
 			return
 		}
@@ -113,7 +111,7 @@ func OAuthCallback(c *gin.Context) {
 		// Verify expected username
 		username := auth.GetUsernameFromPayload(payload)
 		if !auth.VerifyExpectedUsername(username) {
-			oauthLogger.Warn().Str("username", username).Msg("username not allowed")
+			log.Warn().Str("username", username).Msg("username not allowed")
 			c.Redirect(http.StatusFound, "/?error=unauthorized_user")
 			return
 		}
@@ -121,7 +119,7 @@ func OAuthCallback(c *gin.Context) {
 		// Fall back to access token validation
 		payload, err = auth.ValidateJWT(tokens.AccessToken)
 		if err != nil {
-			oauthLogger.Error().Err(err).Msg("failed to validate access token")
+			log.Error().Err(err).Msg("failed to validate access token")
 			c.Redirect(http.StatusFound, "/?error=invalid_token")
 			return
 		}
@@ -130,7 +128,7 @@ func OAuthCallback(c *gin.Context) {
 	// Set session cookies
 	setAuthCookiesGin(c, tokens)
 
-	oauthLogger.Info().
+	log.Info().
 		Str("sub", payload.Sub).
 		Msg("OAuth login successful")
 
@@ -163,7 +161,7 @@ func OAuthRefresh(c *gin.Context) {
 	// Exchange refresh token for new tokens
 	tokens, err := refreshTokens(cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, refreshToken)
 	if err != nil {
-		oauthLogger.Error().Err(err).Msg("failed to refresh tokens")
+		log.Error().Err(err).Msg("failed to refresh tokens")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Token refresh failed",
 		})
@@ -198,7 +196,7 @@ func OAuthToken(c *gin.Context) {
 	// Validate the token
 	payload, err := auth.ValidateJWT(accessToken)
 	if err != nil {
-		oauthLogger.Debug().Err(err).Msg("token validation failed")
+		log.Debug().Err(err).Msg("token validation failed")
 		c.JSON(http.StatusOK, gin.H{
 			"authenticated": false,
 			"error":         "invalid_token",

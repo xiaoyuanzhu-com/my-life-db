@@ -11,8 +11,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var textSourceLogger = log.GetLogger("TextSource")
-
 // TextSourceType represents the source of text content
 type TextSourceType string
 
@@ -226,7 +224,7 @@ func ReadLocalFile(filePath string) (string, error) {
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		textSourceLogger.Warn().Str("path", filePath).Err(err).Msg("failed to read text file")
+		log.Warn().Str("path", filePath).Err(err).Msg("failed to read text file")
 		return "", err
 	}
 

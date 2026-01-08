@@ -10,8 +10,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
-var statsLogger = log.GetLogger("ApiStats")
-
 // GetStats handles GET /api/stats
 func GetStats(c *gin.Context) {
 	stats := make(map[string]interface{})
@@ -19,7 +17,7 @@ func GetStats(c *gin.Context) {
 	// File stats
 	fileStats, err := db.GetFileStats()
 	if err != nil {
-		statsLogger.Error().Err(err).Msg("failed to get file stats")
+		log.Error().Err(err).Msg("failed to get file stats")
 		fileStats = make(map[string]interface{})
 	}
 	stats["files"] = fileStats
@@ -27,7 +25,7 @@ func GetStats(c *gin.Context) {
 	// Digest stats
 	digestStats, err := db.GetDigestStats()
 	if err != nil {
-		statsLogger.Error().Err(err).Msg("failed to get digest stats")
+		log.Error().Err(err).Msg("failed to get digest stats")
 		digestStats = make(map[string]interface{})
 	}
 	stats["digests"] = digestStats

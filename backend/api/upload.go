@@ -19,8 +19,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
-var uploadLogger = log.GetLogger("ApiUpload")
-
 var (
 	tusHandler     http.Handler
 	tusHandlerOnce sync.Once
@@ -59,7 +57,7 @@ func InitTUSHandler() (http.Handler, error) {
 		}
 
 		tusHandler = handler
-		uploadLogger.Info().Str("dir", uploadDir).Msg("TUS handler initialized")
+		log.Info().Str("dir", uploadDir).Msg("TUS handler initialized")
 	})
 	return tusHandler, initErr
 }
@@ -68,7 +66,7 @@ func InitTUSHandler() (http.Handler, error) {
 func TUSHandler(c *gin.Context) {
 	handler, err := InitTUSHandler()
 	if err != nil {
-		uploadLogger.Error().Err(err).Msg("failed to initialize TUS handler")
+		log.Error().Err(err).Msg("failed to initialize TUS handler")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to initialize upload handler",
 		})
@@ -125,7 +123,7 @@ func FinalizeUpload(c *gin.Context) {
 		srcPath = srcPath + ".bin"
 		srcInfo, err = os.Stat(srcPath)
 		if err != nil {
-			uploadLogger.Error().Str("uploadId", body.UploadID).Err(err).Msg("upload file not found")
+			log.Error().Str("uploadId", body.UploadID).Err(err).Msg("upload file not found")
 			c.JSON(http.StatusNotFound, gin.H{"error": "Upload file not found"})
 			return
 		}
@@ -139,7 +137,7 @@ func FinalizeUpload(c *gin.Context) {
 	if err := os.Rename(srcPath, fullDestPath); err != nil {
 		// Fallback to copy + delete
 		if err := copyUploadFile(srcPath, fullDestPath); err != nil {
-			uploadLogger.Error().Err(err).Msg("failed to move upload file")
+			log.Error().Err(err).Msg("failed to move upload file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to finalize upload"})
 			return
 		}
@@ -165,7 +163,7 @@ func FinalizeUpload(c *gin.Context) {
 		LastScannedAt: now,
 	})
 
-	uploadLogger.Info().
+	log.Info().
 		Str("path", destPath).
 		Str("filename", filename).
 		Int64("size", size).

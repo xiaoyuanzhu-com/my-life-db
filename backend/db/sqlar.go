@@ -9,8 +9,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var sqlarLogger = log.GetLogger("SQLAR")
-
 // SqlarStore stores a file in SQLAR format with zlib compression
 func SqlarStore(name string, data []byte, mode int) bool {
 	if mode == 0 {
@@ -22,7 +20,7 @@ func SqlarStore(name string, data []byte, mode int) bool {
 	writer := zlib.NewWriter(&compressed)
 	_, err := writer.Write(data)
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("name", name).Msg("failed to compress data")
+		log.Error().Err(err).Str("name", name).Msg("failed to compress data")
 		return false
 	}
 	writer.Close()
@@ -37,11 +35,11 @@ func SqlarStore(name string, data []byte, mode int) bool {
 	`, name, mode, mtime, originalSize, compressed.Bytes())
 
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("name", name).Msg("failed to store file in sqlar")
+		log.Error().Err(err).Str("name", name).Msg("failed to store file in sqlar")
 		return false
 	}
 
-	sqlarLogger.Debug().
+	log.Debug().
 		Str("name", name).
 		Int("originalSize", originalSize).
 		Int("compressedSize", compressed.Len()).
@@ -57,25 +55,25 @@ func SqlarGet(name string) []byte {
 	var sz int
 	err := db.QueryRow("SELECT data, sz FROM sqlar WHERE name = ?", name).Scan(&compressedData, &sz)
 	if err != nil {
-		sqlarLogger.Debug().Str("name", name).Msg("file not found in sqlar")
+		log.Debug().Str("name", name).Msg("file not found in sqlar")
 		return nil
 	}
 
 	// Decompress using zlib
 	reader, err := zlib.NewReader(bytes.NewReader(compressedData))
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("name", name).Msg("failed to create zlib reader")
+		log.Error().Err(err).Str("name", name).Msg("failed to create zlib reader")
 		return nil
 	}
 	defer reader.Close()
 
 	decompressed, err := io.ReadAll(reader)
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("name", name).Msg("failed to decompress data")
+		log.Error().Err(err).Str("name", name).Msg("failed to decompress data")
 		return nil
 	}
 
-	sqlarLogger.Debug().Str("name", name).Int("size", sz).Msg("retrieved file from sqlar")
+	log.Debug().Str("name", name).Int("size", sz).Msg("retrieved file from sqlar")
 	return decompressed
 }
 
@@ -94,12 +92,12 @@ func SqlarDelete(name string) bool {
 
 	result, err := db.Exec("DELETE FROM sqlar WHERE name = ?", name)
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("name", name).Msg("failed to delete file from sqlar")
+		log.Error().Err(err).Str("name", name).Msg("failed to delete file from sqlar")
 		return false
 	}
 
 	changes, _ := result.RowsAffected()
-	sqlarLogger.Debug().Str("name", name).Int64("changes", changes).Msg("deleted file from sqlar")
+	log.Debug().Str("name", name).Int64("changes", changes).Msg("deleted file from sqlar")
 	return changes > 0
 }
 
@@ -121,7 +119,7 @@ func SqlarList(prefix string) []SqlarFileInfo {
 		ORDER BY name
 	`, prefix+"%")
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("prefix", prefix).Msg("failed to list files in sqlar")
+		log.Error().Err(err).Str("prefix", prefix).Msg("failed to list files in sqlar")
 		return nil
 	}
 	defer rows.Close()
@@ -134,7 +132,7 @@ func SqlarList(prefix string) []SqlarFileInfo {
 		}
 	}
 
-	sqlarLogger.Debug().Str("prefix", prefix).Int("count", len(files)).Msg("listed files in sqlar")
+	log.Debug().Str("prefix", prefix).Int("count", len(files)).Msg("listed files in sqlar")
 	return files
 }
 
@@ -144,12 +142,12 @@ func SqlarDeletePrefix(prefix string) int {
 
 	result, err := db.Exec("DELETE FROM sqlar WHERE name LIKE ?", prefix+"%")
 	if err != nil {
-		sqlarLogger.Error().Err(err).Str("prefix", prefix).Msg("failed to delete files by prefix from sqlar")
+		log.Error().Err(err).Str("prefix", prefix).Msg("failed to delete files by prefix from sqlar")
 		return 0
 	}
 
 	changes, _ := result.RowsAffected()
-	sqlarLogger.Debug().Str("prefix", prefix).Int64("changes", changes).Msg("deleted files by prefix from sqlar")
+	log.Debug().Str("prefix", prefix).Int64("changes", changes).Msg("deleted files by prefix from sqlar")
 	return int(changes)
 }
 

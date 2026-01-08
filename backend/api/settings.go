@@ -8,13 +8,11 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var settingsLogger = log.GetLogger("ApiSettings")
-
 // GetSettings handles GET /api/settings
 func GetSettings(c *gin.Context) {
 	settings, err := db.GetAllSettings()
 	if err != nil {
-		settingsLogger.Error().Err(err).Msg("failed to get settings")
+		log.Error().Err(err).Msg("failed to get settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get settings"})
 		return
 	}
@@ -31,7 +29,7 @@ func UpdateSettings(c *gin.Context) {
 	}
 
 	if err := db.UpdateSettings(updates); err != nil {
-		settingsLogger.Error().Err(err).Msg("failed to update settings")
+		log.Error().Err(err).Msg("failed to update settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
 		return
 	}
@@ -49,7 +47,7 @@ func UpdateSettings(c *gin.Context) {
 // ResetSettings handles POST /api/settings
 func ResetSettings(c *gin.Context) {
 	if err := db.ResetSettings(); err != nil {
-		settingsLogger.Error().Err(err).Msg("failed to reset settings")
+		log.Error().Err(err).Msg("failed to reset settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset settings"})
 		return
 	}

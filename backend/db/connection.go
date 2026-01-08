@@ -17,8 +17,6 @@ var (
 	mu   sync.RWMutex
 )
 
-var logger = log.GetLogger("DB")
-
 // GetDB returns the singleton database connection
 func GetDB() *sql.DB {
 	once.Do(func() {
@@ -26,7 +24,7 @@ func GetDB() *sql.DB {
 
 		// Ensure database directory exists
 		if err := ensureDatabaseDirectory(cfg.DatabasePath); err != nil {
-			logger.Fatal().Err(err).Msg("failed to create database directory")
+			log.Fatal().Err(err).Msg("failed to create database directory")
 		}
 
 		// Open database connection with SQLite pragmas
@@ -36,7 +34,7 @@ func GetDB() *sql.DB {
 		var err error
 		db, err = sql.Open("sqlite3", dsn)
 		if err != nil {
-			logger.Fatal().Err(err).Str("path", cfg.DatabasePath).Msg("failed to open database")
+			log.Fatal().Err(err).Str("path", cfg.DatabasePath).Msg("failed to open database")
 		}
 
 		// Configure connection pool for better concurrency
@@ -45,15 +43,15 @@ func GetDB() *sql.DB {
 
 		// Verify connection
 		if err := db.Ping(); err != nil {
-			logger.Fatal().Err(err).Msg("failed to ping database")
+			log.Fatal().Err(err).Msg("failed to ping database")
 		}
 
 		// Run migrations
 		if err := runMigrations(db); err != nil {
-			logger.Fatal().Err(err).Msg("failed to run migrations")
+			log.Fatal().Err(err).Msg("failed to run migrations")
 		}
 
-		logger.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
+		log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
 	})
 
 	return db
@@ -77,7 +75,7 @@ func ensureDatabaseDirectory(dbPath string) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
-		logger.Info().Str("dir", dir).Msg("created database directory")
+		log.Info().Str("dir", dir).Msg("created database directory")
 	}
 	return nil
 }

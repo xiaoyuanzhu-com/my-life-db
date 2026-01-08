@@ -9,8 +9,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var logger = log.GetLogger("DigestWorker")
-
 // Worker manages digest processing
 type Worker struct {
 	stopChan   chan struct{}
@@ -29,7 +27,7 @@ func NewWorker() *Worker {
 
 // Start begins processing digests
 func (w *Worker) Start() {
-	logger.Info().Msg("starting digest worker")
+	log.Info().Msg("starting digest worker")
 
 	// Initialize the digester registry
 	InitializeRegistry()
@@ -50,20 +48,20 @@ func (w *Worker) Start() {
 func (w *Worker) Stop() {
 	close(w.stopChan)
 	w.wg.Wait()
-	logger.Info().Msg("digest worker stopped")
+	log.Info().Msg("digest worker stopped")
 }
 
 // OnFileChange handles file change events from FS worker
 func (w *Worker) OnFileChange(filePath string, isNew bool, contentChanged bool) {
 	select {
 	case w.queue <- filePath:
-		logger.Debug().
+		log.Debug().
 			Str("path", filePath).
 			Bool("isNew", isNew).
 			Bool("contentChanged", contentChanged).
 			Msg("queued file for digest")
 	default:
-		logger.Warn().Str("path", filePath).Msg("digest queue full, dropping file")
+		log.Warn().Str("path", filePath).Msg("digest queue full, dropping file")
 	}
 }
 
@@ -98,12 +96,12 @@ func (w *Worker) processFile(filePath string) {
 	}
 	defer w.processing.Delete(filePath)
 
-	logger.Debug().Str("path", filePath).Msg("processing file")
+	log.Debug().Str("path", filePath).Msg("processing file")
 
 	// Get file record
 	file, err := db.GetFileByPath(filePath)
 	if err != nil || file == nil {
-		logger.Error().Str("path", filePath).Msg("file not found")
+		log.Error().Str("path", filePath).Msg("file not found")
 		return
 	}
 
@@ -134,7 +132,7 @@ func (w *Worker) processFile(filePath string) {
 			}
 		}
 		if inProgress {
-			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("in progress, skipping")
+			log.Debug().Str("path", filePath).Str("digester", digesterName).Msg("in progress, skipping")
 			skipped++
 			continue
 		}
@@ -152,7 +150,7 @@ func (w *Worker) processFile(filePath string) {
 		}
 
 		if len(pendingOutputs) == 0 {
-			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("already completed")
+			log.Debug().Str("path", filePath).Str("digester", digesterName).Msg("already completed")
 			skipped++
 			continue
 		}
@@ -160,7 +158,7 @@ func (w *Worker) processFile(filePath string) {
 		// Check if can digest
 		can, err := digester.CanDigest(filePath, file, nil)
 		if err != nil {
-			logger.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("canDigest error")
+			log.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("canDigest error")
 			failed++
 			continue
 		}
@@ -170,7 +168,7 @@ func (w *Worker) processFile(filePath string) {
 			for _, name := range pendingOutputs {
 				markDigest(filePath, name, DigestStatusSkipped, "Not applicable")
 			}
-			logger.Debug().Str("path", filePath).Str("digester", digesterName).Msg("skipped")
+			log.Debug().Str("path", filePath).Str("digester", digesterName).Msg("skipped")
 			skipped++
 			continue
 		}
@@ -186,7 +184,7 @@ func (w *Worker) processFile(filePath string) {
 			for _, name := range pendingOutputs {
 				markDigest(filePath, name, DigestStatusFailed, err.Error())
 			}
-			logger.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("digest failed")
+			log.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("digest failed")
 			failed++
 			continue
 		}
@@ -218,10 +216,10 @@ func (w *Worker) processFile(filePath string) {
 		}
 
 		processed++
-		logger.Info().Str("path", filePath).Str("digester", digesterName).Str("status", finalStatus).Msg("processed")
+		log.Info().Str("path", filePath).Str("digester", digesterName).Str("status", finalStatus).Msg("processed")
 	}
 
-	logger.Info().
+	log.Info().
 		Str("path", filePath).
 		Int("processed", processed).
 		Int("skipped", skipped).
@@ -368,7 +366,7 @@ func triggerCascadingResets(filePath, digesterName string) {
 	}
 
 	if len(resetTargets) > 0 {
-		logger.Info().
+		log.Info().
 			Str("path", filePath).
 			Str("trigger", digesterName).
 			Strs("targets", resetTargets).

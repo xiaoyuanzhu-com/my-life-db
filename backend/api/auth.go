@@ -11,8 +11,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var authLogger = log.GetLogger("ApiAuth")
-
 // Login handles POST /api/auth/login
 func Login(c *gin.Context) {
 	var body struct {
@@ -26,7 +24,7 @@ func Login(c *gin.Context) {
 	// Get stored password hash
 	storedHash, err := db.GetSetting("auth_password_hash")
 	if err != nil {
-		authLogger.Error().Err(err).Msg("failed to get password hash")
+		log.Error().Err(err).Msg("failed to get password hash")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication error"})
 		return
 	}
@@ -36,7 +34,7 @@ func Login(c *gin.Context) {
 		// Set the password
 		hash := hashPassword(body.Password)
 		if err := db.SetSetting("auth_password_hash", hash); err != nil {
-			authLogger.Error().Err(err).Msg("failed to save password hash")
+			log.Error().Err(err).Msg("failed to save password hash")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set password"})
 			return
 		}

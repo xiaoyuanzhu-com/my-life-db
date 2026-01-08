@@ -17,7 +17,6 @@ import (
 var (
 	haidClient     *HAIDClient
 	haidClientOnce sync.Once
-	haidLogger     = log.GetLogger("HAID")
 )
 
 // HAIDClient wraps the HAID API client
@@ -100,7 +99,7 @@ func GetHAIDClient() *HAIDClient {
 	haidClientOnce.Do(func() {
 		cfg := config.Get()
 		if cfg.HAIDBaseURL == "" {
-			haidLogger.Warn().Msg("HAID_BASE_URL not configured, HAID disabled")
+			log.Warn().Msg("HAID_BASE_URL not configured, HAID disabled")
 			return
 		}
 
@@ -113,7 +112,7 @@ func GetHAIDClient() *HAIDClient {
 			},
 		}
 
-		haidLogger.Info().Str("baseURL", cfg.HAIDBaseURL).Msg("HAID initialized")
+		log.Info().Str("baseURL", cfg.HAIDBaseURL).Msg("HAID initialized")
 	})
 
 	return haidClient

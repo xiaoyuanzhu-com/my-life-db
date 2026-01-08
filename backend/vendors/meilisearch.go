@@ -11,7 +11,6 @@ import (
 var (
 	meiliClient     *MeiliClient
 	meiliClientOnce sync.Once
-	meiliLogger     = log.GetLogger("Meilisearch")
 )
 
 // MeiliClient wraps the Meilisearch client
@@ -54,7 +53,7 @@ func GetMeiliClient() *MeiliClient {
 	meiliClientOnce.Do(func() {
 		cfg := config.Get()
 		if cfg.MeiliHost == "" {
-			meiliLogger.Warn().Msg("MEILI_HOST not configured, Meilisearch disabled")
+			log.Warn().Msg("MEILI_HOST not configured, Meilisearch disabled")
 			return
 		}
 
@@ -62,7 +61,7 @@ func GetMeiliClient() *MeiliClient {
 
 		// Verify connection
 		if _, err := client.Health(); err != nil {
-			meiliLogger.Error().Err(err).Msg("failed to connect to Meilisearch")
+			log.Error().Err(err).Msg("failed to connect to Meilisearch")
 			return
 		}
 
@@ -74,7 +73,7 @@ func GetMeiliClient() *MeiliClient {
 			indexUID: cfg.MeiliIndex,
 		}
 
-		meiliLogger.Info().Str("host", cfg.MeiliHost).Str("index", cfg.MeiliIndex).Msg("Meilisearch initialized")
+		log.Info().Str("host", cfg.MeiliHost).Str("index", cfg.MeiliIndex).Msg("Meilisearch initialized")
 	})
 
 	return meiliClient

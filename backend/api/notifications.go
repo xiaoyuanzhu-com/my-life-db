@@ -10,8 +10,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
-var notifLogger = log.GetLogger("ApiNotifications")
-
 // NotificationStream handles GET /api/notifications/stream (SSE)
 func NotificationStream(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
@@ -30,7 +28,7 @@ func NotificationStream(c *gin.Context) {
 	})
 	c.Writer.Flush()
 
-	notifLogger.Debug().Msg("client connected to notification stream")
+	log.Debug().Msg("client connected to notification stream")
 
 	// Heartbeat ticker
 	ticker := time.NewTicker(30 * time.Second)
@@ -52,7 +50,7 @@ func NotificationStream(c *gin.Context) {
 			c.Writer.Flush()
 
 		case <-c.Request.Context().Done():
-			notifLogger.Debug().Msg("client disconnected from notification stream")
+			log.Debug().Msg("client disconnected from notification stream")
 			return
 		}
 	}
@@ -61,7 +59,7 @@ func NotificationStream(c *gin.Context) {
 func sendSSEEventGin(c *gin.Context, event notifications.Event) {
 	data, err := json.Marshal(event)
 	if err != nil {
-		notifLogger.Error().Err(err).Msg("failed to marshal event")
+		log.Error().Err(err).Msg("failed to marshal event")
 		return
 	}
 	fmt.Fprintf(c.Writer, "data: %s\n\n", data)

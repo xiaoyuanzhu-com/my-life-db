@@ -11,8 +11,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
-var searchLogger = log.GetLogger("ApiSearch")
-
 // SearchResultItem represents a search result
 type SearchResultItem struct {
 	Path            string            `json:"path"`
@@ -127,7 +125,7 @@ func Search(c *gin.Context) {
 			PathFilter: pathFilter,
 		})
 		if err != nil {
-			searchLogger.Error().Err(err).Msg("meilisearch failed")
+			log.Error().Err(err).Msg("meilisearch failed")
 		} else {
 			sources = append(sources, "keyword")
 			total = meiliResults.EstimatedTotalHits
@@ -161,7 +159,7 @@ func Search(c *gin.Context) {
 		// Get query embedding
 		embedding, err := vendors.EmbedText(query)
 		if err != nil {
-			searchLogger.Error().Err(err).Msg("failed to get query embedding")
+			log.Error().Err(err).Msg("failed to get query embedding")
 		} else {
 			semanticResults, err := qdrantClient.Search(embedding, vendors.QdrantSearchOptions{
 				Limit:          limit,
@@ -170,7 +168,7 @@ func Search(c *gin.Context) {
 				PathFilter:     pathFilter,
 			})
 			if err != nil {
-				searchLogger.Error().Err(err).Msg("qdrant search failed")
+				log.Error().Err(err).Msg("qdrant search failed")
 			} else {
 				sources = append(sources, "semantic")
 
@@ -219,7 +217,7 @@ func Search(c *gin.Context) {
 
 	// If no search services available, fall back to database search
 	if len(sources) == 0 {
-		searchLogger.Warn().Msg("no search services available, falling back to database search")
+		log.Warn().Msg("no search services available, falling back to database search")
 		sources = append(sources, "database")
 
 		// Simple LIKE search on file names and text preview
