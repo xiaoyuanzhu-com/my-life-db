@@ -112,7 +112,7 @@ func Search(c *gin.Context) {
 	meiliClient := vendors.GetMeiliClient()
 	qdrantClient := vendors.GetQdrantClient()
 
-	var results []SearchResultItem
+	results := []SearchResultItem{}
 	var total int
 	sources := []string{}
 
@@ -136,6 +136,31 @@ func Search(c *gin.Context) {
 					continue
 				}
 
+				// Build highlights from formatted fields
+				highlights := make(map[string]string)
+				if hit.Formatted != nil {
+					for k, v := range hit.Formatted {
+						highlights[k] = v
+					}
+				}
+
+				// Build snippet from formatted content or raw content
+				snippet := hit.Content
+				if len(snippet) > 200 {
+					snippet = snippet[:200]
+				}
+				if formatted, ok := hit.Formatted["content"]; ok && formatted != "" {
+					snippet = formatted
+					if len(snippet) > 200 {
+						snippet = snippet[:200]
+					}
+				}
+
+				// Build match context for keyword results
+				var matchContext *MatchContext
+				terms := extractSearchTerms(query)
+				matchContext = buildKeywordMatchContext(hit, file, terms)
+
 				results = append(results, SearchResultItem{
 					Path:            file.Path,
 					Name:            file.Name,
@@ -146,9 +171,11 @@ func Search(c *gin.Context) {
 					CreatedAt:       file.CreatedAt,
 					Digests:         file.Digests,
 					Score:           1.0,
-					Snippet:         hit.Content[:min(200, len(hit.Content))],
+					Snippet:         snippet,
 					TextPreview:     file.TextPreview,
 					ScreenshotSqlar: file.ScreenshotSqlar,
+					Highlights:      highlights,
+					MatchContext:    matchContext,
 				})
 			}
 		}
@@ -310,4 +337,147 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// buildKeywordMatchContext creates match context from Meilisearch formatted results
+// This matches the Node.js buildDigestMatchContext function
+func buildKeywordMatchContext(hit vendors.MeiliHit, file *db.FileWithDigests, terms []string) *MatchContext {
+	const highlightTag = "<em>"
+
+	if len(terms) == 0 {
+		return nil
+	}
+
+	// Digest labels matching Node.js TEXT_SOURCE_LABELS and ADDITIONAL_DIGEST_LABELS
+	digestLabels := map[string]string{
+		"url-crawl-content":   "Web page content",
+		"url-crawl-summary":   "Summary",
+		"doc-to-markdown":     "Document content",
+		"image-ocr":           "Image text (OCR)",
+		"image-captioning":    "Image caption",
+		"image-objects":       "Image objects",
+		"speech-recognition":  "Speech transcript",
+		"tags":                "Tags",
+	}
+
+	// Field configuration matching Node.js DIGEST_FIELD_CONFIG
+	type fieldConfig struct {
+		field         string
+		digesterTypes []string
+		label         string
+	}
+
+	fieldConfigs := []fieldConfig{
+		{"filePath", []string{}, "File path"},
+		{"summary", []string{"url-crawl-summary"}, "Summary"},
+		{"tags", []string{"tags"}, "Tags"},
+		{"content", []string{"url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "image-objects", "speech-recognition"}, "File content"},
+	}
+
+	// Check each field in priority order
+	for _, config := range fieldConfigs {
+		formattedValue := hit.Formatted[config.field]
+		if !hasHighlight(formattedValue, highlightTag) {
+			continue
+		}
+
+		snippet := extractSnippetFromFormatted(formattedValue, 200)
+		if config.field == "content" {
+			snippet = extractSnippetFromFormatted(formattedValue, 300)
+		}
+		if strings.TrimSpace(snippet) == "" {
+			continue
+		}
+
+		// Determine the source type label
+		sourceType := config.label
+
+		// For fields with associated digesters, try to find which digest matched
+		if len(config.digesterTypes) > 0 {
+			// Find which digest actually contains the matched text
+			for _, digesterType := range config.digesterTypes {
+				var matchedDigest *db.Digest
+				for i := range file.Digests {
+					if file.Digests[i].Digester == digesterType && file.Digests[i].Content != nil {
+						matchedDigest = &file.Digests[i]
+						break
+					}
+				}
+
+				if matchedDigest != nil && matchedDigest.Content != nil {
+					// Check if any term matches in this digest's content
+					contentLower := strings.ToLower(*matchedDigest.Content)
+					for _, term := range terms {
+						if strings.Contains(contentLower, strings.ToLower(term)) {
+							// Use the digest-specific label if available
+							if label, ok := digestLabels[digesterType]; ok {
+								sourceType = label
+							}
+							goto found
+						}
+					}
+				}
+			}
+		}
+
+	found:
+		return &MatchContext{
+			Source:     "digest",
+			Snippet:    snippet,
+			Terms:      terms,
+			SourceType: sourceType,
+		}
+	}
+
+	return nil
+}
+
+// hasHighlight checks if a string contains highlight tags
+func hasHighlight(text string, highlightTag string) bool {
+	return text != "" && strings.Contains(text, highlightTag)
+}
+
+// extractSnippetFromFormatted extracts a snippet around the highlight
+func extractSnippetFromFormatted(formattedText string, maxLength int) string {
+	const highlightPre = "<em>"
+	const highlightPost = "</em>"
+
+	highlightStart := strings.Index(formattedText, highlightPre)
+	if highlightStart == -1 {
+		if len(formattedText) > maxLength {
+			return formattedText[:maxLength]
+		}
+		return formattedText
+	}
+
+	// Extract context around the highlight
+	contextRadius := 80
+	start := max(0, highlightStart-contextRadius)
+	end := min(len(formattedText), highlightStart+contextRadius+100)
+
+	snippet := formattedText[start:end]
+	if start > 0 {
+		snippet = "..." + snippet
+	}
+	if end < len(formattedText) {
+		snippet = snippet + "..."
+	}
+
+	// Trim if still too long, but keep the highlight
+	if len(snippet) > maxLength {
+		firstHighlight := strings.Index(snippet, highlightPre)
+		highlightEnd := strings.Index(snippet[firstHighlight:], highlightPost)
+		if firstHighlight != -1 && highlightEnd != -1 {
+			minLength := firstHighlight + highlightEnd + len(highlightPost) + 20
+			if minLength < maxLength {
+				snippet = snippet[:maxLength] + "..."
+			} else {
+				snippet = snippet[:minLength] + "..."
+			}
+		} else {
+			snippet = snippet[:maxLength] + "..."
+		}
+	}
+
+	return strings.TrimSpace(snippet)
 }
