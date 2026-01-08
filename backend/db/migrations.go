@@ -62,31 +62,20 @@ func runMigrations(db *sql.DB) error {
 			Str("description", m.Description).
 			Msg("applying migration")
 
-		// Run migration in a transaction
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("failed to begin transaction for migration %d: %w", m.Version, err)
-		}
-
+		// Run migration (migrations handle their own transaction if needed)
 		if err := m.Up(db); err != nil {
-			tx.Rollback()
 			return fmt.Errorf("migration %d failed: %w", m.Version, err)
 		}
 
 		// Record migration
-		_, err = tx.Exec(
+		_, err = db.Exec(
 			"INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)",
 			m.Version,
 			time.Now().UTC().Format(time.RFC3339),
 			m.Description,
 		)
 		if err != nil {
-			tx.Rollback()
 			return fmt.Errorf("failed to record migration %d: %w", m.Version, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit migration %d: %w", m.Version, err)
 		}
 
 		log.Info().
