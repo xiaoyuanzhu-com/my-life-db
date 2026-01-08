@@ -1,0 +1,9 @@
+# Binaries
+server
+*.exe
+
+# Vendor (if using)
+vendor/
+
+# Test coverage
+coverage.out

@@ -4,11 +4,11 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
 # Copy source and build
-COPY . .
+COPY frontend/ .
 RUN npm run build:client
 
 # Stage 2: Build Go server
@@ -19,16 +19,15 @@ WORKDIR /app
 RUN apk add --no-cache gcc musl-dev
 
 # Copy go files
-COPY go-server/go.mod go-server/go.sum ./go-server/
-WORKDIR /app/go-server
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 # Copy Go source
-COPY go-server/ ./
+COPY backend/ ./
 
 # Build with CGO enabled for SQLite
 ENV CGO_ENABLED=1
-RUN go build -o /app/bin/server ./cmd/server
+RUN go build -o /app/bin/server .
 
 # Stage 3: Production image
 FROM alpine:3.20 AS runner

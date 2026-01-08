@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 # Copy package files
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Dependencies stage
 FROM base AS deps
@@ -15,7 +15,7 @@ RUN npm ci
 # Builder stage - build the application
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY frontend/ .
 
 RUN npm run build
 
