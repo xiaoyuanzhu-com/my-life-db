@@ -4,225 +4,148 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a React Router 7 application with TypeScript, React 19, and Tailwind CSS 4. It uses Express as the HTTP server and Vite for bundling.
+MyLifeDB is a filesystem-based personal knowledge management system with:
+- **Frontend**: React Router 7 + React 19 + TypeScript + Tailwind CSS 4 (in `frontend/`)
+- **Backend**: Go HTTP server with SQLite (in `backend/`)
+
+The backend provides all API endpoints, background workers, and static file serving. The frontend is a React SPA that communicates with the backend API.
 
 ## Common Commands
 
-### Development
-- `npm run dev` - Start development server with Vite (runs on http://localhost:3000)
-- `npm run build` - Build production application
-- `npm start` - Start production server (must run `npm run build` first)
-- `npm run lint` - Run ESLint to check code quality
-- `npm run typecheck` - Generate types and run TypeScript compiler
+### Frontend (in `frontend/` directory)
+```bash
+npm run dev          # Start dev server with Vite HMR (http://localhost:12345)
+npm run build        # Build production React app
+npm run build:client # Build client-only (for Go backend)
+npm run lint         # Run ESLint
+npm run typecheck    # Generate types + run TypeScript compiler
+```
 
-### Important Build Details
-- This project uses **Vite** as the bundler
-- Server runs on **Express** with React Router SSR
-- TypeScript strict mode is enabled
+### Backend (in `backend/` directory)
+```bash
+make dev             # Run Go server in development mode
+make build           # Build frontend + Go server
+make build-server    # Build Go server only → ../bin/server
+make test            # Run Go tests
+make lint            # Run Go linter
+```
+
+### Full Stack
+```bash
+# Development: Run Go backend (serves built frontend)
+cd backend && make dev
+
+# Production: Build everything, then run
+cd backend && make build && ../bin/server
+```
 
 ## Architecture
 
-### Data Storage Structure
+### Project Structure
+```
+my-life-db/
+├── frontend/           # React Router 7 SPA
+│   ├── app/
+│   │   ├── .server/    # Server-side code (SSR loaders, init)
+│   │   ├── components/ # UI components
+│   │   ├── routes/     # File-based routing (api.*.ts, pages)
+│   │   ├── lib/        # Client utilities
+│   │   └── types/      # TypeScript types
+│   ├── server.js       # Express + Vite dev server
+│   └── package.json
+├── backend/            # Go HTTP server
+│   ├── api/            # HTTP handlers (35+ endpoints)
+│   ├── db/             # SQLite database layer
+│   ├── workers/        # Background workers (fs watcher, digest)
+│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI)
+│   ├── notifications/  # SSE service
+│   └── main.go
+└── docs/               # Product and technical design docs
+```
 
-The application uses a flat, user-friendly data structure with two special folders:
-
+### Data Storage
 ```
 MY_DATA_DIR/
-├── inbox/              # Unprocessed items (source of truth)
-│   ├── photo.jpg       # All files saved individually
-│   ├── abc123.md       # Text-only saves (UUID name)
-│   ├── photo-2.jpg     # Multiple files from same upload
-│   └── {old-uuid}/     # Legacy folder items (existing data)
-│       ├── text.md
-│       └── files...
-├── notes/              # User library folders (source of truth)
-├── journal/            # User library folders (source of truth)
-├── work/               # User library folders (source of truth)
-└── app/                # Application data (rebuildable)
-    └── my-life-db/
-        └── database.sqlite
+├── inbox/              # Unprocessed files (source of truth)
+├── notes/, journal/... # User library folders (source of truth)
+└── app/my-life-db/     # Rebuildable app data
+    └── database.sqlite
 ```
 
-**Design Principles:**
-1. **inbox** and user folders (notes, journal, etc.) are the **source of truth** - plain files on disk
-2. **app/** folder contains rebuildable data - can be deleted and rebuilt from source files
-3. **Reserved folders**: `inbox`, `app` (all others are user library content)
-4. MyLifeDB is not the only app managing the data - other apps can read/write files
-5. Users can delete the app folder and rebuild search indexes, crawl results, etc.
+**Key principles:**
+- Filesystem is the source of truth (inbox + library folders)
+- `app/` contains rebuildable data (can be deleted and rebuilt)
+- Files referenced by relative paths, no synthetic IDs
 
 ### Database (SQLite)
-
-- **Location**: `MY_DATA_DIR/app/my-life-db/database.sqlite`
-- **`MY_DATA_DIR`** environment variable sets the base data directory (defaults to `./data`)
-- Uses `better-sqlite3` for synchronous database operations
-- Database is automatically created and initialized on first use
-
-**Core Tables:**
-
-1. **files** - Rebuildable cache of file metadata
-   - Tracks all files and folders in DATA_ROOT for fast queries
-   - Primary key: relative path from DATA_ROOT (e.g., 'inbox/photo.jpg', 'inbox/uuid-folder')
-   - Stores: name, size, MIME type, SHA256 hash (for <10MB files), timestamps
-   - Can be deleted and rebuilt from filesystem at any time
-   - Updated by library scanner on schedule
-
-2. **digests** - AI-generated content (rebuildable)
-   - Summary, tags, screenshots, crawled content, etc.
-   - References files by path (file_path field)
-   - Text content stored in `content` field
-   - Binary content stored in SQLAR (see below)
-   - Status field: 'pending', 'enriching', 'enriched', 'failed'
-   - Overall enrichment status derived from digest statuses
-
-3. **sqlar** - SQLite Archive format for binary digests
-   - Stores compressed screenshots, processed HTML, etc.
-   - Standard SQLite format with zlib compression
-   - Files named using path hash: `{path_hash}/{digest_type}/filename`
-
-4. **tasks** - Background job queue
-5. **settings** - Application configuration
-6. **search_documents** - Chunked content for search (TO BE UPDATED)
-
-### Library Scanner
-
-- Automatically scans `MY_DATA_DIR` every 1 hour for new/changed files
-- Updates files table cache for all non-reserved folders (inbox/, app/ are skipped)
-- Hashes small files (< 10MB) for change detection
-- Stores file metadata: path, name, size, MIME type, hash, timestamps
-- Runs on app startup (after 10 seconds) and periodically
-- Files table is purely a cache - can be deleted and rebuilt
-
-### File-Centric Architecture
-
-**No "Items" Abstraction:**
-- Files are the primary abstraction - referenced by relative paths
-- No synthetic item IDs or items table
-- Digests reference files by path (e.g., 'inbox/photo.jpg', 'inbox/uuid-folder')
-- Status derived from digest table, not stored separately
-- Maximum simplicity and durability - works with any file browser
-
-**Inbox Handling:**
-- **All files saved individually** in inbox root (no folders for new uploads)
-- Text only: saved as `inbox/{uuid}.md`
-- Single file: saved as `inbox/{unique-filename}` (original name, deduplicated)
-- Text + files: saved as `inbox/{uuid}.md`, `inbox/file1.jpg`, `inbox/file2.jpg`, etc.
-- Multiple files: saved as `inbox/file1.jpg`, `inbox/file2.jpg`, etc. (original names)
-- Text saved first (if provided), then files in upload order
-- File deduplication uses macOS-style naming: `photo.jpg`, `photo 2.jpg`, `photo 3.jpg`
-- **Legacy**: Existing `inbox/{uuid}/` folders still supported (read/edit/delete work)
-- No folder creation for new uploads - pure file-based architecture
-
-**Digest Workflow:**
-- Each file path can have multiple digest types (summary, tags, screenshot, content-md)
-- Digests created on-demand via `/api/digest/{...path}` endpoint (works for any file)
-- Status tracked in digest.status field: pending → enriching → enriched (or failed)
-- Digest IDs generated from file path hash + digest type for stability
-
-### Application Structure
-- Uses React Router 7 with file-based routing in `app/routes/`
-- Server initialization in `app/server.ts` handles:
-  - Database initialization
-  - Search index setup (Meilisearch, Qdrant)
-  - Background services (task queue, file watcher, digest supervisor)
-- Root layout in `app/root.tsx` provides HTML structure and global styles
-- Route configuration in `app/routes.ts`
-
-### Styling
-- Tailwind CSS 4 with Vite plugin (`@tailwindcss/vite`)
-- Global styles in `app/globals.css` with:
-  - CSS custom properties for theming (`--background`, `--foreground`)
-  - Automatic dark mode via `prefers-color-scheme`
-  - Tailwind theme inline configuration with font variables
-
-**Dark Mode - IMPORTANT:**
-- This project uses **media query-based dark mode**, NOT class-based
-- **DO NOT use Tailwind's `dark:` variant** - it won't work (no `.dark` class on `<html>`)
-- **USE semantic colors** that auto-adapt: `bg-background`, `text-foreground`, `bg-muted`, `border-border`
-- **For status colors**, use opacity: `bg-destructive/10`, `bg-emerald-500/10`, `bg-primary/5`
-- See `docs/tech-design.md` section 4.1 for full details
-
-### UI Components (shadcn/ui)
-**IMPORTANT:** This project uses shadcn/ui components. Follow these rules:
-
-1. **Adding New Components**:
-   - ALWAYS use the official shadcn CLI: `npx shadcn@latest add <component-name>`
-   - Example: `npx shadcn@latest add tabs`
-   - NEVER create shadcn components manually
-
-2. **Available Components**: Check https://ui.shadcn.com/docs/components for available components
-
-3. **Why Use CLI**:
-   - Automatically installs required dependencies (e.g., @radix-ui packages)
-   - Ensures correct component structure and styling
-   - Maintains consistency with project configuration
-
-### TypeScript Configuration
-- Path alias: `~/*` maps to `./app/*`
-- Module resolution: bundler
-- Strict mode enabled
-- Target: ES2022
-
-### ESLint Configuration
-- Uses flat config format (eslint.config.mjs)
-- Ignores: `node_modules`, `build`
+- Location: `MY_DATA_DIR/app/my-life-db/database.sqlite`
+- Uses better-sqlite3 (frontend) or mattn/go-sqlite3 (backend)
+- Core tables: `files`, `digests`, `sqlar`, `meili_documents`, `settings`
 
 ## Naming Conventions
 
 | Category | Convention | Examples |
 |----------|-----------|----------|
-| **Files** | `kebab-case.ts/tsx` | `file-card.tsx`, `url-crawler.ts`, `layout.tsx` |
-| **Types/Interfaces** | `PascalCase` | `FileRecord`, `Digest`, `MessageType` |
-| **Functions/Variables** | `camelCase` | `getFileByPath()`, `filePath`, `itemId` |
-| **Constants** | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
-| **DB columns** | `snake_case` | `file_path`, `created_at` |
+| Files | `kebab-case.ts/tsx` | `file-card.tsx`, `url-crawler.ts` |
+| Types/Interfaces | `PascalCase` | `FileRecord`, `Digest` |
+| Functions/Variables | `camelCase` | `getFileByPath()`, `filePath` |
+| Constants | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
+| DB columns | `snake_case` | `file_path`, `created_at` |
+| Go files | `snake_case.go` | `inbox.go`, `file_watcher.go` |
 
-### Type System Organization
+## Dark Mode (IMPORTANT)
 
-**Directory Structure:**
-```
-app/types/
-├── models/                     # Core database models
-│   ├── enums/                 # kebab-case.ts files
-│   │   ├── message-type.ts
-│   │   ├── enrichment-status.ts
-│   │   └── digest-type.ts
-│   ├── database/              # kebab-case.ts files
-│   │   ├── file-record.ts     # Contains: FileRecordRow, FileRecord, rowToFileRecord
-│   │   ├── digest.ts
-│   │   └── task.ts
-│   └── index.ts               # Aggregates exports
-├── models.ts                   # Re-exports from models/
-├── file-card.ts                # UI-specific types
-├── search.ts                   # Search API types
-├── digest-workflow.ts          # Workflow types
-└── index.ts                    # Main entry point
+This project uses **CSS media query-based dark mode**, NOT class-based.
+
+```tsx
+// WRONG - dark: variant won't work (no .dark class)
+className="bg-white dark:bg-zinc-900"
+
+// CORRECT - use semantic variables
+className="bg-background text-foreground"
+className="bg-muted border-border"
+
+// For status colors, use opacity
+className="bg-destructive/10 border-destructive/30"
 ```
 
-## Development Server
+Available semantic colors: `background`, `foreground`, `card`, `muted`, `primary`, `destructive`, `border`, `input`, `ring`
 
-**IMPORTANT:** Do NOT run `npm run dev` in the terminal. The user already has a development server running. Assume the server is always running at http://localhost:3000.
+## UI Components (shadcn/ui)
+
+Always use the CLI to add new components:
+```bash
+cd frontend && npx shadcn@latest add <component-name>
+```
+
+Never create shadcn components manually.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| PORT | 12345 | Server port |
+| MY_DATA_DIR | ./data | Data directory |
+| MEILI_HOST | | Meilisearch URL |
+| QDRANT_HOST | | Qdrant URL |
+| OPENAI_API_KEY | | OpenAI API key |
+| DEBUG | | Comma-separated module names for debug logging |
+
+## Debug Logging
+
+Enable debug logs for specific modules:
+```bash
+DEBUG=VendorOpenAI,DigestWorker ./bin/server
+```
 
 ## Git Workflow
 
-**IMPORTANT:** Do NOT create git commits automatically. Only commit when explicitly instructed by the user with commands like "commit it" or "commit this".
+Do NOT create git commits automatically. Only commit when explicitly instructed.
 
-## Debugging
+## Development Server
 
-### Per-Module Debug Logging
-
-Enable debug logs for specific modules without setting global log level to debug:
-
-```bash
-DEBUG=VendorOpenAI npm run dev
-DEBUG=VendorOpenAI,TagsDigester npm run dev
-```
-
-Common modules:
-- `VendorOpenAI` - LLM request/response logging
-- `TagsDigester` - Tag generation
-- `DigestSupervisor` - Digest processing loop
-- `LibraryScanner` - File scanning
+The user typically has a development server running. Check before starting a new one.
 
 ## Design Preferences
 
-- **Minimal Borders**: Avoid using too many dividers and borders in the UI. Keep the design clean and minimal.
+- **Minimal Borders**: Keep the UI clean with few dividers and borders.
