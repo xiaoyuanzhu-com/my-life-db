@@ -8,7 +8,7 @@ export function CrawlButton({ itemId }: { itemId: string }) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/digest/inbox/${itemId}?step=crawl`, { method: 'POST' });
+      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=crawl`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || res.statusText);

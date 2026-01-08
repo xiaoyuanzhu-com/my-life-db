@@ -30,12 +30,13 @@ func SetupRoutes(r *gin.Engine) {
 	api.POST("/inbox/:id/reenrich", ReenrichInboxItem)
 	api.GET("/inbox/:id/status", GetInboxItemStatus)
 
-	// Digest routes
+	// Digest routes - static routes first
 	api.GET("/digest/digesters", GetDigesters)
 	api.GET("/digest/stats", GetDigestStats)
 	api.POST("/digest/reset/:digester", ResetDigester)
-	api.GET("/digest/*path", GetDigest)
-	api.POST("/digest/*path", TriggerDigest)
+	// Wildcard routes use /digest/file/* to avoid conflict with static routes
+	api.GET("/digest/file/*path", GetDigest)
+	api.POST("/digest/file/*path", TriggerDigest)
 
 	// Library routes
 	api.DELETE("/library/file", DeleteLibraryFile)

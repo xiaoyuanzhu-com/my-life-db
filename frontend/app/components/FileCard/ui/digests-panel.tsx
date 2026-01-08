@@ -167,7 +167,7 @@ export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: D
     setResettingDigester(digester);
 
     try {
-      const response = await fetch(`/api/digest/${file.path}?digester=${encodeURIComponent(digester)}`, {
+      const response = await fetch(`/api/digest/file/${file.path}?digester=${encodeURIComponent(digester)}`, {
         method: 'POST',
       });
 

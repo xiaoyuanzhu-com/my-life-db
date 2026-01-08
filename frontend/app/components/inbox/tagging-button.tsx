@@ -9,7 +9,7 @@ export function TaggingButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/digest/inbox/${itemId}?step=tags`, {
+      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=tags`, {
         method: 'POST',
       });
 

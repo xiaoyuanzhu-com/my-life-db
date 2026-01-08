@@ -12,7 +12,7 @@ export function IndexButton({ itemId }: IndexButtonProps) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/digest/inbox/${itemId}?step=index`, {
+      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=index`, {
         method: 'POST',
       });
       const body = await res.json().catch(() => ({}));

@@ -420,7 +420,7 @@ export default function FileInfoPage() {
     setDigestMessage(null);
 
     try {
-      const response = await fetch(`/api/digest/${filePath}`, {
+      const response = await fetch(`/api/digest/file/${filePath}`, {
         method: "POST",
       });
 
@@ -446,7 +446,7 @@ export default function FileInfoPage() {
     setDigestMessage(null);
 
     try {
-      const response = await fetch(`/api/digest/${filePath}?digester=${encodeURIComponent(digester)}`, {
+      const response = await fetch(`/api/digest/file/${filePath}?digester=${encodeURIComponent(digester)}`, {
         method: "POST",
       });
 
