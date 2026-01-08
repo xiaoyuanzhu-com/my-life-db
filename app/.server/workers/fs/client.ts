@@ -41,13 +41,17 @@ export function startFsWorker(): Promise<void> {
     log.info({}, 'starting fs worker');
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workerPath = path.resolve(__dirname, 'worker.ts');
+    const isTypeScript = import.meta.filename?.endsWith('.ts') ?? false;
+    // In dev: worker is in same directory as client (worker.ts)
+    // In prod: client is bundled to init.js, worker is at workers/fs/worker.js
+    const workerPath = isTypeScript
+      ? path.resolve(__dirname, 'worker.ts')
+      : path.resolve(__dirname, 'workers/fs/worker.js');
     const workerUrl = `file://${workerPath}`;
 
     try {
-      // Use tsx/esm/api to dynamically register TypeScript support for workers
+      // Use tsx/esm/api to dynamically register TypeScript support for workers in dev
       // See: https://electrovir.com/2025-08-09-typescript-worker/
-      const isTypeScript = import.meta.filename?.endsWith('.ts') ?? false;
       worker = isTypeScript
         ? new Worker(
             `import('tsx/esm/api').then(({ register }) => { register(); import('${workerUrl}') })`,
