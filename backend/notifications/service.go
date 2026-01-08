@@ -57,9 +57,13 @@ func (s *NotificationService) Subscribe() (<-chan Event, func()) {
 
 	unsubscribe := func() {
 		s.mu.Lock()
-		delete(s.subscribers, ch)
-		s.mu.Unlock()
-		close(ch)
+		defer s.mu.Unlock()
+
+		// Only close if the channel is still in subscribers map
+		if _, exists := s.subscribers[ch]; exists {
+			delete(s.subscribers, ch)
+			close(ch)
+		}
 	}
 
 	return ch, unsubscribe
