@@ -2,12 +2,14 @@ package db
 
 import (
 	"database/sql"
+
+	"github.com/google/uuid"
 )
 
 // IsPinned checks if a file is pinned
 func IsPinned(path string) (bool, error) {
 	var count int
-	err := GetDB().QueryRow("SELECT COUNT(*) FROM pins WHERE path = ?", path).Scan(&count)
+	err := GetDB().QueryRow("SELECT COUNT(*) FROM pins WHERE file_path = ?", path).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -16,24 +18,27 @@ func IsPinned(path string) (bool, error) {
 
 // AddPin pins a file
 func AddPin(path string) error {
+	// Generate a unique ID for the pin
+	id := uuid.New().String()
+	now := NowUTC()
 	_, err := GetDB().Exec(`
-		INSERT INTO pins (path, created_at)
-		VALUES (?, ?)
-		ON CONFLICT(path) DO NOTHING
-	`, path, NowUTC())
+		INSERT INTO pins (id, file_path, pinned_at, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(file_path) DO NOTHING
+	`, id, path, now, now)
 	return err
 }
 
 // RemovePin unpins a file
 func RemovePin(path string) error {
-	_, err := GetDB().Exec("DELETE FROM pins WHERE path = ?", path)
+	_, err := GetDB().Exec("DELETE FROM pins WHERE file_path = ?", path)
 	return err
 }
 
 // GetAllPins retrieves all pinned files
 func GetAllPins() ([]Pin, error) {
 	rows, err := GetDB().Query(`
-		SELECT path, created_at FROM pins ORDER BY created_at DESC
+		SELECT file_path, pinned_at FROM pins ORDER BY pinned_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -57,10 +62,10 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 	query := `
 		SELECT f.path, f.name, f.is_folder, f.size, f.mime_type, f.hash,
 			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.screenshot_sqlar,
-			   p.created_at as pin_created_at
+			   p.pinned_at as pin_created_at
 		FROM pins p
-		JOIN files f ON f.path = p.path
-		ORDER BY p.created_at DESC
+		JOIN files f ON f.path = p.file_path
+		ORDER BY p.pinned_at DESC
 	`
 
 	rows, err := GetDB().Query(query)
