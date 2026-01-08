@@ -406,7 +406,7 @@ func GetPinnedInboxItems(c *gin.Context) {
 	}
 
 	// Filter to inbox only
-	var inboxFiles []db.FileWithDigests
+	inboxFiles := make([]db.FileWithDigests, 0)
 	for _, f := range files {
 		if strings.HasPrefix(f.Path, "inbox/") {
 			inboxFiles = append(inboxFiles, f)
