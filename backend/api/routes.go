@@ -33,7 +33,7 @@ func SetupRoutes(r *gin.Engine) {
 	// Digest routes - static routes first
 	api.GET("/digest/digesters", GetDigesters)
 	api.GET("/digest/stats", GetDigestStats)
-	api.POST("/digest/reset/:digester", ResetDigester)
+	api.DELETE("/digest/reset/:digester", ResetDigester)
 	// Wildcard routes use /digest/file/* to avoid conflict with static routes
 	api.GET("/digest/file/*path", GetDigest)
 	api.POST("/digest/file/*path", TriggerDigest)

@@ -9,27 +9,38 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// Available digesters
-var availableDigesters = []map[string]string{
-	{"name": "tags", "description": "Generate tags using AI"},
-	{"name": "url-crawler", "description": "Crawl and extract content from URLs"},
-	{"name": "url-crawl-summary", "description": "Summarize crawled URL content"},
-	{"name": "doc-to-markdown", "description": "Convert documents to markdown"},
-	{"name": "doc-to-screenshot", "description": "Generate document screenshots"},
-	{"name": "image-captioning", "description": "Generate image captions"},
-	{"name": "image-ocr", "description": "Extract text from images"},
-	{"name": "image-objects", "description": "Detect objects in images"},
-	{"name": "speech-recognition", "description": "Transcribe audio/video"},
-	{"name": "speech-recognition-cleanup", "description": "Clean up transcripts"},
-	{"name": "speech-recognition-summary", "description": "Summarize transcripts"},
-	{"name": "speaker-embedding", "description": "Extract speaker voice embeddings"},
-	{"name": "search-keyword", "description": "Index for keyword search"},
-	{"name": "search-semantic", "description": "Index for semantic search"},
+// DigesterInfo represents digester metadata for the API
+type DigesterInfo struct {
+	Name        string   `json:"name"`
+	Label       string   `json:"label"`
+	Description string   `json:"description"`
+	Outputs     []string `json:"outputs"`
+}
+
+// Available digesters with proper schema matching Node.js
+var availableDigesters = []DigesterInfo{
+	{Name: "tags", Label: "Tags", Description: "Generate tags using AI", Outputs: []string{"tags"}},
+	{Name: "url-crawler", Label: "URL Crawler", Description: "Crawl and extract content from URLs", Outputs: []string{"url-crawler"}},
+	{Name: "url-crawl-summary", Label: "URL Summary", Description: "Summarize crawled URL content", Outputs: []string{"url-crawl-summary"}},
+	{Name: "doc-to-markdown", Label: "Doc to Markdown", Description: "Convert documents to markdown", Outputs: []string{"doc-to-markdown"}},
+	{Name: "doc-to-screenshot", Label: "Doc Screenshot", Description: "Generate document screenshots", Outputs: []string{"doc-to-screenshot"}},
+	{Name: "image-captioning", Label: "Image Captioning", Description: "Generate image captions", Outputs: []string{"image-captioning"}},
+	{Name: "image-ocr", Label: "Image OCR", Description: "Extract text from images", Outputs: []string{"image-ocr"}},
+	{Name: "image-objects", Label: "Image Objects", Description: "Detect objects in images", Outputs: []string{"image-objects"}},
+	{Name: "speech-recognition", Label: "Speech Recognition", Description: "Transcribe audio/video", Outputs: []string{"speech-recognition"}},
+	{Name: "speech-recognition-cleanup", Label: "Transcript Cleanup", Description: "Clean up transcripts", Outputs: []string{"speech-recognition-cleanup"}},
+	{Name: "speech-recognition-summary", Label: "Transcript Summary", Description: "Summarize transcripts", Outputs: []string{"speech-recognition-summary"}},
+	{Name: "speaker-embedding", Label: "Speaker Embedding", Description: "Extract speaker voice embeddings", Outputs: []string{"speaker-embedding"}},
+	{Name: "search-keyword", Label: "Keyword Search", Description: "Index for keyword search", Outputs: []string{"search-keyword"}},
+	{Name: "search-semantic", Label: "Semantic Search", Description: "Index for semantic search", Outputs: []string{"search-semantic"}},
 }
 
 // GetDigesters handles GET /api/digest/digesters
+// Returns digester info matching Node.js schema with wrapper object
 func GetDigesters(c *gin.Context) {
-	c.JSON(http.StatusOK, availableDigesters)
+	c.JSON(http.StatusOK, gin.H{
+		"digesters": availableDigesters,
+	})
 }
 
 // GetDigestStats handles GET /api/digest/stats
@@ -44,7 +55,7 @@ func GetDigestStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// ResetDigester handles POST /api/digest/reset/:digester
+// ResetDigester handles DELETE /api/digest/reset/:digester
 func ResetDigester(c *gin.Context) {
 	digester := c.Param("digester")
 	if digester == "" {
