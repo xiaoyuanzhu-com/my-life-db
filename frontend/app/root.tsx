@@ -1,70 +1,25 @@
-import {
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  isRouteErrorResponse,
-} from "react-router";
-import type { LinksFunction, MetaFunction } from "react-router";
+import { Outlet, ScrollRestoration, isRouteErrorResponse } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
 import "./globals.css";
-
-export const meta: MetaFunction = () => {
-  return [
-    { title: "MyLifeDB" },
-    { name: "description", content: "Capture your thoughts effortlessly and transform them into structured, meaningful knowledge" },
-    { name: "application-name", content: "MyLifeDB" },
-    { name: "mobile-web-app-capable", content: "yes" },
-    { name: "apple-mobile-web-app-capable", content: "yes" },
-    { name: "apple-mobile-web-app-status-bar-style", content: "default" },
-    { name: "apple-mobile-web-app-title", content: "MyLifeDB" },
-    { name: "format-detection", content: "telephone=no" },
-    { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" },
-    { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#ffffff" },
-    { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#000000" },
-  ];
-};
-
-export const links: LinksFunction = () => {
-  return [
-    { rel: "icon", type: "image/png", sizes: "16x16", href: "/static/favicon-16x16.png" },
-    { rel: "icon", type: "image/png", sizes: "32x32", href: "/static/favicon-32x32.png" },
-    { rel: "apple-touch-icon", href: "/static/apple-touch-icon.png" },
-    { rel: "manifest", href: "/static/manifest.webmanifest" },
-  ];
-};
-
-export function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <Meta />
-        <Links />
-      </head>
-      <body className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
-        <AuthProvider>
-          <ConditionalHeader />
-          <main className="min-h-0 flex flex-col w-full min-w-0">
-            {children}
-          </main>
-        </AuthProvider>
-        <ScrollRestoration />
-        <Scripts />
-      </body>
-    </html>
-  );
-}
 
 function ConditionalHeader() {
   // Always show header
   return <Header />;
 }
 
-export default function App() {
-  return <Outlet />;
+export default function Root() {
+  return (
+    <div className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
+      <AuthProvider>
+        <ConditionalHeader />
+        <main className="min-h-0 flex flex-col w-full min-w-0">
+          <Outlet />
+        </main>
+      </AuthProvider>
+      <ScrollRestoration />
+    </div>
+  );
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {

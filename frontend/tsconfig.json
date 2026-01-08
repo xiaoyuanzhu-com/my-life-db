@@ -1,10 +1,9 @@
 {
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    ".react-router/types/**/*"
+    "**/*.tsx"
   ],
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", "dist"],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
@@ -23,7 +22,6 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"]
-    },
-    "rootDirs": [".", "./.react-router/types"]
+    }
   }
 }
