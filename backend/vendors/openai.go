@@ -156,10 +156,16 @@ func (o *OpenAIClient) Embed(texts []string) ([][]float32, error) {
 	return result, nil
 }
 
-// ListModels returns available models
-func (o *OpenAIClient) ListModels() ([]string, error) {
+// ModelInfo represents model metadata from OpenAI API
+type ModelInfo struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
+}
+
+// ListModels returns available models with proper schema matching Node.js
+func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 	if o == nil {
-		return nil, nil
+		return map[string]interface{}{"models": []ModelInfo{}}, nil
 	}
 
 	ctx := context.Background()
@@ -169,12 +175,15 @@ func (o *OpenAIClient) ListModels() ([]string, error) {
 		return nil, err
 	}
 
-	var models []string
+	models := make([]ModelInfo, 0, len(resp.Models))
 	for _, model := range resp.Models {
-		models = append(models, model.ID)
+		models = append(models, ModelInfo{
+			ID:      model.ID,
+			OwnedBy: model.OwnedBy,
+		})
 	}
 
-	return models, nil
+	return map[string]interface{}{"models": models}, nil
 }
 
 // EmbedText is a convenience function to embed a single text
