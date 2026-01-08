@@ -161,40 +161,40 @@ let cachedClient: QdrantClient | null = null;
 let collectionEnsured = false;
 
 export async function getQdrantClient(): Promise<QdrantClient> {
-  if (cachedClient) return cachedClient;
+  if (!cachedClient) {
+    // Try loading from vendor settings first
+    let url: string | undefined;
+    try {
+      const settings = await loadSettings();
+      url = settings.vendors?.qdrant?.host;
+    } catch (error) {
+      log.warn({ err: error }, 'failed to load Qdrant host from settings');
+    }
 
-  // Try loading from vendor settings first
-  let url: string | undefined;
-  try {
-    const settings = await loadSettings();
-    url = settings.vendors?.qdrant?.host;
-  } catch (error) {
-    log.warn({ err: error }, 'failed to load Qdrant host from settings');
+    // Fall back to environment variable if not in settings
+    if (!url) {
+      url = process.env.QDRANT_URL;
+    }
+
+    if (!url) {
+      throw new Error('QDRANT_URL is not configured (check settings.vendors.qdrant.host or QDRANT_URL env var)');
+    }
+
+    const collection = process.env.QDRANT_COLLECTION || 'mylifedb_vectors';
+    const apiKey = process.env.QDRANT_API_KEY;
+    const timeoutMs = Number(process.env.QDRANT_REQUEST_TIMEOUT_MS ?? 30_000);
+
+    cachedClient = new QdrantClient({
+      url,
+      apiKey,
+      collection,
+      requestTimeoutMs: timeoutMs,
+    });
+
+    log.info({ url, collection }, 'initialized Qdrant client');
   }
 
-  // Fall back to environment variable if not in settings
-  if (!url) {
-    url = process.env.QDRANT_URL;
-  }
-
-  if (!url) {
-    throw new Error('QDRANT_URL is not configured (check settings.vendors.qdrant.host or QDRANT_URL env var)');
-  }
-
-  const collection = process.env.QDRANT_COLLECTION || 'mylifedb_vectors';
-  const apiKey = process.env.QDRANT_API_KEY;
-  const timeoutMs = Number(process.env.QDRANT_REQUEST_TIMEOUT_MS ?? 30_000);
-
-  cachedClient = new QdrantClient({
-    url,
-    apiKey,
-    collection,
-    requestTimeoutMs: timeoutMs,
-  });
-
-  log.info({ url, collection }, 'initialized Qdrant client');
-
-  // Ensure collection exists on first access (similar to Meilisearch ensureIndex)
+  // Ensure collection exists (retry on each call until successful)
   if (!collectionEnsured) {
     try {
       await cachedClient.ensureCollection(1024); // Default vector size
