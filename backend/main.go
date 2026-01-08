@@ -59,14 +59,9 @@ func main() {
 	// Serve static files from frontend dist directory (built frontend)
 	// When running from root directory, paths are relative to root
 	r.Static("/assets", "frontend/dist/assets")
+	r.Static("/static", "frontend/dist/static")
 	r.StaticFile("/favicon.ico", "frontend/dist/favicon.ico")
-	r.StaticFile("/favicon-16x16.png", "frontend/dist/favicon-16x16.png")
-	r.StaticFile("/favicon-32x32.png", "frontend/dist/favicon-32x32.png")
-	r.StaticFile("/apple-touch-icon.png", "frontend/dist/apple-touch-icon.png")
 	r.StaticFile("/manifest.webmanifest", "frontend/dist/manifest.webmanifest")
-	r.StaticFile("/android-chrome-192x192.png", "frontend/dist/android-chrome-192x192.png")
-	r.StaticFile("/android-chrome-512x512.png", "frontend/dist/android-chrome-512x512.png")
-	r.StaticFile("/my-life-db-logo.png", "frontend/dist/my-life-db-logo.png")
 
 	// SPA fallback - serve index.html for non-API routes
 	r.NoRoute(func(c *gin.Context) {
