@@ -276,35 +276,48 @@ func UnpinFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
+// FileNode represents a file or folder in the tree (matching Node.js schema)
+type FileNode struct {
+	Name       string      `json:"name"`
+	Path       string      `json:"path"`
+	Type       string      `json:"type"` // "file" or "folder"
+	Size       *int64      `json:"size,omitempty"`
+	ModifiedAt *string     `json:"modifiedAt,omitempty"`
+	Children   []FileNode  `json:"children,omitempty"`
+}
+
 // GetLibraryTree handles GET /api/library/tree
+// Matches Node.js schema: uses ?path= parameter and returns {path, nodes}
 func GetLibraryTree(c *gin.Context) {
-	root := c.Query("root")
-	if root == "" {
-		root = ""
+	// Node.js uses "path" parameter, not "root"
+	requestedPath := c.Query("path")
+	if requestedPath == "" {
+		requestedPath = ""
+	}
+
+	// Security: Normalize and validate path
+	requestedPath = filepath.Clean(requestedPath)
+	if strings.HasPrefix(requestedPath, "..") || filepath.IsAbs(requestedPath) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, root)
+	fullPath := filepath.Join(cfg.DataDir, requestedPath)
 
 	// Read directory
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c.JSON(http.StatusOK, []interface{}{})
+			c.JSON(http.StatusOK, gin.H{"path": requestedPath, "nodes": []FileNode{}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directory"})
+		log.Error().Err(err).Str("path", fullPath).Msg("failed to read directory tree")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directory tree"})
 		return
 	}
 
-	type TreeNode struct {
-		Name     string `json:"name"`
-		Path     string `json:"path"`
-		IsFolder bool   `json:"isFolder"`
-		Size     *int64 `json:"size,omitempty"`
-	}
-
-	var nodes []TreeNode
+	var nodes []FileNode
 	for _, entry := range entries {
 		name := entry.Name()
 
@@ -312,28 +325,62 @@ func GetLibraryTree(c *gin.Context) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		if root == "" && (name == "app" || name == "inbox") {
+		if name == "node_modules" || name == ".git" {
+			continue
+		}
+		// Skip app and inbox at root level
+		if requestedPath == "" && (name == "app" || name == "inbox") {
 			continue
 		}
 
-		nodePath := filepath.Join(root, name)
-		info, _ := entry.Info()
-
-		node := TreeNode{
-			Name:     name,
-			Path:     nodePath,
-			IsFolder: entry.IsDir(),
+		var nodePath string
+		if requestedPath == "" {
+			nodePath = name
+		} else {
+			nodePath = requestedPath + "/" + name
 		}
 
-		if !entry.IsDir() && info != nil {
-			size := info.Size()
-			node.Size = &size
+		info, _ := entry.Info()
+
+		nodeType := "folder"
+		var size *int64
+		var modifiedAt *string
+
+		if !entry.IsDir() {
+			nodeType = "file"
+			if info != nil {
+				s := info.Size()
+				size = &s
+				modTime := info.ModTime().UTC().Format(time.RFC3339)
+				modifiedAt = &modTime
+			}
+		}
+
+		node := FileNode{
+			Name:       name,
+			Path:       nodePath,
+			Type:       nodeType,
+			Size:       size,
+			ModifiedAt: modifiedAt,
+			Children:   []FileNode{}, // Empty children array for folders
 		}
 
 		nodes = append(nodes, node)
 	}
 
-	c.JSON(http.StatusOK, nodes)
+	// Sort: folders first, then files, alphabetically within each type
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Type != nodes[j].Type {
+			return nodes[i].Type == "folder"
+		}
+		return strings.ToLower(nodes[i].Name) < strings.ToLower(nodes[j].Name)
+	})
+
+	// Return response matching Node.js schema
+	c.JSON(http.StatusOK, gin.H{
+		"path":  requestedPath,
+		"nodes": nodes,
+	})
 }
 
 // GetDirectories handles GET /api/directories
