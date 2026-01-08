@@ -15,9 +15,9 @@ export default defineConfig({
     tsconfigPaths(),
   ],
 
-  // Output to dist/client for Go server
+  // Output to dist for Go server
   build: {
-    outDir: "dist/client",
+    outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
 
