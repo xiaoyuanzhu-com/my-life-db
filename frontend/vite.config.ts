@@ -27,7 +27,7 @@ export default defineConfig({
           fs.mkdirSync(staticDir, { recursive: true });
         }
 
-        // List of static files to move
+        // List of static files to move to static/ subdirectory
         const staticFiles = [
           "favicon-16x16.png",
           "favicon-32x32.png",
@@ -35,7 +35,6 @@ export default defineConfig({
           "android-chrome-192x192.png",
           "android-chrome-512x512.png",
           "my-life-db-logo.png",
-          "manifest.webmanifest",
         ];
 
         // Move each file
@@ -56,6 +55,18 @@ export default defineConfig({
             html = html.replace(new RegExp(`'/${file}'`, "g"), `'/static/${file}'`);
           });
           fs.writeFileSync(indexPath, html);
+        }
+
+        // Update manifest.webmanifest to reference static/ path for icons
+        const manifestPath = path.join(distDir, "manifest.webmanifest");
+        if (fs.existsSync(manifestPath)) {
+          let manifest = fs.readFileSync(manifestPath, "utf-8");
+          staticFiles.forEach((file) => {
+            if (file.endsWith('.png')) {
+              manifest = manifest.replace(new RegExp(`"/${file}"`, "g"), `"/static/${file}"`);
+            }
+          });
+          fs.writeFileSync(manifestPath, manifest);
         }
       },
     },
