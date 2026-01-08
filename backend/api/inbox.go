@@ -64,6 +64,8 @@ func GetInbox(c *gin.Context) {
 	}
 
 	var result *db.FileListResult
+	var aroundResult *db.FileListAroundResult
+	var targetIndex *int
 	var err error
 
 	if around != "" {
@@ -72,8 +74,22 @@ func GetInbox(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid around cursor format"})
 			return
 		}
-		// For around queries, get items before and after
-		result, err = db.ListTopLevelFilesNewest("inbox/", limit)
+		// For around queries, get items centered around the cursor (pin navigation)
+		aroundResult, err = db.ListTopLevelFilesAround("inbox/", cursor, limit)
+		if err == nil {
+			// Convert aroundResult to regular FileListResult
+			result = &db.FileListResult{
+				Items: aroundResult.Items,
+				HasMore: struct {
+					Older bool
+					Newer bool
+				}{
+					Older: aroundResult.HasMore.Older,
+					Newer: aroundResult.HasMore.Newer,
+				},
+			}
+			targetIndex = &aroundResult.TargetIndex
+		}
 	} else if before != "" {
 		cursor := db.ParseCursor(before)
 		if cursor == nil {
@@ -128,6 +144,7 @@ func GetInbox(c *gin.Context) {
 			Older: result.HasMore.Older,
 			Newer: result.HasMore.Newer,
 		},
+		TargetIndex: targetIndex,
 	}
 
 	if len(items) > 0 {

@@ -85,13 +85,13 @@ func DeleteFile(path string) error {
 
 // Cursor represents a pagination cursor
 type Cursor struct {
-	ModifiedAt string
-	Path       string
+	CreatedAt string
+	Path      string
 }
 
 // CreateCursor creates a cursor string from a file record
 func CreateCursor(f *FileRecord) string {
-	return f.ModifiedAt + "|" + f.Path
+	return f.CreatedAt + "|" + f.Path
 }
 
 // ParseCursor parses a cursor string
@@ -101,8 +101,8 @@ func ParseCursor(cursor string) *Cursor {
 		return nil
 	}
 	return &Cursor{
-		ModifiedAt: parts[0],
-		Path:       parts[1],
+		CreatedAt: parts[0],
+		Path:      parts[1],
 	}
 }
 
@@ -123,7 +123,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
-		ORDER BY modified_at DESC, path DESC
+		ORDER BY created_at DESC, path DESC
 		LIMIT ?
 	`
 
@@ -177,12 +177,12 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
-		  AND (modified_at < ? OR (modified_at = ? AND path < ?))
-		ORDER BY modified_at DESC, path DESC
+		  AND (created_at < ? OR (created_at = ? AND path < ?))
+		ORDER BY created_at DESC, path DESC
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.ModifiedAt, cursor.ModifiedAt, cursor.Path, limit+1)
+	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +233,12 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
-		  AND (modified_at > ? OR (modified_at = ? AND path > ?))
-		ORDER BY modified_at ASC, path ASC
+		  AND (created_at > ? OR (created_at = ? AND path > ?))
+		ORDER BY created_at ASC, path ASC
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.ModifiedAt, cursor.ModifiedAt, cursor.Path, limit+1)
+	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +282,140 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		result.Items = result.Items[:limit]
 		result.HasMore.Newer = true
 	}
+
+	return result, nil
+}
+
+// FileListAroundResult represents a paginated list with target index
+type FileListAroundResult struct {
+	Items       []FileRecord
+	TargetIndex int
+	HasMore     struct {
+		Older bool
+		Newer bool
+	}
+}
+
+// ListTopLevelFilesAround loads items centered around a cursor
+// Used for pin navigation - returns a page containing the pinned item
+func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*FileListAroundResult, error) {
+	halfLimit := limit / 2
+
+	// Load items BEFORE cursor (older, including cursor item)
+	beforeQuery := `
+		SELECT path, name, is_folder, size, mime_type, hash,
+			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+		FROM files
+		WHERE path LIKE ? || '%'
+		  AND path NOT LIKE ? || '%/%'
+		  AND (created_at < ? OR (created_at = ? AND path <= ?))
+		ORDER BY created_at DESC, path DESC
+		LIMIT ?
+	`
+
+	beforeRows, err := GetDB().Query(beforeQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
+	if err != nil {
+		return nil, err
+	}
+	defer beforeRows.Close()
+
+	var beforeItems []FileRecord
+	for beforeRows.Next() {
+		var f FileRecord
+		var isFolder int
+		var size sql.NullInt64
+		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+
+		err := beforeRows.Scan(
+			&f.Path, &f.Name, &isFolder, &size, &mimeType,
+			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
+			&textPreview, &screenshotSqlar,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		f.IsFolder = isFolder == 1
+		f.Size = IntPtr(size)
+		f.Hash = StringPtr(hash)
+		f.MimeType = StringPtr(mimeType)
+		f.TextPreview = StringPtr(textPreview)
+		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.LastScannedAt = lastScannedAt.String
+
+		beforeItems = append(beforeItems, f)
+	}
+
+	// Load items AFTER cursor (newer, excluding cursor item)
+	afterQuery := `
+		SELECT path, name, is_folder, size, mime_type, hash,
+			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+		FROM files
+		WHERE path LIKE ? || '%'
+		  AND path NOT LIKE ? || '%/%'
+		  AND (created_at > ? OR (created_at = ? AND path > ?))
+		ORDER BY created_at ASC, path ASC
+		LIMIT ?
+	`
+
+	afterRows, err := GetDB().Query(afterQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
+	if err != nil {
+		return nil, err
+	}
+	defer afterRows.Close()
+
+	var afterItems []FileRecord
+	for afterRows.Next() {
+		var f FileRecord
+		var isFolder int
+		var size sql.NullInt64
+		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+
+		err := afterRows.Scan(
+			&f.Path, &f.Name, &isFolder, &size, &mimeType,
+			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
+			&textPreview, &screenshotSqlar,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		f.IsFolder = isFolder == 1
+		f.Size = IntPtr(size)
+		f.Hash = StringPtr(hash)
+		f.MimeType = StringPtr(mimeType)
+		f.TextPreview = StringPtr(textPreview)
+		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.LastScannedAt = lastScannedAt.String
+
+		afterItems = append(afterItems, f)
+	}
+
+	// Determine hasMore
+	hasOlder := len(beforeItems) > halfLimit
+	hasNewer := len(afterItems) > halfLimit
+
+	// Trim to limits
+	if hasOlder {
+		beforeItems = beforeItems[:halfLimit]
+	}
+	if hasNewer {
+		afterItems = afterItems[:halfLimit]
+	}
+
+	// Reverse afterItems to get DESC order (newest first)
+	for i, j := 0, len(afterItems)-1; i < j; i, j = i+1, j-1 {
+		afterItems[i], afterItems[j] = afterItems[j], afterItems[i]
+	}
+
+	// Combine: newer items (now in DESC) + older items (already in DESC)
+	// The target item is at the junction - first item in beforeItems
+	result := &FileListAroundResult{
+		Items:       append(afterItems, beforeItems...),
+		TargetIndex: len(afterItems),
+	}
+	result.HasMore.Older = hasOlder
+	result.HasMore.Newer = hasNewer
 
 	return result, nil
 }
