@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -167,6 +170,39 @@ func FetchJWKS() (*JWKS, error) {
 	return &jwks, nil
 }
 
+// jwkToRSAPublicKey converts a JWK to an RSA public key
+func jwkToRSAPublicKey(jwk *JWK) (*rsa.PublicKey, error) {
+	if jwk.Kty != "RSA" {
+		return nil, fmt.Errorf("unsupported key type: %s", jwk.Kty)
+	}
+
+	// Decode the modulus (n) - base64url encoded
+	nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode modulus: %w", err)
+	}
+
+	// Decode the exponent (e) - base64url encoded
+	eBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode exponent: %w", err)
+	}
+
+	// Convert bytes to big integers
+	n := new(big.Int).SetBytes(nBytes)
+
+	// Convert exponent bytes to int
+	var e int
+	for _, b := range eBytes {
+		e = e<<8 + int(b)
+	}
+
+	return &rsa.PublicKey{
+		N: n,
+		E: e,
+	}, nil
+}
+
 // ValidateJWT validates a JWT token and returns the payload
 func ValidateJWT(tokenString string) (*JWTPayload, error) {
 	cfg, err := GetOAuthConfig()
@@ -205,15 +241,29 @@ func ValidateJWT(tokenString string) (*JWTPayload, error) {
 		return nil, fmt.Errorf("no matching key found for kid: %s", kid)
 	}
 
-	// For now, we'll do a simpler validation without full RSA signature verification
-	// TODO: Implement proper JWK to RSA key conversion
-	_ = matchingKey // Will be used for proper signature validation
+	// Convert JWK to RSA public key
+	rsaKey, err := jwkToRSAPublicKey(matchingKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert JWK to RSA key: %w", err)
+	}
+
+	// Parse and validate the token with proper RSA signature verification
 	claims := jwt.MapClaims{}
 	token, err = jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
-		// In production, properly decode the JWK RSA key
-		// For now, skip signature validation but check claims
-		return nil, nil
-	}, jwt.WithoutClaimsValidation())
+		// Verify signing method is RSA
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return rsaKey, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("token validation failed: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
 
 	// Extract payload from claims
 	payload := &JWTPayload{}
@@ -236,11 +286,6 @@ func ValidateJWT(tokenString string) (*JWTPayload, error) {
 	// Validate issuer
 	if payload.Iss != cfg.IssuerURL {
 		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", cfg.IssuerURL, payload.Iss)
-	}
-
-	// Validate expiration
-	if payload.Exp > 0 && time.Now().Unix() > payload.Exp {
-		return nil, fmt.Errorf("token expired")
 	}
 
 	return payload, nil

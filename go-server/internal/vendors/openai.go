@@ -2,6 +2,10 @@ package vendors
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/sashabaranov/go-openai"
@@ -242,27 +246,103 @@ func (o *OpenAIClient) GenerateTags(text string) ([]string, error) {
 		return nil, nil
 	}
 
+	systemPrompt := `You are an expert knowledge organizer. Generate 5-10 tags that help classify the content.
+Tag format: lowercase with spaces (e.g., "open source"), but honor conventions for proper nouns (e.g., "iOS", "JavaScript").
+No hashtags or numbering.
+Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}`
+
 	resp, err := o.Complete(CompletionOptions{
-		SystemPrompt: "You are a helpful assistant that generates relevant tags for content. Return a JSON array of tags.",
-		Prompt:       "Generate 3-7 relevant tags for this content. Return as JSON array:\n\n" + text,
-		MaxTokens:    100,
-		Temperature:  0.3,
+		SystemPrompt: systemPrompt,
+		Prompt:       "Analyze the following content and produce tags.\n\n" + text,
+		MaxTokens:    200,
+		Temperature:  0.1,
 		JSONMode:     true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse JSON array from response
-	var tags []string
-	// Simple parsing - in production use proper JSON parsing
-	content := resp.Content
-	if content != "" {
-		// Try to extract tags
-		tags = []string{}
+	// Parse JSON from LLM response using robust parser
+	parsed, err := parseJSONFromLLMResponse(resp.Content)
+	if err != nil {
+		openaiLogger.Error().Err(err).Str("content", resp.Content).Msg("failed to parse tags JSON")
+		return []string{}, nil
 	}
 
-	return tags, nil
+	return extractTagsFromJSON(parsed, 20), nil
+}
+
+// parseJSONFromLLMResponse robustly parses JSON from LLM responses
+func parseJSONFromLLMResponse(content string) (interface{}, error) {
+	content = strings.TrimSpace(content)
+
+	// Try direct parse first
+	var result interface{}
+	if err := json.Unmarshal([]byte(content), &result); err == nil {
+		return result, nil
+	}
+
+	// Try to find JSON in markdown code blocks
+	codeBlockRe := regexp.MustCompile("```(?:json)?\\s*\\n?([\\s\\S]*?)\\n?```")
+	if matches := codeBlockRe.FindStringSubmatch(content); len(matches) > 1 {
+		if err := json.Unmarshal([]byte(strings.TrimSpace(matches[1])), &result); err == nil {
+			return result, nil
+		}
+	}
+
+	// Try to find JSON object
+	jsonObjectRe := regexp.MustCompile(`\{[\s\S]*\}`)
+	if match := jsonObjectRe.FindString(content); match != "" {
+		if err := json.Unmarshal([]byte(match), &result); err == nil {
+			return result, nil
+		}
+	}
+
+	// Try to find JSON array
+	jsonArrayRe := regexp.MustCompile(`\[[\s\S]*\]`)
+	if match := jsonArrayRe.FindString(content); match != "" {
+		if err := json.Unmarshal([]byte(match), &result); err == nil {
+			return result, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unable to parse JSON from LLM response")
+}
+
+// extractTagsFromJSON extracts tags array from parsed JSON
+func extractTagsFromJSON(parsed interface{}, maxTags int) []string {
+	var tags []string
+
+	switch v := parsed.(type) {
+	case map[string]interface{}:
+		if tagsVal, ok := v["tags"]; ok {
+			if tagsArr, ok := tagsVal.([]interface{}); ok {
+				for _, tag := range tagsArr {
+					if s, ok := tag.(string); ok {
+						s = strings.TrimSpace(s)
+						if s != "" {
+							tags = append(tags, s)
+						}
+					}
+				}
+			}
+		}
+	case []interface{}:
+		for _, tag := range v {
+			if s, ok := tag.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					tags = append(tags, s)
+				}
+			}
+		}
+	}
+
+	if maxTags > 0 && len(tags) > maxTags {
+		tags = tags[:maxTags]
+	}
+
+	return tags
 }
 
 // GenerateEmbedding generates an embedding for the text
