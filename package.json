@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
+    "dev:go": "cd go-server && go run ./cmd/server",
     "build": "react-router build",
+    "build:client": "vite build --config vite.config.client.ts",
+    "build:go": "npm run build:client && cd go-server && make build-server",
     "start": "NODE_ENV=production node server.js",
+    "start:go": "./bin/server",
     "lint": "eslint",
     "typecheck": "react-router typegen && tsc"
   },
@@ -59,6 +63,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@react-router/dev": "^7.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/vite": "^4",
     "@types/better-sqlite3": "^7.6.13",
