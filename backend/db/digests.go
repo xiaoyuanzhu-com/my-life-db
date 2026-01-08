@@ -379,11 +379,12 @@ func UpdateDigestMap(id string, fields map[string]interface{}) error {
 // GetFilesWithPendingDigests returns file paths that have pending or failed digests
 func GetFilesWithPendingDigests() []string {
 	query := `
-		SELECT DISTINCT file_path
-		FROM digests
-		WHERE status IN ('todo', 'failed')
-		  AND attempts < 3
-		ORDER BY created_at ASC
+		SELECT DISTINCT d.file_path
+		FROM digests d
+		INNER JOIN files f ON f.path = d.file_path
+		WHERE d.status IN ('todo', 'failed')
+		  AND d.attempts < 3
+		ORDER BY d.created_at ASC
 		LIMIT 100
 	`
 
