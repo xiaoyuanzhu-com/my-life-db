@@ -117,7 +117,7 @@ export default defineConfig({
   },
 
   server: {
-    port: 3000,
+    port: 12346,
     // Proxy API requests to Go backend during development
     proxy: {
       "/api": {
