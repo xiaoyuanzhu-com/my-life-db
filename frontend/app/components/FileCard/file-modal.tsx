@@ -18,14 +18,16 @@ import type { AudioSyncState } from './modal-contents/audio-content';
 import type { TextContentHandle } from './modal-contents/text-content';
 import type { HighlightRegion } from './ui/digest-renderers';
 
-// Lazy load modal content components
-const AudioContent = lazy(() => import('./modal-contents/audio-content').then(m => ({ default: m.AudioContent })));
-const VideoContent = lazy(() => import('./modal-contents/video-content').then(m => ({ default: m.VideoContent })));
-const ImageContent = lazy(() => import('./modal-contents/image-content').then(m => ({ default: m.ImageContent })));
-const TextContent = lazy(() => import('./modal-contents/text-content').then(m => ({ default: m.TextContent })));
+// Direct imports for small content viewers (bundle in main)
+import { AudioContent } from './modal-contents/audio-content';
+import { VideoContent } from './modal-contents/video-content';
+import { ImageContent } from './modal-contents/image-content';
+import { TextContent } from './modal-contents/text-content';
+import { FallbackContent } from './modal-contents/fallback-content';
+
+// Lazy load large libraries only
 const PdfContent = lazy(() => import('./modal-contents/pdf-content').then(m => ({ default: m.PdfContent })));
 const EpubContent = lazy(() => import('./modal-contents/epub-content').then(m => ({ default: m.EpubContent })));
-const FallbackContent = lazy(() => import('./modal-contents/fallback-content').then(m => ({ default: m.FallbackContent })));
 
 type ModalView = 'content' | 'digests';
 

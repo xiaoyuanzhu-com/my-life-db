@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,12 +12,7 @@ import {
 import { Button } from '~/components/ui/button';
 import type { FileWithDigests } from '~/types/file-card';
 import { fetchFullContent, saveFileContent } from '../utils';
-
-const TextEditor = lazy(() =>
-  import('~/components/text-editor').then((mod) => ({
-    default: mod.TextEditor,
-  }))
-);
+import { TextEditor } from '~/components/text-editor';
 
 
 export interface TextContentHandle {
@@ -135,20 +130,12 @@ export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
     return (
       <>
         <div className="w-full h-full overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg">
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Loading editor...
-              </div>
-            }
-          >
-            <TextEditor
-              value={displayText}
-              onChange={handleChange}
-              onSave={handleSaveFromEditor}
-              filename={file.name}
-            />
-          </Suspense>
+          <TextEditor
+            value={displayText}
+            onChange={handleChange}
+            onSave={handleSaveFromEditor}
+            filename={file.name}
+          />
         </div>
 
         <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>

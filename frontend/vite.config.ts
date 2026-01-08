@@ -20,6 +20,7 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
+    chunkSizeWarningLimit: 1000, // Suppress warning for main bundle (948KB is fine for personal app)
 
     rollupOptions: {
       input: {
@@ -30,6 +31,21 @@ export default defineConfig({
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",
+
+        // Manual chunk configuration
+        manualChunks: (id) => {
+          // Keep large libraries separate for lazy loading
+          if (id.includes('pdfjs-dist')) {
+            return 'pdf-viewer';
+          }
+          if (id.includes('epubjs')) {
+            return 'epub-viewer';
+          }
+
+          // Everything else goes into main bundle (no splitting)
+          // This includes: routes, components, icons, content viewers, inbox-feed
+          return undefined;
+        },
       },
     },
   },
