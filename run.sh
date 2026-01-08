@@ -78,7 +78,8 @@ run_qdrant() {
     mkdir -p "$QDRANT_DATA_DIR"
 
     log_info "Data will be persisted to: $QDRANT_DATA_DIR"
-    log_info "Qdrant will be available at: http://localhost:$QDRANT_PORT"
+    log_info "Qdrant HTTP API will be available at: http://localhost:$QDRANT_PORT"
+    log_info "Qdrant gRPC API will be available at: http://localhost:6334"
 
     # Check if container is already running
     if docker ps --format '{{.Names}}' | grep -q '^qdrant$'; then
@@ -94,6 +95,7 @@ run_qdrant() {
     docker run -d --rm \
         --name qdrant \
         -p "$QDRANT_PORT:6333" \
+        -p "6334:6334" \
         -v "$QDRANT_DATA_DIR:/qdrant/storage" \
         "qdrant/qdrant:$QDRANT_VERSION"
 
