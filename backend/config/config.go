@@ -33,8 +33,8 @@ type Config struct {
 	OpenAIBaseURL string
 	OpenAIModel   string
 
-	HAIDBaseURL     string
-	HAIDAPIKey      string
+	HAIDBaseURL      string
+	HAIDAPIKey       string
 	HAIDChromeCDPURL string
 
 	// OAuth settings
@@ -73,7 +73,7 @@ func load() *Config {
 		// Server
 		Port: getEnvInt("PORT", 12345),
 		Host: getEnv("HOST", "0.0.0.0"),
-		Env:  getEnv("NODE_ENV", "development"), // Keep NODE_ENV for compatibility
+		Env:  getEnv("ENV", "development"), // Keep NODE_ENV for compatibility
 
 		// Data
 		DataDir:      dataDir,
@@ -95,8 +95,8 @@ func load() *Config {
 		OpenAIModel:   getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
 		// HAID
-		HAIDBaseURL:     getEnv("HAID_BASE_URL", ""),
-		HAIDAPIKey:      getEnv("HAID_API_KEY", ""),
+		HAIDBaseURL:      getEnv("HAID_BASE_URL", ""),
+		HAIDAPIKey:       getEnv("HAID_API_KEY", ""),
 		HAIDChromeCDPURL: getEnv("HAID_CHROME_CDP_URL", ""),
 
 		// OAuth

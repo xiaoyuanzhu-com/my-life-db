@@ -64,3 +64,8 @@ func Error() *zerolog.Event {
 func Fatal() *zerolog.Event {
 	return logger.Fatal()
 }
+
+// Logger returns the underlying zerolog.Logger for integrations
+func Logger() zerolog.Logger {
+	return logger
+}

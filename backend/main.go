@@ -27,12 +27,9 @@ func main() {
 	_ = db.GetDB()
 	log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
 
-	// Set Gin mode based on environment
-	if cfg.IsDevelopment() {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	// Set Gin to release mode to disable its default debug logging
+	// We use our own zerolog-based request logger instead
+	gin.SetMode(gin.ReleaseMode)
 
 	// Create Gin router
 	r := gin.New()
@@ -40,10 +37,8 @@ func main() {
 	// Middleware
 	r.Use(gin.Recovery())
 
-	// Conditional middleware based on environment
-	if cfg.IsDevelopment() {
-		r.Use(gin.Logger())
-	}
+	// Request logging middleware (uses zerolog)
+	r.Use(log.GinLogger())
 
 	// CORS for development
 	if cfg.IsDevelopment() {
