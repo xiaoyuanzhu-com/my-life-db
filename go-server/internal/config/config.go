@@ -38,9 +38,13 @@ type Config struct {
 	HAIDChromeCDPURL string
 
 	// OAuth settings
-	OAuthClientID     string
-	OAuthClientSecret string
-	OAuthIssuerURL    string
+	AuthMode              string
+	OAuthClientID         string
+	OAuthClientSecret     string
+	OAuthIssuerURL        string
+	OAuthRedirectURI      string
+	OAuthJWKSURL          string
+	OAuthExpectedUsername string
 
 	// Debug settings
 	DBLogQueries bool
@@ -96,9 +100,13 @@ func load() *Config {
 		HAIDChromeCDPURL: getEnv("HAID_CHROME_CDP_URL", ""),
 
 		// OAuth
-		OAuthClientID:     getEnv("OAUTH_CLIENT_ID", ""),
-		OAuthClientSecret: getEnv("OAUTH_CLIENT_SECRET", ""),
-		OAuthIssuerURL:    getEnv("OAUTH_ISSUER_URL", ""),
+		AuthMode:              getEnv("MLD_AUTH_MODE", "none"),
+		OAuthClientID:         getEnv("MLD_OAUTH_CLIENT_ID", ""),
+		OAuthClientSecret:     getEnv("MLD_OAUTH_CLIENT_SECRET", ""),
+		OAuthIssuerURL:        getEnv("MLD_OAUTH_ISSUER_URL", ""),
+		OAuthRedirectURI:      getEnv("MLD_OAUTH_REDIRECT_URI", ""),
+		OAuthJWKSURL:          getEnv("MLD_OAUTH_JWKS_URL", ""),
+		OAuthExpectedUsername: getEnv("MLD_EXPECTED_USERNAME", ""),
 
 		// Debug
 		DBLogQueries: getEnv("DB_LOG_QUERIES", "") == "1",

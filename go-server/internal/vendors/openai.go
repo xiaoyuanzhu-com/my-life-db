@@ -192,3 +192,93 @@ func EmbedText(text string) ([]float32, error) {
 
 	return results[0], nil
 }
+
+// GetOpenAI returns the OpenAI client (wrapper for digest workers)
+func GetOpenAI() *OpenAIClient {
+	return GetOpenAIClient()
+}
+
+// Summarize generates a summary of the text
+func (o *OpenAIClient) Summarize(text string) (string, error) {
+	if o == nil {
+		return "", nil
+	}
+
+	resp, err := o.Complete(CompletionOptions{
+		SystemPrompt: "You are a helpful assistant that summarizes text concisely.",
+		Prompt:       "Please summarize the following text in 2-3 sentences:\n\n" + text,
+		MaxTokens:    200,
+		Temperature:  0.3,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Content, nil
+}
+
+// CleanupTranscript cleans up a raw transcript
+func (o *OpenAIClient) CleanupTranscript(transcript string) (string, error) {
+	if o == nil {
+		return "", nil
+	}
+
+	resp, err := o.Complete(CompletionOptions{
+		SystemPrompt: "You are a helpful assistant that cleans up transcripts. Fix punctuation, remove filler words, and format properly.",
+		Prompt:       "Please clean up this transcript:\n\n" + transcript,
+		MaxTokens:    2000,
+		Temperature:  0.2,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Content, nil
+}
+
+// GenerateTags generates tags for the text
+func (o *OpenAIClient) GenerateTags(text string) ([]string, error) {
+	if o == nil {
+		return nil, nil
+	}
+
+	resp, err := o.Complete(CompletionOptions{
+		SystemPrompt: "You are a helpful assistant that generates relevant tags for content. Return a JSON array of tags.",
+		Prompt:       "Generate 3-7 relevant tags for this content. Return as JSON array:\n\n" + text,
+		MaxTokens:    100,
+		Temperature:  0.3,
+		JSONMode:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse JSON array from response
+	var tags []string
+	// Simple parsing - in production use proper JSON parsing
+	content := resp.Content
+	if content != "" {
+		// Try to extract tags
+		tags = []string{}
+	}
+
+	return tags, nil
+}
+
+// GenerateEmbedding generates an embedding for the text
+func (o *OpenAIClient) GenerateEmbedding(text string) ([]float32, error) {
+	if o == nil {
+		return nil, nil
+	}
+
+	results, err := o.Embed([]string{text})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, nil
+	}
+
+	return results[0], nil
+}

@@ -119,8 +119,8 @@ func GetHAIDClient() *HAIDClient {
 	return haidClient
 }
 
-// CrawlURL crawls a URL and returns the content
-func (h *HAIDClient) CrawlURL(url string, opts CrawlOptions) (*CrawlResponse, error) {
+// CrawlURLWithOpts crawls a URL and returns the content with options
+func (h *HAIDClient) CrawlURLWithOpts(url string, opts CrawlOptions) (*CrawlResponse, error) {
 	if h == nil {
 		return nil, nil
 	}
@@ -357,4 +357,170 @@ func (h *HAIDClient) post(endpoint string, body map[string]interface{}) ([]byte,
 	defer resp.Body.Close()
 
 	return io.ReadAll(resp.Body)
+}
+
+// GetHAID returns the HAID client (wrapper for digest workers)
+func GetHAID() *HAIDClient {
+	return GetHAIDClient()
+}
+
+// CrawlURL crawls a URL (simplified interface for digest workers)
+func (h *HAIDClient) CrawlURL(url string) (string, []byte, error) {
+	if h == nil {
+		return "", nil, nil
+	}
+
+	resp, err := h.CrawlURLWithOpts(url, CrawlOptions{Screenshot: true, Timeout: 30})
+	if err != nil {
+		return "", nil, err
+	}
+
+	content := resp.Markdown
+	if content == "" {
+		content = resp.Content
+	}
+
+	var screenshot []byte
+	if resp.Screenshot != "" {
+		screenshot, _ = base64.StdEncoding.DecodeString(resp.Screenshot)
+	}
+
+	return content, screenshot, nil
+}
+
+// ConvertDocToMarkdown converts a document to markdown
+func (h *HAIDClient) ConvertDocToMarkdown(docPath string) (string, error) {
+	if h == nil {
+		return "", nil
+	}
+
+	docData, err := os.ReadFile(docPath)
+	if err != nil {
+		return "", err
+	}
+
+	docBase64 := base64.StdEncoding.EncodeToString(docData)
+
+	body := map[string]interface{}{
+		"document": docBase64,
+	}
+
+	resp, err := h.post("/api/doc-to-markdown", body)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		Markdown string `json:"markdown"`
+		Error    string `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", err
+	}
+
+	return result.Markdown, nil
+}
+
+// GenerateDocScreenshot generates a screenshot of a document
+func (h *HAIDClient) GenerateDocScreenshot(docPath string) ([]byte, error) {
+	if h == nil {
+		return nil, nil
+	}
+
+	docData, err := os.ReadFile(docPath)
+	if err != nil {
+		return nil, err
+	}
+
+	docBase64 := base64.StdEncoding.EncodeToString(docData)
+
+	body := map[string]interface{}{
+		"document": docBase64,
+	}
+
+	resp, err := h.post("/api/doc-to-screenshot", body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Screenshot string `json:"screenshot"`
+		Error      string `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return base64.StdEncoding.DecodeString(result.Screenshot)
+}
+
+// OCRImage extracts text from an image (simplified interface)
+func (h *HAIDClient) OCRImage(imagePath string) (string, error) {
+	if h == nil {
+		return "", nil
+	}
+
+	resp, err := h.ImageOCR(imagePath)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Text, nil
+}
+
+// CaptionImage generates a caption for an image (simplified interface)
+func (h *HAIDClient) CaptionImage(imagePath string) (string, error) {
+	if h == nil {
+		return "", nil
+	}
+
+	resp, err := h.ImageCaptioning(imagePath)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Caption, nil
+}
+
+// DetectObjects detects objects in an image
+func (h *HAIDClient) DetectObjects(imagePath string) ([]map[string]interface{}, error) {
+	if h == nil {
+		return nil, nil
+	}
+
+	resp, err := h.SegmentImage(imagePath)
+	if err != nil {
+		return nil, err
+	}
+
+	objects := make([]map[string]interface{}, 0, len(resp.Objects))
+	for _, obj := range resp.Objects {
+		objects = append(objects, map[string]interface{}{
+			"title":       obj.Title,
+			"description": obj.Description,
+			"category":    obj.Category,
+			"bbox":        obj.BBox,
+		})
+	}
+
+	return objects, nil
+}
+
+// TranscribeAudio transcribes audio to text (simplified interface)
+func (h *HAIDClient) TranscribeAudio(audioPath string) (string, error) {
+	if h == nil {
+		return "", nil
+	}
+
+	resp, err := h.SpeechRecognition(audioPath, ASROptions{Diarization: false})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Text, nil
+}
+
+// GenerateSpeakerEmbedding generates speaker embedding (simplified interface)
+func (h *HAIDClient) GenerateSpeakerEmbedding(audioPath string) ([]float32, error) {
+	return h.SpeakerEmbedding(audioPath)
 }

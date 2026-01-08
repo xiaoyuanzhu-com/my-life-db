@@ -237,3 +237,13 @@ func (q *QdrantClient) Delete(id string) error {
 
 	return err
 }
+
+// GetQdrant returns the Qdrant client (wrapper for digest workers)
+func GetQdrant() *QdrantClient {
+	return GetQdrantClient()
+}
+
+// UpsertPoint is a wrapper for Upsert with simplified interface
+func (q *QdrantClient) UpsertPoint(id string, vector []float32, payload map[string]interface{}) error {
+	return q.Upsert(id, vector, payload)
+}
