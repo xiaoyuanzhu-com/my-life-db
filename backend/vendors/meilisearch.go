@@ -152,7 +152,11 @@ func (m *MeiliClient) Search(query string, opts MeiliSearchOptions) (*MeiliSearc
 	}
 
 	for _, hit := range resp.Hits {
-		h := hit.(map[string]interface{})
+		// Decode hit to a generic map
+		var h map[string]interface{}
+		if err := hit.DecodeInto(&h); err != nil {
+			continue
+		}
 
 		meiliHit := MeiliHit{
 			DocumentID: getString(h, "documentId"),
@@ -185,7 +189,10 @@ func (m *MeiliClient) IndexDocument(doc map[string]interface{}) error {
 		return nil
 	}
 
-	_, err := m.index.AddDocuments([]map[string]interface{}{doc}, "documentId")
+	primaryKey := "documentId"
+	_, err := m.index.AddDocuments([]map[string]interface{}{doc}, &meilisearch.DocumentOptions{
+		PrimaryKey: &primaryKey,
+	})
 	return err
 }
 
@@ -195,7 +202,7 @@ func (m *MeiliClient) DeleteDocument(documentID string) error {
 		return nil
 	}
 
-	_, err := m.index.DeleteDocument(documentID)
+	_, err := m.index.DeleteDocument(documentID, nil)
 	return err
 }
 
@@ -244,6 +251,9 @@ func (m *MeiliClient) IndexDocumentSimple(path, name, content string) error {
 		"content":    content,
 	}
 
-	_, err := m.index.AddDocuments([]map[string]interface{}{doc}, "documentId")
+	primaryKey := "documentId"
+	_, err := m.index.AddDocuments([]map[string]interface{}{doc}, &meilisearch.DocumentOptions{
+		PrimaryKey: &primaryKey,
+	})
 	return err
 }
