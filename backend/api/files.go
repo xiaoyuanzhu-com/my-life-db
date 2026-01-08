@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -18,17 +18,21 @@ import (
 
 var filesLogger = log.GetLogger("ApiFiles")
 
-// ServeRawFile handles GET /raw/*
-func ServeRawFile(c echo.Context) error {
+// ServeRawFile handles GET /raw/*path
+func ServeRawFile(c *gin.Context) {
 	// Get path from URL (everything after /raw/)
-	path := c.Param("*")
+	path := c.Param("path")
+	// Gin includes leading slash in wildcard param
+	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid path"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
 	}
 
 	cfg := config.Get()
@@ -37,41 +41,42 @@ func ServeRawFile(c echo.Context) error {
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
 	}
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to access file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to access file"})
+		return
 	}
 
 	if info.IsDir() {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Cannot serve directory"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot serve directory"})
+		return
 	}
 
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(path)
 
 	// Set headers
-	c.Response().Header().Set("Content-Type", mimeType)
-	c.Response().Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	c.Header("Content-Type", mimeType)
+	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
 
-	// Handle range requests for media files
-	if strings.HasPrefix(mimeType, "video/") || strings.HasPrefix(mimeType, "audio/") {
-		return c.File(fullPath)
-	}
-
-	return c.File(fullPath)
+	c.File(fullPath)
 }
 
-// SaveRawFile handles PUT /raw/*
-func SaveRawFile(c echo.Context) error {
-	path := c.Param("*")
+// SaveRawFile handles PUT /raw/*path
+func SaveRawFile(c *gin.Context) {
+	path := c.Param("path")
+	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid path"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
 	}
 
 	cfg := config.Get()
@@ -81,19 +86,22 @@ func SaveRawFile(c echo.Context) error {
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		filesLogger.Error().Err(err).Msg("failed to create directory")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create directory"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
+		return
 	}
 
 	// Read request body
-	body, err := io.ReadAll(c.Request().Body)
+	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to read request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
 	}
 
 	// Write file
 	if err := os.WriteFile(fullPath, body, 0644); err != nil {
 		filesLogger.Error().Err(err).Msg("failed to write file")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to write file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+		return
 	}
 
 	// Update database
@@ -113,14 +121,16 @@ func SaveRawFile(c echo.Context) error {
 		LastScannedAt: now,
 	})
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
-// ServeSqlarFile handles GET /sqlar/*
-func ServeSqlarFile(c echo.Context) error {
-	name := c.Param("*")
+// ServeSqlarFile handles GET /sqlar/*path
+func ServeSqlarFile(c *gin.Context) {
+	name := c.Param("path")
+	name = strings.TrimPrefix(name, "/")
 	if name == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name is required"})
+		return
 	}
 
 	// Query sqlar table
@@ -130,7 +140,8 @@ func ServeSqlarFile(c echo.Context) error {
 	`, name).Scan(&sqlarFile.Name, &sqlarFile.Mode, &sqlarFile.Mtime, &sqlarFile.Size, &sqlarFile.Data)
 
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File not found in archive"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found in archive"})
+		return
 	}
 
 	// Decompress if needed (sqlar uses zlib compression)
@@ -151,22 +162,23 @@ func ServeSqlarFile(c echo.Context) error {
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(name)
 
-	c.Response().Header().Set("Content-Type", mimeType)
-	c.Response().Header().Set("Content-Length", strconv.Itoa(len(data)))
-
-	return c.Blob(http.StatusOK, mimeType, data)
+	c.Header("Content-Type", mimeType)
+	c.Header("Content-Length", strconv.Itoa(len(data)))
+	c.Data(http.StatusOK, mimeType, data)
 }
 
 // DeleteLibraryFile handles DELETE /api/library/file
-func DeleteLibraryFile(c echo.Context) error {
-	path := c.QueryParam("path")
+func DeleteLibraryFile(c *gin.Context) {
+	path := c.Query("path")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid path"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
 	}
 
 	cfg := config.Get()
@@ -175,19 +187,22 @@ func DeleteLibraryFile(c echo.Context) error {
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
 	}
 
 	// Delete file or folder
 	if info.IsDir() {
 		if err := os.RemoveAll(fullPath); err != nil {
 			filesLogger.Error().Err(err).Msg("failed to delete folder")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete folder"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
+			return
 		}
 	} else {
 		if err := os.Remove(fullPath); err != nil {
 			filesLogger.Error().Err(err).Msg("failed to delete file")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
+			return
 		}
 	}
 
@@ -196,68 +211,76 @@ func DeleteLibraryFile(c echo.Context) error {
 	db.DeleteDigestsForFile(path)
 	db.RemovePin(path)
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // GetLibraryFileInfo handles GET /api/library/file-info
-func GetLibraryFileInfo(c echo.Context) error {
-	path := c.QueryParam("path")
+func GetLibraryFileInfo(c *gin.Context) {
+	path := c.Query("path")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	file, err := db.GetFileWithDigests(path)
 	if err != nil {
 		filesLogger.Error().Err(err).Msg("failed to get file info")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get file info"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})
+		return
 	}
 
 	if file == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, file)
+	c.JSON(http.StatusOK, file)
 }
 
 // PinFile handles POST /api/library/pin
-func PinFile(c echo.Context) error {
+func PinFile(c *gin.Context) {
 	var body struct {
 		Path string `json:"path"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	if body.Path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	if err := db.AddPin(body.Path); err != nil {
 		filesLogger.Error().Err(err).Msg("failed to pin file")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to pin file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // UnpinFile handles DELETE /api/library/pin
-func UnpinFile(c echo.Context) error {
-	path := c.QueryParam("path")
+func UnpinFile(c *gin.Context) {
+	path := c.Query("path")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	if err := db.RemovePin(path); err != nil {
 		filesLogger.Error().Err(err).Msg("failed to unpin file")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unpin file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // GetLibraryTree handles GET /api/library/tree
-func GetLibraryTree(c echo.Context) error {
-	root := c.QueryParam("root")
+func GetLibraryTree(c *gin.Context) {
+	root := c.Query("root")
 	if root == "" {
 		root = ""
 	}
@@ -269,9 +292,11 @@ func GetLibraryTree(c echo.Context) error {
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return c.JSON(http.StatusOK, []interface{}{})
+			c.JSON(http.StatusOK, []interface{}{})
+			return
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to read directory"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directory"})
+		return
 	}
 
 	type TreeNode struct {
@@ -310,16 +335,17 @@ func GetLibraryTree(c echo.Context) error {
 		nodes = append(nodes, node)
 	}
 
-	return c.JSON(http.StatusOK, nodes)
+	c.JSON(http.StatusOK, nodes)
 }
 
 // GetDirectories handles GET /api/directories
-func GetDirectories(c echo.Context) error {
+func GetDirectories(c *gin.Context) {
 	cfg := config.Get()
 
 	entries, err := os.ReadDir(cfg.DataDir)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to read directories"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directories"})
+		return
 	}
 
 	var dirs []string
@@ -329,5 +355,5 @@ func GetDirectories(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, dirs)
+	c.JSON(http.StatusOK, dirs)
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -14,19 +14,21 @@ import (
 var authLogger = log.GetLogger("ApiAuth")
 
 // Login handles POST /api/auth/login
-func Login(c echo.Context) error {
+func Login(c *gin.Context) {
 	var body struct {
 		Password string `json:"password"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	// Get stored password hash
 	storedHash, err := db.GetSetting("auth_password_hash")
 	if err != nil {
 		authLogger.Error().Err(err).Msg("failed to get password hash")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Authentication error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication error"})
+		return
 	}
 
 	// If no password is set, create one
@@ -35,17 +37,19 @@ func Login(c echo.Context) error {
 		hash := hashPassword(body.Password)
 		if err := db.SetSetting("auth_password_hash", hash); err != nil {
 			authLogger.Error().Err(err).Msg("failed to save password hash")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to set password"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set password"})
+			return
 		}
 		storedHash = hash
 	}
 
 	// Verify password
 	if hashPassword(body.Password) != storedHash {
-		return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"error":   "Invalid password",
 		})
+		return
 	}
 
 	// Create session token
@@ -59,35 +63,21 @@ func Login(c echo.Context) error {
 	// Note: We'd need to add a CreateSession function to db package
 
 	// Set session cookie
-	cookie := &http.Cookie{
-		Name:     "session",
-		Value:    sessionToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   c.Request().TLS != nil,
-		MaxAge:   86400 * 30, // 30 days
-	}
-	c.SetCookie(cookie)
+	secure := c.Request.TLS != nil
+	c.SetCookie("session", sessionToken, 86400*30, "/", "", secure, true)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
 		"sessionId": session.ID,
 	})
 }
 
 // Logout handles POST /api/auth/logout
-func Logout(c echo.Context) error {
+func Logout(c *gin.Context) {
 	// Clear session cookie
-	cookie := &http.Cookie{
-		Name:     "session",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	}
-	c.SetCookie(cookie)
+	c.SetCookie("session", "", -1, "/", "", false, true)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 	})
 }

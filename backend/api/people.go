@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -14,15 +14,15 @@ var peopleLogger = log.GetLogger("ApiPeople")
 
 // PersonResponse represents a person with their clusters
 type PersonResponse struct {
-	ID          string            `json:"id"`
-	DisplayName string            `json:"displayName"`
-	CreatedAt   string            `json:"createdAt"`
-	UpdatedAt   string            `json:"updatedAt"`
+	ID          string             `json:"id"`
+	DisplayName string             `json:"displayName"`
+	CreatedAt   string             `json:"createdAt"`
+	UpdatedAt   string             `json:"updatedAt"`
 	Clusters    []db.PersonCluster `json:"clusters,omitempty"`
 }
 
 // GetPeople handles GET /api/people
-func GetPeople(c echo.Context) error {
+func GetPeople(c *gin.Context) {
 	rows, err := db.GetDB().Query(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
@@ -30,7 +30,8 @@ func GetPeople(c echo.Context) error {
 	`)
 	if err != nil {
 		peopleLogger.Error().Err(err).Msg("failed to get people")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get people"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get people"})
+		return
 	}
 	defer rows.Close()
 
@@ -47,20 +48,22 @@ func GetPeople(c echo.Context) error {
 		people = []PersonResponse{}
 	}
 
-	return c.JSON(http.StatusOK, people)
+	c.JSON(http.StatusOK, people)
 }
 
 // CreatePerson handles POST /api/people
-func CreatePerson(c echo.Context) error {
+func CreatePerson(c *gin.Context) {
 	var body struct {
 		DisplayName string `json:"displayName"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	if body.DisplayName == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Display name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Display name is required"})
+		return
 	}
 
 	now := db.NowUTC()
@@ -77,14 +80,15 @@ func CreatePerson(c echo.Context) error {
 	`, person.ID, person.DisplayName, person.CreatedAt, person.UpdatedAt)
 	if err != nil {
 		peopleLogger.Error().Err(err).Msg("failed to create person")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create person"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create person"})
+		return
 	}
 
-	return c.JSON(http.StatusCreated, person)
+	c.JSON(http.StatusCreated, person)
 }
 
 // GetPerson handles GET /api/people/:id
-func GetPerson(c echo.Context) error {
+func GetPerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var p PersonResponse
@@ -95,10 +99,12 @@ func GetPerson(c echo.Context) error {
 	`, id).Scan(&p.ID, &p.DisplayName, &p.CreatedAt, &p.UpdatedAt)
 
 	if err == sql.ErrNoRows {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Person not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
+		return
 	}
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get person"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get person"})
+		return
 	}
 
 	// Get clusters for this person
@@ -122,41 +128,45 @@ func GetPerson(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, p)
+	c.JSON(http.StatusOK, p)
 }
 
 // UpdatePerson handles PUT /api/people/:id
-func UpdatePerson(c echo.Context) error {
+func UpdatePerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var body struct {
 		DisplayName string `json:"displayName"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	if body.DisplayName == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Display name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Display name is required"})
+		return
 	}
 
 	result, err := db.GetDB().Exec(`
 		UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?
 	`, body.DisplayName, db.NowUTC(), id)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update person"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update person"})
+		return
 	}
 
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Person not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // DeletePerson handles DELETE /api/people/:id
-func DeletePerson(c echo.Context) error {
+func DeletePerson(c *gin.Context) {
 	id := c.Param("id")
 
 	// First unassign all clusters
@@ -170,30 +180,34 @@ func DeletePerson(c echo.Context) error {
 	// Delete person
 	result, err := db.GetDB().Exec("DELETE FROM people WHERE id = ?", id)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete person"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete person"})
+		return
 	}
 
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Person not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // MergePeople handles POST /api/people/:id/merge
-func MergePeople(c echo.Context) error {
+func MergePeople(c *gin.Context) {
 	targetID := c.Param("id")
 
 	var body struct {
 		SourceID string `json:"sourceId"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	if body.SourceID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Source ID is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Source ID is required"})
+		return
 	}
 
 	// Move all clusters from source to target
@@ -201,24 +215,26 @@ func MergePeople(c echo.Context) error {
 		UPDATE people_clusters SET people_id = ? WHERE people_id = ?
 	`, targetID, body.SourceID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to merge clusters"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to merge clusters"})
+		return
 	}
 
 	// Delete source person
 	db.GetDB().Exec("DELETE FROM people WHERE id = ?", body.SourceID)
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // AssignEmbedding handles POST /api/people/embeddings/:id/assign
-func AssignEmbedding(c echo.Context) error {
+func AssignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
 	var body struct {
 		PersonID string `json:"personId"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	// This would typically involve cluster management
@@ -228,14 +244,15 @@ func AssignEmbedding(c echo.Context) error {
 		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
 	`, body.PersonID, db.NowUTC(), embeddingID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to assign embedding"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign embedding"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // UnassignEmbedding handles POST /api/people/embeddings/:id/unassign
-func UnassignEmbedding(c echo.Context) error {
+func UnassignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
 	_, err := db.GetDB().Exec(`
@@ -243,8 +260,9 @@ func UnassignEmbedding(c echo.Context) error {
 		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
 	`, db.NowUTC(), embeddingID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unassign embedding"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign embedding"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }

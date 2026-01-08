@@ -1,13 +1,13 @@
 package api
 
 import (
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes configures all API routes
-func SetupRoutes(e *echo.Echo) {
+func SetupRoutes(r *gin.Engine) {
 	// API group
-	api := e.Group("/api")
+	api := r.Group("/api")
 
 	// Auth routes
 	api.POST("/auth/login", Login)
@@ -34,8 +34,8 @@ func SetupRoutes(e *echo.Echo) {
 	api.GET("/digest/digesters", GetDigesters)
 	api.GET("/digest/stats", GetDigestStats)
 	api.POST("/digest/reset/:digester", ResetDigester)
-	api.GET("/digest/*", GetDigest)
-	api.POST("/digest/*", TriggerDigest)
+	api.GET("/digest/*path", GetDigest)
+	api.POST("/digest/*path", TriggerDigest)
 
 	// Library routes
 	api.DELETE("/library/file", DeleteLibraryFile)
@@ -70,7 +70,7 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Upload (TUS)
 	api.POST("/upload/finalize", FinalizeUpload)
-	api.Any("/upload/tus/*", TUSHandler)
+	api.Any("/upload/tus/*path", TUSHandler)
 
 	// Directories
 	api.GET("/directories", GetDirectories)
@@ -79,9 +79,9 @@ func SetupRoutes(e *echo.Echo) {
 	api.GET("/vendors/openai/models", GetOpenAIModels)
 
 	// Raw file serving
-	e.GET("/raw/*", ServeRawFile)
-	e.PUT("/raw/*", SaveRawFile)
+	r.GET("/raw/*path", ServeRawFile)
+	r.PUT("/raw/*path", SaveRawFile)
 
 	// SQLAR file serving
-	e.GET("/sqlar/*", ServeSqlarFile)
+	r.GET("/sqlar/*path", ServeSqlarFile)
 }

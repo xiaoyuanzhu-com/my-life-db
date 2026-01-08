@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -52,11 +52,11 @@ type InboxResponse struct {
 }
 
 // GetInbox handles GET /api/inbox
-func GetInbox(c echo.Context) error {
-	limitStr := c.QueryParam("limit")
-	before := c.QueryParam("before")
-	after := c.QueryParam("after")
-	around := c.QueryParam("around")
+func GetInbox(c *gin.Context) {
+	limitStr := c.Query("limit")
+	before := c.Query("before")
+	after := c.Query("after")
+	around := c.Query("around")
 
 	limit := 30
 	if limitStr != "" {
@@ -71,20 +71,23 @@ func GetInbox(c echo.Context) error {
 	if around != "" {
 		cursor := db.ParseCursor(around)
 		if cursor == nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid around cursor format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid around cursor format"})
+			return
 		}
 		// For around queries, get items before and after
 		result, err = db.ListTopLevelFilesNewest("inbox/", limit)
 	} else if before != "" {
 		cursor := db.ParseCursor(before)
 		if cursor == nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid before cursor format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid before cursor format"})
+			return
 		}
 		result, err = db.ListTopLevelFilesBefore("inbox/", cursor, limit)
 	} else if after != "" {
 		cursor := db.ParseCursor(after)
 		if cursor == nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid after cursor format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid after cursor format"})
+			return
 		}
 		result, err = db.ListTopLevelFilesAfter("inbox/", cursor, limit)
 	} else {
@@ -93,7 +96,8 @@ func GetInbox(c echo.Context) error {
 
 	if err != nil {
 		inboxLogger.Error().Err(err).Msg("list inbox items failed")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list inbox items"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list inbox items"})
+		return
 	}
 
 	// Convert to InboxItems
@@ -135,16 +139,17 @@ func GetInbox(c echo.Context) error {
 		response.Cursors.Last = &last
 	}
 
-	return c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, response)
 }
 
 // CreateInboxItem handles POST /api/inbox
-func CreateInboxItem(c echo.Context) error {
-	text := c.FormValue("text")
+func CreateInboxItem(c *gin.Context) {
+	text := c.PostForm("text")
 
 	form, err := c.MultipartForm()
 	if err != nil && err != http.ErrNotMultipart {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid form data"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid form data"})
+		return
 	}
 
 	var files []*multipart.FileHeader
@@ -153,7 +158,8 @@ func CreateInboxItem(c echo.Context) error {
 	}
 
 	if text == "" && len(files) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Either text or files must be provided"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either text or files must be provided"})
+		return
 	}
 
 	cfg := config.Get()
@@ -162,7 +168,8 @@ func CreateInboxItem(c echo.Context) error {
 	// Ensure inbox directory exists
 	if err := os.MkdirAll(inboxDir, 0755); err != nil {
 		inboxLogger.Error().Err(err).Msg("failed to create inbox directory")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create inbox directory"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inbox directory"})
+		return
 	}
 
 	var savedPaths []string
@@ -177,7 +184,8 @@ func CreateInboxItem(c echo.Context) error {
 
 		if err := os.WriteFile(fullPath, []byte(text), 0644); err != nil {
 			inboxLogger.Error().Err(err).Msg("failed to save text file")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save text"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save text"})
+			return
 		}
 
 		info, _ := os.Stat(fullPath)
@@ -250,7 +258,8 @@ func CreateInboxItem(c echo.Context) error {
 	}
 
 	if len(savedPaths) == 0 {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save any files"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save any files"})
+		return
 	}
 
 	inboxLogger.Info().
@@ -263,14 +272,14 @@ func CreateInboxItem(c echo.Context) error {
 
 	// TODO: Trigger digest processing for each file
 
-	return c.JSON(http.StatusCreated, map[string]interface{}{
+	c.JSON(http.StatusCreated, gin.H{
 		"path":  savedPaths[0],
 		"paths": savedPaths,
 	})
 }
 
 // GetInboxItem handles GET /api/inbox/:id
-func GetInboxItem(c echo.Context) error {
+func GetInboxItem(c *gin.Context) {
 	id := c.Param("id")
 
 	// Try different path formats
@@ -282,18 +291,20 @@ func GetInboxItem(c echo.Context) error {
 	file, err = db.GetFileWithDigests(path)
 	if err != nil {
 		inboxLogger.Error().Err(err).Str("path", path).Msg("failed to get inbox item")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get inbox item"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get inbox item"})
+		return
 	}
 
 	if file == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Inbox item not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inbox item not found"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, file)
+	c.JSON(http.StatusOK, file)
 }
 
 // UpdateInboxItem handles PUT /api/inbox/:id
-func UpdateInboxItem(c echo.Context) error {
+func UpdateInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
@@ -302,32 +313,35 @@ func UpdateInboxItem(c echo.Context) error {
 
 	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Inbox item not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inbox item not found"})
+		return
 	}
 
 	// Get new content from request body
 	var body struct {
 		Content string `json:"content"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	// Write content to file
 	if err := os.WriteFile(fullPath, []byte(body.Content), 0644); err != nil {
 		inboxLogger.Error().Err(err).Msg("failed to update file")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update file"})
+		return
 	}
 
 	// Update file record
 	nowStr := db.NowUTC()
 	db.UpdateFileField(path, "modified_at", nowStr)
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // DeleteInboxItem handles DELETE /api/inbox/:id
-func DeleteInboxItem(c echo.Context) error {
+func DeleteInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
@@ -337,19 +351,22 @@ func DeleteInboxItem(c echo.Context) error {
 	// Check if file/folder exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Inbox item not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inbox item not found"})
+		return
 	}
 
 	// Delete file/folder
 	if info.IsDir() {
 		if err := os.RemoveAll(fullPath); err != nil {
 			inboxLogger.Error().Err(err).Msg("failed to delete folder")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete folder"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
+			return
 		}
 	} else {
 		if err := os.Remove(fullPath); err != nil {
 			inboxLogger.Error().Err(err).Msg("failed to delete file")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
+			return
 		}
 	}
 
@@ -361,15 +378,16 @@ func DeleteInboxItem(c echo.Context) error {
 	// Notify UI
 	notifications.GetService().NotifyInboxChanged()
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
 // GetPinnedInboxItems handles GET /api/inbox/pinned
-func GetPinnedInboxItems(c echo.Context) error {
+func GetPinnedInboxItems(c *gin.Context) {
 	files, err := db.GetPinnedFiles()
 	if err != nil {
 		inboxLogger.Error().Err(err).Msg("failed to get pinned files")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get pinned files"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get pinned files"})
+		return
 	}
 
 	// Filter to inbox only
@@ -380,20 +398,21 @@ func GetPinnedInboxItems(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"items": inboxFiles,
 	})
 }
 
 // ReenrichInboxItem handles POST /api/inbox/:id/reenrich
-func ReenrichInboxItem(c echo.Context) error {
+func ReenrichInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
 	// Check if file exists in database
 	file, err := db.GetFileByPath(path)
 	if err != nil || file == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Inbox item not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inbox item not found"})
+		return
 	}
 
 	// Reset all digests for this file
@@ -401,17 +420,18 @@ func ReenrichInboxItem(c echo.Context) error {
 
 	// TODO: Trigger digest processing
 
-	return c.JSON(http.StatusOK, map[string]string{"success": "true", "message": "Re-enrichment triggered"})
+	c.JSON(http.StatusOK, gin.H{"success": "true", "message": "Re-enrichment triggered"})
 }
 
 // GetInboxItemStatus handles GET /api/inbox/:id/status
-func GetInboxItemStatus(c echo.Context) error {
+func GetInboxItemStatus(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
 	digests, err := db.GetDigestsForFile(path)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get status"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get status"})
+		return
 	}
 
 	// Calculate overall status
@@ -426,9 +446,8 @@ func GetInboxItemStatus(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"status":  status,
 		"digests": digests,
 	})
 }
-

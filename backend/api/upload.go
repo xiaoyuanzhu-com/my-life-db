@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
@@ -65,33 +65,35 @@ func InitTUSHandler() (http.Handler, error) {
 }
 
 // TUSHandler handles all TUS protocol requests
-func TUSHandler(c echo.Context) error {
+func TUSHandler(c *gin.Context) {
 	handler, err := InitTUSHandler()
 	if err != nil {
 		uploadLogger.Error().Err(err).Msg("failed to initialize TUS handler")
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to initialize upload handler",
 		})
+		return
 	}
 
 	// Strip the /api/upload/tus prefix and pass to handler
-	handler.ServeHTTP(c.Response().Writer, c.Request())
-	return nil
+	handler.ServeHTTP(c.Writer, c.Request)
 }
 
 // FinalizeUpload handles POST /api/upload/finalize
-func FinalizeUpload(c echo.Context) error {
+func FinalizeUpload(c *gin.Context) {
 	var body struct {
 		UploadID    string `json:"uploadId"`
 		Filename    string `json:"filename"`
 		Destination string `json:"destination"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	if body.UploadID == "" || body.Filename == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Upload ID and filename are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Upload ID and filename are required"})
+		return
 	}
 
 	cfg := config.Get()
@@ -105,7 +107,8 @@ func FinalizeUpload(c echo.Context) error {
 	// Ensure destination directory exists
 	destDir := filepath.Join(cfg.DataDir, destination)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create destination directory"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create destination directory"})
+		return
 	}
 
 	// Get unique filename using utils helpers
@@ -123,7 +126,8 @@ func FinalizeUpload(c echo.Context) error {
 		srcInfo, err = os.Stat(srcPath)
 		if err != nil {
 			uploadLogger.Error().Str("uploadId", body.UploadID).Err(err).Msg("upload file not found")
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "Upload file not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Upload file not found"})
+			return
 		}
 	}
 
@@ -136,7 +140,8 @@ func FinalizeUpload(c echo.Context) error {
 		// Fallback to copy + delete
 		if err := copyUploadFile(srcPath, fullDestPath); err != nil {
 			uploadLogger.Error().Err(err).Msg("failed to move upload file")
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to finalize upload"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to finalize upload"})
+			return
 		}
 		os.Remove(srcPath)
 	}
@@ -169,7 +174,7 @@ func FinalizeUpload(c echo.Context) error {
 	// Notify UI
 	notifications.GetService().NotifyInboxChanged()
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"path":    destPath,
 	})

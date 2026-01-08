@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -13,7 +13,7 @@ import (
 var statsLogger = log.GetLogger("ApiStats")
 
 // GetStats handles GET /api/stats
-func GetStats(c echo.Context) error {
+func GetStats(c *gin.Context) {
 	stats := make(map[string]interface{})
 
 	// File stats
@@ -50,5 +50,5 @@ func GetStats(c echo.Context) error {
 	// Notification subscribers
 	stats["notificationSubscribers"] = notifications.GetService().SubscriberCount()
 
-	return c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, stats)
 }

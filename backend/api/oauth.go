@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/auth"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -27,19 +27,24 @@ type TokenResponse struct {
 }
 
 // OAuthAuthorize handles GET /api/oauth/authorize
-func OAuthAuthorize(c echo.Context) error {
+func OAuthAuthorize(c *gin.Context) {
 	cfg := config.Get()
 
 	if cfg.OAuthIssuerURL == "" || cfg.OAuthClientID == "" {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OAuth is not configured",
 		})
+		return
 	}
 
 	// Determine redirect URI
 	redirectURI := cfg.OAuthRedirectURI
 	if redirectURI == "" {
-		redirectURI = c.Scheme() + "://" + c.Request().Host + "/api/oauth/callback"
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		redirectURI = scheme + "://" + c.Request.Host + "/api/oauth/callback"
 	}
 
 	// Build authorization URL
@@ -51,40 +56,48 @@ func OAuthAuthorize(c echo.Context) error {
 
 	authURL := cfg.OAuthIssuerURL + "/authorize?" + params.Encode()
 
-	return c.Redirect(http.StatusFound, authURL)
+	c.Redirect(http.StatusFound, authURL)
 }
 
 // OAuthCallback handles GET /api/oauth/callback
-func OAuthCallback(c echo.Context) error {
-	code := c.QueryParam("code")
+func OAuthCallback(c *gin.Context) {
+	code := c.Query("code")
 	if code == "" {
-		errMsg := c.QueryParam("error")
-		errDesc := c.QueryParam("error_description")
+		errMsg := c.Query("error")
+		errDesc := c.Query("error_description")
 		if errMsg != "" {
 			oauthLogger.Error().Str("error", errMsg).Str("description", errDesc).Msg("OAuth callback error")
-			return c.Redirect(http.StatusFound, "/?error="+url.QueryEscape(errMsg))
+			c.Redirect(http.StatusFound, "/?error="+url.QueryEscape(errMsg))
+			return
 		}
-		return c.Redirect(http.StatusFound, "/?error=no_code")
+		c.Redirect(http.StatusFound, "/?error=no_code")
+		return
 	}
 
 	cfg := config.Get()
 	if cfg.OAuthIssuerURL == "" || cfg.OAuthClientID == "" || cfg.OAuthClientSecret == "" {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OAuth is not configured",
 		})
+		return
 	}
 
 	// Determine redirect URI
 	redirectURI := cfg.OAuthRedirectURI
 	if redirectURI == "" {
-		redirectURI = c.Scheme() + "://" + c.Request().Host + "/api/oauth/callback"
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		redirectURI = scheme + "://" + c.Request.Host + "/api/oauth/callback"
 	}
 
 	// Exchange code for tokens
 	tokens, err := exchangeCodeForTokens(cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, code, redirectURI)
 	if err != nil {
 		oauthLogger.Error().Err(err).Msg("failed to exchange code for tokens")
-		return c.Redirect(http.StatusFound, "/?error=token_exchange_failed")
+		c.Redirect(http.StatusFound, "/?error=token_exchange_failed")
+		return
 	}
 
 	// Validate the ID token
@@ -93,110 +106,117 @@ func OAuthCallback(c echo.Context) error {
 		payload, err = auth.ValidateJWT(tokens.IDToken)
 		if err != nil {
 			oauthLogger.Error().Err(err).Msg("failed to validate ID token")
-			return c.Redirect(http.StatusFound, "/?error=invalid_token")
+			c.Redirect(http.StatusFound, "/?error=invalid_token")
+			return
 		}
 
 		// Verify expected username
 		username := auth.GetUsernameFromPayload(payload)
 		if !auth.VerifyExpectedUsername(username) {
 			oauthLogger.Warn().Str("username", username).Msg("username not allowed")
-			return c.Redirect(http.StatusFound, "/?error=unauthorized_user")
+			c.Redirect(http.StatusFound, "/?error=unauthorized_user")
+			return
 		}
 	} else if tokens.AccessToken != "" {
 		// Fall back to access token validation
 		payload, err = auth.ValidateJWT(tokens.AccessToken)
 		if err != nil {
 			oauthLogger.Error().Err(err).Msg("failed to validate access token")
-			return c.Redirect(http.StatusFound, "/?error=invalid_token")
+			c.Redirect(http.StatusFound, "/?error=invalid_token")
+			return
 		}
 	}
 
 	// Set session cookies
-	setAuthCookies(c, tokens)
+	setAuthCookiesGin(c, tokens)
 
 	oauthLogger.Info().
 		Str("sub", payload.Sub).
 		Msg("OAuth login successful")
 
 	// Redirect to home
-	return c.Redirect(http.StatusFound, "/")
+	c.Redirect(http.StatusFound, "/")
 }
 
 // OAuthRefresh handles GET /api/oauth/refresh
-func OAuthRefresh(c echo.Context) error {
+func OAuthRefresh(c *gin.Context) {
 	// Get refresh token from cookie or header
-	refreshToken := c.Request().Header.Get("X-Refresh-Token")
+	refreshToken := c.Request.Header.Get("X-Refresh-Token")
 	if refreshToken == "" {
-		cookie, err := c.Cookie("refresh_token")
-		if err != nil || cookie.Value == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{
+		refreshToken, _ = c.Cookie("refresh_token")
+		if refreshToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "No refresh token provided",
 			})
+			return
 		}
-		refreshToken = cookie.Value
 	}
 
 	cfg := config.Get()
 	if cfg.OAuthIssuerURL == "" || cfg.OAuthClientID == "" || cfg.OAuthClientSecret == "" {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OAuth is not configured",
 		})
+		return
 	}
 
 	// Exchange refresh token for new tokens
 	tokens, err := refreshTokens(cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, refreshToken)
 	if err != nil {
 		oauthLogger.Error().Err(err).Msg("failed to refresh tokens")
-		return c.JSON(http.StatusUnauthorized, map[string]string{
+		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Token refresh failed",
 		})
+		return
 	}
 
 	// Set new cookies
-	setAuthCookies(c, tokens)
+	setAuthCookiesGin(c, tokens)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
 		"expiresIn": tokens.ExpiresIn,
 	})
 }
 
 // OAuthToken handles GET /api/oauth/token
-func OAuthToken(c echo.Context) error {
+func OAuthToken(c *gin.Context) {
 	// Get access token from cookie or header
-	accessToken := c.Request().Header.Get("Authorization")
+	accessToken := c.Request.Header.Get("Authorization")
 	if strings.HasPrefix(accessToken, "Bearer ") {
 		accessToken = strings.TrimPrefix(accessToken, "Bearer ")
 	} else {
-		cookie, err := c.Cookie("access_token")
-		if err != nil || cookie.Value == "" {
-			return c.JSON(http.StatusOK, map[string]interface{}{
+		accessToken, _ = c.Cookie("access_token")
+		if accessToken == "" {
+			c.JSON(http.StatusOK, gin.H{
 				"authenticated": false,
 			})
+			return
 		}
-		accessToken = cookie.Value
 	}
 
 	// Validate the token
 	payload, err := auth.ValidateJWT(accessToken)
 	if err != nil {
 		oauthLogger.Debug().Err(err).Msg("token validation failed")
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		c.JSON(http.StatusOK, gin.H{
 			"authenticated": false,
 			"error":         "invalid_token",
 		})
+		return
 	}
 
 	// Verify expected username
 	username := auth.GetUsernameFromPayload(payload)
 	if !auth.VerifyExpectedUsername(username) {
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		c.JSON(http.StatusOK, gin.H{
 			"authenticated": false,
 			"error":         "unauthorized_user",
 		})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"authenticated": true,
 		"username":      username,
 		"sub":           payload.Sub,
@@ -205,11 +225,11 @@ func OAuthToken(c echo.Context) error {
 }
 
 // OAuthLogout handles POST /api/oauth/logout
-func OAuthLogout(c echo.Context) error {
+func OAuthLogout(c *gin.Context) {
 	// Clear auth cookies
-	clearAuthCookies(c)
+	clearAuthCookiesGin(c)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 	})
 }
@@ -289,53 +309,20 @@ func refreshTokens(issuerURL, clientID, clientSecret, refreshToken string) (*Tok
 	return &tokens, nil
 }
 
-func setAuthCookies(c echo.Context, tokens *TokenResponse) {
+func setAuthCookiesGin(c *gin.Context, tokens *TokenResponse) {
 	// Access token cookie - httpOnly, secure in production
 	cfg := config.Get()
 	secure := !cfg.IsDevelopment()
 
-	accessCookie := &http.Cookie{
-		Name:     "access_token",
-		Value:    tokens.AccessToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   tokens.ExpiresIn,
-	}
-	c.SetCookie(accessCookie)
+	c.SetCookie("access_token", tokens.AccessToken, tokens.ExpiresIn, "/", "", secure, true)
 
 	// Refresh token cookie - longer lived
 	if tokens.RefreshToken != "" {
-		refreshCookie := &http.Cookie{
-			Name:     "refresh_token",
-			Value:    tokens.RefreshToken,
-			Path:     "/api/oauth/refresh",
-			HttpOnly: true,
-			Secure:   secure,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   60 * 60 * 24 * 30, // 30 days
-		}
-		c.SetCookie(refreshCookie)
+		c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/api/oauth/refresh", "", secure, true)
 	}
 }
 
-func clearAuthCookies(c echo.Context) {
-	accessCookie := &http.Cookie{
-		Name:     "access_token",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	}
-	c.SetCookie(accessCookie)
-
-	refreshCookie := &http.Cookie{
-		Name:     "refresh_token",
-		Value:    "",
-		Path:     "/api/oauth/refresh",
-		HttpOnly: true,
-		MaxAge:   -1,
-	}
-	c.SetCookie(refreshCookie)
+func clearAuthCookiesGin(c *gin.Context) {
+	c.SetCookie("access_token", "", -1, "/", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/api/oauth/refresh", "", false, true)
 }

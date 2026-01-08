@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
@@ -15,20 +15,20 @@ var searchLogger = log.GetLogger("ApiSearch")
 
 // SearchResultItem represents a search result
 type SearchResultItem struct {
-	Path            string         `json:"path"`
-	Name            string         `json:"name"`
-	IsFolder        bool           `json:"isFolder"`
-	Size            *int64         `json:"size,omitempty"`
-	MimeType        *string        `json:"mimeType,omitempty"`
-	ModifiedAt      string         `json:"modifiedAt"`
-	CreatedAt       string         `json:"createdAt"`
-	Digests         []db.Digest    `json:"digests"`
-	Score           float64        `json:"score"`
-	Snippet         string         `json:"snippet"`
-	TextPreview     *string        `json:"textPreview,omitempty"`
-	ScreenshotSqlar *string        `json:"screenshotSqlar,omitempty"`
+	Path            string            `json:"path"`
+	Name            string            `json:"name"`
+	IsFolder        bool              `json:"isFolder"`
+	Size            *int64            `json:"size,omitempty"`
+	MimeType        *string           `json:"mimeType,omitempty"`
+	ModifiedAt      string            `json:"modifiedAt"`
+	CreatedAt       string            `json:"createdAt"`
+	Digests         []db.Digest       `json:"digests"`
+	Score           float64           `json:"score"`
+	Snippet         string            `json:"snippet"`
+	TextPreview     *string           `json:"textPreview,omitempty"`
+	ScreenshotSqlar *string           `json:"screenshotSqlar,omitempty"`
 	Highlights      map[string]string `json:"highlights,omitempty"`
-	MatchContext    *MatchContext  `json:"matchContext,omitempty"`
+	MatchContext    *MatchContext     `json:"matchContext,omitempty"`
 }
 
 // MatchContext provides context about where the match was found
@@ -62,37 +62,39 @@ type Timing struct {
 }
 
 // Search handles GET /api/search
-func Search(c echo.Context) error {
-	query := strings.TrimSpace(c.QueryParam("q"))
+func Search(c *gin.Context) {
+	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Query parameter 'q' is required",
 			"code":  "QUERY_REQUIRED",
 		})
+		return
 	}
 
 	if len(query) < 2 {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Query must be at least 2 characters",
 			"code":  "QUERY_TOO_SHORT",
 		})
+		return
 	}
 
 	limit := 20
-	if l, err := strconv.Atoi(c.QueryParam("limit")); err == nil && l > 0 && l <= 100 {
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		limit = l
 	}
 
 	offset := 0
-	if o, err := strconv.Atoi(c.QueryParam("offset")); err == nil && o >= 0 {
+	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
 		offset = o
 	}
 
-	typeFilter := c.QueryParam("type")
-	pathFilter := c.QueryParam("path")
+	typeFilter := c.Query("type")
+	pathFilter := c.Query("path")
 
 	// Parse search types
-	typesParam := c.QueryParam("types")
+	typesParam := c.Query("types")
 	if typesParam == "" {
 		typesParam = "keyword,semantic"
 	}
@@ -101,10 +103,11 @@ func Search(c echo.Context) error {
 	useSemantic := contains(searchTypes, "semantic")
 
 	if !useKeyword && !useSemantic {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid types parameter. Use 'keyword', 'semantic', or 'keyword,semantic'",
 			"code":  "INVALID_TYPES",
 		})
+		return
 	}
 
 	// Initialize clients
@@ -271,7 +274,7 @@ func Search(c echo.Context) error {
 	response.Pagination.Offset = offset
 	response.Pagination.HasMore = len(results) >= limit
 
-	return c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, response)
 }
 
 func extractSearchTerms(query string) []string {

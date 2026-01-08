@@ -2,8 +2,9 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -29,53 +30,59 @@ var availableDigesters = []map[string]string{
 }
 
 // GetDigesters handles GET /api/digest/digesters
-func GetDigesters(c echo.Context) error {
-	return c.JSON(http.StatusOK, availableDigesters)
+func GetDigesters(c *gin.Context) {
+	c.JSON(http.StatusOK, availableDigesters)
 }
 
 // GetDigestStats handles GET /api/digest/stats
-func GetDigestStats(c echo.Context) error {
+func GetDigestStats(c *gin.Context) {
 	stats, err := db.GetDigestStats()
 	if err != nil {
 		digestLogger.Error().Err(err).Msg("failed to get digest stats")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get digest stats"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest stats"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, stats)
 }
 
 // ResetDigester handles POST /api/digest/reset/:digester
-func ResetDigester(c echo.Context) error {
+func ResetDigester(c *gin.Context) {
 	digester := c.Param("digester")
 	if digester == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Digester name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Digester name is required"})
+		return
 	}
 
 	affected, err := db.ResetDigesterAll(digester)
 	if err != nil {
 		digestLogger.Error().Err(err).Str("digester", digester).Msg("failed to reset digester")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to reset digester"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digester"})
+		return
 	}
 
 	digestLogger.Info().Str("digester", digester).Int64("affected", affected).Msg("reset digester")
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"affected": affected,
 	})
 }
 
-// GetDigest handles GET /api/digest/*
-func GetDigest(c echo.Context) error {
-	path := c.Param("*")
+// GetDigest handles GET /api/digest/*path
+func GetDigest(c *gin.Context) {
+	path := c.Param("path")
+	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	digests, err := db.GetDigestsForFile(path)
 	if err != nil {
 		digestLogger.Error().Err(err).Str("path", path).Msg("failed to get digests")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get digests"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digests"})
+		return
 	}
 
 	// Build status summary
@@ -90,24 +97,27 @@ func GetDigest(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"path":    path,
 		"status":  status,
 		"digests": digests,
 	})
 }
 
-// TriggerDigest handles POST /api/digest/*
-func TriggerDigest(c echo.Context) error {
-	path := c.Param("*")
+// TriggerDigest handles POST /api/digest/*path
+func TriggerDigest(c *gin.Context) {
+	path := c.Param("path")
+	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
 	}
 
 	// Check if file exists
 	file, err := db.GetFileByPath(path)
 	if err != nil || file == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
 	}
 
 	// Parse optional digester from body
@@ -115,13 +125,14 @@ func TriggerDigest(c echo.Context) error {
 		Digester string `json:"digester"`
 		Force    bool   `json:"force"`
 	}
-	c.Bind(&body)
+	c.ShouldBindJSON(&body)
 
 	if body.Digester != "" {
 		// Reset specific digester
 		digest, err := db.GetDigestByFileAndDigester(path, body.Digester)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get digest"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest"})
+			return
 		}
 
 		if digest == nil {
@@ -134,7 +145,8 @@ func TriggerDigest(c echo.Context) error {
 				UpdatedAt: db.NowUTC(),
 			}
 			if err := db.CreateDigest(digest); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create digest"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create digest"})
+				return
 			}
 		} else if body.Force {
 			// Reset existing digest
@@ -142,19 +154,21 @@ func TriggerDigest(c echo.Context) error {
 			digest.Error = nil
 			digest.Attempts = 0
 			if err := db.UpdateDigest(digest); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to reset digest"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digest"})
+				return
 			}
 		}
 	} else {
 		// Reset all digests for this file
 		if err := db.DeleteDigestsForFile(path); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to reset digests"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digests"})
+			return
 		}
 	}
 
 	// TODO: Trigger digest processing in worker
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Digest processing triggered",
 		"path":    path,

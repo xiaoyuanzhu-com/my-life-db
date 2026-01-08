@@ -10,8 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -30,54 +29,48 @@ func main() {
 	_ = db.GetDB()
 	logger.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
 
-	// Create Echo instance
-	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
+	// Set Gin mode based on environment
+	if cfg.IsDevelopment() {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
-	// Trust proxy headers
-	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+	// Create Gin router
+	r := gin.New()
 
 	// Middleware
-	e.Use(middleware.Recover())
-	e.Use(middleware.RequestID())
+	r.Use(gin.Recovery())
 
 	// Conditional middleware based on environment
 	if cfg.IsDevelopment() {
-		e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-			Format: "${time_rfc3339} ${method} ${uri} ${status} ${latency_human}\n",
-		}))
-	} else {
-		// Production: enable compression
-		e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-			Level: 5,
-		}))
+		r.Use(gin.Logger())
 	}
 
 	// CORS for development
 	if cfg.IsDevelopment() {
-		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-			AllowOrigins: []string{"http://localhost:3000", "http://localhost:12345"},
-			AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-			AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-		}))
+		r.Use(corsMiddleware())
 	}
 
+	// Trust proxy headers
+	r.SetTrustedProxies(nil) // Trust all proxies, or set specific ones
+
 	// Ignore .well-known requests (Chrome DevTools, etc.)
-	e.GET("/.well-known/*", func(c echo.Context) error {
-		return c.NoContent(http.StatusNotFound)
+	r.GET("/.well-known/*path", func(c *gin.Context) {
+		c.Status(http.StatusNotFound)
 	})
 
-	// Setup routes
-	api.SetupRoutes(e)
+	// Setup API routes
+	api.SetupRoutes(r)
 
 	// Serve static files from dist directory (built frontend)
-	e.Static("/", "dist/client")
-	e.Static("/static", "static")
+	r.Static("/assets", "dist/client/assets")
+	r.StaticFile("/favicon.ico", "dist/client/favicon.ico")
+	r.Static("/static", "static")
 
 	// SPA fallback - serve index.html for non-API routes
-	e.GET("/*", func(c echo.Context) error {
-		return c.File("dist/client/index.html")
+	r.NoRoute(func(c *gin.Context) {
+		c.File("dist/client/index.html")
 	})
 
 	// Start background workers
@@ -93,8 +86,14 @@ func main() {
 	go fsWorker.Start()
 	go digestWorker.Start()
 
-	// Start server
+	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
+	// Start server
 	go func() {
 		logger.Info().
 			Str("addr", addr).
@@ -104,7 +103,7 @@ func main() {
 		// Print network addresses
 		printNetworkAddresses(cfg.Port)
 
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal().Err(err).Msg("server error")
 		}
 	}()
@@ -124,7 +123,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := e.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error().Err(err).Msg("server shutdown error")
 	}
 
@@ -137,6 +136,31 @@ func main() {
 	notifications.GetService().Shutdown()
 
 	logger.Info().Msg("server stopped")
+}
+
+// corsMiddleware creates a CORS middleware for Gin
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		allowedOrigins := map[string]bool{
+			"http://localhost:3000":  true,
+			"http://localhost:12345": true,
+		}
+
+		if allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func printNetworkAddresses(port int) {

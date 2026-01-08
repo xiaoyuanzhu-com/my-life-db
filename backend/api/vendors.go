@@ -3,25 +3,27 @@ package api
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 // GetOpenAIModels handles GET /api/vendors/openai/models
-func GetOpenAIModels(c echo.Context) error {
+func GetOpenAIModels(c *gin.Context) {
 	client := vendors.GetOpenAIClient()
 	if client == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OpenAI is not configured",
 		})
+		return
 	}
 
 	models, err := client.ListModels()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to list models: " + err.Error(),
 		})
+		return
 	}
 
-	return c.JSON(http.StatusOK, models)
+	c.JSON(http.StatusOK, models)
 }

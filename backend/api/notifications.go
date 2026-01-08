@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
@@ -13,22 +13,22 @@ import (
 var notifLogger = log.GetLogger("ApiNotifications")
 
 // NotificationStream handles GET /api/notifications/stream (SSE)
-func NotificationStream(c echo.Context) error {
-	c.Response().Header().Set("Content-Type", "text/event-stream")
-	c.Response().Header().Set("Cache-Control", "no-cache")
-	c.Response().Header().Set("Connection", "keep-alive")
-	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+func NotificationStream(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // Disable nginx buffering
 
 	// Subscribe to notifications
 	events, unsubscribe := notifications.GetService().Subscribe()
 	defer unsubscribe()
 
 	// Send initial connected event
-	sendSSEEvent(c, notifications.Event{
+	sendSSEEventGin(c, notifications.Event{
 		Type:      notifications.EventConnected,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	})
-	c.Response().Flush()
+	c.Writer.Flush()
 
 	notifLogger.Debug().Msg("client connected to notification stream")
 
@@ -41,28 +41,28 @@ func NotificationStream(c echo.Context) error {
 		select {
 		case event, ok := <-events:
 			if !ok {
-				return nil
+				return
 			}
-			sendSSEEvent(c, event)
-			c.Response().Flush()
+			sendSSEEventGin(c, event)
+			c.Writer.Flush()
 
 		case <-ticker.C:
 			// Send heartbeat comment
-			fmt.Fprintf(c.Response(), ": heartbeat\n\n")
-			c.Response().Flush()
+			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
+			c.Writer.Flush()
 
-		case <-c.Request().Context().Done():
+		case <-c.Request.Context().Done():
 			notifLogger.Debug().Msg("client disconnected from notification stream")
-			return nil
+			return
 		}
 	}
 }
 
-func sendSSEEvent(c echo.Context, event notifications.Event) {
+func sendSSEEventGin(c *gin.Context, event notifications.Event) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		notifLogger.Error().Err(err).Msg("failed to marshal event")
 		return
 	}
-	fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+	fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 }
