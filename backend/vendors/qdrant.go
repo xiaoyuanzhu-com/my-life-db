@@ -2,6 +2,7 @@ package vendors
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -63,6 +64,9 @@ func GetQdrantClient() *QdrantClient {
 			log.Warn().Msg("Qdrant host not configured, Qdrant disabled")
 			return
 		}
+
+		// Strip trailing slash to avoid URL parsing issues
+		qdrantHost = strings.TrimSuffix(qdrantHost, "/")
 
 		// Use API key from config (typically from env var)
 		cfg := config.Get()

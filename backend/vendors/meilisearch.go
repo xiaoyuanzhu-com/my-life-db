@@ -1,6 +1,7 @@
 package vendors
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -74,6 +75,9 @@ func GetMeiliClient() *MeiliClient {
 			log.Warn().Msg("Meilisearch host not configured, Meilisearch disabled")
 			return
 		}
+
+		// Strip trailing slash to avoid URL parsing issues
+		meiliHost = strings.TrimSuffix(meiliHost, "/")
 
 		// Use API key from config (typically from env var)
 		cfg := config.Get()
