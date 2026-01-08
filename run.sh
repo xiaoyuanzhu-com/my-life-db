@@ -101,6 +101,41 @@ run_qdrant() {
     log_info "View logs with: docker logs -f qdrant"
 }
 
+run_frontend() {
+    log_info "Starting frontend development server..."
+
+    cd "$PROJECT_ROOT/frontend" || {
+        log_error "Failed to navigate to frontend directory"
+        exit 1
+    }
+
+    log_info "Running: npm run dev"
+    npm run dev
+}
+
+run_backend() {
+    log_info "Building and starting backend server..."
+
+    cd "$PROJECT_ROOT/backend" || {
+        log_error "Failed to navigate to backend directory"
+        exit 1
+    }
+
+    log_info "Building backend..."
+    go build . || {
+        log_error "Failed to build backend"
+        exit 1
+    }
+
+    cd "$PROJECT_ROOT" || {
+        log_error "Failed to navigate to project root"
+        exit 1
+    }
+
+    log_info "Starting backend server..."
+    ./backend/my-life-db
+}
+
 # Main script logic
 main() {
     local SERVICE="$1"
@@ -111,6 +146,8 @@ main() {
         echo "Usage: $0 <service>"
         echo ""
         echo "Available services:"
+        echo "  frontend - Start frontend development server"
+        echo "  backend  - Build and start backend server"
         echo "  meili    - Start Meilisearch search engine"
         echo "  qdrant   - Start Qdrant vector database"
         echo ""
@@ -118,6 +155,12 @@ main() {
     fi
 
     case "$SERVICE" in
+        frontend)
+            run_frontend
+            ;;
+        backend)
+            run_backend
+            ;;
         meili|meilisearch)
             run_meilisearch
             ;;
@@ -128,6 +171,8 @@ main() {
             log_error "Unknown service: $SERVICE"
             echo ""
             echo "Available services:"
+            echo "  frontend - Start frontend development server"
+            echo "  backend  - Build and start backend server"
             echo "  meili    - Start Meilisearch search engine"
             echo "  qdrant   - Start Qdrant vector database"
             echo ""
