@@ -15,6 +15,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
@@ -238,6 +239,7 @@ func GetLibraryFileInfo(c *gin.Context) {
 }
 
 // PinFile handles POST /api/library/pin
+// Toggles pin state like Node.js version and returns the new state
 func PinFile(c *gin.Context) {
 	var body struct {
 		Path string `json:"path"`
@@ -252,13 +254,38 @@ func PinFile(c *gin.Context) {
 		return
 	}
 
-	if err := db.AddPin(body.Path); err != nil {
-		log.Error().Err(err).Msg("failed to pin file")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
+	// Check current pin state
+	isPinned, err := db.IsPinned(body.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to check pin state")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check pin state"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	// Toggle pin state
+	if isPinned {
+		if err := db.RemovePin(body.Path); err != nil {
+			log.Error().Err(err).Msg("failed to unpin file")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
+			return
+		}
+		isPinned = false
+	} else {
+		if err := db.AddPin(body.Path); err != nil {
+			log.Error().Err(err).Msg("failed to pin file")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
+			return
+		}
+		isPinned = true
+	}
+
+	log.Info().Str("path", body.Path).Bool("isPinned", isPinned).Msg("toggled pin state")
+
+	// Notify UI of pin change
+	notifications.GetService().NotifyPinChanged(body.Path)
+
+	// Return the new pin state (matching Node.js response format)
+	c.JSON(http.StatusOK, gin.H{"isPinned": isPinned})
 }
 
 // UnpinFile handles DELETE /api/library/pin

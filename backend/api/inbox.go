@@ -396,6 +396,15 @@ func DeleteInboxItem(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
+// PinnedItem represents a pinned item for UI display (matching Node.js schema)
+type PinnedItem struct {
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	PinnedAt    string `json:"pinnedAt"`
+	DisplayText string `json:"displayText"`
+	Cursor      string `json:"cursor"`
+}
+
 // GetPinnedInboxItems handles GET /api/inbox/pinned
 func GetPinnedInboxItems(c *gin.Context) {
 	files, err := db.GetPinnedFiles()
@@ -405,16 +414,35 @@ func GetPinnedInboxItems(c *gin.Context) {
 		return
 	}
 
-	// Filter to inbox only
-	inboxFiles := make([]db.FileWithDigests, 0)
+	// Filter to inbox only and transform to PinnedItem format
+	items := make([]PinnedItem, 0)
 	for _, f := range files {
 		if strings.HasPrefix(f.Path, "inbox/") {
-			inboxFiles = append(inboxFiles, f)
+			// Get display text: first line of textPreview or filename
+			displayText := f.Name
+			if f.TextPreview != nil && *f.TextPreview != "" {
+				// Get first line of text preview
+				lines := strings.Split(*f.TextPreview, "\n")
+				if len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
+					displayText = strings.TrimSpace(lines[0])
+				}
+			}
+
+			// Create cursor (format: created_at:path)
+			cursor := f.CreatedAt + ":" + f.Path
+
+			items = append(items, PinnedItem{
+				Path:        f.Path,
+				Name:        f.Name,
+				PinnedAt:    f.CreatedAt, // Using file's created_at as pinnedAt
+				DisplayText: displayText,
+				Cursor:      cursor,
+			})
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"items": inboxFiles,
+		"items": items,
 	})
 }
 
