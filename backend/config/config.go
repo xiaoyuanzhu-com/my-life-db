@@ -82,7 +82,7 @@ func load() *Config {
 		// Meilisearch
 		MeiliHost:   getEnv("MEILI_HOST", ""),
 		MeiliAPIKey: getEnv("MEILI_API_KEY", ""),
-		MeiliIndex:  getEnv("MEILI_INDEX", "files"),
+		MeiliIndex:  getEnv("MEILI_INDEX", "mylifedb_files"),
 
 		// Qdrant
 		QdrantHost:       getEnv("QDRANT_HOST", ""),
