@@ -9,7 +9,7 @@ RUN npm ci
 
 # Copy source and build
 COPY frontend/ .
-RUN npm run build:client
+RUN npm run build
 
 # Stage 2: Build Go server
 FROM golang:1.25-alpine AS go-builder
@@ -41,7 +41,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy built artifacts
 COPY --from=go-builder /app/bin/server ./server
-COPY --from=frontend-builder /app/dist/client ./dist/client
+COPY --from=frontend-builder /app/dist ./frontend/dist
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
