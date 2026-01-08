@@ -1,11 +1,2 @@
 # OS
 .DS_Store
-
-# Environment
-.env*
-
-# Data
-/data
-
-# Build outputs
-/bin
