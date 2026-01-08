@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (will be installed fresh in container)
+frontend/node_modules
+backend/vendor
+
+# Build outputs
+frontend/build
+frontend/dist
+frontend/.react-router
+bin
+
+# Data and env
+data
+.env*
+
+# IDE and OS
+.DS_Store
+.vscode
+.idea
+
+# Docs
+docs
+*.md
+!frontend/README.md
+!backend/README.md
+
+# Claude
+.claude
+CLAUDE.md
+AGENTS.md
