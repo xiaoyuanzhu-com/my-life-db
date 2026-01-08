@@ -31,11 +31,18 @@ type SearchResultItem struct {
 
 // MatchContext provides context about where the match was found
 type MatchContext struct {
-	Source     string   `json:"source"` // "digest" or "semantic"
-	Snippet    string   `json:"snippet"`
-	Terms      []string `json:"terms"`
-	Score      *float64 `json:"score,omitempty"`
-	SourceType string   `json:"sourceType,omitempty"`
+	Source     string        `json:"source"` // "digest" or "semantic"
+	Snippet    string        `json:"snippet"`
+	Terms      []string      `json:"terms"`
+	Score      *float64      `json:"score,omitempty"`
+	SourceType string        `json:"sourceType,omitempty"` // For semantic matches
+	Digest     *DigestInfo   `json:"digest,omitempty"`     // For keyword matches
+}
+
+// DigestInfo provides digest type and label for match context
+type DigestInfo struct {
+	Type  string `json:"type"`
+	Label string `json:"label"`
 }
 
 // SearchResponse represents the search API response
@@ -422,10 +429,13 @@ func buildKeywordMatchContext(hit vendors.MeiliHit, file *db.FileWithDigests, te
 
 	found:
 		return &MatchContext{
-			Source:     "digest",
-			Snippet:    snippet,
-			Terms:      terms,
-			SourceType: sourceType,
+			Source:  "digest",
+			Snippet: snippet,
+			Terms:   terms,
+			Digest: &DigestInfo{
+				Type:  config.field,
+				Label: sourceType,
+			},
 		}
 	}
 
