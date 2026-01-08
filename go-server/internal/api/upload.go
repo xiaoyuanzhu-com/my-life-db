@@ -16,6 +16,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/notifications"
+	"github.com/xiaoyuanzhu-com/my-life-db/internal/utils"
 )
 
 var uploadLogger = log.GetLogger("ApiUpload")
@@ -107,9 +108,9 @@ func FinalizeUpload(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create destination directory"})
 	}
 
-	// Get unique filename using helpers from inbox.go
-	filename := sanitizeFilename(body.Filename)
-	filename = deduplicateFilename(destDir, filename)
+	// Get unique filename using utils helpers
+	filename := utils.SanitizeFilename(body.Filename)
+	filename = utils.DeduplicateFilename(destDir, filename)
 
 	// Source file from TUS uploads
 	srcPath := filepath.Join(uploadDir, body.UploadID)
@@ -145,7 +146,7 @@ func FinalizeUpload(c echo.Context) error {
 
 	// Create file record
 	now := db.NowUTC()
-	mimeType := detectMimeType(filename)
+	mimeType := utils.DetectMimeType(filename)
 	size := srcInfo.Size()
 
 	db.UpsertFile(&db.FileRecord{

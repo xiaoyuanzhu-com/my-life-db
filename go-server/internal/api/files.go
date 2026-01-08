@@ -13,6 +13,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/internal/utils"
 )
 
 var filesLogger = log.GetLogger("ApiFiles")
@@ -47,7 +48,7 @@ func ServeRawFile(c echo.Context) error {
 	}
 
 	// Detect MIME type
-	mimeType := detectMimeType(path)
+	mimeType := utils.DetectMimeType(path)
 
 	// Set headers
 	c.Response().Header().Set("Content-Type", mimeType)
@@ -98,7 +99,7 @@ func SaveRawFile(c echo.Context) error {
 	// Update database
 	info, _ := os.Stat(fullPath)
 	size := info.Size()
-	mimeType := detectMimeType(path)
+	mimeType := utils.DetectMimeType(path)
 	now := db.NowUTC()
 
 	db.UpsertFile(&db.FileRecord{
@@ -148,7 +149,7 @@ func ServeSqlarFile(c echo.Context) error {
 	}
 
 	// Detect MIME type
-	mimeType := detectMimeType(name)
+	mimeType := utils.DetectMimeType(name)
 
 	c.Response().Header().Set("Content-Type", mimeType)
 	c.Response().Header().Set("Content-Length", strconv.Itoa(len(data)))

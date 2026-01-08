@@ -336,6 +336,56 @@ func saveDigestOutput(filePath string, output DigestInput) {
 	}
 
 	db.UpdateDigestMap(id, update)
+
+	// Trigger cascading resets if completed with content
+	if output.Status == DigestStatusCompleted && output.Content != nil && *output.Content != "" {
+		triggerCascadingResets(filePath, output.Digester)
+	}
+}
+
+// triggerCascadingResets resets downstream digesters when an upstream digester completes with content
+func triggerCascadingResets(filePath, digesterName string) {
+	downstreamDigesters, ok := CascadingResets[digesterName]
+	if !ok || len(downstreamDigesters) == 0 {
+		return
+	}
+
+	existingDigests := db.ListDigestsForPath(filePath)
+	digestsByName := make(map[string]db.Digest)
+	for _, d := range existingDigests {
+		digestsByName[d.Digester] = d
+	}
+
+	var resetTargets []string
+	for _, downstream := range downstreamDigesters {
+		if digest, ok := digestsByName[downstream]; ok {
+			// Only reset terminal states (completed, skipped, failed)
+			// Leave todo and in-progress alone
+			if digest.Status == "completed" || digest.Status == "skipped" || digest.Status == "failed" {
+				resetTargets = append(resetTargets, downstream)
+			}
+		}
+	}
+
+	if len(resetTargets) > 0 {
+		logger.Info().
+			Str("path", filePath).
+			Str("trigger", digesterName).
+			Strs("targets", resetTargets).
+			Msg("triggering cascading resets")
+
+		now := db.NowUTC()
+		for _, target := range resetTargets {
+			digest := digestsByName[target]
+			db.UpdateDigestMap(digest.ID, map[string]interface{}{
+				"status":     "todo",
+				"content":    nil,
+				"error":      nil,
+				"attempts":   0,
+				"updated_at": now,
+			})
+		}
+	}
 }
 
 func getOrCreateDigestID(filePath, digester string) string {

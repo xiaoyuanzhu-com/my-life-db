@@ -16,6 +16,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/internal/notifications"
+	"github.com/xiaoyuanzhu-com/my-life-db/internal/utils"
 )
 
 var inboxLogger = log.GetLogger("ApiInbox")
@@ -202,8 +203,8 @@ func CreateInboxItem(c echo.Context) error {
 
 	// Save uploaded files
 	for _, fileHeader := range files {
-		filename := sanitizeFilename(fileHeader.Filename)
-		filename = deduplicateFilename(inboxDir, filename)
+		filename := utils.SanitizeFilename(fileHeader.Filename)
+		filename = utils.DeduplicateFilename(inboxDir, filename)
 
 		filePath := filepath.Join("inbox", filename)
 		fullPath := filepath.Join(cfg.DataDir, filePath)
@@ -229,7 +230,7 @@ func CreateInboxItem(c echo.Context) error {
 
 		info, _ := os.Stat(fullPath)
 		size := info.Size()
-		mimeType := detectMimeType(filename)
+		mimeType := utils.DetectMimeType(filename)
 
 		// Create file record
 		if err := db.UpsertFile(&db.FileRecord{
@@ -431,70 +432,3 @@ func GetInboxItemStatus(c echo.Context) error {
 	})
 }
 
-// Helper functions
-
-func sanitizeFilename(filename string) string {
-	// Remove path separators
-	filename = filepath.Base(filename)
-
-	// Replace problematic characters
-	replacer := strings.NewReplacer(
-		"<", "_",
-		">", "_",
-		":", "_",
-		"\"", "_",
-		"|", "_",
-		"?", "_",
-		"*", "_",
-	)
-	return replacer.Replace(filename)
-}
-
-func deduplicateFilename(dir, filename string) string {
-	ext := filepath.Ext(filename)
-	base := strings.TrimSuffix(filename, ext)
-
-	result := filename
-	counter := 2
-
-	for {
-		fullPath := filepath.Join(dir, result)
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			return result
-		}
-		result = base + " " + strconv.Itoa(counter) + ext
-		counter++
-	}
-}
-
-func detectMimeType(filename string) string {
-	ext := strings.ToLower(filepath.Ext(filename))
-
-	mimeTypes := map[string]string{
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".webp": "image/webp",
-		".svg":  "image/svg+xml",
-		".mp4":  "video/mp4",
-		".mov":  "video/quicktime",
-		".avi":  "video/x-msvideo",
-		".mp3":  "audio/mpeg",
-		".wav":  "audio/wav",
-		".pdf":  "application/pdf",
-		".doc":  "application/msword",
-		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		".txt":  "text/plain",
-		".md":   "text/markdown",
-		".json": "application/json",
-		".html": "text/html",
-		".css":  "text/css",
-		".js":   "application/javascript",
-	}
-
-	if mime, ok := mimeTypes[ext]; ok {
-		return mime
-	}
-	return "application/octet-stream"
-}
