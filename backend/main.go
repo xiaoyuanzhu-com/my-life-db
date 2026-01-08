@@ -114,16 +114,16 @@ func main() {
 	fsWorker.Stop()
 	digestWorker.Stop()
 
-	// Shutdown server with timeout to close HTTP connections (including SSE)
+	// Shutdown notification service to close all SSE connections
+	notifications.GetService().Shutdown()
+
+	// Shutdown server with timeout to close remaining HTTP connections
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")
 	}
-
-	// Shutdown notification service after server stops
-	notifications.GetService().Shutdown()
 
 	// Close database
 	if err := db.Close(); err != nil {
