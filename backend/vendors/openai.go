@@ -348,15 +348,49 @@ func (o *OpenAIClient) GenerateTags(text string) ([]string, error) {
 		return nil, nil
 	}
 
-	systemPrompt := `You are an expert knowledge organizer. Generate 5-10 tags that help classify the content.
-Tag format: lowercase with spaces (e.g., "open source"), but honor conventions for proper nouns (e.g., "iOS", "JavaScript").
-No hashtags or numbering.
-Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}`
+	// Get user language preferences
+	settings, err := db.LoadUserSettings()
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to load user language settings, using default")
+	}
+
+	languages := []string{"en"} // Default to English
+	if settings != nil && len(settings.Preferences.Languages) > 0 {
+		languages = settings.Preferences.Languages
+	}
+
+	// Build system prompt based on language preferences
+	var systemPrompt string
+	if len(languages) == 1 {
+		languageName := getNativeLanguageDisplayName(languages[0])
+		systemPrompt = fmt.Sprintf(
+			"You are an expert knowledge organizer. Generate 5-10 tags in %s that help classify the content. "+
+				"Tag format: lowercase with spaces (e.g., \"open source\"), but honor conventions for proper nouns (e.g., \"iOS\", \"JavaScript\"). "+
+				"No hashtags or numbering. "+
+				"Respond with JSON in format: {\"tags\": [\"tag1\", \"tag2\", ...]}",
+			languageName,
+		)
+	} else {
+		languageNames := make([]string, len(languages))
+		for i, lang := range languages {
+			languageNames[i] = getNativeLanguageDisplayName(lang)
+		}
+		languagesStr := strings.Join(languageNames, ", ")
+		systemPrompt = fmt.Sprintf(
+			"You are an expert knowledge organizer. Generate tags in EACH of these languages: %s. "+
+				"Generate 5-10 tags PER language - the output should contain tags in ALL listed languages. "+
+				"Tags across languages should have similar meanings, but semantic variations are fine if no direct equivalent exists. "+
+				"Tag format: lowercase with spaces (e.g., \"open source\", \"机器学习\"), but honor conventions for proper nouns (e.g., \"iOS\", \"JavaScript\"). "+
+				"No hashtags or numbering. "+
+				"Respond with JSON in format: {\"tags\": [\"tag1\", \"tag2\", \"标签1\", \"标签2\", ...]}",
+			languagesStr,
+		)
+	}
 
 	resp, err := o.Complete(CompletionOptions{
 		SystemPrompt: systemPrompt,
 		Prompt:       "Analyze the following content and produce tags.\n\n" + text,
-		MaxTokens:    0, // No limit
+		MaxTokens:    0,
 		Temperature:  0.1,
 		JSONMode:     true,
 	})
@@ -380,6 +414,42 @@ Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}`
 	}
 
 	return extractTagsFromJSON(parsed, 20), nil
+}
+
+// getNativeLanguageDisplayName returns the native display name for a language code
+// Mimics Node.js: new Intl.DisplayNames([code], { type: 'language' }).of(code)
+func getNativeLanguageDisplayName(code string) string {
+	// Map of common language codes to their native display names
+	// This matches what Intl.DisplayNames would return
+	nativeNames := map[string]string{
+		"en":      "English",
+		"zh-Hans": "简体中文",
+		"zh-Hant": "繁體中文",
+		"ja":      "日本語",
+		"ko":      "한국어",
+		"es":      "español",
+		"fr":      "français",
+		"de":      "Deutsch",
+		"pt-BR":   "português (Brasil)",
+		"pt-PT":   "português (Portugal)",
+		"it":      "italiano",
+		"ru":      "русский",
+		"ar":      "العربية",
+		"hi":      "हिन्दी",
+		"th":      "ไทย",
+		"vi":      "Tiếng Việt",
+		"id":      "Indonesia",
+		"nl":      "Nederlands",
+		"pl":      "polski",
+		"tr":      "Türkçe",
+		"uk":      "українська",
+		"sv":      "svenska",
+	}
+
+	if name, ok := nativeNames[code]; ok {
+		return name
+	}
+	return code // Fallback to code if not found
 }
 
 // parseJSONFromLLMResponse robustly parses JSON from LLM responses
