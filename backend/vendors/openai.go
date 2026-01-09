@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"sync"
@@ -18,6 +19,17 @@ var (
 	openaiClient     *OpenAIClient
 	openaiClientOnce sync.Once
 )
+
+// headerTransport adds custom headers to all requests
+type headerTransport struct {
+	base http.RoundTripper
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("X-Title", "MyLifeDB")
+	req.Header.Set("HTTP-Referer", "https://github.com/xiaoyuanzhu-com/my-life-db")
+	return t.base.RoundTrip(req)
+}
 
 // OpenAIClient wraps the OpenAI client
 type OpenAIClient struct {
@@ -85,6 +97,13 @@ func GetOpenAIClient() *OpenAIClient {
 		clientConfig := openai.DefaultConfig(apiKey)
 		if baseURL != "" && baseURL != "https://api.openai.com/v1" {
 			clientConfig.BaseURL = baseURL
+		}
+
+		// Add custom headers for OpenRouter and API tracking
+		clientConfig.HTTPClient = &http.Client{
+			Transport: &headerTransport{
+				base: http.DefaultTransport,
+			},
 		}
 
 		client := openai.NewClientWithConfig(clientConfig)
