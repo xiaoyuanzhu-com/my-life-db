@@ -184,8 +184,12 @@ func OAuthRefresh(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Create an expired token with the refresh token
+	// The oauth2 library requires an expired access token to trigger refresh
 	token := &oauth2.Token{
+		AccessToken:  "expired",
 		RefreshToken: refreshToken,
+		Expiry:       time.Now().Add(-1 * time.Hour), // Set to past time to force refresh
 	}
 
 	tokenSource := provider.TokenSource(ctx, token)
