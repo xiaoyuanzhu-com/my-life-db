@@ -303,14 +303,11 @@ func GetUsernameFromPayload(payload *JWTPayload) string {
 
 // VerifyExpectedUsername verifies the username matches the expected username
 func VerifyExpectedUsername(username string) bool {
-	cfg, err := GetOAuthConfig()
-	if err != nil {
-		return false
-	}
+	cfg := config.Get()
 
-	if cfg.ExpectedUsername == "" {
+	if cfg.OAuthExpectedUsername == "" {
 		return true // No expected username configured, accept any
 	}
 
-	return username == cfg.ExpectedUsername
+	return username == cfg.OAuthExpectedUsername
 }
