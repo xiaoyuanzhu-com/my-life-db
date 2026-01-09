@@ -53,6 +53,8 @@ function debounce<T extends (...args: unknown[]) => void>(
  * Features:
  * - Automatic SSE connection to /api/notifications/stream
  * - Automatic reconnection on connection loss
+ * - Page visibility detection (reconnects when page becomes visible)
+ * - Mobile/PWA optimized for background/foreground transitions
  * - Debounced callback to batch rapid notifications (200ms)
  * - Triggers callback when inbox changes
  *
@@ -117,7 +119,7 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
       }
     };
 
-    eventSource.onerror = (event) => {
+    eventSource.onerror = () => {
       eventSource.close();
 
       // Attempt reconnection after 5 seconds
@@ -126,6 +128,28 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
       }, 5000);
     };
   }, [enabled, debouncedOnChange]);
+
+  // Handle page visibility changes (critical for mobile/PWA)
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleVisibilityChange = () => {
+      // When page becomes visible, reconnect to ensure fresh data
+      if (document.visibilityState === 'visible') {
+        // Check if connection is stale by closing and reconnecting
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+        }
+        connect();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [enabled, connect]);
 
   // Setup connection
   useEffect(() => {

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
 // FileChangeEvent represents a file system change
@@ -184,6 +186,11 @@ func (w *Worker) handleEvent(event fsnotify.Event) {
 		return
 	}
 
+	// Create or update database record for new files (unified handling)
+	if isNew {
+		w.createFileRecord(relPath, info)
+	}
+
 	// Notify handler
 	if w.onChange != nil && (isNew || contentChanged) {
 		w.onChange(FileChangeEvent{
@@ -191,6 +198,39 @@ func (w *Worker) handleEvent(event fsnotify.Event) {
 			IsNew:          isNew,
 			ContentChanged: contentChanged,
 		})
+	}
+}
+
+// createFileRecord creates or updates a database record for a file detected by the FS watcher
+// This ensures files added externally (AirDrop, direct copy) are tracked in the database
+func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
+	now := db.NowUTC()
+	filename := filepath.Base(relPath)
+	mimeType := utils.DetectMimeType(filename)
+	size := info.Size()
+
+	err := db.UpsertFile(&db.FileRecord{
+		Path:          relPath,
+		Name:          filename,
+		IsFolder:      false,
+		Size:          &size,
+		MimeType:      &mimeType,
+		ModifiedAt:    now,
+		CreatedAt:     now,
+		LastScannedAt: now,
+	})
+
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("path", relPath).
+			Msg("failed to create file record for FS-detected file")
+	} else {
+		log.Info().
+			Str("path", relPath).
+			Int64("size", size).
+			Str("mimeType", mimeType).
+			Msg("created file record for FS-detected file")
 	}
 }
 

@@ -83,6 +83,12 @@ func main() {
 	// Connect FS worker to digest worker
 	fsWorker.SetFileChangeHandler(func(event fs.FileChangeEvent) {
 		digestWorker.OnFileChange(event.FilePath, event.IsNew, event.ContentChanged)
+
+		// Notify UI of file changes (for external file additions like AirDrop)
+		// Only notify for new files or content changes
+		if event.IsNew || event.ContentChanged {
+			notifications.GetService().NotifyInboxChanged()
+		}
 	})
 
 	go fsWorker.Start()
