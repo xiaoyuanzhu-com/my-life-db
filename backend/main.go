@@ -27,6 +27,13 @@ func main() {
 	_ = db.GetDB()
 	log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
 
+	// Load settings and apply log level
+	settings, err := db.LoadUserSettings()
+	if err == nil && settings.Preferences.LogLevel != "" {
+		log.SetLevel(settings.Preferences.LogLevel)
+		log.Info().Str("level", settings.Preferences.LogLevel).Msg("log level set from settings")
+	}
+
 	// Set Gin to release mode to disable its default debug logging
 	// We use our own zerolog-based request logger instead
 	gin.SetMode(gin.ReleaseMode)

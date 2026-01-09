@@ -3,13 +3,18 @@ package log
 import (
 	"io"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 )
 
-var logger zerolog.Logger
+var (
+	logger     zerolog.Logger
+	loggerLock sync.RWMutex
+)
 
 func init() {
 	cfg := config.Get()
@@ -27,17 +32,40 @@ func init() {
 		output = os.Stdout
 	}
 
-	// Set global log level
+	// Set default log level (will be overridden by settings later)
 	level := zerolog.InfoLevel
-	if cfg.IsDevelopment() {
-		level = zerolog.DebugLevel
-	}
 
 	logger = zerolog.New(output).
 		Level(level).
 		With().
 		Timestamp().
 		Logger()
+}
+
+// SetLevel sets the global log level at runtime
+func SetLevel(levelStr string) {
+	level := parseLogLevel(levelStr)
+	loggerLock.Lock()
+	logger = logger.Level(level)
+	loggerLock.Unlock()
+}
+
+// parseLogLevel converts a string log level to zerolog.Level
+func parseLogLevel(levelStr string) zerolog.Level {
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		return zerolog.DebugLevel
+	case "info":
+		return zerolog.InfoLevel
+	case "warn", "warning":
+		return zerolog.WarnLevel
+	case "error":
+		return zerolog.ErrorLevel
+	case "fatal":
+		return zerolog.FatalLevel
+	default:
+		return zerolog.InfoLevel
+	}
 }
 
 // Debug logs a debug message

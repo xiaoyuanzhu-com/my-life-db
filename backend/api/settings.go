@@ -50,6 +50,12 @@ func UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// Apply log level change immediately if it was updated
+	if updates.Preferences.LogLevel != "" {
+		log.SetLevel(merged.Preferences.LogLevel)
+		log.Info().Str("level", merged.Preferences.LogLevel).Msg("log level updated")
+	}
+
 	// Return sanitized settings
 	sanitized := db.SanitizeSettings(merged)
 	c.JSON(http.StatusOK, sanitized)
