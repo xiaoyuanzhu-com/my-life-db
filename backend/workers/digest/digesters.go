@@ -695,28 +695,72 @@ func (d *SearchKeywordDigester) CanDigest(_ string, file *db.FileRecord, _ *sql.
 func (d *SearchKeywordDigester) Digest(filePath string, file *db.FileRecord, existingDigests []db.Digest, _ *sql.DB) ([]DigestInput, error) {
 	now := nowUTC()
 
-	text := getTextContent(filePath, file, existingDigests)
-	if text == "" {
-		return []DigestInput{{FilePath: filePath, Digester: "search-keyword", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	meili := vendors.GetMeilisearch()
-	if meili == nil {
-		errMsg := "Meilisearch not configured"
-		return []DigestInput{{FilePath: filePath, Digester: "search-keyword", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	err := meili.IndexDocumentSimple(filePath, file.Name, text)
+	// Get combined text from all content sources
+	text, err := GetPrimaryTextContent(filePath, file, existingDigests)
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "search-keyword", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
+	// Get summary and tags
+	summaryText := GetSummaryDigest(existingDigests)
+	tagsText := GetTagsDigest(existingDigests)
+
+	// Calculate content hash and word count
+	allText := text
+	if summaryText != nil {
+		allText += " " + *summaryText
+	}
+	if tagsText != nil {
+		allText += " " + *tagsText
+	}
+
+	contentHash := hashString(allText)
+	wordCount := countWords(text)
+
+	// Create meili_documents record
+	mimeType := file.MimeType
+	meiliDoc := &db.MeiliDocument{
+		FilePath:    filePath,
+		Content:     text,
+		Summary:     summaryText,
+		Tags:        tagsText,
+		ContentHash: contentHash,
+		WordCount:   wordCount,
+		MimeType:    mimeType,
+	}
+
+	if err := db.UpsertMeiliDocument(meiliDoc); err != nil {
+		errMsg := err.Error()
+		return []DigestInput{{FilePath: filePath, Digester: "search-keyword", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	// Get document ID for metadata
+	documentID, _ := db.GetMeiliDocumentIdForFile(filePath)
+
+	// Track which content sources contributed
+	sources, _ := GetContentSources(filePath, file, existingDigests)
+	var contentSources []string
+	for _, s := range sources {
+		contentSources = append(contentSources, s.SourceType)
+	}
+
+	// Store metadata about indexing in digest content
+	metadata := map[string]interface{}{
+		"documentId":     documentID,
+		"hasContent":     text != "",
+		"contentSources": contentSources,
+		"hasSummary":     summaryText != nil,
+		"hasTags":        tagsText != nil,
+	}
+	metadataJSON, _ := json.Marshal(metadata)
+	metadataStr := string(metadataJSON)
+
 	return []DigestInput{{
 		FilePath:  filePath,
 		Digester:  "search-keyword",
 		Status:    DigestStatusCompleted,
-		Content:   nil, // Indexed in Meilisearch, not stored
+		Content:   &metadataStr,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}}, nil
