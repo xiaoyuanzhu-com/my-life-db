@@ -87,7 +87,7 @@ func load() *Config {
 		// Qdrant
 		QdrantHost:       getEnv("QDRANT_HOST", ""),
 		QdrantAPIKey:     getEnv("QDRANT_API_KEY", ""),
-		QdrantCollection: getEnv("QDRANT_COLLECTION", "files"),
+		QdrantCollection: getEnv("QDRANT_COLLECTION", "mylifedb_vectors"),
 
 		// OpenAI
 		OpenAIAPIKey:  getEnv("OPENAI_API_KEY", ""),

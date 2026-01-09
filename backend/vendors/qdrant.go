@@ -118,7 +118,7 @@ func GetQdrantClient() *QdrantClient {
 			err = client.CreateCollection(context.Background(), &qdrant.CreateCollection{
 				CollectionName: cfg.QdrantCollection,
 				VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-					Size:     1536, // OpenAI ada-002 dimension
+					Size:     1024, // HAID Qwen/Qwen3-Embedding-0.6B dimension
 					Distance: qdrant.Distance_Cosine,
 				}),
 			})
