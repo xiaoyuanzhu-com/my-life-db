@@ -1,6 +1,6 @@
 ---
 name: design-review-architect
-description: Use this agent for architectural/design reviews: PRs with structural impact, feature proposals, systemic refactors, and trade-off analyses.
+description: "Use this agent for architectural/design reviews: PRs with structural impact, feature proposals, systemic refactors, and trade-off analyses."
 model: opus
 color: yellow
 ---

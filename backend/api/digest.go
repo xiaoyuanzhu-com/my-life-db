@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
 
 // DigesterInfo represents digester metadata for the API
@@ -187,7 +188,21 @@ func TriggerDigest(c *gin.Context) {
 		}
 	}
 
-	// TODO: Trigger digest processing in worker
+	// Ensure digest placeholders exist for all digesters (like Node.js ensureAllDigesters)
+	worker := digest.GetWorker()
+	if worker != nil {
+		added, orphaned := worker.EnsureDigestersForFile(path)
+		log.Info().
+			Str("path", path).
+			Str("digester", digester).
+			Int("added", added).
+			Int("orphaned", orphaned).
+			Msg("ensuring digesters and queuing file")
+		// Queue file for processing
+		worker.RequestDigest(path)
+	} else {
+		log.Warn().Msg("digest worker not available")
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

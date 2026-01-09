@@ -17,12 +17,25 @@ type Worker struct {
 	processing sync.Map // Currently processing files
 }
 
+var (
+	globalWorker     *Worker
+	globalWorkerOnce sync.Once
+)
+
 // NewWorker creates a new digest worker
 func NewWorker() *Worker {
-	return &Worker{
-		stopChan: make(chan struct{}),
-		queue:    make(chan string, 1000),
-	}
+	globalWorkerOnce.Do(func() {
+		globalWorker = &Worker{
+			stopChan: make(chan struct{}),
+			queue:    make(chan string, 1000),
+		}
+	})
+	return globalWorker
+}
+
+// GetWorker returns the global digest worker instance
+func GetWorker() *Worker {
+	return globalWorker
 }
 
 // Start begins processing digests
@@ -31,6 +44,10 @@ func (w *Worker) Start() {
 
 	// Initialize the digester registry
 	InitializeRegistry()
+
+	// Ensure all files have digest placeholders on startup
+	w.wg.Add(1)
+	go w.ensureAllFilesHaveDigests()
 
 	// Start multiple processing goroutines for parallelism
 	numWorkers := 3
@@ -53,6 +70,12 @@ func (w *Worker) Stop() {
 
 // OnFileChange handles file change events from FS worker
 func (w *Worker) OnFileChange(filePath string, isNew bool, contentChanged bool) {
+	// For new files, ensure digest placeholders exist (matches Node.js behavior)
+	if isNew {
+		added, _ := w.EnsureDigestersForFile(filePath)
+		log.Info().Str("path", filePath).Int("added", added).Msg("new file detected, ensured all digesters")
+	}
+
 	select {
 	case w.queue <- filePath:
 		log.Debug().
@@ -74,6 +97,102 @@ func (w *Worker) RequestDigest(filePath string) {
 	}
 }
 
+// EnsureDigestersForFile creates placeholder digest records for all registered digesters
+// if they don't already exist for the given file. Also marks orphaned digesters as skipped.
+// This matches the Node.js ensureAllDigesters behavior.
+func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSkipped int) {
+	digesters := GlobalRegistry.GetAll()
+
+	// Build set of all valid digest types
+	validTypes := make(map[string]bool)
+	for _, digester := range digesters {
+		outputNames := getOutputNames(digester)
+		for _, name := range outputNames {
+			validTypes[name] = true
+		}
+	}
+
+	// Get existing digests
+	existing := db.ListDigestsForPath(filePath)
+	existingTypes := make(map[string]bool)
+	for _, d := range existing {
+		existingTypes[d.Digester] = true
+	}
+
+	// Add missing digesters
+	for digestType := range validTypes {
+		if existingTypes[digestType] {
+			continue
+		}
+		getOrCreateDigestID(filePath, digestType)
+		added++
+	}
+
+	// Mark orphaned digesters as skipped
+	now := db.NowUTC()
+	for _, digest := range existing {
+		if !validTypes[digest.Digester] && (digest.Status == "todo" || digest.Status == "failed") {
+			db.UpdateDigestMap(digest.ID, map[string]interface{}{
+				"status":     "skipped",
+				"error":      "Digester no longer registered",
+				"updated_at": now,
+			})
+			orphanedSkipped++
+		}
+	}
+
+	if added > 0 || orphanedSkipped > 0 {
+		log.Info().
+			Str("path", filePath).
+			Int("added", added).
+			Int("orphaned", orphanedSkipped).
+			Msg("ensured digest placeholders")
+	} else {
+		log.Debug().Str("path", filePath).Msg("digests already ensured")
+	}
+
+	return added, orphanedSkipped
+}
+
+// ensureAllFilesHaveDigests runs once on startup to ensure all files have digest placeholders
+// This handles files that were added before the EnsureDigestersForFile logic was implemented,
+// and also backfills when new digesters are added to the registry.
+func (w *Worker) ensureAllFilesHaveDigests() {
+	defer w.wg.Done()
+
+	log.Info().Msg("backfilling digest placeholders for all files")
+
+	// Query all non-folder files
+	query := `SELECT path FROM files WHERE is_folder = 0`
+	rows, err := db.GetDB().Query(query)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to query files for digest placeholder creation")
+		return
+	}
+	defer rows.Close()
+
+	fileCount := 0
+	totalAdded := 0
+	totalOrphaned := 0
+
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		added, orphaned := w.EnsureDigestersForFile(path)
+		totalAdded += added
+		totalOrphaned += orphaned
+		fileCount++
+	}
+
+	log.Info().
+		Int("files", fileCount).
+		Int("added", totalAdded).
+		Int("orphaned", totalOrphaned).
+		Msg("backfill complete")
+}
+
 // processLoop processes files from the queue
 func (w *Worker) processLoop(id int) {
 	defer w.wg.Done()
@@ -92,11 +211,12 @@ func (w *Worker) processLoop(id int) {
 func (w *Worker) processFile(filePath string) {
 	// Check if already processing
 	if _, loaded := w.processing.LoadOrStore(filePath, true); loaded {
+		log.Debug().Str("path", filePath).Msg("already processing, skipping")
 		return
 	}
 	defer w.processing.Delete(filePath)
 
-	log.Debug().Str("path", filePath).Msg("processing file")
+	log.Info().Str("path", filePath).Msg("processing file")
 
 	// Get file record
 	file, err := db.GetFileByPath(filePath)
