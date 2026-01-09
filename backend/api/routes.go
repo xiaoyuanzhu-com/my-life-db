@@ -16,7 +16,7 @@ func SetupRoutes(r *gin.Engine) {
 	// OAuth routes
 	api.GET("/oauth/authorize", OAuthAuthorize)
 	api.GET("/oauth/callback", OAuthCallback)
-	api.GET("/oauth/refresh", OAuthRefresh)
+	api.POST("/oauth/refresh", OAuthRefresh) // POST per OAuth 2.0 spec
 	api.GET("/oauth/token", OAuthToken)
 	api.POST("/oauth/logout", OAuthLogout)
 
