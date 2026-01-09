@@ -43,7 +43,6 @@ type Config struct {
 	OAuthClientSecret     string
 	OAuthIssuerURL        string
 	OAuthRedirectURI      string
-	OAuthJWKSURL          string
 	OAuthExpectedUsername string
 
 	// Debug settings
@@ -105,7 +104,6 @@ func load() *Config {
 		OAuthClientSecret:     getEnv("MLD_OAUTH_CLIENT_SECRET", ""),
 		OAuthIssuerURL:        getEnv("MLD_OAUTH_ISSUER_URL", ""),
 		OAuthRedirectURI:      getEnv("MLD_OAUTH_REDIRECT_URI", ""),
-		OAuthJWKSURL:          getEnv("MLD_OAUTH_JWKS_URL", ""),
 		OAuthExpectedUsername: getEnv("MLD_EXPECTED_USERNAME", ""),
 
 		// Debug

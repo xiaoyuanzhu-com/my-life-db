@@ -224,8 +224,22 @@ func OAuthToken(c *gin.Context) {
 		}
 	}
 
-	// Validate the token
-	payload, err := auth.ValidateJWT(accessToken)
+	// Get OIDC provider for token verification
+	provider, err := auth.GetOIDCProvider()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get OIDC provider")
+		c.JSON(http.StatusOK, gin.H{
+			"authenticated": false,
+			"error":         "oauth_not_configured",
+		})
+		return
+	}
+
+	// Verify the token using OIDC verifier
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	idToken, err := provider.VerifyIDToken(ctx, accessToken)
 	if err != nil {
 		log.Debug().Err(err).Msg("token validation failed")
 		c.JSON(http.StatusOK, gin.H{
@@ -235,8 +249,32 @@ func OAuthToken(c *gin.Context) {
 		return
 	}
 
+	// Extract claims
+	var claims struct {
+		Sub               string `json:"sub"`
+		Email             string `json:"email"`
+		PreferredUsername string `json:"preferred_username"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		log.Error().Err(err).Msg("failed to parse token claims")
+		c.JSON(http.StatusOK, gin.H{
+			"authenticated": false,
+			"error":         "invalid_token",
+		})
+		return
+	}
+
+	// Determine username
+	username := claims.PreferredUsername
+	if username == "" && claims.Email != "" {
+		parts := strings.Split(claims.Email, "@")
+		username = parts[0]
+	}
+	if username == "" {
+		username = claims.Sub
+	}
+
 	// Verify expected username
-	username := auth.GetUsernameFromPayload(payload)
 	if !auth.VerifyExpectedUsername(username) {
 		c.JSON(http.StatusOK, gin.H{
 			"authenticated": false,
@@ -248,8 +286,8 @@ func OAuthToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"authenticated": true,
 		"username":      username,
-		"sub":           payload.Sub,
-		"email":         payload.Email,
+		"sub":           claims.Sub,
+		"email":         claims.Email,
 	})
 }
 
