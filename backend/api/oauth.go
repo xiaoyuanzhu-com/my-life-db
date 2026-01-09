@@ -154,20 +154,17 @@ func OAuthCallback(c *gin.Context) {
 
 // OAuthRefresh handles POST /api/oauth/refresh
 func OAuthRefresh(c *gin.Context) {
-	// Get refresh token from cookie or header
-	refreshToken := c.Request.Header.Get("X-Refresh-Token")
-	if refreshToken == "" {
-		refreshToken, err := c.Cookie("refresh_token")
-		if err != nil || refreshToken == "" {
-			log.Debug().
-				Err(err).
-				Str("cookies", c.Request.Header.Get("Cookie")).
-				Msg("refresh token not found in cookie")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "No refresh token provided",
-			})
-			return
-		}
+	// Get refresh token from cookie
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		log.Debug().
+			Err(err).
+			Str("cookies", c.Request.Header.Get("Cookie")).
+			Msg("refresh token not found in cookie")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "No refresh token provided",
+		})
+		return
 	}
 
 	// Get OIDC provider
@@ -185,9 +182,8 @@ func OAuthRefresh(c *gin.Context) {
 	defer cancel()
 
 	// Create an expired token with the refresh token
-	// The oauth2 library requires an expired access token to trigger refresh
+	// The oauth2 library uses the Expiry field to determine if refresh is needed
 	token := &oauth2.Token{
-		AccessToken:  "expired",
 		RefreshToken: refreshToken,
 		Expiry:       time.Now().Add(-1 * time.Hour), // Set to past time to force refresh
 	}
