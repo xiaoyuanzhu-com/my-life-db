@@ -194,6 +194,14 @@ func Search(c *gin.Context) {
 		embedding, err := vendors.EmbedText(query)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to get query embedding")
+			// If semantic search was explicitly requested, return error
+			if !useKeyword {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"error": "Semantic search is not available: " + err.Error(),
+					"code":  "SEMANTIC_SEARCH_UNAVAILABLE",
+				})
+				return
+			}
 		} else {
 			semanticResults, err := qdrantClient.Search(embedding, vendors.QdrantSearchOptions{
 				Limit:          limit,
@@ -203,6 +211,14 @@ func Search(c *gin.Context) {
 			})
 			if err != nil {
 				log.Error().Err(err).Msg("qdrant search failed")
+				// If semantic search was explicitly requested, return error
+				if !useKeyword {
+					c.JSON(http.StatusServiceUnavailable, gin.H{
+						"error": "Semantic search failed: " + err.Error(),
+						"code":  "SEMANTIC_SEARCH_FAILED",
+					})
+					return
+				}
 			} else {
 				sources = append(sources, "semantic")
 
@@ -249,8 +265,8 @@ func Search(c *gin.Context) {
 		}
 	}
 
-	// If no search services available, fall back to database search
-	if len(sources) == 0 {
+	// If no search services available and keyword search was requested, fall back to database search
+	if len(sources) == 0 && useKeyword {
 		log.Warn().Msg("no search services available, falling back to database search")
 		sources = append(sources, "database")
 
