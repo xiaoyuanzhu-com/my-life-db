@@ -215,11 +215,11 @@ func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 	return map[string]interface{}{"models": models}, nil
 }
 
-// EmbedText is a convenience function to embed a single text
+// EmbedText is a convenience function to embed a single text using HAID
 func EmbedText(text string) ([]float32, error) {
-	client := GetOpenAIClient()
+	client := GetHAIDClient()
 	if client == nil {
-		return nil, nil
+		return nil, fmt.Errorf("HAID client not initialized")
 	}
 
 	results, err := client.Embed([]string{text})
@@ -228,7 +228,7 @@ func EmbedText(text string) ([]float32, error) {
 	}
 
 	if len(results) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("HAID returned no embeddings")
 	}
 
 	return results[0], nil

@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -97,22 +100,49 @@ type SAMResponse struct {
 // GetHAIDClient returns the singleton HAID client
 func GetHAIDClient() *HAIDClient {
 	haidClientOnce.Do(func() {
-		cfg := config.Get()
-		if cfg.HAIDBaseURL == "" {
+		// Load settings from database first, fall back to env vars
+		settings, err := db.LoadUserSettings()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to load user settings for HAID")
+			return
+		}
+
+		baseURL := ""
+		apiKey := ""
+		chromeCDPURL := ""
+
+		if settings.Vendors != nil && settings.Vendors.HomelabAI != nil {
+			baseURL = settings.Vendors.HomelabAI.BaseURL
+			chromeCDPURL = settings.Vendors.HomelabAI.ChromeCdpURL
+		}
+
+		// Fall back to env vars if not in DB
+		if baseURL == "" {
+			cfg := config.Get()
+			baseURL = cfg.HAIDBaseURL
+			if apiKey == "" {
+				apiKey = cfg.HAIDAPIKey
+			}
+			if chromeCDPURL == "" {
+				chromeCDPURL = cfg.HAIDChromeCDPURL
+			}
+		}
+
+		if baseURL == "" {
 			log.Warn().Msg("HAID_BASE_URL not configured, HAID disabled")
 			return
 		}
 
 		haidClient = &HAIDClient{
-			baseURL:      cfg.HAIDBaseURL,
-			apiKey:       cfg.HAIDAPIKey,
-			chromeCDPURL: cfg.HAIDChromeCDPURL,
+			baseURL:      baseURL,
+			apiKey:       apiKey,
+			chromeCDPURL: chromeCDPURL,
 			httpClient: &http.Client{
 				Timeout: 5 * time.Minute, // Long timeout for ML operations
 			},
 		}
 
-		log.Info().Str("baseURL", cfg.HAIDBaseURL).Msg("HAID initialized")
+		log.Info().Str("baseURL", baseURL).Msg("HAID initialized")
 	})
 
 	return haidClient
@@ -279,22 +309,39 @@ func (h *HAIDClient) Embed(texts []string) ([][]float32, error) {
 		return nil, nil
 	}
 
+	log.Info().Int("textCount", len(texts)).Msg("generating embeddings via HAID")
+
 	body := map[string]interface{}{
 		"texts": texts,
+		"model": "Qwen/Qwen3-Embedding-0.6B",
 	}
 
-	resp, err := h.post("/api/embed", body)
+	resp, err := h.post("/api/text-to-embedding", body)
 	if err != nil {
+		log.Error().Err(err).Msg("HAID embedding request failed")
 		return nil, err
 	}
 
 	var result struct {
 		Embeddings [][]float32 `json:"embeddings"`
+		Model      string      `json:"model"`
+		Dimensions int         `json:"dimensions"`
 		Error      string      `json:"error,omitempty"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
+		log.Error().Err(err).Msg("failed to parse HAID embedding response")
 		return nil, err
 	}
+
+	if result.Error != "" {
+		return nil, fmt.Errorf("HAID embedding error: %s", result.Error)
+	}
+
+	log.Info().
+		Str("model", result.Model).
+		Int("dimensions", result.Dimensions).
+		Int("embeddingCount", len(result.Embeddings)).
+		Msg("HAID embeddings generated successfully")
 
 	return result.Embeddings, nil
 }
@@ -339,7 +386,13 @@ func (h *HAIDClient) post(endpoint string, body map[string]interface{}) ([]byte,
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", h.baseURL+endpoint, bytes.NewBuffer(jsonBody))
+	// Properly join base URL and endpoint using url.JoinPath
+	fullURL, err := url.JoinPath(h.baseURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", fullURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
 	}
