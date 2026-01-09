@@ -66,4 +66,5 @@ var CascadingResets = map[string][]string{
 	"speech-recognition":    {"speaker-embedding", "speech-recognition-cleanup", "speech-recognition-summary", "tags", "search-keyword", "search-semantic"},
 	"url-crawl-summary":     {"tags"},
 	"speech-recognition-summary": {"tags", "search-keyword", "search-semantic"},
+	"tags":                  {"search-keyword", "search-semantic"},
 }
