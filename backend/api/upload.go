@@ -87,19 +87,25 @@ func TUSHandler(c *gin.Context) {
 }
 
 // FinalizeUpload handles POST /api/upload/finalize
+// Accepts array of uploads to support batch finalization (matching Node.js API)
 func FinalizeUpload(c *gin.Context) {
 	var body struct {
-		UploadID    string `json:"uploadId"`
-		Filename    string `json:"filename"`
-		Destination string `json:"destination"`
+		Uploads []struct {
+			UploadID string `json:"uploadId"`
+			Filename string `json:"filename"`
+			Size     int64  `json:"size"`
+			Type     string `json:"type"`
+		} `json:"uploads"`
+		Text        string `json:"text,omitempty"`
+		Destination string `json:"destination,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	if body.UploadID == "" || body.Filename == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Upload ID and filename are required"})
+	if len(body.Uploads) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No uploads provided"})
 		return
 	}
 
@@ -118,72 +124,94 @@ func FinalizeUpload(c *gin.Context) {
 		return
 	}
 
-	// Get unique filename using utils helpers
-	filename := utils.SanitizeFilename(body.Filename)
-	filename = utils.DeduplicateFilename(destDir, filename)
+	// Process each upload
+	var paths []string
+	for _, upload := range body.Uploads {
+		if upload.UploadID == "" || upload.Filename == "" {
+			log.Warn().
+				Str("uploadId", upload.UploadID).
+				Str("filename", upload.Filename).
+				Msg("skipping upload with missing uploadId or filename")
+			continue
+		}
 
-	// Source file from TUS uploads
-	srcPath := filepath.Join(uploadDir, body.UploadID)
+		// Get unique filename using utils helpers
+		filename := utils.SanitizeFilename(upload.Filename)
+		filename = utils.DeduplicateFilename(destDir, filename)
 
-	// Check if TUS upload file exists
-	srcInfo, err := os.Stat(srcPath)
-	if err != nil {
-		// Fallback: check for file with .bin extension
-		srcPath = srcPath + ".bin"
-		srcInfo, err = os.Stat(srcPath)
+		// Source file from TUS uploads
+		srcPath := filepath.Join(uploadDir, upload.UploadID)
+
+		// Check if TUS upload file exists
+		srcInfo, err := os.Stat(srcPath)
 		if err != nil {
-			log.Error().Str("uploadId", body.UploadID).Err(err).Msg("upload file not found")
-			c.JSON(http.StatusNotFound, gin.H{"error": "Upload file not found"})
-			return
+			// Fallback: check for file with .bin extension
+			srcPath = srcPath + ".bin"
+			srcInfo, err = os.Stat(srcPath)
+			if err != nil {
+				log.Error().Str("uploadId", upload.UploadID).Err(err).Msg("upload file not found")
+				continue
+			}
 		}
+
+		// Move file to destination
+		destPath := filepath.Join(destination, filename)
+		fullDestPath := filepath.Join(cfg.DataDir, destPath)
+
+		// Try rename first (same filesystem)
+		if err := os.Rename(srcPath, fullDestPath); err != nil {
+			// Fallback to copy + delete
+			if err := copyUploadFile(srcPath, fullDestPath); err != nil {
+				log.Error().Err(err).Msg("failed to move upload file")
+				continue
+			}
+			os.Remove(srcPath)
+		}
+
+		// Clean up TUS info file
+		os.Remove(srcPath + ".info")
+
+		// Create file record
+		now := db.NowUTC()
+		mimeType := upload.Type
+		if mimeType == "" {
+			mimeType = utils.DetectMimeType(filename)
+		}
+		size := srcInfo.Size()
+
+		db.UpsertFile(&db.FileRecord{
+			Path:          destPath,
+			Name:          filename,
+			IsFolder:      false,
+			Size:          &size,
+			MimeType:      &mimeType,
+			ModifiedAt:    now,
+			CreatedAt:     now,
+			LastScannedAt: now,
+		})
+
+		log.Info().
+			Str("path", destPath).
+			Str("filename", filename).
+			Int64("size", size).
+			Str("mimeType", mimeType).
+			Msg("upload finalized")
+
+		paths = append(paths, destPath)
 	}
 
-	// Move file to destination
-	destPath := filepath.Join(destination, filename)
-	fullDestPath := filepath.Join(cfg.DataDir, destPath)
-
-	// Try rename first (same filesystem)
-	if err := os.Rename(srcPath, fullDestPath); err != nil {
-		// Fallback to copy + delete
-		if err := copyUploadFile(srcPath, fullDestPath); err != nil {
-			log.Error().Err(err).Msg("failed to move upload file")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to finalize upload"})
-			return
-		}
-		os.Remove(srcPath)
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid files to finalize"})
+		return
 	}
-
-	// Clean up TUS info file
-	os.Remove(srcPath + ".info")
-
-	// Create file record
-	now := db.NowUTC()
-	mimeType := utils.DetectMimeType(filename)
-	size := srcInfo.Size()
-
-	db.UpsertFile(&db.FileRecord{
-		Path:          destPath,
-		Name:          filename,
-		IsFolder:      false,
-		Size:          &size,
-		MimeType:      &mimeType,
-		ModifiedAt:    now,
-		CreatedAt:     now,
-		LastScannedAt: now,
-	})
-
-	log.Info().
-		Str("path", destPath).
-		Str("filename", filename).
-		Int64("size", size).
-		Msg("upload finalized")
 
 	// Notify UI
 	notifications.GetService().NotifyInboxChanged()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"path":    destPath,
+		"path":    paths[0],
+		"paths":   paths,
 	})
 }
 
