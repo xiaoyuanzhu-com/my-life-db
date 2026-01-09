@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,19 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
+
+// RleMask represents an RLE mask for SAM segmentation
+type RleMask struct {
+	Size   []int `json:"size"`
+	Counts []int `json:"counts"`
+}
+
+// MatchedObject represents a matched object from image-objects digest
+type MatchedObject struct {
+	Title string    `json:"title"`
+	BBox  []float64 `json:"bbox"`
+	Rle   *RleMask  `json:"rle"`
+}
 
 // SearchResultItem represents a search result
 type SearchResultItem struct {
@@ -27,6 +41,7 @@ type SearchResultItem struct {
 	ScreenshotSqlar *string           `json:"screenshotSqlar,omitempty"`
 	Highlights      map[string]string `json:"highlights,omitempty"`
 	MatchContext    *MatchContext     `json:"matchContext,omitempty"`
+	MatchedObject   *MatchedObject    `json:"matchedObject,omitempty"`
 }
 
 // MatchContext provides context about where the match was found
@@ -163,6 +178,12 @@ func Search(c *gin.Context) {
 				terms := extractSearchTerms(query)
 				matchContext = buildKeywordMatchContext(hit, file, terms)
 
+				// For image files, check if we matched on image-objects and include the matched object for highlighting
+				var matchedObject *MatchedObject
+				if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
+					matchedObject = findMatchingObject(file, terms)
+				}
+
 				results = append(results, SearchResultItem{
 					Path:            file.Path,
 					Name:            file.Name,
@@ -178,6 +199,7 @@ func Search(c *gin.Context) {
 					ScreenshotSqlar: file.ScreenshotSqlar,
 					Highlights:      highlights,
 					MatchContext:    matchContext,
+					MatchedObject:   matchedObject,
 				})
 			}
 		}
@@ -234,6 +256,14 @@ func Search(c *gin.Context) {
 					}
 
 					score := float64(hit.Score)
+					terms := extractSearchTerms(query)
+
+					// For image files, check if we matched on image-objects and include the matched object for highlighting
+					var matchedObject *MatchedObject
+					if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
+						matchedObject = findMatchingObject(file, terms)
+					}
+
 					results = append(results, SearchResultItem{
 						Path:            file.Path,
 						Name:            file.Name,
@@ -250,10 +280,11 @@ func Search(c *gin.Context) {
 						MatchContext: &MatchContext{
 							Source:     "semantic",
 							Snippet:    safeSubstring(hit.Text, 300),
-							Terms:      extractSearchTerms(query),
+							Terms:      terms,
 							Score:      &score,
 							SourceType: hit.SourceType,
 						},
+						MatchedObject: matchedObject,
 					})
 				}
 			}
@@ -365,6 +396,98 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// findMatchingObject finds the first object in image-objects digest that matches any search term
+// Returns the object with its bbox and rle for highlighting
+func findMatchingObject(file *db.FileWithDigests, terms []string) *MatchedObject {
+	if file == nil || len(terms) == 0 {
+		return nil
+	}
+
+	// Find the image-objects digest
+	var objectsDigest *db.Digest
+	for i := range file.Digests {
+		if file.Digests[i].Digester == "image-objects" && file.Digests[i].Content != nil {
+			objectsDigest = &file.Digests[i]
+			break
+		}
+	}
+
+	if objectsDigest == nil || objectsDigest.Content == nil {
+		return nil
+	}
+
+	// Parse the JSON content
+	var data struct {
+		Objects []struct {
+			Title       string                 `json:"title"`
+			Description string                 `json:"description"`
+			BBox        []float64              `json:"bbox"`
+			Rle         map[string]interface{} `json:"rle"`
+		} `json:"objects"`
+	}
+
+	if err := json.Unmarshal([]byte(*objectsDigest.Content), &data); err != nil {
+		log.Warn().Err(err).Str("filePath", file.Path).Msg("failed to parse image-objects digest for matching")
+		return nil
+	}
+
+	// Find the first object that matches any search term
+	for _, obj := range data.Objects {
+		// Build searchable text from title and description
+		var searchableText strings.Builder
+		if obj.Title != "" {
+			searchableText.WriteString(obj.Title)
+		}
+		if obj.Description != "" {
+			if searchableText.Len() > 0 {
+				searchableText.WriteString(" ")
+			}
+			searchableText.WriteString(obj.Description)
+		}
+
+		searchText := strings.ToLower(searchableText.String())
+
+		// Check if any term matches (case-insensitive substring matching)
+		for _, term := range terms {
+			if strings.Contains(searchText, strings.ToLower(term)) {
+				// Found a match! Return this object
+				var rle *RleMask
+				if obj.Rle != nil {
+					// Convert the map to RleMask
+					if size, ok := obj.Rle["size"].([]interface{}); ok {
+						if counts, ok := obj.Rle["counts"].([]interface{}); ok {
+							sizeInts := make([]int, len(size))
+							for i, v := range size {
+								if fv, ok := v.(float64); ok {
+									sizeInts[i] = int(fv)
+								}
+							}
+							countsInts := make([]int, len(counts))
+							for i, v := range counts {
+								if fv, ok := v.(float64); ok {
+									countsInts[i] = int(fv)
+								}
+							}
+							rle = &RleMask{
+								Size:   sizeInts,
+								Counts: countsInts,
+							}
+						}
+					}
+				}
+
+				return &MatchedObject{
+					Title: obj.Title,
+					BBox:  obj.BBox,
+					Rle:   rle,
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // buildKeywordMatchContext creates match context from Meilisearch formatted results

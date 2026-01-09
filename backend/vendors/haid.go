@@ -547,12 +547,20 @@ func (h *HAIDClient) DetectObjects(imagePath string) ([]map[string]interface{}, 
 
 	objects := make([]map[string]interface{}, 0, len(resp.Objects))
 	for _, obj := range resp.Objects {
-		objects = append(objects, map[string]interface{}{
+		objMap := map[string]interface{}{
 			"title":       obj.Title,
 			"description": obj.Description,
 			"category":    obj.Category,
 			"bbox":        obj.BBox,
-		})
+		}
+		// Include RLE mask if present (needed for frontend highlighting)
+		if obj.RLE != nil {
+			objMap["rle"] = map[string]interface{}{
+				"size":   obj.RLE.Size,
+				"counts": obj.RLE.Counts,
+			}
+		}
+		objects = append(objects, objMap)
 	}
 
 	return objects, nil
