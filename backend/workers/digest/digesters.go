@@ -2,8 +2,10 @@ package digest
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -119,12 +121,12 @@ func (d *URLCrawlDigester) Digest(filePath string, file *db.FileRecord, _ []db.D
 	now := nowUTC()
 
 	// Get URL from text preview
-	url := ""
+	urlStr := ""
 	if file.TextPreview != nil {
-		url = strings.TrimSpace(*file.TextPreview)
+		urlStr = strings.TrimSpace(*file.TextPreview)
 	}
 
-	if url == "" || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
+	if urlStr == "" || (!strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://")) {
 		return []DigestInput{
 			{FilePath: filePath, Digester: "url-crawl-content", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now},
 			{FilePath: filePath, Digester: "url-crawl-screenshot", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now},
@@ -141,7 +143,7 @@ func (d *URLCrawlDigester) Digest(filePath string, file *db.FileRecord, _ []db.D
 		}, nil
 	}
 
-	content, screenshot, err := haid.CrawlURL(url)
+	crawlResp, err := haid.CrawlURLWithOpts(urlStr, vendors.CrawlOptions{Screenshot: true, Timeout: 30})
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{
@@ -152,27 +154,69 @@ func (d *URLCrawlDigester) Digest(filePath string, file *db.FileRecord, _ []db.D
 
 	results := make([]DigestInput, 0, 2)
 
-	// Content result
+	// Get content markdown
+	markdown := crawlResp.Markdown
+	if markdown == "" {
+		markdown = crawlResp.Content
+	}
+
+	// Calculate word count and reading time
+	wordCount := countWords(markdown)
+	readingTimeMinutes := 1
+	if wordCount > 0 {
+		readingTimeMinutes = (wordCount + 199) / 200 // Round up, 200 words per minute
+	}
+
+	// Extract domain from URL
+	domain := ""
+	if parsedURL, err := url.Parse(crawlResp.URL); err == nil {
+		domain = parsedURL.Hostname()
+	}
+
+	// Create JSON content with metadata (matching Node.js format)
+	contentData := map[string]interface{}{
+		"markdown":           markdown,
+		"url":                crawlResp.URL,
+		"title":              crawlResp.Title,
+		"domain":             domain,
+		"wordCount":          wordCount,
+		"readingTimeMinutes": readingTimeMinutes,
+	}
+	contentJSON, _ := json.Marshal(contentData)
+	contentStr := string(contentJSON)
+
+	// Content result (now JSON)
 	results = append(results, DigestInput{
 		FilePath:  filePath,
 		Digester:  "url-crawl-content",
 		Status:    DigestStatusCompleted,
-		Content:   &content,
+		Content:   &contentStr,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
 
 	// Screenshot result (stored in SQLAR)
-	if screenshot != nil {
-		sqlarName := "screenshot.png"
-		results = append(results, DigestInput{
-			FilePath:  filePath,
-			Digester:  "url-crawl-screenshot",
-			Status:    DigestStatusCompleted,
-			SqlarName: &sqlarName,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
+	if crawlResp.Screenshot != "" {
+		screenshotBytes, err := base64.StdEncoding.DecodeString(crawlResp.Screenshot)
+		if err == nil && len(screenshotBytes) > 0 {
+			sqlarName := "screenshot.png"
+			results = append(results, DigestInput{
+				FilePath:  filePath,
+				Digester:  "url-crawl-screenshot",
+				Status:    DigestStatusCompleted,
+				SqlarName: &sqlarName,
+				CreatedAt: now,
+				UpdatedAt: now,
+			})
+		} else {
+			results = append(results, DigestInput{
+				FilePath:  filePath,
+				Digester:  "url-crawl-screenshot",
+				Status:    DigestStatusCompleted,
+				CreatedAt: now,
+				UpdatedAt: now,
+			})
+		}
 	} else {
 		results = append(results, DigestInput{
 			FilePath:  filePath,
