@@ -134,6 +134,12 @@ func OAuthCallback(c *gin.Context) {
 		ExpiresIn:    int(time.Until(oauth2Token.Expiry).Seconds()),
 	}
 
+	// Log token info for debugging
+	log.Info().
+		Bool("has_refresh_token", oauth2Token.RefreshToken != "").
+		Int("expires_in", tokens.ExpiresIn).
+		Msg("setting auth cookies")
+
 	// Set session cookies
 	setAuthCookiesGin(c, tokens)
 
@@ -146,13 +152,17 @@ func OAuthCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/")
 }
 
-// OAuthRefresh handles GET /api/oauth/refresh
+// OAuthRefresh handles POST /api/oauth/refresh
 func OAuthRefresh(c *gin.Context) {
 	// Get refresh token from cookie or header
 	refreshToken := c.Request.Header.Get("X-Refresh-Token")
 	if refreshToken == "" {
-		refreshToken, _ = c.Cookie("refresh_token")
-		if refreshToken == "" {
+		refreshToken, err := c.Cookie("refresh_token")
+		if err != nil || refreshToken == "" {
+			log.Debug().
+				Err(err).
+				Str("cookies", c.Request.Header.Get("Cookie")).
+				Msg("refresh token not found in cookie")
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "No refresh token provided",
 			})

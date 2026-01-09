@@ -55,7 +55,7 @@ func GetOIDCProvider() (*OIDCProvider, error) {
 			ClientSecret: cfg.OAuthClientSecret,
 			RedirectURL:  cfg.OAuthRedirectURI,
 			Endpoint:     provider.Endpoint(),
-			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+			Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "offline_access"},
 		}
 
 		// Create ID token verifier
