@@ -86,6 +86,11 @@ A filesystem-based personal knowledge management system built with Next.js 15, R
 #### Option 1: Docker (Recommended)
 
 ```bash
+# Create data directory with correct ownership
+# The container runs as UID/GID 1000 for host compatibility
+mkdir -p data
+sudo chown -R 1000:1000 data
+
 # Create docker-compose.yml
 cat > docker-compose.yml << 'EOF'
 services:
@@ -104,6 +109,10 @@ EOF
 # Start the container
 docker-compose up -d
 ```
+
+**Note on Permissions**: The Docker image runs as UID/GID 1000 (non-root) for security. If you encounter permission issues:
+- Ensure the data directory is owned by UID 1000: `sudo chown -R 1000:1000 ./data`
+- Or if your user is UID 1000 (common on Linux), just: `mkdir -p data && chmod 775 data`
 
 Visit [http://localhost:3000](http://localhost:3000) to see the app.
 

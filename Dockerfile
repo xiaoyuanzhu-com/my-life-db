@@ -36,18 +36,18 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
 
-# Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Create non-root user with UID/GID 1000 for better host compatibility
+RUN addgroup -g 1000 appgroup && adduser -u 1000 -G appgroup -S appuser
 
 # Copy built artifacts maintaining local structure
 COPY --from=go-builder /app/my-life-db ./backend/my-life-db
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
-# Create data directory
-RUN mkdir -p /app/data && chown -R appuser:appgroup /app
+# Create data directory with proper permissions
+RUN mkdir -p /app/data && chown -R 1000:1000 /app && chmod -R 775 /app/data
 
 # Switch to non-root user
-USER appuser
+USER 1000
 
 # Environment variables
 ENV NODE_ENV=production

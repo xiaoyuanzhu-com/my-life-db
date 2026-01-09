@@ -310,13 +310,13 @@ func setAuthCookiesGin(c *gin.Context, tokens *TokenResponse) {
 
 	c.SetCookie("access_token", tokens.AccessToken, tokens.ExpiresIn, "/", "", secure, true)
 
-	// Refresh token cookie - longer lived
+	// Refresh token cookie - longer lived, path set to /api/oauth to be accessible by all OAuth endpoints
 	if tokens.RefreshToken != "" {
-		c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/api/oauth/refresh", "", secure, true)
+		c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/api/oauth", "", secure, true)
 	}
 }
 
 func clearAuthCookiesGin(c *gin.Context) {
 	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/api/oauth/refresh", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/api/oauth", "", false, true)
 }
