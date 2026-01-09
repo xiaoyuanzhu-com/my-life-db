@@ -1,7 +1,8 @@
 package api
 
 import (
-	"compress/flate"
+	"bytes"
+	"compress/zlib"
 	"io"
 	"net/http"
 	"os"
@@ -148,15 +149,23 @@ func ServeSqlarFile(c *gin.Context) {
 	// Decompress if needed (sqlar uses zlib compression)
 	var data []byte
 	if sqlarFile.Size > 0 && len(sqlarFile.Data) < sqlarFile.Size {
-		// Data is compressed
-		reader := flate.NewReader(strings.NewReader(string(sqlarFile.Data)))
+		// Data is compressed with zlib
+		reader, err := zlib.NewReader(bytes.NewReader(sqlarFile.Data))
+		if err != nil {
+			log.Error().Err(err).Str("name", name).Msg("failed to create zlib reader")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decompress file"})
+			return
+		}
 		defer reader.Close()
+
 		data, err = io.ReadAll(reader)
 		if err != nil {
-			// Try uncompressed
-			data = sqlarFile.Data
+			log.Error().Err(err).Str("name", name).Msg("failed to decompress data")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decompress file"})
+			return
 		}
 	} else {
+		// Data is uncompressed
 		data = sqlarFile.Data
 	}
 
