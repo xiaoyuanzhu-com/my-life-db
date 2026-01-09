@@ -135,6 +135,16 @@ func (o *OpenAIClient) Complete(opts CompletionOptions) (*CompletionResponse, er
 		}
 	}
 
+	// Log request (temporarily at Info level for debugging)
+	log.Info().
+		Str("model", o.model).
+		Str("systemPrompt", opts.SystemPrompt).
+		Str("prompt", opts.Prompt).
+		Int("maxTokens", opts.MaxTokens).
+		Float32("temperature", opts.Temperature).
+		Bool("jsonMode", opts.JSONMode).
+		Msg("openai request")
+
 	resp, err := o.client.CreateChatCompletion(ctx, req)
 	if err != nil {
 		log.Error().Err(err).Msg("completion failed")
@@ -142,12 +152,28 @@ func (o *OpenAIClient) Complete(opts CompletionOptions) (*CompletionResponse, er
 	}
 
 	if len(resp.Choices) == 0 {
+		log.Error().
+			Int("choicesCount", len(resp.Choices)).
+			Interface("response", resp).
+			Msg("openai response has no choices")
 		return &CompletionResponse{}, nil
 	}
 
+	content := resp.Choices[0].Message.Content
+	finishReason := string(resp.Choices[0].FinishReason)
+
+	// Log response (temporarily at Info level for debugging)
+	log.Info().
+		Str("finishReason", finishReason).
+		Str("content", content).
+		Int("promptTokens", resp.Usage.PromptTokens).
+		Int("completionTokens", resp.Usage.CompletionTokens).
+		Int("totalTokens", resp.Usage.TotalTokens).
+		Msg("openai response")
+
 	return &CompletionResponse{
-		Content:      resp.Choices[0].Message.Content,
-		FinishReason: string(resp.Choices[0].FinishReason),
+		Content:      content,
+		FinishReason: finishReason,
 		Usage: struct {
 			PromptTokens     int
 			CompletionTokens int
@@ -191,7 +217,7 @@ type ModelInfo struct {
 	OwnedBy string `json:"owned_by,omitempty"`
 }
 
-// ListModels returns available models with proper schema matching Node.js
+// ListModels returns available models with proper schema
 func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 	if o == nil {
 		return map[string]interface{}{"models": []ModelInfo{}}, nil
@@ -239,17 +265,17 @@ func GetOpenAI() *OpenAIClient {
 	return GetOpenAIClient()
 }
 
-// Summarize generates a summary of the text
+// Summarize generates a summary of the text (for URL crawl summary)
 func (o *OpenAIClient) Summarize(text string) (string, error) {
 	if o == nil {
 		return "", nil
 	}
 
 	resp, err := o.Complete(CompletionOptions{
-		SystemPrompt: "You are a helpful assistant that summarizes text concisely.",
-		Prompt:       "Please summarize the following text in 2-3 sentences:\n\n" + text,
-		MaxTokens:    200,
-		Temperature:  0.3,
+		SystemPrompt: "",
+		Prompt:       "Summarize the following text in 3-5 bullet points:\n\n" + text,
+		MaxTokens:    0,
+		Temperature:  0.7,
 	})
 	if err != nil {
 		return "", err
@@ -265,10 +291,30 @@ func (o *OpenAIClient) CleanupTranscript(transcript string) (string, error) {
 	}
 
 	resp, err := o.Complete(CompletionOptions{
-		SystemPrompt: "You are a helpful assistant that cleans up transcripts. Fix punctuation, remove filler words, and format properly.",
-		Prompt:       "Please clean up this transcript:\n\n" + transcript,
-		MaxTokens:    2000,
-		Temperature:  0.2,
+		SystemPrompt: speechRecognitionCleanupSystemPrompt,
+		Prompt:       transcript,
+		MaxTokens:    0,
+		Temperature:  0.3,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Content, nil
+}
+
+// SummarizeTranscript generates a structured summary from speech transcript
+func (o *OpenAIClient) SummarizeTranscript(transcript string) (string, error) {
+	if o == nil {
+		return "", nil
+	}
+
+	resp, err := o.Complete(CompletionOptions{
+		SystemPrompt: speechRecognitionSummarySystemPrompt,
+		Prompt:       transcript,
+		MaxTokens:    0,
+		Temperature:  0.3,
+		JSONMode:     true,
 	})
 	if err != nil {
 		return "", err
@@ -291,12 +337,20 @@ Respond with JSON in format: {"tags": ["tag1", "tag2", ...]}`
 	resp, err := o.Complete(CompletionOptions{
 		SystemPrompt: systemPrompt,
 		Prompt:       "Analyze the following content and produce tags.\n\n" + text,
-		MaxTokens:    200,
+		MaxTokens:    0, // No limit
 		Temperature:  0.1,
 		JSONMode:     true,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Warn if response was truncated (shouldn't happen with no limit)
+	if resp.FinishReason == "length" {
+		log.Warn().
+			Int("completionTokens", resp.Usage.CompletionTokens).
+			Str("finishReason", resp.FinishReason).
+			Msg("response was truncated due to max_tokens limit")
 	}
 
 	// Parse JSON from LLM response using robust parser

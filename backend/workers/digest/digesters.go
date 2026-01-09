@@ -619,7 +619,7 @@ func (d *SpeechRecognitionSummaryDigester) Digest(filePath string, file *db.File
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-summary", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	summary, err := openai.Summarize(transcript)
+	summary, err := openai.SummarizeTranscript(transcript)
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-summary", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
