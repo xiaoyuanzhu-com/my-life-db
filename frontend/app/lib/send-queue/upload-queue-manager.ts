@@ -439,7 +439,7 @@ export class UploadQueueManager {
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const upload = new tus.Upload(item.blob, {
-        endpoint: '/api/upload/tus',
+        endpoint: '/api/upload/tus/',
         retryDelays: [], // We handle retries ourselves
         chunkSize: 10 * 1024 * 1024, // 10MB chunks
         uploadUrl: item.tusUploadUrl || undefined,
