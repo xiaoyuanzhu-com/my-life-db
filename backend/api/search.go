@@ -153,14 +153,9 @@ func Search(c *gin.Context) {
 
 				// Build snippet from formatted content or raw content
 				snippet := hit.Content
-				if len(snippet) > 200 {
-					snippet = snippet[:200]
-				}
+				snippet = safeSubstring(snippet, 200)
 				if formatted, ok := hit.Formatted["content"]; ok && formatted != "" {
-					snippet = formatted
-					if len(snippet) > 200 {
-						snippet = snippet[:200]
-					}
+					snippet = safeSubstring(formatted, 200)
 				}
 
 				// Build match context for keyword results
@@ -249,12 +244,12 @@ func Search(c *gin.Context) {
 						CreatedAt:       file.CreatedAt,
 						Digests:         file.Digests,
 						Score:           float64(hit.Score),
-						Snippet:         hit.Text[:min(200, len(hit.Text))],
+						Snippet:         safeSubstring(hit.Text, 200),
 						TextPreview:     file.TextPreview,
 						ScreenshotSqlar: file.ScreenshotSqlar,
 						MatchContext: &MatchContext{
 							Source:     "semantic",
-							Snippet:    hit.Text[:min(300, len(hit.Text))],
+							Snippet:    safeSubstring(hit.Text, 300),
 							Terms:      extractSearchTerms(query),
 							Score:      &score,
 							SourceType: hit.SourceType,
@@ -323,6 +318,16 @@ func Search(c *gin.Context) {
 	response.Pagination.HasMore = len(results) >= limit
 
 	c.JSON(http.StatusOK, response)
+}
+
+// safeSubstring safely extracts a substring up to maxLen characters (not bytes)
+// This handles unicode properly by counting runes instead of bytes
+func safeSubstring(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
 }
 
 func extractSearchTerms(query string) []string {
@@ -470,38 +475,76 @@ func extractSnippetFromFormatted(formattedText string, maxLength int) string {
 
 	highlightStart := strings.Index(formattedText, highlightPre)
 	if highlightStart == -1 {
-		if len(formattedText) > maxLength {
-			return formattedText[:maxLength]
-		}
-		return formattedText
+		return safeSubstring(formattedText, maxLength)
 	}
 
-	// Extract context around the highlight
-	contextRadius := 80
-	start := max(0, highlightStart-contextRadius)
-	end := min(len(formattedText), highlightStart+contextRadius+100)
+	// Convert to runes for proper unicode handling
+	runes := []rune(formattedText)
 
-	snippet := formattedText[start:end]
+	// Find the rune position of the highlight start
+	bytePos := 0
+	runePos := 0
+	for i, r := range runes {
+		if bytePos >= highlightStart {
+			runePos = i
+			break
+		}
+		bytePos += len(string(r))
+	}
+
+	// Extract context around the highlight (in runes)
+	contextRadius := 80
+	start := max(0, runePos-contextRadius)
+	end := min(len(runes), runePos+contextRadius+100)
+
+	snippet := string(runes[start:end])
 	if start > 0 {
 		snippet = "..." + snippet
 	}
-	if end < len(formattedText) {
+	if end < len(runes) {
 		snippet = snippet + "..."
 	}
 
 	// Trim if still too long, but keep the highlight
-	if len(snippet) > maxLength {
+	snippetRunes := []rune(snippet)
+	if len(snippetRunes) > maxLength {
 		firstHighlight := strings.Index(snippet, highlightPre)
-		highlightEnd := strings.Index(snippet[firstHighlight:], highlightPost)
-		if firstHighlight != -1 && highlightEnd != -1 {
-			minLength := firstHighlight + highlightEnd + len(highlightPost) + 20
-			if minLength < maxLength {
-				snippet = snippet[:maxLength] + "..."
+		if firstHighlight != -1 {
+			highlightEndIdx := strings.Index(snippet[firstHighlight:], highlightPost)
+			if highlightEndIdx != -1 {
+				// Convert byte positions to rune positions
+				bytePos := 0
+				highlightRuneStart := 0
+				for i, r := range snippetRunes {
+					if bytePos >= firstHighlight {
+						highlightRuneStart = i
+						break
+					}
+					bytePos += len(string(r))
+				}
+
+				// Find end of highlight in runes
+				bytePos = 0
+				highlightRuneEnd := 0
+				for i, r := range snippetRunes[highlightRuneStart:] {
+					if bytePos >= highlightEndIdx+len(highlightPost) {
+						highlightRuneEnd = highlightRuneStart + i
+						break
+					}
+					bytePos += len(string(r))
+				}
+
+				minLength := highlightRuneEnd + 20
+				if minLength < maxLength {
+					snippet = string(snippetRunes[:maxLength]) + "..."
+				} else {
+					snippet = string(snippetRunes[:min(minLength, len(snippetRunes))]) + "..."
+				}
 			} else {
-				snippet = snippet[:minLength] + "..."
+				snippet = string(snippetRunes[:maxLength]) + "..."
 			}
 		} else {
-			snippet = snippet[:maxLength] + "..."
+			snippet = string(snippetRunes[:maxLength]) + "..."
 		}
 	}
 
