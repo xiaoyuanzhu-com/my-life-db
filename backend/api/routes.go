@@ -71,7 +71,6 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Upload (TUS)
 	api.POST("/upload/finalize", FinalizeUpload)
-	api.Any("/upload/tus/", TUSHandler)
 	api.Any("/upload/tus/*path", TUSHandler)
 
 	// Directories

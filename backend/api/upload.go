@@ -73,9 +73,17 @@ func TUSHandler(c *gin.Context) {
 		return
 	}
 
-	// Strip the /api/upload/tus prefix and pass to handler
+	// Manually strip the /api/upload/tus prefix from the request URL
 	// TUS handler expects paths without the base path prefix
-	http.StripPrefix("/api/upload/tus", handler).ServeHTTP(c.Writer, c.Request)
+	// We need to manually strip because http.StripPrefix doesn't work well with Gin's wildcard routes
+	originalPath := c.Request.URL.Path
+	strippedPath := strings.TrimPrefix(originalPath, "/api/upload/tus")
+	c.Request.URL.Path = strippedPath
+
+	handler.ServeHTTP(c.Writer, c.Request)
+
+	// Restore original path (good practice)
+	c.Request.URL.Path = originalPath
 }
 
 // FinalizeUpload handles POST /api/upload/finalize
