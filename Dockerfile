@@ -27,7 +27,7 @@ COPY backend/ ./
 
 # Build with CGO enabled for SQLite
 ENV CGO_ENABLED=1
-RUN go build -o /app/bin/server .
+RUN go build -o my-life-db .
 
 # Stage 3: Production image
 FROM alpine:3.20 AS runner
@@ -39,12 +39,12 @@ RUN apk add --no-cache ca-certificates tzdata
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy built artifacts
-COPY --from=go-builder /app/bin/server ./server
+# Copy built artifacts maintaining local structure
+COPY --from=go-builder /app/my-life-db ./backend/my-life-db
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
 # Create data directory
-RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
+RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
@@ -57,4 +57,4 @@ ENV MY_DATA_DIR=/app/data
 
 EXPOSE 12345
 
-CMD ["./server"]
+CMD ["./backend/my-life-db"]
