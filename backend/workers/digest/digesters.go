@@ -3,6 +3,7 @@ package digest
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -737,53 +738,139 @@ func (d *SearchSemanticDigester) CanDigest(_ string, file *db.FileRecord, _ *sql
 func (d *SearchSemanticDigester) Digest(filePath string, file *db.FileRecord, existingDigests []db.Digest, _ *sql.DB) ([]DigestInput, error) {
 	now := nowUTC()
 
-	text := getTextContent(filePath, file, existingDigests)
-	if text == "" {
+	// Get all content sources
+	sources, err := GetContentSources(filePath, file, existingDigests)
+	if err != nil {
+		errMsg := err.Error()
+		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	if len(sources) == 0 {
+		// No text available - complete with no content
 		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	// Use HAID for embeddings (matching Node.js implementation)
-	haid := vendors.GetHAID()
-	if haid == nil {
-		errMsg := "HAID service not configured"
-		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	// Index each source separately with chunking
+	sourceCounts := make(map[string]int)
+	totalChunks := 0
+
+	for _, source := range sources {
+		if source.Text == "" {
+			continue
+		}
+
+		// Chunk text (800-1000 tokens, 15% overlap)
+		chunks := ChunkText(source.Text, 900, 0.15)
+
+		// Create qdrant_documents records for each chunk
+		for _, chunk := range chunks {
+			documentID := filePath + ":" + source.SourceType + ":" + fmt.Sprintf("%d", chunk.ChunkIndex)
+			contentHash := hashString(chunk.ChunkText)
+
+			qdrantDoc := &db.QdrantDocument{
+				DocumentID:       documentID,
+				FilePath:         filePath,
+				SourceType:       source.SourceType,
+				ChunkIndex:       chunk.ChunkIndex,
+				ChunkCount:       chunk.ChunkCount,
+				ChunkText:        chunk.ChunkText,
+				SpanStart:        chunk.SpanStart,
+				SpanEnd:          chunk.SpanEnd,
+				OverlapTokens:    chunk.OverlapTokens,
+				WordCount:        chunk.WordCount,
+				TokenCount:       chunk.TokenCount,
+				ContentHash:      contentHash,
+				EmbeddingVersion: 0,
+			}
+
+			if err := db.UpsertQdrantDocument(qdrantDoc); err != nil {
+				errMsg := err.Error()
+				return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+			}
+		}
+
+		sourceCounts[source.SourceType] = len(chunks)
+		totalChunks += len(chunks)
 	}
 
-	qdrant := vendors.GetQdrant()
-	if qdrant == nil {
-		errMsg := "Qdrant not configured"
-		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	// Also index summary and tags as separate sources
+	summaryText := GetSummaryDigest(existingDigests)
+	if summaryText != nil && *summaryText != "" {
+		chunks := ChunkText(*summaryText, 900, 0.15)
+		for _, chunk := range chunks {
+			documentID := filePath + ":summary:" + fmt.Sprintf("%d", chunk.ChunkIndex)
+			contentHash := hashString(chunk.ChunkText)
+
+			qdrantDoc := &db.QdrantDocument{
+				DocumentID:       documentID,
+				FilePath:         filePath,
+				SourceType:       "summary",
+				ChunkIndex:       chunk.ChunkIndex,
+				ChunkCount:       chunk.ChunkCount,
+				ChunkText:        chunk.ChunkText,
+				SpanStart:        chunk.SpanStart,
+				SpanEnd:          chunk.SpanEnd,
+				OverlapTokens:    chunk.OverlapTokens,
+				WordCount:        chunk.WordCount,
+				TokenCount:       chunk.TokenCount,
+				ContentHash:      contentHash,
+				EmbeddingVersion: 0,
+			}
+
+			if err := db.UpsertQdrantDocument(qdrantDoc); err != nil {
+				errMsg := err.Error()
+				return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+			}
+		}
+		sourceCounts["summary"] = len(chunks)
+		totalChunks += len(chunks)
 	}
 
-	// Generate embedding using HAID
-	embeddings, err := haid.Embed([]string{text})
-	if err != nil {
-		errMsg := err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	tagsText := GetTagsDigest(existingDigests)
+	if tagsText != nil && *tagsText != "" {
+		chunks := ChunkText(*tagsText, 900, 0.15)
+		for _, chunk := range chunks {
+			documentID := filePath + ":tags:" + fmt.Sprintf("%d", chunk.ChunkIndex)
+			contentHash := hashString(chunk.ChunkText)
+
+			qdrantDoc := &db.QdrantDocument{
+				DocumentID:       documentID,
+				FilePath:         filePath,
+				SourceType:       "tags",
+				ChunkIndex:       chunk.ChunkIndex,
+				ChunkCount:       chunk.ChunkCount,
+				ChunkText:        chunk.ChunkText,
+				SpanStart:        chunk.SpanStart,
+				SpanEnd:          chunk.SpanEnd,
+				OverlapTokens:    chunk.OverlapTokens,
+				WordCount:        chunk.WordCount,
+				TokenCount:       chunk.TokenCount,
+				ContentHash:      contentHash,
+				EmbeddingVersion: 0,
+			}
+
+			if err := db.UpsertQdrantDocument(qdrantDoc); err != nil {
+				errMsg := err.Error()
+				return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+			}
+		}
+		sourceCounts["tags"] = len(chunks)
+		totalChunks += len(chunks)
 	}
 
-	if len(embeddings) == 0 {
-		errMsg := "HAID returned no embeddings"
-		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	// Store metadata about indexing in digest content
+	metadata := map[string]interface{}{
+		"sources":     sourceCounts,
+		"totalChunks": totalChunks,
 	}
-
-	embedding := embeddings[0]
-
-	// Store in Qdrant
-	err = qdrant.UpsertPoint(filePath, embedding, map[string]interface{}{
-		"name": file.Name,
-		"path": filePath,
-	})
-	if err != nil {
-		errMsg := err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "search-semantic", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
+	metadataJSON, _ := json.Marshal(metadata)
+	metadataStr := string(metadataJSON)
 
 	return []DigestInput{{
 		FilePath:  filePath,
 		Digester:  "search-semantic",
 		Status:    DigestStatusCompleted,
-		Content:   nil, // Indexed in Qdrant, not stored
+		Content:   &metadataStr,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}}, nil
