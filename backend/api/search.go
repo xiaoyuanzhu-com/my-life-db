@@ -469,6 +469,7 @@ func hasHighlight(text string, highlightTag string) bool {
 }
 
 // extractSnippetFromFormatted extracts a snippet around the highlight
+// Uses rune-based operations for proper unicode/multilingual support
 func extractSnippetFromFormatted(formattedText string, maxLength int) string {
 	const highlightPre = "<em>"
 	const highlightPost = "</em>"
@@ -481,21 +482,21 @@ func extractSnippetFromFormatted(formattedText string, maxLength int) string {
 	// Convert to runes for proper unicode handling
 	runes := []rune(formattedText)
 
-	// Find the rune position of the highlight start
-	bytePos := 0
-	runePos := 0
-	for i, r := range runes {
-		if bytePos >= highlightStart {
-			runePos = i
+	// Find the rune position of the highlight start by counting runes up to the byte position
+	highlightRuneStart := 0
+	byteCount := 0
+	for i := range runes {
+		if byteCount >= highlightStart {
+			highlightRuneStart = i
 			break
 		}
-		bytePos += len(string(r))
+		byteCount += len(string(runes[i]))
 	}
 
 	// Extract context around the highlight (in runes)
 	contextRadius := 80
-	start := max(0, runePos-contextRadius)
-	end := min(len(runes), runePos+contextRadius+100)
+	start := max(0, highlightRuneStart-contextRadius)
+	end := min(len(runes), highlightRuneStart+contextRadius+100)
 
 	snippet := string(runes[start:end])
 	if start > 0 {
@@ -508,37 +509,31 @@ func extractSnippetFromFormatted(formattedText string, maxLength int) string {
 	// Trim if still too long, but keep the highlight
 	snippetRunes := []rune(snippet)
 	if len(snippetRunes) > maxLength {
-		firstHighlight := strings.Index(snippet, highlightPre)
-		if firstHighlight != -1 {
-			highlightEndIdx := strings.Index(snippet[firstHighlight:], highlightPost)
-			if highlightEndIdx != -1 {
-				// Convert byte positions to rune positions
-				bytePos := 0
-				highlightRuneStart := 0
-				for i, r := range snippetRunes {
-					if bytePos >= firstHighlight {
-						highlightRuneStart = i
+		// Find highlight in the snippet
+		snippetHighlightStart := strings.Index(snippet, highlightPre)
+		if snippetHighlightStart != -1 {
+			// Find the end of the complete highlight tag
+			highlightEndBytePos := strings.Index(snippet[snippetHighlightStart:], highlightPost)
+			if highlightEndBytePos != -1 {
+				// Convert highlight end byte position (relative to highlightStart) to rune position
+				highlightEndRunePos := 0
+				for i := range snippetRunes {
+					runeBytePos := len(string(snippetRunes[:i]))
+					if runeBytePos >= snippetHighlightStart+highlightEndBytePos+len(highlightPost) {
+						highlightEndRunePos = i
 						break
 					}
-					bytePos += len(string(r))
+				}
+				if highlightEndRunePos == 0 {
+					highlightEndRunePos = len(snippetRunes)
 				}
 
-				// Find end of highlight in runes
-				bytePos = 0
-				highlightRuneEnd := 0
-				for i, r := range snippetRunes[highlightRuneStart:] {
-					if bytePos >= highlightEndIdx+len(highlightPost) {
-						highlightRuneEnd = highlightRuneStart + i
-						break
-					}
-					bytePos += len(string(r))
-				}
-
-				minLength := highlightRuneEnd + 20
-				if minLength < maxLength {
+				// Keep at least 20 runes after the highlight, but don't exceed maxLength
+				minLength := min(highlightEndRunePos+20, len(snippetRunes))
+				if minLength <= maxLength {
 					snippet = string(snippetRunes[:maxLength]) + "..."
 				} else {
-					snippet = string(snippetRunes[:min(minLength, len(snippetRunes))]) + "..."
+					snippet = string(snippetRunes[:minLength]) + "..."
 				}
 			} else {
 				snippet = string(snippetRunes[:maxLength]) + "..."
