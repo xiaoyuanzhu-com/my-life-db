@@ -129,16 +129,28 @@ func TriggerDigest(c *gin.Context) {
 		return
 	}
 
-	// Parse optional digester from body
+	// Parse optional digester from body or query param
 	var body struct {
 		Digester string `json:"digester"`
 		Force    bool   `json:"force"`
 	}
 	c.ShouldBindJSON(&body)
 
-	if body.Digester != "" {
+	// Check query param if not in body
+	digester := body.Digester
+	if digester == "" {
+		digester = c.Query("digester")
+	}
+
+	// Force defaults to true when digester is specified (for rerun behavior)
+	force := body.Force
+	if digester != "" && !force {
+		force = true
+	}
+
+	if digester != "" {
 		// Reset specific digester
-		digest, err := db.GetDigestByFileAndDigester(path, body.Digester)
+		digest, err := db.GetDigestByFileAndDigester(path, digester)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest"})
 			return
@@ -148,7 +160,7 @@ func TriggerDigest(c *gin.Context) {
 			// Create new digest record
 			digest = &db.Digest{
 				FilePath:  path,
-				Digester:  body.Digester,
+				Digester:  digester,
 				Status:    db.DigestStatusTodo,
 				CreatedAt: db.NowUTC(),
 				UpdatedAt: db.NowUTC(),
@@ -157,7 +169,7 @@ func TriggerDigest(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create digest"})
 				return
 			}
-		} else if body.Force {
+		} else if force {
 			// Reset existing digest
 			digest.Status = db.DigestStatusTodo
 			digest.Error = nil
