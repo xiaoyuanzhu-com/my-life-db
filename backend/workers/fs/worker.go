@@ -3,7 +3,7 @@ package fs
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"sync"
 	"time"
 
@@ -23,16 +23,27 @@ type FileChangeEvent struct {
 // FileChangeHandler is called when files change
 type FileChangeHandler func(event FileChangeEvent)
 
+// Default exclusion patterns for filesystem scanning
+var defaultExclusionPatterns = []string{
+	`^app/`,           // App data directory
+	`^\.git/`,         // Git repository
+	`/\.git/`,         // Git repository in subdirectories
+	`(^|/)\.DS_Store$`, // macOS metadata files (anywhere)
+	`(^|/)\..*\.swp$`, // Vim swap files
+	`(^|/)~.*$`,       // Backup files
+}
+
 // Worker watches the file system for changes
 type Worker struct {
-	dataRoot      string
-	watcher       *fsnotify.Watcher
-	onChange      FileChangeHandler
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
-	scanInterval  time.Duration
-	lastScanTimes map[string]time.Time
-	mu            sync.RWMutex
+	dataRoot          string
+	watcher           *fsnotify.Watcher
+	onChange          FileChangeHandler
+	stopChan          chan struct{}
+	wg                sync.WaitGroup
+	scanInterval      time.Duration
+	lastScanTimes     map[string]time.Time
+	mu                sync.RWMutex
+	exclusionPatterns []*regexp.Regexp
 }
 
 var (
@@ -47,11 +58,23 @@ func GetWorker() *Worker {
 
 // NewWorker creates a new file system worker
 func NewWorker(dataRoot string) *Worker {
+	// Compile exclusion patterns
+	exclusionPatterns := make([]*regexp.Regexp, 0, len(defaultExclusionPatterns))
+	for _, pattern := range defaultExclusionPatterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			log.Warn().Err(err).Str("pattern", pattern).Msg("failed to compile exclusion pattern")
+			continue
+		}
+		exclusionPatterns = append(exclusionPatterns, re)
+	}
+
 	w := &Worker{
-		dataRoot:      dataRoot,
-		stopChan:      make(chan struct{}),
-		scanInterval:  1 * time.Hour,
-		lastScanTimes: make(map[string]time.Time),
+		dataRoot:          dataRoot,
+		stopChan:          make(chan struct{}),
+		scanInterval:      1 * time.Hour,
+		lastScanTimes:     make(map[string]time.Time),
+		exclusionPatterns: exclusionPatterns,
 	}
 	// Set as singleton instance
 	instanceOnce.Do(func() {
@@ -144,7 +167,7 @@ func (w *Worker) watchRecursive(root string) error {
 
 		// Skip reserved directories
 		relPath, _ := filepath.Rel(w.dataRoot, path)
-		if w.isReservedPath(relPath) {
+		if w.isExcluded(relPath) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -161,16 +184,11 @@ func (w *Worker) watchRecursive(root string) error {
 	})
 }
 
-// isReservedPath checks if a path is in a reserved directory
-func (w *Worker) isReservedPath(relPath string) bool {
-	// Reserved directories that shouldn't be processed by digesters
-	reserved := []string{"app", ".DS_Store", ".git"}
-	parts := strings.Split(relPath, string(os.PathSeparator))
-	if len(parts) > 0 {
-		for _, r := range reserved {
-			if parts[0] == r {
-				return true
-			}
+// isExcluded checks if a path matches any exclusion pattern
+func (w *Worker) isExcluded(relPath string) bool {
+	for _, pattern := range w.exclusionPatterns {
+		if pattern.MatchString(relPath) {
+			return true
 		}
 	}
 	return false
@@ -208,7 +226,7 @@ func (w *Worker) handleEvent(event fsnotify.Event) {
 	}
 
 	// Skip reserved paths
-	if w.isReservedPath(relPath) {
+	if w.isExcluded(relPath) {
 		return
 	}
 
@@ -366,7 +384,7 @@ func (w *Worker) scanDirectory(root string) {
 		relPath, _ := filepath.Rel(w.dataRoot, path)
 
 		// Skip reserved paths
-		if w.isReservedPath(relPath) {
+		if w.isExcluded(relPath) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
