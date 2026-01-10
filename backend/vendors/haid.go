@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -186,8 +187,11 @@ func (h *HAIDClient) SpeechRecognition(audioPath string, opts ASROptions) (*ASRR
 		return nil, nil
 	}
 
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(audioPath)
+
 	// Read and encode audio file
-	audioData, err := os.ReadFile(audioPath)
+	audioData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +223,10 @@ func (h *HAIDClient) ImageOCR(imagePath string) (*OCRResponse, error) {
 		return nil, nil
 	}
 
-	imageData, err := os.ReadFile(imagePath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(imagePath)
+
+	imageData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +256,10 @@ func (h *HAIDClient) ImageCaptioning(imagePath string) (*CaptioningResponse, err
 		return nil, nil
 	}
 
-	imageData, err := os.ReadFile(imagePath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(imagePath)
+
+	imageData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +289,10 @@ func (h *HAIDClient) SegmentImage(imagePath string) (*SAMResponse, error) {
 		return nil, nil
 	}
 
-	imageData, err := os.ReadFile(imagePath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(imagePath)
+
+	imageData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +365,10 @@ func (h *HAIDClient) SpeakerEmbedding(audioPath string) ([]float32, error) {
 		return nil, nil
 	}
 
-	audioData, err := os.ReadFile(audioPath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(audioPath)
+
+	audioData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -416,6 +432,16 @@ func GetHAID() *HAIDClient {
 	return GetHAIDClient()
 }
 
+// resolveFilePath converts a relative file path to absolute by joining with DataDir
+// If the path is already absolute, returns it unchanged
+func resolveFilePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	cfg := config.Get()
+	return filepath.Join(cfg.DataDir, path)
+}
+
 // CrawlURL crawls a URL (simplified interface for digest workers)
 func (h *HAIDClient) CrawlURL(url string) (string, []byte, error) {
 	if h == nil {
@@ -446,7 +472,10 @@ func (h *HAIDClient) ConvertDocToMarkdown(docPath string) (string, error) {
 		return "", nil
 	}
 
-	docData, err := os.ReadFile(docPath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(docPath)
+
+	docData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return "", err
 	}
@@ -479,7 +508,10 @@ func (h *HAIDClient) GenerateDocScreenshot(docPath string) ([]byte, error) {
 		return nil, nil
 	}
 
-	docData, err := os.ReadFile(docPath)
+	// Resolve relative path to absolute
+	fullPath := resolveFilePath(docPath)
+
+	docData, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
