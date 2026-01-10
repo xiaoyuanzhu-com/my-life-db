@@ -122,15 +122,15 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/raw": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/sqlar": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        changeOrigin: false,
       },
     },
   },
