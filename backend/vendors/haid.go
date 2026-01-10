@@ -39,12 +39,13 @@ type CrawlOptions struct {
 
 // CrawlResponse represents a crawl response
 type CrawlResponse struct {
-	Title      string `json:"title"`
-	Content    string `json:"content"`
-	Markdown   string `json:"markdown"`
-	Screenshot string `json:"screenshot"` // base64
-	URL        string `json:"url"`
-	Error      string `json:"error,omitempty"`
+	Title           string `json:"title"`
+	Content         string `json:"content"`
+	Markdown        string `json:"markdown"`
+	Screenshot      string `json:"screenshot"`        // base64 (deprecated field)
+	ScreenshotBase64 string `json:"screenshot_base64"` // base64 (actual field used by HAID)
+	URL             string `json:"url"`
+	Error           string `json:"error,omitempty"`
 }
 
 // ASROptions holds options for speech recognition
@@ -155,17 +156,23 @@ func (h *HAIDClient) CrawlURLWithOpts(url string, opts CrawlOptions) (*CrawlResp
 		return nil, nil
 	}
 
+	// Default page timeout to 120 seconds (120000ms like Node.js)
+	pageTimeout := 120000
+	if opts.Timeout > 0 {
+		pageTimeout = opts.Timeout * 1000 // Convert seconds to milliseconds
+	}
+
 	body := map[string]interface{}{
-		"url":        url,
-		"screenshot": opts.Screenshot,
+		"url":                  url,
+		"screenshot":           opts.Screenshot,
+		"screenshot_fullpage":  false,
+		"screenshot_width":     1920,
+		"screenshot_height":    1080,
+		"page_timeout":         pageTimeout,
 	}
 
 	if h.chromeCDPURL != "" {
 		body["chrome_cdp_url"] = h.chromeCDPURL
-	}
-
-	if opts.Timeout > 0 {
-		body["timeout"] = opts.Timeout
 	}
 
 	resp, err := h.post("/api/crawl", body)
@@ -176,6 +183,11 @@ func (h *HAIDClient) CrawlURLWithOpts(url string, opts CrawlOptions) (*CrawlResp
 	var result CrawlResponse
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
+	}
+
+	// Normalize screenshot field: prefer screenshot_base64 (actual HAID field)
+	if result.ScreenshotBase64 != "" && result.Screenshot == "" {
+		result.Screenshot = result.ScreenshotBase64
 	}
 
 	return &result, nil
@@ -198,10 +210,19 @@ func (h *HAIDClient) SpeechRecognition(audioPath string, opts ASROptions) (*ASRR
 
 	audioBase64 := base64.StdEncoding.EncodeToString(audioData)
 
+	// Default model if not provided
+	model := opts.Model
+	if model == "" {
+		model = "large-v3"
+	}
+
 	body := map[string]interface{}{
-		"audio":       audioBase64,
-		"model":       opts.Model,
-		"diarization": opts.Diarization,
+		"audio":        audioBase64,
+		"model":        model,
+		"diarization":  opts.Diarization,
+		"lib":          "whisperx",
+		"min_speakers": 1,
+		"max_speakers": 4,
 	}
 
 	resp, err := h.post("/api/automatic-speech-recognition", body)
@@ -234,10 +255,12 @@ func (h *HAIDClient) ImageOCR(imagePath string) (*OCRResponse, error) {
 	imageBase64 := base64.StdEncoding.EncodeToString(imageData)
 
 	body := map[string]interface{}{
-		"image": imageBase64,
+		"image":         imageBase64,
+		"model":         "deepseek-ai/DeepSeek-OCR",
+		"output_format": "text",
 	}
 
-	resp, err := h.post("/api/ocr", body)
+	resp, err := h.post("/api/image-ocr", body)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +290,9 @@ func (h *HAIDClient) ImageCaptioning(imagePath string) (*CaptioningResponse, err
 	imageBase64 := base64.StdEncoding.EncodeToString(imageData)
 
 	body := map[string]interface{}{
-		"image": imageBase64,
+		"image":  imageBase64,
+		"model":  "deepseek-ai/DeepSeek-OCR",
+		"prompt": "Describe this image in detail.",
 	}
 
 	resp, err := h.post("/api/image-captioning", body)
@@ -300,10 +325,12 @@ func (h *HAIDClient) SegmentImage(imagePath string) (*SAMResponse, error) {
 	imageBase64 := base64.StdEncoding.EncodeToString(imageData)
 
 	body := map[string]interface{}{
-		"image": imageBase64,
+		"image":  imageBase64,
+		"prompt": "auto",
+		"lib":    "facebookresearch/sam3",
 	}
 
-	resp, err := h.post("/api/segment-anything", body)
+	resp, err := h.post("/api/sam", body)
 	if err != nil {
 		return nil, err
 	}
