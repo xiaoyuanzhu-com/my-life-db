@@ -35,19 +35,63 @@ type Worker struct {
 	mu            sync.RWMutex
 }
 
+var (
+	instance     *Worker
+	instanceOnce sync.Once
+)
+
+// GetWorker returns the singleton FS worker instance
+func GetWorker() *Worker {
+	return instance
+}
+
 // NewWorker creates a new file system worker
 func NewWorker(dataRoot string) *Worker {
-	return &Worker{
+	w := &Worker{
 		dataRoot:      dataRoot,
 		stopChan:      make(chan struct{}),
 		scanInterval:  1 * time.Hour,
 		lastScanTimes: make(map[string]time.Time),
 	}
+	// Set as singleton instance
+	instanceOnce.Do(func() {
+		instance = w
+	})
+	return w
 }
 
 // SetFileChangeHandler sets the callback for file changes
 func (w *Worker) SetFileChangeHandler(handler FileChangeHandler) {
 	w.onChange = handler
+}
+
+// ProcessFile processes a single file's metadata (for API endpoints)
+// Returns true if the file content changed (hash differs from existing)
+func (w *Worker) ProcessFile(relPath string) (bool, error) {
+	// Get file info
+	fullPath := filepath.Join(w.dataRoot, relPath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return false, err
+	}
+
+	// Get existing record to check for hash change
+	existing, _ := db.GetFileByPath(relPath)
+	oldHash := ""
+	if existing != nil && existing.Hash != nil {
+		oldHash = *existing.Hash
+	}
+
+	// Process and update file record
+	w.createFileRecord(relPath, info)
+
+	// Check if hash changed
+	updated, _ := db.GetFileByPath(relPath)
+	if updated != nil && updated.Hash != nil {
+		return oldHash != *updated.Hash, nil
+	}
+
+	return false, nil
 }
 
 // Start begins watching the file system
@@ -203,18 +247,58 @@ func (w *Worker) handleEvent(event fsnotify.Event) {
 
 // createFileRecord creates or updates a database record for a file detected by the FS watcher
 // This ensures files added externally (AirDrop, direct copy) are tracked in the database
+// Also computes hash and text preview for the file
 func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 	now := db.NowUTC()
 	filename := filepath.Base(relPath)
 	mimeType := utils.DetectMimeType(filename)
 	size := info.Size()
 
-	err := db.UpsertFile(&db.FileRecord{
+	// Get existing record to check for hash change
+	existing, _ := db.GetFileByPath(relPath)
+	oldHash := ""
+	if existing != nil && existing.Hash != nil {
+		oldHash = *existing.Hash
+	}
+
+	// Compute metadata (hash + text preview)
+	metadata, err := ProcessFileMetadata(relPath)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("path", relPath).
+			Msg("failed to process file metadata")
+
+		// Fall back to basic record without hash/preview
+		err = db.UpsertFile(&db.FileRecord{
+			Path:          relPath,
+			Name:          filename,
+			IsFolder:      false,
+			Size:          &size,
+			MimeType:      &mimeType,
+			ModifiedAt:    now,
+			CreatedAt:     now,
+			LastScannedAt: now,
+		})
+
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("path", relPath).
+				Msg("failed to create file record")
+		}
+		return
+	}
+
+	// Create file record with hash and text preview
+	err = db.UpsertFile(&db.FileRecord{
 		Path:          relPath,
 		Name:          filename,
 		IsFolder:      false,
 		Size:          &size,
 		MimeType:      &mimeType,
+		Hash:          &metadata.Hash,
+		TextPreview:   metadata.TextPreview,
 		ModifiedAt:    now,
 		CreatedAt:     now,
 		LastScannedAt: now,
@@ -224,13 +308,29 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 		log.Error().
 			Err(err).
 			Str("path", relPath).
-			Msg("failed to create file record for FS-detected file")
-	} else {
-		log.Info().
-			Str("path", relPath).
-			Int64("size", size).
-			Str("mimeType", mimeType).
-			Msg("created file record for FS-detected file")
+			Msg("failed to create file record")
+		return
+	}
+
+	log.Info().
+		Str("path", relPath).
+		Int64("size", size).
+		Str("mimeType", mimeType).
+		Str("hash", metadata.Hash[:16]+"...").
+		Bool("hasPreview", metadata.TextPreview != nil).
+		Msg("created file record with metadata")
+
+	// Check if content changed (hash differs)
+	contentChanged := oldHash == "" || oldHash != metadata.Hash
+
+	// Trigger digest processing if content changed
+	if contentChanged && w.onChange != nil {
+		log.Info().Str("path", relPath).Msg("content changed, triggering digest processing")
+		w.onChange(FileChangeEvent{
+			FilePath:       relPath,
+			IsNew:          oldHash == "",
+			ContentChanged: true,
+		})
 	}
 }
 
@@ -256,6 +356,8 @@ func (w *Worker) scanDirectory(root string) {
 	log.Info().Str("root", root).Msg("starting directory scan")
 
 	count := 0
+	processed := 0
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -273,7 +375,10 @@ func (w *Worker) scanDirectory(root string) {
 
 		if !info.IsDir() {
 			count++
-			// Could trigger file processing here if needed
+
+			// Create/update database record for ALL files during scan
+			w.createFileRecord(relPath, info)
+			processed++
 		}
 
 		return nil
@@ -283,5 +388,8 @@ func (w *Worker) scanDirectory(root string) {
 		log.Error().Err(err).Msg("scan error")
 	}
 
-	log.Info().Int("files", count).Msg("directory scan complete")
+	log.Info().
+		Int("total", count).
+		Int("processed", processed).
+		Msg("directory scan complete")
 }

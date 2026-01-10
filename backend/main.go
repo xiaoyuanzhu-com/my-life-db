@@ -81,8 +81,12 @@ func main() {
 	digestWorker := digest.NewWorker()
 
 	// Connect FS worker to digest worker
+	// When files change on filesystem (new or content changed), trigger digest processing
 	fsWorker.SetFileChangeHandler(func(event fs.FileChangeEvent) {
-		digestWorker.OnFileChange(event.FilePath, event.IsNew, event.ContentChanged)
+		// Trigger digest processing if content changed
+		if event.ContentChanged {
+			digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
+		}
 
 		// Notify UI of file changes (for external file additions like AirDrop)
 		// Only notify for new files or content changes

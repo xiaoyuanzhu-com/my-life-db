@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
 // InboxItem represents an inbox item in API responses
@@ -282,10 +283,18 @@ func CreateInboxItem(c *gin.Context) {
 		Int("fileCount", len(savedPaths)).
 		Msg("created inbox items")
 
+	// Process files for metadata (hash + text preview) in background
+	fsWorker := fs.GetWorker()
+	if fsWorker != nil {
+		go func() {
+			for _, path := range savedPaths {
+				fsWorker.ProcessFile(path)
+			}
+		}()
+	}
+
 	// Notify UI of inbox change
 	notifications.GetService().NotifyInboxChanged()
-
-	// TODO: Trigger digest processing for each file
 
 	c.JSON(http.StatusCreated, gin.H{
 		"path":  savedPaths[0],

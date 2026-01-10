@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
 var (
@@ -203,6 +204,16 @@ func FinalizeUpload(c *gin.Context) {
 	if len(paths) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid files to finalize"})
 		return
+	}
+
+	// Process files for metadata (hash + text preview) in background
+	fsWorker := fs.GetWorker()
+	if fsWorker != nil {
+		go func() {
+			for _, path := range paths {
+				fsWorker.ProcessFile(path)
+			}
+		}()
 	}
 
 	// Notify UI
