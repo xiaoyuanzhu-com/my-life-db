@@ -187,7 +187,8 @@ func FinalizeUpload(c *gin.Context) {
 		}
 		size := srcInfo.Size()
 
-		db.UpsertFile(&db.FileRecord{
+		// Ignore isNew return value since upload finalization logs below
+		_, _ = db.UpsertFile(&db.FileRecord{
 			Path:          destPath,
 			Name:          filename,
 			IsFolder:      false,

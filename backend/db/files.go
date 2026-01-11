@@ -48,7 +48,12 @@ func GetFileByPath(path string) (*FileRecord, error) {
 }
 
 // UpsertFile inserts or updates a file record
-func UpsertFile(f *FileRecord) error {
+func UpsertFile(f *FileRecord) (bool, error) {
+	// Check if file exists before upsert to determine if this is a new insert
+	var existingPath string
+	err := GetDB().QueryRow("SELECT path FROM files WHERE path = ?", f.Path).Scan(&existingPath)
+	isNewInsert := err != nil // If error (no rows), it's a new insert
+
 	query := `
 		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -69,12 +74,130 @@ func UpsertFile(f *FileRecord) error {
 		isFolder = 1
 	}
 
-	_, err := GetDB().Exec(query,
+	_, err = GetDB().Exec(query,
 		f.Path, f.Name, isFolder, f.Size, f.MimeType,
 		f.Hash, f.ModifiedAt, f.CreatedAt, f.LastScannedAt,
 		f.TextPreview, f.ScreenshotSqlar,
 	)
-	return err
+	return isNewInsert, err
+}
+
+// BatchUpsertFiles efficiently upserts multiple file records and returns paths of new inserts
+// Uses a single IN-clause query to check existing files, then batch upserts in a transaction
+// Processes records in chunks of 500 to avoid parameter limits
+func BatchUpsertFiles(records []*FileRecord) (newInserts []string, err error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	const chunkSize = 500
+
+	// Process in chunks
+	for i := 0; i < len(records); i += chunkSize {
+		end := i + chunkSize
+		if end > len(records) {
+			end = len(records)
+		}
+		chunk := records[i:end]
+
+		newInChunk, err := batchUpsertChunk(chunk)
+		if err != nil {
+			return newInserts, err
+		}
+		newInserts = append(newInserts, newInChunk...)
+	}
+
+	return newInserts, nil
+}
+
+// batchUpsertChunk processes a single chunk of file records
+func batchUpsertChunk(records []*FileRecord) ([]string, error) {
+	// 1. Build IN-clause query to check which files already exist
+	paths := make([]string, len(records))
+	for i, r := range records {
+		paths[i] = r.Path
+	}
+
+	existingPaths := make(map[string]bool)
+
+	// Build placeholders: ?,?,?
+	placeholders := strings.Repeat("?,", len(paths))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	query := fmt.Sprintf("SELECT path FROM files WHERE path IN (%s)", placeholders)
+	args := make([]interface{}, len(paths))
+	for i, p := range paths {
+		args[i] = p
+	}
+
+	rows, err := GetDB().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		existingPaths[path] = true
+	}
+	rows.Close()
+
+	// 2. Batch upsert in a transaction
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			name = excluded.name,
+			is_folder = excluded.is_folder,
+			size = excluded.size,
+			mime_type = excluded.mime_type,
+			hash = excluded.hash,
+			modified_at = excluded.modified_at,
+			last_scanned_at = excluded.last_scanned_at,
+			text_preview = excluded.text_preview,
+			screenshot_sqlar = excluded.screenshot_sqlar
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var newInserts []string
+	for _, record := range records {
+		isFolder := 0
+		if record.IsFolder {
+			isFolder = 1
+		}
+
+		_, err := stmt.Exec(
+			record.Path, record.Name, isFolder, record.Size, record.MimeType,
+			record.Hash, record.ModifiedAt, record.CreatedAt, record.LastScannedAt,
+			record.TextPreview, record.ScreenshotSqlar,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Track new inserts
+		if !existingPaths[record.Path] {
+			newInserts = append(newInserts, record.Path)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return newInserts, nil
 }
 
 // DeleteFile removes a file record

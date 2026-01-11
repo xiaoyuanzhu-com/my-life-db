@@ -209,7 +209,7 @@ func CreateInboxItem(c *gin.Context) {
 		mimeType := "text/markdown"
 
 		// Create file record
-		if err := db.UpsertFile(&db.FileRecord{
+		if _, err := db.UpsertFile(&db.FileRecord{
 			Path:          textPath,
 			Name:          textID + ".md",
 			IsFolder:      false,
@@ -219,7 +219,7 @@ func CreateInboxItem(c *gin.Context) {
 			CreatedAt:     nowStr,
 			LastScannedAt: nowStr,
 		}); err != nil {
-			log.Error().Err(err).Msg("failed to create file record")
+			log.Error().Err(err).Msg("failed to upsert file record")
 		}
 
 		savedPaths = append(savedPaths, textPath)
@@ -257,7 +257,7 @@ func CreateInboxItem(c *gin.Context) {
 		mimeType := utils.DetectMimeType(filename)
 
 		// Create file record
-		if err := db.UpsertFile(&db.FileRecord{
+		if _, err := db.UpsertFile(&db.FileRecord{
 			Path:          filePath,
 			Name:          filename,
 			IsFolder:      false,
@@ -267,7 +267,7 @@ func CreateInboxItem(c *gin.Context) {
 			CreatedAt:     nowStr,
 			LastScannedAt: nowStr,
 		}); err != nil {
-			log.Error().Err(err).Msg("failed to create file record")
+			log.Error().Err(err).Msg("failed to upsert file record")
 		}
 
 		savedPaths = append(savedPaths, filePath)

@@ -112,7 +112,8 @@ func SaveRawFile(c *gin.Context) {
 	mimeType := utils.DetectMimeType(path)
 	now := db.NowUTC()
 
-	db.UpsertFile(&db.FileRecord{
+	// Ignore isNew return value since this is a metadata update
+	_, _ = db.UpsertFile(&db.FileRecord{
 		Path:          path,
 		Name:          filepath.Base(path),
 		IsFolder:      false,

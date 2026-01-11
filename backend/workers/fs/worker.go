@@ -288,7 +288,7 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 			Msg("failed to process file metadata")
 
 		// Fall back to basic record without hash/preview
-		err = db.UpsertFile(&db.FileRecord{
+		isNew, err := db.UpsertFile(&db.FileRecord{
 			Path:          relPath,
 			Name:          filename,
 			IsFolder:      false,
@@ -303,13 +303,22 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 			log.Error().
 				Err(err).
 				Str("path", relPath).
-				Msg("failed to create file record")
+				Msg("failed to upsert file record")
+			return
+		}
+
+		if isNew {
+			log.Info().
+				Str("path", relPath).
+				Int64("size", size).
+				Str("mimeType", mimeType).
+				Msg("created new file record (no metadata)")
 		}
 		return
 	}
 
 	// Create file record with hash and text preview
-	err = db.UpsertFile(&db.FileRecord{
+	isNew, err := db.UpsertFile(&db.FileRecord{
 		Path:          relPath,
 		Name:          filename,
 		IsFolder:      false,
@@ -326,17 +335,20 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 		log.Error().
 			Err(err).
 			Str("path", relPath).
-			Msg("failed to create file record")
+			Msg("failed to upsert file record")
 		return
 	}
 
-	log.Info().
-		Str("path", relPath).
-		Int64("size", size).
-		Str("mimeType", mimeType).
-		Str("hash", metadata.Hash[:16]+"...").
-		Bool("hasPreview", metadata.TextPreview != nil).
-		Msg("created file record with metadata")
+	// Only log if this is a new file
+	if isNew {
+		log.Info().
+			Str("path", relPath).
+			Int64("size", size).
+			Str("mimeType", mimeType).
+			Str("hash", metadata.Hash[:16]+"...").
+			Bool("hasPreview", metadata.TextPreview != nil).
+			Msg("created new file record with metadata")
+	}
 
 	// Check if content changed (hash differs)
 	contentChanged := oldHash == "" || oldHash != metadata.Hash
@@ -369,13 +381,15 @@ func (w *Worker) scanLoop() {
 	}
 }
 
-// scanDirectory scans a directory for files
+// scanDirectory scans a directory for files and batch upserts them
 func (w *Worker) scanDirectory(root string) {
 	log.Info().Str("root", root).Msg("starting directory scan")
 
+	now := db.NowUTC()
+	var records []*db.FileRecord
 	count := 0
-	processed := 0
 
+	// Collect all file records
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -394,9 +408,21 @@ func (w *Worker) scanDirectory(root string) {
 		if !info.IsDir() {
 			count++
 
-			// Create/update database record for ALL files during scan
-			w.createFileRecord(relPath, info)
-			processed++
+			// Collect file record (without hash/preview for now - that's expensive)
+			filename := filepath.Base(relPath)
+			mimeType := utils.DetectMimeType(filename)
+			size := info.Size()
+
+			records = append(records, &db.FileRecord{
+				Path:          relPath,
+				Name:          filename,
+				IsFolder:      false,
+				Size:          &size,
+				MimeType:      &mimeType,
+				ModifiedAt:    now,
+				CreatedAt:     now,
+				LastScannedAt: now,
+			})
 		}
 
 		return nil
@@ -404,10 +430,90 @@ func (w *Worker) scanDirectory(root string) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("scan error")
+		return
+	}
+
+	// Batch upsert all records
+	newInserts, err := db.BatchUpsertFiles(records)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to batch upsert files")
+		return
 	}
 
 	log.Info().
 		Int("total", count).
-		Int("processed", processed).
+		Int("new", len(newInserts)).
+		Int("updated", count-len(newInserts)).
 		Msg("directory scan complete")
+
+	// Process metadata for new files only
+	if len(newInserts) > 0 {
+		log.Info().Int("count", len(newInserts)).Msg("processing metadata for new files")
+		for _, relPath := range newInserts {
+			fullPath := filepath.Join(w.dataRoot, relPath)
+			info, err := os.Stat(fullPath)
+			if err != nil {
+				continue
+			}
+
+			// Get existing record to check for hash
+			existing, _ := db.GetFileByPath(relPath)
+			oldHash := ""
+			if existing != nil && existing.Hash != nil {
+				oldHash = *existing.Hash
+			}
+
+			// Compute metadata (hash + text preview) for new files
+			metadata, err := ProcessFileMetadata(relPath)
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Str("path", relPath).
+					Msg("failed to process file metadata, skipping")
+				continue
+			}
+
+			// Update file record with hash and text preview
+			filename := filepath.Base(relPath)
+			mimeType := utils.DetectMimeType(filename)
+			size := info.Size()
+
+			_, err = db.UpsertFile(&db.FileRecord{
+				Path:          relPath,
+				Name:          filename,
+				IsFolder:      false,
+				Size:          &size,
+				MimeType:      &mimeType,
+				Hash:          &metadata.Hash,
+				TextPreview:   metadata.TextPreview,
+				ModifiedAt:    now,
+				CreatedAt:     now,
+				LastScannedAt: now,
+			})
+
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("path", relPath).
+					Msg("failed to update file record with metadata")
+				continue
+			}
+
+			log.Info().
+				Str("path", relPath).
+				Str("hash", metadata.Hash[:16]+"...").
+				Bool("hasPreview", metadata.TextPreview != nil).
+				Msg("processed metadata for new file")
+
+			// Check if content changed (hash differs) and trigger digest processing
+			contentChanged := oldHash == "" || oldHash != metadata.Hash
+			if contentChanged && w.onChange != nil {
+				w.onChange(FileChangeEvent{
+					FilePath:       relPath,
+					IsNew:          true,
+					ContentChanged: true,
+				})
+			}
+		}
+	}
 }
