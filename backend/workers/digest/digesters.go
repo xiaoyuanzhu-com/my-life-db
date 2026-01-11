@@ -455,17 +455,26 @@ func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord,
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	transcript, err := haid.TranscribeAudio(filePath)
+	// Use SpeechRecognition with diarization enabled to get full response with segments and speakers
+	asrResp, err := haid.SpeechRecognition(filePath, vendors.ASROptions{Diarization: true})
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
+	// Store the full ASR response as JSON (matching Node.js implementation)
+	asrJSON, err := json.Marshal(asrResp)
+	if err != nil {
+		errMsg := "failed to marshal ASR response: " + err.Error()
+		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+	content := string(asrJSON)
+
 	return []DigestInput{{
 		FilePath:  filePath,
 		Digester:  "speech-recognition",
 		Status:    DigestStatusCompleted,
-		Content:   &transcript,
+		Content:   &content,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}}, nil

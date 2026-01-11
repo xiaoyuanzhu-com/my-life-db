@@ -85,19 +85,28 @@ func GetSpeechRecognitionText(existingDigests []db.Digest) string {
 	for _, d := range existingDigests {
 		if d.Digester == "speech-recognition" && d.Status == "completed" && d.Content != nil {
 			content := *d.Content
-			// Parse transcript JSON to extract plain text
+			// Parse ASR JSON response to extract text
 			var parsed struct {
+				Text     string `json:"text"`
 				Segments []struct {
 					Text string `json:"text"`
 				} `json:"segments"`
 			}
-			if err := json.Unmarshal([]byte(content), &parsed); err == nil && len(parsed.Segments) > 0 {
-				var texts []string
-				for _, s := range parsed.Segments {
-					texts = append(texts, s.Text)
+			if err := json.Unmarshal([]byte(content), &parsed); err == nil {
+				// Prefer the top-level text field (full transcript)
+				if parsed.Text != "" {
+					return parsed.Text
 				}
-				return strings.Join(texts, " ")
+				// Fallback to joining segments
+				if len(parsed.Segments) > 0 {
+					var texts []string
+					for _, s := range parsed.Segments {
+						texts = append(texts, s.Text)
+					}
+					return strings.Join(texts, " ")
+				}
 			}
+			// If JSON parsing fails, return raw content (backward compatibility)
 			return content
 		}
 	}
