@@ -534,6 +534,45 @@ func (d *URLCrawlSummaryDigester) Digest(filePath string, file *db.FileRecord, e
 
 // ==================== Speech Recognition Cleanup Digester ====================
 
+// prepareASRForLLM strips embeddings and word-level data from ASR response
+// to reduce token usage when sending to LLM
+func prepareASRForLLM(asrResp vendors.ASRResponse) map[string]interface{} {
+	prepared := map[string]interface{}{
+		"request_id":         asrResp.RequestID,
+		"processing_time_ms": asrResp.ProcessingTimeMs,
+		"text":               asrResp.Text,
+		"language":           asrResp.Language,
+		"model":              asrResp.Model,
+	}
+
+	// Strip word-level data from segments to reduce token usage
+	segments := make([]map[string]interface{}, len(asrResp.Segments))
+	for i, seg := range asrResp.Segments {
+		segments[i] = map[string]interface{}{
+			"start":   seg.Start,
+			"end":     seg.End,
+			"text":    seg.Text,
+			"speaker": seg.Speaker,
+		}
+	}
+	prepared["segments"] = segments
+
+	// Add speakers without embeddings (only metadata)
+	if len(asrResp.Speakers) > 0 {
+		speakers := make([]map[string]interface{}, len(asrResp.Speakers))
+		for i, speaker := range asrResp.Speakers {
+			speakers[i] = map[string]interface{}{
+				"speaker_id":     speaker.SpeakerID,
+				"total_duration": speaker.TotalDuration,
+				"segment_count":  speaker.SegmentCount,
+			}
+		}
+		prepared["speakers"] = speakers
+	}
+
+	return prepared
+}
+
 type SpeechRecognitionCleanupDigester struct{}
 
 func (d *SpeechRecognitionCleanupDigester) Name() string        { return "speech-recognition-cleanup" }
@@ -550,17 +589,29 @@ func (d *SpeechRecognitionCleanupDigester) Digest(filePath string, file *db.File
 	now := nowUTC()
 
 	// Find speech-recognition digest
-	var transcript string
+	var asrContent string
 	for _, d := range existingDigests {
 		if d.Digester == "speech-recognition" && d.Status == "completed" && d.Content != nil {
-			transcript = *d.Content
+			asrContent = *d.Content
 			break
 		}
 	}
 
-	if transcript == "" {
+	if asrContent == "" {
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-cleanup", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
 	}
+
+	// Parse ASR response and strip embeddings to reduce token usage
+	var asrResp vendors.ASRResponse
+	if err := json.Unmarshal([]byte(asrContent), &asrResp); err != nil {
+		errMsg := "failed to parse ASR response: " + err.Error()
+		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-cleanup", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	// Prepare for LLM: strip embeddings and word-level data
+	preparedResp := prepareASRForLLM(asrResp)
+	preparedJSON, _ := json.Marshal(preparedResp)
+	preparedStr := string(preparedJSON)
 
 	// Use OpenAI to clean up
 	openai := vendors.GetOpenAI()
@@ -569,7 +620,7 @@ func (d *SpeechRecognitionCleanupDigester) Digest(filePath string, file *db.File
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-cleanup", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	cleaned, err := openai.CleanupTranscript(transcript)
+	cleaned, err := openai.CleanupTranscript(preparedStr)
 	if err != nil {
 		errMsg := err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-cleanup", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
@@ -602,11 +653,13 @@ func (d *SpeechRecognitionSummaryDigester) CanDigest(filePath string, file *db.F
 func (d *SpeechRecognitionSummaryDigester) Digest(filePath string, file *db.FileRecord, existingDigests []db.Digest, _ *sql.DB) ([]DigestInput, error) {
 	now := nowUTC()
 
-	// Find cleaned transcript or original
+	// Find cleaned transcript (already has embeddings stripped) or original
 	var transcript string
+	var isCleanedVersion bool
 	for _, d := range existingDigests {
 		if d.Digester == "speech-recognition-cleanup" && d.Status == "completed" && d.Content != nil {
 			transcript = *d.Content
+			isCleanedVersion = true
 			break
 		}
 	}
@@ -614,6 +667,7 @@ func (d *SpeechRecognitionSummaryDigester) Digest(filePath string, file *db.File
 		for _, d := range existingDigests {
 			if d.Digester == "speech-recognition" && d.Status == "completed" && d.Content != nil {
 				transcript = *d.Content
+				isCleanedVersion = false
 				break
 			}
 		}
@@ -621,6 +675,17 @@ func (d *SpeechRecognitionSummaryDigester) Digest(filePath string, file *db.File
 
 	if transcript == "" {
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition-summary", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	// If using raw speech-recognition (not cleaned), strip embeddings to reduce token usage
+	if !isCleanedVersion {
+		var asrResp vendors.ASRResponse
+		if err := json.Unmarshal([]byte(transcript), &asrResp); err == nil {
+			preparedResp := prepareASRForLLM(asrResp)
+			preparedJSON, _ := json.Marshal(preparedResp)
+			transcript = string(preparedJSON)
+		}
+		// If parsing fails, continue with original (backward compatibility)
 	}
 
 	openai := vendors.GetOpenAI()
