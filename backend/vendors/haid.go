@@ -54,6 +54,12 @@ type ASROptions struct {
 	Diarization bool
 }
 
+// OCROptions holds options for image OCR
+type OCROptions struct {
+	Model        string // e.g., "deepseek-ai/DeepSeek-OCR"
+	OutputFormat string // "text" or "markdown"
+}
+
 // ASRSegment represents a speech recognition segment
 type ASRSegment struct {
 	Start   float64 `json:"start"`
@@ -254,7 +260,7 @@ func (h *HAIDClient) SpeechRecognition(audioPath string, opts ASROptions) (*ASRR
 }
 
 // ImageOCR extracts text from an image
-func (h *HAIDClient) ImageOCR(imagePath string) (*OCRResponse, error) {
+func (h *HAIDClient) ImageOCR(imagePath string, opts OCROptions) (*OCRResponse, error) {
 	if h == nil {
 		return nil, nil
 	}
@@ -269,10 +275,20 @@ func (h *HAIDClient) ImageOCR(imagePath string) (*OCRResponse, error) {
 
 	imageBase64 := base64.StdEncoding.EncodeToString(imageData)
 
+	// Default values
+	model := opts.Model
+	if model == "" {
+		model = "deepseek-ai/DeepSeek-OCR"
+	}
+	outputFormat := opts.OutputFormat
+	if outputFormat == "" {
+		outputFormat = "text"
+	}
+
 	body := map[string]interface{}{
 		"image":         imageBase64,
-		"model":         "deepseek-ai/DeepSeek-OCR",
-		"output_format": "text",
+		"model":         model,
+		"output_format": outputFormat,
 	}
 
 	resp, err := h.post("/api/image-ocr", body)
@@ -493,8 +509,13 @@ func (h *HAIDClient) ConvertDocToMarkdown(docPath string) (string, error) {
 
 	docBase64 := base64.StdEncoding.EncodeToString(docData)
 
+	// Extract filename from path for HAID to determine file type
+	filename := filepath.Base(docPath)
+
 	body := map[string]interface{}{
-		"document": docBase64,
+		"file":     docBase64,
+		"filename": filename,
+		"lib":      "microsoft/markitdown",
 	}
 
 	resp, err := h.post("/api/doc-to-markdown", body)
@@ -555,7 +576,7 @@ func (h *HAIDClient) OCRImage(imagePath string) (string, error) {
 		return "", nil
 	}
 
-	resp, err := h.ImageOCR(imagePath)
+	resp, err := h.ImageOCR(imagePath, OCROptions{})
 	if err != nil {
 		return "", err
 	}
