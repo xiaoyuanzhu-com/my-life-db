@@ -54,17 +54,32 @@ type ASROptions struct {
 	Diarization bool
 }
 
+// ASRSegment represents a speech recognition segment
+type ASRSegment struct {
+	Start   float64 `json:"start"`
+	End     float64 `json:"end"`
+	Text    string  `json:"text"`
+	Speaker string  `json:"speaker,omitempty"`
+}
+
+// ASRSpeaker represents speaker information with voice embedding
+type ASRSpeaker struct {
+	SpeakerID     string    `json:"speaker_id"`
+	Embedding     []float32 `json:"embedding"`      // 512-dim voice embedding vector
+	TotalDuration float64   `json:"total_duration"` // Total speaking time in seconds
+	SegmentCount  int       `json:"segment_count"`  // Number of segments for this speaker
+}
+
 // ASRResponse represents speech recognition response
 type ASRResponse struct {
-	Text     string `json:"text"`
-	Language string `json:"language"`
-	Segments []struct {
-		Start   float64 `json:"start"`
-		End     float64 `json:"end"`
-		Text    string  `json:"text"`
-		Speaker string  `json:"speaker,omitempty"`
-	} `json:"segments"`
-	Error string `json:"error,omitempty"`
+	RequestID        string       `json:"request_id"`
+	ProcessingTimeMs int          `json:"processing_time_ms"`
+	Text             string       `json:"text"`
+	Language         string       `json:"language"`
+	Model            string       `json:"model"`
+	Segments         []ASRSegment `json:"segments"`
+	Speakers         []ASRSpeaker `json:"speakers,omitempty"` // Speaker embeddings when diarization enabled
+	Error            string       `json:"error,omitempty"`
 }
 
 // OCRResponse represents OCR response
@@ -386,41 +401,10 @@ func (h *HAIDClient) Embed(texts []string) ([][]float32, error) {
 	return result.Embeddings, nil
 }
 
-// SpeakerEmbedding extracts speaker embedding from audio
-func (h *HAIDClient) SpeakerEmbedding(audioPath string) ([]float32, error) {
-	if h == nil {
-		return nil, nil
-	}
-
-	// Resolve relative path to absolute
-	fullPath := resolveFilePath(audioPath)
-
-	audioData, err := os.ReadFile(fullPath)
-	if err != nil {
-		return nil, err
-	}
-
-	audioBase64 := base64.StdEncoding.EncodeToString(audioData)
-
-	body := map[string]interface{}{
-		"audio": audioBase64,
-	}
-
-	resp, err := h.post("/api/speaker-embedding", body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Embedding []float32 `json:"embedding"`
-		Error     string    `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
-	}
-
-	return result.Embedding, nil
-}
+// NOTE: SpeakerEmbedding functionality removed - speaker embeddings are included
+// in the ASR response when diarization is enabled. There is no separate
+// /api/speaker-embedding endpoint in the HAID API (this was a Go-only invention
+// that doesn't exist in the Node.js implementation).
 
 // post makes a POST request to the HAID API
 func (h *HAIDClient) post(endpoint string, body map[string]interface{}) ([]byte, error) {
@@ -639,7 +623,6 @@ func (h *HAIDClient) TranscribeAudio(audioPath string) (string, error) {
 	return resp.Text, nil
 }
 
-// GenerateSpeakerEmbedding generates speaker embedding (simplified interface)
-func (h *HAIDClient) GenerateSpeakerEmbedding(audioPath string) ([]float32, error) {
-	return h.SpeakerEmbedding(audioPath)
-}
+// NOTE: GenerateSpeakerEmbedding removed - speaker embeddings are included
+// in the ASR response (ASRResponse.Speakers[].Embedding) when diarization is enabled.
+// Use SpeechRecognition() with ASROptions{Diarization: true} instead.

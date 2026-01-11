@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
@@ -640,8 +641,8 @@ func (d *SpeechRecognitionSummaryDigester) Digest(filePath string, file *db.File
 type SpeakerEmbeddingDigester struct{}
 
 func (d *SpeakerEmbeddingDigester) Name() string        { return "speaker-embedding" }
-func (d *SpeakerEmbeddingDigester) Label() string       { return "Speaker Embedding" }
-func (d *SpeakerEmbeddingDigester) Description() string { return "Generate speaker voice embeddings" }
+func (d *SpeakerEmbeddingDigester) Label() string       { return "Speaker ID" }
+func (d *SpeakerEmbeddingDigester) Description() string { return "Extract and cluster speaker voice embeddings for identification" }
 func (d *SpeakerEmbeddingDigester) GetOutputDigesters() []string { return nil }
 
 func (d *SpeakerEmbeddingDigester) CanDigest(filePath string, file *db.FileRecord, _ *sql.DB) (bool, error) {
@@ -649,22 +650,64 @@ func (d *SpeakerEmbeddingDigester) CanDigest(filePath string, file *db.FileRecor
 	return isAudio(mimeType) || isVideo(mimeType), nil
 }
 
-func (d *SpeakerEmbeddingDigester) Digest(filePath string, file *db.FileRecord, _ []db.Digest, _ *sql.DB) ([]DigestInput, error) {
+func (d *SpeakerEmbeddingDigester) Digest(filePath string, file *db.FileRecord, existingDigests []db.Digest, _ *sql.DB) ([]DigestInput, error) {
 	now := nowUTC()
 
-	haid := vendors.GetHAID()
-	if haid == nil {
-		errMsg := "HAID service not configured"
+	// Check dependency: speech-recognition must be completed
+	var speechDigest *db.Digest
+	for i := range existingDigests {
+		if existingDigests[i].Digester == "speech-recognition" && existingDigests[i].Status == string(DigestStatusCompleted) {
+			speechDigest = &existingDigests[i]
+			break
+		}
+	}
+
+	if speechDigest == nil || speechDigest.Content == nil {
+		// Dependency not ready - return error so it retries
+		errMsg := "speech recognition not completed yet"
 		return []DigestInput{{FilePath: filePath, Digester: "speaker-embedding", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	embedding, err := haid.GenerateSpeakerEmbedding(filePath)
-	if err != nil {
-		errMsg := err.Error()
+	// Parse speech recognition result
+	var speechResult vendors.ASRResponse
+	if err := json.Unmarshal([]byte(*speechDigest.Content), &speechResult); err != nil {
+		errMsg := "failed to parse speech recognition result: " + err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "speaker-embedding", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	content, _ := json.Marshal(embedding)
+	// No speakers in result - complete with null (not an error)
+	if len(speechResult.Speakers) == 0 {
+		log.Debug().Str("filePath", filePath).Msg("no speakers in speech recognition result")
+		return []DigestInput{{FilePath: filePath, Digester: "speaker-embedding", Status: DigestStatusCompleted, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	// Check if any speakers have sufficient duration and embeddings (min 2 seconds)
+	const minSpeakerDuration = 2.0
+	hasSufficientSpeakers := false
+	for _, speaker := range speechResult.Speakers {
+		if speaker.TotalDuration >= minSpeakerDuration && len(speaker.Embedding) > 0 {
+			hasSufficientSpeakers = true
+			break
+		}
+	}
+
+	if !hasSufficientSpeakers {
+		log.Debug().Str("filePath", filePath).Msg("no speakers with sufficient duration or embeddings")
+		resultContent := map[string]string{"reason": "no_sufficient_speakers"}
+		content, _ := json.Marshal(resultContent)
+		contentStr := string(content)
+		return []DigestInput{{FilePath: filePath, Digester: "speaker-embedding", Status: DigestStatusCompleted, Content: &contentStr, CreatedAt: now, UpdatedAt: now}}, nil
+	}
+
+	// TODO: Implement speaker clustering and people registry integration
+	// For now, just store the speaker embeddings from the ASR result
+	log.Info().Str("filePath", filePath).Int("speakerCount", len(speechResult.Speakers)).Msg("speaker embeddings extracted from ASR")
+
+	resultContent := map[string]interface{}{
+		"speakers_processed": len(speechResult.Speakers),
+		"reason":             "clustering_not_implemented",
+	}
+	content, _ := json.Marshal(resultContent)
 	contentStr := string(content)
 
 	return []DigestInput{{
