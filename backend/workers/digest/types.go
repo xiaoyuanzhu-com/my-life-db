@@ -28,6 +28,7 @@ type DigestInput struct {
 	Status    DigestStatus
 	Content   *string
 	SqlarName *string
+	SqlarData []byte // Binary data to store in SQLAR (if SqlarName is set)
 	Error     *string
 	Attempts  int
 	CreatedAt string

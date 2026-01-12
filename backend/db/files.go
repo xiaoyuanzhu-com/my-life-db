@@ -65,8 +65,7 @@ func UpsertFile(f *FileRecord) (bool, error) {
 			hash = excluded.hash,
 			modified_at = excluded.modified_at,
 			last_scanned_at = excluded.last_scanned_at,
-			text_preview = excluded.text_preview,
-			screenshot_sqlar = excluded.screenshot_sqlar
+			text_preview = excluded.text_preview
 	`
 
 	isFolder := 0
@@ -163,8 +162,7 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 			hash = excluded.hash,
 			modified_at = excluded.modified_at,
 			last_scanned_at = excluded.last_scanned_at,
-			text_preview = excluded.text_preview,
-			screenshot_sqlar = excluded.screenshot_sqlar
+			text_preview = excluded.text_preview
 	`)
 	if err != nil {
 		return nil, err

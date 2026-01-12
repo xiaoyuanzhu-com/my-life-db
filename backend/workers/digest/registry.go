@@ -73,6 +73,7 @@ func InitializeRegistry() {
 	GlobalRegistry.Register(&URLCrawlDigester{})
 	GlobalRegistry.Register(&DocToMarkdownDigester{})
 	GlobalRegistry.Register(&DocToScreenshotDigester{})
+	GlobalRegistry.Register(&ImagePreviewDigester{})
 	GlobalRegistry.Register(&ImageOCRDigester{})
 	GlobalRegistry.Register(&ImageCaptioningDigester{})
 	GlobalRegistry.Register(&ImageObjectsDigester{})

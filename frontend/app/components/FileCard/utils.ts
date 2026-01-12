@@ -353,9 +353,30 @@ export function getRawFileUrl(path: string): string {
 
 /**
  * Get the content URL for a file (supports local blob URLs for pending uploads)
+ * For HEIC images, returns the JPEG preview from SQLAR if available
  */
 export function getFileContentUrl(file: FileWithDigests): string {
-  return file.blobUrl || `/raw/${file.path}`;
+  // Use blob URL for pending uploads
+  if (file.blobUrl) return file.blobUrl;
+
+  // For HEIC/HEIF images, use preview if available
+  const mimeType = file.mimeType || '';
+  if (mimeType === 'image/heic' || mimeType === 'image/heif') {
+    // Check screenshot_sqlar first (set by backend for image-preview digest)
+    if (file.screenshotSqlar) {
+      return getSqlarUrl(file.screenshotSqlar);
+    }
+    // Fallback: check digests array
+    const previewDigest = file.digests?.find(
+      d => d.type === 'image-preview' && d.status === 'completed' && d.sqlarName
+    );
+    if (previewDigest?.sqlarName) {
+      return getSqlarUrl(previewDigest.sqlarName);
+    }
+  }
+
+  // Default: raw file URL
+  return `/raw/${file.path}`;
 }
 
 /**

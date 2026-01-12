@@ -387,6 +387,13 @@ func getOutputNames(d Digester) []string {
 	return []string{d.Name()}
 }
 
+func isScreenshotDigester(digester string) bool {
+	// Digesters that produce screenshots/previews for display
+	return digester == "url-crawl-screenshot" ||
+		digester == "doc-to-screenshot" ||
+		digester == "image-preview"
+}
+
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
 	id := getOrCreateDigestID(filePath, digester)
 	now := db.NowUTC()
@@ -435,6 +442,19 @@ func saveDigestOutput(filePath string, output DigestInput) {
 	}
 	if output.SqlarName != nil {
 		update["sqlar_name"] = *output.SqlarName
+
+		// Store binary data in SQLAR if provided
+		if len(output.SqlarData) > 0 {
+			// Construct full SQLAR path: {file_hash}/{digester}/{filename}
+			fileHash := db.GeneratePathHash(filePath)
+			sqlarPath := fileHash + "/" + output.Digester + "/" + *output.SqlarName
+			db.SqlarStore(sqlarPath, output.SqlarData, 0644)
+
+			// Update files.screenshot_sqlar for screenshot digesters
+			if output.Status == DigestStatusCompleted && isScreenshotDigester(output.Digester) {
+				db.UpdateFileField(filePath, "screenshot_sqlar", sqlarPath)
+			}
+		}
 	}
 	if output.Error != nil {
 		update["error"] = *output.Error
