@@ -63,11 +63,12 @@ export function Header() {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <img
-              src="/static/my-life-db-logo.png"
+              src="/static/my-life-db-logo-96.png"
               alt="MyLifeDB Logo"
               width={48}
               height={48}
               className="rounded-md"
+              fetchPriority="high"
             />
             <span className="text-xl font-bold text-foreground">MyLifeDB</span>
           </Link>
