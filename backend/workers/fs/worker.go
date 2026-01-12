@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
@@ -317,7 +318,7 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 		return
 	}
 
-	// Create file record with hash and text preview
+	// Create file record with hash (text_preview updated separately)
 	isNew, err := db.UpsertFile(&db.FileRecord{
 		Path:          relPath,
 		Name:          filename,
@@ -325,7 +326,6 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 		Size:          &size,
 		MimeType:      &mimeType,
 		Hash:          &metadata.Hash,
-		TextPreview:   metadata.TextPreview,
 		ModifiedAt:    now,
 		CreatedAt:     now,
 		LastScannedAt: now,
@@ -337,6 +337,19 @@ func (w *Worker) createFileRecord(relPath string, info os.FileInfo) {
 			Str("path", relPath).
 			Msg("failed to upsert file record")
 		return
+	}
+
+	// Update text_preview separately (since it's excluded from UpsertFile ON CONFLICT)
+	if metadata.TextPreview != nil {
+		if err := db.UpdateFileField(relPath, "text_preview", *metadata.TextPreview); err != nil {
+			log.Error().
+				Err(err).
+				Str("path", relPath).
+				Msg("failed to update text_preview")
+		} else {
+			// Notify clients that text preview is ready
+			notifications.GetService().NotifyPreviewUpdated(relPath, "text")
+		}
 	}
 
 	// Only log if this is a new file
@@ -473,7 +486,7 @@ func (w *Worker) scanDirectory(root string) {
 				continue
 			}
 
-			// Update file record with hash and text preview
+			// Update file record with hash (text_preview updated separately)
 			filename := filepath.Base(relPath)
 			mimeType := utils.DetectMimeType(filename)
 			size := info.Size()
@@ -485,7 +498,6 @@ func (w *Worker) scanDirectory(root string) {
 				Size:          &size,
 				MimeType:      &mimeType,
 				Hash:          &metadata.Hash,
-				TextPreview:   metadata.TextPreview,
 				ModifiedAt:    now,
 				CreatedAt:     now,
 				LastScannedAt: now,
@@ -497,6 +509,19 @@ func (w *Worker) scanDirectory(root string) {
 					Str("path", relPath).
 					Msg("failed to update file record with metadata")
 				continue
+			}
+
+			// Update text_preview separately (since it's excluded from UpsertFile ON CONFLICT)
+			if metadata.TextPreview != nil {
+				if err := db.UpdateFileField(relPath, "text_preview", *metadata.TextPreview); err != nil {
+					log.Error().
+						Err(err).
+						Str("path", relPath).
+						Msg("failed to update text_preview")
+				} else {
+					// Notify clients that text preview is ready
+					notifications.GetService().NotifyPreviewUpdated(relPath, "text")
+				}
 			}
 
 			log.Info().

@@ -161,8 +161,7 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 			mime_type = excluded.mime_type,
 			hash = excluded.hash,
 			modified_at = excluded.modified_at,
-			last_scanned_at = excluded.last_scanned_at,
-			text_preview = excluded.text_preview
+			last_scanned_at = excluded.last_scanned_at
 	`)
 	if err != nil {
 		return nil, err

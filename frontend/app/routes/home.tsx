@@ -6,7 +6,7 @@ import { PinnedTags } from "~/components/pinned-tags";
 import { MultiSelectActionBar } from "~/components/multi-select-action-bar";
 import { SelectionProvider, useSelectionMode } from "~/contexts/selection-context";
 import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
-import { useDigestNotifications } from "~/hooks/use-digest-notifications";
+import { usePreviewNotifications } from "~/hooks/use-preview-notifications";
 import { useAuth } from "~/contexts/auth-context";
 import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
@@ -139,8 +139,11 @@ function HomePageContent() {
     onInboxChange: handleInboxChange,
   });
 
-  useDigestNotifications({
-    onPreviewReady: handleInboxChange, // Refresh feed when preview is ready
+  usePreviewNotifications({
+    onPreviewUpdated: (filePath, previewType) => {
+      // Refresh feed when any preview is ready (text, image, screenshot)
+      handleInboxChange();
+    },
   });
 
   useEffect(() => {

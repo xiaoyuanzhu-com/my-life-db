@@ -398,15 +398,20 @@ func isScreenshotDigester(digester string) bool {
 // notifyPreviewReady sends a notification when a preview/screenshot is ready
 func notifyPreviewReady(filePath string, digester string) {
 	notifService := notifications.GetService()
-	notifService.NotifyDigestUpdate(filePath, map[string]interface{}{
-		"digester": digester,
-		"type":     "preview-ready",
-	})
+
+	// Determine preview type based on digester
+	previewType := "screenshot"
+	if digester == "image-preview" {
+		previewType = "image"
+	}
+
+	notifService.NotifyPreviewUpdated(filePath, previewType)
 
 	log.Debug().
 		Str("filePath", filePath).
 		Str("digester", digester).
-		Msg("preview ready notification sent")
+		Str("previewType", previewType).
+		Msg("preview updated notification sent")
 }
 
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {

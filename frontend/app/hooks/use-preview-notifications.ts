@@ -1,22 +1,22 @@
-// React hook for real-time digest notifications (preview-ready events)
+// React hook for real-time preview notifications (unified for all preview types)
 
 import { useEffect, useRef, useCallback } from 'react';
 
-interface DigestNotificationEvent {
+interface PreviewNotificationEvent {
   type: string;
   path: string;
   data?: {
-    digester?: string;
-    type?: string;
+    previewType?: string; // 'text', 'image', 'screenshot'
   };
 }
 
-interface UseDigestNotificationsOptions {
+interface UsePreviewNotificationsOptions {
   /**
-   * Callback when a preview becomes ready for a file
-   * @param filePath - The path of the file whose preview is ready
+   * Callback when a preview is updated for a file
+   * @param filePath - The path of the file whose preview was updated
+   * @param previewType - The type of preview ('text', 'image', 'screenshot')
    */
-  onPreviewReady: (filePath: string) => void;
+  onPreviewUpdated: (filePath: string, previewType: string) => void;
 
   /**
    * Whether to enable the hook
@@ -26,24 +26,28 @@ interface UseDigestNotificationsOptions {
 }
 
 /**
- * Hook for real-time digest notifications via Server-Sent Events
+ * Hook for real-time preview notifications via Server-Sent Events
  *
- * Listens for preview-ready events and triggers callback to refresh file data.
- * This provides a better UX by auto-refreshing when previews (HEIC conversions,
- * doc screenshots, URL screenshots) complete processing.
+ * Listens for preview-updated events for all preview types:
+ * - text: Text file previews extracted by filesystem watcher
+ * - image: HEIC → JPEG conversions
+ * - screenshot: PDF, EPUB, URL screenshots
+ *
+ * This provides a better UX by auto-refreshing when previews complete processing.
  *
  * @example
  * ```tsx
- * useDigestNotifications({
- *   onPreviewReady: (filePath) => {
- *     // Refresh only the specific file that got a preview
- *     queryClient.invalidateQueries(['file', filePath]);
+ * usePreviewNotifications({
+ *   onPreviewUpdated: (filePath, previewType) => {
+ *     console.log(`Preview ready for ${filePath}: ${previewType}`);
+ *     // Refresh the feed or specific file
+ *     refetch();
  *   },
  * });
  * ```
  */
-export function useDigestNotifications(options: UseDigestNotificationsOptions) {
-  const { onPreviewReady, enabled = true } = options;
+export function usePreviewNotifications(options: UsePreviewNotificationsOptions) {
+  const { onPreviewUpdated, enabled = true } = options;
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,20 +74,17 @@ export function useDigestNotifications(options: UseDigestNotificationsOptions) {
 
     eventSource.onmessage = (event) => {
       try {
-        const data: DigestNotificationEvent = JSON.parse(event.data);
+        const data: PreviewNotificationEvent = JSON.parse(event.data);
 
         // Handle connection confirmation
         if (data.type === 'connected') {
           return;
         }
 
-        // Listen for digest-update events with type=preview-ready
-        if (
-          data.type === 'digest-update' &&
-          data.data?.type === 'preview-ready' &&
-          data.path
-        ) {
-          onPreviewReady(data.path);
+        // Listen for preview-updated events
+        if (data.type === 'preview-updated' && data.path) {
+          const previewType = data.data?.previewType || 'unknown';
+          onPreviewUpdated(data.path, previewType);
         }
       } catch {
         // Silently ignore parse errors
@@ -98,7 +99,7 @@ export function useDigestNotifications(options: UseDigestNotificationsOptions) {
         connect();
       }, 5000);
     };
-  }, [enabled, onPreviewReady]);
+  }, [enabled, onPreviewUpdated]);
 
   // Handle page visibility changes (critical for mobile/PWA)
   useEffect(() => {

@@ -9,10 +9,11 @@ import (
 type EventType string
 
 const (
-	EventInboxChanged EventType = "inbox-changed"
-	EventPinChanged   EventType = "pin-changed"
-	EventDigestUpdate EventType = "digest-update"
-	EventConnected    EventType = "connected"
+	EventInboxChanged   EventType = "inbox-changed"
+	EventPinChanged     EventType = "pin-changed"
+	EventDigestUpdate   EventType = "digest-update"
+	EventPreviewUpdated EventType = "preview-updated"
+	EventConnected      EventType = "connected"
 )
 
 // Event represents a notification event
@@ -111,6 +112,19 @@ func (s *NotificationService) NotifyDigestUpdate(path string, data any) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Path:      path,
 		Data:      data,
+	})
+}
+
+// NotifyPreviewUpdated sends a preview-updated event
+// Used when file previews are ready (text, images, documents, screenshots)
+func (s *NotificationService) NotifyPreviewUpdated(path string, previewType string) {
+	s.Notify(Event{
+		Type:      EventPreviewUpdated,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Path:      path,
+		Data: map[string]interface{}{
+			"previewType": previewType,
+		},
 	})
 }
 
