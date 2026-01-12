@@ -6,6 +6,7 @@ import { PinnedTags } from "~/components/pinned-tags";
 import { MultiSelectActionBar } from "~/components/multi-select-action-bar";
 import { SelectionProvider, useSelectionMode } from "~/contexts/selection-context";
 import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
+import { useDigestNotifications } from "~/hooks/use-digest-notifications";
 import { useAuth } from "~/contexts/auth-context";
 import { cn } from "~/lib/utils";
 import type { SearchResponse } from "~/routes/api.search";
@@ -136,6 +137,10 @@ function HomePageContent() {
 
   useInboxNotifications({
     onInboxChange: handleInboxChange,
+  });
+
+  useDigestNotifications({
+    onPreviewReady: handleInboxChange, // Refresh feed when preview is ready
   });
 
   useEffect(() => {

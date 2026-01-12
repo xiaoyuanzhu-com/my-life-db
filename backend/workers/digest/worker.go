@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
 // Worker manages digest processing
@@ -394,6 +395,20 @@ func isScreenshotDigester(digester string) bool {
 		digester == "image-preview"
 }
 
+// notifyPreviewReady sends a notification when a preview/screenshot is ready
+func notifyPreviewReady(filePath string, digester string) {
+	notifService := notifications.GetService()
+	notifService.NotifyDigestUpdate(filePath, map[string]interface{}{
+		"digester": digester,
+		"type":     "preview-ready",
+	})
+
+	log.Debug().
+		Str("filePath", filePath).
+		Str("digester", digester).
+		Msg("preview ready notification sent")
+}
+
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
 	id := getOrCreateDigestID(filePath, digester)
 	now := db.NowUTC()
@@ -453,6 +468,9 @@ func saveDigestOutput(filePath string, output DigestInput) {
 			// Update files.screenshot_sqlar for screenshot digesters
 			if output.Status == DigestStatusCompleted && isScreenshotDigester(output.Digester) {
 				db.UpdateFileField(filePath, "screenshot_sqlar", sqlarPath)
+
+				// Notify clients that preview is ready
+				notifyPreviewReady(filePath, output.Digester)
 			}
 		}
 	}
