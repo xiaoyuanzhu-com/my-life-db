@@ -35,7 +35,7 @@ export default defineConfig({
           "android-chrome-192x192.png",
           "android-chrome-512x512.png",
           "my-life-db-logo.png",
-          "my-life-db-logo-96.png",
+          "my-life-db-logo-144.png",
         ];
 
         // Move each file
