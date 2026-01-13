@@ -31,36 +31,12 @@ type Service struct {
 	done        chan struct{}
 }
 
-var (
-	// TEMPORARY: Global instance for backward compatibility during refactoring
-	// This will be removed once Server owns the notifications.Service
-	globalInstance *Service
-	globalOnce     sync.Once
-)
-
 // NewService creates a new notification service
 func NewService() *Service {
-	s := &Service{
+	return &Service{
 		subscribers: make(map[chan Event]struct{}),
 		done:        make(chan struct{}),
 	}
-
-	// Set as global for backward compatibility
-	globalOnce.Do(func() {
-		globalInstance = s
-	})
-
-	return s
-}
-
-// GetService returns the global notification service
-// DEPRECATED: This is temporary for backward compatibility
-// Use notifications.Service instance passed from Server instead
-func GetService() *Service {
-	globalOnce.Do(func() {
-		globalInstance = NewService()
-	})
-	return globalInstance
 }
 
 // Subscribe creates a new subscription channel

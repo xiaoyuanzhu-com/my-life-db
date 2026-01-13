@@ -22,13 +22,6 @@ type Worker struct {
 	processing sync.Map // Currently processing files
 }
 
-var (
-	// TEMPORARY: Global instance for backward compatibility during refactoring
-	// This will be removed once Server owns the digest.Worker
-	globalWorker     *Worker
-	globalWorkerOnce sync.Once
-)
-
 // NewWorker creates a new digest worker with dependencies
 func NewWorker(cfg Config, database *db.DB, notifService *notifications.Service) *Worker {
 	if cfg.QueueSize == 0 {
@@ -38,27 +31,13 @@ func NewWorker(cfg Config, database *db.DB, notifService *notifications.Service)
 		cfg.Workers = 3
 	}
 
-	w := &Worker{
+	return &Worker{
 		cfg:      cfg,
 		db:       database,
 		notif:    notifService,
 		stopChan: make(chan struct{}),
 		queue:    make(chan string, cfg.QueueSize),
 	}
-
-	// Set as global for backward compatibility
-	globalWorkerOnce.Do(func() {
-		globalWorker = w
-	})
-
-	return w
-}
-
-// GetWorker returns the global digest worker instance
-// DEPRECATED: This is temporary for backward compatibility
-// Use digest.Worker instance passed from Server instead
-func GetWorker() *Worker {
-	return globalWorker
 }
 
 // Start begins processing digests

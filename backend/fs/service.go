@@ -9,16 +9,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-var (
-	instance     *Service
-	instanceOnce sync.Once
-)
-
-// GetService returns the singleton FS service instance
-func GetService() *Service {
-	return instance
-}
-
 // Service coordinates all filesystem operations
 type Service struct {
 	// Configuration
@@ -60,11 +50,6 @@ func NewService(cfg Config) *Service {
 	}
 
 	s.scanner = newScanner(s, cfg.ScanInterval)
-
-	// Set as singleton instance for backward compatibility
-	instanceOnce.Do(func() {
-		instance = s
-	})
 
 	return s
 }
