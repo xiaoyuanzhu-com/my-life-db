@@ -199,37 +199,3 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		session.LastActivity = time.Now()
 	}
 }
-
-// ResizeClaudeTerminal handles POST /api/claude/sessions/:id/resize
-func (h *Handlers) ResizeClaudeTerminal(c *gin.Context) {
-	sessionID := c.Param("id")
-
-	var body struct {
-		Cols uint16 `json:"cols"`
-		Rows uint16 `json:"rows"`
-	}
-
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	session, err := claudeManager.GetSession(sessionID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-		return
-	}
-
-	// Resize PTY
-	if session.PTY != nil {
-		// Note: You may need to import "github.com/creack/pty" and use pty.Setsize
-		// For now, this is a placeholder
-		log.Info().
-			Str("sessionId", sessionID).
-			Uint16("cols", body.Cols).
-			Uint16("rows", body.Rows).
-			Msg("terminal resize requested")
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
