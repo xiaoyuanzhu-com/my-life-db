@@ -114,7 +114,7 @@ function TreeNode({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, node.path]);
+  }, [node.path]);
 
   useEffect(() => {
     if (node.type === 'folder' && isExpanded && children.length === 0) {
