@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -644,6 +645,65 @@ func GetFileWithDigests(path string) (*FileWithDigests, error) {
 		Digests:    digests,
 		IsPinned:   isPinned,
 	}, nil
+}
+
+// RenameFilePath updates a single file's path and name
+func RenameFilePath(oldPath, newPath, newName string) error {
+	_, err := GetDB().Exec(`
+		UPDATE files SET path = ?, name = ? WHERE path = ?
+	`, newPath, newName, oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Update digests
+	_, err = GetDB().Exec(`
+		UPDATE digests SET file_path = ? WHERE file_path = ?
+	`, newPath, oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Update pins
+	_, err = GetDB().Exec(`
+		UPDATE pins SET path = ? WHERE path = ?
+	`, newPath, oldPath)
+	return err
+}
+
+// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames)
+func RenameFilePaths(oldPath, newPath string) error {
+	// Update files table - all files and subfolders
+	_, err := GetDB().Exec(`
+		UPDATE files
+		SET path = ? || substr(path, ?) ,
+			name = CASE
+				WHEN path = ? THEN ?
+				ELSE name
+			END
+		WHERE path = ? OR path LIKE ? || '/%'
+	`, newPath, len(oldPath)+1, oldPath, filepath.Base(newPath), oldPath, oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Update digests
+	_, err = GetDB().Exec(`
+		UPDATE digests
+		SET file_path = ? || substr(file_path, ?)
+		WHERE file_path = ? OR file_path LIKE ? || '/%'
+	`, newPath, len(oldPath)+1, oldPath, oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Update pins
+	_, err = GetDB().Exec(`
+		UPDATE pins
+		SET path = ? || substr(path, ?)
+		WHERE path = ? OR path LIKE ? || '/%'
+	`, newPath, len(oldPath)+1, oldPath, oldPath)
+	return err
 }
 
 // UpdateFileField updates a single field on a file record

@@ -44,6 +44,9 @@ func SetupRoutes(r *gin.Engine) {
 	api.POST("/library/pin", PinFile)
 	api.DELETE("/library/pin", UnpinFile)
 	api.GET("/library/tree", GetLibraryTree)
+	api.POST("/library/rename", RenameLibraryFile)
+	api.POST("/library/move", MoveLibraryFile)
+	api.POST("/library/folder", CreateLibraryFolder)
 
 	// Notifications (SSE)
 	api.GET("/notifications/stream", NotificationStream)
