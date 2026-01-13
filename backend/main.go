@@ -16,10 +16,10 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
 func main() {
@@ -97,14 +97,21 @@ func main() {
 		c.File("frontend/dist/index.html")
 	})
 
-	// Start background workers
-	log.Info().Msg("starting background workers")
-	fsWorker := fs.NewWorker(cfg.DataDir)
+	// Start background services
+	log.Info().Msg("starting background services")
+
+	// Initialize FS service
+	fsService := fs.NewService(fs.Config{
+		DataRoot: cfg.DataDir,
+		DB:       fs.NewDBAdapter(),
+	})
+
+	// Initialize digest worker
 	digestWorker := digest.NewWorker()
 
-	// Connect FS worker to digest worker
+	// Connect FS service to digest worker
 	// When files change on filesystem (new or content changed), trigger digest processing
-	fsWorker.SetFileChangeHandler(func(event fs.FileChangeEvent) {
+	fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
 		// Trigger digest processing if content changed
 		if event.ContentChanged {
 			digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
@@ -117,7 +124,10 @@ func main() {
 		}
 	})
 
-	go fsWorker.Start()
+	// Start services
+	if err := fsService.Start(); err != nil {
+		log.Fatal().Err(err).Msg("failed to start FS service")
+	}
 	go digestWorker.Start()
 
 	// Create HTTP server
@@ -149,8 +159,8 @@ func main() {
 
 	log.Info().Msg("shutting down server")
 
-	// Stop workers first (they may hold db connections)
-	fsWorker.Stop()
+	// Stop services first (they may hold db connections)
+	fsService.Stop()
 	digestWorker.Stop()
 
 	// Shutdown notification service to close all SSE connections

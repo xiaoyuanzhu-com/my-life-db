@@ -1,23 +1,21 @@
 package api
 
 import (
-	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
 // InboxItem represents an inbox item in API responses
@@ -189,40 +187,44 @@ func CreateInboxItem(c *gin.Context) {
 	}
 
 	var savedPaths []string
-	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
 
 	// Save text file if provided
 	if text != "" {
 		textID := uuid.New().String()
 		textPath := filepath.Join("inbox", textID+".md")
-		fullPath := filepath.Join(cfg.DataDir, textPath)
 
-		if err := os.WriteFile(fullPath, []byte(text), 0644); err != nil {
+		// Use FS service to write file
+		fsService := fs.GetService()
+		if fsService == nil {
+			log.Error().Msg("FS service not initialized")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Service not available"})
+			return
+		}
+
+		result, err := fsService.WriteFile(c.Request.Context(), fs.WriteRequest{
+			Path:            textPath,
+			Content:         strings.NewReader(text),
+			MimeType:        "text/markdown",
+			Source:          "api_text",
+			ComputeMetadata: true,
+			Sync:            false, // Async metadata computation
+		})
+
+		if err != nil {
 			log.Error().Err(err).Msg("failed to save text file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save text"})
 			return
 		}
 
-		info, _ := os.Stat(fullPath)
-		size := info.Size()
-		mimeType := "text/markdown"
+		savedPaths = append(savedPaths, result.Record.Path)
+	}
 
-		// Create file record
-		if _, err := db.UpsertFile(&db.FileRecord{
-			Path:          textPath,
-			Name:          textID + ".md",
-			IsFolder:      false,
-			Size:          &size,
-			MimeType:      &mimeType,
-			ModifiedAt:    nowStr,
-			CreatedAt:     nowStr,
-			LastScannedAt: nowStr,
-		}); err != nil {
-			log.Error().Err(err).Msg("failed to upsert file record")
-		}
-
-		savedPaths = append(savedPaths, textPath)
+	// Get FS service
+	fsService := fs.GetService()
+	if fsService == nil {
+		log.Error().Msg("FS service not initialized")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Service not available"})
+		return
 	}
 
 	// Save uploaded files
@@ -231,46 +233,30 @@ func CreateInboxItem(c *gin.Context) {
 		filename = utils.DeduplicateFilename(inboxDir, filename)
 
 		filePath := filepath.Join("inbox", filename)
-		fullPath := filepath.Join(cfg.DataDir, filePath)
 
 		src, err := fileHeader.Open()
 		if err != nil {
+			log.Warn().Err(err).Str("filename", filename).Msg("failed to open uploaded file")
 			continue
 		}
 
-		dst, err := os.Create(fullPath)
-		if err != nil {
-			src.Close()
-			continue
-		}
-
-		_, err = io.Copy(dst, src)
+		// Use FS service to write file
+		result, err := fsService.WriteFile(c.Request.Context(), fs.WriteRequest{
+			Path:            filePath,
+			Content:         src,
+			MimeType:        utils.DetectMimeType(filename),
+			Source:          "api_upload",
+			ComputeMetadata: true,
+			Sync:            false, // Async metadata computation
+		})
 		src.Close()
-		dst.Close()
 
 		if err != nil {
+			log.Error().Err(err).Str("path", filePath).Msg("failed to save uploaded file")
 			continue
 		}
 
-		info, _ := os.Stat(fullPath)
-		size := info.Size()
-		mimeType := utils.DetectMimeType(filename)
-
-		// Create file record
-		if _, err := db.UpsertFile(&db.FileRecord{
-			Path:          filePath,
-			Name:          filename,
-			IsFolder:      false,
-			Size:          &size,
-			MimeType:      &mimeType,
-			ModifiedAt:    nowStr,
-			CreatedAt:     nowStr,
-			LastScannedAt: nowStr,
-		}); err != nil {
-			log.Error().Err(err).Msg("failed to upsert file record")
-		}
-
-		savedPaths = append(savedPaths, filePath)
+		savedPaths = append(savedPaths, result.Record.Path)
 	}
 
 	if len(savedPaths) == 0 {
@@ -283,17 +269,7 @@ func CreateInboxItem(c *gin.Context) {
 		Int("fileCount", len(savedPaths)).
 		Msg("created inbox items")
 
-	// Process files for metadata (hash + text preview) in background
-	fsWorker := fs.GetWorker()
-	if fsWorker != nil {
-		go func() {
-			for _, path := range savedPaths {
-				fsWorker.ProcessFile(path)
-			}
-		}()
-	}
-
-	// Notify UI of inbox change
+	// Notify UI of inbox change (metadata processing happens automatically via fs.Service)
 	notifications.GetService().NotifyInboxChanged()
 
 	c.JSON(http.StatusCreated, gin.H{

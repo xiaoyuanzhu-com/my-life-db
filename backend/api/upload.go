@@ -17,7 +17,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/fs"
 )
 
 var (
@@ -214,17 +213,7 @@ func FinalizeUpload(c *gin.Context) {
 		return
 	}
 
-	// Process files for metadata (hash + text preview) in background
-	fsWorker := fs.GetWorker()
-	if fsWorker != nil {
-		go func() {
-			for _, path := range paths {
-				fsWorker.ProcessFile(path)
-			}
-		}()
-	}
-
-	// Notify UI
+	// Notify UI (metadata processing happens automatically via fs.Service watcher)
 	notifications.GetService().NotifyInboxChanged()
 
 	c.JSON(http.StatusOK, gin.H{
