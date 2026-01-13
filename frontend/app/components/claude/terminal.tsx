@@ -44,11 +44,12 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     fitAddonRef.current = fitAddon
 
     // Connect WebSocket
-    // In development, Vite doesn't proxy WebSocket, so connect directly to backend
-    const isDev = window.location.port === '12346'
+    // Construct absolute WebSocket URL from current location
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = isDev ? 'localhost:12345' : window.location.host
-    const wsUrl = `${protocol}//${host}/api/claude/sessions/${sessionId}/ws`
+    const isDev = window.location.port === '12346'
+    // In dev, frontend is 12346, backend is 12345
+    const port = isDev ? '12345' : window.location.port
+    const wsUrl = `${protocol}//${window.location.hostname}:${port}/api/claude/sessions/${sessionId}/ws`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
