@@ -55,6 +55,7 @@ func New(cfg *Config) (*Server, error) {
 	// 4. Create FS service
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
+	fsCfg.DB = fs.NewDBAdapter() // Inject database adapter
 	s.fsService = fs.NewService(fsCfg)
 
 	// 5. Create digest worker
