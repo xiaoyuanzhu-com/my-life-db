@@ -65,30 +65,36 @@ func (r *Registry) GetDigesterInfo() []map[string]interface{} {
 	return result
 }
 
-// InitializeRegistry registers all digesters
+// digesterOrder defines the explicit execution order of all digesters
+// Digesters are executed in this exact order to respect dependencies
+var digesterOrder = []Digester{
+	// Phase 1: Content extraction (run first)
+	&URLCrawlDigester{},
+	&DocToMarkdownDigester{},
+	&DocToScreenshotDigester{},
+	&ImagePreviewDigester{},
+	&ImageOCRDigester{},
+	&ImageCaptioningDigester{},
+	&ImageObjectsDigester{},
+	&SpeechRecognitionDigester{},
+
+	// Phase 2: Secondary processing (depends on content extraction)
+	&URLCrawlSummaryDigester{},
+	&SpeechRecognitionCleanupDigester{},
+	&SpeechRecognitionSummaryDigester{},
+	&SpeakerEmbeddingDigester{},
+
+	// Phase 3: Tags and search (depends on text content being available)
+	&TagsDigester{},
+	&SearchKeywordDigester{},
+	&SearchSemanticDigester{},
+}
+
+// InitializeRegistry registers all digesters in their defined order
 func InitializeRegistry() {
-	// Register digesters in dependency order
-
-	// Content extraction digesters (run first)
-	GlobalRegistry.Register(&URLCrawlDigester{})
-	GlobalRegistry.Register(&DocToMarkdownDigester{})
-	GlobalRegistry.Register(&DocToScreenshotDigester{})
-	GlobalRegistry.Register(&ImagePreviewDigester{})
-	GlobalRegistry.Register(&ImageOCRDigester{})
-	GlobalRegistry.Register(&ImageCaptioningDigester{})
-	GlobalRegistry.Register(&ImageObjectsDigester{})
-	GlobalRegistry.Register(&SpeechRecognitionDigester{})
-
-	// Secondary processing (depends on content extraction)
-	GlobalRegistry.Register(&URLCrawlSummaryDigester{})
-	GlobalRegistry.Register(&SpeechRecognitionCleanupDigester{})
-	GlobalRegistry.Register(&SpeechRecognitionSummaryDigester{})
-	GlobalRegistry.Register(&SpeakerEmbeddingDigester{})
-
-	// Tags and search (depends on text content being available)
-	GlobalRegistry.Register(&TagsDigester{})
-	GlobalRegistry.Register(&SearchKeywordDigester{})
-	GlobalRegistry.Register(&SearchSemanticDigester{})
+	for _, digester := range digesterOrder {
+		GlobalRegistry.Register(digester)
+	}
 
 	log.Info().Int("count", len(GlobalRegistry.digesters)).Msg("digesters registered")
 }
