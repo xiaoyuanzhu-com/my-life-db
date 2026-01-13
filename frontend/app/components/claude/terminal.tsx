@@ -4,6 +4,27 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
+// Inject CSS for better mobile support
+const style = document.createElement('style')
+style.textContent = `
+  .xterm-viewport {
+    /* Enable smooth scrolling on mobile */
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+  }
+
+  .xterm-helper-textarea {
+    /* Ensure textarea is accessible for mobile keyboard */
+    position: absolute !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+`
+if (!document.querySelector('style[data-xterm-mobile]')) {
+  style.setAttribute('data-xterm-mobile', 'true')
+  document.head.appendChild(style)
+}
+
 interface ClaudeTerminalProps {
   sessionId: string
 }
@@ -32,8 +53,11 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         foreground: '#ffffff',
       },
       scrollback: 10000,
-      // Let FitAddon calculate optimal cols/rows
       convertEol: true,
+      // Mobile-specific: disable predictive text features
+      ...(isMobile && {
+        screenReaderMode: false,
+      }),
     })
 
     const fitAddon = new FitAddon()
@@ -47,7 +71,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     terminalInstRef.current = terminal
     fitAddonRef.current = fitAddon
 
-    // Fit after a brief delay to ensure container has dimensions
+    // Fit terminal to container
     setTimeout(() => {
       try {
         fitAddon.fit()
@@ -56,6 +80,22 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         console.warn('Fit failed:', e)
       }
     }, 100)
+
+    // Mobile: Add touch handler to focus the hidden textarea
+    // This is necessary because mobile browsers require user interaction to show keyboard
+    const handleTouch = () => {
+      // Find the hidden textarea that xterm.js creates
+      const textarea = terminalRef.current?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement
+      if (textarea) {
+        // Focus it to bring up the mobile keyboard
+        textarea.focus()
+        console.log('Focused xterm-helper-textarea')
+      }
+    }
+
+    if (isMobile && terminalRef.current) {
+      terminalRef.current.addEventListener('touchstart', handleTouch, { passive: true })
+    }
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -137,13 +177,25 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
+
+      // Remove mobile touch listener
+      if (isMobile && terminalRef.current) {
+        terminalRef.current.removeEventListener('touchstart', handleTouch)
+      }
     }
   }, [sessionId])
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div
+      className="relative h-full w-full overflow-hidden"
+      style={{
+        // Prevent pull-to-refresh on mobile
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-y pinch-zoom',
+      }}
+    >
       {/* Status indicator */}
-      <div className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md bg-background/80 px-2 py-1 text-xs md:right-4 md:top-4 md:px-3 md:text-sm backdrop-blur">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md bg-background/80 px-2 py-1 text-xs md:right-4 md:top-4 md:px-3 md:text-sm backdrop-blur pointer-events-none">
         <div
           className={`h-2 w-2 rounded-full ${
             status === 'connected'
@@ -156,8 +208,11 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         <span className="capitalize text-foreground">{status}</span>
       </div>
 
-      {/* Terminal container */}
-      <div ref={terminalRef} className="h-full w-full p-2 md:p-4" />
+      {/* Terminal container - FitAddon will size it to fill the space */}
+      <div
+        ref={terminalRef}
+        className="h-full w-full"
+      />
     </div>
   )
 }
