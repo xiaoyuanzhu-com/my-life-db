@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gen2brain/heic v0.4.9
 	github.com/gin-gonic/gin v1.11.0
@@ -15,6 +16,7 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/tus/tusd/v2 v2.8.0
 	golang.org/x/oauth2 v0.34.0
+	nhooyr.io/websocket v1.8.17
 )
 
 require (

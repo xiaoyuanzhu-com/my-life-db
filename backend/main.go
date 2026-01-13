@@ -100,6 +100,11 @@ func main() {
 	// Start background services
 	log.Info().Msg("starting background services")
 
+	// Initialize Claude Code manager
+	if err := api.InitClaudeManager(); err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize claude manager")
+	}
+
 	// Initialize FS service
 	fsService := fs.NewService(fs.Config{
 		DataRoot: cfg.DataDir,

@@ -82,6 +82,15 @@ func SetupRoutes(r *gin.Engine) {
 	// Vendor routes
 	api.GET("/vendors/openai/models", GetOpenAIModels)
 
+	// Claude Code routes
+	api.GET("/claude/sessions", ListClaudeSessions)
+	api.POST("/claude/sessions", CreateClaudeSession)
+	api.GET("/claude/sessions/:id", GetClaudeSession)
+	api.PATCH("/claude/sessions/:id", UpdateClaudeSession)
+	api.DELETE("/claude/sessions/:id", DeleteClaudeSession)
+	api.GET("/claude/sessions/:id/ws", ClaudeWebSocket)
+	api.POST("/claude/sessions/:id/resize", ResizeClaudeTerminal)
+
 	// Raw file serving
 	r.GET("/raw/*path", ServeRawFile)
 	r.PUT("/raw/*path", SaveRawFile)

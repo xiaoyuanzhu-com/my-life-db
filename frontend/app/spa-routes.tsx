@@ -19,6 +19,7 @@ import FileView from "./routes/file.$";
 import People from "./routes/people";
 import PeopleDetail from "./routes/people.$id";
 import Settings from "./routes/settings";
+import Claude from "./routes/claude";
 
 export const routes: RouteObject[] = [
   {
@@ -60,6 +61,10 @@ export const routes: RouteObject[] = [
       {
         path: "settings/*",
         Component: Settings,
+      },
+      {
+        path: "claude",
+        Component: Claude,
       },
     ],
   },
