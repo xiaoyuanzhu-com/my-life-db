@@ -118,6 +118,7 @@ export default defineConfig({
   },
 
   server: {
+    host: '0.0.0.0',
     port: 12346,
     // Proxy API requests to Go backend during development
     proxy: {
