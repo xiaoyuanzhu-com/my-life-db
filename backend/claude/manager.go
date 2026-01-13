@@ -88,10 +88,23 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 		return nil, fmt.Errorf("failed to create temp home: %w", err)
 	}
 
-	// Ensure shared .claude directory exists
-	claudeDir := filepath.Join(config.Get().DataDir, "app", "my-life-db", ".claude")
+	// Ensure shared .claude directory exists with required subdirectories
+	// Convert to absolute path for symlink
+	dataDir := config.Get().DataDir
+	absDataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for data dir: %w", err)
+	}
+
+	claudeDir := filepath.Join(absDataDir, "app", "my-life-db", ".claude")
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create claude dir: %w", err)
+	}
+
+	// Create subdirectories that Claude Code expects
+	debugDir := filepath.Join(claudeDir, "debug")
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create debug dir: %w", err)
 	}
 
 	// Create symlink: tempHome/.claude -> MY_DATA_DIR/app/my-life-db/.claude
