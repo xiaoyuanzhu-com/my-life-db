@@ -24,7 +24,7 @@ type TokenResponse struct {
 }
 
 // OAuthAuthorize handles GET /api/oauth/authorize
-func OAuthAuthorize(c *gin.Context) {
+func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	// Get OIDC provider with automatic discovery
 	provider, err := auth.GetOIDCProvider()
 	if err != nil {
@@ -45,7 +45,7 @@ func OAuthAuthorize(c *gin.Context) {
 }
 
 // OAuthCallback handles GET /api/oauth/callback
-func OAuthCallback(c *gin.Context) {
+func (h *Handlers) OAuthCallback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
 		errMsg := c.Query("error")
@@ -153,7 +153,7 @@ func OAuthCallback(c *gin.Context) {
 }
 
 // OAuthRefresh handles POST /api/oauth/refresh
-func OAuthRefresh(c *gin.Context) {
+func (h *Handlers) OAuthRefresh(c *gin.Context) {
 	// Get refresh token from cookie
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil || refreshToken == "" {
@@ -219,7 +219,7 @@ func OAuthRefresh(c *gin.Context) {
 }
 
 // OAuthToken handles GET /api/oauth/token
-func OAuthToken(c *gin.Context) {
+func (h *Handlers) OAuthToken(c *gin.Context) {
 	// Get access token from cookie or header
 	accessToken := c.Request.Header.Get("Authorization")
 	if strings.HasPrefix(accessToken, "Bearer ") {
@@ -302,7 +302,7 @@ func OAuthToken(c *gin.Context) {
 }
 
 // OAuthLogout handles POST /api/oauth/logout
-func OAuthLogout(c *gin.Context) {
+func (h *Handlers) OAuthLogout(c *gin.Context) {
 	// Clear auth cookies
 	clearAuthCookiesGin(c)
 

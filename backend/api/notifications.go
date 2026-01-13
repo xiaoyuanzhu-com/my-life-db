@@ -11,14 +11,14 @@ import (
 )
 
 // NotificationStream handles GET /api/notifications/stream (SSE)
-func NotificationStream(c *gin.Context) {
+func (h *Handlers) NotificationStream(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // Disable nginx buffering
 
 	// Subscribe to notifications
-	events, unsubscribe := notifications.GetService().Subscribe()
+	events, unsubscribe := h.server.Notifications().Subscribe()
 	defer unsubscribe()
 
 	// Send initial connected event

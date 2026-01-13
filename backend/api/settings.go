@@ -10,7 +10,7 @@ import (
 )
 
 // GetSettings handles GET /api/settings
-func GetSettings(c *gin.Context) {
+func (h *Handlers) GetSettings(c *gin.Context) {
 	settings, err := db.LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings")
@@ -24,7 +24,7 @@ func GetSettings(c *gin.Context) {
 }
 
 // UpdateSettings handles PUT /api/settings
-func UpdateSettings(c *gin.Context) {
+func (h *Handlers) UpdateSettings(c *gin.Context) {
 	var updates models.UserSettings
 	if err := c.ShouldBindJSON(&updates); err != nil {
 		log.Error().Err(err).Msg("failed to parse settings update")
@@ -186,7 +186,7 @@ func isMaskedAPIKey(key string) bool {
 }
 
 // ResetSettings handles POST /api/settings
-func ResetSettings(c *gin.Context) {
+func (h *Handlers) ResetSettings(c *gin.Context) {
 	// Parse request body to check for action
 	var body map[string]string
 	if err := c.ShouldBindJSON(&body); err != nil {

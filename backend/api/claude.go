@@ -26,7 +26,7 @@ func InitClaudeManager() error {
 }
 
 // ListClaudeSessions handles GET /api/claude/sessions
-func ListClaudeSessions(c *gin.Context) {
+func (h *Handlers) ListClaudeSessions(c *gin.Context) {
 	sessions := claudeManager.ListSessions()
 
 	// Convert to JSON-safe format
@@ -41,7 +41,7 @@ func ListClaudeSessions(c *gin.Context) {
 }
 
 // CreateClaudeSession handles POST /api/claude/sessions
-func CreateClaudeSession(c *gin.Context) {
+func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	var body struct {
 		WorkingDir string `json:"workingDir"`
 		Title      string `json:"title"`
@@ -72,7 +72,7 @@ func CreateClaudeSession(c *gin.Context) {
 }
 
 // GetClaudeSession handles GET /api/claude/sessions/:id
-func GetClaudeSession(c *gin.Context) {
+func (h *Handlers) GetClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	session, err := claudeManager.GetSession(sessionID)
@@ -85,7 +85,7 @@ func GetClaudeSession(c *gin.Context) {
 }
 
 // UpdateClaudeSession handles PATCH /api/claude/sessions/:id
-func UpdateClaudeSession(c *gin.Context) {
+func (h *Handlers) UpdateClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	var body struct {
@@ -110,7 +110,7 @@ func UpdateClaudeSession(c *gin.Context) {
 }
 
 // DeleteClaudeSession handles DELETE /api/claude/sessions/:id
-func DeleteClaudeSession(c *gin.Context) {
+func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	if err := claudeManager.DeleteSession(sessionID); err != nil {
@@ -126,7 +126,7 @@ func DeleteClaudeSession(c *gin.Context) {
 }
 
 // ClaudeWebSocket handles WebSocket connection for terminal I/O
-func ClaudeWebSocket(c *gin.Context) {
+func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	session, err := claudeManager.GetSession(sessionID)
@@ -201,7 +201,7 @@ func ClaudeWebSocket(c *gin.Context) {
 }
 
 // ResizeClaudeTerminal handles POST /api/claude/sessions/:id/resize
-func ResizeClaudeTerminal(c *gin.Context) {
+func (h *Handlers) ResizeClaudeTerminal(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	var body struct {

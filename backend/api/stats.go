@@ -10,7 +10,7 @@ import (
 
 // GetStats handles GET /api/stats
 // Returns stats matching the Node.js implementation schema
-func GetStats(c *gin.Context) {
+func (h *Handlers) GetStats(c *gin.Context) {
 	// Query library files (excluding app/ and inbox/)
 	var libraryCount, librarySize int64
 	err := db.GetDB().QueryRow(`

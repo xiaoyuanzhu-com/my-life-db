@@ -16,12 +16,11 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
 // ServeRawFile handles GET /raw/*path
-func ServeRawFile(c *gin.Context) {
+func (h *Handlers) ServeRawFile(c *gin.Context) {
 	// Get path from URL (everything after /raw/)
 	path := c.Param("path")
 	// Gin includes leading slash in wildcard param
@@ -67,7 +66,7 @@ func ServeRawFile(c *gin.Context) {
 }
 
 // SaveRawFile handles PUT /raw/*path
-func SaveRawFile(c *gin.Context) {
+func (h *Handlers) SaveRawFile(c *gin.Context) {
 	path := c.Param("path")
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
@@ -128,7 +127,7 @@ func SaveRawFile(c *gin.Context) {
 }
 
 // ServeSqlarFile handles GET /sqlar/*path
-func ServeSqlarFile(c *gin.Context) {
+func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 	name := c.Param("path")
 	name = strings.TrimPrefix(name, "/")
 	if name == "" {
@@ -179,7 +178,7 @@ func ServeSqlarFile(c *gin.Context) {
 }
 
 // DeleteLibraryFile handles DELETE /api/library/file
-func DeleteLibraryFile(c *gin.Context) {
+func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
@@ -226,7 +225,7 @@ func DeleteLibraryFile(c *gin.Context) {
 }
 
 // GetLibraryFileInfo handles GET /api/library/file-info
-func GetLibraryFileInfo(c *gin.Context) {
+func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
@@ -250,7 +249,7 @@ func GetLibraryFileInfo(c *gin.Context) {
 
 // PinFile handles POST /api/library/pin
 // Toggles pin state like Node.js version and returns the new state
-func PinFile(c *gin.Context) {
+func (h *Handlers) PinFile(c *gin.Context) {
 	var body struct {
 		Path string `json:"path"`
 	}
@@ -292,14 +291,14 @@ func PinFile(c *gin.Context) {
 	log.Info().Str("path", body.Path).Bool("isPinned", isPinned).Msg("toggled pin state")
 
 	// Notify UI of pin change
-	notifications.GetService().NotifyPinChanged(body.Path)
+	h.server.Notifications().NotifyPinChanged(body.Path)
 
 	// Return the new pin state (matching Node.js response format)
 	c.JSON(http.StatusOK, gin.H{"isPinned": isPinned})
 }
 
 // UnpinFile handles DELETE /api/library/pin
-func UnpinFile(c *gin.Context) {
+func (h *Handlers) UnpinFile(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
@@ -317,17 +316,17 @@ func UnpinFile(c *gin.Context) {
 
 // FileNode represents a file or folder in the tree (matching Node.js schema)
 type FileNode struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	Type       string      `json:"type"` // "file" or "folder"
-	Size       *int64      `json:"size,omitempty"`
-	ModifiedAt *string     `json:"modifiedAt,omitempty"`
-	Children   []FileNode  `json:"children,omitempty"`
+	Name       string     `json:"name"`
+	Path       string     `json:"path"`
+	Type       string     `json:"type"` // "file" or "folder"
+	Size       *int64     `json:"size,omitempty"`
+	ModifiedAt *string    `json:"modifiedAt,omitempty"`
+	Children   []FileNode `json:"children,omitempty"`
 }
 
 // GetLibraryTree handles GET /api/library/tree
 // Matches Node.js schema: uses ?path= parameter and returns {path, nodes}
-func GetLibraryTree(c *gin.Context) {
+func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	// Node.js uses "path" parameter, not "root"
 	requestedPath := c.Query("path")
 	if requestedPath == "" {
@@ -423,7 +422,7 @@ func GetLibraryTree(c *gin.Context) {
 }
 
 // GetDirectories handles GET /api/directories
-func GetDirectories(c *gin.Context) {
+func (h *Handlers) GetDirectories(c *gin.Context) {
 	cfg := config.Get()
 
 	entries, err := os.ReadDir(cfg.DataDir)
@@ -443,7 +442,7 @@ func GetDirectories(c *gin.Context) {
 }
 
 // RenameLibraryFile handles POST /api/library/rename
-func RenameLibraryFile(c *gin.Context) {
+func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	var body struct {
 		Path    string `json:"path"`
 		NewName string `json:"newName"`
@@ -510,7 +509,7 @@ func RenameLibraryFile(c *gin.Context) {
 }
 
 // MoveLibraryFile handles POST /api/library/move
-func MoveLibraryFile(c *gin.Context) {
+func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	var body struct {
 		Path       string `json:"path"`
 		TargetPath string `json:"targetPath"`
@@ -585,7 +584,7 @@ func MoveLibraryFile(c *gin.Context) {
 }
 
 // CreateLibraryFolder handles POST /api/library/folder
-func CreateLibraryFolder(c *gin.Context) {
+func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 	var body struct {
 		Path string `json:"path"`
 		Name string `json:"name"`

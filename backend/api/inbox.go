@@ -14,7 +14,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
@@ -49,7 +48,7 @@ type InboxResponse struct {
 }
 
 // GetInbox handles GET /api/inbox
-func GetInbox(c *gin.Context) {
+func (h *Handlers) GetInbox(c *gin.Context) {
 	limitStr := c.Query("limit")
 	before := c.Query("before")
 	after := c.Query("after")
@@ -157,7 +156,7 @@ func GetInbox(c *gin.Context) {
 }
 
 // CreateInboxItem handles POST /api/inbox
-func CreateInboxItem(c *gin.Context) {
+func (h *Handlers) CreateInboxItem(c *gin.Context) {
 	text := c.PostForm("text")
 
 	form, err := c.MultipartForm()
@@ -194,14 +193,7 @@ func CreateInboxItem(c *gin.Context) {
 		textPath := filepath.Join("inbox", textID+".md")
 
 		// Use FS service to write file
-		fsService := fs.GetService()
-		if fsService == nil {
-			log.Error().Msg("FS service not initialized")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Service not available"})
-			return
-		}
-
-		result, err := fsService.WriteFile(c.Request.Context(), fs.WriteRequest{
+		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            textPath,
 			Content:         strings.NewReader(text),
 			MimeType:        "text/markdown",
@@ -219,14 +211,6 @@ func CreateInboxItem(c *gin.Context) {
 		savedPaths = append(savedPaths, result.Record.Path)
 	}
 
-	// Get FS service
-	fsService := fs.GetService()
-	if fsService == nil {
-		log.Error().Msg("FS service not initialized")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Service not available"})
-		return
-	}
-
 	// Save uploaded files
 	for _, fileHeader := range files {
 		filename := utils.SanitizeFilename(fileHeader.Filename)
@@ -241,7 +225,7 @@ func CreateInboxItem(c *gin.Context) {
 		}
 
 		// Use FS service to write file
-		result, err := fsService.WriteFile(c.Request.Context(), fs.WriteRequest{
+		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            filePath,
 			Content:         src,
 			MimeType:        utils.DetectMimeType(filename),
@@ -270,7 +254,7 @@ func CreateInboxItem(c *gin.Context) {
 		Msg("created inbox items")
 
 	// Notify UI of inbox change (metadata processing happens automatically via fs.Service)
-	notifications.GetService().NotifyInboxChanged()
+	h.server.Notifications().NotifyInboxChanged()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"path":  savedPaths[0],
@@ -279,7 +263,7 @@ func CreateInboxItem(c *gin.Context) {
 }
 
 // GetInboxItem handles GET /api/inbox/:id
-func GetInboxItem(c *gin.Context) {
+func (h *Handlers) GetInboxItem(c *gin.Context) {
 	id := c.Param("id")
 
 	// Try different path formats
@@ -304,7 +288,7 @@ func GetInboxItem(c *gin.Context) {
 }
 
 // UpdateInboxItem handles PUT /api/inbox/:id
-func UpdateInboxItem(c *gin.Context) {
+func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
@@ -341,7 +325,7 @@ func UpdateInboxItem(c *gin.Context) {
 }
 
 // DeleteInboxItem handles DELETE /api/inbox/:id
-func DeleteInboxItem(c *gin.Context) {
+func (h *Handlers) DeleteInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
@@ -376,7 +360,7 @@ func DeleteInboxItem(c *gin.Context) {
 	db.RemovePin(path)
 
 	// Notify UI
-	notifications.GetService().NotifyInboxChanged()
+	h.server.Notifications().NotifyInboxChanged()
 
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
@@ -391,7 +375,7 @@ type PinnedItem struct {
 }
 
 // GetPinnedInboxItems handles GET /api/inbox/pinned
-func GetPinnedInboxItems(c *gin.Context) {
+func (h *Handlers) GetPinnedInboxItems(c *gin.Context) {
 	files, err := db.GetPinnedFiles()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get pinned files")
@@ -432,7 +416,7 @@ func GetPinnedInboxItems(c *gin.Context) {
 }
 
 // ReenrichInboxItem handles POST /api/inbox/:id/reenrich
-func ReenrichInboxItem(c *gin.Context) {
+func (h *Handlers) ReenrichInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
@@ -452,7 +436,7 @@ func ReenrichInboxItem(c *gin.Context) {
 }
 
 // GetInboxItemStatus handles GET /api/inbox/:id/status
-func GetInboxItemStatus(c *gin.Context) {
+func (h *Handlers) GetInboxItemStatus(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 

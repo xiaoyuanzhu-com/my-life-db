@@ -12,7 +12,7 @@ import (
 )
 
 // Login handles POST /api/auth/login
-func Login(c *gin.Context) {
+func (h *Handlers) Login(c *gin.Context) {
 	var body struct {
 		Password string `json:"password"`
 	}
@@ -71,7 +71,7 @@ func Login(c *gin.Context) {
 }
 
 // Logout handles POST /api/auth/logout
-func Logout(c *gin.Context) {
+func (h *Handlers) Logout(c *gin.Context) {
 	// Clear session cookie
 	c.SetCookie("session", "", -1, "/", "", false, true)
 

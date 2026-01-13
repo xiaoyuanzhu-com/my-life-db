@@ -8,7 +8,7 @@ import (
 )
 
 // GetOpenAIModels handles GET /api/vendors/openai/models
-func GetOpenAIModels(c *gin.Context) {
+func (h *Handlers) GetOpenAIModels(c *gin.Context) {
 	client := vendors.GetOpenAIClient()
 	if client == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{

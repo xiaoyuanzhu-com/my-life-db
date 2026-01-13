@@ -46,12 +46,12 @@ type SearchResultItem struct {
 
 // MatchContext provides context about where the match was found
 type MatchContext struct {
-	Source     string        `json:"source"` // "digest" or "semantic"
-	Snippet    string        `json:"snippet"`
-	Terms      []string      `json:"terms"`
-	Score      *float64      `json:"score,omitempty"`
-	SourceType string        `json:"sourceType,omitempty"` // For semantic matches
-	Digest     *DigestInfo   `json:"digest,omitempty"`     // For keyword matches
+	Source     string      `json:"source"` // "digest" or "semantic"
+	Snippet    string      `json:"snippet"`
+	Terms      []string    `json:"terms"`
+	Score      *float64    `json:"score,omitempty"`
+	SourceType string      `json:"sourceType,omitempty"` // For semantic matches
+	Digest     *DigestInfo `json:"digest,omitempty"`     // For keyword matches
 }
 
 // DigestInfo provides digest type and label for match context
@@ -82,7 +82,7 @@ type Timing struct {
 }
 
 // Search handles GET /api/search
-func Search(c *gin.Context) {
+func (h *Handlers) Search(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -501,14 +501,14 @@ func buildKeywordMatchContext(hit vendors.MeiliHit, file *db.FileWithDigests, te
 
 	// Digest labels matching Node.js TEXT_SOURCE_LABELS and ADDITIONAL_DIGEST_LABELS
 	digestLabels := map[string]string{
-		"url-crawl-content":   "Web page content",
-		"url-crawl-summary":   "Summary",
-		"doc-to-markdown":     "Document content",
-		"image-ocr":           "Image text (OCR)",
-		"image-captioning":    "Image caption",
-		"image-objects":       "Image objects",
-		"speech-recognition":  "Speech transcript",
-		"tags":                "Tags",
+		"url-crawl-content":  "Web page content",
+		"url-crawl-summary":  "Summary",
+		"doc-to-markdown":    "Document content",
+		"image-ocr":          "Image text (OCR)",
+		"image-captioning":   "Image caption",
+		"image-objects":      "Image objects",
+		"speech-recognition": "Speech transcript",
+		"tags":               "Tags",
 	}
 
 	// Field configuration matching Node.js DIGEST_FIELD_CONFIG

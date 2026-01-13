@@ -15,7 +15,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
 
@@ -63,7 +62,7 @@ func InitTUSHandler() (http.Handler, error) {
 }
 
 // TUSHandler handles all TUS protocol requests
-func TUSHandler(c *gin.Context) {
+func (h *Handlers) TUSHandler(c *gin.Context) {
 	handler, err := InitTUSHandler()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to initialize TUS handler")
@@ -95,7 +94,7 @@ func TUSHandler(c *gin.Context) {
 
 // FinalizeUpload handles POST /api/upload/finalize
 // Accepts array of uploads to support batch finalization (matching Node.js API)
-func FinalizeUpload(c *gin.Context) {
+func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	var body struct {
 		Uploads []struct {
 			UploadID string `json:"uploadId"`
@@ -214,7 +213,7 @@ func FinalizeUpload(c *gin.Context) {
 	}
 
 	// Notify UI (metadata processing happens automatically via fs.Service watcher)
-	notifications.GetService().NotifyInboxChanged()
+	h.server.Notifications().NotifyInboxChanged()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

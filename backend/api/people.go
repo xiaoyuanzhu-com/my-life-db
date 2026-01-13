@@ -20,7 +20,7 @@ type PersonResponse struct {
 }
 
 // GetPeople handles GET /api/people
-func GetPeople(c *gin.Context) {
+func (h *Handlers) GetPeople(c *gin.Context) {
 	rows, err := db.GetDB().Query(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
@@ -50,7 +50,7 @@ func GetPeople(c *gin.Context) {
 }
 
 // CreatePerson handles POST /api/people
-func CreatePerson(c *gin.Context) {
+func (h *Handlers) CreatePerson(c *gin.Context) {
 	var body struct {
 		DisplayName string `json:"displayName"`
 	}
@@ -86,7 +86,7 @@ func CreatePerson(c *gin.Context) {
 }
 
 // GetPerson handles GET /api/people/:id
-func GetPerson(c *gin.Context) {
+func (h *Handlers) GetPerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var p PersonResponse
@@ -130,7 +130,7 @@ func GetPerson(c *gin.Context) {
 }
 
 // UpdatePerson handles PUT /api/people/:id
-func UpdatePerson(c *gin.Context) {
+func (h *Handlers) UpdatePerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var body struct {
@@ -164,7 +164,7 @@ func UpdatePerson(c *gin.Context) {
 }
 
 // DeletePerson handles DELETE /api/people/:id
-func DeletePerson(c *gin.Context) {
+func (h *Handlers) DeletePerson(c *gin.Context) {
 	id := c.Param("id")
 
 	// First unassign all clusters
@@ -192,7 +192,7 @@ func DeletePerson(c *gin.Context) {
 }
 
 // MergePeople handles POST /api/people/:id/merge
-func MergePeople(c *gin.Context) {
+func (h *Handlers) MergePeople(c *gin.Context) {
 	targetID := c.Param("id")
 
 	var body struct {
@@ -224,7 +224,7 @@ func MergePeople(c *gin.Context) {
 }
 
 // AssignEmbedding handles POST /api/people/embeddings/:id/assign
-func AssignEmbedding(c *gin.Context) {
+func (h *Handlers) AssignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
 	var body struct {
@@ -250,7 +250,7 @@ func AssignEmbedding(c *gin.Context) {
 }
 
 // UnassignEmbedding handles POST /api/people/embeddings/:id/unassign
-func UnassignEmbedding(c *gin.Context) {
+func (h *Handlers) UnassignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
 	_, err := db.GetDB().Exec(`

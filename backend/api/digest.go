@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
 
 // DigesterInfo represents digester metadata for the API
@@ -38,14 +37,14 @@ var availableDigesters = []DigesterInfo{
 
 // GetDigesters handles GET /api/digest/digesters
 // Returns digester info matching Node.js schema with wrapper object
-func GetDigesters(c *gin.Context) {
+func (h *Handlers) GetDigesters(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"digesters": availableDigesters,
 	})
 }
 
 // GetDigestStats handles GET /api/digest/stats
-func GetDigestStats(c *gin.Context) {
+func (h *Handlers) GetDigestStats(c *gin.Context) {
 	stats, err := db.GetDigestStats()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get digest stats")
@@ -57,7 +56,7 @@ func GetDigestStats(c *gin.Context) {
 }
 
 // ResetDigester handles DELETE /api/digest/reset/:digester
-func ResetDigester(c *gin.Context) {
+func (h *Handlers) ResetDigester(c *gin.Context) {
 	digester := c.Param("digester")
 	if digester == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Digester name is required"})
@@ -80,7 +79,7 @@ func ResetDigester(c *gin.Context) {
 }
 
 // GetDigest handles GET /api/digest/*path
-func GetDigest(c *gin.Context) {
+func (h *Handlers) GetDigest(c *gin.Context) {
 	path := c.Param("path")
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
@@ -115,7 +114,7 @@ func GetDigest(c *gin.Context) {
 }
 
 // TriggerDigest handles POST /api/digest/*path
-func TriggerDigest(c *gin.Context) {
+func (h *Handlers) TriggerDigest(c *gin.Context) {
 	path := c.Param("path")
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
@@ -189,20 +188,15 @@ func TriggerDigest(c *gin.Context) {
 	}
 
 	// Ensure digest placeholders exist for all digesters (like Node.js ensureAllDigesters)
-	worker := digest.GetWorker()
-	if worker != nil {
-		added, orphaned := worker.EnsureDigestersForFile(path)
-		log.Info().
-			Str("path", path).
-			Str("digester", digester).
-			Int("added", added).
-			Int("orphaned", orphaned).
-			Msg("ensuring digesters and queuing file")
-		// Queue file for processing
-		worker.RequestDigest(path)
-	} else {
-		log.Warn().Msg("digest worker not available")
-	}
+	added, orphaned := h.server.Digest().EnsureDigestersForFile(path)
+	log.Info().
+		Str("path", path).
+		Str("digester", digester).
+		Int("added", added).
+		Int("orphaned", orphaned).
+		Msg("ensuring digesters and queuing file")
+	// Queue file for processing
+	h.server.Digest().RequestDigest(path)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

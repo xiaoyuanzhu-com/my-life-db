@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -67,12 +65,7 @@ func New(cfg *Config) (*Server, error) {
 	// 6. Wire service connections
 	s.connectServices()
 
-	// 7. Initialize Claude manager
-	if err := api.InitClaudeManager(); err != nil {
-		return nil, fmt.Errorf("failed to initialize claude manager: %w", err)
-	}
-
-	// 8. Setup HTTP router
+	// 7. Setup HTTP router
 	s.setupRouter()
 
 	log.Info().Msg("server initialized successfully")
@@ -117,11 +110,8 @@ func (s *Server) setupRouter() {
 		c.Status(http.StatusNotFound)
 	})
 
-	// Setup API routes
-	api.SetupRoutes(s.router)
-
-	// TODO: Add static file serving
-	// TODO: Add SPA fallback
+	// Note: API routes should be set up by calling code (main.go)
+	// to avoid import cycles
 }
 
 // Start starts all background services and the HTTP server
@@ -184,3 +174,4 @@ func (s *Server) DB() *db.DB                              { return s.database }
 func (s *Server) FS() *fs.Service                         { return s.fsService }
 func (s *Server) Digest() *digest.Worker                  { return s.digestWorker }
 func (s *Server) Notifications() *notifications.Service { return s.notifService }
+func (s *Server) Router() *gin.Engine                     { return s.router }
