@@ -1,7 +1,6 @@
 package api
 
 import (
-	"io"
 	"net/http"
 	"time"
 
@@ -158,31 +157,23 @@ func ClaudeWebSocket(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Update session status
-	session.Status = "active"
-	session.LastActivity = time.Now()
+	// Create a new client and register it with the session
+	client := &claude.Client{
+		Conn: conn,
+		Send: make(chan []byte, 256),
+	}
+	session.AddClient(client)
+	defer session.RemoveClient(client)
 
-	log.Info().Str("sessionId", sessionID).Msg("WebSocket connected")
+	log.Info().Str("sessionId", sessionID).Msg("WebSocket client connected")
 
-	// PTY → WebSocket (read from claude process, send to browser)
+	// Goroutine to send data from client.Send channel to WebSocket
 	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := session.PTY.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Error().Err(err).Msg("PTY read error")
-				}
-				conn.Close(websocket.StatusInternalError, "PTY read error")
-				return
-			}
-
-			if err := conn.Write(ctx, websocket.MessageBinary, buf[:n]); err != nil {
+		for data := range client.Send {
+			if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
 				log.Error().Err(err).Msg("WebSocket write error")
 				return
 			}
-
-			session.LastActivity = time.Now()
 		}
 	}()
 
@@ -190,9 +181,7 @@ func ClaudeWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
-			// Client disconnected
-			session.Status = "disconnected"
-			log.Info().Str("sessionId", sessionID).Msg("WebSocket disconnected")
+			log.Info().Str("sessionId", sessionID).Msg("WebSocket client disconnected")
 			break
 		}
 

@@ -9,10 +9,10 @@ This document describes the integration of Claude Code CLI (shell version) into 
 ### Design Principles
 
 1. **Minimal Transformation**: Act as a thin bridge between browser and Claude CLI, with no transformation of terminal I/O
-2. **Tab = Process**: Each browser tab corresponds to exactly one `claude` CLI process
-3. **Shared Authentication**: All processes share the same `.claude` directory via symlink for OAuth credentials
-4. **Session Persistence**: Keep track of active sessions for cross-device access
-5. **Isolated .claude Directory**: Use `MY_DATA_DIR/app/my-life-db/.claude/` instead of system `~/.claude/` for clean separation
+2. **Process per Session**: Each session corresponds to exactly one `claude` CLI process
+3. **Shared Authentication**: All processes share the user's real `~/.claude` directory for OAuth credentials
+4. **Multi-tab Support**: Multiple browser tabs can connect to the same session via broadcast mechanism
+5. **Session Persistence**: Keep track of active sessions for cross-device access
 
 ### Component Overview
 
@@ -21,6 +21,7 @@ This document describes the integration of Claude Code CLI (shell version) into 
 │ Browser (Desktop/Mobile)                                        │
 │  ┌────────┬────────┬────────┐                                  │
 │  │ Tab 1  │ Tab 2  │ Tab 3  │  (xterm.js terminals)            │
+│  │Session1│Session1│Session2│  (tabs can share sessions)       │
 │  └────┬───┴───┬────┴───┬────┘                                  │
 │       │       │        │                                        │
 │       │ WebSocket (binary I/O, no transformation)              │
@@ -33,14 +34,15 @@ This document describes the integration of Claude Code CLI (shell version) into 
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ WebSocket Handler (coder/websocket)                       │  │
 │  │  - Accept connections                                     │  │
-│  │  - Route to session                                       │  │
-│  │  - Stream I/O bidirectionally                             │  │
+│  │  - Register client with session                           │  │
+│  │  - Broadcast PTY output to all clients                    │  │
 │  └────────────────┬─────────────────────────────────────────┘  │
 │                   │                                             │
 │  ┌────────────────▼─────────────────────────────────────────┐  │
 │  │ Session Manager                                           │  │
 │  │  - Create/list/delete sessions                            │  │
 │  │  - Track process lifecycle                                │  │
+│  │  - Manage multiple clients per session                    │  │
 │  │  - Store in MY_DATA_DIR/app/my-life-db/claude-sessions/  │  │
 │  └────────────────┬─────────────────────────────────────────┘  │
 │                   │                                             │
@@ -48,7 +50,7 @@ This document describes the integration of Claude Code CLI (shell version) into 
 │  │ PTY Manager (creack/pty)                                  │  │
 │  │  - Spawn claude CLI processes                             │  │
 │  │  - One PTY per session                                    │  │
-│  │  - Kill process on disconnect                             │  │
+│  │  - Read PTY once, broadcast to all clients                │  │
 │  └────────────────┬─────────────────────────────────────────┘  │
 │                   │                                             │
 └───────────────────┼─────────────────────────────────────────────┘
@@ -56,75 +58,79 @@ This document describes the integration of Claude Code CLI (shell version) into 
                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Claude Code CLI Processes                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                     │
-│  │ claude   │  │ claude   │  │ claude   │                     │
-│  │ (PID 1)  │  │ (PID 2)  │  │ (PID 3)  │                     │
-│  └─────┬────┘  └─────┬────┘  └─────┬────┘                     │
-│        │             │             │                           │
-│        └─────────────┴─────────────┘                           │
-│                      │                                          │
-│                      ▼                                          │
-│              ┌───────────────────────────────────────────┐     │
-│              │ MY_DATA_DIR/app/my-life-db/.claude/   │     │
-│              │ (Shared OAuth credentials via symlink) │     │
-│              └───────────────────────────────────────────┘     │
+│  ┌──────────┐  ┌──────────┐                                   │
+│  │ claude   │  │ claude   │                                   │
+│  │(Session1)│  │(Session2)│                                   │
+│  └─────┬────┘  └─────┬────┘                                   │
+│        │             │                                         │
+│        └─────────────┘                                         │
+│                │                                                │
+│                ▼                                                │
+│        ┌───────────────┐                                       │
+│        │  ~/.claude/   │                                       │
+│        │  (Shared auth)│                                       │
+│        └───────────────┘                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Claude Authentication Directory Setup
 
-### The Problem
+### Simplified Approach
 
-Claude Code CLI expects to find/create its `.claude` directory in `$HOME/.claude/` for storing:
-- OAuth credentials (`.credentials.json`)
-- User settings (`settings.local.json`)
-- Project conversation history
+All Claude Code processes share the user's real `~/.claude` directory:
 
-However:
-1. We want `.claude` in `MY_DATA_DIR/app/my-life-db/.claude/` for data isolation
-2. Claude Code has a bug: `CLAUDE_HOME` environment variable is not respected
-3. Setting `HOME` directly would affect other behaviors
+**Benefits**:
+- Simple - no symlinks or temp directories needed
+- All sessions share authentication automatically
+- Works identically on OS and in Docker
+- Respects user's existing Claude configuration
 
-### The Solution: Symlink Approach
+**How it works**:
+1. Backend spawns `claude` process with default HOME environment
+2. Claude uses `~/.claude` for credentials and settings
+3. First session authenticates via OAuth (if needed)
+4. Subsequent sessions use existing credentials ✅
 
-Create a temporary HOME directory per session with a symlink to our shared `.claude`:
-
+**Data locations**:
 ```
-/tmp/mylifedb-claude/{session-id}/          # Temp HOME for this session
-└── .claude -> MY_DATA_DIR/app/my-life-db/.claude/  # Symlink to shared dir
+~/.claude/                                   # Claude's auth directory
+├── .credentials.json                        # OAuth tokens (shared by all sessions)
+├── settings.local.json                      # User settings
+└── projects/                                # Project conversation history
 
 MY_DATA_DIR/app/my-life-db/
-├── .claude/                                 # Actual Claude auth directory
-│   ├── .credentials.json                    # OAuth tokens (shared by all sessions)
-│   ├── settings.local.json
-│   └── projects/
 └── claude-sessions/                         # Our session tracking
     ├── session-1.json
     └── session-2.json
 ```
 
-**How it works**:
-1. User creates new session
-2. Backend creates temp dir: `/tmp/mylifedb-claude/{session-id}/`
-3. Backend creates symlink: `/tmp/mylifedb-claude/{session-id}/.claude` → `MY_DATA_DIR/app/my-life-db/.claude/`
-4. Spawn `claude` process with `HOME=/tmp/mylifedb-claude/{session-id}/`
-5. Claude reads/writes to `$HOME/.claude` which resolves to our shared directory ✅
-
-**Benefits**:
-- All sessions share authentication (authenticate once, works for all tabs)
-- `.claude` isolated in MyLifeDB's data directory (not mixed with system `~/.claude`)
-- Works on both macOS and Linux
-- Temp directories auto-cleaned on reboot
-
 ## Session Management
 
 ### Session Lifecycle
 
-1. **Creation**: User opens new tab → backend spawns new `claude` process → session record created
-2. **Active**: WebSocket connected, terminal I/O streaming, process running
-3. **Disconnected**: Browser closed, WebSocket disconnected, but process keeps running
-4. **Reconnection**: User opens browser (same/different device) → list sessions → reconnect to existing process
-5. **Cleanup**: User explicitly closes tab/session → backend kills process → session record deleted
+1. **Creation**: User creates new session → backend spawns new `claude` process → session record created
+2. **Active**: WebSocket(s) connected, terminal I/O streaming, process running
+3. **Multi-tab**: Multiple tabs can connect to same session via broadcast mechanism
+4. **Disconnected**: Browser closed, WebSocket disconnected, but process keeps running
+5. **Reconnection**: User opens browser (same/different device) → list sessions → reconnect to existing process
+6. **Cleanup**: User explicitly closes session → backend kills process → session record deleted
+
+### Multi-tab Session Sharing
+
+Multiple browser tabs can connect to the same Claude Code session:
+
+**How it works**:
+- Each session maintains a list of connected WebSocket clients
+- PTY output is read once and broadcast to all clients via channels
+- Any client can send input (keyboard/commands) to the PTY
+- All clients see the same terminal state in real-time
+
+**Behavior**:
+- Like `screen` or `tmux` session sharing
+- Tab 1 types command → all tabs see output
+- Tab 2 types command → all tabs see output
+- Close Tab 1 → Tab 2 continues working
+- Reopen Tab 1 → reconnects to same session, sees current state
 
 ### Session Storage
 
@@ -141,7 +147,7 @@ Each session stored as JSON file: `{session-id}.json`
   "lastActivity": "2026-01-13T12:45:00Z",
   "status": "active",
   "title": "Session 1",
-  "outputBuffer": ["last", "1000", "lines", "of", "output"]
+  "clients": 2
 }
 ```
 
@@ -151,9 +157,9 @@ Each session stored as JSON file: `{session-id}.json`
 - `workingDir`: Working directory where Claude is running
 - `createdAt`: Session creation timestamp
 - `lastActivity`: Last I/O activity timestamp
-- `status`: `active` (connected), `disconnected` (process running, no WS), `dead` (process exited)
+- `status`: `active` (has clients), `disconnected` (process running, no clients), `dead` (process exited)
 - `title`: User-editable session name/title
-- `outputBuffer`: Ring buffer of last 1000 lines for reconnection (optional)
+- `clients`: Number of connected WebSocket clients
 
 ### Database Schema (SQLite)
 
@@ -423,6 +429,11 @@ import (
     "github.com/google/uuid"
 )
 
+type Client struct {
+    Conn *websocket.Conn
+    Send chan []byte
+}
+
 type Session struct {
     ID           string
     ProcessID    int
@@ -433,8 +444,9 @@ type Session struct {
     Title        string
     PTY          *os.File
     Cmd          *exec.Cmd
-    TempHome     string       // Temp HOME directory for this session
-    OutputBuffer *RingBuffer
+    Clients      map[*Client]bool
+    mu           sync.RWMutex
+    broadcast    chan []byte
 }
 
 type Manager struct {
@@ -452,32 +464,14 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
         Title:      title,
         CreatedAt:  time.Now(),
         Status:     "active",
-    }
-
-    // Create temp HOME directory with symlink to shared .claude
-    tempHome := filepath.Join(os.TempDir(), "mylifedb-claude", sessionID)
-    if err := os.MkdirAll(tempHome, 0755); err != nil {
-        return nil, fmt.Errorf("failed to create temp home: %w", err)
-    }
-
-    // Ensure shared .claude directory exists
-    claudeDir := filepath.Join(config.DataDir, "app", "my-life-db", ".claude")
-    if err := os.MkdirAll(claudeDir, 0755); err != nil {
-        return nil, fmt.Errorf("failed to create claude dir: %w", err)
-    }
-
-    // Create symlink: tempHome/.claude -> MY_DATA_DIR/app/my-life-db/.claude
-    tempClaudeLink := filepath.Join(tempHome, ".claude")
-    if err := os.Symlink(claudeDir, tempClaudeLink); err != nil {
-        return nil, fmt.Errorf("failed to create claude symlink: %w", err)
+        Clients:    make(map[*Client]bool),
+        broadcast:  make(chan []byte, 256),
     }
 
     // Spawn claude process with PTY
+    // Uses default HOME so all sessions share the same .claude directory
     cmd := exec.Command("claude")
     cmd.Dir = workingDir
-    cmd.Env = append(os.Environ(),
-        fmt.Sprintf("HOME=%s", tempHome), // Point to temp HOME with .claude symlink
-    )
 
     ptmx, err := pty.Start(cmd)
     if err != nil {
@@ -487,7 +481,9 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
     session.PTY = ptmx
     session.Cmd = cmd
     session.ProcessID = cmd.Process.Pid
-    session.TempHome = tempHome // Store for cleanup
+
+    // Start PTY reader that broadcasts to all clients
+    go m.readPTY(session)
 
     m.mu.Lock()
     m.sessions[session.ID] = session
@@ -497,6 +493,23 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
     m.storage.SaveSession(session)
 
     return session, nil
+}
+
+func (m *Manager) readPTY(session *Session) {
+    buf := make([]byte, 4096)
+    for {
+        n, err := session.PTY.Read(buf)
+        if err != nil {
+            session.Status = "dead"
+            return
+        }
+
+        // Make a copy and broadcast to all connected clients
+        data := make([]byte, n)
+        copy(data, buf[:n])
+        session.Broadcast(data)
+        session.LastActivity = time.Now()
+    }
 }
 
 func (m *Manager) GetSession(id string) (*Session, error) {
@@ -540,11 +553,6 @@ func (m *Manager) DeleteSession(id string) error {
         session.PTY.Close()
     }
 
-    // Clean up temp HOME directory
-    if session.TempHome != "" {
-        os.RemoveAll(session.TempHome)
-    }
-
     delete(m.sessions, id)
 
     // Remove from storage
@@ -578,9 +586,15 @@ func ClaudeWebSocket(c *gin.Context) {
         return
     }
 
+    // Get underlying http.ResponseWriter from Gin's wrapper
+    var w http.ResponseWriter = c.Writer
+    if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
+        w = unwrapper.Unwrap()
+    }
+
     // Accept WebSocket connection (coder/websocket)
-    conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
-        InsecureSkipVerify: true, // TODO: Add proper origin checking in production
+    conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
+        InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
     })
     if err != nil {
         log.Error().Err(err).Msg("WebSocket upgrade failed")
@@ -590,24 +604,20 @@ func ClaudeWebSocket(c *gin.Context) {
 
     ctx := c.Request.Context()
 
-    // PTY → WebSocket (read from claude process, send to browser)
+    // Create a new client and register it with the session
+    client := &claude.Client{
+        Conn: conn,
+        Send: make(chan []byte, 256),
+    }
+    session.AddClient(client)
+    defer session.RemoveClient(client)
+
+    // Goroutine to send data from client.Send channel to WebSocket
     go func() {
-        buf := make([]byte, 4096)
-        for {
-            n, err := session.PTY.Read(buf)
-            if err != nil {
-                if err != io.EOF {
-                    log.Error().Err(err).Msg("PTY read error")
-                }
+        for data := range client.Send {
+            if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
                 return
             }
-
-            if err := conn.Write(ctx, websocket.MessageBinary, buf[:n]); err != nil {
-                log.Error().Err(err).Msg("WebSocket write error")
-                return
-            }
-
-            session.LastActivity = time.Now()
         }
     }()
 
@@ -615,7 +625,6 @@ func ClaudeWebSocket(c *gin.Context) {
     for {
         msgType, msg, err := conn.Read(ctx)
         if err != nil {
-            log.Error().Err(err).Msg("WebSocket read error")
             break
         }
 
@@ -625,7 +634,6 @@ func ClaudeWebSocket(c *gin.Context) {
         }
 
         if _, err := session.PTY.Write(msg); err != nil {
-            log.Error().Err(err).Msg("PTY write error")
             break
         }
 

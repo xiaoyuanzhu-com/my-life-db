@@ -78,6 +78,8 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),
 		Status:       "active",
+		Clients:      make(map[*Client]bool),
+		broadcast:    make(chan []byte, 256),
 	}
 
 	// Spawn claude process with PTY
@@ -94,6 +96,9 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 	session.PTY = ptmx
 	session.Cmd = cmd
 	session.ProcessID = cmd.Process.Pid
+
+	// Start PTY reader that broadcasts to all clients
+	go m.readPTY(session)
 
 	m.sessions[session.ID] = session
 
@@ -220,5 +225,27 @@ func (m *Manager) cleanupWorker() {
 			}
 		}
 		m.mu.Unlock()
+	}
+}
+
+// readPTY reads from PTY and broadcasts to all connected clients
+func (m *Manager) readPTY(session *Session) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := session.PTY.Read(buf)
+		if err != nil {
+			// PTY closed or process died
+			session.Status = "dead"
+			log.Info().Str("sessionId", session.ID).Msg("PTY closed")
+			return
+		}
+
+		// Make a copy of the data to broadcast
+		data := make([]byte, n)
+		copy(data, buf[:n])
+
+		// Broadcast to all connected clients
+		session.Broadcast(data)
+		session.LastActivity = time.Now()
 	}
 }
