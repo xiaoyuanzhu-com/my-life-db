@@ -46,18 +46,21 @@ func main() {
 	// Middleware
 	r.Use(gin.Recovery())
 
+	// TEMPORARY: Comment out middleware for WebSocket debugging
+	/*
 	// Request logging middleware (uses zerolog)
 	r.Use(log.GinLogger())
 
-	// CORS for development
+	// CORS for development - skip for WebSocket endpoints
 	if cfg.IsDevelopment() {
-		r.Use(corsMiddleware())
+		r.Use(corsMiddlewareSkipWS())
 	}
 
-	// Security headers (production only)
+	// Security headers (production only) - skip for WebSocket endpoints
 	if !cfg.IsDevelopment() {
-		r.Use(securityHeadersMiddleware())
+		r.Use(securityHeadersMiddlewareSkipWS())
 	}
+	*/
 
 	// Trust proxy headers
 	r.SetTrustedProxies(nil) // Trust all proxies, or set specific ones
@@ -187,9 +190,15 @@ func main() {
 	log.Info().Msg("server stopped")
 }
 
-// corsMiddleware creates a CORS middleware for Gin
-func corsMiddleware() gin.HandlerFunc {
+// corsMiddlewareSkipWS creates a CORS middleware that skips WebSocket endpoints
+func corsMiddlewareSkipWS() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip CORS headers for WebSocket endpoints to avoid "response already written" error
+		if strings.HasSuffix(c.Request.URL.Path, "/ws") {
+			c.Next()
+			return
+		}
+
 		origin := c.Request.Header.Get("Origin")
 		allowedOrigins := map[string]bool{
 			"http://localhost:12345": true,
@@ -246,9 +255,14 @@ func printNetworkAddresses(port int) {
 	}
 }
 
-// securityHeadersMiddleware adds security headers to all responses
-func securityHeadersMiddleware() gin.HandlerFunc {
+// securityHeadersMiddlewareSkipWS adds security headers, skipping WebSocket endpoints
+func securityHeadersMiddlewareSkipWS() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip security headers for WebSocket endpoints
+		if strings.HasSuffix(c.Request.URL.Path, "/ws") {
+			c.Next()
+			return
+		}
 		// HSTS - enforce HTTPS for 1 year, include subdomains
 		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 

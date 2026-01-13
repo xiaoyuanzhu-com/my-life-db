@@ -88,8 +88,10 @@ func SetupRoutes(r *gin.Engine) {
 	api.GET("/claude/sessions/:id", GetClaudeSession)
 	api.PATCH("/claude/sessions/:id", UpdateClaudeSession)
 	api.DELETE("/claude/sessions/:id", DeleteClaudeSession)
-	api.GET("/claude/sessions/:id/ws", ClaudeWebSocket)
 	api.POST("/claude/sessions/:id/resize", ResizeClaudeTerminal)
+
+	// WebSocket route - register on main router to bypass API group middleware
+	r.GET("/api/claude/sessions/:id/ws", ClaudeWebSocket)
 
 	// Raw file serving
 	r.GET("/raw/*path", ServeRawFile)

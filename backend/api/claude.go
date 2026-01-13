@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"nhooyr.io/websocket"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
@@ -136,12 +136,22 @@ func ClaudeWebSocket(c *gin.Context) {
 		return
 	}
 
+	// Get the underlying http.ResponseWriter from Gin's wrapper
+	// Gin wraps the response writer to track state, but WebSocket needs the raw writer
+	var w http.ResponseWriter = c.Writer
+
+	// Try to unwrap to get the actual response writer
+	// Gin's ResponseWriter may wrap the original, we need the original for hijacking
+	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
+		w = unwrapper.Unwrap()
+	}
+
 	// Accept WebSocket connection (coder/websocket)
-	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // TODO: Add proper origin checking in production
+	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
+		OriginPatterns: []string{"localhost:*"}, // Allow localhost with any port
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("WebSocket upgrade failed")
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket upgrade failed")
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
