@@ -2,9 +2,7 @@ package claude
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -82,58 +80,20 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 		Status:       "active",
 	}
 
-	// Create temp HOME directory with symlink to shared .claude
-	tempHome := filepath.Join(os.TempDir(), "mylifedb-claude", sessionID)
-	if err := os.MkdirAll(tempHome, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create temp home: %w", err)
-	}
-
-	// Ensure shared .claude directory exists with required subdirectories
-	// Convert to absolute path for symlink
-	dataDir := config.Get().DataDir
-	absDataDir, err := filepath.Abs(dataDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for data dir: %w", err)
-	}
-
-	claudeDir := filepath.Join(absDataDir, "app", "my-life-db", ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create claude dir: %w", err)
-	}
-
-	// Create subdirectories that Claude Code expects
-	debugDir := filepath.Join(claudeDir, "debug")
-	if err := os.MkdirAll(debugDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create debug dir: %w", err)
-	}
-
-	// Create symlink: tempHome/.claude -> MY_DATA_DIR/app/my-life-db/.claude
-	tempClaudeLink := filepath.Join(tempHome, ".claude")
-
-	// Remove existing symlink if any
-	os.Remove(tempClaudeLink)
-
-	if err := os.Symlink(claudeDir, tempClaudeLink); err != nil {
-		return nil, fmt.Errorf("failed to create claude symlink: %w", err)
-	}
-
 	// Spawn claude process with PTY
+	// Uses default HOME so all sessions share the same .claude directory
 	cmd := exec.Command("claude")
 	cmd.Dir = workingDir
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HOME=%s", tempHome), // Point to temp HOME with .claude symlink
-	)
+	// No custom environment needed - just inherit everything from os.Environ()
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		os.RemoveAll(tempHome) // Cleanup on error
 		return nil, fmt.Errorf("failed to start claude: %w", err)
 	}
 
 	session.PTY = ptmx
 	session.Cmd = cmd
 	session.ProcessID = cmd.Process.Pid
-	session.TempHome = tempHome
 
 	m.sessions[session.ID] = session
 
@@ -218,13 +178,6 @@ func (m *Manager) DeleteSession(id string) error {
 		session.PTY.Close()
 	}
 
-	// Clean up temp HOME directory
-	if session.TempHome != "" {
-		if err := os.RemoveAll(session.TempHome); err != nil {
-			log.Warn().Err(err).Str("tempHome", session.TempHome).Msg("failed to remove temp home")
-		}
-	}
-
 	delete(m.sessions, id)
 
 	// Remove from storage
@@ -260,11 +213,6 @@ func (m *Manager) cleanupWorker() {
 				// Close PTY
 				if session.PTY != nil {
 					session.PTY.Close()
-				}
-
-				// Clean up temp HOME
-				if session.TempHome != "" {
-					os.RemoveAll(session.TempHome)
 				}
 
 				delete(m.sessions, id)

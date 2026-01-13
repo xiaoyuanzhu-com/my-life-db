@@ -17,9 +17,8 @@ type Session struct {
 	Title        string    `json:"title"`
 
 	// Internal fields (not serialized)
-	PTY      *os.File    `json:"-"`
-	Cmd      *exec.Cmd   `json:"-"`
-	TempHome string      `json:"-"` // Temp HOME directory for this session
+	PTY *os.File  `json:"-"`
+	Cmd *exec.Cmd `json:"-"`
 }
 
 // ToJSON returns a JSON-safe representation of the session
