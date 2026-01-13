@@ -32,10 +32,10 @@ func (w *watcher) Start() error {
 		return err
 	}
 
-	log.Info().Str("dataRoot", w.service.dataRoot).Msg("starting filesystem watcher")
+	log.Info().Str("dataRoot", w.service.cfg.DataRoot).Msg("starting filesystem watcher")
 
 	// Watch the data root directory recursively
-	if err := w.watchRecursive(w.service.dataRoot); err != nil {
+	if err := w.watchRecursive(w.service.cfg.DataRoot); err != nil {
 		log.Error().Err(err).Msg("failed to watch data directory")
 		return err
 	}
@@ -64,7 +64,7 @@ func (w *watcher) watchRecursive(root string) error {
 		}
 
 		// Get relative path
-		relPath, _ := filepath.Rel(w.service.dataRoot, path)
+		relPath, _ := filepath.Rel(w.service.cfg.DataRoot, path)
 
 		// Skip excluded paths
 		if w.service.validator.isExcluded(relPath) {
@@ -111,7 +111,7 @@ func (w *watcher) eventLoop() {
 
 // handleEvent processes a single filesystem event
 func (w *watcher) handleEvent(event fsnotify.Event) {
-	relPath, err := filepath.Rel(w.service.dataRoot, event.Name)
+	relPath, err := filepath.Rel(w.service.cfg.DataRoot, event.Name)
 	if err != nil {
 		return
 	}
@@ -221,7 +221,7 @@ func (w *watcher) handleDelete(path string) {
 		Msg("detected external file deletion, updating database")
 
 	// Delete from database
-	if err := w.service.db.DeleteFile(path); err != nil {
+	if err := w.service.cfg.DB.DeleteFile(path); err != nil {
 		log.Warn().
 			Err(err).
 			Str("path", path).
@@ -236,7 +236,7 @@ func (w *watcher) handleDelete(path string) {
 // (e.g., via AirDrop, manual copy, etc.)
 func (w *watcher) processExternalFile(path string, trigger string) {
 	// Get file info
-	fullPath := filepath.Join(w.service.dataRoot, path)
+	fullPath := filepath.Join(w.service.cfg.DataRoot, path)
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		log.Warn().
@@ -247,7 +247,7 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 	}
 
 	// Get existing record (for change detection)
-	existing, _ := w.service.db.GetFileByPath(path)
+	existing, _ := w.service.cfg.DB.GetFileByPath(path)
 	oldHash := ""
 	if existing != nil && existing.Hash != nil {
 		oldHash = *existing.Hash
@@ -263,7 +263,7 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 
 		// Fallback: create basic record without metadata
 		record := w.service.buildFileRecord(path, info, nil)
-		if _, err := w.service.db.UpsertFile(record); err != nil {
+		if _, err := w.service.cfg.DB.UpsertFile(record); err != nil {
 			log.Error().
 				Err(err).
 				Str("path", path).
@@ -274,7 +274,7 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 
 	// Create/update database record with metadata
 	record := w.service.buildFileRecord(path, info, metadata)
-	isNew, err := w.service.db.UpsertFile(record)
+	isNew, err := w.service.cfg.DB.UpsertFile(record)
 	if err != nil {
 		log.Error().
 			Err(err).

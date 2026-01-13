@@ -35,7 +35,7 @@ func newMetadataProcessor(service *Service) *metadataProcessor {
 
 // ComputeMetadata computes hash and text preview for a file
 func (p *metadataProcessor) ComputeMetadata(ctx context.Context, path string) (*MetadataResult, error) {
-	fullPath := filepath.Join(p.service.dataRoot, path)
+	fullPath := filepath.Join(p.service.cfg.DataRoot, path)
 
 	file, err := os.Open(fullPath)
 	if err != nil {

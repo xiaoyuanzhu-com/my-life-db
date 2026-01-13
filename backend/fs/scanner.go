@@ -78,13 +78,13 @@ func (s *scanner) Stop() {
 
 // scan performs a full filesystem scan
 func (s *scanner) scan() {
-	log.Info().Str("root", s.service.dataRoot).Msg("starting filesystem scan")
+	log.Info().Str("root", s.service.cfg.DataRoot).Msg("starting filesystem scan")
 	startTime := time.Now()
 
 	var filesToProcess []fileToProcess
 
 	// 1. Walk filesystem and identify files needing processing
-	err := filepath.Walk(s.service.dataRoot, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(s.service.cfg.DataRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors
 		}
@@ -95,7 +95,7 @@ func (s *scanner) scan() {
 		}
 
 		// Get relative path
-		relPath, err := filepath.Rel(s.service.dataRoot, path)
+		relPath, err := filepath.Rel(s.service.cfg.DataRoot, path)
 		if err != nil {
 			return nil
 		}
@@ -148,7 +148,7 @@ type fileToProcess struct {
 // checkNeedsProcessing determines if a file needs processing
 func (s *scanner) checkNeedsProcessing(path string, info os.FileInfo) (bool, string) {
 	// Get database record
-	record, err := s.service.db.GetFileByPath(path)
+	record, err := s.service.cfg.DB.GetFileByPath(path)
 	if err != nil || record == nil {
 		return true, "not_in_db"
 	}
@@ -235,7 +235,7 @@ func (s *scanner) processFiles(files []fileToProcess) {
 // processFile processes a single file during scan
 func (s *scanner) processFile(f fileToProcess) error {
 	// Get existing record (for change detection)
-	existing, _ := s.service.db.GetFileByPath(f.path)
+	existing, _ := s.service.cfg.DB.GetFileByPath(f.path)
 	oldHash := ""
 	if existing != nil && existing.Hash != nil {
 		oldHash = *existing.Hash
@@ -253,7 +253,7 @@ func (s *scanner) processFile(f fileToProcess) error {
 
 	// Create/update database record with metadata
 	record := s.service.buildFileRecord(f.path, f.info, metadata)
-	isNew, err := s.service.db.UpsertFile(record)
+	isNew, err := s.service.cfg.DB.UpsertFile(record)
 	if err != nil {
 		return err
 	}
