@@ -22,16 +22,13 @@ func GetService() *Service {
 // Service coordinates all filesystem operations
 type Service struct {
 	// Configuration
-	dataRoot string
+	cfg Config
 
 	// Sub-components
 	validator *validator
 	processor *metadataProcessor
 	watcher   *watcher
 	scanner   *scanner
-
-	// Dependencies (injected)
-	db Database
 
 	// Concurrency control
 	fileLock *fileLock
@@ -45,11 +42,10 @@ type Service struct {
 	wg       sync.WaitGroup
 }
 
-// NewService creates a new filesystem service and sets it as the singleton instance
+// NewService creates a new filesystem service
 func NewService(cfg Config) *Service {
 	s := &Service{
-		dataRoot:  cfg.DataRoot,
-		db:        cfg.DB,
+		cfg:       cfg,
 		validator: newValidator(),
 		fileLock:  &fileLock{},
 		stopChan:  make(chan struct{}),
@@ -57,10 +53,15 @@ func NewService(cfg Config) *Service {
 
 	// Initialize sub-components
 	s.processor = newMetadataProcessor(s)
-	s.watcher = newWatcher(s)
-	s.scanner = newScanner(s)
 
-	// Set as singleton instance
+	// Only create watcher if enabled
+	if cfg.WatchEnabled {
+		s.watcher = newWatcher(s)
+	}
+
+	s.scanner = newScanner(s, cfg.ScanInterval)
+
+	// Set as singleton instance for backward compatibility
 	instanceOnce.Do(func() {
 		instance = s
 	})
@@ -70,11 +71,13 @@ func NewService(cfg Config) *Service {
 
 // Start begins background processes (watching, scanning)
 func (s *Service) Start() error {
-	log.Info().Str("dataRoot", s.dataRoot).Msg("starting filesystem service")
+	log.Info().Str("dataRoot", s.cfg.DataRoot).Msg("starting filesystem service")
 
-	// Start watcher
-	if err := s.watcher.Start(); err != nil {
-		return err
+	// Start watcher if enabled
+	if s.watcher != nil {
+		if err := s.watcher.Start(); err != nil {
+			return err
+		}
 	}
 
 	// Start scanner
@@ -133,7 +136,7 @@ func (s *Service) GetFileInfo(ctx context.Context, path string) (*db.FileRecord,
 		return nil, err
 	}
 
-	return s.db.GetFileByPath(path)
+	return s.cfg.DB.GetFileByPath(path)
 }
 
 // WriteFile creates or updates a file with content

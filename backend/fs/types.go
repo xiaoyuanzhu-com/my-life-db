@@ -2,6 +2,7 @@ package fs
 
 import (
 	"io"
+	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 )
@@ -44,9 +45,10 @@ type FileChangeHandler func(event FileChangeEvent)
 
 // Config contains configuration for the FS service
 type Config struct {
-	DataRoot string
-	DB       Database
-	// NotifyService will be added when we integrate notifications
+	DataRoot     string
+	DB           Database
+	ScanInterval time.Duration // How often to scan for external changes
+	WatchEnabled bool          // Enable filesystem watching
 }
 
 // Database interface defines required database operations

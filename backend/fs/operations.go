@@ -28,14 +28,14 @@ func (s *Service) writeFile(ctx context.Context, req WriteRequest) (*WriteResult
 	defer mu.Unlock()
 
 	// 3. Get existing record (for change detection)
-	existing, _ := s.db.GetFileByPath(req.Path)
+	existing, _ := s.cfg.DB.GetFileByPath(req.Path)
 	oldHash := ""
 	if existing != nil && existing.Hash != nil {
 		oldHash = *existing.Hash
 	}
 
 	// 4. Write to filesystem
-	fullPath := filepath.Join(s.dataRoot, req.Path)
+	fullPath := filepath.Join(s.cfg.DataRoot, req.Path)
 
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
@@ -89,7 +89,7 @@ func (s *Service) writeFile(ctx context.Context, req WriteRequest) (*WriteResult
 
 	// 7. Create/update database record (SINGLE upsert with all fields)
 	record := s.buildFileRecord(req.Path, info, metadata)
-	isNew, err := s.db.UpsertFile(record)
+	isNew, err := s.cfg.DB.UpsertFile(record)
 	if err != nil {
 		// Rollback: delete file if DB upsert failed
 		os.Remove(fullPath)
@@ -146,7 +146,7 @@ func (s *Service) readFile(ctx context.Context, path string) (io.ReadCloser, err
 	}
 
 	// 2. Check file exists in database
-	record, err := s.db.GetFileByPath(path)
+	record, err := s.cfg.DB.GetFileByPath(path)
 	if err != nil || record == nil {
 		return nil, ErrFileNotFound
 	}
@@ -156,7 +156,7 @@ func (s *Service) readFile(ctx context.Context, path string) (io.ReadCloser, err
 	}
 
 	// 3. Open file from filesystem
-	fullPath := filepath.Join(s.dataRoot, path)
+	fullPath := filepath.Join(s.cfg.DataRoot, path)
 	file, err := os.Open(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -181,13 +181,13 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 	defer mu.Unlock()
 
 	// 3. Delete from filesystem
-	fullPath := filepath.Join(s.dataRoot, path)
+	fullPath := filepath.Join(s.cfg.DataRoot, path)
 	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete file from filesystem: %w", err)
 	}
 
 	// 4. Delete from database
-	if err := s.db.DeleteFile(path); err != nil {
+	if err := s.cfg.DB.DeleteFile(path); err != nil {
 		log.Warn().
 			Err(err).
 			Str("path", path).
@@ -217,14 +217,14 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	defer s.releaseMultipleLocks(locks)
 
 	// 3. Check source exists
-	srcRecord, err := s.db.GetFileByPath(src)
+	srcRecord, err := s.cfg.DB.GetFileByPath(src)
 	if err != nil || srcRecord == nil {
 		return ErrFileNotFound
 	}
 
 	// 4. Move on filesystem
-	srcFullPath := filepath.Join(s.dataRoot, src)
-	dstFullPath := filepath.Join(s.dataRoot, dst)
+	srcFullPath := filepath.Join(s.cfg.DataRoot, src)
+	dstFullPath := filepath.Join(s.cfg.DataRoot, dst)
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(filepath.Dir(dstFullPath), 0755); err != nil {
@@ -254,12 +254,12 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	newRecord.Hash = srcRecord.Hash             // Preserve hash
 	newRecord.TextPreview = srcRecord.TextPreview // Preserve text preview
 
-	if _, err := s.db.UpsertFile(newRecord); err != nil {
+	if _, err := s.cfg.DB.UpsertFile(newRecord); err != nil {
 		return fmt.Errorf("failed to create destination record: %w", err)
 	}
 
 	// Delete old record
-	if err := s.db.DeleteFile(src); err != nil {
+	if err := s.cfg.DB.DeleteFile(src); err != nil {
 		log.Warn().Err(err).Msg("failed to delete source record")
 	}
 

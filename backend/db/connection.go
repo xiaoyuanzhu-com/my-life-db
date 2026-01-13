@@ -2,72 +2,120 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 var (
-	db   *sql.DB
-	once sync.Once
-	mu   sync.RWMutex
+	// globalDB is set by the server when it initializes
+	// All existing db query functions use this
+	globalDB *DB
+	mu       sync.RWMutex
 )
 
-// GetDB returns the singleton database connection
-func GetDB() *sql.DB {
-	once.Do(func() {
-		cfg := config.Get()
+// DB wraps a sql.DB connection
+type DB struct {
+	conn *sql.DB
+	cfg  Config
+}
 
-		// Ensure database directory exists
-		if err := ensureDatabaseDirectory(cfg.DatabasePath); err != nil {
-			log.Fatal().Err(err).Msg("failed to create database directory")
-		}
+// Open opens a database connection with the given configuration
+func Open(cfg Config) (*DB, error) {
+	// Ensure database directory exists
+	if err := ensureDatabaseDirectory(cfg.Path); err != nil {
+		return nil, fmt.Errorf("failed to create database directory: %w", err)
+	}
 
-		// Open database connection with SQLite pragmas
-		// Using WAL mode, foreign keys, and optimized settings
-		dsn := cfg.DatabasePath + "?_foreign_keys=1&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-64000"
+	// Open database connection with SQLite pragmas
+	// Using WAL mode, foreign keys, and optimized settings
+	dsn := cfg.Path + "?_foreign_keys=1&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-64000"
 
-		var err error
-		db, err = sql.Open("sqlite3", dsn)
-		if err != nil {
-			log.Fatal().Err(err).Str("path", cfg.DatabasePath).Msg("failed to open database")
-		}
+	conn, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
 
-		// Configure connection pool for better concurrency
-		// WAL mode allows multiple readers + one writer concurrently
-		db.SetMaxOpenConns(5) // Allow concurrent reads
-		db.SetMaxIdleConns(2)
-		db.SetConnMaxLifetime(0) // Connections never expire
+	// Configure connection pool for better concurrency
+	// WAL mode allows multiple readers + one writer concurrently
+	conn.SetMaxOpenConns(cfg.MaxOpenConns)
+	conn.SetMaxIdleConns(cfg.MaxIdleConns)
+	conn.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
-		// Verify connection
-		if err := db.Ping(); err != nil {
-			log.Fatal().Err(err).Msg("failed to ping database")
-		}
+	// Verify connection
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
 
-		// Run migrations
-		if err := runMigrations(db); err != nil {
-			log.Fatal().Err(err).Msg("failed to run migrations")
-		}
+	// Run migrations
+	if err := runMigrations(conn); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
 
-		log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
-	})
+	log.Info().Str("path", cfg.Path).Msg("database opened")
 
-	return db
+	d := &DB{
+		conn: conn,
+		cfg:  cfg,
+	}
+
+	// Set as global for existing query functions
+	mu.Lock()
+	globalDB = d
+	mu.Unlock()
+
+	return d, nil
 }
 
 // Close closes the database connection
-func Close() error {
+func (d *DB) Close() error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if db != nil {
-		return db.Close()
+	if d.conn != nil {
+		// Clear global if this is the global instance
+		if globalDB == d {
+			globalDB = nil
+		}
+		return d.conn.Close()
 	}
 	return nil
+}
+
+// Conn returns the underlying sql.DB connection
+func (d *DB) Conn() *sql.DB {
+	return d.conn
+}
+
+// GetDB returns the global database connection for existing query functions
+// This is a compatibility layer during the refactoring
+func GetDB() *sql.DB {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	if globalDB == nil {
+		return nil
+	}
+	return globalDB.conn
+}
+
+// Transaction executes a function within a database transaction (global version)
+func Transaction(fn func(*sql.Tx) error) error {
+	mu.RLock()
+	db := globalDB
+	mu.RUnlock()
+
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	return db.Transaction(fn)
 }
 
 // ensureDatabaseDirectory creates the directory for the database file if it doesn't exist
@@ -83,8 +131,8 @@ func ensureDatabaseDirectory(dbPath string) error {
 }
 
 // Transaction executes a function within a database transaction
-func Transaction(fn func(*sql.Tx) error) error {
-	tx, err := GetDB().Begin()
+func (d *DB) Transaction(fn func(*sql.Tx) error) error {
+	tx, err := d.conn.Begin()
 	if err != nil {
 		return err
 	}

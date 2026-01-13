@@ -29,10 +29,13 @@ type scanner struct {
 }
 
 // newScanner creates a new filesystem scanner
-func newScanner(service *Service) *scanner {
+func newScanner(service *Service, interval time.Duration) *scanner {
+	if interval == 0 {
+		interval = defaultScanInterval
+	}
 	return &scanner{
 		service:  service,
-		interval: defaultScanInterval,
+		interval: interval,
 		stopChan: make(chan struct{}),
 	}
 }
