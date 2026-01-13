@@ -33,25 +33,43 @@ export default function ClaudePage() {
   // Swipe gesture handler for mobile back navigation
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
-      touchStartX.current = e.touches[0].clientX
+      // Only start tracking if touch starts from left edge (within 50px)
+      if (e.touches[0].clientX < 50) {
+        touchStartX.current = e.touches[0].clientX
+        touchEndX.current = e.touches[0].clientX
+      } else {
+        // Reset to indicate we're not tracking this gesture
+        touchStartX.current = 0
+        touchEndX.current = 0
+      }
     }
 
     const handleTouchMove = (e: TouchEvent) => {
-      touchEndX.current = e.touches[0].clientX
+      // Only track if we started from the edge
+      if (touchStartX.current > 0) {
+        touchEndX.current = e.touches[0].clientX
+      }
     }
 
     const handleTouchEnd = () => {
-      // Swipe left to go back (start X > end X, and swipe distance > 100px)
-      if (touchStartX.current - touchEndX.current > 100) {
+      // Only navigate if:
+      // 1. We started from the left edge (touchStartX > 0)
+      // 2. Swipe was leftward (start X > end X)
+      // 3. Swipe distance was significant (> 100px)
+      if (touchStartX.current > 0 && touchStartX.current - touchEndX.current > 100) {
         navigate(-1)
       }
+
+      // Reset for next gesture
+      touchStartX.current = 0
+      touchEndX.current = 0
     }
 
     // Only add listeners on mobile
     const isMobile = window.innerWidth < 768
     if (isMobile) {
-      document.addEventListener('touchstart', handleTouchStart)
-      document.addEventListener('touchmove', handleTouchMove)
+      document.addEventListener('touchstart', handleTouchStart, { passive: true })
+      document.addEventListener('touchmove', handleTouchMove, { passive: true })
       document.addEventListener('touchend', handleTouchEnd)
     }
 

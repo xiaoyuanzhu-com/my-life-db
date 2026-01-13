@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 
@@ -11,50 +10,55 @@ interface ClaudeTerminalProps {
 export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const terminalInstRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const disposableRef = useRef<{ dispose: () => void } | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
 
   useEffect(() => {
     if (!terminalRef.current) return
 
-    // Create terminal with responsive settings
-    const isMobile = window.innerWidth < 768
+    // Fixed terminal size - backend PTY will always be 80x24
+    const COLS = 80
+    const ROWS = 24
+
+    // Calculate font size to fit container width
+    const calculateFontSize = () => {
+      const container = terminalRef.current
+      if (!container) return 14
+
+      const containerWidth = container.clientWidth
+      // Character width is roughly 0.6 * font size for monospace fonts
+      // Add some padding (subtract 20px for scrollbar/padding)
+      const fontSize = Math.floor((containerWidth - 20) / (COLS * 0.6))
+
+      // Clamp between reasonable values
+      return Math.max(8, Math.min(fontSize, 16))
+    }
+
+    const fontSize = calculateFontSize()
+
     const terminal = new Terminal({
       cursorBlink: true,
-      fontSize: isMobile ? 12 : 14, // Smaller font on mobile
+      fontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#000000',
         foreground: '#ffffff',
       },
       scrollback: 1000,
-      // Set reasonable defaults that will be overridden by FitAddon
-      rows: 24,
-      cols: isMobile ? 40 : 80,
+      // Fixed size - will match backend PTY
+      rows: ROWS,
+      cols: COLS,
     })
 
-    const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
-
-    terminal.loadAddon(fitAddon)
     terminal.loadAddon(webLinksAddon)
 
     terminal.open(terminalRef.current)
 
     terminalInstRef.current = terminal
-    fitAddonRef.current = fitAddon
 
-    // Initial fit after a short delay
-    setTimeout(() => {
-      try {
-        fitAddon.fit()
-      } catch (e) {
-        console.warn('Initial fit failed:', e)
-      }
-    }, 100)
-
-    // Connect WebSocket using relative URL (browser resolves to current host:port)
+    // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/ws`
 
@@ -96,50 +100,37 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }
     })
 
+    disposableRef.current = disposable
+
     // Handle window resize with debouncing
     let resizeTimeout: number | undefined
-    let lastCols = terminal.cols
-    let lastRows = terminal.rows
 
     const handleResize = () => {
       clearTimeout(resizeTimeout)
       resizeTimeout = window.setTimeout(() => {
-        try {
-          fitAddon.fit()
-
-          // Only notify backend if dimensions actually changed
-          if ((terminal.cols !== lastCols || terminal.rows !== lastRows) && ws.readyState === WebSocket.OPEN) {
-            lastCols = terminal.cols
-            lastRows = terminal.rows
-
-            fetch(`/api/claude/sessions/${sessionId}/resize`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                cols: terminal.cols,
-                rows: terminal.rows,
-              }),
-            }).catch(console.error)
-          }
-        } catch (e) {
-          console.warn('Resize fit failed:', e)
-        }
+        const newFontSize = calculateFontSize()
+        terminal.options.fontSize = newFontSize
+        // Force terminal to refresh with new font size
+        terminal.refresh(0, terminal.rows - 1)
       }, 150)
     }
 
     window.addEventListener('resize', handleResize)
-
-    // Also handle orientation change on mobile
     window.addEventListener('orientationchange', handleResize)
 
     // Cleanup
     return () => {
       clearTimeout(resizeTimeout)
-      disposable.dispose()
+
+      if (disposableRef.current) {
+        disposableRef.current.dispose()
+      }
+
       terminal.dispose()
 
       // Close WebSocket gracefully - handle all states
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+      const ws = wsRef.current
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
         ws.close()
       }
 
