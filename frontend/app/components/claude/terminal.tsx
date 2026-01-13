@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 interface ClaudeTerminalProps {
@@ -12,30 +13,15 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const terminalInstRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const disposableRef = useRef<{ dispose: () => void } | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
 
   useEffect(() => {
     if (!terminalRef.current) return
 
-    // Fixed terminal size - backend PTY will always be 80x24
-    const COLS = 80
-    const ROWS = 24
-
-    // Calculate font size to fit container width
-    const calculateFontSize = () => {
-      const container = terminalRef.current
-      if (!container) return 14
-
-      const containerWidth = container.clientWidth
-      // Character width is roughly 0.6 * font size for monospace fonts
-      // Add some padding (subtract 20px for scrollbar/padding)
-      const fontSize = Math.floor((containerWidth - 20) / (COLS * 0.6))
-
-      // Clamp between reasonable values
-      return Math.max(8, Math.min(fontSize, 16))
-    }
-
-    const fontSize = calculateFontSize()
+    // Use a responsive font size
+    const isMobile = window.innerWidth < 768
+    const fontSize = isMobile ? 10 : 14
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -45,18 +31,31 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         background: '#000000',
         foreground: '#ffffff',
       },
-      scrollback: 1000,
-      // Fixed size - will match backend PTY
-      rows: ROWS,
-      cols: COLS,
+      scrollback: 10000,
+      // Let FitAddon calculate optimal cols/rows
+      convertEol: true,
     })
 
+    const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
+
+    terminal.loadAddon(fitAddon)
     terminal.loadAddon(webLinksAddon)
 
     terminal.open(terminalRef.current)
 
     terminalInstRef.current = terminal
+    fitAddonRef.current = fitAddon
+
+    // Fit after a brief delay to ensure container has dimensions
+    setTimeout(() => {
+      try {
+        fitAddon.fit()
+        console.log('Terminal fitted:', terminal.cols, 'cols x', terminal.rows, 'rows')
+      } catch (e) {
+        console.warn('Fit failed:', e)
+      }
+    }, 100)
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -108,10 +107,12 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     const handleResize = () => {
       clearTimeout(resizeTimeout)
       resizeTimeout = window.setTimeout(() => {
-        const newFontSize = calculateFontSize()
-        terminal.options.fontSize = newFontSize
-        // Force terminal to refresh with new font size
-        terminal.refresh(0, terminal.rows - 1)
+        try {
+          fitAddon.fit()
+          console.log('Terminal resized:', terminal.cols, 'cols x', terminal.rows, 'rows')
+        } catch (e) {
+          console.warn('Resize fit failed:', e)
+        }
       }, 150)
     }
 
@@ -140,7 +141,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   }, [sessionId])
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full overflow-hidden">
       {/* Status indicator */}
       <div className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md bg-background/80 px-2 py-1 text-xs md:right-4 md:top-4 md:px-3 md:text-sm backdrop-blur">
         <div
@@ -156,7 +157,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       </div>
 
       {/* Terminal container */}
-      <div ref={terminalRef} className="h-full w-full" />
+      <div ref={terminalRef} className="h-full w-full p-2 md:p-4" />
     </div>
   )
 }
