@@ -18,17 +18,20 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   useEffect(() => {
     if (!terminalRef.current) return
 
-    // Create terminal
+    // Create terminal with responsive settings
+    const isMobile = window.innerWidth < 768
     const terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: isMobile ? 12 : 14, // Smaller font on mobile
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#000000',
         foreground: '#ffffff',
       },
-      rows: 30,
-      cols: 120,
+      scrollback: 1000,
+      // Set reasonable defaults that will be overridden by FitAddon
+      rows: 24,
+      cols: isMobile ? 40 : 80,
     })
 
     const fitAddon = new FitAddon()
@@ -38,18 +41,22 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     terminal.loadAddon(webLinksAddon)
 
     terminal.open(terminalRef.current)
-    fitAddon.fit()
 
     terminalInstRef.current = terminal
     fitAddonRef.current = fitAddon
 
-    // Connect WebSocket
-    // Construct absolute WebSocket URL from current location
+    // Initial fit after a short delay
+    setTimeout(() => {
+      try {
+        fitAddon.fit()
+      } catch (e) {
+        console.warn('Initial fit failed:', e)
+      }
+    }, 100)
+
+    // Connect WebSocket using relative URL (browser resolves to current host:port)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const isDev = window.location.port === '12346'
-    // In dev, frontend is 12346, backend is 12345
-    const port = isDev ? '12345' : window.location.port
-    const wsUrl = `${protocol}//${window.location.hostname}:${port}/api/claude/sessions/${sessionId}/ws`
+    const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/ws`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -89,38 +96,57 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }
     })
 
-    // Handle window resize
-    const handleResize = () => {
-      fitAddon.fit()
+    // Handle window resize with debouncing
+    let resizeTimeout: number | undefined
+    let lastCols = terminal.cols
+    let lastRows = terminal.rows
 
-      // Send resize event to backend
-      if (ws.readyState === WebSocket.OPEN) {
-        fetch(`/api/claude/sessions/${sessionId}/resize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }),
-        }).catch(console.error)
-      }
+    const handleResize = () => {
+      clearTimeout(resizeTimeout)
+      resizeTimeout = window.setTimeout(() => {
+        try {
+          fitAddon.fit()
+
+          // Only notify backend if dimensions actually changed
+          if ((terminal.cols !== lastCols || terminal.rows !== lastRows) && ws.readyState === WebSocket.OPEN) {
+            lastCols = terminal.cols
+            lastRows = terminal.rows
+
+            fetch(`/api/claude/sessions/${sessionId}/resize`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cols: terminal.cols,
+                rows: terminal.rows,
+              }),
+            }).catch(console.error)
+          }
+        } catch (e) {
+          console.warn('Resize fit failed:', e)
+        }
+      }, 150)
     }
 
     window.addEventListener('resize', handleResize)
 
+    // Also handle orientation change on mobile
+    window.addEventListener('orientationchange', handleResize)
+
     // Cleanup
     return () => {
+      clearTimeout(resizeTimeout)
       disposable.dispose()
       terminal.dispose()
       ws.close()
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('orientationchange', handleResize)
     }
   }, [sessionId])
 
   return (
     <div className="relative h-full w-full">
       {/* Status indicator */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-md bg-background/80 px-3 py-1 text-sm backdrop-blur">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md bg-background/80 px-2 py-1 text-xs md:right-4 md:top-4 md:px-3 md:text-sm backdrop-blur">
         <div
           className={`h-2 w-2 rounded-full ${
             status === 'connected'
@@ -134,7 +160,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       </div>
 
       {/* Terminal container */}
-      <div ref={terminalRef} className="h-full w-full p-4" />
+      <div ref={terminalRef} className="h-full w-full" />
     </div>
   )
 }

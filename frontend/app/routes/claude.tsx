@@ -140,14 +140,14 @@ export default function ClaudePage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       {/* Desktop Header - hidden on mobile */}
       <div className="hidden md:flex items-center justify-between border-b border-border bg-background px-4 py-2">
         <div className="flex items-center gap-2">
@@ -220,7 +220,7 @@ export default function ClaudePage() {
         </Sheet>
 
         {/* Terminal area - fullscreen on mobile */}
-        <div className="flex-1 bg-background">
+        <div className="flex-1 bg-background overflow-hidden min-w-0">
           {activeSessionId ? (
             <ClaudeTerminal sessionId={activeSessionId} />
           ) : (

@@ -125,6 +125,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:12345",
         changeOrigin: false,
+        ws: true, // Enable WebSocket proxying
       },
       "/raw": {
         target: "http://localhost:12345",
