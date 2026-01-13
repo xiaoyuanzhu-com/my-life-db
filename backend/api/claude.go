@@ -148,7 +148,7 @@ func ClaudeWebSocket(c *gin.Context) {
 
 	// Accept WebSocket connection (coder/websocket)
 	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*"}, // Allow localhost with any port
+		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
 	})
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket upgrade failed")
