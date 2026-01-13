@@ -137,7 +137,12 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       clearTimeout(resizeTimeout)
       disposable.dispose()
       terminal.dispose()
-      ws.close()
+
+      // Close WebSocket gracefully - handle all states
+      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+        ws.close()
+      }
+
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
     }
