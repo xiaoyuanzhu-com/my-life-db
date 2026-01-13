@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
 // Worker manages digest processing
@@ -396,22 +395,15 @@ func isScreenshotDigester(digester string) bool {
 }
 
 // notifyPreviewReady sends a notification when a preview/screenshot is ready
+// TODO: This will be fixed when digest worker receives notifications.Service instance
 func notifyPreviewReady(filePath string, digester string) {
-	notifService := notifications.GetService()
-
-	// Determine preview type based on digester
-	previewType := "screenshot"
-	if digester == "image-preview" {
-		previewType = "image"
-	}
-
-	notifService.NotifyPreviewUpdated(filePath, previewType)
+	// TEMPORARY: Disabled until digest worker refactor is complete
+	// Will be re-enabled when Worker has notif *notifications.Service field
 
 	log.Debug().
 		Str("filePath", filePath).
 		Str("digester", digester).
-		Str("previewType", previewType).
-		Msg("preview updated notification sent")
+		Msg("preview ready (notification disabled temporarily)")
 }
 
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {

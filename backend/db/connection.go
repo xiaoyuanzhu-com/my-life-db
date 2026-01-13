@@ -118,6 +118,18 @@ func Transaction(fn func(*sql.Tx) error) error {
 	return db.Transaction(fn)
 }
 
+// Close closes the global database connection
+// DEPRECATED: This is temporary for backward compatibility
+func Close() error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if globalDB != nil {
+		return globalDB.Close()
+	}
+	return nil
+}
+
 // ensureDatabaseDirectory creates the directory for the database file if it doesn't exist
 func ensureDatabaseDirectory(dbPath string) error {
 	dir := filepath.Dir(dbPath)
