@@ -179,6 +179,53 @@ function LibraryContent() {
     setExpandedFolders(newExpandedFolders);
   };
 
+  const handleFileDeleted = useCallback((path: string) => {
+    // Close tab if the deleted file was open
+    setTabs((prev) => {
+      const filtered = prev.filter((t) => t.path !== path && !t.path.startsWith(path + '/'));
+      if (filtered.length > 0 && !filtered.some((t) => t.isActive)) {
+        filtered[filtered.length - 1].isActive = true;
+      }
+      return filtered;
+    });
+  }, []);
+
+  const handleFileRenamed = useCallback((oldPath: string, newPath: string) => {
+    // Update tab if the renamed file was open
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.path === oldPath) {
+          return { ...t, path: newPath, name: newPath.split('/').pop() || newPath };
+        }
+        // Handle files inside renamed folder
+        if (t.path.startsWith(oldPath + '/')) {
+          const newFilePath = newPath + t.path.slice(oldPath.length);
+          return { ...t, path: newFilePath };
+        }
+        return t;
+      })
+    );
+    // Update expanded folders
+    setExpandedFolders((prev) => {
+      const newSet = new Set<string>();
+      prev.forEach((p) => {
+        if (p === oldPath) {
+          newSet.add(newPath);
+        } else if (p.startsWith(oldPath + '/')) {
+          newSet.add(newPath + p.slice(oldPath.length));
+        } else {
+          newSet.add(p);
+        }
+      });
+      return newSet;
+    });
+  }, []);
+
+  const handleFileMoved = useCallback((oldPath: string, newPath: string) => {
+    // Same logic as rename for tabs
+    handleFileRenamed(oldPath, newPath);
+  }, [handleFileRenamed]);
+
   const handleContentChange = useCallback((filePath: string, content: string, isDirty: boolean) => {
     setTabs((prev) => prev.map((t) => (t.path === filePath ? { ...t, content, isDirty } : t)));
   }, []);
@@ -220,6 +267,9 @@ function LibraryContent() {
                   expandedFolders={expandedFolders}
                   onToggleFolder={handleToggleFolder}
                   selectedFilePath={activeFilePath}
+                  onFileDeleted={handleFileDeleted}
+                  onFileRenamed={handleFileRenamed}
+                  onFileMoved={handleFileMoved}
                 />
               </div>
             </ResizablePanel>

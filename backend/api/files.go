@@ -441,3 +441,205 @@ func GetDirectories(c *gin.Context) {
 
 	c.JSON(http.StatusOK, dirs)
 }
+
+// RenameLibraryFile handles POST /api/library/rename
+func RenameLibraryFile(c *gin.Context) {
+	var body struct {
+		Path    string `json:"path"`
+		NewName string `json:"newName"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if body.Path == "" || body.NewName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path and newName are required"})
+		return
+	}
+
+	// Security: prevent directory traversal
+	if strings.Contains(body.Path, "..") || strings.Contains(body.NewName, "..") || strings.Contains(body.NewName, "/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path or name"})
+		return
+	}
+
+	cfg := config.Get()
+	oldFullPath := filepath.Join(cfg.DataDir, body.Path)
+
+	// Check if source exists
+	info, err := os.Stat(oldFullPath)
+	if os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	// Build new path
+	parentDir := filepath.Dir(body.Path)
+	var newPath string
+	if parentDir == "." {
+		newPath = body.NewName
+	} else {
+		newPath = parentDir + "/" + body.NewName
+	}
+	newFullPath := filepath.Join(cfg.DataDir, newPath)
+
+	// Check if destination already exists
+	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
+		c.JSON(http.StatusConflict, gin.H{"error": "A file with this name already exists"})
+		return
+	}
+
+	// Rename on filesystem
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		log.Error().Err(err).Msg("failed to rename file")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to rename file"})
+		return
+	}
+
+	// Update database records
+	if info.IsDir() {
+		// For folders, update all paths that start with the old path
+		db.RenameFilePaths(body.Path, newPath)
+	} else {
+		// For files, just update the single record
+		db.RenameFilePath(body.Path, newPath, body.NewName)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"newPath": newPath})
+}
+
+// MoveLibraryFile handles POST /api/library/move
+func MoveLibraryFile(c *gin.Context) {
+	var body struct {
+		Path       string `json:"path"`
+		TargetPath string `json:"targetPath"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if body.Path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
+	}
+
+	// Security: prevent directory traversal
+	if strings.Contains(body.Path, "..") || strings.Contains(body.TargetPath, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
+	}
+
+	cfg := config.Get()
+	oldFullPath := filepath.Join(cfg.DataDir, body.Path)
+
+	// Check if source exists
+	info, err := os.Stat(oldFullPath)
+	if os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	// Get file name
+	fileName := filepath.Base(body.Path)
+
+	// Build new path
+	var newPath string
+	if body.TargetPath == "" {
+		newPath = fileName
+	} else {
+		newPath = body.TargetPath + "/" + fileName
+	}
+	newFullPath := filepath.Join(cfg.DataDir, newPath)
+
+	// Check if destination already exists
+	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
+		c.JSON(http.StatusConflict, gin.H{"error": "A file with this name already exists in the target location"})
+		return
+	}
+
+	// Ensure target directory exists
+	targetDir := filepath.Dir(newFullPath)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		log.Error().Err(err).Msg("failed to create target directory")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create target directory"})
+		return
+	}
+
+	// Move on filesystem
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		log.Error().Err(err).Msg("failed to move file")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move file"})
+		return
+	}
+
+	// Update database records
+	if info.IsDir() {
+		db.RenameFilePaths(body.Path, newPath)
+	} else {
+		db.RenameFilePath(body.Path, newPath, fileName)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"newPath": newPath})
+}
+
+// CreateLibraryFolder handles POST /api/library/folder
+func CreateLibraryFolder(c *gin.Context) {
+	var body struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if body.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Folder name is required"})
+		return
+	}
+
+	// Security: prevent directory traversal
+	if strings.Contains(body.Path, "..") || strings.Contains(body.Name, "..") || strings.Contains(body.Name, "/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path or name"})
+		return
+	}
+
+	cfg := config.Get()
+
+	// Build full path
+	var folderPath string
+	if body.Path == "" {
+		folderPath = body.Name
+	} else {
+		folderPath = body.Path + "/" + body.Name
+	}
+	fullPath := filepath.Join(cfg.DataDir, folderPath)
+
+	// Check if already exists
+	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
+		c.JSON(http.StatusConflict, gin.H{"error": "A folder with this name already exists"})
+		return
+	}
+
+	// Create folder
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		log.Error().Err(err).Msg("failed to create folder")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create folder"})
+		return
+	}
+
+	// Add to database
+	now := db.NowUTC()
+	db.UpsertFile(&db.FileRecord{
+		Path:          folderPath,
+		Name:          body.Name,
+		IsFolder:      true,
+		ModifiedAt:    now,
+		CreatedAt:     now,
+		LastScannedAt: now,
+	})
+
+	c.JSON(http.StatusOK, gin.H{"path": folderPath})
+}
