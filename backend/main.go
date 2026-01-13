@@ -15,68 +15,79 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
-	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 func main() {
 	cfg := config.Get()
 
-	// Initialize database
-	_ = db.GetDB()
-	log.Info().Str("path", cfg.DatabasePath).Msg("database initialized")
-
-	// Load settings and apply log level
-	settings, err := db.LoadUserSettings()
-	if err == nil && settings.Preferences.LogLevel != "" {
-		log.SetLevel(settings.Preferences.LogLevel)
-		log.Info().Str("level", settings.Preferences.LogLevel).Msg("log level set from settings")
+	// Create server config from app config
+	serverCfg := &server.Config{
+		Port:             cfg.Port,
+		Host:             cfg.Host,
+		Env:              cfg.Env,
+		DataDir:          cfg.DataDir,
+		DatabasePath:     cfg.DatabasePath,
+		FSScanInterval:   1 * time.Hour,
+		FSWatchEnabled:   true,
+		DigestWorkers:    3,
+		DigestQueueSize:  1000,
+		OpenAIAPIKey:     cfg.OpenAIAPIKey,
+		OpenAIBaseURL:    cfg.OpenAIBaseURL,
+		OpenAIModel:      cfg.OpenAIModel,
+		HAIDBaseURL:      cfg.HAIDBaseURL,
+		HAIDAPIKey:       cfg.HAIDAPIKey,
+		HAIDChromeCDPURL: cfg.HAIDChromeCDPURL,
 	}
 
-	// Set Gin to release mode to disable its default debug logging
-	// We use our own zerolog-based request logger instead
-	gin.SetMode(gin.ReleaseMode)
-
-	// Create Gin router
-	r := gin.New()
-
-	// Middleware
-	r.Use(gin.Recovery())
-
-	// TEMPORARY: Comment out middleware for WebSocket debugging
-	/*
-	// Request logging middleware (uses zerolog)
-	r.Use(log.GinLogger())
-
-	// CORS for development - skip for WebSocket endpoints
-	if cfg.IsDevelopment() {
-		r.Use(corsMiddlewareSkipWS())
+	// Create server
+	srv, err := server.New(serverCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create server")
 	}
 
-	// Security headers (production only) - skip for WebSocket endpoints
-	if !cfg.IsDevelopment() {
-		r.Use(securityHeadersMiddlewareSkipWS())
+	// Initialize Claude Code manager
+	if err := api.InitClaudeManager(); err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize claude manager")
 	}
-	*/
-
-	// Trust proxy headers
-	r.SetTrustedProxies(nil) // Trust all proxies, or set specific ones
-
-	// Ignore .well-known requests (Chrome DevTools, etc.)
-	r.GET("/.well-known/*path", func(c *gin.Context) {
-		c.Status(http.StatusNotFound)
-	})
 
 	// Setup API routes
-	api.SetupRoutes(r)
+	handlers := api.NewHandlers(srv)
+	api.SetupRoutes(srv.Router(), handlers)
 
-	// Serve static files from frontend dist directory (built frontend)
-	// When running from root directory, paths are relative to root
-	// Use custom handlers to add Cache-Control headers
+	// Setup static file serving and SPA fallback
+	setupStaticRoutes(srv.Router())
 
+	// Start server in background
+	go func() {
+		log.Info().Str("addr", fmt.Sprintf("%s:%d", serverCfg.Host, serverCfg.Port)).Msg("server starting")
+		printNetworkAddresses(serverCfg.Port)
+
+		if err := srv.Start(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("server error")
+		}
+	}()
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info().Msg("shutting down server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("server shutdown error")
+	}
+
+	log.Info().Msg("server stopped")
+}
+
+// setupStaticRoutes configures static file serving
+func setupStaticRoutes(r *gin.Engine) {
 	// Assets with content hash (immutable, cache for 1 year)
 	r.GET("/assets/*filepath", serveImmutableAssets("frontend/dist/assets"))
 
@@ -100,133 +111,12 @@ func main() {
 		c.File("frontend/dist/index.html")
 	})
 
-	// Start background services
-	log.Info().Msg("starting background services")
+	// Raw file serving
+	r.GET("/raw/*path", serveRawFileHandler())
+	r.PUT("/raw/*path", saveRawFileHandler())
 
-	// Initialize Claude Code manager
-	if err := api.InitClaudeManager(); err != nil {
-		log.Fatal().Err(err).Msg("failed to initialize claude manager")
-	}
-
-	// Initialize FS service
-	fsService := fs.NewService(fs.Config{
-		DataRoot: cfg.DataDir,
-		DB:       fs.NewDBAdapter(),
-	})
-
-	// Initialize digest worker
-	digestWorker := digest.NewWorker(
-		digest.Config{
-			Workers:   3,
-			QueueSize: 1000,
-		},
-		nil, // TODO: Pass db.DB instance once we have it
-		notifications.GetService(),
-	)
-
-	// Connect FS service to digest worker
-	// When files change on filesystem (new or content changed), trigger digest processing
-	fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
-		// Trigger digest processing if content changed
-		if event.ContentChanged {
-			digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
-		}
-
-		// Notify UI of file changes (for external file additions like AirDrop)
-		// Only notify for new files or content changes
-		if event.IsNew || event.ContentChanged {
-			notifications.GetService().NotifyInboxChanged()
-		}
-	})
-
-	// Start services
-	if err := fsService.Start(); err != nil {
-		log.Fatal().Err(err).Msg("failed to start FS service")
-	}
-	go digestWorker.Start()
-
-	// Create HTTP server
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: r,
-	}
-
-	// Start server
-	go func() {
-		log.Info().
-			Str("addr", addr).
-			Str("env", cfg.Env).
-			Msg("server starting")
-
-		// Print network addresses
-		printNetworkAddresses(cfg.Port)
-
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("server error")
-		}
-	}()
-
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Info().Msg("shutting down server")
-
-	// Stop services first (they may hold db connections)
-	fsService.Stop()
-	digestWorker.Stop()
-
-	// Shutdown notification service to close all SSE connections
-	notifications.GetService().Shutdown()
-
-	// Shutdown server with timeout to close remaining HTTP connections
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error().Err(err).Msg("server shutdown error")
-	}
-
-	// Close database
-	if err := db.Close(); err != nil {
-		log.Error().Err(err).Msg("database close error")
-	}
-
-	log.Info().Msg("server stopped")
-}
-
-// corsMiddlewareSkipWS creates a CORS middleware that skips WebSocket endpoints
-func corsMiddlewareSkipWS() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Skip CORS headers for WebSocket endpoints to avoid "response already written" error
-		if strings.HasSuffix(c.Request.URL.Path, "/ws") {
-			c.Next()
-			return
-		}
-
-		origin := c.Request.Header.Get("Origin")
-		allowedOrigins := map[string]bool{
-			"http://localhost:12345": true,
-			"http://localhost:12346": true,
-		}
-
-		if allowedOrigins[origin] {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, Upload-Offset, Upload-Length, Upload-Metadata, Tus-Resumable, X-Requested-With, Idempotency-Key")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "Upload-Offset, Upload-Length, Location, Tus-Resumable")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	}
+	// SQLAR file serving
+	r.GET("/sqlar/*path", serveSqlarFileHandler())
 }
 
 func printNetworkAddresses(port int) {
@@ -259,39 +149,6 @@ func printNetworkAddresses(port int) {
 		for _, addr := range addresses {
 			log.Info().Str("url", addr).Msg("network")
 		}
-	}
-}
-
-// securityHeadersMiddlewareSkipWS adds security headers, skipping WebSocket endpoints
-func securityHeadersMiddlewareSkipWS() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Skip security headers for WebSocket endpoints
-		if strings.HasSuffix(c.Request.URL.Path, "/ws") {
-			c.Next()
-			return
-		}
-		// HSTS - enforce HTTPS for 1 year, include subdomains
-		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-
-		// Prevent MIME type sniffing
-		c.Header("X-Content-Type-Options", "nosniff")
-
-		// XSS protection (legacy, but still useful for older browsers)
-		c.Header("X-XSS-Protection", "1; mode=block")
-
-		// Clickjacking protection
-		c.Header("X-Frame-Options", "SAMEORIGIN")
-
-		// Cross-Origin-Opener-Policy for origin isolation
-		c.Header("Cross-Origin-Opener-Policy", "same-origin")
-
-		// Referrer policy - don't leak full URLs to other origins
-		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-
-		// Permissions policy - disable unnecessary features
-		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
-
-		c.Next()
 	}
 }
 
@@ -396,5 +253,27 @@ func serveSitemapXml() gin.HandlerFunc {
 		c.Header("Content-Type", "application/xml; charset=utf-8")
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.String(http.StatusOK, sitemap)
+	}
+}
+
+// Placeholder handlers for file serving (to be implemented)
+func serveRawFileHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// TODO: Implement raw file serving
+		c.Status(http.StatusNotImplemented)
+	}
+}
+
+func saveRawFileHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// TODO: Implement raw file saving
+		c.Status(http.StatusNotImplemented)
+	}
+}
+
+func serveSqlarFileHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// TODO: Implement SQLAR file serving
+		c.Status(http.StatusNotImplemented)
 	}
 }
