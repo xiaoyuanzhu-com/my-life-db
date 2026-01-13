@@ -58,27 +58,90 @@ my-life-db/
 │   └── package.json
 ├── backend/            # Go 1.25 HTTP server (Gin framework)
 │   ├── api/            # HTTP handlers (~40 endpoints in routes.go)
+│   │   └── handlers.go # Handlers struct with server reference
 │   ├── auth/           # OAuth implementation
 │   ├── config/         # Configuration management
 │   ├── db/             # SQLite database layer + migrations
+│   ├── fs/             # Filesystem service
 │   ├── log/            # Structured logging (zerolog)
 │   ├── models/         # Domain models
 │   ├── notifications/  # SSE service for real-time updates
+│   ├── server/         # Server struct - owns all components
+│   │   ├── server.go   # Server lifecycle & component management
+│   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
 │   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI, HAID)
 │   ├── workers/
-│   │   ├── digest/     # Digest processor worker + digester registry
-│   │   └── fs/         # File system watcher (fsnotify)
+│   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
-│   └── main.go         # Entry point
+│   └── main.go         # Entry point - creates Server and wires routes
 └── docs/               # Product and technical design docs
+    ├── backend-arch.md # Backend architecture documentation
+    └── module-interfaces.md # Module interface specifications
 ```
+
+### Server Architecture
+
+The backend uses a **server-centric architecture** where a `server.Server` struct owns and coordinates all application components:
+
+```go
+// server/server.go
+type Server struct {
+    cfg          *Config
+    database     *db.DB
+    fsService    *fs.Service
+    digestWorker *digest.Worker
+    notifService *notifications.Service
+    router       *gin.Engine
+    http         *http.Server
+}
+```
+
+**Key principles:**
+- **No global singletons** (except logging) - all stateful components are owned by Server
+- **Explicit dependencies** - components receive dependencies via constructors
+- **Clear lifecycle** - Server manages initialization order and graceful shutdown
+- **Dependency injection** - API handlers receive Server reference via `api.Handlers` struct
+
+**Component initialization order:**
+1. Database (`db.Open()`)
+2. Notifications service (`notifications.NewService()`)
+3. FS service (`fs.NewService()` with db reference)
+4. Digest worker (`digest.NewWorker()` with db + notifications)
+5. Wire event handlers between components
+6. Setup Gin router
+
+**API handlers pattern:**
+```go
+// api/handlers.go
+type Handlers struct {
+    server *server.Server
+}
+
+func (h *Handlers) GetInbox(c *gin.Context) {
+    // Access components via h.server
+    fs := h.server.FS()
+    db := h.server.DB()
+    // ...
+}
+```
+
+**Main.go flow:**
+1. Load config from environment
+2. Create `server.Config`
+3. Create server with `server.New(cfg)`
+4. Initialize Claude manager
+5. Setup routes with `api.SetupRoutes(srv.Router(), handlers)`
+6. Start server with `srv.Start()`
+7. Graceful shutdown with `srv.Shutdown(ctx)`
+
+See [docs/backend-arch.md](docs/backend-arch.md) for detailed architecture documentation.
 
 ### Background Workers
 
 The backend runs two concurrent workers:
 
-1. **FS Worker** (`workers/fs/`): Watches the data directory for file changes using fsnotify, scans periodically (hourly), and notifies the digest worker of changes.
+1. **FS Service** (`fs/`): Watches the data directory for file changes using fsnotify, scans periodically (hourly), and notifies the digest worker of changes via event handlers.
 
 2. **Digest Worker** (`workers/digest/`): Processes files through registered digesters (e.g., markdown, PDF, EPUB, images). Uses a registry pattern with 3 parallel processing goroutines. Supervisors ensure pending digests are eventually processed.
 
