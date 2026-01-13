@@ -24,32 +24,24 @@ type Event struct {
 	Data      any       `json:"data,omitempty"`
 }
 
-// NotificationService manages SSE subscriptions and event broadcasting
-type NotificationService struct {
+// Service manages SSE subscriptions and event broadcasting
+type Service struct {
 	mu          sync.RWMutex
 	subscribers map[chan Event]struct{}
 	done        chan struct{}
 }
 
-var (
-	instance *NotificationService
-	once     sync.Once
-)
-
-// GetService returns the singleton notification service
-func GetService() *NotificationService {
-	once.Do(func() {
-		instance = &NotificationService{
-			subscribers: make(map[chan Event]struct{}),
-			done:        make(chan struct{}),
-		}
-	})
-	return instance
+// NewService creates a new notification service
+func NewService() *Service {
+	return &Service{
+		subscribers: make(map[chan Event]struct{}),
+		done:        make(chan struct{}),
+	}
 }
 
 // Subscribe creates a new subscription channel
 // Returns the event channel and an unsubscribe function
-func (s *NotificationService) Subscribe() (<-chan Event, func()) {
+func (s *Service) Subscribe() (<-chan Event, func()) {
 	ch := make(chan Event, 10)
 
 	s.mu.Lock()
@@ -71,7 +63,7 @@ func (s *NotificationService) Subscribe() (<-chan Event, func()) {
 }
 
 // Notify broadcasts an event to all subscribers
-func (s *NotificationService) Notify(event Event) {
+func (s *Service) Notify(event Event) {
 	if event.Timestamp == "" {
 		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -89,7 +81,7 @@ func (s *NotificationService) Notify(event Event) {
 }
 
 // NotifyInboxChanged sends an inbox-changed event
-func (s *NotificationService) NotifyInboxChanged() {
+func (s *Service) NotifyInboxChanged() {
 	s.Notify(Event{
 		Type:      EventInboxChanged,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -97,7 +89,7 @@ func (s *NotificationService) NotifyInboxChanged() {
 }
 
 // NotifyPinChanged sends a pin-changed event
-func (s *NotificationService) NotifyPinChanged(path string) {
+func (s *Service) NotifyPinChanged(path string) {
 	s.Notify(Event{
 		Type:      EventPinChanged,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -106,7 +98,7 @@ func (s *NotificationService) NotifyPinChanged(path string) {
 }
 
 // NotifyDigestUpdate sends a digest-update event
-func (s *NotificationService) NotifyDigestUpdate(path string, data any) {
+func (s *Service) NotifyDigestUpdate(path string, data any) {
 	s.Notify(Event{
 		Type:      EventDigestUpdate,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -117,7 +109,7 @@ func (s *NotificationService) NotifyDigestUpdate(path string, data any) {
 
 // NotifyPreviewUpdated sends a preview-updated event
 // Used when file previews are ready (text, images, documents, screenshots)
-func (s *NotificationService) NotifyPreviewUpdated(path string, previewType string) {
+func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
 	s.Notify(Event{
 		Type:      EventPreviewUpdated,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -129,7 +121,7 @@ func (s *NotificationService) NotifyPreviewUpdated(path string, previewType stri
 }
 
 // Shutdown closes the notification service
-func (s *NotificationService) Shutdown() {
+func (s *Service) Shutdown() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -143,7 +135,7 @@ func (s *NotificationService) Shutdown() {
 }
 
 // SubscriberCount returns the number of active subscribers
-func (s *NotificationService) SubscriberCount() int {
+func (s *Service) SubscriberCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.subscribers)
