@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router'
 import { ClaudeTerminal } from '~/components/claude/terminal'
 import { SessionList } from '~/components/claude/session-list'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 
 interface Session {
   id: string
@@ -14,15 +16,53 @@ interface Session {
 }
 
 export default function ClaudePage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
+  const touchStartX = useRef<number>(0)
+  const touchEndX = useRef<number>(0)
 
   // Load sessions on mount
   useEffect(() => {
     loadSessions()
   }, [])
+
+  // Swipe gesture handler for mobile back navigation
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      touchEndX.current = e.touches[0].clientX
+    }
+
+    const handleTouchEnd = () => {
+      // Swipe left to go back (start X > end X, and swipe distance > 100px)
+      if (touchStartX.current - touchEndX.current > 100) {
+        navigate(-1)
+      }
+    }
+
+    // Only add listeners on mobile
+    const isMobile = window.innerWidth < 768
+    if (isMobile) {
+      document.addEventListener('touchstart', handleTouchStart)
+      document.addEventListener('touchmove', handleTouchMove)
+      document.addEventListener('touchend', handleTouchEnd)
+    }
+
+    return () => {
+      if (isMobile) {
+        document.removeEventListener('touchstart', handleTouchStart)
+        document.removeEventListener('touchmove', handleTouchMove)
+        document.removeEventListener('touchend', handleTouchEnd)
+      }
+    }
+  }, [navigate])
 
   const loadSessions = async () => {
     try {
@@ -108,8 +148,8 @@ export default function ClaudePage() {
 
   return (
     <div className="flex h-screen flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border bg-background px-4 py-2">
+      {/* Desktop Header - hidden on mobile */}
+      <div className="hidden md:flex items-center justify-between border-b border-border bg-background px-4 py-2">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -127,20 +167,59 @@ export default function ClaudePage() {
         </Button>
       </div>
 
+      {/* Mobile Floating Action Buttons */}
+      <div className="md:hidden fixed bottom-4 right-4 z-20 flex flex-col gap-2">
+        <Button
+          size="icon"
+          className="h-12 w-12 rounded-full shadow-lg"
+          onClick={() => setShowMobileSidebar(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <Button
+          size="icon"
+          className="h-12 w-12 rounded-full shadow-lg"
+          onClick={createSession}
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+      </div>
+
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* Desktop Sidebar */}
         {showSidebar && (
-          <SessionList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelect={setActiveSessionId}
-            onDelete={deleteSession}
-            onRename={updateSessionTitle}
-          />
+          <div className="hidden md:block">
+            <SessionList
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelect={setActiveSessionId}
+              onDelete={deleteSession}
+              onRename={updateSessionTitle}
+            />
+          </div>
         )}
 
-        {/* Terminal area */}
+        {/* Mobile Sidebar Sheet */}
+        <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
+          <SheetContent side="left" className="w-[280px] p-0 md:hidden">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle>Sessions</SheetTitle>
+            </SheetHeader>
+            <SessionList
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelect={(id) => {
+                setActiveSessionId(id)
+                setShowMobileSidebar(false)
+              }}
+              onDelete={deleteSession}
+              onRename={updateSessionTitle}
+            />
+          </SheetContent>
+        </Sheet>
+
+        {/* Terminal area - fullscreen on mobile */}
         <div className="flex-1 bg-background">
           {activeSessionId ? (
             <ClaudeTerminal sessionId={activeSessionId} />

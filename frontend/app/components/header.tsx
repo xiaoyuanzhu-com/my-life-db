@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { Settings, Home, Library, CircleUserRound } from 'lucide-react';
+import { Settings, Home, Library, CircleUserRound, Terminal } from 'lucide-react';
 import { getGravatarUrlSync } from '~/lib/gravatar';
 import { useAuth } from '~/contexts/auth-context';
 import {
@@ -54,6 +54,7 @@ export function Header() {
   const navLinks = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/library', label: 'Library', icon: Library },
+    { href: '/claude', label: 'Claude', icon: Terminal },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];
 
@@ -75,7 +76,7 @@ export function Header() {
 
           {/* Desktop navigation - hidden on mobile */}
           <nav className="hidden md:flex gap-6 items-center">
-            {isAuthenticated && navLinks.slice(0, 2).map((link) => {
+            {isAuthenticated && navLinks.slice(0, 3).map((link) => {
               const isActive = pathname === link.href;
               return (
                 <Link

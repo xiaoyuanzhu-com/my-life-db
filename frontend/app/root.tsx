@@ -1,11 +1,18 @@
-import { Outlet, ScrollRestoration, isRouteErrorResponse } from "react-router";
+import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
 import "./globals.css";
 
 function ConditionalHeader() {
-  // Always show header
-  return <Header />;
+  const location = useLocation();
+  const isClaudePage = location.pathname === '/claude';
+
+  // Hide header on mobile for Claude page, always show on desktop
+  return (
+    <div className={isClaudePage ? 'hidden md:block' : ''}>
+      <Header />
+    </div>
+  );
 }
 
 export default function Root() {
