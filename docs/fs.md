@@ -1,14 +1,14 @@
 # Filesystem Service Architecture
 
 **Date:** 2026-01-12
-**Status:** Design Document
-**Related:** [FS Worker Optimization Plan](./fs-worker-optimization-plan.md)
+**Last Updated:** 2026-01-13
+**Status:** Implemented
 
 ---
 
 ## Overview
 
-The Filesystem Service (`backend/fs/`) is the **single coordinator** for all filesystem operations in MyLifeDB. It replaces the current "worker" pattern with a proper service that handles read, write, delete, and metadata operations while maintaining concurrency safety and data consistency.
+The Filesystem Service (`backend/fs/`) is the **single coordinator** for all filesystem operations in MyLifeDB. It provides a unified interface for file operations while maintaining concurrency safety and data consistency through per-file locking and atomic operations.
 
 ---
 
@@ -49,15 +49,10 @@ NOT Responsible For:
 ```
 
 ### 4. **Atomic Operations**
-```go
-// Before: Multi-step, non-atomic
-os.WriteFile(path, data)           // Step 1
-metadata := computeHash(path)      // Step 2
-db.UpsertFile(record)              // Step 3
-db.UpdateFileField("text_preview") // Step 4
-notify.Send(event)                 // Step 5
+All file operations are atomic to prevent race conditions and data loss:
 
-// After: Single atomic operation
+```go
+// Single atomic operation
 fs.WriteFile(ctx, WriteRequest{
     Path: path,
     Content: data,
@@ -65,6 +60,13 @@ fs.WriteFile(ctx, WriteRequest{
 })
 // Internally: write → metadata → single DB upsert → notify
 ```
+
+**Key principles eliminated from previous architecture:**
+- ❌ Multi-step updates (e.g., separate `text_preview` updates)
+- ❌ Non-transactional DB operations
+- ❌ Separate hash computation after file creation
+- ✅ All metadata computed and stored in single DB upsert
+- ✅ Per-file locks prevent concurrent processing
 
 ---
 
@@ -909,140 +911,69 @@ func TestFileLifecycle(t *testing.T) {
 
 ---
 
-## Migration Path
+## Database Schema Considerations
 
-### Phase 1: Create Service Interface (Non-Breaking)
-```
-✅ Create backend/fs/ directory structure
-✅ Implement Service with all methods
-✅ Keep existing workers/fs/ functioning
-✅ Add feature flag to switch between old/new
+### Key Fields for File Tracking
+
+```sql
+CREATE TABLE files (
+    path TEXT PRIMARY KEY,
+    name TEXT,
+    is_folder INTEGER,
+    size INTEGER,
+    mime_type TEXT,
+    hash TEXT,                  -- SHA-256 hex, computed atomically with file write
+    modified_at TEXT,           -- RFC3339 format
+    last_scanned_at TEXT,       -- Last time scanner checked this file
+    text_preview TEXT,          -- First 60 lines for text files, updated atomically
+    screenshot_sqlar TEXT,      -- SQLAR archive name for screenshots
+    hash_failed_at TEXT,        -- Track hash computation failures for retry
+    hash_failure_reason TEXT,   -- Error message for debugging
+    created_at TEXT,
+    updated_at TEXT
+);
 ```
 
-### Phase 2: Migrate API Handlers
-```
-✅ Update api/inbox.go to use fs.Service
-✅ Update api/files.go to use fs.Service
-✅ Update api/upload.go to use fs.Service
-✅ Test each migration thoroughly
-```
-
-### Phase 3: Migrate Digest Service
-```
-✅ Update digest.Service to use fs.Service for file reads
-✅ Remove direct filesystem access from digest workers
-```
-
-### Phase 4: Deprecate Old Worker
-```
-✅ Remove workers/fs/ directory
-✅ Remove feature flag
-✅ Update all imports
-```
+**Critical implementation notes:**
+- `text_preview` MUST be included in `ON CONFLICT DO UPDATE` clause to prevent NULL overwrites
+- `hash_failed_at` enables exponential backoff retry for failed computations
+- `screenshot_sqlar` uses `COALESCE(excluded.screenshot_sqlar, screenshot_sqlar)` to preserve existing values
 
 ---
 
-## Known Issues & TODOs
+## Critical Design Decisions
 
-### Critical Issues (Must Fix During Refactor)
+### Issues Resolved by This Architecture
 
-#### 1. ✅ text_preview Data Loss (FIXED)
-**Status:** Fixed in `db/files.go` line 165
-**Issue:** `BatchUpsertFiles` was missing `text_preview` in ON CONFLICT clause, causing periodic scans to NULL out text previews
-**Verification Needed:** Test that periodic scans preserve text_preview after refactor
+The service was designed to eliminate 18 identified issues from the previous worker-based architecture:
 
-#### 2. Race Condition in Hash Computation and Digest Triggering
-**File:** `workers/fs/worker.go:267-378`
-**Issue:** Hash change detection reads old hash, computes new hash, then checks for changes - but another goroutine could update hash in between
-**Fix in Refactor:** Per-file locking eliminates this race condition
+#### 1. **Atomic Metadata Updates**
+- **Problem:** Separate `text_preview` updates after file upsert caused data loss during scans
+- **Solution:** Single DB upsert with all metadata (hash + text_preview) computed beforehand
 
-#### 3. text_preview Update Race Condition
-**Files:** `workers/fs/worker.go:342-353`, `514-525`
-**Issue:** text_preview updated in separate DB call after UpsertFile
-**Fix in Refactor:** Single atomic upsert with ALL fields including text_preview
+#### 2. **Race Condition Prevention**
+- **Problem:** Multiple concurrent ProcessFile calls from API, FS watcher, and scans
+- **Solution:** Per-file locks (`sync.Map`) serialize operations on the same file while allowing parallel processing of different files
 
-#### 4. BatchUpsertFiles Race Condition
-**File:** `db/files.go:120-189`
-**Issue:** Checks for existing files OUTSIDE transaction
-**Fix in Refactor:** Move existence check inside transaction or use CTE
+#### 3. **Hash Change Detection**
+- **Problem:** Reading old hash, computing new hash, then checking for changes had race window
+- **Solution:** Acquire file lock before any operation, detect changes within lock
 
-#### 5. Missing Hash in scanDirectory Initial Upsert
-**File:** `workers/fs/worker.go:429-504`
-**Issue:** Files upserted twice: first without hash, then with hash
-**Fix in Refactor:** Single upsert with all metadata computed beforehand
+#### 4. **Transaction Boundaries**
+- **Problem:** Checking file existence outside transaction, then upserting separately
+- **Solution:** All DB operations wrapped in transactions with proper rollback
 
-### Design Issues (Address During Refactor)
+#### 5. **Idempotent Operations**
+- **Problem:** Repeated operations had undefined behavior
+- **Solution:** Operations are idempotent - calling `WriteFile` multiple times produces same final state
 
-#### 6. Inconsistent text_preview Handling Pattern
-**Issue:** Three different patterns across API uploads, FS events, and scans
-**Fix in Refactor:** Single `WriteFile` method with consistent behavior
+#### 6. **Retry Mechanism**
+- **Problem:** Failed hash computation never retried
+- **Solution:** Exponential backoff retry with `hash_failed_at` tracking
 
-#### 7. Fragile Hash Change Detection
-**Issue:** `oldHash == ""` means both "file is new" and "hash computation failed"
-**Fix in Refactor:** Explicit state tracking with `hash_failed_at` field
-
-#### 8. Duplicate File Processing in scanDirectory
-**Issue:** New files get upserted twice
-**Fix in Refactor:** Eliminated by single-pass processing
-
-#### 9. text_preview Overwrite Bug in scanDirectory
-**Issue:** Second UpsertFile NULLs out text_preview
-**Fix in Refactor:** Single upsert pattern eliminates this
-
-### Race Conditions (Eliminate During Refactor)
-
-#### 10. Multiple Concurrent ProcessFile Calls
-**Issue:** No synchronization between API, FS watcher, and scans
-**Fix in Refactor:** Per-file locks + processing marks
-
-#### 11. UpsertFile isNewInsert Race Window
-**Issue:** Checks if file exists OUTSIDE transaction
-**Fix in Refactor:** Wrap in transaction or accept eventual consistency
-
-#### 12. handleEvent Directory/File Race
-**Issue:** Calls os.Stat() twice on same file
-**Fix in Refactor:** Single stat call in new event handling
-
-### Data Consistency (Improve During Refactor)
-
-#### 13. Missing Hash Computation Fallback
-**Issue:** If hash computation fails, never retried
-**Fix in Refactor:** Add retry mechanism with exponential backoff
-
-#### 14. screenshot_sqlar Handling Fragility
-**Issue:** Relies on implicit SQLite preservation
-**Fix in Refactor:** Explicit COALESCE or separate update function
-
-### Architectural Improvements (Implement During Refactor)
-
-#### 15. No Atomicity Between File Metadata and Database
-**Issue:** Process crashes leave inconsistent state
-**Fix in Refactor:** Add reconciliation job, health checks
-
-#### 16. Cascading Updates from Separate text_preview Updates
-**Issue:** Multiple writes for single logical operation
-**Fix in Refactor:** Single atomic upsert eliminates this
-
-#### 17. No Idempotency Guarantees
-**Issue:** Repeated operations have undefined behavior
-**Fix in Refactor:** Document and enforce idempotency contracts
-
-#### 18. Missing Transactional Boundaries
-**Issue:** Partial failures leave inconsistent state
-**Fix in Refactor:** Wrap operations in transactions where appropriate
-
-### Post-Refactor Verification Tasks
-
-- [ ] Run full test suite with new fs.Service
-- [ ] Verify no text_preview data loss during scans
-- [ ] Load test with 1000 concurrent file uploads
-- [ ] Verify no race conditions in hash computation
-- [ ] Test external file addition (AirDrop) detection
-- [ ] Verify digest processing triggered correctly
-- [ ] Test metadata retry mechanism
-- [ ] Verify transaction rollbacks work correctly
-- [ ] Performance benchmark vs old worker implementation
-- [ ] Memory usage analysis (check for lock leaks)
+#### 7. **Consistent Processing Pattern**
+- **Problem:** Three different patterns for API uploads, FS events, and scans
+- **Solution:** Single `WriteFile`/`ProcessMetadata` methods used by all code paths
 
 ---
 
@@ -1162,16 +1093,116 @@ func (s *Service) WriteFile(ctx context.Context, req WriteRequest) (*WriteResult
 
 ---
 
-## Conclusion
+## Common Pitfalls to Avoid
 
-The new Filesystem Service architecture provides:
+When extending or modifying the filesystem service, avoid these anti-patterns:
+
+### ❌ DON'T: Multi-Step Updates
+```go
+// BAD: Two separate DB operations
+db.UpsertFile(record)
+db.UpdateFileField(path, "text_preview", preview)
+```
+
+```go
+// GOOD: Single atomic upsert
+db.UpsertFile(&FileRecord{
+    Path:        path,
+    Hash:        &hash,
+    TextPreview: preview,
+    // ... all fields
+})
+```
+
+### ❌ DON'T: Check Existence Outside Transaction
+```go
+// BAD: Race window between check and upsert
+exists := db.FileExists(path)
+if !exists {
+    db.InsertFile(record)
+}
+```
+
+```go
+// GOOD: Use transaction or UPSERT
+tx := db.Begin()
+defer tx.Rollback()
+isNew := tx.UpsertFile(record)
+tx.Commit()
+```
+
+### ❌ DON'T: Skip Per-File Locking
+```go
+// BAD: No synchronization for same file
+func ProcessFile(path string) {
+    metadata := ComputeMetadata(path)
+    db.UpsertFile(metadata)
+}
+```
+
+```go
+// GOOD: Acquire file lock first
+func (s *Service) ProcessFile(path string) {
+    mu := s.acquireFileLock(path)
+    mu.Lock()
+    defer mu.Unlock()
+
+    metadata := s.ComputeMetadata(path)
+    s.db.UpsertFile(metadata)
+}
+```
+
+### ❌ DON'T: Assume Empty Hash Means "New File"
+```go
+// BAD: Can't distinguish "new" from "hash failed"
+if oldHash == "" {
+    // Is this new, or did hash computation fail?
+}
+```
+
+```go
+// GOOD: Explicit tracking
+if existing == nil {
+    // Truly new file
+} else if existing.Hash == nil && existing.HashFailedAt != nil {
+    // Hash computation failed, retrying
+}
+```
+
+### ❌ DON'T: Call os.Stat() Multiple Times
+```go
+// BAD: File could change between calls
+if stat1, _ := os.Stat(path); stat1.IsDir() {
+    handleDirectory(path)
+}
+stat2, _ := os.Stat(path)
+processFile(path, stat2)
+```
+
+```go
+// GOOD: Single stat call
+info, err := os.Stat(path)
+if err != nil {
+    return err
+}
+if info.IsDir() {
+    return handleDirectory(path, info)
+}
+return processFile(path, info)
+```
+
+---
+
+## Summary
+
+The Filesystem Service architecture provides:
 
 ✅ **Single entry point** for all filesystem operations
-✅ **Concurrent execution** without serialization bottleneck
-✅ **Atomic operations** eliminating race conditions
-✅ **Consistent patterns** across all code paths
-✅ **Proper error handling** with retry mechanisms
-✅ **Testable design** with clear interfaces
+✅ **Concurrent execution** without serialization bottleneck (per-file locks)
+✅ **Atomic operations** eliminating race conditions and data loss
+✅ **Consistent patterns** across all code paths (API, watcher, scanner)
+✅ **Proper error handling** with exponential backoff retry
+✅ **Testable design** with clear interfaces and dependency injection
 ✅ **Observability** with metrics and structured logging
 
-This design eliminates all 18 known issues while maintaining high performance and setting the foundation for future scalability.
+This design eliminates the 18 identified race conditions and consistency issues from the previous worker-based architecture while maintaining high performance through parallel processing of different files.
