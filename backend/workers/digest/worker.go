@@ -7,10 +7,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
 // Worker manages digest processing
 type Worker struct {
+	cfg   Config
+	db    *db.DB
+	notif *notifications.Service
+
 	stopChan   chan struct{}
 	wg         sync.WaitGroup
 	queue      chan string
@@ -18,29 +23,47 @@ type Worker struct {
 }
 
 var (
+	// TEMPORARY: Global instance for backward compatibility during refactoring
+	// This will be removed once Server owns the digest.Worker
 	globalWorker     *Worker
 	globalWorkerOnce sync.Once
 )
 
-// NewWorker creates a new digest worker
-func NewWorker() *Worker {
+// NewWorker creates a new digest worker with dependencies
+func NewWorker(cfg Config, database *db.DB, notifService *notifications.Service) *Worker {
+	if cfg.QueueSize == 0 {
+		cfg.QueueSize = 1000
+	}
+	if cfg.Workers == 0 {
+		cfg.Workers = 3
+	}
+
+	w := &Worker{
+		cfg:      cfg,
+		db:       database,
+		notif:    notifService,
+		stopChan: make(chan struct{}),
+		queue:    make(chan string, cfg.QueueSize),
+	}
+
+	// Set as global for backward compatibility
 	globalWorkerOnce.Do(func() {
-		globalWorker = &Worker{
-			stopChan: make(chan struct{}),
-			queue:    make(chan string, 1000),
-		}
+		globalWorker = w
 	})
-	return globalWorker
+
+	return w
 }
 
 // GetWorker returns the global digest worker instance
+// DEPRECATED: This is temporary for backward compatibility
+// Use digest.Worker instance passed from Server instead
 func GetWorker() *Worker {
 	return globalWorker
 }
 
 // Start begins processing digests
 func (w *Worker) Start() {
-	log.Info().Msg("starting digest worker")
+	log.Info().Int("workers", w.cfg.Workers).Msg("starting digest worker")
 
 	// Initialize the digester registry
 	InitializeRegistry()
@@ -50,8 +73,7 @@ func (w *Worker) Start() {
 	go w.ensureAllFilesHaveDigests()
 
 	// Start multiple processing goroutines for parallelism
-	numWorkers := 3
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < w.cfg.Workers; i++ {
 		w.wg.Add(1)
 		go w.processLoop(i)
 	}
@@ -322,7 +344,7 @@ func (w *Worker) processFile(filePath string) {
 		finalStatus := "completed"
 		for _, output := range outputs {
 			producedNames[output.Digester] = true
-			saveDigestOutput(filePath, output)
+			w.saveDigestOutput(filePath, output)
 			if output.Status == DigestStatusFailed {
 				finalStatus = "failed"
 			}
@@ -395,15 +417,20 @@ func isScreenshotDigester(digester string) bool {
 }
 
 // notifyPreviewReady sends a notification when a preview/screenshot is ready
-// TODO: This will be fixed when digest worker receives notifications.Service instance
-func notifyPreviewReady(filePath string, digester string) {
-	// TEMPORARY: Disabled until digest worker refactor is complete
-	// Will be re-enabled when Worker has notif *notifications.Service field
+func (w *Worker) notifyPreviewReady(filePath string, digester string) {
+	// Determine preview type based on digester
+	previewType := "screenshot"
+	if digester == "image-preview" {
+		previewType = "image"
+	}
+
+	w.notif.NotifyPreviewUpdated(filePath, previewType)
 
 	log.Debug().
 		Str("filePath", filePath).
 		Str("digester", digester).
-		Msg("preview ready (notification disabled temporarily)")
+		Str("previewType", previewType).
+		Msg("preview updated notification sent")
 }
 
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
@@ -439,7 +466,7 @@ func markDigestInProgress(filePath, digester string) {
 	})
 }
 
-func saveDigestOutput(filePath string, output DigestInput) {
+func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
 	id := getOrCreateDigestID(filePath, output.Digester)
 
 	existing, _ := db.GetDigestByID(id)
@@ -467,7 +494,7 @@ func saveDigestOutput(filePath string, output DigestInput) {
 				db.UpdateFileField(filePath, "screenshot_sqlar", sqlarPath)
 
 				// Notify clients that preview is ready
-				notifyPreviewReady(filePath, output.Digester)
+				w.notifyPreviewReady(filePath, output.Digester)
 			}
 		}
 	}

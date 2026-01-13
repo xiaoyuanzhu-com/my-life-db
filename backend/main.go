@@ -115,7 +115,14 @@ func main() {
 	})
 
 	// Initialize digest worker
-	digestWorker := digest.NewWorker()
+	digestWorker := digest.NewWorker(
+		digest.Config{
+			Workers:   3,
+			QueueSize: 1000,
+		},
+		nil, // TODO: Pass db.DB instance once we have it
+		notifications.GetService(),
+	)
 
 	// Connect FS service to digest worker
 	// When files change on filesystem (new or content changed), trigger digest processing
