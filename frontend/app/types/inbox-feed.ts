@@ -4,7 +4,7 @@
  * Types for the sparse page-based inbox feed with cursor pagination.
  */
 
-import type { InboxItem } from '~/routes/api.inbox';
+import type { InboxItem } from '~/types/api';
 
 /**
  * Data for a single loaded page

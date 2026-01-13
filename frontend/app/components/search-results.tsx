@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
-import type { SearchResponse } from '~/routes/api.search';
-import type { SearchResultItem } from '~/types/search';
+import type { SearchResponse, SearchResultItem } from '~/types/api';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
 
 interface SearchResultsProps {

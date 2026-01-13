@@ -95,7 +95,6 @@ function TreeNode({
   const [isDeleting, setIsDeleting] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
 
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = node.type === 'file' && node.path === selectedFilePath;
@@ -301,7 +300,7 @@ function TreeNode({
   // Long press for mobile
   const handleTouchStart = () => {
     longPressTimer.current = setTimeout(() => {
-      setContextMenuOpen(true);
+      // Context menu will open on long press via native browser behavior
     }, 500);
   };
 
@@ -317,7 +316,7 @@ function TreeNode({
 
   return (
     <div>
-      <ContextMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
+      <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
             className={`flex items-center gap-1 px-2 py-1 cursor-pointer group ${

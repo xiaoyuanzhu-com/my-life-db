@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Upload, X, Plus } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
-import type { SearchResponse } from '~/routes/api.search';
+import type { SearchResponse } from '~/types/api';
 import { useSendQueue } from '~/lib/send-queue';
 
 interface OmniInputProps {

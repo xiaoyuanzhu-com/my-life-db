@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { FileCard } from './FileCard';
 import { PendingFileCard } from './pending-file-card';
-import type { InboxResponse, InboxItem } from '~/routes/api.inbox';
+import type { InboxResponse, InboxItem } from '~/types/api';
 import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';

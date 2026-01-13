@@ -111,12 +111,7 @@ func setupStaticRoutes(r *gin.Engine) {
 		c.File("frontend/dist/index.html")
 	})
 
-	// Raw file serving
-	r.GET("/raw/*path", serveRawFileHandler())
-	r.PUT("/raw/*path", saveRawFileHandler())
-
-	// SQLAR file serving
-	r.GET("/sqlar/*path", serveSqlarFileHandler())
+	// Note: /raw/*, /sqlar/* routes are registered in api.SetupRoutes()
 }
 
 func printNetworkAddresses(port int) {
@@ -253,27 +248,5 @@ func serveSitemapXml() gin.HandlerFunc {
 		c.Header("Content-Type", "application/xml; charset=utf-8")
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.String(http.StatusOK, sitemap)
-	}
-}
-
-// Placeholder handlers for file serving (to be implemented)
-func serveRawFileHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO: Implement raw file serving
-		c.Status(http.StatusNotImplemented)
-	}
-}
-
-func saveRawFileHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO: Implement raw file saving
-		c.Status(http.StatusNotImplemented)
-	}
-}
-
-func serveSqlarFileHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO: Implement SQLAR file serving
-		c.Status(http.StatusNotImplemented)
 	}
 }

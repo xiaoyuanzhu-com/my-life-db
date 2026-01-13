@@ -9,7 +9,7 @@ import { useInboxNotifications } from "~/hooks/use-inbox-notifications";
 import { usePreviewNotifications } from "~/hooks/use-preview-notifications";
 import { useAuth } from "~/contexts/auth-context";
 import { cn } from "~/lib/utils";
-import type { SearchResponse } from "~/routes/api.search";
+import type { SearchResponse } from "~/types/api";
 
 export async function loader() {
   // Always allow access to home - auth will be checked client-side
