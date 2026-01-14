@@ -33,8 +33,11 @@ RUN go build -o my-life-db .
 FROM alpine:3.20 AS runner
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Install runtime dependencies + Claude CLI dependencies
+RUN apk add --no-cache ca-certificates tzdata curl bash npm
+
+# Install Claude CLI globally (before switching to non-root user)
+RUN npm install -g @anthropic-ai/claude-cli
 
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN addgroup -g 1000 appgroup && adduser -u 1000 -G appgroup -S appuser
@@ -43,8 +46,10 @@ RUN addgroup -g 1000 appgroup && adduser -u 1000 -G appgroup -S appuser
 COPY --from=go-builder /app/my-life-db ./backend/my-life-db
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
-# Create data directory with proper permissions
-RUN mkdir -p /app/data && chown -R 1000:1000 /app && chmod -R 775 /app/data
+# Create data directory and .claude directory with proper permissions
+RUN mkdir -p /app/data /home/appuser/.claude && \
+    chown -R 1000:1000 /app /home/appuser/.claude && \
+    chmod -R 775 /app/data /home/appuser/.claude
 
 # Switch to non-root user
 USER 1000
@@ -54,6 +59,7 @@ ENV NODE_ENV=production
 ENV PORT=12345
 ENV HOST=0.0.0.0
 ENV MY_DATA_DIR=/app/data
+ENV HOME=/home/appuser
 
 EXPOSE 12345
 
