@@ -36,12 +36,49 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const disposableRef = useRef<{ dispose: () => void } | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
+  const [inputText, setInputText] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detect mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // Send input text to terminal
+  const handleSend = () => {
+    if (!inputText.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    const encoder = new TextEncoder()
+    const uint8Array = encoder.encode(inputText)
+    wsRef.current.send(uint8Array)
+
+    // Echo the input to the terminal display
+    if (terminalInstRef.current) {
+      terminalInstRef.current.write(inputText)
+    }
+
+    // Clear the input
+    setInputText('')
+  }
+
+  // Handle Enter key in input
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSend()
+    }
+  }
 
   useEffect(() => {
     if (!terminalRef.current) return
 
     // Use a responsive font size
-    const isMobile = window.innerWidth < 768
     const fontSize = isMobile ? 10 : 14
 
     const terminal = new Terminal({
@@ -183,11 +220,11 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         terminalRef.current.removeEventListener('touchstart', handleTouch)
       }
     }
-  }, [sessionId])
+  }, [sessionId, isMobile])
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden"
+      className="relative h-full w-full overflow-hidden flex flex-col"
       style={{
         // Prevent pull-to-refresh on mobile
         overscrollBehavior: 'contain',
@@ -211,8 +248,30 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       {/* Terminal container - FitAddon will size it to fill the space */}
       <div
         ref={terminalRef}
-        className="h-full w-full"
+        className={isMobile ? 'flex-1 w-full' : 'h-full w-full'}
       />
+
+      {/* Mobile input box - only shown on mobile devices */}
+      {isMobile && (
+        <div className="flex gap-2 p-2 border-t border-border bg-background">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type command here..."
+            className="flex-1 px-3 py-2 text-sm bg-muted border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            disabled={status !== 'connected'}
+          />
+          <button
+            onClick={handleSend}
+            disabled={status !== 'connected' || !inputText.trim()}
+            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        </div>
+      )}
     </div>
   )
 }
