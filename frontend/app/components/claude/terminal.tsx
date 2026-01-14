@@ -69,8 +69,8 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       return
     }
 
-    // Send the input text followed by Enter
-    sendToTerminal(inputText + '\r')
+    // Send the input text followed by Enter (newline)
+    sendToTerminal(inputText + '\n')
 
     // Clear the input
     setInputText('')
@@ -97,19 +97,26 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   }
 
   useEffect(() => {
-    if (!terminalRef.current) return
+    if (!terminalRef.current?.parentElement) return
 
     // Calculate font size to fit 80 cols in available width
     // charWidth ≈ fontSize * 0.6 (monospace aspect ratio)
     // fontSize = (containerWidth * margin) / cols / aspectRatio
-    const containerWidth = isMobile ? window.innerWidth : terminalRef.current.offsetWidth || 800
+    const containerWidth = isMobile ? window.innerWidth : terminalRef.current.parentElement.offsetWidth || 800
     const fontSize = isMobile
       ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)  // 85% of width, min 6px
       : 14
 
+    // Calculate rows based on available height
+    // Approximate line height = fontSize * 1.2 (with line spacing)
+    const containerHeight = terminalRef.current.parentElement.offsetHeight || (isMobile ? 400 : 600)
+    const lineHeight = fontSize * 1.2
+    const calculatedRows = Math.floor(containerHeight / lineHeight)
+    const rows = Math.max(24, Math.min(calculatedRows, 100))  // Min 24, max 100
+
     const terminal = new Terminal({
       cols: 80,  // Fixed 80 columns (matches backend PTY default)
-      rows: 24,  // Fixed 24 rows (matches backend PTY default)
+      rows,      // Calculate rows based on available height
       cursorBlink: true,
       fontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
@@ -119,11 +126,14 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       },
       scrollback: 10000,
       convertEol: true,
-      // Mobile-specific: disable predictive text features
+      // Mobile-specific optimizations
       ...(isMobile && {
         screenReaderMode: false,
+        disableStdin: true,  // Disable keyboard input on mobile (we use custom input box)
       }),
     })
+
+    console.log('Terminal initialized: 80 cols x', rows, 'rows, fontSize:', fontSize)
 
     const webLinksAddon = new WebLinksAddon()
     terminal.loadAddon(webLinksAddon)
@@ -131,24 +141,6 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     terminal.open(terminalRef.current)
 
     terminalInstRef.current = terminal
-
-    console.log('Terminal initialized: 80 cols x 24 rows, fontSize:', fontSize)
-
-    // Mobile: Add touch handler to focus the hidden textarea
-    // This is necessary because mobile browsers require user interaction to show keyboard
-    const handleTouch = () => {
-      // Find the hidden textarea that xterm.js creates
-      const textarea = terminalRef.current?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement
-      if (textarea) {
-        // Focus it to bring up the mobile keyboard
-        textarea.focus()
-        console.log('Focused xterm-helper-textarea')
-      }
-    }
-
-    if (isMobile && terminalRef.current) {
-      terminalRef.current.addEventListener('touchstart', handleTouch, { passive: true })
-    }
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -194,7 +186,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
     disposableRef.current = disposable
 
-    // Handle window resize with debouncing - recalculate font size
+    // Handle window resize with debouncing - recalculate font size and rows
     let resizeTimeout: number | undefined
 
     const handleResize = () => {
@@ -202,13 +194,20 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       resizeTimeout = window.setTimeout(() => {
         try {
           const newIsMobile = window.innerWidth < 768
-          const containerWidth = newIsMobile ? window.innerWidth : terminalRef.current?.offsetWidth || 800
+          const containerWidth = newIsMobile ? window.innerWidth : terminalRef.current?.parentElement?.offsetWidth || 800
           const newFontSize = newIsMobile
             ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)
             : 14
 
+          // Recalculate rows based on new height
+          const containerHeight = terminalRef.current?.parentElement?.offsetHeight || (newIsMobile ? 400 : 600)
+          const lineHeight = newFontSize * 1.2
+          const calculatedRows = Math.floor(containerHeight / lineHeight)
+          const newRows = Math.max(24, Math.min(calculatedRows, 100))
+
           terminal.options.fontSize = newFontSize
-          console.log('Terminal font resized:', newFontSize, 'px (80 cols x 24 rows fixed)')
+          terminal.resize(80, newRows)
+          console.log('Terminal resized: 80 cols x', newRows, 'rows, fontSize:', newFontSize, 'px')
         } catch (e) {
           console.warn('Resize failed:', e)
         }
@@ -236,21 +235,17 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
-
-      // Remove mobile touch listener
-      if (isMobile && terminalRef.current) {
-        terminalRef.current.removeEventListener('touchstart', handleTouch)
-      }
     }
   }, [sessionId, isMobile])
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden flex flex-col"
+      className="relative h-full w-full flex flex-col"
       style={{
         // Prevent pull-to-refresh on mobile
         overscrollBehavior: 'contain',
-        touchAction: 'pan-y pinch-zoom',
+        // Add padding on mobile to avoid FABs (120px for 2 FABs + gaps + input box)
+        paddingBottom: isMobile ? '120px' : 0,
       }}
     >
       {/* Status indicator */}
@@ -269,13 +264,20 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
       {/* Terminal container - fixed 80 cols, scrollable if needed */}
       <div
-        ref={terminalRef}
-        className={isMobile ? 'flex-1 w-full overflow-x-auto' : 'h-full w-full overflow-x-auto'}
-      />
+        className="flex-1 overflow-auto"
+        style={{
+          // Enable smooth scrolling on mobile
+          WebkitOverflowScrolling: 'touch',
+          // Disable touch-action to allow native scrolling
+          touchAction: 'auto',
+        }}
+      >
+        <div ref={terminalRef} className="min-h-full" />
+      </div>
 
-      {/* Mobile input box - only shown on mobile devices */}
+      {/* Mobile input box - only shown on mobile devices - FIXED positioning */}
       {isMobile && (
-        <div className="flex flex-col gap-2 p-2 border-t border-border bg-background">
+        <div className="fixed bottom-0 left-0 right-0 flex flex-col gap-2 p-2 border-t border-border bg-background z-10">
           {/* Special keys row */}
           <div className="flex gap-2">
             <button
