@@ -185,21 +185,23 @@ export default function ClaudePage() {
         </Button>
       </div>
 
-      {/* Mobile Floating Action Buttons */}
-      <div className="md:hidden fixed bottom-4 right-4 z-20 flex flex-col gap-2">
+      {/* Mobile Action Buttons - Top Right, below status */}
+      <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
         <Button
           size="icon"
-          className="h-12 w-12 rounded-full shadow-lg"
+          variant="ghost"
+          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
           onClick={() => setShowMobileSidebar(true)}
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-4 w-4" />
         </Button>
         <Button
           size="icon"
-          className="h-12 w-12 rounded-full shadow-lg"
+          variant="ghost"
+          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
           onClick={createSession}
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
 
