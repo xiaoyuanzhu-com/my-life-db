@@ -4,6 +4,58 @@
 
 This document describes the integration of Claude Code CLI (shell version) into MyLifeDB's web interface. The integration provides a browser-based terminal experience with multi-session support, persistent authentication, and cross-device access.
 
+## Quick Start
+
+```bash
+# Terminal 1: Build frontend
+cd frontend && npm run build
+
+# Terminal 2: Run backend
+cd backend && go run .
+
+# Open browser
+# Navigate to http://localhost:12345/claude
+```
+
+## Implementation Summary
+
+### Backend (Go)
+
+**Files:**
+- `backend/claude/session.go` - Session data structure
+- `backend/claude/manager.go` - Session lifecycle management (in-memory)
+- `backend/api/claude.go` - API handlers & WebSocket
+
+**Dependencies:**
+- `github.com/creack/pty` - PTY management
+- `github.com/coder/websocket` - WebSocket library
+- `github.com/google/uuid` - UUID generation
+
+### Frontend (React)
+
+**Files:**
+- `frontend/app/routes/claude.tsx` - Main page with session management
+- `frontend/app/components/claude/terminal.tsx` - Terminal component
+- `frontend/app/components/claude/session-list.tsx` - Session sidebar
+
+**Dependencies:**
+- `@xterm/xterm` - Terminal emulator
+- `@xterm/addon-fit` - Auto-resize addon
+- `@xterm/addon-web-links` - Clickable links addon
+
+### Testing Checklist
+
+- [ ] Open `/claude` page - should load without errors
+- [ ] Click "New Session" - should spawn Claude process
+- [ ] First session prompts OAuth - complete authentication
+- [ ] Type in terminal - should see Claude responses
+- [ ] Create second session - should use existing auth (no OAuth prompt)
+- [ ] Open multiple tabs - each should show separate sessions
+- [ ] Reconnect to session - should see terminal output and backlog
+- [ ] Delete session - should kill process and remove from list
+- [ ] Rename session - should update title in sidebar
+- [ ] Server restart - all sessions should be cleared (expected behavior)
+
 ## Architecture
 
 ### Design Principles
@@ -808,14 +860,27 @@ func (m *Manager) StartCleanupWorker() {
 }
 ```
 
+## Troubleshooting
+
+### "claude: command not found"
+Install Claude Code CLI: `brew install claude` or download from https://claude.ai/code
+
+### WebSocket connection fails
+Check that backend is running and port 12345 is accessible. Check browser console for errors.
+
+### Sessions lost after restart
+This is expected behavior. Sessions are stored in-memory only and don't persist across server restarts.
+
+### Authentication doesn't persist
+Check that `~/.claude/` directory exists and contains `.credentials.json` after first OAuth.
+
 ## Testing Strategy
 
 ### Unit Tests
 
 - Session manager CRUD operations
 - PTY spawning and cleanup
-- Output buffer ring buffer
-- Storage persistence
+- Multi-client broadcast mechanism
 
 ### Integration Tests
 
@@ -831,9 +896,9 @@ func (m *Manager) StartCleanupWorker() {
 - [ ] Open 4 tabs → 4 separate sessions
 - [ ] Close browser → processes still running
 - [ ] Reopen browser → see 4 sessions in list
-- [ ] Reconnect to session → see buffered output
+- [ ] Reconnect to session → see buffered output (backlog)
 - [ ] Close session → process killed
-- [ ] Test on mobile device → same sessions visible
+- [ ] Test on mobile device → terminal works with touch keyboard
 - [ ] First-time OAuth flow in terminal
 - [ ] Second session uses existing auth
 
