@@ -100,8 +100,17 @@ func (s *Server) setupRouter() {
 
 	// Middleware
 	s.router.Use(gin.Recovery())
+	s.router.Use(log.GinLogger())
 
-	// TODO: Add logging, CORS, security headers middleware
+	// CORS for development
+	if s.cfg.IsDevelopment() {
+		s.router.Use(s.corsMiddleware())
+	}
+
+	// Security headers (production only)
+	if !s.cfg.IsDevelopment() {
+		s.router.Use(s.securityHeadersMiddleware())
+	}
 
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)
@@ -113,6 +122,60 @@ func (s *Server) setupRouter() {
 
 	// Note: API routes should be set up by calling code (main.go)
 	// to avoid import cycles
+}
+
+// corsMiddleware handles CORS for development environments
+func (s *Server) corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		allowedOrigins := map[string]bool{
+			"http://localhost:12345": true,
+			"http://localhost:12346": true,
+		}
+
+		if allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, Upload-Offset, Upload-Length, Upload-Metadata, Tus-Resumable, X-Requested-With, Idempotency-Key")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Upload-Offset, Upload-Length, Location, Tus-Resumable")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// securityHeadersMiddleware adds security headers for production
+func (s *Server) securityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// HSTS - enforce HTTPS for 1 year, include subdomains
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+		// Prevent MIME type sniffing
+		c.Header("X-Content-Type-Options", "nosniff")
+
+		// XSS protection (legacy, but still useful for older browsers)
+		c.Header("X-XSS-Protection", "1; mode=block")
+
+		// Clickjacking protection
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+
+		// Cross-Origin-Opener-Policy for origin isolation
+		c.Header("Cross-Origin-Opener-Policy", "same-origin")
+
+		// Referrer policy - don't leak full URLs to other origins
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		// Permissions policy - disable unnecessary features
+		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+		c.Next()
+	}
 }
 
 // Start starts all background services and the HTTP server
