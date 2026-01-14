@@ -165,26 +165,28 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   }
 
   useEffect(() => {
-    if (!terminalRef.current?.parentElement) return
+    if (!terminalRef.current) return
 
     // Enable reconnection
     shouldReconnectRef.current = true
     reconnectAttemptsRef.current = 0
 
-    // Calculate font size to fit 80 cols in available width
-    // charWidth ≈ fontSize * 0.6 (monospace aspect ratio)
-    // fontSize = (containerWidth * margin) / cols / aspectRatio
-    const containerWidth = isMobile ? window.innerWidth : terminalRef.current.parentElement.offsetWidth || 800
+    // Calculate font size to fit 80 cols in screen width
+    const containerWidth = isMobile ? window.innerWidth : 800
     const fontSize = isMobile
       ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)  // 85% of width, min 6px
       : 14
 
-    // Calculate rows based on available height
-    // Approximate line height = fontSize * 1.2 (with line spacing)
-    const containerHeight = terminalRef.current.parentElement.offsetHeight || (isMobile ? 400 : 600)
+    // Calculate rows based on screen height (mobile) or use generous default (desktop)
+    // Mobile: use full window height minus input box (~140px) and header if any
+    // Desktop: use a generous fixed value since container will expand
+    const containerHeight = isMobile
+      ? window.innerHeight - 200  // 200px for input box + header + padding
+      : 800  // Desktop: large default, will be constrained by CSS
+
     const lineHeight = fontSize * 1.2
     const calculatedRows = Math.floor(containerHeight / lineHeight)
-    const rows = Math.max(24, Math.min(calculatedRows, 100))  // Min 24, max 100
+    const rows = Math.max(24, calculatedRows)  // Min 24 rows
 
     const terminal = new Terminal({
       cols: 80,  // Fixed 80 columns (matches backend PTY default)
@@ -223,16 +225,19 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       resizeTimeout = window.setTimeout(() => {
         try {
           const newIsMobile = window.innerWidth < 768
-          const containerWidth = newIsMobile ? window.innerWidth : terminalRef.current?.parentElement?.offsetWidth || 800
+          const containerWidth = newIsMobile ? window.innerWidth : 800
           const newFontSize = newIsMobile
             ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)
             : 14
 
-          // Recalculate rows based on new height
-          const containerHeight = terminalRef.current?.parentElement?.offsetHeight || (newIsMobile ? 400 : 600)
+          // Recalculate rows based on screen height
+          const containerHeight = newIsMobile
+            ? window.innerHeight - 200
+            : 800
+
           const lineHeight = newFontSize * 1.2
           const calculatedRows = Math.floor(containerHeight / lineHeight)
-          const newRows = Math.max(24, Math.min(calculatedRows, 100))
+          const newRows = Math.max(24, calculatedRows)
 
           terminal.options.fontSize = newFontSize
           terminal.resize(80, newRows)
@@ -315,11 +320,16 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
           WebkitOverflowScrolling: 'touch',
           // Disable touch-action to allow native scrolling
           touchAction: 'auto',
-          // Add padding on mobile so content isn't hidden behind fixed input box
-          paddingBottom: isMobile ? '140px' : 0,
         }}
       >
-        <div ref={terminalRef} className="min-h-full" />
+        <div
+          ref={terminalRef}
+          className="min-h-full"
+          style={{
+            // Add padding on mobile so last lines aren't hidden behind fixed input box
+            paddingBottom: isMobile ? '140px' : 0,
+          }}
+        />
       </div>
 
       {/* Mobile input box - only shown on mobile devices - FIXED positioning */}
