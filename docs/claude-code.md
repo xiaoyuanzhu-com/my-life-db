@@ -43,7 +43,7 @@ This document describes the integration of Claude Code CLI (shell version) into 
 │  │  - Create/list/delete sessions                            │  │
 │  │  - Track process lifecycle                                │  │
 │  │  - Manage multiple clients per session                    │  │
-│  │  - Store in MY_DATA_DIR/app/my-life-db/claude-sessions/  │  │
+│  │  - Sessions stored in-memory (ephemeral)                  │  │
 │  └────────────────┬─────────────────────────────────────────┘  │
 │                   │                                             │
 │  ┌────────────────▼─────────────────────────────────────────┐  │
@@ -98,10 +98,8 @@ All Claude Code processes share the user's real `~/.claude` directory:
 ├── settings.local.json                      # User settings
 └── projects/                                # Project conversation history
 
-MY_DATA_DIR/app/my-life-db/
-└── claude-sessions/                         # Our session tracking
-    ├── session-1.json
-    └── session-2.json
+# Sessions are stored in-memory only (ephemeral)
+# When the backend restarts, all sessions are lost
 ```
 
 ## Session Management
@@ -134,9 +132,9 @@ Multiple browser tabs can connect to the same Claude Code session:
 
 ### Session Storage
 
-Location: `MY_DATA_DIR/app/my-life-db/claude-sessions/`
+Sessions are stored **in-memory only** (ephemeral). When the backend restarts, all sessions are lost and PTY processes are terminated.
 
-Each session stored as JSON file: `{session-id}.json`
+Session structure (in-memory):
 
 ```json
 {

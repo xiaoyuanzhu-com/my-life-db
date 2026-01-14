@@ -67,11 +67,12 @@ This allows all sessions to share OAuth credentials while keeping Claude's data 
 - WebSocket streams raw binary data between browser and Claude process
 - xterm.js provides full terminal emulation in the browser
 
-### 3. Cross-Device Session Persistence
+### 3. Multi-Client Session Support
 
-- Sessions tracked in `MY_DATA_DIR/app/my-life-db/claude-sessions/`
-- Close browser on desktop → sessions stay alive
-- Open on mobile → see all sessions, reconnect to any
+- Sessions stored in-memory (ephemeral)
+- Close browser tab → session stays alive (other clients may still be connected)
+- Open new tab → reconnect to existing session
+- Backend restart → all sessions lost
 
 ## API Endpoints
 
@@ -105,24 +106,19 @@ This allows all sessions to share OAuth credentials while keeping Claude's data 
 MY_DATA_DIR/
 ├── app/
 │   └── my-life-db/
-│       ├── .claude/                    # Shared Claude auth (symlinked)
-│       │   ├── .credentials.json
-│       │   └── settings.local.json
-│       ├── claude-sessions/            # Session tracking
-│       │   ├── {uuid-1}.json
-│       │   └── {uuid-2}.json
 │       └── database.sqlite
 
-/tmp/mylifedb-claude/
-├── {session-1-uuid}/                   # Temp HOME
-│   └── .claude -> MY_DATA_DIR/...      # Symlink
-└── {session-2-uuid}/                   # Temp HOME
-    └── .claude -> MY_DATA_DIR/...      # Symlink
+~/.claude/                              # Shared Claude auth (default location)
+├── .credentials.json                   # OAuth tokens
+├── settings.local.json                 # User settings
+└── projects/                           # Project conversation history
+
+# Sessions are stored in-memory only (ephemeral)
 ```
 
 ## Known Limitations
 
-1. **Session restoration**: Currently, when the backend restarts, all PTY connections are lost. Sessions in the list become stale. Future: Implement session cleanup on startup.
+1. **Session restoration**: Sessions are ephemeral. When the backend restarts, all PTY connections are lost and sessions are cleared from memory.
 
 2. **Terminal resize**: The resize endpoint is a placeholder. Need to implement actual PTY resize using `github.com/creack/pty.Setsize()`.
 
@@ -148,11 +144,11 @@ Install Claude Code CLI: `brew install claude` or download from https://claude.a
 ### WebSocket connection fails
 Check that backend is running and port 12345 is accessible. Check browser console for errors.
 
-### Sessions don't persist
-Check that `MY_DATA_DIR/app/my-life-db/claude-sessions/` directory exists and is writable.
+### Sessions lost after restart
+This is expected behavior. Sessions are stored in-memory only and don't persist across server restarts.
 
 ### Authentication doesn't persist
-Check that `MY_DATA_DIR/app/my-life-db/.claude/` directory exists and contains `.credentials.json` after first OAuth.
+Check that `~/.claude/` directory exists and contains `.credentials.json` after first OAuth.
 
 ## Documentation
 

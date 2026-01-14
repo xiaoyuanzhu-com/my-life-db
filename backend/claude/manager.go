@@ -19,28 +19,16 @@ var (
 
 const MaxSessions = 10
 
-// Manager manages Claude Code sessions
+// Manager manages Claude Code sessions in memory
 type Manager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
-	storage  *Storage
 }
 
 // NewManager creates a new session manager
 func NewManager() (*Manager, error) {
-	storage, err := NewStorage()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create storage: %w", err)
-	}
-
 	m := &Manager{
 		sessions: make(map[string]*Session),
-		storage:  storage,
-	}
-
-	// Load existing sessions from storage
-	if err := m.loadSessions(); err != nil {
-		log.Warn().Err(err).Msg("failed to load sessions from storage")
 	}
 
 	// Start background cleanup worker
@@ -102,11 +90,6 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	m.sessions[session.ID] = session
 
-	// Save to storage
-	if err := m.storage.SaveSession(session); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to save session")
-	}
-
 	log.Info().
 		Str("sessionId", sessionID).
 		Int("pid", session.ProcessID).
@@ -154,10 +137,6 @@ func (m *Manager) UpdateSession(id string, title string) error {
 		session.Title = title
 	}
 
-	if err := m.storage.SaveSession(session); err != nil {
-		return fmt.Errorf("failed to save session: %w", err)
-	}
-
 	return nil
 }
 
@@ -185,21 +164,8 @@ func (m *Manager) DeleteSession(id string) error {
 
 	delete(m.sessions, id)
 
-	// Remove from storage
-	if err := m.storage.DeleteSession(id); err != nil {
-		log.Error().Err(err).Msg("failed to delete session from storage")
-	}
-
 	log.Info().Str("sessionId", id).Msg("deleted claude session")
 
-	return nil
-}
-
-// loadSessions loads sessions from storage on startup
-func (m *Manager) loadSessions() error {
-	// Note: For now, we don't restore PTY connections on startup
-	// Sessions are ephemeral - when the backend restarts, all sessions are lost
-	// In the future, we could implement session restoration
 	return nil
 }
 
@@ -221,7 +187,6 @@ func (m *Manager) cleanupWorker() {
 				}
 
 				delete(m.sessions, id)
-				m.storage.DeleteSession(id)
 			}
 		}
 		m.mu.Unlock()
