@@ -78,6 +78,7 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
+		log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
 		return nil, fmt.Errorf("failed to start claude: %w", err)
 	}
 
@@ -87,6 +88,9 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	// Start PTY reader that broadcasts to all clients
 	go m.readPTY(session)
+
+	// Monitor process state in background
+	go m.monitorProcess(session)
 
 	m.sessions[session.ID] = session
 
@@ -193,15 +197,46 @@ func (m *Manager) cleanupWorker() {
 	}
 }
 
+// monitorProcess monitors the claude process and logs when it exits
+func (m *Manager) monitorProcess(session *Session) {
+	if session.Cmd == nil {
+		return
+	}
+
+	// Wait for process to exit
+	err := session.Cmd.Wait()
+
+	session.mu.Lock()
+	session.Status = "dead"
+	session.mu.Unlock()
+
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("sessionId", session.ID).
+			Int("pid", session.ProcessID).
+			Msg("claude process exited with error")
+	} else {
+		log.Info().
+			Str("sessionId", session.ID).
+			Int("pid", session.ProcessID).
+			Msg("claude process exited normally")
+	}
+
+	// Notify all connected clients that the session ended
+	session.Broadcast([]byte("\r\n\x1b[33mSession process has ended\x1b[0m\r\n"))
+}
+
 // readPTY reads from PTY and broadcasts to all connected clients
 func (m *Manager) readPTY(session *Session) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := session.PTY.Read(buf)
 		if err != nil {
-			// PTY closed or process died
+			// PTY closed or process died - silent, process monitor will log exit
+			session.mu.Lock()
 			session.Status = "dead"
-			log.Info().Str("sessionId", session.ID).Msg("PTY closed")
+			session.mu.Unlock()
 			return
 		}
 

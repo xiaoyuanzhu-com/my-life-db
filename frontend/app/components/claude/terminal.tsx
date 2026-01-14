@@ -36,6 +36,9 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [inputText, setInputText] = useState('')
   const [isMobile, setIsMobile] = useState(false)
+  const reconnectTimeoutRef = useRef<number | undefined>(undefined)
+  const reconnectAttemptsRef = useRef(0)
+  const shouldReconnectRef = useRef(true)
 
   // Detect mobile on mount and resize
   useEffect(() => {
@@ -46,6 +49,71 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  // Connect to WebSocket with automatic reconnection
+  const connectWebSocket = (terminal: Terminal) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/ws`
+
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+    ws.binaryType = 'arraybuffer'
+
+    ws.onopen = () => {
+      setStatus('connected')
+      reconnectAttemptsRef.current = 0
+      terminal.write('\r\n\x1b[32mConnected to Claude Code session\x1b[0m\r\n\r\n')
+    }
+
+    ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        const uint8Array = new Uint8Array(event.data)
+        terminal.write(uint8Array)
+      }
+    }
+
+    ws.onerror = () => {
+      setStatus('disconnected')
+      terminal.write('\r\n\x1b[31mConnection error\x1b[0m\r\n')
+    }
+
+    ws.onclose = () => {
+      setStatus('disconnected')
+
+      // Attempt to reconnect if we should and the component is still mounted
+      if (shouldReconnectRef.current) {
+        const attempts = reconnectAttemptsRef.current
+        // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+        const delay = Math.min(1000 * Math.pow(2, attempts), 30000)
+
+        reconnectAttemptsRef.current += 1
+        terminal.write(`\r\n\x1b[33mDisconnected. Reconnecting in ${delay / 1000}s... (attempt ${attempts + 1})\x1b[0m\r\n`)
+
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          if (shouldReconnectRef.current && terminalInstRef.current) {
+            setStatus('connecting')
+            connectWebSocket(terminalInstRef.current)
+          }
+        }, delay)
+      } else {
+        terminal.write('\r\n\x1b[33mDisconnected from session\x1b[0m\r\n')
+      }
+    }
+
+    // Send terminal input to WebSocket
+    if (disposableRef.current) {
+      disposableRef.current.dispose()
+    }
+
+    const disposable = terminal.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        const encoder = new TextEncoder()
+        const uint8Array = encoder.encode(data)
+        ws.send(uint8Array)
+      }
+    })
+    disposableRef.current = disposable
+  }
 
   // Send raw bytes to terminal
   const sendToTerminal = (text: string) => {
@@ -99,6 +167,10 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   useEffect(() => {
     if (!terminalRef.current?.parentElement) return
 
+    // Enable reconnection
+    shouldReconnectRef.current = true
+    reconnectAttemptsRef.current = 0
+
     // Calculate font size to fit 80 cols in available width
     // charWidth ≈ fontSize * 0.6 (monospace aspect ratio)
     // fontSize = (containerWidth * margin) / cols / aspectRatio
@@ -133,8 +205,6 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }),
     })
 
-    console.log('Terminal initialized: 80 cols x', rows, 'rows, fontSize:', fontSize)
-
     const webLinksAddon = new WebLinksAddon()
     terminal.loadAddon(webLinksAddon)
 
@@ -142,49 +212,8 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
     terminalInstRef.current = terminal
 
-    // Connect WebSocket
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/ws`
-
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
-
-    ws.binaryType = 'arraybuffer'
-
-    ws.onopen = () => {
-      setStatus('connected')
-      terminal.write('\r\n\x1b[32mConnected to Claude Code session\x1b[0m\r\n\r\n')
-    }
-
-    ws.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        const uint8Array = new Uint8Array(event.data)
-        terminal.write(uint8Array)
-      }
-    }
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-      setStatus('disconnected')
-      terminal.write('\r\n\x1b[31mWebSocket error\x1b[0m\r\n')
-    }
-
-    ws.onclose = () => {
-      setStatus('disconnected')
-      terminal.write('\r\n\x1b[33mDisconnected from session\x1b[0m\r\n')
-    }
-
-    // Send terminal input to WebSocket
-    const disposable = terminal.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        // Convert string to Uint8Array for binary message
-        const encoder = new TextEncoder()
-        const uint8Array = encoder.encode(data)
-        ws.send(uint8Array)
-      }
-    })
-
-    disposableRef.current = disposable
+    // Connect WebSocket with auto-reconnect
+    connectWebSocket(terminal)
 
     // Handle window resize with debouncing - recalculate font size and rows
     let resizeTimeout: number | undefined
@@ -207,9 +236,8 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
           terminal.options.fontSize = newFontSize
           terminal.resize(80, newRows)
-          console.log('Terminal resized: 80 cols x', newRows, 'rows, fontSize:', newFontSize, 'px')
         } catch (e) {
-          console.warn('Resize failed:', e)
+          // Silent - resize failures are not critical
         }
       }, 150)
     }
@@ -217,9 +245,27 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     window.addEventListener('resize', handleResize)
     window.addEventListener('orientationchange', handleResize)
 
+    // Handle visibility change (mobile tab switching, screen sleep, etc.)
+    const handleVisibilityChange = () => {
+      if (!document.hidden && terminalInstRef.current) {
+        // Tab became visible - check if we need to reconnect
+        const ws = wsRef.current
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connectWebSocket(terminalInstRef.current)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     // Cleanup
     return () => {
       clearTimeout(resizeTimeout)
+
+      // Disable reconnection when component unmounts
+      shouldReconnectRef.current = false
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
 
       if (disposableRef.current) {
         disposableRef.current.dispose()
@@ -235,6 +281,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [sessionId, isMobile])
 

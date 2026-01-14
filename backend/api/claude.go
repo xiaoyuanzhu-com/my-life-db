@@ -165,14 +165,34 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	session.AddClient(client)
 	defer session.RemoveClient(client)
 
-	log.Info().Str("sessionId", sessionID).Msg("WebSocket client connected")
-
 	// Goroutine to send data from client.Send channel to WebSocket
+	sendDone := make(chan struct{})
 	go func() {
+		defer close(sendDone)
 		for data := range client.Send {
 			if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
-				log.Error().Err(err).Msg("WebSocket write error")
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket write failed")
 				return
+			}
+		}
+	}()
+
+	// Goroutine to send periodic pings to keep connection alive
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
+
+	pingDone := make(chan struct{})
+	go func() {
+		defer close(pingDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-pingTicker.C:
+				if err := conn.Ping(ctx); err != nil {
+					log.Debug().Err(err).Msg("WebSocket ping failed")
+					return
+				}
 			}
 		}
 	}()
@@ -181,7 +201,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
-			log.Info().Str("sessionId", sessionID).Msg("WebSocket client disconnected")
+			// Silent disconnect - normal for page refresh, tab close, etc.
 			break
 		}
 
@@ -191,11 +211,15 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		}
 
 		if _, err := session.PTY.Write(msg); err != nil {
-			log.Error().Err(err).Msg("PTY write error")
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
 			conn.Close(websocket.StatusInternalError, "PTY write error")
 			break
 		}
 
 		session.LastActivity = time.Now()
 	}
+
+	// Wait for send goroutine to finish
+	<-sendDone
+	<-pingDone
 }
