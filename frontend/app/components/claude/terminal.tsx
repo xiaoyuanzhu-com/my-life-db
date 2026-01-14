@@ -244,8 +244,6 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       style={{
         // Prevent pull-to-refresh on mobile
         overscrollBehavior: 'contain',
-        // Add padding on mobile to avoid FABs (120px for 2 FABs + gaps + input box)
-        paddingBottom: isMobile ? '120px' : 0,
       }}
     >
       {/* Status indicator */}
@@ -270,6 +268,8 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
           WebkitOverflowScrolling: 'touch',
           // Disable touch-action to allow native scrolling
           touchAction: 'auto',
+          // Add padding on mobile so content isn't hidden behind fixed input box
+          paddingBottom: isMobile ? '140px' : 0,
         }}
       >
         <div ref={terminalRef} className="min-h-full" />
