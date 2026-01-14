@@ -6,6 +6,17 @@ import '@xterm/xterm/css/xterm.css'
 // Inject CSS for better mobile support
 const style = document.createElement('style')
 style.textContent = `
+  /* Disable xterm.js internal scrollbar on mobile - we use outer container scroll */
+  @media (max-width: 768px) {
+    .xterm-viewport {
+      overflow-y: hidden !important;
+      overflow-x: hidden !important;
+    }
+    .xterm-viewport::-webkit-scrollbar {
+      display: none !important;
+    }
+  }
+
   .xterm-viewport {
     /* Enable smooth scrolling on mobile */
     -webkit-overflow-scrolling: touch !important;
@@ -318,18 +329,13 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         style={{
           // Enable smooth scrolling on mobile
           WebkitOverflowScrolling: 'touch',
-          // Disable touch-action to allow native scrolling
-          touchAction: 'auto',
+          // Allow native scrolling
+          touchAction: 'pan-y pan-x',
+          // Add padding on mobile so last lines aren't hidden behind fixed input box
+          paddingBottom: isMobile ? '140px' : 0,
         }}
       >
-        <div
-          ref={terminalRef}
-          className="min-h-full"
-          style={{
-            // Add padding on mobile so last lines aren't hidden behind fixed input box
-            paddingBottom: isMobile ? '140px' : 0,
-          }}
-        />
+        <div ref={terminalRef} className="min-h-full" />
       </div>
 
       {/* Mobile input box - only shown on mobile devices - FIXED positioning */}
