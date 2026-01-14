@@ -49,23 +49,46 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Send input text to terminal
-  const handleSend = () => {
-    if (!inputText.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+  // Send raw bytes to terminal
+  const sendToTerminal = (text: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return
     }
 
     const encoder = new TextEncoder()
-    const uint8Array = encoder.encode(inputText)
+    const uint8Array = encoder.encode(text)
     wsRef.current.send(uint8Array)
 
-    // Echo the input to the terminal display
+    // Echo to terminal display
     if (terminalInstRef.current) {
-      terminalInstRef.current.write(inputText)
+      terminalInstRef.current.write(text)
     }
+  }
+
+  // Send input text to terminal
+  const handleSend = () => {
+    if (!inputText.trim()) {
+      return
+    }
+
+    // Send the input text followed by Enter
+    sendToTerminal(inputText + '\r')
 
     // Clear the input
     setInputText('')
+  }
+
+  // Handle special key buttons
+  const handleSpecialKey = (key: 'up' | 'down' | 'enter' | 'esc' | 'backspace') => {
+    const keyMap = {
+      up: '\x1b[A',      // ANSI escape code for up arrow
+      down: '\x1b[B',    // ANSI escape code for down arrow
+      enter: '\r',       // Carriage return
+      esc: '\x1b',       // Escape character
+      backspace: '\x7f', // Backspace/Delete (DEL character)
+    }
+
+    sendToTerminal(keyMap[key])
   }
 
   // Handle Enter key in input
@@ -253,23 +276,70 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
       {/* Mobile input box - only shown on mobile devices */}
       {isMobile && (
-        <div className="flex gap-2 p-2 border-t border-border bg-background">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type command here..."
-            className="flex-1 px-3 py-2 text-sm bg-muted border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-            disabled={status !== 'connected'}
-          />
-          <button
-            onClick={handleSend}
-            disabled={status !== 'connected' || !inputText.trim()}
-            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
+        <div className="flex flex-col gap-2 p-2 border-t border-border bg-background">
+          {/* Special keys row */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleSpecialKey('up')}
+              disabled={status !== 'connected'}
+              className="flex-1 px-2 py-2 text-sm font-medium bg-muted border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Up Arrow"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => handleSpecialKey('down')}
+              disabled={status !== 'connected'}
+              className="flex-1 px-2 py-2 text-sm font-medium bg-muted border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Down Arrow"
+            >
+              ↓
+            </button>
+            <button
+              onClick={() => handleSpecialKey('enter')}
+              disabled={status !== 'connected'}
+              className="flex-1 px-2 py-2 text-sm font-medium bg-muted border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Enter"
+            >
+              ↵
+            </button>
+            <button
+              onClick={() => handleSpecialKey('backspace')}
+              disabled={status !== 'connected'}
+              className="flex-1 px-2 py-2 text-sm font-medium bg-muted border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Backspace"
+            >
+              ⌫
+            </button>
+            <button
+              onClick={() => handleSpecialKey('esc')}
+              disabled={status !== 'connected'}
+              className="flex-1 px-2 py-2 text-sm font-medium bg-muted border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Escape"
+            >
+              Esc
+            </button>
+          </div>
+
+          {/* Input row */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type command here..."
+              className="flex-1 px-3 py-2 text-sm bg-muted border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={status !== 'connected'}
+            />
+            <button
+              onClick={handleSend}
+              disabled={status !== 'connected' || !inputText.trim()}
+              className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
         </div>
       )}
     </div>
