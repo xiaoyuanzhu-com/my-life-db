@@ -35,7 +35,7 @@ DATA_DIR="${MY_DATA_DIR:-$PROJECT_ROOT/data}"
 run_meilisearch() {
     log_info "Starting Meilisearch with Docker..."
 
-    local MEILI_VERSION="v1.16"
+    local MEILI_VERSION="v1.27"
     local MEILI_PORT="7700"
     local MEILI_DATA_DIR="$DATA_DIR/app/my-life-db/meili"
 
@@ -70,7 +70,7 @@ run_meilisearch() {
 run_qdrant() {
     log_info "Starting Qdrant with Docker..."
 
-    local QDRANT_VERSION="latest"
+    local QDRANT_VERSION="v1.16"
     local QDRANT_PORT="6333"
     local QDRANT_DATA_DIR="$DATA_DIR/app/my-life-db/qdrant"
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 // Inject CSS for better mobile support
@@ -34,7 +33,6 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const terminalInstRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const disposableRef = useRef<{ dispose: () => void } | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [inputText, setInputText] = useState('')
   const [isMobile, setIsMobile] = useState(false)
@@ -101,10 +99,17 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   useEffect(() => {
     if (!terminalRef.current) return
 
-    // Use a responsive font size
-    const fontSize = isMobile ? 10 : 14
+    // Calculate font size to fit 80 cols in available width
+    // charWidth ≈ fontSize * 0.6 (monospace aspect ratio)
+    // fontSize = (containerWidth * margin) / cols / aspectRatio
+    const containerWidth = isMobile ? window.innerWidth : terminalRef.current.offsetWidth || 800
+    const fontSize = isMobile
+      ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)  // 85% of width, min 6px
+      : 14
 
     const terminal = new Terminal({
+      cols: 80,  // Fixed 80 columns (matches backend PTY default)
+      rows: 24,  // Fixed 24 rows (matches backend PTY default)
       cursorBlink: true,
       fontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
@@ -120,26 +125,14 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }),
     })
 
-    const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
-
-    terminal.loadAddon(fitAddon)
     terminal.loadAddon(webLinksAddon)
 
     terminal.open(terminalRef.current)
 
     terminalInstRef.current = terminal
-    fitAddonRef.current = fitAddon
 
-    // Fit terminal to container
-    setTimeout(() => {
-      try {
-        fitAddon.fit()
-        console.log('Terminal fitted:', terminal.cols, 'cols x', terminal.rows, 'rows')
-      } catch (e) {
-        console.warn('Fit failed:', e)
-      }
-    }, 100)
+    console.log('Terminal initialized: 80 cols x 24 rows, fontSize:', fontSize)
 
     // Mobile: Add touch handler to focus the hidden textarea
     // This is necessary because mobile browsers require user interaction to show keyboard
@@ -201,17 +194,23 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
     disposableRef.current = disposable
 
-    // Handle window resize with debouncing
+    // Handle window resize with debouncing - recalculate font size
     let resizeTimeout: number | undefined
 
     const handleResize = () => {
       clearTimeout(resizeTimeout)
       resizeTimeout = window.setTimeout(() => {
         try {
-          fitAddon.fit()
-          console.log('Terminal resized:', terminal.cols, 'cols x', terminal.rows, 'rows')
+          const newIsMobile = window.innerWidth < 768
+          const containerWidth = newIsMobile ? window.innerWidth : terminalRef.current?.offsetWidth || 800
+          const newFontSize = newIsMobile
+            ? Math.max(6, (containerWidth * 0.85) / 80 / 0.6)
+            : 14
+
+          terminal.options.fontSize = newFontSize
+          console.log('Terminal font resized:', newFontSize, 'px (80 cols x 24 rows fixed)')
         } catch (e) {
-          console.warn('Resize fit failed:', e)
+          console.warn('Resize failed:', e)
         }
       }, 150)
     }
@@ -268,10 +267,10 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         <span className="capitalize text-foreground">{status}</span>
       </div>
 
-      {/* Terminal container - FitAddon will size it to fill the space */}
+      {/* Terminal container - fixed 80 cols, scrollable if needed */}
       <div
         ref={terminalRef}
-        className={isMobile ? 'flex-1 w-full' : 'h-full w-full'}
+        className={isMobile ? 'flex-1 w-full overflow-x-auto' : 'h-full w-full overflow-x-auto'}
       />
 
       {/* Mobile input box - only shown on mobile devices */}
