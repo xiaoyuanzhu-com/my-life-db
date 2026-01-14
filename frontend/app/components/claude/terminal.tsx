@@ -3,37 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 
-// Inject CSS for better mobile support
-const style = document.createElement('style')
-style.textContent = `
-  /* Disable xterm.js internal scrollbar on mobile - we use outer container scroll */
-  @media (max-width: 768px) {
-    .xterm-viewport {
-      overflow-y: hidden !important;
-      overflow-x: hidden !important;
-    }
-    .xterm-viewport::-webkit-scrollbar {
-      display: none !important;
-    }
-  }
-
-  .xterm-viewport {
-    /* Enable smooth scrolling on mobile */
-    -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior: contain !important;
-  }
-
-  .xterm-helper-textarea {
-    /* Ensure textarea is accessible for mobile keyboard */
-    position: absolute !important;
-    opacity: 0;
-    pointer-events: none;
-  }
-`
-if (!document.querySelector('style[data-xterm-mobile]')) {
-  style.setAttribute('data-xterm-mobile', 'true')
-  document.head.appendChild(style)
-}
+// No custom CSS needed - use xterm.js's built-in scrolling
 
 interface ClaudeTerminalProps {
   sessionId: string
@@ -320,20 +290,12 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
         <span className="capitalize text-foreground">{status}</span>
       </div>
 
-      {/* Terminal container - fixed 80 cols, scrollable if needed */}
+      {/* Terminal container - xterm.js handles scrolling */}
       <div
-        className="flex-1 overflow-auto"
-        style={{
-          // Enable smooth scrolling on mobile
-          WebkitOverflowScrolling: 'touch',
-          // Allow native scrolling
-          touchAction: 'pan-y pan-x',
-          // Add padding on mobile so last lines aren't hidden behind fixed input box
-          paddingBottom: isMobile ? '140px' : 0,
-        }}
-      >
-        <div ref={terminalRef} className="min-h-full" />
-      </div>
+        ref={terminalRef}
+        className="flex-1"
+        style={{ paddingBottom: isMobile ? '140px' : 0 }}
+      />
 
       {/* Mobile input box - only shown on mobile devices - FIXED positioning */}
       {isMobile && (
