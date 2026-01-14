@@ -136,10 +136,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     const uint8Array = encoder.encode(text)
     wsRef.current.send(uint8Array)
 
-    // Echo to terminal display
-    if (terminalInstRef.current) {
-      terminalInstRef.current.write(text)
-    }
+    // Don't echo - the backend/shell will echo back via WebSocket
   }
 
   // Send input text to terminal
