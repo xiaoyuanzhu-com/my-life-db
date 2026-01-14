@@ -20,6 +20,8 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
   const reconnectAttemptsRef = useRef(0)
   const shouldReconnectRef = useRef(true)
+  const touchStartY = useRef<number>(0)
+  const lastTouchY = useRef<number>(0)
 
   // Detect mobile on mount and resize
   useEffect(() => {
@@ -182,6 +184,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       ...(isMobile && {
         screenReaderMode: false,
         disableStdin: true,  // Disable keyboard input on mobile (we use custom input box)
+        scrollOnUserInput: false,  // Prevent auto-scroll to bottom on mobile input
       }),
     })
 
@@ -194,6 +197,35 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
     // Connect WebSocket with auto-reconnect
     connectWebSocket(terminal)
+
+    // Add touch scroll support for mobile
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      lastTouchY.current = e.touches[0].clientY
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!terminalInstRef.current) return
+
+      const currentY = e.touches[0].clientY
+      const deltaY = lastTouchY.current - currentY
+      lastTouchY.current = currentY
+
+      // Convert pixel movement to scroll lines (roughly 3 pixels per line)
+      const linesToScroll = Math.round(deltaY / 3)
+
+      if (linesToScroll !== 0) {
+        terminalInstRef.current.scrollLines(linesToScroll)
+        // Prevent page scroll when scrolling terminal
+        e.preventDefault()
+      }
+    }
+
+    if (isMobile && terminalRef.current) {
+      const terminalElement = terminalRef.current
+      terminalElement.addEventListener('touchstart', handleTouchStart, { passive: true })
+      terminalElement.addEventListener('touchmove', handleTouchMove, { passive: false })
+    }
 
     // Handle window resize with debouncing - recalculate font size and rows
     let resizeTimeout: number | undefined
@@ -265,6 +297,12 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+      // Cleanup touch listeners
+      if (isMobile && terminalRef.current) {
+        terminalRef.current.removeEventListener('touchstart', handleTouchStart)
+        terminalRef.current.removeEventListener('touchmove', handleTouchMove)
+      }
     }
   }, [sessionId, isMobile])
 
