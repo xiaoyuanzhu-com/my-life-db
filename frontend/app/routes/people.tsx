@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import { Card, CardContent } from "~/components/ui/card";
 import { User, Volume2, Camera } from "lucide-react";
+import { useAuth } from "~/contexts/auth-context";
 import type { PeopleWithCounts } from "~/types/models";
 
 interface PeopleResponse {
@@ -10,6 +11,7 @@ interface PeopleResponse {
 }
 
 export default function PeoplePage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [people, setPeople] = useState<PeopleWithCounts[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,6 +38,28 @@ export default function PeoplePage() {
       pending: people.filter((p) => p.isPending),
     };
   }, [people]);
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return null;
+  }
+
+  // Show welcome page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen p-8 text-center">
+        <div>
+          <h1 className="text-3xl font-bold mb-4">People</h1>
+          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+            Manage and discover people automatically identified from your audio files.
+          </p>
+          <p className="text-muted-foreground">
+            Please sign in using the button in the header to get started.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

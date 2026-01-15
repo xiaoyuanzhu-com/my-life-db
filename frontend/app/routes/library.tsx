@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { useAuth } from "~/contexts/auth-context";
 
 export interface TabState {
   path: string;
@@ -325,6 +326,30 @@ function LibraryContent() {
 }
 
 export default function LibraryPage() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return null;
+  }
+
+  // Show welcome page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen p-8 text-center">
+        <div>
+          <h1 className="text-3xl font-bold mb-4">Library</h1>
+          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+            Browse and manage your organized knowledge files and documents.
+          </p>
+          <p className="text-muted-foreground">
+            Please sign in using the button in the header to get started.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
       <LibraryContent />

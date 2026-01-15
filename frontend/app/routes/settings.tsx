@@ -6,6 +6,7 @@ import { Input } from "~/components/ui/input";
 import { Sparkles, Save, Check, Loader2, RotateCcw } from "lucide-react";
 import { SettingsProvider, useSettingsContext } from "~/components/settings/settings-context";
 import { LanguageSelector } from "~/components/settings/language-selector";
+import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 
 interface ModelOption {
@@ -732,6 +733,30 @@ function SettingsContent() {
 }
 
 export default function SettingsPage() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return null;
+  }
+
+  // Show welcome page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen p-8 text-center">
+        <div>
+          <h1 className="text-3xl font-bold mb-4">Settings</h1>
+          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+            Configure your preferences and system settings.
+          </p>
+          <p className="text-muted-foreground">
+            Please sign in using the button in the header to get started.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <SettingsProvider>
       <SettingsContent />

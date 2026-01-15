@@ -5,6 +5,7 @@ import { SessionList } from '~/components/claude/session-list'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import { useAuth } from '~/contexts/auth-context'
 
 interface Session {
   id: string
@@ -16,6 +17,7 @@ interface Session {
 }
 
 export default function ClaudePage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -168,10 +170,28 @@ export default function ClaudePage() {
     }
   }
 
-  if (loading) {
+  // Show loading state while checking authentication
+  if (authLoading || loading) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show welcome page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <div>
+          <h1 className="text-3xl font-bold mb-4">Claude Code Sessions</h1>
+          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+            Access your Claude Code interactive sessions for software development tasks.
+          </p>
+          <p className="text-muted-foreground">
+            Please sign in using the button in the header to get started.
+          </p>
+        </div>
       </div>
     )
   }
