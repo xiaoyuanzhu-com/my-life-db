@@ -29,7 +29,7 @@ func InitTUSHandler() (http.Handler, error) {
 	var initErr error
 	tusHandlerOnce.Do(func() {
 		cfg := config.Get()
-		uploadDir = filepath.Join(cfg.DataDir, ".my-life-db", "uploads")
+		uploadDir = filepath.Join(cfg.AppDataDir, "uploads")
 
 		// Ensure upload directory exists
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
@@ -129,7 +129,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	}
 
 	// Ensure destination directory exists
-	destDir := filepath.Join(cfg.DataDir, destination)
+	destDir := filepath.Join(cfg.UserDataDir, destination)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create destination directory"})
 		return
@@ -167,7 +167,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 
 		// Move file to destination
 		destPath := filepath.Join(destination, filename)
-		fullDestPath := filepath.Join(cfg.DataDir, destPath)
+		fullDestPath := filepath.Join(cfg.UserDataDir, destPath)
 
 		// Try rename first (same filesystem)
 		if err := os.Rename(srcPath, fullDestPath); err != nil {

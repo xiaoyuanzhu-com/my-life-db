@@ -33,7 +33,7 @@ func resolveFilePath(path string) string {
 		return path
 	}
 	cfg := config.Get()
-	return filepath.Join(cfg.DataDir, path)
+	return filepath.Join(cfg.UserDataDir, path)
 }
 
 func isURL(path string) bool {

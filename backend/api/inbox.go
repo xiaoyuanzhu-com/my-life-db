@@ -176,7 +176,7 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	inboxDir := filepath.Join(cfg.DataDir, "inbox")
+	inboxDir := filepath.Join(cfg.UserDataDir, "inbox")
 
 	// Ensure inbox directory exists
 	if err := os.MkdirAll(inboxDir, 0755); err != nil {
@@ -293,7 +293,7 @@ func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 	path := "inbox/" + id
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, path)
+	fullPath := filepath.Join(cfg.UserDataDir, path)
 
 	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -330,7 +330,7 @@ func (h *Handlers) DeleteInboxItem(c *gin.Context) {
 	path := "inbox/" + id
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, path)
+	fullPath := filepath.Join(cfg.UserDataDir, path)
 
 	// Check if file/folder exists
 	info, err := os.Stat(fullPath)

@@ -147,20 +147,24 @@ The backend runs two concurrent workers:
 
 ### Data Storage
 ```
-MY_DATA_DIR/
-├── inbox/              # Unprocessed files (source of truth)
-├── notes/, journal/... # User library folders (source of truth)
-└── .my-life-db/     # Rebuildable app data
-    └── database.sqlite
+USER_DATA_DIR/          # User files (source of truth)
+├── inbox/              # Unprocessed files
+├── notes/              # User library folders
+├── journal/            # User library folders
+└── ...                 # Other user folders
+
+APP_DATA_DIR/           # Rebuildable app data (separate from user data)
+└── database.sqlite     # SQLite database
 ```
 
 **Key principles:**
-- Filesystem is the source of truth (inbox + library folders)
-- `app/` contains rebuildable data (can be deleted and rebuilt)
+- User data directory (`USER_DATA_DIR`) is the source of truth (inbox + library folders)
+- App data directory (`APP_DATA_DIR`) contains rebuildable data (can be deleted and rebuilt)
 - Files referenced by relative paths, no synthetic IDs
+- For Docker deployments, mount `APP_DATA_DIR` separately for persistence
 
 ### Database (SQLite)
-- Location: `MY_DATA_DIR/.my-life-db/database.sqlite`
+- Location: `APP_DATA_DIR/database.sqlite`
 - Driver: mattn/go-sqlite3 with CGO_ENABLED=1 (required for build)
 - Core tables: `files`, `digests`, `sqlar` (archive format), `pins`, `people`, `settings`
 - Migration system in `db/migrations.go`
@@ -225,7 +229,8 @@ Never create shadcn components manually.
 | PORT | 12345 | Server port |
 | HOST | 0.0.0.0 | Server host |
 | ENV | development | Environment (development/production) |
-| MY_DATA_DIR | ./data | Data directory root |
+| USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
+| APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
 | MEILI_HOST | | Meilisearch URL (optional) |
 | QDRANT_URL | | Qdrant URL (optional) |
 | QDRANT_API_KEY | | Qdrant API key (optional) |

@@ -37,7 +37,7 @@ func (h *Handlers) ServeRawFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, path)
+	fullPath := filepath.Join(cfg.UserDataDir, path)
 
 	// Check if file exists
 	info, err := os.Stat(fullPath)
@@ -81,7 +81,7 @@ func (h *Handlers) SaveRawFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, path)
+	fullPath := filepath.Join(cfg.UserDataDir, path)
 
 	// Ensure parent directory exists
 	dir := filepath.Dir(fullPath)
@@ -192,7 +192,7 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, path)
+	fullPath := filepath.Join(cfg.UserDataDir, path)
 
 	// Check if file exists
 	info, err := os.Stat(fullPath)
@@ -341,7 +341,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, requestedPath)
+	fullPath := filepath.Join(cfg.UserDataDir, requestedPath)
 
 	// Read directory
 	entries, err := os.ReadDir(fullPath)
@@ -425,7 +425,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 func (h *Handlers) GetDirectories(c *gin.Context) {
 	cfg := config.Get()
 
-	entries, err := os.ReadDir(cfg.DataDir)
+	entries, err := os.ReadDir(cfg.UserDataDir)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directories"})
 		return
@@ -464,7 +464,7 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	oldFullPath := filepath.Join(cfg.DataDir, body.Path)
+	oldFullPath := filepath.Join(cfg.UserDataDir, body.Path)
 
 	// Check if source exists
 	info, err := os.Stat(oldFullPath)
@@ -481,7 +481,7 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	} else {
 		newPath = parentDir + "/" + body.NewName
 	}
-	newFullPath := filepath.Join(cfg.DataDir, newPath)
+	newFullPath := filepath.Join(cfg.UserDataDir, newPath)
 
 	// Check if destination already exists
 	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
@@ -531,7 +531,7 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	oldFullPath := filepath.Join(cfg.DataDir, body.Path)
+	oldFullPath := filepath.Join(cfg.UserDataDir, body.Path)
 
 	// Check if source exists
 	info, err := os.Stat(oldFullPath)
@@ -550,7 +550,7 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	} else {
 		newPath = body.TargetPath + "/" + fileName
 	}
-	newFullPath := filepath.Join(cfg.DataDir, newPath)
+	newFullPath := filepath.Join(cfg.UserDataDir, newPath)
 
 	// Check if destination already exists
 	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
@@ -614,7 +614,7 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 	} else {
 		folderPath = body.Path + "/" + body.Name
 	}
-	fullPath := filepath.Join(cfg.DataDir, folderPath)
+	fullPath := filepath.Join(cfg.UserDataDir, folderPath)
 
 	// Check if already exists
 	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {

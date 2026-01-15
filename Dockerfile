@@ -44,10 +44,14 @@ RUN addgroup -g 1000 xiaoyuanzhu && adduser -u 1000 -G xiaoyuanzhu -S xiaoyuanzh
 COPY --from=go-builder /app/my-life-db ./backend/my-life-db
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
-# Create data directory and .claude directory with proper permissions
-RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data /home/xiaoyuanzhu/.claude && \
+# Create data directories and .claude directory with proper permissions
+RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
+             /home/xiaoyuanzhu/my-life-db/.my-life-db \
+             /home/xiaoyuanzhu/.claude && \
     chown -R 1000:1000 /home/xiaoyuanzhu && \
-    chmod -R 775 /home/xiaoyuanzhu/my-life-db/data /home/xiaoyuanzhu/.claude
+    chmod -R 775 /home/xiaoyuanzhu/my-life-db/data \
+                 /home/xiaoyuanzhu/my-life-db/.my-life-db \
+                 /home/xiaoyuanzhu/.claude
 
 # Switch to non-root user
 USER 1000
@@ -63,7 +67,8 @@ ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
 ENV NODE_ENV=production
 ENV PORT=12345
 ENV HOST=0.0.0.0
-ENV MY_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
+ENV USER_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
+ENV APP_DATA_DIR=/home/xiaoyuanzhu/my-life-db/.my-life-db
 ENV HOME=/home/xiaoyuanzhu
 
 EXPOSE 12345

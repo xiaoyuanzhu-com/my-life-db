@@ -16,7 +16,8 @@ type Config struct {
 	Env  string // "development" or "production"
 
 	// Paths (immutable, requires restart)
-	DataDir      string
+	UserDataDir  string // User files (inbox, notes, etc.) - source of truth
+	AppDataDir   string // App data (database, cache) - rebuildable
 	DatabasePath string
 
 	// FS settings (can be hot-reloaded)
@@ -76,7 +77,7 @@ func (c *Config) ToDBConfig() db.Config {
 // ToFSConfig converts server config to filesystem service config
 func (c *Config) ToFSConfig() fs.Config {
 	return fs.Config{
-		DataRoot:     c.DataDir,
+		DataRoot:     c.UserDataDir,
 		ScanInterval: c.FSScanInterval,
 		WatchEnabled: c.FSWatchEnabled,
 	}

@@ -229,7 +229,7 @@ func HasAnyTextSource(file *db.FileRecord, existingDigests []db.Digest, minLengt
 // ReadLocalFile reads a text file from data directory
 func ReadLocalFile(filePath string) (string, error) {
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.DataDir, filePath)
+	fullPath := filepath.Join(cfg.UserDataDir, filePath)
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {

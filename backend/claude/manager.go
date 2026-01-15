@@ -51,7 +51,7 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	// Default working directory
 	if workingDir == "" {
-		workingDir = config.Get().DataDir
+		workingDir = config.Get().UserDataDir
 	}
 
 	// Default title

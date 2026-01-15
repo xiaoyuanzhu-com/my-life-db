@@ -10,25 +10,29 @@ what's behind:
 
 ## Conventions
 
-### app folder (rebuildable data)
+### Data Directory Structure
 
-Every app can have its own folder to store app-specific data, settings, cache, etc. in the `app/` directory:
+MyLifeDB separates user data from application data:
 
 ```
-data/
-├── app/              # Application-specific data (rebuildable)
-│   └── my-life-db/
-│       └── database.sqlite
+USER_DATA_DIR/        # User files (source of truth)
+├── inbox/            # Unprocessed items waiting for organization
+├── notes/            # Your organized content
+├── journal/          # Your organized content
+└── ...               # Other library folders
+
+APP_DATA_DIR/         # Application data (rebuildable, separate)
+└── database.sqlite   # SQLite database
 ```
 
-**Important**: The `app/` folder contains only rebuildable data. You can delete it and the app will recreate indexes, search data, etc. from the source files in `inbox/` and your library folders.
+**Important**: The app data directory (`APP_DATA_DIR`) contains only rebuildable data. You can delete it and the app will recreate indexes, database, etc. from the source files in your user data directory.
 
 ### Reserved Folders
 
-- **inbox/** - Unprocessed items waiting for organization
-- **app/** - Application data (rebuildable, can be deleted)
+- **inbox/** - Unprocessed items waiting for organization (in USER_DATA_DIR)
+- All folders starting with `.` (like `.my-life-db`, `.obsidian`, `.git`) are automatically excluded from indexing
 
-All other folders at the data root are considered library content and are indexed by the application.
+All other folders in the user data directory are considered library content and are indexed by the application.
 
 ### README.md
 
@@ -86,10 +90,10 @@ A filesystem-based personal knowledge management system built with Next.js 15, R
 #### Option 1: Docker (Recommended)
 
 ```bash
-# Create data directory with correct ownership
+# Create directories with correct ownership
 # The container runs as UID/GID 1000 for host compatibility
-mkdir -p data
-sudo chown -R 1000:1000 data
+mkdir -p data app-data
+sudo chown -R 1000:1000 data app-data
 
 # Create docker-compose.yml
 cat > docker-compose.yml << 'EOF'
@@ -98,12 +102,14 @@ services:
     image: ghcr.io/xiaoyuanzhu-com/my-life-db:latest
     container_name: mylifedb
     ports:
-      - 3000:3000
+      - 12345:12345
     volumes:
-      - ./data:/app/data
+      - ./data:/home/xiaoyuanzhu/my-life-db/data
+      - ./app-data:/home/xiaoyuanzhu/my-life-db/.my-life-db
     restart: unless-stopped
     environment:
-      - MY_DATA_DIR=/app/data
+      - USER_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
+      - APP_DATA_DIR=/home/xiaoyuanzhu/my-life-db/.my-life-db
 EOF
 
 # Start the container
@@ -111,10 +117,10 @@ docker-compose up -d
 ```
 
 **Note on Permissions**: The Docker image runs as UID/GID 1000 (non-root) for security. If you encounter permission issues:
-- Ensure the data directory is owned by UID 1000: `sudo chown -R 1000:1000 ./data`
-- Or if your user is UID 1000 (common on Linux), just: `mkdir -p data && chmod 775 data`
+- Ensure directories are owned by UID 1000: `sudo chown -R 1000:1000 ./data ./app-data`
+- Or if your user is UID 1000 (common on Linux), just: `mkdir -p data app-data && chmod 775 data app-data`
 
-Visit [http://localhost:3000](http://localhost:3000) to see the app.
+Visit [http://localhost:12345](http://localhost:12345) to see the app.
 
 #### Option 2: Local Development
 

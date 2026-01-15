@@ -466,7 +466,7 @@ func resolveFilePath(path string) string {
 		return path
 	}
 	cfg := config.Get()
-	return filepath.Join(cfg.DataDir, path)
+	return filepath.Join(cfg.UserDataDir, path)
 }
 
 // CrawlURL crawls a URL (simplified interface for digest workers)

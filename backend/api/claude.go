@@ -54,7 +54,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 
 	// Use data directory as default working dir
 	if body.WorkingDir == "" {
-		body.WorkingDir = config.Get().DataDir
+		body.WorkingDir = config.Get().UserDataDir
 	}
 
 	session, err := claudeManager.CreateSession(body.WorkingDir, body.Title)

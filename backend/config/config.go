@@ -14,8 +14,9 @@ type Config struct {
 	Host string
 	Env  string // "development" or "production"
 
-	// Data directory
-	DataDir string
+	// Data directories
+	UserDataDir string // User files (inbox, notes, etc.) - source of truth
+	AppDataDir  string // App data (database, cache) - rebuildable
 
 	// Database
 	DatabasePath string
@@ -65,8 +66,8 @@ func Get() *Config {
 
 // load reads configuration from environment variables
 func load() *Config {
-	dataDir := getEnv("MY_DATA_DIR", "./data")
-	appDir := filepath.Join(dataDir, ".my-life-db")
+	userDataDir := getEnv("USER_DATA_DIR", "./data")
+	appDataDir := getEnv("APP_DATA_DIR", "./.my-life-db")
 
 	return &Config{
 		// Server
@@ -75,8 +76,9 @@ func load() *Config {
 		Env:  getEnv("ENV", "development"), // Keep NODE_ENV for compatibility
 
 		// Data
-		DataDir:      dataDir,
-		DatabasePath: filepath.Join(appDir, "database.sqlite"),
+		UserDataDir:  userDataDir,
+		AppDataDir:   appDataDir,
+		DatabasePath: filepath.Join(appDataDir, "database.sqlite"),
 
 		// Meilisearch
 		MeiliHost:   getEnv("MEILI_HOST", ""),
@@ -117,9 +119,19 @@ func (c *Config) IsDevelopment() bool {
 	return c.Env != "production"
 }
 
-// GetDataRoot returns the MY_DATA_DIR path
+// GetDataRoot returns the USER_DATA_DIR path (deprecated: use GetUserDataDir)
 func (c *Config) GetDataRoot() string {
-	return c.DataDir
+	return c.UserDataDir
+}
+
+// GetUserDataDir returns the user data directory path
+func (c *Config) GetUserDataDir() string {
+	return c.UserDataDir
+}
+
+// GetAppDataDir returns the app data directory path
+func (c *Config) GetAppDataDir() string {
+	return c.AppDataDir
 }
 
 // Helper functions
