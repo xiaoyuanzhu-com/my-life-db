@@ -699,7 +699,6 @@ export function FileTree({
           fileEntry.file(resolve, reject);
         });
         const relativePath = path ? `${path}/${file.name}` : file.name;
-        console.log('[FileTree] Found file:', relativePath, 'size:', file.size);
         results.push({ file, relativePath });
       } catch (err) {
         console.error('[FileTree] Failed to read file entry:', entry.name, err);
@@ -707,9 +706,7 @@ export function FileTree({
     } else if (entry.isDirectory) {
       const dirEntry = entry as FileSystemDirectoryEntry;
       const reader = dirEntry.createReader();
-
       const dirPath = path ? `${path}/${entry.name}` : entry.name;
-      console.log('[FileTree] Reading directory:', dirPath);
 
       // Read all entries (may need multiple calls for large directories)
       try {
@@ -731,8 +728,6 @@ export function FileTree({
           readEntries();
         });
 
-        console.log('[FileTree] Directory', dirPath, 'contains', entries.length, 'entries');
-
         // Recursively process each entry
         for (const childEntry of entries) {
           const childFiles = await traverseFileTree(childEntry, dirPath);
@@ -753,24 +748,17 @@ export function FileTree({
       await uploadManager.init();
 
       const baseDestination = targetPath;
-      console.log('[FileTree] Processing drop to destination:', baseDestination || '(library root)');
-      console.log('[FileTree] Entries:', entries.length);
       const allFiles: Array<{ file: File; relativePath: string }> = [];
 
       // Recursively traverse all entries (including folders)
       for (const entry of entries) {
-        console.log('[FileTree] Processing entry:', entry.name, 'isFile:', entry.isFile, 'isDirectory:', entry.isDirectory);
         const files = await traverseFileTree(entry);
-        console.log('[FileTree] Traversal returned', files.length, 'files');
         allFiles.push(...files);
       }
 
       if (allFiles.length === 0) {
-        console.log('[FileTree] No files found in drop');
         return;
       }
-
-      console.log('[FileTree] Found', allFiles.length, 'file(s) (including nested files from folders)');
 
       // Enqueue all files with their relative paths preserved
       for (const { file, relativePath } of allFiles) {
@@ -786,13 +774,11 @@ export function FileTree({
             : baseDestination
           : relativeDir;
 
-        console.log('[FileTree] Enqueuing file:', fileName, 'to destination:', destination || '(root)');
         await uploadManager.enqueueFile(file, undefined, destination);
       }
 
       // Subscribe to upload completion to refresh the tree
       const unsubscribe = uploadManager.onUploadComplete((item, serverPath) => {
-        console.log('[FileTree] Upload completed:', item.filename, 'at', serverPath);
         loadRoot();
       });
 
