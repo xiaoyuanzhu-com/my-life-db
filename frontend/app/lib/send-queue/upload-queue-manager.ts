@@ -80,7 +80,6 @@ function getRetryDelay(retryCount: number): number {
 export class UploadQueueManager {
   private tabId: string;
   private activeUploads = new Map<string, ActiveUpload>();
-  private isProcessing = false;
   private retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private onProgressCallbacks: ProgressCallback[] = [];
   private onUploadCompleteCallbacks: UploadCompleteCallback[] = [];
