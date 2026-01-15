@@ -37,9 +37,6 @@ WORKDIR /home/xiaoyuanzhu/my-life-db
 # libstdc++ and libgcc are required for Claude CLI (C++ runtime)
 RUN apk add --no-cache ca-certificates tzdata curl bash libstdc++ libgcc
 
-# Install Claude CLI globally (before switching to non-root user)
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN addgroup -g 1000 xiaoyuanzhu && adduser -u 1000 -G xiaoyuanzhu -S xiaoyuanzhu
 
@@ -54,6 +51,13 @@ RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data /home/xiaoyuanzhu/.claude && \
 
 # Switch to non-root user
 USER 1000
+
+# Install Claude CLI as xiaoyuanzhu user
+# The installer will put it in ~/.local/bin/claude
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Add ~/.local/bin to PATH for the xiaoyuanzhu user
+ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
 
 # Environment variables
 ENV NODE_ENV=production
