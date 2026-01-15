@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { ClaudeTerminal } from '~/components/claude/terminal'
+import { SessionTab } from '~/components/claude/session-tab'
 import { SessionList } from '~/components/claude/session-list'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu } from 'lucide-react'
@@ -88,10 +88,20 @@ export default function ClaudePage() {
       const data = await response.json()
       setSessions(data.sessions || [])
 
-      // Auto-select first session if none selected
-      if (!activeSessionId && data.sessions?.length > 0) {
-        setActiveSessionId(data.sessions[0].id)
-      }
+      // Auto-select first session ONLY on initial load
+      // Use callback form to get current state, preventing override of user's selection
+      setActiveSessionId((currentId) => {
+        console.log('[loadSessions] currentId:', currentId, 'sessions:', data.sessions?.map((s: Session) => s.id))
+        // If user already selected/created a session, preserve it
+        if (currentId !== null) {
+          console.log('[loadSessions] preserving currentId:', currentId)
+          return currentId
+        }
+        // Otherwise auto-select first session if available
+        const firstId = data.sessions?.length > 0 ? data.sessions[0].id : null
+        console.log('[loadSessions] auto-selecting first session:', firstId)
+        return firstId
+      })
     } catch (error) {
       console.error('Failed to load sessions:', error)
     } finally {
@@ -112,8 +122,10 @@ export default function ClaudePage() {
 
       if (response.ok) {
         const newSession = await response.json()
+        console.log('[createSession] created new session:', newSession.id)
         setSessions([...sessions, newSession])
         setActiveSessionId(newSession.id)
+        console.log('[createSession] set activeSessionId to:', newSession.id)
       }
     } catch (error) {
       console.error('Failed to create session:', error)
@@ -241,8 +253,16 @@ export default function ClaudePage() {
 
         {/* Terminal area - fullscreen on mobile */}
         <div className="flex-1 bg-background overflow-hidden min-w-0">
-          {activeSessionId ? (
-            <ClaudeTerminal sessionId={activeSessionId} />
+          {sessions.length > 0 ? (
+            <>
+              {sessions.map((session) => (
+                <SessionTab
+                  key={session.id}
+                  sessionId={session.id}
+                  isActive={session.id === activeSessionId}
+                />
+              ))}
+            </>
           ) : (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">

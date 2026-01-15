@@ -35,14 +35,25 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
   // Connect to WebSocket with automatic reconnection
   const connectWebSocket = (terminal: Terminal) => {
+    // Don't connect if reconnection is disabled (component is unmounting)
+    if (!shouldReconnectRef.current) {
+      console.log('[WS] Skipping connection - shouldReconnect is false')
+      return
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/ws`
 
+    console.log('[WS] Connecting to:', wsUrl)
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
     ws.binaryType = 'arraybuffer'
 
+    // Capture current sessionId in closure to detect if this WS is stale
+    const currentSessionId = sessionId
+
     ws.onopen = () => {
+      console.log('[WS] Connected to session:', sessionId)
       setStatus('connected')
       reconnectAttemptsRef.current = 0
       terminal.write('\r\n\x1b[32mConnected to Claude Code session\x1b[0m\r\n\r\n')
@@ -61,6 +72,15 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
     }
 
     ws.onclose = () => {
+      console.log('[WS] Closed, currentSessionId:', currentSessionId, 'activeSessionId:', sessionId, 'shouldReconnect:', shouldReconnectRef.current)
+
+      // CRITICAL: Only reconnect if this WebSocket is for the CURRENT session
+      // If sessionId has changed (component re-rendered with new session), this is a stale WebSocket
+      if (currentSessionId !== sessionId) {
+        console.log('[WS] Ignoring close event - WebSocket is for old session')
+        return
+      }
+
       setStatus('disconnected')
 
       // Attempt to reconnect if we should and the component is still mounted
@@ -71,9 +91,11 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
         reconnectAttemptsRef.current += 1
         terminal.write(`\r\n\x1b[33mDisconnected. Reconnecting in ${delay / 1000}s... (attempt ${attempts + 1})\x1b[0m\r\n`)
+        console.log('[WS] Scheduling reconnect in', delay, 'ms')
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          if (shouldReconnectRef.current && terminalInstRef.current) {
+          console.log('[WS] Reconnect timeout fired, shouldReconnect:', shouldReconnectRef.current, 'sessionId:', sessionId)
+          if (shouldReconnectRef.current && terminalInstRef.current && sessionId === currentSessionId) {
             setStatus('connecting')
             connectWebSocket(terminalInstRef.current)
           }
@@ -145,6 +167,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
   }
 
   useEffect(() => {
+    console.log('[Terminal] useEffect mount, sessionId:', sessionId)
     if (!terminalRef.current) return
 
     // Enable reconnection
@@ -274,12 +297,21 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
     // Cleanup
     return () => {
+      console.log('[Terminal] useEffect cleanup, sessionId:', sessionId)
       clearTimeout(resizeTimeout)
 
-      // Disable reconnection when component unmounts
+      // CRITICAL: Disable reconnection FIRST before closing WebSocket
+      // This prevents the ws.onclose handler from scheduling a reconnect
       shouldReconnectRef.current = false
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
+      }
+
+      // Close WebSocket gracefully - handle all states
+      const ws = wsRef.current
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        console.log('[WS] Closing WebSocket for session:', sessionId)
+        ws.close()
       }
 
       if (disposableRef.current) {
@@ -287,12 +319,6 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }
 
       terminal.dispose()
-
-      // Close WebSocket gracefully - handle all states
-      const ws = wsRef.current
-      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-        ws.close()
-      }
 
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
