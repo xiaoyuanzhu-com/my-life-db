@@ -40,49 +40,48 @@ Each folder can have a README.md to describe the purpose of the folder, its stru
 
 ---
 
-A filesystem-based personal knowledge management system built with Next.js 15, React 19, and TypeScript.
+A filesystem-based personal knowledge management system built with Go and React.
 
 ## Features
 
-### MVP (Currently Implemented)
+### Currently Implemented
 
-- ✅ **Text Capture**: Quick-add text entries with auto-save
-- ✅ **Directory-Based Organization**: Organize entries into filesystem directories
-- ✅ **Inbox**: Capture thoughts without upfront organization
+- ✅ **File Management**: Browse, organize, and manage files in a directory-based structure
+- ✅ **Inbox**: Capture files and content without upfront organization
 - ✅ **Library**: Browse and manage organized directories
-- ✅ **Full-Text Search**: Search across all entries
-- ✅ **Markdown Storage**: All entries stored as markdown files
-- ✅ **Filesystem-First**: SQLite metadata + file-based storage
-- ✅ **URL Crawling**: Automatic web page crawling with background enrichment
-- ✅ **Task Queue**: Robust background job execution with retry logic
-- ✅ **Smart Text Filenames**: Human-readable filenames for text saves
+- ✅ **Full-Text Search**: Search across all files (with Meilisearch integration)
+- ✅ **File Digestion**: Automatic processing of PDFs, EPUBs, images, and markdown files
+- ✅ **Filesystem-First**: SQLite metadata + file-based storage (source of truth)
+- ✅ **Real-time Notifications**: SSE-based updates for file changes
+- ✅ **Background Workers**: Automatic file watching and digest processing
+- ✅ **File Pinning**: Pin important files in inbox and library
+- ✅ **File Upload**: TUS protocol for resumable uploads
 
 ### Coming Soon
 
-- ⏭️ AI Tagging with OpenAI
-- ⏭️ Voice/File Upload
-- ⏭️ Export to ZIP
-- ⏭️ Entry Filing (move entries between directories)
-- ⏭️ Advanced Search with Filters
-- ⏭️ Screenshot capture for URLs
-- ⏭️ Embeddings generation
+- ⏭️ AI-powered file enrichment
+- ⏭️ Semantic search with vector embeddings
+- ⏭️ People management and tagging
+- ⏭️ Advanced search filters
+- ⏭️ File export capabilities
 
 ## Tech Stack
 
-- **Framework**: Next.js 15.5.5 with App Router
-- **UI**: React 19, Tailwind CSS 4
-- **Language**: TypeScript 5.7+
-- **Data**: SQLite (metadata) + Filesystem (Markdown + JSON)
-- **Background Jobs**: Custom task queue with exponential backoff
-- **Validation**: Zod
-- **State**: React Hooks
-- **Date Handling**: date-fns
+- **Backend**: Go 1.25 with Gin framework
+- **Frontend**: React Router 7 (SPA mode) + React 19 + TypeScript
+- **UI**: Tailwind CSS 4 + shadcn/ui
+- **Data**: SQLite (metadata) + Filesystem (source of truth)
+- **Background Workers**: Go routines with fsnotify file watching
+- **File Processing**: Custom digest worker with pluggable digesters
+- **Real-time**: Server-Sent Events (SSE)
+- **Build**: Vite (frontend) + Go compiler (backend)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
+- Go 1.25+
+- Node.js 22+ (for frontend development)
 - npm
 
 ### Installation
@@ -125,103 +124,129 @@ Visit [http://localhost:12345](http://localhost:12345) to see the app.
 #### Option 2: Local Development
 
 ```bash
-# Install dependencies
+# Terminal 1: Build frontend
+cd frontend
 npm install
+npm run build
 
-# Start development server
-npm run dev
+# Terminal 2: Run Go backend (serves frontend + API)
+cd backend
+go run .
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to see the app.
+Visit [http://localhost:12345](http://localhost:12345) to see the app.
+
+For frontend development with hot reload:
+```bash
+# Terminal 1: Frontend dev server
+cd frontend && npm run dev
+
+# Terminal 2: Go backend
+cd backend && go run .
+```
 
 ### First Steps
 
-1. **Capture your first entry**: Use the Quick Capture form on the homepage
-2. **Save a URL**: Add a URL to the inbox - it will be automatically crawled and enriched
-3. **View your Inbox**: Click "Inbox" in the navigation to see all captured entries
-4. **Create a directory**: Go to "Library" and click "New Directory"
-5. **Organize**: Move entries from Inbox to your directories (coming soon)
+1. **Upload files**: Drop files into the inbox or library folders
+2. **View your Inbox**: Click "Inbox" to see unprocessed files
+3. **Browse Library**: Click "Library" to browse organized directories
+4. **Create folders**: Use the UI to create new library folders
+5. **File digestion**: Files are automatically processed in the background
+6. **Pin files**: Pin important files for quick access
 
-### URL Crawling
+### Search Services (Optional)
 
-When you add a URL to the inbox, the system automatically:
-- Fetches and parses the web page
-- Extracts metadata (title, description, author, etc.)
-- Converts HTML to Markdown
-- Saves files: `content.html`, `content.md`, `main-content.md`
+MyLifeDB can integrate with external search services for enhanced functionality:
 
-Monitor enrichment with the task queue API:
+**Meilisearch** (full-text search):
 ```bash
-# Queue + worker status
-curl http://localhost:3000/api/tasks/status
-
-# Check aggregate queue stats
-curl http://localhost:3000/api/tasks/stats
-
-# List all tasks
-curl http://localhost:3000/api/tasks
-```
-
-### Search Services
-
-Keyword + semantic search rely on local Meilisearch and Qdrant instances. Configure them via environment variables:
-
-```
 MEILI_HOST=http://localhost:7700
 MEILI_API_KEY=masterKey
-MEILI_INDEX_URL_CONTENT=url_content
-
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY= # optional for local dev
-QDRANT_COLLECTION_URL_CHUNKS=url_chunks
-
-EMBEDDING_SCHEMA_VERSION=1
-HAID_BASE_URL=http://172.16.2.11:12310
-HAID_API_KEY= # optional if HAID is secured
-# optional override; defaults to Qwen/Qwen3-Embedding-0.6B
-HAID_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 ```
 
-After a URL is crawled, the background search tasks chunk `digest/content.md`, push documents to Meilisearch, and store embeddings in Qdrant. You can monitor task activity with the same task queue APIs shown above.
+**Qdrant** (vector search):
+```bash
+QDRANT_HOST=http://localhost:6333
+QDRANT_API_KEY=your-key
+```
+
+**HAID** (web crawling & embeddings):
+```bash
+HAID_BASE_URL=http://localhost:12310
+HAID_API_KEY=your-key
+```
+
+**OpenAI** (AI features):
+```bash
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+```
 
 ## File Storage
 
-All entries are stored as Markdown files with frontmatter metadata. See documentation for details.
+Files are stored in the user data directory with metadata tracked in SQLite. The filesystem is the source of truth - you can edit files directly with any application.
 
 ## Data Ownership
 
-All your data is stored locally in the `data/` directory as human-readable Markdown and JSON files. You can:
+All your data is stored locally with complete ownership and portability:
 
-- ✅ Directly edit files in any text editor
-- ✅ Backup by copying the `data/` directory
-- ✅ Version control with Git (data directory is gitignored)
-- ✅ Export and migrate without vendor lock-in
+- ✅ **Filesystem-first**: Files are stored in your data directory, not in a database
+- ✅ **Edit anywhere**: Use any text editor or file manager to modify your files
+- ✅ **Easy backup**: Simply copy the `USER_DATA_DIR` folder
+- ✅ **Version control**: Use Git to track changes to your files
+- ✅ **Zero vendor lock-in**: All data is in standard formats (Markdown, JSON, etc.)
+- ✅ **Rebuildable metadata**: Delete `APP_DATA_DIR` anytime - it will rebuild from your files
 
 ## Documentation
 
-- [Product Design Document](./docs/product-design.md)
-- [Technical Design Document](./docs/tech-design.md)
-- [MVP Implementation Guide](./docs/mvp.md)
-- [Task Queue Implementation](./src/lib/task-queue/IMPLEMENTATION.md) - Background job execution architecture
+- [CLAUDE.md](./CLAUDE.md) - Development guide for Claude Code
+- [Backend Architecture](./docs/backend-arch.md) - Server architecture documentation
+- [Module Interfaces](./docs/module-interfaces.md) - Module specifications
 
 ## API Endpoints
 
-### Inbox
-- `GET /api/inbox` - List inbox items
-- `POST /api/inbox` - Create inbox item (auto-processes URLs)
-- `GET /api/inbox/[id]` - Get inbox item
-- `PUT /api/inbox/[id]` - Update inbox item
-- `DELETE /api/inbox/[id]` - Delete inbox item
+All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Key endpoints:
 
-### Task Queue
-- `GET /api/tasks` - List tasks with filtering
-- `POST /api/tasks` - Create task manually
-- `GET /api/tasks/[id]` - Get task details
-- `DELETE /api/tasks/[id]` - Delete task
-- `GET /api/tasks/stats` - Task statistics
-- `GET /api/tasks/worker/status` - Worker status
-- `POST /api/tasks/worker/pause` - Pause worker
-- `POST /api/tasks/worker/resume` - Resume worker
+### Inbox
+- `GET /api/inbox` - List inbox files
+- `GET /api/inbox/:id` - Get inbox file details
+- `POST /api/inbox/:id/pin` - Pin/unpin inbox file
+- `POST /api/inbox/:id/re-enrich` - Re-run digestion
+
+### Library
+- `GET /api/library/tree` - Get directory tree
+- `GET /api/library/files` - List files in a folder
+- `GET /api/library/file` - Get file details
+- `POST /api/library/file/pin` - Pin/unpin library file
+- `POST /api/library/folder` - Create folder
+- `PUT /api/library/file/move` - Move file
+- `PUT /api/library/file/rename` - Rename file
+
+### Digest
+- `GET /api/digest/registry` - List available digesters
+- `GET /api/digest/stats` - Digest processing statistics
+- `POST /api/digest/trigger` - Manually trigger digest for a file
+
+### People
+- `GET /api/people` - List people
+- `POST /api/people` - Create person
+- `GET /api/people/:id` - Get person details
+- `PUT /api/people/:id` - Update person
+- `DELETE /api/people/:id` - Delete person
+
+### Search
+- `GET /api/search` - Full-text search across files
+
+### Upload
+- `POST /api/upload/tus/*` - TUS protocol resumable file upload
+
+### Notifications
+- `GET /api/notifications/stream` - SSE event stream for real-time updates
+
+### Files
+- `GET /raw/*path` - Serve raw file from data directory
+- `GET /sqlar/*path` - Serve file from SQLAR archive
 
 
 ## License
