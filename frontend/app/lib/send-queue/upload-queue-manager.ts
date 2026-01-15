@@ -531,6 +531,7 @@ export class UploadQueueManager {
               resultPath: result.path,
               finalPath,
             });
+
             resolve(finalPath);
           } catch (err) {
             reject(err);
@@ -549,20 +550,12 @@ export class UploadQueueManager {
 
       activeUpload.tusUpload = upload;
 
-      // Check for previous uploads to resume
-      upload.findPreviousUploads().then((previousUploads) => {
-        if (previousUploads.length > 0) {
-          console.log('[UploadQueue] Found previous uploads, attempting to resume:', previousUploads.length);
-          upload.resumeFromPreviousUpload(previousUploads[0]);
-        } else {
-          console.log('[UploadQueue] Starting fresh upload');
-        }
-        upload.start();
-      }).catch((error) => {
-        console.error('[UploadQueue] Error finding previous uploads:', error);
-        // If finding previous uploads fails, just start fresh
-        upload.start();
-      });
+      // Start upload immediately without checking for previous uploads
+      // We manage resume URLs ourselves via item.tusUploadUrl in IndexedDB
+      // The TUS library's findPreviousUploads() uses browser fingerprinting which
+      // causes stale resume attempts after the server has cleaned up completed uploads
+      console.log('[UploadQueue] Starting upload');
+      upload.start();
 
       // Set upload timeout
       const timeoutId = setTimeout(() => {
