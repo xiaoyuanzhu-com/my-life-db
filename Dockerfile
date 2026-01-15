@@ -31,7 +31,7 @@ RUN go build -o my-life-db .
 
 # Stage 3: Production image
 FROM alpine:3.20 AS runner
-WORKDIR /app
+WORKDIR /home/xiaoyuanzhu/my-life-db
 
 # Install runtime dependencies + Claude CLI dependencies
 RUN apk add --no-cache ca-certificates tzdata curl bash npm
@@ -47,9 +47,9 @@ COPY --from=go-builder /app/my-life-db ./backend/my-life-db
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
 # Create data directory and .claude directory with proper permissions
-RUN mkdir -p /app/data /home/xiaoyuanzhu/.claude && \
-    chown -R 1000:1000 /app /home/xiaoyuanzhu/.claude && \
-    chmod -R 775 /app/data /home/xiaoyuanzhu/.claude
+RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data /home/xiaoyuanzhu/.claude && \
+    chown -R 1000:1000 /home/xiaoyuanzhu && \
+    chmod -R 775 /home/xiaoyuanzhu/my-life-db/data /home/xiaoyuanzhu/.claude
 
 # Switch to non-root user
 USER 1000
@@ -58,7 +58,7 @@ USER 1000
 ENV NODE_ENV=production
 ENV PORT=12345
 ENV HOST=0.0.0.0
-ENV MY_DATA_DIR=/app/data
+ENV MY_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
 ENV HOME=/home/xiaoyuanzhu
 
 EXPOSE 12345
