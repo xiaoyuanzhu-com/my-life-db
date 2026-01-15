@@ -37,7 +37,7 @@ Use this guide to contribute consistently to the Next.js 15 + React 19 + TypeScr
 ## Security & Configuration Tips
 - Copy `.env.example` to `.env.local`; `MY_DATA_DIR` defaults to `./data`.
 - Never commit `data/` or `.env*` (see `.gitignore`).
-- SQLite lives under `MY_DATA_DIR/app/my-life-db/database.sqlite`.
+- SQLite lives under `MY_DATA_DIR/.my-life-db/database.sqlite`.
 
 ## Agent-Specific Instructions
 - Do not commit without explicit approval; permission is required for every commit.

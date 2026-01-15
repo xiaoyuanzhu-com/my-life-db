@@ -241,7 +241,7 @@ DELETE /api/upload/tus/:id        # Delete upload (on cancel)
 - `termination` - Delete abandoned uploads
 
 **Upload Storage:**
-- Temporary storage: `data/app/my-life-db/uploads/{uploadId}`
+- Temporary storage: `data/.my-life-db/uploads/{uploadId}`
 - Cleanup: TUS files deleted after successful finalization
 - **No automatic expiration** - uploads persist until finalized or deleted
 - Client responsible for cleanup via DELETE on cancel

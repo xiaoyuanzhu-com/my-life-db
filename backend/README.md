@@ -138,7 +138,7 @@ The Go server implements all the same API endpoints as the Node.js server:
 ## Database
 
 The Go server uses the same SQLite database as the Node.js server. The database
-is automatically created at `MY_DATA_DIR/app/my-life-db/database.sqlite`.
+is automatically created at `MY_DATA_DIR/.my-life-db/database.sqlite`.
 
 Migrations are handled by the Node.js server. The Go server includes a baseline
 migration that creates tables if they don't exist.

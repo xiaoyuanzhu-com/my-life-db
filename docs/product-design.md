@@ -964,7 +964,7 @@ CREATE TABLE archived_files (
 );
 
 -- Physical location
-app/my-life-db/archive/{original-path}/
+.my-life-db/archive/{original-path}/
 ```
 
 **Why:**

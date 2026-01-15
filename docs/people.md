@@ -20,7 +20,7 @@ graph TB
         VCF2["bob.vcf"]
     end
 
-    subgraph AppData["app/my-life-db/database.sqlite"]
+    subgraph AppData[".my-life-db/database.sqlite"]
         People["people table"]
         Embeddings["people_embeddings table"]
         Clusters["people_clusters table"]

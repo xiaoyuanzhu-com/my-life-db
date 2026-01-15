@@ -150,7 +150,7 @@ The backend runs two concurrent workers:
 MY_DATA_DIR/
 ├── inbox/              # Unprocessed files (source of truth)
 ├── notes/, journal/... # User library folders (source of truth)
-└── app/my-life-db/     # Rebuildable app data
+└── .my-life-db/     # Rebuildable app data
     └── database.sqlite
 ```
 
@@ -160,7 +160,7 @@ MY_DATA_DIR/
 - Files referenced by relative paths, no synthetic IDs
 
 ### Database (SQLite)
-- Location: `MY_DATA_DIR/app/my-life-db/database.sqlite`
+- Location: `MY_DATA_DIR/.my-life-db/database.sqlite`
 - Driver: mattn/go-sqlite3 with CGO_ENABLED=1 (required for build)
 - Core tables: `files`, `digests`, `sqlar` (archive format), `pins`, `people`, `settings`
 - Migration system in `db/migrations.go`
