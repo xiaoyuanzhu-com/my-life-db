@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy, Loader2 } from 'lucide-react';
+import type { PendingInboxItem } from '~/lib/send-queue/types';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -54,6 +55,28 @@ interface TreeNodeProps {
   dropTarget: string | null;
   setDropTarget: (path: string | null) => void;
   onExternalFileDrop: (entries: FileSystemEntry[], targetPath: string) => Promise<void>;
+  pendingUploads?: PendingInboxItem[];
+}
+
+function PendingUploadItem({ item, level }: { item: PendingInboxItem; level: number }) {
+  const paddingLeft = `${level * 16 + 8}px`;
+  const IconComponent = getFileIcon(item.filename);
+
+  return (
+    <div
+      className="flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground opacity-60"
+      style={{ paddingLeft }}
+    >
+      <div className="w-4 flex items-center justify-center">
+        <Loader2 className="w-3 h-3 animate-spin" />
+      </div>
+      <IconComponent className="w-4 h-4 flex-shrink-0" />
+      <span className="truncate flex-1">{item.filename}</span>
+      {item.status === 'uploading' && item.uploadProgress !== undefined && (
+        <span className="text-xs">{item.uploadProgress}%</span>
+      )}
+    </div>
+  );
 }
 
 function getFileIcon(filename: string) {
@@ -88,6 +111,7 @@ function TreeNode({
   dropTarget,
   setDropTarget,
   onExternalFileDrop,
+  pendingUploads = [],
 }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -446,26 +470,33 @@ function TreeNode({
               Loading...
             </div>
           ) : (
-            children.map((child) => (
-              <TreeNode
-                key={child.path}
-                node={child}
-                level={level + 1}
-                onFileOpen={onFileOpen}
-                expandedFolders={expandedFolders}
-                onToggleFolder={onToggleFolder}
-                selectedFilePath={selectedFilePath}
-                onRefresh={onRefresh}
-                onFileDeleted={onFileDeleted}
-                onFileRenamed={onFileRenamed}
-                onFileMoved={onFileMoved}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                dropTarget={dropTarget}
-                setDropTarget={setDropTarget}
-                onExternalFileDrop={onExternalFileDrop}
-              />
-            ))
+            <>
+              {/* Show pending uploads for this folder */}
+              {pendingUploads.map((item) => (
+                <PendingUploadItem key={item.id} item={item} level={level + 1} />
+              ))}
+              {children.map((child) => (
+                <TreeNode
+                  key={child.path}
+                  node={child}
+                  level={level + 1}
+                  onFileOpen={onFileOpen}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={onToggleFolder}
+                  selectedFilePath={selectedFilePath}
+                  onRefresh={onRefresh}
+                  onFileDeleted={onFileDeleted}
+                  onFileRenamed={onFileRenamed}
+                  onFileMoved={onFileMoved}
+                  draggedItem={draggedItem}
+                  setDraggedItem={setDraggedItem}
+                  dropTarget={dropTarget}
+                  setDropTarget={setDropTarget}
+                  onExternalFileDrop={onExternalFileDrop}
+                  pendingUploads={[]}
+                />
+              ))}
+            </>
           )}
         </div>
       )}
@@ -489,6 +520,7 @@ export function FileTree({
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const [draggedItem, setDraggedItem] = useState<FileNode | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [pendingUploads, setPendingUploads] = useState<PendingInboxItem[]>([]);
 
   const loadRoot = useCallback(async () => {
     try {
@@ -504,6 +536,27 @@ export function FileTree({
 
   useEffect(() => {
     loadRoot();
+
+    // Subscribe to upload progress
+    let unsubscribe: (() => void) | undefined;
+
+    const setupUploadTracking = async () => {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      unsubscribe = uploadManager.onProgress((items) => {
+        // Only show library uploads (not inbox uploads)
+        const libraryUploads = items.filter(item => item.destination !== 'inbox' && item.destination !== undefined);
+        setPendingUploads(libraryUploads);
+      });
+    };
+
+    setupUploadTracking();
+
+    return () => {
+      unsubscribe?.();
+    };
   }, [loadRoot]);
 
   useEffect(() => {
@@ -761,6 +814,14 @@ export function FileTree({
     );
   }
 
+  // Group pending uploads by their destination folder
+  const pendingByFolder = pendingUploads.reduce((acc, item) => {
+    const folder = item.destination || '';
+    if (!acc[folder]) acc[folder] = [];
+    acc[folder].push(item);
+    return acc;
+  }, {} as Record<string, PendingInboxItem[]>);
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -770,12 +831,16 @@ export function FileTree({
           onDragLeave={handleRootDragLeave}
           onDrop={handleRootDrop}
         >
-          {rootNodes.length === 0 && !isCreatingFolder ? (
+          {rootNodes.length === 0 && !isCreatingFolder && pendingUploads.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground">
               No files in library. Right-click to create a folder.
             </div>
           ) : (
             <>
+              {/* Show pending uploads at root level */}
+              {(pendingByFolder[''] || []).map((item) => (
+                <PendingUploadItem key={item.id} item={item} level={0} />
+              ))}
               {rootNodes.map((node) => (
                 <TreeNode
                   key={node.path}
@@ -794,6 +859,7 @@ export function FileTree({
                   dropTarget={dropTarget}
                   setDropTarget={setDropTarget}
                   onExternalFileDrop={handleExternalFileDrop}
+                  pendingUploads={pendingByFolder[node.path] || []}
                 />
               ))}
               {isCreatingFolder && (
