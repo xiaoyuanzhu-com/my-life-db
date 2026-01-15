@@ -34,10 +34,10 @@ FROM alpine:3.20 AS runner
 WORKDIR /home/xiaoyuanzhu/my-life-db
 
 # Install runtime dependencies + Claude CLI dependencies
-RUN apk add --no-cache ca-certificates tzdata curl bash npm
+RUN apk add --no-cache ca-certificates tzdata curl bash
 
 # Install Claude CLI globally (before switching to non-root user)
-RUN npm install -g @anthropic-ai/claude-cli
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN addgroup -g 1000 xiaoyuanzhu && adduser -u 1000 -G xiaoyuanzhu -S xiaoyuanzhu
