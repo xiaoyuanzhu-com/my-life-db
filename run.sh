@@ -37,7 +37,7 @@ run_meilisearch() {
 
     local MEILI_VERSION="v1.27"
     local MEILI_PORT="7700"
-    local MEILI_DATA_DIR="$DATA_DIR/app/my-life-db/meili"
+    local MEILI_DATA_DIR="$DATA_DIR/.my-life-db/meili"
 
     # Create data directory if it doesn't exist
     mkdir -p "$MEILI_DATA_DIR"
@@ -72,7 +72,7 @@ run_qdrant() {
 
     local QDRANT_VERSION="v1.16"
     local QDRANT_PORT="6333"
-    local QDRANT_DATA_DIR="$DATA_DIR/app/my-life-db/qdrant"
+    local QDRANT_DATA_DIR="$DATA_DIR/.my-life-db/qdrant"
 
     # Create data directory if it doesn't exist
     mkdir -p "$QDRANT_DATA_DIR"

@@ -66,7 +66,7 @@ func Get() *Config {
 // load reads configuration from environment variables
 func load() *Config {
 	dataDir := getEnv("MY_DATA_DIR", "./data")
-	appDir := filepath.Join(dataDir, "app", "my-life-db")
+	appDir := filepath.Join(dataDir, ".my-life-db")
 
 	return &Config{
 		// Server

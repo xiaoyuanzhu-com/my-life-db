@@ -29,7 +29,7 @@ func InitTUSHandler() (http.Handler, error) {
 	var initErr error
 	tusHandlerOnce.Do(func() {
 		cfg := config.Get()
-		uploadDir = filepath.Join(cfg.DataDir, "app", "my-life-db", "uploads")
+		uploadDir = filepath.Join(cfg.DataDir, ".my-life-db", "uploads")
 
 		// Ensure upload directory exists
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
