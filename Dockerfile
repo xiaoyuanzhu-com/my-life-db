@@ -34,7 +34,8 @@ FROM alpine:3.20 AS runner
 WORKDIR /home/xiaoyuanzhu/my-life-db
 
 # Install runtime dependencies + Claude CLI dependencies
-RUN apk add --no-cache ca-certificates tzdata curl bash
+# libstdc++ and libgcc are required for Claude CLI (C++ runtime)
+RUN apk add --no-cache ca-certificates tzdata curl bash libstdc++ libgcc
 
 # Install Claude CLI globally (before switching to non-root user)
 RUN curl -fsSL https://claude.ai/install.sh | bash
