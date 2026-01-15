@@ -53,6 +53,7 @@ interface TreeNodeProps {
   setDraggedItem: (node: FileNode | null) => void;
   dropTarget: string | null;
   setDropTarget: (path: string | null) => void;
+  onExternalFileDrop: (files: FileList, targetPath: string) => Promise<void>;
 }
 
 function getFileIcon(filename: string) {
@@ -86,6 +87,7 @@ function TreeNode({
   setDraggedItem,
   dropTarget,
   setDropTarget,
+  onExternalFileDrop,
 }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -242,11 +244,21 @@ function TreeNode({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (node.type === 'folder' && draggedItem && draggedItem.path !== node.path) {
-      // Prevent dropping into self or children
-      if (!draggedItem.path.startsWith(node.path + '/')) {
-        e.dataTransfer.dropEffect = 'move';
+
+    // Check if dragging files from outside (has files but no dragged item from tree)
+    const hasFiles = e.dataTransfer.types.includes('Files');
+
+    if (node.type === 'folder') {
+      if (hasFiles && !draggedItem) {
+        // External files being dragged over folder
+        e.dataTransfer.dropEffect = 'copy';
         setDropTarget(node.path);
+      } else if (draggedItem && draggedItem.path !== node.path) {
+        // Internal drag - prevent dropping into self or children
+        if (!draggedItem.path.startsWith(node.path + '/')) {
+          e.dataTransfer.dropEffect = 'move';
+          setDropTarget(node.path);
+        }
       }
     }
   };
@@ -264,7 +276,19 @@ function TreeNode({
     e.stopPropagation();
     setDropTarget(null);
 
-    if (!draggedItem || node.type !== 'folder' || draggedItem.path === node.path) {
+    if (node.type !== 'folder') {
+      return;
+    }
+
+    // Check if dropping external files
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      await onExternalFileDrop(files, node.path);
+      return;
+    }
+
+    // Handle internal drag and drop
+    if (!draggedItem || draggedItem.path === node.path) {
       return;
     }
 
@@ -427,6 +451,7 @@ function TreeNode({
                 setDraggedItem={setDraggedItem}
                 dropTarget={dropTarget}
                 setDropTarget={setDropTarget}
+                onExternalFileDrop={onExternalFileDrop}
               />
             ))
           )}
@@ -517,7 +542,14 @@ export function FileTree({
   // Handle drop at root level
   const handleRootDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (draggedItem) {
+    const hasFiles = e.dataTransfer.types.includes('Files');
+
+    if (hasFiles && !draggedItem) {
+      // External files being dragged over root
+      e.dataTransfer.dropEffect = 'copy';
+      setDropTarget('');
+    } else if (draggedItem) {
+      // Internal drag
       e.dataTransfer.dropEffect = 'move';
       setDropTarget('');
     }
@@ -533,6 +565,14 @@ export function FileTree({
     e.preventDefault();
     setDropTarget(null);
 
+    // Check if dropping external files
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      await handleExternalFileDrop(files, '');
+      return;
+    }
+
+    // Handle internal drag and drop
     if (!draggedItem) return;
 
     // Don't move if already at root
@@ -563,6 +603,44 @@ export function FileTree({
     }
 
     setDraggedItem(null);
+  };
+
+  const handleExternalFileDrop = async (files: FileList, targetPath: string) => {
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      // Destination for library:
+      // - Empty string ('') means root of library (data directory root)
+      // - Folder path means that specific folder in the library
+      // Pass the targetPath directly - empty string is valid for library root
+      const destination = targetPath;
+
+      console.log('[FileTree] Dropping files:', files.length, 'to destination:', destination || '(library root)');
+
+      // Upload files to the target path
+      const fileArray = Array.from(files);
+      for (const file of fileArray) {
+        console.log('[FileTree] Enqueuing file:', file.name, 'destination:', destination);
+        await uploadManager.enqueueFile(file, undefined, destination);
+      }
+
+      // Subscribe to upload completion to refresh the tree
+      const unsubscribe = uploadManager.onUploadComplete((item, serverPath) => {
+        console.log('[FileTree] Upload completed:', item.filename, 'at', serverPath);
+        // Refresh the tree when upload completes
+        loadRoot();
+      });
+
+      // Clean up subscription after 5 minutes (uploads should be done by then)
+      setTimeout(() => {
+        unsubscribe();
+      }, 5 * 60 * 1000);
+    } catch (error) {
+      console.error('[FileTree] Failed to upload files:', error);
+      alert(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   if (isLoading) {
@@ -605,6 +683,7 @@ export function FileTree({
                   setDraggedItem={setDraggedItem}
                   dropTarget={dropTarget}
                   setDropTarget={setDropTarget}
+                  onExternalFileDrop={handleExternalFileDrop}
                 />
               ))}
               {isCreatingFolder && (

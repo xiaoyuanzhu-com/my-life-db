@@ -55,7 +55,17 @@ function generateTabId(): string {
  * Generate a UUID v4
  */
 function generateUUID(): string {
-  return crypto.randomUUID();
+  // Use crypto.randomUUID if available (modern browsers)
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  // Fallback polyfill for older browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 /**
@@ -189,7 +199,7 @@ export class UploadQueueManager {
   /**
    * Enqueue text content for upload
    */
-  async enqueueText(text: string): Promise<PendingInboxItem> {
+  async enqueueText(text: string, destination?: string): Promise<PendingInboxItem> {
     const id = generateUUID();
     const now = new Date().toISOString();
 
@@ -211,6 +221,7 @@ export class UploadQueueManager {
       status: 'saved',
       uploadProgress: 0,
       retryCount: 0,
+      destination,
     };
 
     await saveItem(item);
@@ -225,7 +236,7 @@ export class UploadQueueManager {
   /**
    * Enqueue a file for upload
    */
-  async enqueueFile(file: File, usedNames?: Set<string>): Promise<PendingInboxItem> {
+  async enqueueFile(file: File, usedNames?: Set<string>, destination?: string): Promise<PendingInboxItem> {
     const id = generateUUID();
     const now = new Date().toISOString();
 
@@ -246,6 +257,7 @@ export class UploadQueueManager {
       status: 'saved',
       uploadProgress: 0,
       retryCount: 0,
+      destination,
     };
 
     await saveItem(item);
@@ -262,21 +274,22 @@ export class UploadQueueManager {
    */
   async enqueueAll(
     text: string | undefined,
-    files: File[]
+    files: File[],
+    destination?: string
   ): Promise<PendingInboxItem[]> {
     const items: PendingInboxItem[] = [];
     const usedNames = new Set<string>();
 
     // Enqueue text first (if provided)
     if (text && text.trim()) {
-      const textItem = await this.enqueueText(text.trim());
+      const textItem = await this.enqueueText(text.trim(), destination);
       items.push(textItem);
       usedNames.add(textItem.filename);
     }
 
     // Enqueue files
     for (const file of files) {
-      const fileItem = await this.enqueueFile(file, usedNames);
+      const fileItem = await this.enqueueFile(file, usedNames, destination);
       items.push(fileItem);
     }
 
@@ -438,6 +451,13 @@ export class UploadQueueManager {
     activeUpload: ActiveUpload
   ): Promise<string> {
     return new Promise((resolve, reject) => {
+      console.log('[UploadQueue] Starting TUS upload:', {
+        filename: item.filename,
+        destination: item.destination,
+        tusUploadUrl: item.tusUploadUrl,
+        size: item.size,
+      });
+
       const upload = new tus.Upload(item.blob, {
         endpoint: '/api/upload/tus/',
         retryDelays: [], // We handle retries ourselves
@@ -450,7 +470,18 @@ export class UploadQueueManager {
         headers: {
           'Idempotency-Key': item.id,
         },
-        onError: (error) => {
+        onError: async (error) => {
+          console.error('[UploadQueue] TUS upload error:', error);
+
+          // If we get a 404 error while trying to resume, clear the stale TUS URL and retry
+          if (error.message && error.message.includes('404') && item.tusUploadUrl) {
+            console.log('[UploadQueue] Clearing stale TUS URL and retrying with fresh upload');
+            const currentItem = await getItem(item.id);
+            if (currentItem) {
+              await saveItem({ ...currentItem, tusUploadUrl: undefined, tusUploadOffset: undefined });
+            }
+          }
+
           reject(error);
         },
         onProgress: async (bytesUploaded, bytesTotal) => {
@@ -465,17 +496,25 @@ export class UploadQueueManager {
         onSuccess: async () => {
           // Upload complete - finalize
           try {
+            // Build request body - only include destination if it's defined
+            const requestBody: any = {
+              uploads: [{
+                uploadId: upload.url?.split('/').pop(),
+                filename: item.filename,
+                size: item.size,
+                type: item.type,
+              }],
+            };
+
+            // Always include destination if provided (even if empty string)
+            if (item.destination !== undefined) {
+              requestBody.destination = item.destination;
+            }
+
             const response = await fetch('/api/upload/finalize', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                uploads: [{
-                  uploadId: upload.url?.split('/').pop(),
-                  filename: item.filename,
-                  size: item.size,
-                  type: item.type,
-                }],
-              }),
+              body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {
@@ -484,7 +523,15 @@ export class UploadQueueManager {
             }
 
             const result = await response.json();
-            resolve(result.path || result.paths?.[0] || `inbox/${item.filename}`);
+            const defaultPath = `${item.destination || 'inbox'}/${item.filename}`;
+            const finalPath = result.path || result.paths?.[0] || defaultPath;
+            console.log('[UploadQueue] Upload finalized successfully:', {
+              destination: item.destination,
+              filename: item.filename,
+              resultPath: result.path,
+              finalPath,
+            });
+            resolve(finalPath);
           } catch (err) {
             reject(err);
           }
@@ -505,8 +552,15 @@ export class UploadQueueManager {
       // Check for previous uploads to resume
       upload.findPreviousUploads().then((previousUploads) => {
         if (previousUploads.length > 0) {
+          console.log('[UploadQueue] Found previous uploads, attempting to resume:', previousUploads.length);
           upload.resumeFromPreviousUpload(previousUploads[0]);
+        } else {
+          console.log('[UploadQueue] Starting fresh upload');
         }
+        upload.start();
+      }).catch((error) => {
+        console.error('[UploadQueue] Error finding previous uploads:', error);
+        // If finding previous uploads fails, just start fresh
         upload.start();
       });
 

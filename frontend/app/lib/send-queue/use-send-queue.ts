@@ -65,7 +65,7 @@ export function useSendQueue(
 
   const send = useCallback(async (text: string | undefined, files: File[]): Promise<PendingInboxItem[]> => {
     const manager = getUploadQueueManager();
-    return manager.enqueueAll(text, files);
+    return manager.enqueueAll(text, files, 'inbox');
   }, []);
 
   const cancel = useCallback(async (id: string): Promise<void> => {

@@ -28,6 +28,8 @@ export interface PendingInboxItem {
   type: string;
   /** File size in bytes */
   size: number;
+  /** Destination path relative to data directory (e.g., 'inbox', 'notes/work', defaults to 'inbox') */
+  destination?: string;
 
   // Sync state
   /** Current status */

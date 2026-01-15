@@ -102,8 +102,8 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 			Size     int64  `json:"size"`
 			Type     string `json:"type"`
 		} `json:"uploads"`
-		Text        string `json:"text,omitempty"`
-		Destination string `json:"destination,omitempty"`
+		Text        string  `json:"text,omitempty"`
+		Destination *string `json:"destination,omitempty"` // Pointer to distinguish nil (not provided) vs "" (empty string)
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -117,10 +117,15 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 
 	cfg := config.Get()
 
-	// Default destination is inbox
-	destination := body.Destination
-	if destination == "" {
+	// Determine destination:
+	// - If Destination field is not provided (nil): use "inbox" (default)
+	// - If Destination is empty string (""): use data root (empty path)
+	// - Otherwise: use the provided destination path
+	var destination string
+	if body.Destination == nil {
 		destination = "inbox"
+	} else {
+		destination = *body.Destination
 	}
 
 	// Ensure destination directory exists
