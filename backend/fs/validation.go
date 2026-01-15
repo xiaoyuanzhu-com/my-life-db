@@ -8,9 +8,8 @@ import (
 
 // Default exclusion patterns for filesystem operations
 var defaultExclusionPatterns = []string{
-	`^app/`,            // App data directory
-	`^\.git/`,          // Git repository
-	`/\.git/`,          // Git repository in subdirectories
+	`^\.`,              // Any directory starting with . at root (e.g., .my-life-db, .git, .obsidian, .claude)
+	`/\.[^/]+/`,        // Any directory starting with . in subdirectories
 	`(^|/)\.DS_Store$`, // macOS metadata files (anywhere)
 	`(^|/)\..*\.swp$`,  // Vim swap files
 	`(^|/)~.*$`,        // Backup files

@@ -89,19 +89,22 @@ func (s *scanner) scan() {
 			return nil // Skip errors
 		}
 
-		// Skip directories
-		if info.IsDir() {
-			return nil
-		}
-
 		// Get relative path
 		relPath, err := filepath.Rel(s.service.cfg.DataRoot, path)
 		if err != nil {
 			return nil
 		}
 
-		// Skip excluded paths
+		// Skip excluded paths (skip entire directory if excluded)
 		if s.service.validator.isExcluded(relPath) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Skip directories (after exclusion check)
+		if info.IsDir() {
 			return nil
 		}
 
