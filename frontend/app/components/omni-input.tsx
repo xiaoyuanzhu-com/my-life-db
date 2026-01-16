@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Upload, X, Plus } from 'lucide-react';
+import { Upload, X, Plus, Mic } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
 import type { SearchResponse } from '~/types/api';
 import { useSendQueue } from '~/lib/send-queue';
+import { useRealtimeASR } from '~/hooks/use-realtime-asr';
 
 interface OmniInputProps {
   onEntryCreated?: () => void;
@@ -40,6 +41,25 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   const { send } = useSendQueue(() => {
     // Called when an upload completes - refresh the inbox
     onEntryCreated?.();
+  });
+
+  // Real-time ASR hook
+  const [partialTranscript, setPartialTranscript] = useState('');
+  const { isRecording, startRecording, stopRecording } = useRealtimeASR({
+    onTranscript: (text, isFinal) => {
+      if (isFinal) {
+        // Append final transcript to content
+        setContent(prev => prev ? `${prev} ${text}` : text);
+        setPartialTranscript(''); // Clear partial text after final
+      } else {
+        // Only show partial transcript temporarily, don't append to content
+        setPartialTranscript(text);
+      }
+    },
+    onError: (errorMsg) => {
+      setError(`Voice input error: ${errorMsg}`);
+      console.error('ASR error:', errorMsg);
+    }
   });
 
   // Search state - separate tracking for keyword and semantic
@@ -434,13 +454,37 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             />
           )}
 
-          <Button
-            type="submit"
-            size="sm"
-            className="h-7 cursor-pointer"
-          >
-            Send
-          </Button>
+          {isRecording ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 cursor-pointer animate-pulse"
+              onClick={stopRecording}
+              aria-label="Stop recording"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          ) : content.trim() || selectedFiles.length > 0 ? (
+            <Button
+              type="submit"
+              size="sm"
+              className="h-7 cursor-pointer"
+            >
+              Send
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 cursor-pointer"
+              onClick={startRecording}
+              aria-label="Start voice input"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         {isDragging && (
