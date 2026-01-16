@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 
 interface UseRealtimeASROptions {
   onTranscript?: (text: string, isFinal: boolean) => void;
@@ -8,11 +8,15 @@ interface UseRealtimeASROptions {
 
 export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: UseRealtimeASROptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const taskIdRef = useRef<string | null>(null);
+  const durationIntervalRef = useRef<number | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
@@ -142,6 +146,43 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
+      // Create analyser for audio level visualization
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      analyserRef.current = analyser;
+
+      // Connect audio graph: source -> analyser -> processor -> destination
+      source.connect(analyser);
+      analyser.connect(processor);
+      processor.connect(audioContext.destination);
+
+      // Start duration timer
+      setRecordingDuration(0);
+      durationIntervalRef.current = window.setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+      // Update audio level periodically using requestAnimationFrame
+      const animationFrameRef = { current: 0 };
+      const updateAudioLevel = () => {
+        if (analyserRef.current && audioContextRef.current?.state === 'running') {
+          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteFrequencyData(dataArray);
+
+          // Calculate average volume (0-100 scale)
+          const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+          const normalizedLevel = Math.min(100, (average / 255) * 150); // Boost sensitivity
+          setAudioLevel(normalizedLevel);
+
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        }
+      };
+      updateAudioLevel();
+
+      // Store animation frame ID for cleanup
+      const currentAnimationFrame = animationFrameRef;
+
       let audioChunkCount = 0;
       processor.onaudioprocess = (e) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -164,11 +205,14 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
         }
       };
 
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
     } catch (err) {
       console.error('Failed to start recording:', err);
+
+      // Clean up on error
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
 
       // Provide user-friendly error messages
       let errorMessage = 'Failed to start recording';
@@ -186,6 +230,8 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
 
       onError?.(errorMessage);
       setIsRecording(false);
+      setAudioLevel(0);
+      setRecordingDuration(0);
     }
   }, [sampleRate, onTranscript, onError]);
 
@@ -208,6 +254,18 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       // The ws.onmessage handler will close when it receives task-finished
     }
 
+    // Stop duration timer
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
+    }
+
+    // Clean up audio analyser
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+
     // Clean up audio context
     if (processorRef.current) {
       processorRef.current.disconnect();
@@ -226,10 +284,23 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     }
 
     setIsRecording(false);
+    setAudioLevel(0);
+    setRecordingDuration(0);
+  }, []);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+    };
   }, []);
 
   return {
     isRecording,
+    audioLevel,
+    recordingDuration,
     startRecording,
     stopRecording
   };

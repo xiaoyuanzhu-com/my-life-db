@@ -3,10 +3,14 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
@@ -83,6 +87,33 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 
 	log.Info().Str("url", wsURL).Msg("connected to Aliyun Fun-ASR Realtime")
 
+	// Create temporary recording file for crash protection
+	cfg := config.Get()
+	tempDir := filepath.Join(cfg.GetAppDataDir(), "recordings", "temp")
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		log.Error().Err(err).Msg("failed to create temp recordings directory")
+	}
+
+	timestamp := time.Now().Format("20060102_150405")
+	tempFile := filepath.Join(tempDir, timestamp+".pcm")
+	audioFile, err := os.Create(tempFile)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to create temp audio file, continuing without auto-save")
+		audioFile = nil
+	} else {
+		log.Info().Str("file", tempFile).Msg("saving audio chunks for crash protection")
+		defer func() {
+			if audioFile != nil {
+				audioFile.Close()
+				// Clean up temp file on successful completion
+				// In case of crash, the file remains for recovery
+				if err := os.Remove(tempFile); err != nil {
+					log.Warn().Err(err).Str("file", tempFile).Msg("failed to clean up temp audio file")
+				}
+			}
+		}()
+	}
+
 	// Use goroutines to handle bidirectional communication
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
@@ -152,6 +183,14 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 			} else if messageType == websocket.BinaryMessage {
 				// Forward binary audio data directly
 				log.Debug().Int("bytes", len(message)).Msg("🎤 Client → Aliyun (binary audio)")
+
+				// Save audio chunk to temp file for crash protection
+				if audioFile != nil {
+					if _, err := audioFile.Write(message); err != nil {
+						log.Warn().Err(err).Msg("failed to write audio chunk to temp file")
+					}
+				}
+
 				if err := aliyunConn.WriteMessage(websocket.BinaryMessage, message); err != nil {
 					log.Error().Err(err).Msg("failed to forward audio to Aliyun")
 					errChan <- err

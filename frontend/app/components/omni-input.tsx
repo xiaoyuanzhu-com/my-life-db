@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Upload, X, Plus, Mic } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
+import { RecordingVisualizer } from './recording-visualizer';
 import type { SearchResponse } from '~/types/api';
 import { useSendQueue } from '~/lib/send-queue';
 import { useRealtimeASR } from '~/hooks/use-realtime-asr';
@@ -45,7 +46,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
   // Real-time ASR hook
   const [partialTranscript, setPartialTranscript] = useState('');
-  const { isRecording, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+  const { isRecording, audioLevel, recordingDuration, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onTranscript: (text, isFinal) => {
       if (isFinal) {
         // Append final transcript to content
@@ -453,6 +454,14 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           </div>
         )}
 
+        {/* Recording Visualizer */}
+        {isRecording && (
+          <RecordingVisualizer
+            audioLevel={audioLevel}
+            duration={recordingDuration}
+          />
+        )}
+
         {/* Bottom control bar - floating buttons */}
         <div className="flex items-center justify-between px-3 h-9">
           <Button
@@ -476,17 +485,22 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             />
           )}
 
-          {/* Recording state: red pulsing stop button */}
+          {/* Recording state: enhanced stop button with pulse */}
           {isRecording && (
             <Button
               type="button"
               size="sm"
               variant="destructive"
-              className="h-7 cursor-pointer animate-pulse"
+              className="h-8 px-3 cursor-pointer gap-2"
               onClick={stopRecording}
               aria-label="Stop recording"
             >
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+              </div>
               <Mic className="h-4 w-4" />
+              <span className="text-xs font-medium">Stop</span>
             </Button>
           )}
 
@@ -501,17 +515,17 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             </Button>
           )}
 
-          {/* Empty state: ghost mic button */}
+          {/* Empty state: ghost mic button with larger touch target */}
           {!isRecording && !content.trim() && selectedFiles.length === 0 && (
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              className="h-7 cursor-pointer"
+              className="h-8 w-8 p-0 cursor-pointer"
               onClick={startRecording}
               aria-label="Start voice input"
             >
-              <Mic className="h-4 w-4" />
+              <Mic className="h-5 w-5" />
             </Button>
           )}
         </div>
