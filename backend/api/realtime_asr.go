@@ -140,7 +140,8 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 					// Get model from environment or use default Aliyun Fun-ASR Realtime model
 					config.Model = os.Getenv("ALIYUN_ASR_REALTIME_MODEL")
 					if config.Model == "" {
-						config.Model = "paraformer-realtime-v2"
+						// Default to fun-asr-realtime (same as online demo)
+						config.Model = "fun-asr-realtime"
 					}
 				}
 
@@ -149,6 +150,20 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 				taskIDMutex.Lock()
 				taskID = newTaskID
 				taskIDMutex.Unlock()
+
+				// Build parameters based on config
+				// Based on HAR file analysis, the online demo uses:
+				// - semantic_punctuation_enabled: false (VAD-based segmentation for lower latency)
+				// - max_sentence_silence: 1300 (ms)
+				parameters := map[string]interface{}{
+					"semantic_punctuation_enabled": false,
+					"max_sentence_silence":          1300,
+				}
+
+				// Add language hints if specified
+				if config.Language != "" {
+					parameters["language_hints"] = []string{config.Language}
+				}
 
 				// Send run-task message to Aliyun
 				runTaskMsg := map[string]interface{}{
@@ -166,11 +181,7 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 							"format":      config.Format,
 							"sample_rate": config.SampleRate,
 						},
-						"parameters": map[string]interface{}{
-							"enable_disfluency":                 true,
-							"enable_punctuation":                true,
-							"enable_inverse_text_normalization": true,
-						},
+						"parameters": parameters,
 					},
 				}
 

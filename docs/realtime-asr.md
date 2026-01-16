@@ -42,7 +42,7 @@ All messages are JSON-formatted and follow a vendor-agnostic schema:
 {
   "type": "start",
   "metadata": {
-    "model": "paraformer-realtime-v2",
+    "model": "fun-asr-realtime",
     "sample_rate": 16000,
     "format": "pcm",
     "language": "zh",
@@ -52,7 +52,7 @@ All messages are JSON-formatted and follow a vendor-agnostic schema:
 ```
 
 **Fields:**
-- `model` (optional): Model name (provider-specific, default: `paraformer-realtime-v2`)
+- `model` (optional): Model name (provider-specific, default: `fun-asr-realtime`)
 - `sample_rate` (optional): Audio sample rate in Hz (default: 16000)
 - `format` (optional): Audio format - `pcm`, `opus`, `wav`, etc (default: `pcm`)
 - `language` (optional): Language code (e.g., `zh`, `en`)
