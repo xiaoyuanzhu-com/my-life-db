@@ -45,7 +45,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
   // Real-time ASR hook
   const [partialTranscript, setPartialTranscript] = useState('');
-  const { isRecording, startRecording, stopRecording } = useRealtimeASR({
+  const { isRecording, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onTranscript: (text, isFinal) => {
       if (isFinal) {
         // Append final transcript to content
@@ -61,6 +61,12 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       console.error('ASR error:', errorMsg);
     }
   });
+
+  // Wrap stopRecording to clear partial transcript
+  const stopRecording = useCallback(() => {
+    stopRecordingRaw();
+    setPartialTranscript(''); // Clear any remaining partial transcript
+  }, [stopRecordingRaw]);
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
@@ -276,6 +282,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    // Don't submit while recording
+    if (isRecording) {
+      return;
+    }
+
     const trimmed = content.trim();
     if (!trimmed && selectedFiles.length === 0) {
       setError('Please enter some content or select files');
@@ -380,10 +391,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         <Textarea
           id="omni-input"
           name="content"
-          value={content}
+          value={content + (partialTranscript ? ` ${partialTranscript}` : '')}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            // Don't allow Enter to submit while recording
+            if (e.key === 'Enter' && !e.shiftKey && !isRecording) {
               e.preventDefault();
               if (content.trim() || selectedFiles.length > 0) {
                 handleSubmit(e);
@@ -398,6 +410,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             'placeholder:text-muted-foreground/50 min-h-9 px-4 pt-2'
           )}
           aria-invalid={!!error}
+          disabled={isRecording}
         />
 
         {/* File chips above control bar */}
@@ -454,7 +467,8 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             />
           )}
 
-          {isRecording ? (
+          {/* Recording state: red pulsing stop button */}
+          {isRecording && (
             <Button
               type="button"
               size="sm"
@@ -465,7 +479,10 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             >
               <Mic className="h-4 w-4" />
             </Button>
-          ) : content.trim() || selectedFiles.length > 0 ? (
+          )}
+
+          {/* Has content: send button */}
+          {!isRecording && (content.trim() || selectedFiles.length > 0) && (
             <Button
               type="submit"
               size="sm"
@@ -473,7 +490,10 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             >
               Send
             </Button>
-          ) : (
+          )}
+
+          {/* Empty state: ghost mic button */}
+          {!isRecording && !content.trim() && selectedFiles.length === 0 && (
             <Button
               type="button"
               size="sm"
