@@ -546,7 +546,7 @@ func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord,
 	var asrResp *vendors.ASRResponse
 
 	// Determine which ASR provider to use
-	provider := "haid" // Default to HAID
+	provider := "fun-asr" // Default to Aliyun Fun-ASR
 	if settings.Vendors != nil && settings.Vendors.Aliyun != nil && settings.Vendors.Aliyun.ASRProvider != "" {
 		provider = settings.Vendors.Aliyun.ASRProvider
 	}
@@ -554,7 +554,7 @@ func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord,
 	log.Info().Str("provider", provider).Str("filePath", filePath).Msg("using ASR provider")
 
 	switch provider {
-	case "fun-asr-realtime":
+	case "fun-asr", "fun-asr-realtime":
 		// Use Aliyun Fun-ASR
 		aliyun := vendors.GetAliyun()
 		if aliyun == nil {
@@ -568,7 +568,7 @@ func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord,
 			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 		}
 
-	default:
+	case "haid":
 		// Use HAID (whisperx with diarization)
 		haid := vendors.GetHAID()
 		if haid == nil {
@@ -581,6 +581,10 @@ func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord,
 			errMsg := err.Error()
 			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 		}
+
+	default:
+		errMsg := fmt.Sprintf("unknown ASR provider: %s", provider)
+		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
 	// Store the full ASR response as JSON (matching Node.js implementation)

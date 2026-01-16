@@ -232,7 +232,7 @@ func LoadUserSettings() (*models.UserSettings, error) {
 		Aliyun: &models.Aliyun{
 			APIKey:             pickFromMap("vendors_aliyun_api_key", "DASHSCOPE_API_KEY", ""),
 			Region:             pickFromMap("vendors_aliyun_region", "ALIYUN_REGION", "beijing"),
-			ASRProvider:        pickFromMap("vendors_aliyun_asr_provider", "ALIYUN_ASR_PROVIDER", "fun-asr-realtime"),
+			ASRProvider:        pickFromMap("vendors_aliyun_asr_provider", "ALIYUN_ASR_PROVIDER", "fun-asr"),
 			OSSAccessKeyID:     pickFromMap("vendors_aliyun_oss_access_key_id", "OSS_ACCESS_KEY_ID", ""),
 			OSSAccessKeySecret: pickFromMap("vendors_aliyun_oss_access_key_secret", "OSS_ACCESS_KEY_SECRET", ""),
 			OSSRegion:          pickFromMap("vendors_aliyun_oss_region", "OSS_REGION", "oss-cn-beijing"),
