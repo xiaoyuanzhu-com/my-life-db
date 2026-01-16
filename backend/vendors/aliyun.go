@@ -429,3 +429,11 @@ func (c *AliyunClient) doRequest(method, url string, body interface{}, extraHead
 func GetAliyun() *AliyunClient {
 	return GetAliyunClient()
 }
+
+// getRealtimeWebSocketURL returns the WebSocket URL for real-time ASR based on region
+func (c *AliyunClient) getRealtimeWebSocketURL() string {
+	if c.region == "singapore" {
+		return "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
+	}
+	return "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+}

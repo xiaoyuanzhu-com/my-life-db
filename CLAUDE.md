@@ -253,6 +253,7 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Search | `/api/search` | Full-text search |
 | Upload | `/api/upload/tus/*` | TUS protocol file uploads |
 | Notifications | `/api/notifications/stream` | SSE event stream |
+| ASR | `/api/asr/realtime` | Real-time ASR WebSocket (vendor-agnostic) |
 | Raw Files | `/raw/*path` | Serve/save raw files from data directory |
 | SQLAR | `/sqlar/*path` | Serve files from SQLAR archives |
 
