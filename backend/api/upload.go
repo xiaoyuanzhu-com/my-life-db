@@ -13,7 +13,7 @@ import (
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
@@ -154,59 +154,55 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		srcPath := filepath.Join(uploadDir, upload.UploadID)
 
 		// Check if TUS upload file exists
-		srcInfo, err := os.Stat(srcPath)
+		_, err := os.Stat(srcPath)
 		if err != nil {
 			// Fallback: check for file with .bin extension
 			srcPath = srcPath + ".bin"
-			srcInfo, err = os.Stat(srcPath)
+			_, err = os.Stat(srcPath)
 			if err != nil {
 				log.Error().Str("uploadId", upload.UploadID).Err(err).Msg("upload file not found")
 				continue
 			}
 		}
 
-		// Move file to destination
+		// Destination path for the file
 		destPath := filepath.Join(destination, filename)
-		fullDestPath := filepath.Join(cfg.UserDataDir, destPath)
 
-		// Try rename first (same filesystem)
-		if err := os.Rename(srcPath, fullDestPath); err != nil {
-			// Fallback to copy + delete
-			if err := copyUploadFile(srcPath, fullDestPath); err != nil {
-				log.Error().Err(err).Msg("failed to move upload file")
-				continue
-			}
-			os.Remove(srcPath)
+		// Open uploaded file for reading
+		uploadedFile, err := os.Open(srcPath)
+		if err != nil {
+			log.Error().Err(err).Str("uploadId", upload.UploadID).Msg("failed to open uploaded file")
+			continue
 		}
 
-		// Clean up TUS info file
-		os.Remove(srcPath + ".info")
-
-		// Create file record
-		now := db.NowUTC()
-		mimeType := upload.Type
-		if mimeType == "" {
-			mimeType = utils.DetectMimeType(filename)
-		}
-		size := srcInfo.Size()
-
-		// Ignore isNew return value since upload finalization logs below
-		_, _ = db.UpsertFile(&db.FileRecord{
-			Path:          destPath,
-			Name:          filename,
-			IsFolder:      false,
-			Size:          &size,
-			MimeType:      &mimeType,
-			ModifiedAt:    now,
-			CreatedAt:     now,
-			LastScannedAt: now,
+		// Use fs.Service.WriteFile() - single entry point for all file operations
+		// This handles: file write, metadata computation, DB upsert, digest notification
+		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
+			Path:            destPath,
+			Content:         uploadedFile,
+			MimeType:        upload.Type, // Pass through user-provided MIME type
+			Source:          "upload",
+			ComputeMetadata: true,
+			Sync:            true, // Compute metadata synchronously for immediate availability
 		})
+		uploadedFile.Close()
+
+		if err != nil {
+			log.Error().Err(err).Str("path", destPath).Msg("failed to write uploaded file")
+			continue
+		}
+
+		// Clean up TUS upload files
+		os.Remove(srcPath)
+		os.Remove(srcPath + ".info")
 
 		log.Info().
 			Str("path", destPath).
 			Str("filename", filename).
-			Int64("size", size).
-			Str("mimeType", mimeType).
+			Int64("size", *result.Record.Size).
+			Str("mimeType", *result.Record.MimeType).
+			Bool("isNew", result.IsNew).
+			Bool("hashComputed", result.HashComputed).
 			Msg("upload finalized")
 
 		paths = append(paths, destPath)
