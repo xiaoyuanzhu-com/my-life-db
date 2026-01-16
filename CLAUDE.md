@@ -320,3 +320,20 @@ portNum, _ := strconv.Atoi(port)
 - Pass through configuration values with minimal normalization
 - Trust errors will guide the user to fix their config
 - Document requirements clearly if the library needs specific formats
+
+### Database Schema Changes (CRITICAL)
+
+**Rule**: Changing columns/tables in queries → must update migrations. Changing query logic only → no migration needed.
+
+**Migration-First Workflow**:
+1. Update/create migration file
+2. Update queries to match new schema
+3. Test on fresh database: `rm -rf .my-life-db/ && go run .`
+
+**Requires Migration**:
+- Column/table/index names, types, constraints, primary keys
+
+**No Migration Needed**:
+- WHERE/JOIN/ORDER BY logic, LIMIT/OFFSET, query parameters
+
+**Common Mistake**: Updating queries (e.g., `SELECT file_path FROM pins`) but forgetting to update migration that creates the table. Works on dev DB (already has column) but fails on fresh Docker setup.
