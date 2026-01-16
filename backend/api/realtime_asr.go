@@ -91,16 +91,23 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		log.Info().Msg("🔵 Started goroutine: Client → Aliyun")
 		for {
 			// Read message type to determine how to handle it
+			log.Debug().Msg("⏳ Waiting for client message...")
 			messageType, message, err := clientConn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Error().Err(err).Msg("client WebSocket read error")
+				// Check if it's an unexpected close (ignore normal closes)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure, websocket.CloseNoStatusReceived) {
+					log.Error().Err(err).Msg("client WebSocket unexpected close error")
 					errChan <- err
+				} else {
+					log.Debug().Err(err).Msg("client WebSocket closed normally")
 				}
 				return
 			}
+
+			log.Info().Int("messageType", messageType).Int("length", len(message)).Msg("📨 Received message from client")
 
 			// Handle different message types
 			if messageType == websocket.TextMessage {
@@ -112,7 +119,7 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 				}
 
 				// Log the message for debugging
-				log.Debug().RawJSON("clientMsg", message).Msg("received from client")
+				log.Info().RawJSON("clientMsg", message).Msg("📤 Client → Aliyun (text)")
 
 				// If it's a run-task, inject defaults
 				if header, ok := msg.Header["action"].(string); ok && header == "run-task" {
@@ -144,6 +151,7 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 				}
 			} else if messageType == websocket.BinaryMessage {
 				// Forward binary audio data directly
+				log.Debug().Int("bytes", len(message)).Msg("🎤 Client → Aliyun (binary audio)")
 				if err := aliyunConn.WriteMessage(websocket.BinaryMessage, message); err != nil {
 					log.Error().Err(err).Msg("failed to forward audio to Aliyun")
 					errChan <- err
@@ -157,25 +165,32 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		log.Info().Msg("🟢 Started goroutine: Aliyun → Client")
 		for {
+			log.Debug().Msg("⏳ Waiting for Aliyun message...")
 			messageType, message, err := aliyunConn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Error().Err(err).Msg("Aliyun WebSocket read error")
+				// Check if it's an unexpected close (ignore normal closes)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
+					log.Error().Err(err).Msg("Aliyun WebSocket unexpected close error")
 					errChan <- err
+				} else {
+					log.Debug().Err(err).Msg("Aliyun WebSocket closed normally")
 				}
 				return
 			}
 
 			// Log message for debugging
 			if messageType == websocket.TextMessage {
-				log.Debug().RawJSON("aliyunMsg", message).Msg("received from Aliyun")
+				log.Info().RawJSON("aliyunMsg", message).Msg("📥 Aliyun → Client (text)")
+			} else if messageType == websocket.BinaryMessage {
+				log.Debug().Int("bytes", len(message)).Msg("📥 Aliyun → Client (binary)")
 			}
 
 			// Forward the message directly to client
 			if err := clientConn.WriteMessage(messageType, message); err != nil {
-				log.Error().Err(err).Msg("failed to forward message to client")
-				errChan <- err
+				// If client already closed, this is expected during shutdown
+				log.Debug().Err(err).Msg("failed to forward message to client (client may have closed)")
 				return
 			}
 		}

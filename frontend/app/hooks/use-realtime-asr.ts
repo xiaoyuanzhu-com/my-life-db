@@ -40,12 +40,12 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('ASR WebSocket connected');
+        console.log('🔌 ASR WebSocket connected');
 
         // Send run-task message (Aliyun schema)
         const taskId = `task_${Date.now()}`;
         taskIdRef.current = taskId;
-        ws.send(JSON.stringify({
+        const startMsg = {
           header: {
             action: 'run-task',
             task_id: taskId,
@@ -62,7 +62,9 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
             }
             // parameters will be injected by the backend if not provided
           }
-        }));
+        };
+        console.log('📤 Sending run-task:', startMsg);
+        ws.send(JSON.stringify(startMsg));
 
         setIsRecording(true);
       };
@@ -70,24 +72,29 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+          console.log('📥 Received message:', msg);
 
           // Parse Aliyun message format
           const header = msg.header;
           const payload = msg.payload;
 
-          if (!header) return;
+          if (!header) {
+            console.warn('⚠️ Message missing header:', msg);
+            return;
+          }
 
           const eventType = header.event;
 
           switch (eventType) {
             case 'task-started':
-              console.log('ASR task started:', header.task_id);
+              console.log('✅ ASR task started:', header.task_id);
               break;
 
             case 'result-generated':
               // Extract transcription from Aliyun format
               const output = payload?.output;
               const sentence = output?.sentence;
+              console.log('🗣️ Result generated:', { sentence, isFinal: sentence?.end_time > 0 });
               if (sentence?.text) {
                 const isFinal = sentence.end_time && sentence.end_time > 0;
                 onTranscript?.(sentence.text, isFinal);
@@ -95,27 +102,35 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
               break;
 
             case 'task-finished':
-              console.log('ASR task finished');
+              console.log('🏁 ASR task finished');
+              // Close WebSocket gracefully after receiving task-finished
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.close();
+                wsRef.current = null;
+              }
               break;
 
             case 'task-failed':
               const errorMsg = payload?.message || 'ASR task failed';
-              console.error('ASR error:', errorMsg, payload);
+              console.error('❌ ASR error:', errorMsg, payload);
               onError?.(errorMsg);
               break;
+
+            default:
+              console.log('❓ Unknown event type:', eventType, msg);
           }
         } catch (err) {
-          console.error('Failed to parse WebSocket message:', err);
+          console.error('❌ Failed to parse WebSocket message:', err);
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
         onError?.('Connection error');
       };
 
       ws.onclose = () => {
-        console.log('ASR WebSocket closed');
+        console.log('🔌 ASR WebSocket closed');
         setIsRecording(false);
       };
 
@@ -127,6 +142,7 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
+      let audioChunkCount = 0;
       processor.onaudioprocess = (e) => {
         if (ws.readyState === WebSocket.OPEN) {
           const audioData = e.inputBuffer.getChannelData(0);
@@ -135,6 +151,12 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
           // Convert float32 to int16
           for (let i = 0; i < audioData.length; i++) {
             int16Array[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32768));
+          }
+
+          // Log every 50th chunk to avoid spam
+          audioChunkCount++;
+          if (audioChunkCount % 50 === 0) {
+            console.log(`🎤 Sent ${audioChunkCount} audio chunks (${int16Array.buffer.byteLength} bytes each)`);
           }
 
           // Send binary audio data directly (Aliyun expects binary WebSocket messages)
@@ -170,7 +192,7 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   const stopRecording = useCallback(() => {
     // Send finish-task message (Aliyun schema)
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && taskIdRef.current) {
-      wsRef.current.send(JSON.stringify({
+      const stopMsg = {
         header: {
           action: 'finish-task',
           task_id: taskIdRef.current,
@@ -179,8 +201,11 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
         payload: {
           input: {}
         }
-      }));
-      wsRef.current.close();
+      };
+      console.log('📤 Sending finish-task:', stopMsg);
+      wsRef.current.send(JSON.stringify(stopMsg));
+      // Don't close immediately - wait for task-finished response
+      // The ws.onmessage handler will close when it receives task-finished
     }
 
     // Clean up audio context
@@ -200,7 +225,6 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       streamRef.current = null;
     }
 
-    wsRef.current = null;
     setIsRecording(false);
   }, []);
 
