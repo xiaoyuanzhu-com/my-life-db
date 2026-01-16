@@ -219,8 +219,12 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 
 				finishTaskMsg := map[string]interface{}{
 					"header": map[string]interface{}{
-						"action":  "finish-task",
-						"task_id": currentTaskID,
+						"action":    "finish-task",
+						"task_id":   currentTaskID,
+						"streaming": "duplex",
+					},
+					"payload": map[string]interface{}{
+						"input": map[string]interface{}{},
 					},
 				}
 
