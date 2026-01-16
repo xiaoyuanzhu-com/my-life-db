@@ -388,30 +388,39 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           onDrop={handleDrop}
         >
         {/* Textarea with regular placeholder */}
-        <Textarea
-          id="omni-input"
-          name="content"
-          value={content + (partialTranscript ? ` ${partialTranscript}` : '')}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={(e) => {
-            // Don't allow Enter to submit while recording
-            if (e.key === 'Enter' && !e.shiftKey && !isRecording) {
-              e.preventDefault();
-              if (content.trim() || selectedFiles.length > 0) {
-                handleSubmit(e);
+        <div className="relative">
+          <Textarea
+            id="omni-input"
+            name="content"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={(e) => {
+              // Don't allow Enter to submit while recording
+              if (e.key === 'Enter' && !e.shiftKey && !isRecording) {
+                e.preventDefault();
+                if (content.trim() || selectedFiles.length > 0) {
+                  handleSubmit(e);
+                }
               }
-            }
-          }}
-          placeholder="What's up?"
-          style={maxHeight ? { maxHeight } : undefined}
-          className={cn(
-            'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
-            'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
-            'placeholder:text-muted-foreground/50 min-h-9 px-4 pt-2'
+            }}
+            placeholder="What's up?"
+            style={maxHeight ? { maxHeight } : undefined}
+            className={cn(
+              'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
+              'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
+              'placeholder:text-muted-foreground/50 min-h-9 px-4 pt-2'
+            )}
+            aria-invalid={!!error}
+            disabled={isRecording}
+          />
+          {/* Show partial transcript as gray overlay text */}
+          {partialTranscript && (
+            <div className="absolute inset-0 px-4 pt-2 pointer-events-none text-base whitespace-pre-wrap overflow-y-auto">
+              <span className="invisible">{content}</span>
+              <span className="text-muted-foreground/60">{content ? ' ' : ''}{partialTranscript}</span>
+            </div>
           )}
-          aria-invalid={!!error}
-          disabled={isRecording}
-        />
+        </div>
 
         {/* File chips above control bar */}
         {selectedFiles.length > 0 && (
