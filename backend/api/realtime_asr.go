@@ -1,13 +1,9 @@
 package api
 
 import (
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -22,51 +18,40 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// RealtimeASRMessage represents the vendor-agnostic message format for our API
-type RealtimeASRMessage struct {
-	Type      string                 `json:"type"`      // "start", "audio", "stop", "result", "error", "end"
-	TaskID    string                 `json:"task_id,omitempty"`
-	Text      string                 `json:"text,omitempty"`
-	IsFinal   bool                   `json:"is_final,omitempty"`
-	Timestamp float64                `json:"timestamp,omitempty"` // seconds from start
-	Error     string                 `json:"error,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+// AliyunASRMessage represents the Aliyun Fun-ASR Realtime message format
+// We use this schema directly as our API schema for simplicity
+type AliyunASRMessage struct {
+	Header  map[string]interface{} `json:"header"`
+	Payload map[string]interface{} `json:"payload,omitempty"`
 }
 
-// RealtimeASRConfig holds configuration for starting a real-time ASR session
-type RealtimeASRConfig struct {
-	Model       string `json:"model,omitempty"`        // Model to use (provider-specific)
-	SampleRate  int    `json:"sample_rate,omitempty"`  // Audio sample rate (default: 16000)
-	Format      string `json:"format,omitempty"`       // Audio format: "pcm", "opus", etc (default: "pcm")
-	Language    string `json:"language,omitempty"`     // Language code (optional)
-	Diarization bool   `json:"diarization,omitempty"`  // Enable speaker diarization
-}
-
-// RealtimeASR handles vendor-agnostic real-time ASR WebSocket connections
+// RealtimeASR proxies WebSocket connections directly to Aliyun Fun-ASR Realtime
+// Client and server communicate using Aliyun's message schema directly
 func (h *Handlers) RealtimeASR(c *gin.Context) {
 	// Upgrade HTTP connection to WebSocket
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to upgrade WebSocket connection")
 		return
 	}
-	defer conn.Close()
+	defer clientConn.Close()
 
 	// Load settings for Aliyun credentials
 	settings, err := db.LoadUserSettings()
 	if err != nil {
-		sendError(conn, "failed to load settings: "+err.Error())
+		sendError(clientConn, "failed to load settings: "+err.Error())
 		return
 	}
 
-	log.Info().Msg("starting real-time ASR session")
+	log.Info().Msg("starting real-time ASR proxy session")
 
-	// Use Aliyun Fun-ASR Realtime
-	h.handleAliyunRealtimeASR(conn, settings)
+	// Proxy to Aliyun Fun-ASR Realtime
+	h.proxyAliyunRealtimeASR(clientConn, settings)
 }
 
-// handleAliyunRealtimeASR handles the Aliyun Fun-ASR Realtime WebSocket session
-func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) {
+// proxyAliyunRealtimeASR proxies messages between client and Aliyun Fun-ASR Realtime
+// This is a transparent proxy - messages are forwarded as-is without transformation
+func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) {
 	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
 		sendError(clientConn, "Aliyun API key not configured")
 		return
@@ -101,16 +86,14 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 	// Use goroutines to handle bidirectional communication
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
-	taskID := ""
-	var taskIDMutex sync.RWMutex
 
-	// Goroutine 1: Forward messages from client to Aliyun
+	// Goroutine 1: Forward messages from client to Aliyun (transparent proxy)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for {
-			var msg RealtimeASRMessage
-			err := clientConn.ReadJSON(&msg)
+			// Read message type to determine how to handle it
+			messageType, message, err := clientConn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Error().Err(err).Msg("client WebSocket read error")
@@ -119,144 +102,63 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 				return
 			}
 
-			// Handle different message types from client
-			switch msg.Type {
-			case "start":
-				// Parse config if provided
-				var config RealtimeASRConfig
-				if msg.Metadata != nil {
-					configBytes, _ := json.Marshal(msg.Metadata)
-					json.Unmarshal(configBytes, &config)
+			// Handle different message types
+			if messageType == websocket.TextMessage {
+				// Parse to check the action and optionally inject defaults
+				var msg AliyunASRMessage
+				if err := json.Unmarshal(message, &msg); err != nil {
+					log.Error().Err(err).Msg("failed to parse client message")
+					continue
 				}
 
-				// Set defaults
-				if config.SampleRate == 0 {
-					config.SampleRate = 16000
-				}
-				if config.Format == "" {
-					config.Format = "pcm"
-				}
-				if config.Model == "" {
-					// Get model from environment or use default Aliyun Fun-ASR Realtime model
-					config.Model = os.Getenv("ALIYUN_ASR_REALTIME_MODEL")
-					if config.Model == "" {
-						// Default to fun-asr-realtime (same as online demo)
-						config.Model = "fun-asr-realtime"
+				// Log the message for debugging
+				log.Debug().RawJSON("clientMsg", message).Msg("received from client")
+
+				// If it's a run-task, inject defaults
+				if header, ok := msg.Header["action"].(string); ok && header == "run-task" {
+					// Log task ID if present
+					if tid, ok := msg.Header["task_id"].(string); ok {
+						log.Info().Str("taskID", tid).Msg("starting ASR task")
 					}
+
+					// Inject default parameters if not provided
+					if payload, ok := msg.Payload["parameters"].(map[string]interface{}); !ok || payload == nil {
+						if msg.Payload == nil {
+							msg.Payload = make(map[string]interface{})
+						}
+						msg.Payload["parameters"] = map[string]interface{}{
+							"semantic_punctuation_enabled": false,
+							"max_sentence_silence":          1300,
+						}
+					}
+
+					// Re-marshal with defaults
+					message, _ = json.Marshal(msg)
 				}
 
-				// Generate task ID
-				newTaskID := fmt.Sprintf("task_%d", time.Now().UnixNano())
-				taskIDMutex.Lock()
-				taskID = newTaskID
-				taskIDMutex.Unlock()
-
-				// Build parameters based on config
-				// Based on HAR file analysis, the online demo uses:
-				// - semantic_punctuation_enabled: false (VAD-based segmentation for lower latency)
-				// - max_sentence_silence: 1300 (ms)
-				parameters := map[string]interface{}{
-					"semantic_punctuation_enabled": false,
-					"max_sentence_silence":          1300,
-				}
-
-				// Add language hints if specified
-				if config.Language != "" {
-					parameters["language_hints"] = []string{config.Language}
-				}
-
-				// Send run-task message to Aliyun
-				runTaskMsg := map[string]interface{}{
-					"header": map[string]interface{}{
-						"action":    "run-task",
-						"task_id":   taskID,
-						"streaming": "duplex",
-					},
-					"payload": map[string]interface{}{
-						"task_group": "audio",
-						"task":       "asr",
-						"function":   "recognition",
-						"model":      config.Model,
-						"input": map[string]interface{}{
-							"format":      config.Format,
-							"sample_rate": config.SampleRate,
-						},
-						"parameters": parameters,
-					},
-				}
-
-				// Log the message we're sending for debugging
-				msgJSON, _ := json.MarshalIndent(runTaskMsg, "", "  ")
-				log.Debug().RawJSON("message", msgJSON).Msg("sending run-task to Aliyun")
-
-				if err := aliyunConn.WriteJSON(runTaskMsg); err != nil {
-					log.Error().Err(err).Msg("failed to send run-task to Aliyun")
+				// Forward the message to Aliyun
+				if err := aliyunConn.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Error().Err(err).Msg("failed to forward message to Aliyun")
 					errChan <- err
 					return
 				}
-
-				log.Info().Str("taskID", taskID).Msg("sent run-task to Aliyun")
-
-			case "audio":
-				// Forward binary audio data to Aliyun
-				// The audio data should be in msg.Metadata["data"] as base64 string
-				if msg.Metadata != nil && msg.Metadata["data"] != nil {
-					audioDataBase64, ok := msg.Metadata["data"].(string)
-					if !ok {
-						log.Warn().Msg("audio data is not a string")
-						continue
-					}
-
-					// Decode base64 to binary
-					audioData, err := base64.StdEncoding.DecodeString(audioDataBase64)
-					if err != nil {
-						log.Error().Err(err).Msg("failed to decode base64 audio data")
-						continue
-					}
-
-					// Send binary message to Aliyun
-					if err := aliyunConn.WriteMessage(websocket.BinaryMessage, audioData); err != nil {
-						log.Error().Err(err).Msg("failed to send audio to Aliyun")
-						errChan <- err
-						return
-					}
-				}
-
-			case "stop":
-				// Send finish-task message to Aliyun
-				taskIDMutex.RLock()
-				currentTaskID := taskID
-				taskIDMutex.RUnlock()
-
-				finishTaskMsg := map[string]interface{}{
-					"header": map[string]interface{}{
-						"action":    "finish-task",
-						"task_id":   currentTaskID,
-						"streaming": "duplex",
-					},
-					"payload": map[string]interface{}{
-						"input": map[string]interface{}{},
-					},
-				}
-
-				if err := aliyunConn.WriteJSON(finishTaskMsg); err != nil {
-					log.Error().Err(err).Msg("failed to send finish-task to Aliyun")
+			} else if messageType == websocket.BinaryMessage {
+				// Forward binary audio data directly
+				if err := aliyunConn.WriteMessage(websocket.BinaryMessage, message); err != nil {
+					log.Error().Err(err).Msg("failed to forward audio to Aliyun")
 					errChan <- err
 					return
 				}
-
-				log.Info().Str("taskID", currentTaskID).Msg("stopped Aliyun ASR task")
-				return // Close this goroutine
 			}
 		}
 	}()
 
-	// Goroutine 2: Forward messages from Aliyun to client
+	// Goroutine 2: Forward messages from Aliyun to client (transparent proxy)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for {
-			_, msgBytes, err := aliyunConn.ReadMessage()
+			messageType, message, err := aliyunConn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Error().Err(err).Msg("Aliyun WebSocket read error")
@@ -265,91 +167,16 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 				return
 			}
 
-			// Log raw message for debugging
-			log.Debug().Str("raw", string(msgBytes)).Msg("received message from Aliyun")
-
-			// Parse Aliyun message
-			var aliyunMsg map[string]interface{}
-			if err := json.Unmarshal(msgBytes, &aliyunMsg); err != nil {
-				log.Error().Err(err).Str("msg", string(msgBytes)).Msg("failed to parse Aliyun message")
-				continue
+			// Log message for debugging
+			if messageType == websocket.TextMessage {
+				log.Debug().RawJSON("aliyunMsg", message).Msg("received from Aliyun")
 			}
 
-			// Extract header
-			header, ok := aliyunMsg["header"].(map[string]interface{})
-			if !ok {
-				log.Warn().Interface("msg", aliyunMsg).Msg("Aliyun message missing header")
-				continue
-			}
-
-			event, _ := header["event"].(string)
-			currentTaskID, _ := header["task_id"].(string)
-
-			log.Info().Str("event", event).Str("taskID", currentTaskID).Msg("received Aliyun event")
-
-			// Convert Aliyun events to our vendor-agnostic format
-			switch event {
-			case "task-started":
-				// Send task started event to client
-				clientMsg := RealtimeASRMessage{
-					Type:   "start",
-					TaskID: currentTaskID,
-				}
-				clientConn.WriteJSON(clientMsg)
-
-			case "result-generated":
-				// Extract transcription result
-				payload, _ := aliyunMsg["payload"].(map[string]interface{})
-				output, _ := payload["output"].(map[string]interface{})
-				sentence, _ := output["sentence"].(map[string]interface{})
-
-				text, _ := sentence["text"].(string)
-				beginTime, _ := sentence["begin_time"].(float64)
-				isFinal := false
-				if endTime, ok := sentence["end_time"].(float64); ok && endTime > 0 {
-					isFinal = true
-				}
-
-				clientMsg := RealtimeASRMessage{
-					Type:      "result",
-					TaskID:    currentTaskID,
-					Text:      text,
-					IsFinal:   isFinal,
-					Timestamp: beginTime / 1000.0, // Convert ms to seconds
-				}
-				clientConn.WriteJSON(clientMsg)
-
-			case "task-finished":
-				// Send task finished event
-				clientMsg := RealtimeASRMessage{
-					Type:   "end",
-					TaskID: currentTaskID,
-				}
-				clientConn.WriteJSON(clientMsg)
-				return // Close this goroutine
-
-			case "task-failed":
-				// Extract error message
-				payload, _ := aliyunMsg["payload"].(map[string]interface{})
-				message, _ := payload["message"].(string)
-				code, _ := payload["code"].(string)
-
-				// Log full payload for debugging
-				log.Error().
-					Str("code", code).
-					Str("message", message).
-					Interface("payload", payload).
-					Interface("fullMsg", aliyunMsg).
-					Msg("Aliyun ASR task failed")
-
-				errorMsg := fmt.Sprintf("ASR task failed: %s (code: %s)", message, code)
-				clientMsg := RealtimeASRMessage{
-					Type:   "error",
-					TaskID: currentTaskID,
-					Error:  errorMsg,
-				}
-				clientConn.WriteJSON(clientMsg)
-				return // Close this goroutine
+			// Forward the message directly to client
+			if err := clientConn.WriteMessage(messageType, message); err != nil {
+				log.Error().Err(err).Msg("failed to forward message to client")
+				errChan <- err
+				return
 			}
 		}
 	}()
@@ -369,11 +196,15 @@ func (h *Handlers) handleAliyunRealtimeASR(clientConn *websocket.Conn, settings 
 	}
 }
 
-// sendError sends an error message to the client
+// sendError sends an error message to the client (using Aliyun schema)
 func sendError(conn *websocket.Conn, errMsg string) {
-	msg := RealtimeASRMessage{
-		Type:  "error",
-		Error: errMsg,
+	msg := AliyunASRMessage{
+		Header: map[string]interface{}{
+			"event": "task-failed",
+		},
+		Payload: map[string]interface{}{
+			"message": errMsg,
+		},
 	}
 	conn.WriteJSON(msg)
 }

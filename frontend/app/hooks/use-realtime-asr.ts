@@ -12,6 +12,7 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const taskIdRef = useRef<string | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
@@ -41,12 +42,25 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       ws.onopen = () => {
         console.log('ASR WebSocket connected');
 
-        // Send start message
+        // Send run-task message (Aliyun schema)
+        const taskId = `task_${Date.now()}`;
+        taskIdRef.current = taskId;
         ws.send(JSON.stringify({
-          type: 'start',
-          metadata: {
-            sample_rate: sampleRate,
-            format: 'pcm'
+          header: {
+            action: 'run-task',
+            task_id: taskId,
+            streaming: 'duplex'
+          },
+          payload: {
+            task_group: 'audio',
+            task: 'asr',
+            function: 'recognition',
+            model: 'fun-asr-realtime',
+            input: {
+              format: 'pcm',
+              sample_rate: sampleRate
+            }
+            // parameters will be injected by the backend if not provided
           }
         }));
 
@@ -57,24 +71,37 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
         try {
           const msg = JSON.parse(event.data);
 
-          switch (msg.type) {
-            case 'start':
-              console.log('ASR session started:', msg.task_id);
+          // Parse Aliyun message format
+          const header = msg.header;
+          const payload = msg.payload;
+
+          if (!header) return;
+
+          const eventType = header.event;
+
+          switch (eventType) {
+            case 'task-started':
+              console.log('ASR task started:', header.task_id);
               break;
 
-            case 'result':
-              if (msg.text) {
-                onTranscript?.(msg.text, msg.is_final || false);
+            case 'result-generated':
+              // Extract transcription from Aliyun format
+              const output = payload?.output;
+              const sentence = output?.sentence;
+              if (sentence?.text) {
+                const isFinal = sentence.end_time && sentence.end_time > 0;
+                onTranscript?.(sentence.text, isFinal);
               }
               break;
 
-            case 'end':
-              console.log('ASR session ended');
+            case 'task-finished':
+              console.log('ASR task finished');
               break;
 
-            case 'error':
-              console.error('ASR error:', msg.error);
-              onError?.(msg.error || 'ASR error occurred');
+            case 'task-failed':
+              const errorMsg = payload?.message || 'ASR task failed';
+              console.error('ASR error:', errorMsg, payload);
+              onError?.(errorMsg);
               break;
           }
         } catch (err) {
@@ -110,13 +137,8 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
             int16Array[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32768));
           }
 
-          // Send audio chunk
-          ws.send(JSON.stringify({
-            type: 'audio',
-            metadata: {
-              data: btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(int16Array.buffer))))
-            }
-          }));
+          // Send binary audio data directly (Aliyun expects binary WebSocket messages)
+          ws.send(int16Array.buffer);
         }
       };
 
@@ -146,9 +168,18 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   }, [sampleRate, onTranscript, onError]);
 
   const stopRecording = useCallback(() => {
-    // Send stop message
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'stop' }));
+    // Send finish-task message (Aliyun schema)
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && taskIdRef.current) {
+      wsRef.current.send(JSON.stringify({
+        header: {
+          action: 'finish-task',
+          task_id: taskIdRef.current,
+          streaming: 'duplex'
+        },
+        payload: {
+          input: {}
+        }
+      }));
       wsRef.current.close();
     }
 
