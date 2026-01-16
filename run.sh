@@ -118,6 +118,14 @@ run_frontend() {
 run_backend() {
     log_info "Building and starting backend server..."
 
+    # Load .env file if it exists
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        log_info "Loading environment variables from .env"
+        set -a  # automatically export all variables
+        source "$PROJECT_ROOT/.env"
+        set +a
+    fi
+
     cd "$PROJECT_ROOT/backend" || {
         log_error "Failed to navigate to backend directory"
         exit 1
