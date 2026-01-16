@@ -377,6 +377,7 @@ func UpdateDigestMap(id string, fields map[string]interface{}) error {
 }
 
 // GetFilesWithPendingDigests returns file paths that have pending or failed digests
+// Only returns inbox files - library files don't get auto-digested
 func GetFilesWithPendingDigests() []string {
 	query := `
 		SELECT DISTINCT d.file_path
@@ -384,6 +385,7 @@ func GetFilesWithPendingDigests() []string {
 		INNER JOIN files f ON f.path = d.file_path
 		WHERE d.status IN ('todo', 'failed')
 		  AND d.attempts < 3
+		  AND (d.file_path = 'inbox' OR d.file_path LIKE 'inbox/%')
 		ORDER BY d.created_at ASC
 		LIMIT 100
 	`

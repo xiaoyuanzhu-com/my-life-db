@@ -71,6 +71,15 @@ func (w *Worker) Stop() {
 
 // OnFileChange handles file change events from FS worker
 func (w *Worker) OnFileChange(filePath string, isNew bool, contentChanged bool) {
+	// Only auto-digest files in inbox directory
+	// Library files get basic file records and metadata, but no digests
+	if !isInboxFile(filePath) {
+		log.Debug().
+			Str("path", filePath).
+			Msg("skipping auto-digest for non-inbox file")
+		return
+	}
+
 	// For new files, ensure digest placeholders exist (matches Node.js behavior)
 	if isNew {
 		added, _ := w.EnsureDigestersForFile(filePath)
@@ -158,13 +167,14 @@ func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSki
 // ensureAllFilesHaveDigests runs once on startup to ensure all files have digest placeholders
 // This handles files that were added before the EnsureDigestersForFile logic was implemented,
 // and also backfills when new digesters are added to the registry.
+// Only processes inbox files - library files don't get auto-digested.
 func (w *Worker) ensureAllFilesHaveDigests() {
 	defer w.wg.Done()
 
-	log.Info().Msg("backfilling digest placeholders for all files")
+	log.Info().Msg("backfilling digest placeholders for inbox files")
 
-	// Query all non-folder files
-	query := `SELECT path FROM files WHERE is_folder = 0`
+	// Query all non-folder files in inbox directory
+	query := `SELECT path FROM files WHERE is_folder = 0 AND (path = 'inbox' OR path LIKE 'inbox/%')`
 	rows, err := db.GetDB().Query(query)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to query files for digest placeholder creation")
@@ -566,4 +576,10 @@ func getOrCreateDigestID(filePath, digester string) string {
 	})
 
 	return id
+}
+
+// isInboxFile checks if a file path is in the inbox directory
+func isInboxFile(filePath string) bool {
+	// Check if path starts with "inbox/" or is exactly "inbox"
+	return filePath == "inbox" || len(filePath) > 6 && filePath[:6] == "inbox/"
 }
