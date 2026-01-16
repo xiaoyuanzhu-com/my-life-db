@@ -209,7 +209,11 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
-	// Shutdown HTTP server first (stop accepting new requests)
+	// Close notification service first to cleanly disconnect SSE clients
+	// This allows HTTP server to shutdown without waiting for SSE connections to timeout
+	s.notifService.Shutdown()
+
+	// Shutdown HTTP server (stop accepting new requests and wait for existing ones)
 	if s.http != nil {
 		if err := s.http.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("http server shutdown error")
@@ -219,7 +223,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Stop background services (in reverse order of startup)
 	s.digestWorker.Stop()
 	s.fsService.Stop()
-	s.notifService.Shutdown()
 
 	// Close database last
 	if s.database != nil {
