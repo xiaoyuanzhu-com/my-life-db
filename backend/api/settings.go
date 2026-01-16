@@ -118,6 +118,34 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			}
 		}
 
+		if updates.Vendors.Aliyun != nil {
+			if merged.Vendors.Aliyun == nil {
+				merged.Vendors.Aliyun = &models.Aliyun{}
+			}
+			// Only update API keys if they're not masked (not all asterisks)
+			if updates.Vendors.Aliyun.APIKey != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.APIKey) {
+				merged.Vendors.Aliyun.APIKey = updates.Vendors.Aliyun.APIKey
+			}
+			if updates.Vendors.Aliyun.Region != "" {
+				merged.Vendors.Aliyun.Region = updates.Vendors.Aliyun.Region
+			}
+			if updates.Vendors.Aliyun.ASRProvider != "" {
+				merged.Vendors.Aliyun.ASRProvider = updates.Vendors.Aliyun.ASRProvider
+			}
+			if updates.Vendors.Aliyun.OSSAccessKeyID != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.OSSAccessKeyID) {
+				merged.Vendors.Aliyun.OSSAccessKeyID = updates.Vendors.Aliyun.OSSAccessKeyID
+			}
+			if updates.Vendors.Aliyun.OSSAccessKeySecret != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.OSSAccessKeySecret) {
+				merged.Vendors.Aliyun.OSSAccessKeySecret = updates.Vendors.Aliyun.OSSAccessKeySecret
+			}
+			if updates.Vendors.Aliyun.OSSRegion != "" {
+				merged.Vendors.Aliyun.OSSRegion = updates.Vendors.Aliyun.OSSRegion
+			}
+			if updates.Vendors.Aliyun.OSSBucket != "" {
+				merged.Vendors.Aliyun.OSSBucket = updates.Vendors.Aliyun.OSSBucket
+			}
+		}
+
 		if updates.Vendors.Meilisearch != nil {
 			if merged.Vendors.Meilisearch == nil {
 				merged.Vendors.Meilisearch = &models.Meilisearch{}

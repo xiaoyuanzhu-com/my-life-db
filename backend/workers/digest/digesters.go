@@ -536,17 +536,51 @@ func (d *SpeechRecognitionDigester) CanDigest(filePath string, file *db.FileReco
 func (d *SpeechRecognitionDigester) Digest(filePath string, file *db.FileRecord, _ []db.Digest, _ *sql.DB) ([]DigestInput, error) {
 	now := nowUTC()
 
-	haid := vendors.GetHAID()
-	if haid == nil {
-		errMsg := "HAID service not configured"
+	// Load settings to determine ASR provider
+	settings, err := db.LoadUserSettings()
+	if err != nil {
+		errMsg := "failed to load settings: " + err.Error()
 		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
 	}
 
-	// Use SpeechRecognition with diarization enabled to get full response with segments and speakers
-	asrResp, err := haid.SpeechRecognition(filePath, vendors.ASROptions{Diarization: true})
-	if err != nil {
-		errMsg := err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+	var asrResp *vendors.ASRResponse
+
+	// Determine which ASR provider to use
+	provider := "haid" // Default to HAID
+	if settings.Vendors != nil && settings.Vendors.Aliyun != nil && settings.Vendors.Aliyun.ASRProvider != "" {
+		provider = settings.Vendors.Aliyun.ASRProvider
+	}
+
+	log.Info().Str("provider", provider).Str("filePath", filePath).Msg("using ASR provider")
+
+	switch provider {
+	case "fun-asr-realtime":
+		// Use Aliyun Fun-ASR
+		aliyun := vendors.GetAliyun()
+		if aliyun == nil {
+			errMsg := "Aliyun service not configured"
+			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+		}
+
+		asrResp, err = aliyun.SpeechRecognition(filePath, vendors.ASROptions{Diarization: false})
+		if err != nil {
+			errMsg := err.Error()
+			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+		}
+
+	default:
+		// Use HAID (whisperx with diarization)
+		haid := vendors.GetHAID()
+		if haid == nil {
+			errMsg := "HAID service not configured"
+			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+		}
+
+		asrResp, err = haid.SpeechRecognition(filePath, vendors.ASROptions{Diarization: true})
+		if err != nil {
+			errMsg := err.Error()
+			return []DigestInput{{FilePath: filePath, Digester: "speech-recognition", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
+		}
 	}
 
 	// Store the full ASR response as JSON (matching Node.js implementation)

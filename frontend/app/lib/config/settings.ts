@@ -23,6 +23,15 @@ export interface UserSettings {
       baseUrl?: string;
       chromeCdpUrl?: string;
     };
+    aliyun?: {
+      apiKey?: string;
+      region?: 'beijing' | 'singapore';
+      asrProvider?: 'fun-asr-realtime' | 'haid';
+      ossAccessKeyId?: string;
+      ossAccessKeySecret?: string;
+      ossRegion?: string;
+      ossBucket?: string;
+    };
     meilisearch?: {
       host?: string;
     };
@@ -181,6 +190,14 @@ export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> 
             ? {
                 ...settings.vendors.openai,
                 apiKey: maskApiKey(settings.vendors.openai.apiKey),
+              }
+            : undefined,
+          aliyun: settings.vendors.aliyun
+            ? {
+                ...settings.vendors.aliyun,
+                apiKey: maskApiKey(settings.vendors.aliyun.apiKey),
+                ossAccessKeyId: maskApiKey(settings.vendors.aliyun.ossAccessKeyId),
+                ossAccessKeySecret: maskApiKey(settings.vendors.aliyun.ossAccessKeySecret),
               }
             : undefined,
         }

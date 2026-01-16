@@ -229,6 +229,15 @@ func LoadUserSettings() (*models.UserSettings, error) {
 			BaseURL:      pickFromMap("vendors_homelab_ai_base_url", "HAID_BASE_URL", "https://haid.home.iloahz.com"),
 			ChromeCdpURL: pickFromMap("vendors_homelab_ai_chrome_cdp_url", "HAID_CHROME_CDP_URL", "http://172.16.2.2:9223/"),
 		},
+		Aliyun: &models.Aliyun{
+			APIKey:             pickFromMap("vendors_aliyun_api_key", "ALIYUN_API_KEY", ""),
+			Region:             pickFromMap("vendors_aliyun_region", "ALIYUN_REGION", "beijing"),
+			ASRProvider:        pickFromMap("vendors_aliyun_asr_provider", "ALIYUN_ASR_PROVIDER", "fun-asr-realtime"),
+			OSSAccessKeyID:     pickFromMap("vendors_aliyun_oss_access_key_id", "OSS_ACCESS_KEY_ID", ""),
+			OSSAccessKeySecret: pickFromMap("vendors_aliyun_oss_access_key_secret", "OSS_ACCESS_KEY_SECRET", ""),
+			OSSRegion:          pickFromMap("vendors_aliyun_oss_region", "OSS_REGION", "oss-cn-beijing"),
+			OSSBucket:          pickFromMap("vendors_aliyun_oss_bucket", "OSS_BUCKET", ""),
+		},
 		Meilisearch: &models.Meilisearch{
 			Host: pickFromMap("vendors_meilisearch_host", "MEILI_HOST", ""),
 		},
@@ -333,6 +342,29 @@ func SaveUserSettings(settings *models.UserSettings) error {
 				updates["vendors_homelab_ai_chrome_cdp_url"] = settings.Vendors.HomelabAI.ChromeCdpURL
 			}
 		}
+		if settings.Vendors.Aliyun != nil {
+			if settings.Vendors.Aliyun.APIKey != "" {
+				updates["vendors_aliyun_api_key"] = settings.Vendors.Aliyun.APIKey
+			}
+			if settings.Vendors.Aliyun.Region != "" {
+				updates["vendors_aliyun_region"] = settings.Vendors.Aliyun.Region
+			}
+			if settings.Vendors.Aliyun.ASRProvider != "" {
+				updates["vendors_aliyun_asr_provider"] = settings.Vendors.Aliyun.ASRProvider
+			}
+			if settings.Vendors.Aliyun.OSSAccessKeyID != "" {
+				updates["vendors_aliyun_oss_access_key_id"] = settings.Vendors.Aliyun.OSSAccessKeyID
+			}
+			if settings.Vendors.Aliyun.OSSAccessKeySecret != "" {
+				updates["vendors_aliyun_oss_access_key_secret"] = settings.Vendors.Aliyun.OSSAccessKeySecret
+			}
+			if settings.Vendors.Aliyun.OSSRegion != "" {
+				updates["vendors_aliyun_oss_region"] = settings.Vendors.Aliyun.OSSRegion
+			}
+			if settings.Vendors.Aliyun.OSSBucket != "" {
+				updates["vendors_aliyun_oss_bucket"] = settings.Vendors.Aliyun.OSSBucket
+			}
+		}
 		if settings.Vendors.Meilisearch != nil && settings.Vendors.Meilisearch.Host != "" {
 			updates["vendors_meilisearch_host"] = settings.Vendors.Meilisearch.Host
 		}
@@ -384,6 +416,22 @@ func SanitizeSettings(settings *models.UserSettings) *models.UserSettings {
 			// Mask API key if present
 			if openaiCopy.APIKey != "" {
 				sanitized.Vendors.OpenAI.APIKey = maskAPIKey(openaiCopy.APIKey)
+			}
+		}
+
+		if settings.Vendors.Aliyun != nil {
+			aliyunCopy := *settings.Vendors.Aliyun
+			sanitized.Vendors.Aliyun = &aliyunCopy
+
+			// Mask API keys if present
+			if aliyunCopy.APIKey != "" {
+				sanitized.Vendors.Aliyun.APIKey = maskAPIKey(aliyunCopy.APIKey)
+			}
+			if aliyunCopy.OSSAccessKeyID != "" {
+				sanitized.Vendors.Aliyun.OSSAccessKeyID = maskAPIKey(aliyunCopy.OSSAccessKeyID)
+			}
+			if aliyunCopy.OSSAccessKeySecret != "" {
+				sanitized.Vendors.Aliyun.OSSAccessKeySecret = maskAPIKey(aliyunCopy.OSSAccessKeySecret)
 			}
 		}
 	}
