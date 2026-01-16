@@ -230,7 +230,7 @@ func LoadUserSettings() (*models.UserSettings, error) {
 			ChromeCdpURL: pickFromMap("vendors_homelab_ai_chrome_cdp_url", "HAID_CHROME_CDP_URL", "http://172.16.2.2:9223/"),
 		},
 		Aliyun: &models.Aliyun{
-			APIKey:             pickFromMap("vendors_aliyun_api_key", "ALIYUN_API_KEY", ""),
+			APIKey:             pickFromMap("vendors_aliyun_api_key", "DASHSCOPE_API_KEY", ""),
 			Region:             pickFromMap("vendors_aliyun_region", "ALIYUN_REGION", "beijing"),
 			ASRProvider:        pickFromMap("vendors_aliyun_asr_provider", "ALIYUN_ASR_PROVIDER", "fun-asr-realtime"),
 			OSSAccessKeyID:     pickFromMap("vendors_aliyun_oss_access_key_id", "OSS_ACCESS_KEY_ID", ""),
