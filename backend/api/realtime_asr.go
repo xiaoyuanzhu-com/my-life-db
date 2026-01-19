@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -387,17 +388,57 @@ type ASRRequest struct {
 }
 
 // ASRHandler processes audio through non-realtime ASR (Aliyun Fun-ASR)
+// Accepts either:
+// 1. JSON with file_path or file_url
+// 2. Multipart form data with 'audio' file field
 func (h *Handlers) ASRHandler(c *gin.Context) {
-	var req ASRRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
-		return
-	}
+	var audioPath string
+	var diarization bool
+	contentType := c.GetHeader("Content-Type")
 
-	// Validate: must have either file_url or file_path
-	if req.FileURL == "" && req.FilePath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "either file_url or file_path is required"})
-		return
+	// Check if this is a multipart upload
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Handle multipart file upload
+		file, err := c.FormFile("audio")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "audio file is required in multipart upload: " + err.Error()})
+			return
+		}
+
+		// Get diarization flag from form (optional)
+		diarization = c.PostForm("diarization") == "true"
+
+		// Save uploaded file to temp directory
+		cfg := config.Get()
+		tempDir := filepath.Join(cfg.GetAppDataDir(), "recordings", "temp")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp directory: " + err.Error()})
+			return
+		}
+
+		audioPath = filepath.Join(tempDir, file.Filename)
+		if err := c.SaveUploadedFile(file, audioPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save uploaded file: " + err.Error()})
+			return
+		}
+
+		log.Info().Str("audioPath", audioPath).Msg("saved uploaded audio file for ASR processing")
+	} else {
+		// Handle JSON request with file_path or file_url
+		var req ASRRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+			return
+		}
+
+		// Validate: must have either file_url or file_path
+		if req.FileURL == "" && req.FilePath == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "either file_url or file_path is required"})
+			return
+		}
+
+		diarization = req.Diarization
+		audioPath = req.FilePath
 	}
 
 	// Load settings for Aliyun credentials
@@ -419,17 +460,8 @@ func (h *Handlers) ASRHandler(c *gin.Context) {
 		return
 	}
 
-	// Determine the audio source
-	audioPath := req.FilePath
-	if audioPath == "" {
-		// If file_url is provided, we'd need to download it first
-		// For now, we only support file_path
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file_url not yet supported, use file_path"})
-		return
-	}
-
-	// Ensure the path is absolute
-	if !filepath.IsAbs(audioPath) {
+	// Ensure the path is absolute (if not already set from multipart upload)
+	if audioPath != "" && !filepath.IsAbs(audioPath) {
 		// If relative, assume it's relative to app data dir (where temp files are stored)
 		cfg := config.Get()
 		audioPath = filepath.Join(cfg.GetAppDataDir(), audioPath)
@@ -437,13 +469,13 @@ func (h *Handlers) ASRHandler(c *gin.Context) {
 
 	log.Info().
 		Str("audioPath", audioPath).
-		Bool("diarization", req.Diarization).
+		Bool("diarization", diarization).
 		Msg("starting non-realtime ASR")
 
 	// Perform non-realtime ASR using fun-asr model
 	asrResponse, err := aliyunClient.SpeechRecognition(audioPath, vendors.ASROptions{
 		Model:       "fun-asr",
-		Diarization: req.Diarization,
+		Diarization: diarization,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("audioPath", audioPath).Msg("ASR failed")
