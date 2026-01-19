@@ -287,82 +287,123 @@ const {
 #### WebSocket Proxy: `RealtimeASR`
 **File**: `backend/api/realtime_asr.go`
 
-**Architecture**: Transparent proxy between client and Aliyun Fun-ASR Realtime
+**Architecture**: Vendor-agnostic proxy with message transformation
 
 **Flow**:
 ```
 Client (Browser)
-    ↓ WebSocket (binary audio + text control)
+    ↓ WebSocket (our schema: "start", "stop" + binary audio)
 Backend Proxy (Go)
-    ↓ WebSocket (forwarded as-is)
-Aliyun Fun-ASR Realtime
-    ↓ WebSocket (transcription results)
+    ↓ Transform our schema → provider schema
+    ↓ WebSocket (Aliyun schema: "run-task", "finish-task" + binary audio)
+ASR Provider (Aliyun/OpenAI/etc)
+    ↓ WebSocket (provider schema: transcription results)
 Backend Proxy (Go)
-    ↓ WebSocket (forwarded as-is)
+    ↓ Transform provider schema → our schema
+    ↓ WebSocket (our schema: "transcript", "done", "error")
 Client (Browser)
 ```
 
+**Benefits of Abstraction**:
+- Frontend decoupled from ASR provider implementation
+- Can swap providers (Aliyun → OpenAI Whisper → Deepgram) without frontend changes
+- Consistent API regardless of upstream provider quirks
+- Backend handles provider-specific authentication and configuration
+
 **Message Types**:
 
-1. **Client → Backend → Aliyun**:
-   - Text: `run-task` (start), `finish-task` (stop)
+1. **Client → Backend**:
+   - Text: `start`, `stop` (JSON control messages)
    - Binary: PCM audio chunks (int16, 16kHz)
 
-2. **Aliyun → Backend → Client**:
-   - Text: `task-started`, `result-generated`, `task-finished`, `task-failed`
+2. **Backend → Client**:
+   - Text: `ready`, `transcript`, `done`, `error` (JSON responses)
 
-**Message Format** (Aliyun schema):
+**Our Vendor-Agnostic Message Format**:
+
 ```json
+// Client sends "start" to begin recording
 {
-  "header": {
-    "action": "run-task" | "finish-task",
-    "task_id": "task_1234567890",
-    "streaming": "duplex",
-    "event": "result-generated" | "task-finished" | "task-failed"
-  },
+  "type": "start",
+  "payload": {}
+}
+
+// Backend responds "ready" when ASR is initialized
+{
+  "type": "ready",
+  "payload": {}
+}
+
+// Backend sends "transcript" for each result (partial or final)
+{
+  "type": "transcript",
   "payload": {
-    "task": "asr",
-    "model": "fun-asr-realtime",
-    "input": { "format": "pcm", "sample_rate": 16000 },
-    "parameters": {
-      "semantic_punctuation_enabled": false,
-      "max_sentence_silence": 1300
-    },
-    "output": {
-      "sentence": {
-        "sentence_id": 1,              // Increments per sentence
-        "text": "transcribed text",    // FULL text of current sentence
-        "begin_time": 520,             // Milliseconds from start
-        "end_time": null | 5600,       // null = partial, >0 = final
-        "sentence_end": false | true,  // true when sentence complete
-        "channel_id": 0,
-        "speaker_id": null
-      }
-    }
+    "text": "transcribed text",     // FULL text of current sentence
+    "is_final": false | true,       // true if finalized, false if partial
+    "begin_time": 520,              // Milliseconds from start (optional)
+    "end_time": 5600,               // Milliseconds from start (optional)
+    "speaker_id": "speaker_1"       // Speaker identifier (optional, if diarization enabled)
+  }
+}
+
+// Client sends "stop" to end recording
+{
+  "type": "stop",
+  "payload": {}
+}
+
+// Backend responds "done" when ASR has finished
+{
+  "type": "done",
+  "payload": {}
+}
+
+// Backend sends "error" if something goes wrong
+{
+  "type": "error",
+  "payload": {
+    "message": "error description",
+    "code": "error_code"
   }
 }
 ```
 
 **ASR Behavior** (Important):
-- **Per-sentence updates**: Each `result-generated` contains the **complete text** of the **current sentence** only
-- **Progressive refinement**: While you're speaking one sentence, Aliyun sends multiple updates with progressively refined **full sentence text** (not incremental words)
-- **Sentence finalization**: When you pause, Aliyun finalizes the sentence with `end_time > 0` and `sentence_end: true`
-- **Multi-sentence session**: Each sentence gets its own `sentence_id` (1, 2, 3...). The backend/frontend must **accumulate** final sentences to build the complete transcript
-- **Silence markers**: Empty sentences with `end_time > 0` and empty `text` indicate silence between speaking segments
+- **Per-sentence updates**: Each `transcript` message contains the **complete text** of the **current sentence** only
+- **Progressive refinement**: While you're speaking one sentence, the backend sends multiple updates with progressively refined **full sentence text** (not incremental words)
+- **Sentence finalization**: When you pause, the backend sends a final `transcript` message with `is_final: true`
+- **Multi-sentence session**: The frontend must **accumulate** final sentences to build the complete transcript (hook provides `rawTranscript` for this)
+- **Silence markers**: Empty `transcript` messages with `is_final: true` and empty `text` indicate silence between speaking segments
+- **Vendor abstraction**: The backend transforms provider-specific formats (Aliyun, OpenAI, etc.) into our unified schema
 
 **Example flow**:
 ```
+Client → Backend:
+{ "type": "start", "payload": {} }
+
+Backend → Client:
+{ "type": "ready", "payload": {} }
+
 User speaks: "Hello, I want to test..."
-→ sentence_id: 1, text: "你好", end_time: null (partial)
-→ sentence_id: 1, text: "你好想测试", end_time: null (partial - full sentence so far)
-→ sentence_id: 1, text: "你好，我想测试中英文的混合输入。", end_time: 5600 (final)
+Backend → Client:
+{ "type": "transcript", "payload": { "text": "你好", "is_final": false } }
+{ "type": "transcript", "payload": { "text": "你好想测试", "is_final": false } }
+{ "type": "transcript", "payload": { "text": "你好，我想测试中英文的混合输入。", "is_final": true, "end_time": 5600 } }
 
 User pauses (silence):
-→ sentence_id: 2, text: "", end_time: 11000 (silence marker)
+Backend → Client:
+{ "type": "transcript", "payload": { "text": "", "is_final": true, "end_time": 11000 } }
 
 User continues: "Let me try..."
-→ sentence_id: 3, text: "来试试", end_time: null (partial - NEW sentence)
-→ sentence_id: 3, text: "来试试看效果", end_time: 15200 (final)
+Backend → Client:
+{ "type": "transcript", "payload": { "text": "来试试", "is_final": false } }
+{ "type": "transcript", "payload": { "text": "来试试看效果", "is_final": true, "end_time": 15200 } }
+
+Client → Backend:
+{ "type": "stop", "payload": {} }
+
+Backend → Client:
+{ "type": "done", "payload": {} }
 ```
 
 **Crash Protection**:

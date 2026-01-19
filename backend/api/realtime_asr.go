@@ -22,8 +22,32 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// AliyunASRMessage represents the Aliyun Fun-ASR Realtime message format
-// We use this schema directly as our API schema for simplicity
+// Our vendor-agnostic ASR message schema
+// This schema is designed to be provider-independent while supporting real-time streaming ASR
+
+// ASRMessage is the top-level message format for our ASR API
+type ASRMessage struct {
+	Type    string                 `json:"type"`              // "start", "stop", "transcript", "error", "done"
+	Payload map[string]interface{} `json:"payload,omitempty"` // Type-specific payload
+}
+
+// TranscriptPayload contains transcription results
+type TranscriptPayload struct {
+	Text       string  `json:"text"`                  // Transcribed text
+	IsFinal    bool    `json:"is_final"`              // true if finalized, false if partial
+	Confidence float64 `json:"confidence,omitempty"`  // 0.0-1.0 confidence score
+	BeginTime  int     `json:"begin_time,omitempty"`  // Milliseconds from start
+	EndTime    int     `json:"end_time,omitempty"`    // Milliseconds from start
+	SpeakerID  string  `json:"speaker_id,omitempty"`  // Speaker identifier (if diarization enabled)
+}
+
+// ErrorPayload contains error information
+type ErrorPayload struct {
+	Message string `json:"message"` // Error message
+	Code    string `json:"code"`    // Error code
+}
+
+// Internal: Aliyun-specific message format (used for upstream communication only)
 type AliyunASRMessage struct {
 	Header  map[string]interface{} `json:"header"`
 	Payload map[string]interface{} `json:"payload,omitempty"`
@@ -118,7 +142,10 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
 
-	// Goroutine 1: Forward messages from client to Aliyun (transparent proxy)
+	// Generate task ID for this session
+	taskID := "task_" + time.Now().Format("20060102150405")
+
+	// Goroutine 1: Forward messages from client to Aliyun (with transformation)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -142,46 +169,25 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 
 			// Handle different message types
 			if messageType == websocket.TextMessage {
-				// Parse to check the action and optionally inject defaults
-				var msg AliyunASRMessage
-				if err := json.Unmarshal(message, &msg); err != nil {
-					log.Error().Err(err).Msg("failed to parse client message")
+				// Transform our schema to Aliyun schema
+				log.Info().RawJSON("clientMsg", message).Msg("📤 Client message (our schema)")
+
+				aliyunMsg, err := transformOursToAliyun(message, taskID)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to transform client message to Aliyun format")
 					continue
 				}
 
-				// Log the message for debugging
-				log.Info().RawJSON("clientMsg", message).Msg("📤 Client → Aliyun (text)")
+				log.Info().RawJSON("aliyunMsg", aliyunMsg).Msg("📤 Transformed to Aliyun schema")
 
-				// If it's a run-task, inject defaults
-				if header, ok := msg.Header["action"].(string); ok && header == "run-task" {
-					// Log task ID if present
-					if tid, ok := msg.Header["task_id"].(string); ok {
-						log.Info().Str("taskID", tid).Msg("starting ASR task")
-					}
-
-					// Inject default parameters if not provided
-					if payload, ok := msg.Payload["parameters"].(map[string]interface{}); !ok || payload == nil {
-						if msg.Payload == nil {
-							msg.Payload = make(map[string]interface{})
-						}
-						msg.Payload["parameters"] = map[string]interface{}{
-							"semantic_punctuation_enabled": false,
-							"max_sentence_silence":          1300,
-						}
-					}
-
-					// Re-marshal with defaults
-					message, _ = json.Marshal(msg)
-				}
-
-				// Forward the message to Aliyun
-				if err := aliyunConn.WriteMessage(websocket.TextMessage, message); err != nil {
+				// Forward the transformed message to Aliyun
+				if err := aliyunConn.WriteMessage(websocket.TextMessage, aliyunMsg); err != nil {
 					log.Error().Err(err).Msg("failed to forward message to Aliyun")
 					errChan <- err
 					return
 				}
 			} else if messageType == websocket.BinaryMessage {
-				// Forward binary audio data directly
+				// Forward binary audio data directly (no transformation needed)
 				log.Debug().Int("bytes", len(message)).Msg("🎤 Client → Aliyun (binary audio)")
 
 				// Save audio chunk to temp file for crash protection
@@ -200,7 +206,7 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 		}
 	}()
 
-	// Goroutine 2: Forward messages from Aliyun to client (transparent proxy)
+	// Goroutine 2: Forward messages from Aliyun to client (with transformation)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -219,18 +225,28 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 				return
 			}
 
-			// Log message for debugging
+			// Handle different message types
 			if messageType == websocket.TextMessage {
-				log.Info().RawJSON("aliyunMsg", message).Msg("📥 Aliyun → Client (text)")
-			} else if messageType == websocket.BinaryMessage {
-				log.Debug().Int("bytes", len(message)).Msg("📥 Aliyun → Client (binary)")
-			}
+				log.Info().RawJSON("aliyunMsg", message).Msg("📥 Aliyun message (Aliyun schema)")
 
-			// Forward the message directly to client
-			if err := clientConn.WriteMessage(messageType, message); err != nil {
-				// If client already closed, this is expected during shutdown
-				log.Debug().Err(err).Msg("failed to forward message to client (client may have closed)")
-				return
+				// Transform Aliyun schema to our schema
+				ourMsg, err := transformAliyunToOurs(message)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to transform Aliyun message to our format")
+					continue
+				}
+
+				log.Info().RawJSON("ourMsg", ourMsg).Msg("📥 Transformed to our schema")
+
+				// Forward the transformed message to client
+				if err := clientConn.WriteMessage(websocket.TextMessage, ourMsg); err != nil {
+					// If client already closed, this is expected during shutdown
+					log.Debug().Err(err).Msg("failed to forward message to client (client may have closed)")
+					return
+				}
+			} else if messageType == websocket.BinaryMessage {
+				// Binary messages are not expected from Aliyun (only text responses)
+				log.Debug().Int("bytes", len(message)).Msg("📥 Aliyun → Client (unexpected binary)")
 			}
 		}
 	}()
@@ -250,14 +266,148 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	}
 }
 
-// sendError sends an error message to the client (using Aliyun schema)
+// transformAliyunToOurs converts Aliyun message format to our vendor-agnostic format
+func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
+	var msg AliyunASRMessage
+	if err := json.Unmarshal(aliyunMsg, &msg); err != nil {
+		return nil, err
+	}
+
+	header := msg.Header
+	payload := msg.Payload
+
+	// Determine message type from Aliyun event
+	event, _ := header["event"].(string)
+
+	var ourMsg ASRMessage
+
+	switch event {
+	case "task-started":
+		ourMsg = ASRMessage{
+			Type:    "ready",
+			Payload: map[string]interface{}{},
+		}
+
+	case "result-generated":
+		// Extract sentence from Aliyun format
+		output, _ := payload["output"].(map[string]interface{})
+		sentence, _ := output["sentence"].(map[string]interface{})
+
+		text, _ := sentence["text"].(string)
+		endTime, _ := sentence["end_time"].(float64)
+		beginTime, _ := sentence["begin_time"].(float64)
+		speakerID, _ := sentence["speaker_id"].(string)
+
+		isFinal := endTime > 0
+
+		transcriptPayload := TranscriptPayload{
+			Text:      text,
+			IsFinal:   isFinal,
+			BeginTime: int(beginTime),
+			EndTime:   int(endTime),
+			SpeakerID: speakerID,
+		}
+
+		ourMsg = ASRMessage{
+			Type: "transcript",
+			Payload: map[string]interface{}{
+				"text":       transcriptPayload.Text,
+				"is_final":   transcriptPayload.IsFinal,
+				"begin_time": transcriptPayload.BeginTime,
+				"end_time":   transcriptPayload.EndTime,
+			},
+		}
+
+		if speakerID != "" {
+			ourMsg.Payload["speaker_id"] = speakerID
+		}
+
+	case "task-finished":
+		ourMsg = ASRMessage{
+			Type:    "done",
+			Payload: map[string]interface{}{},
+		}
+
+	case "task-failed":
+		errMsg, _ := payload["message"].(string)
+		ourMsg = ASRMessage{
+			Type: "error",
+			Payload: map[string]interface{}{
+				"message": errMsg,
+				"code":    "asr_error",
+			},
+		}
+
+	default:
+		// Unknown event, pass through as-is for debugging
+		return aliyunMsg, nil
+	}
+
+	return json.Marshal(ourMsg)
+}
+
+// transformOursToAliyun converts our message format to Aliyun format
+func transformOursToAliyun(ourMsg []byte, taskID string) ([]byte, error) {
+	var msg ASRMessage
+	if err := json.Unmarshal(ourMsg, &msg); err != nil {
+		return nil, err
+	}
+
+	var aliyunMsg AliyunASRMessage
+
+	switch msg.Type {
+	case "start":
+		// Client sends "start" -> convert to Aliyun "run-task"
+		aliyunMsg = AliyunASRMessage{
+			Header: map[string]interface{}{
+				"action":    "run-task",
+				"task_id":   taskID,
+				"streaming": "duplex",
+			},
+			Payload: map[string]interface{}{
+				"task_group": "audio",
+				"task":       "asr",
+				"function":   "recognition",
+				"model":      "fun-asr-realtime",
+				"input": map[string]interface{}{
+					"format":      "pcm",
+					"sample_rate": 16000,
+				},
+				"parameters": map[string]interface{}{
+					"semantic_punctuation_enabled": false,
+					"max_sentence_silence":          1300,
+				},
+			},
+		}
+
+	case "stop":
+		// Client sends "stop" -> convert to Aliyun "finish-task"
+		aliyunMsg = AliyunASRMessage{
+			Header: map[string]interface{}{
+				"action":    "finish-task",
+				"task_id":   taskID,
+				"streaming": "duplex",
+			},
+			Payload: map[string]interface{}{
+				"input": map[string]interface{}{},
+			},
+		}
+
+	default:
+		// Unknown type, return error
+		return nil, json.Unmarshal([]byte(`{"error": "unknown message type"}`), &aliyunMsg)
+	}
+
+	return json.Marshal(aliyunMsg)
+}
+
+// sendError sends an error message to the client (using our schema)
 func sendError(conn *websocket.Conn, errMsg string) {
-	msg := AliyunASRMessage{
-		Header: map[string]interface{}{
-			"event": "task-failed",
-		},
+	msg := ASRMessage{
+		Type: "error",
 		Payload: map[string]interface{}{
 			"message": errMsg,
+			"code":    "connection_error",
 		},
 	}
 	conn.WriteJSON(msg)

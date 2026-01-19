@@ -17,7 +17,6 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const taskIdRef = useRef<string | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
 
   const startRecording = useCallback(async () => {
@@ -48,28 +47,12 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       ws.onopen = () => {
         console.log('🔌 ASR WebSocket connected');
 
-        // Send run-task message (Aliyun schema)
-        const taskId = `task_${Date.now()}`;
-        taskIdRef.current = taskId;
+        // Send start message (our vendor-agnostic schema)
         const startMsg = {
-          header: {
-            action: 'run-task',
-            task_id: taskId,
-            streaming: 'duplex'
-          },
-          payload: {
-            task_group: 'audio',
-            task: 'asr',
-            function: 'recognition',
-            model: 'fun-asr-realtime',
-            input: {
-              format: 'pcm',
-              sample_rate: sampleRate
-            }
-            // parameters will be injected by the backend if not provided
-          }
+          type: 'start',
+          payload: {}
         };
-        console.log('📤 Sending run-task:', startMsg);
+        console.log('📤 Sending start:', startMsg);
         ws.send(JSON.stringify(startMsg));
 
         setIsRecording(true);
@@ -78,42 +61,39 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          console.log('📥 Received message:', msg);
+          console.log('📥 Received message:', JSON.stringify(msg));
 
-          // Parse Aliyun message format
-          const header = msg.header;
+          // Parse our vendor-agnostic message format
+          const msgType = msg.type;
           const payload = msg.payload;
 
-          if (!header) {
-            console.warn('⚠️ Message missing header:', msg);
+          if (!msgType) {
+            console.warn('⚠️ Message missing type:', msg);
             return;
           }
 
-          const eventType = header.event;
-
-          switch (eventType) {
-            case 'task-started':
-              console.log('✅ ASR task started:', header.task_id);
+          switch (msgType) {
+            case 'ready':
+              console.log('✅ ASR ready');
               break;
 
-            case 'result-generated':
-              // Extract transcription from Aliyun format
-              const output = payload?.output;
-              const sentence = output?.sentence;
-              console.log('🗣️ Result generated:', JSON.stringify({ sentence, isFinal: sentence?.end_time > 0 }));
+            case 'transcript':
+              // Extract transcription from our format
+              const text = payload?.text || '';
+              const isFinal = payload?.is_final || false;
+              const hasText = text.trim().length > 0;
 
-              const isFinal = sentence?.end_time && sentence.end_time > 0;
-              const hasText = sentence?.text && sentence.text.trim().length > 0;
+              console.log('🗣️ Transcript:', JSON.stringify({ text, isFinal }));
 
               // Update transcript state
-              // Aliyun sends progressive FULL updates per sentence, then finalizes with end_time > 0
+              // Backend sends progressive FULL updates per sentence, then finalizes with is_final: true
               if (isFinal && hasText) {
                 // Final: Append to accumulated transcript, clear partial
-                setRawTranscript(prev => prev ? `${prev} ${sentence.text}` : sentence.text);
+                setRawTranscript(prev => prev ? `${prev} ${text}` : text);
                 setPartialSentence('');
               } else if (hasText) {
                 // Partial: Update current sentence being spoken
-                setPartialSentence(sentence.text);
+                setPartialSentence(text);
               } else if (isFinal) {
                 // Empty final sentence (silence marker): just clear partial
                 setPartialSentence('');
@@ -121,27 +101,27 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
 
               // Call the callback for backwards compatibility (only if has text)
               if (hasText) {
-                onTranscript?.(sentence.text, isFinal);
+                onTranscript?.(text, isFinal);
               }
               break;
 
-            case 'task-finished':
-              console.log('🏁 ASR task finished');
-              // Close WebSocket gracefully after receiving task-finished
+            case 'done':
+              console.log('🏁 ASR finished');
+              // Close WebSocket gracefully after receiving done
               if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                 wsRef.current.close();
                 wsRef.current = null;
               }
               break;
 
-            case 'task-failed':
-              const errorMsg = payload?.message || 'ASR task failed';
+            case 'error':
+              const errorMsg = payload?.message || 'ASR error';
               console.error('❌ ASR error:', errorMsg, payload);
               onError?.(errorMsg);
               break;
 
             default:
-              console.log('❓ Unknown event type:', eventType, msg);
+              console.log('❓ Unknown message type:', msgType, msg);
           }
         } catch (err) {
           console.error('❌ Failed to parse WebSocket message:', err);
@@ -256,22 +236,16 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   }, [sampleRate, onTranscript, onError]);
 
   const stopRecording = useCallback(() => {
-    // Send finish-task message (Aliyun schema)
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && taskIdRef.current) {
+    // Send stop message (our vendor-agnostic schema)
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const stopMsg = {
-        header: {
-          action: 'finish-task',
-          task_id: taskIdRef.current,
-          streaming: 'duplex'
-        },
-        payload: {
-          input: {}
-        }
+        type: 'stop',
+        payload: {}
       };
-      console.log('📤 Sending finish-task:', stopMsg);
+      console.log('📤 Sending stop:', stopMsg);
       wsRef.current.send(JSON.stringify(stopMsg));
-      // Don't close immediately - wait for task-finished response
-      // The ws.onmessage handler will close when it receives task-finished
+      // Don't close immediately - wait for 'done' response
+      // The ws.onmessage handler will close when it receives 'done'
     }
 
     // Stop duration timer
