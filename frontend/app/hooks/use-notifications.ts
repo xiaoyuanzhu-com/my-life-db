@@ -1,7 +1,7 @@
 // Unified notification hook - shares a single SSE connection
 // Replaces use-inbox-notifications and use-preview-notifications
 
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 // Singleton EventSource connection (shared across all hook instances)
 let sharedEventSource: EventSource | null = null;
@@ -156,8 +156,6 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
     [onInboxChange]
   );
 
-  const listenerRef = useRef<((event: MessageEvent) => void) | null>(null);
-
   useEffect(() => {
     if (!enabled) return;
 
@@ -177,8 +175,6 @@ export function useInboxNotifications(options: UseInboxNotificationsOptions) {
         // Silently ignore parse errors
       }
     };
-
-    listenerRef.current = listener;
 
     // Subscribe
     const unsubscribe = subscribe(listener);
@@ -202,8 +198,6 @@ interface UsePreviewNotificationsOptions {
 export function usePreviewNotifications(options: UsePreviewNotificationsOptions) {
   const { onPreviewUpdated, enabled = true } = options;
 
-  const listenerRef = useRef<((event: MessageEvent) => void) | null>(null);
-
   useEffect(() => {
     if (!enabled) return;
 
@@ -226,8 +220,6 @@ export function usePreviewNotifications(options: UsePreviewNotificationsOptions)
         // Silently ignore parse errors
       }
     };
-
-    listenerRef.current = listener;
 
     // Subscribe
     const unsubscribe = subscribe(listener);
