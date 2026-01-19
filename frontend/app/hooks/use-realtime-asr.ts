@@ -262,6 +262,8 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, sav
   }, [sampleRate, onTranscript, onError]);
 
   const stopRecording = useCallback(() => {
+    console.log('🛑 Stop recording called, saveAudio:', saveAudio);
+
     // Send stop message (our vendor-agnostic schema)
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const stopMsg = {
@@ -276,6 +278,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, sav
 
     // Stop MediaRecorder and create audio blob
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      console.log('🎙️ Stopping MediaRecorder, state:', mediaRecorderRef.current.state);
       mediaRecorderRef.current.stop();
 
       mediaRecorderRef.current.onstop = () => {
@@ -292,6 +295,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, sav
       };
     } else {
       // If saveAudio was off, clear recorded audio
+      console.log('🎙️ No MediaRecorder active, saveAudio was:', saveAudio);
       setRecordedAudio(null);
       onRecordingComplete?.(null);
     }
@@ -328,7 +332,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, sav
     // Don't set isRecording = false here - let ws.onclose do it after final transcript arrives
     setAudioLevel(0);
     setRecordingDuration(0);
-  }, [onRecordingComplete]);
+  }, [saveAudio, onRecordingComplete]);
 
   // Reset transcripts and audio only when starting new recording (not when stopping)
   const wasRecordingRef = useRef(false);

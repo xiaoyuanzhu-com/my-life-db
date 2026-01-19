@@ -37,14 +37,44 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [saveAudio, setSaveAudio] = useState(false);
+  const saveAudioRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    saveAudioRef.current = saveAudio;
+  }, [saveAudio]);
 
   // Use the local-first send queue
   const { send } = useSendQueue(() => {
     // Called when an upload completes - refresh the inbox
     onEntryCreated?.();
   });
+
+  // Callback for when recording completes
+  const handleRecordingComplete = useCallback((audioBlob: Blob | null) => {
+    const shouldSave = saveAudioRef.current;
+    console.log('🎬 onRecordingComplete called:', {
+      hasBlob: !!audioBlob,
+      blobSize: audioBlob?.size,
+      saveAudio: shouldSave
+    });
+
+    if (audioBlob && shouldSave) {
+      // Convert blob to File and add to selectedFiles
+      const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, {
+        type: 'audio/webm'
+      });
+      setSelectedFiles(prev => {
+        console.log('📎 Attaching audio file, current files:', prev.length);
+        return [...prev, audioFile];
+      });
+      console.log('📎 Attached audio file to inbox entry:', audioFile.name);
+    } else {
+      console.log('📎 Not attaching audio:', { hasBlob: !!audioBlob, saveAudio: shouldSave });
+    }
+  }, []);
 
   // Real-time ASR hook
   const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, recordedAudio, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
@@ -53,16 +83,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       setError(`Voice input error: ${errorMsg}`);
       console.error('ASR error:', errorMsg);
     },
-    onRecordingComplete: (audioBlob) => {
-      if (audioBlob && saveAudio) {
-        // Convert blob to File and add to selectedFiles
-        const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, {
-          type: 'audio/webm'
-        });
-        setSelectedFiles(prev => [...prev, audioFile]);
-        console.log('📎 Attached audio file to inbox entry:', audioFile.name);
-      }
-    }
+    onRecordingComplete: handleRecordingComplete
   });
 
   // Auto-resize textarea based on content
