@@ -46,19 +46,12 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   });
 
   // Real-time ASR hook
-  const [partialTranscript, setPartialTranscript] = useState('');
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [recordingData, setRecordingData] = useState<{ transcript: string; duration: number } | null>(null);
 
-  const { isRecording, audioLevel, recordingDuration, rawTranscript, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+  const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onTranscript: (text, isFinal) => {
-      if (isFinal) {
-        // Don't append to content anymore - will be handled by modal
-        setPartialTranscript(''); // Clear partial text after final
-      } else {
-        // Only show partial transcript temporarily, don't append to content
-        setPartialTranscript(text);
-      }
+      console.log('📝 OmniInput received transcript:', { text, isFinal, currentRaw: rawTranscript, currentPartial: partialSentence });
     },
     onError: (errorMsg) => {
       setError(`Voice input error: ${errorMsg}`);
@@ -74,9 +67,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
     // Stop the recording first
     stopRecordingRaw();
-
-    // Clear partial transcript immediately
-    setPartialTranscript('');
 
     // Show review modal with recording data (even if empty, to show user feedback)
     setRecordingData({ transcript: finalTranscript, duration: finalDuration });
@@ -418,7 +408,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
                 }
               }
             }}
-            placeholder="What's up?"
+            placeholder={isRecording ? '' : 'What\'s up?'}
             style={maxHeight ? { maxHeight } : undefined}
             className={cn(
               'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
@@ -428,11 +418,20 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             aria-invalid={!!error}
             disabled={isRecording}
           />
-          {/* Show partial transcript as gray overlay text */}
-          {partialTranscript && (
+          {/* Show transcript as gray overlay text during recording */}
+          {isRecording && (rawTranscript || partialSentence) && (
             <div className="absolute inset-0 px-4 pt-2 pointer-events-none text-base whitespace-pre-wrap overflow-y-auto">
               <span className="invisible">{content}</span>
-              <span className="text-muted-foreground/60">{content ? ' ' : ''}{partialTranscript}</span>
+              <span className="text-foreground">
+                {content ? ' ' : ''}
+                {rawTranscript}
+              </span>
+              {partialSentence && (
+                <span className="text-muted-foreground/60">
+                  {rawTranscript ? ' ' : ''}
+                  {partialSentence}
+                </span>
+              )}
             </div>
           )}
         </div>
