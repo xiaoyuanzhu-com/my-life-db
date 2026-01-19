@@ -97,6 +97,9 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/api/claude/sessions/:id/chat", h.ClaudeChatWebSocket)
 	r.GET("/api/asr/realtime", h.RealtimeASR)
 
+	// ASR refinement route (POST endpoint for non-realtime processing)
+	api.POST("/asr/refine", h.RefineTranscript)
+
 	// Raw file serving
 	r.GET("/raw/*path", h.ServeRawFile)
 	r.PUT("/raw/*path", h.SaveRawFile)

@@ -8,6 +8,27 @@ MyLifeDB features a real-time voice input system inspired by Plaud Note, providi
 
 ### Recording Experience
 
+#### Two-Pass ASR System
+
+**First Pass: Real-time Transcription**:
+- Uses `fun-asr-realtime` model for instant feedback during recording
+- Streams partial transcripts with ~1-2 second latency
+- Low accuracy but provides immediate visual feedback
+
+**Second Pass: High-Quality Refinement**:
+- Automatically triggered after stopping recording
+- Uses `fun-asr` (non-realtime) model for better accuracy
+- Processes the saved audio file through batch ASR
+- Replaces real-time transcript with refined version
+- Shows "Refining transcript..." placeholder during processing
+- Typically completes in 2-5 seconds for short recordings
+
+**Benefits**:
+- User sees instant feedback during recording (real-time pass)
+- Final transcript is more accurate (refinement pass)
+- Best of both worlds: responsiveness + quality
+- No user action required - fully automatic
+
 #### Visual Feedback During Recording
 
 **Waveform Visualizer**:
@@ -33,6 +54,7 @@ MyLifeDB features a real-time voice input system inspired by Plaud Note, providi
 - Partial transcripts: Gray overlay (60% opacity) during recording
 - Final transcripts: Append to content immediately
 - Clear separation prevents accidental submission of partial text
+- Post-recording refinement: Shows "Refining transcript..." placeholder while processing
 
 ### Three-Tab Review Modal (Phase 2)
 
@@ -170,9 +192,9 @@ interface UseRealtimeASRReturn {
   isRecording: boolean;           // Recording active
   audioLevel: number;             // 0-100 scale for visualization
   recordingDuration: number;      // Elapsed seconds
-  rawTranscript: string;          // Raw ASR output
-  cleanedTranscript: string;      // Processed version
-  summary: string;                // AI summary
+  rawTranscript: string;          // Accumulated final sentences
+  partialSentence: string;        // Current partial sentence
+  isRefining: boolean;            // Refinement in progress
   startRecording: () => Promise<void>;
   stopRecording: () => void;
 }
@@ -355,7 +377,9 @@ Client (Browser)
 // Backend responds "done" when ASR has finished
 {
   "type": "done",
-  "payload": {}
+  "payload": {
+    "temp_audio_path": "/path/to/temp/20060102_150405.pcm"  // Optional: Path for refinement
+  }
 }
 
 // Backend sends "error" if something goes wrong
@@ -375,6 +399,7 @@ Client (Browser)
 - **Multi-sentence session**: The frontend must **accumulate** final sentences to build the complete transcript (hook provides `rawTranscript` for this)
 - **Silence markers**: Empty `transcript` messages with `is_final: true` and empty `text` indicate silence between speaking segments
 - **Vendor abstraction**: The backend transforms provider-specific formats (Aliyun, OpenAI, etc.) into our unified schema
+- **Temp audio path**: The `done` message includes `temp_audio_path` in the payload for refinement
 
 **Example flow**:
 ```
@@ -406,11 +431,13 @@ Backend → Client:
 { "type": "done", "payload": {} }
 ```
 
-**Crash Protection**:
+**Crash Protection & Refinement**:
 - Auto-save audio chunks to `APP_DATA_DIR/recordings/temp/[timestamp].pcm`
 - File persists if browser/server crashes
-- Automatic cleanup on successful completion
-- Temp files remain for recovery (manual cleanup >24h)
+- Temp file path sent to client in `done` message for refinement
+- Client triggers refinement via `/api/asr/refine` endpoint
+- Backend cleans up temp file after successful refinement
+- If refinement fails, temp files remain for recovery (manual cleanup >24h)
 
 **Goroutine Architecture**:
 ```go
@@ -549,8 +576,29 @@ CREATE INDEX idx_recordings_created ON recordings(created_at DESC);
 - Path pattern: `recordings/[YYYYMMDD]/[timestamp]_[id].pcm`
 - Temp files: `APP_DATA_DIR/recordings/temp/[timestamp].pcm`
 
-#### API Endpoints (Phase 3)
+#### API Endpoints
 
+**Realtime ASR**:
+```
+GET  /api/asr/realtime         - WebSocket endpoint for real-time ASR
+POST /api/asr/refine           - Refine transcript using non-realtime ASR
+```
+
+**Refinement Request**:
+```json
+{
+  "audio_path": "/path/to/temp/20060102_150405.pcm"
+}
+```
+
+**Refinement Response**:
+```json
+{
+  "text": "Refined transcript text with better accuracy"
+}
+```
+
+**Phase 3 - Recordings Library**:
 ```
 GET  /api/recordings           - List all recordings
 GET  /api/recordings/:id       - Get recording details + transcripts
@@ -603,6 +651,8 @@ OPENAI_MODEL=gpt-4o-mini        # Model for summarization
 - Enhanced button states with pulse animation
 - Backend auto-save for crash protection
 - Real-time partial transcript overlay
+- Two-pass ASR: Real-time + refinement for better accuracy
+- Automatic transcript refinement after recording stops
 
 ### 🚧 Phase 2: Three-Tab Review Modal (Next)
 1. Create modal component with tab navigation

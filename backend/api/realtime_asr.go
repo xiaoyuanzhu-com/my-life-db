@@ -14,6 +14,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
+	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 var upgrader = websocket.Upgrader{
@@ -78,11 +79,11 @@ func (h *Handlers) RealtimeASR(c *gin.Context) {
 }
 
 // proxyAliyunRealtimeASR proxies messages between client and Aliyun Fun-ASR Realtime
-// This is a transparent proxy - messages are forwarded as-is without transformation
-func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) {
+// Returns the path to the temp audio file for refinement
+func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) string {
 	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
 		sendError(clientConn, "Aliyun API key not configured")
-		return
+		return ""
 	}
 
 	apiKey := settings.Vendors.Aliyun.APIKey
@@ -105,7 +106,7 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	if err != nil {
 		log.Error().Err(err).Str("url", wsURL).Msg("failed to connect to Aliyun WebSocket")
 		sendError(clientConn, "failed to connect to ASR provider: "+err.Error())
-		return
+		return ""
 	}
 	defer aliyunConn.Close()
 
@@ -129,11 +130,9 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 		defer func() {
 			if audioFile != nil {
 				audioFile.Close()
-				// Clean up temp file on successful completion
-				// In case of crash, the file remains for recovery
-				if err := os.Remove(tempFile); err != nil {
-					log.Warn().Err(err).Str("file", tempFile).Msg("failed to clean up temp audio file")
-				}
+				// Note: We don't delete the temp file here anymore
+				// It will be deleted after refinement by the RefineTranscript endpoint
+				log.Info().Str("file", tempFile).Msg("temp audio file saved for refinement")
 			}
 		}()
 	}
@@ -229,8 +228,8 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 			if messageType == websocket.TextMessage {
 				log.Info().RawJSON("aliyunMsg", message).Msg("📥 Aliyun message (Aliyun schema)")
 
-				// Transform Aliyun schema to our schema
-				ourMsg, err := transformAliyunToOurs(message)
+				// Transform Aliyun schema to our schema, passing temp file path for "done" messages
+				ourMsg, err := transformAliyunToOurs(message, tempFile)
 				if err != nil {
 					log.Error().Err(err).Msg("failed to transform Aliyun message to our format")
 					continue
@@ -264,10 +263,13 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 			sendError(clientConn, err.Error())
 		}
 	}
+
+	return tempFile
 }
 
 // transformAliyunToOurs converts Aliyun message format to our vendor-agnostic format
-func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
+// If tempAudioPath is provided and the message is "task-finished", includes it in the done payload
+func transformAliyunToOurs(aliyunMsg []byte, tempAudioPath string) ([]byte, error) {
 	var msg AliyunASRMessage
 	if err := json.Unmarshal(aliyunMsg, &msg); err != nil {
 		return nil, err
@@ -323,9 +325,14 @@ func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
 		}
 
 	case "task-finished":
+		payload := map[string]interface{}{}
+		// Include temp audio path for refinement if available
+		if tempAudioPath != "" {
+			payload["temp_audio_path"] = tempAudioPath
+		}
 		ourMsg = ASRMessage{
 			Type:    "done",
-			Payload: map[string]interface{}{},
+			Payload: payload,
 		}
 
 	case "task-failed":
@@ -411,4 +418,70 @@ func sendError(conn *websocket.Conn, errMsg string) {
 		},
 	}
 	conn.WriteJSON(msg)
+}
+
+// RefineTranscriptRequest represents the request to refine a transcript using non-realtime ASR
+type RefineTranscriptRequest struct {
+	AudioPath string `json:"audio_path" binding:"required"` // Path to the temporary audio file
+}
+
+// RefineTranscriptResponse represents the response from transcript refinement
+type RefineTranscriptResponse struct {
+	Text  string `json:"text"`
+	Error string `json:"error,omitempty"`
+}
+
+// RefineTranscript processes the recorded audio through non-realtime Fun-ASR for better quality
+func (h *Handlers) RefineTranscript(c *gin.Context) {
+	var req RefineTranscriptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		return
+	}
+
+	// Load settings for Aliyun credentials
+	settings, err := db.LoadUserSettings()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings: " + err.Error()})
+		return
+	}
+
+	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Aliyun API key not configured"})
+		return
+	}
+
+	// Get the Aliyun client
+	aliyunClient := vendors.GetAliyunClient()
+	if aliyunClient == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize Aliyun client"})
+		return
+	}
+
+	// Perform non-realtime ASR using fun-asr model
+	asrResponse, err := aliyunClient.SpeechRecognition(req.AudioPath, vendors.ASROptions{
+		Model:       "fun-asr",
+		Diarization: false,
+	})
+	if err != nil {
+		log.Error().Err(err).Str("audioPath", req.AudioPath).Msg("failed to refine transcript")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "transcript refinement failed: " + err.Error()})
+		return
+	}
+
+	log.Info().
+		Str("audioPath", req.AudioPath).
+		Int("textLength", len(asrResponse.Text)).
+		Msg("transcript refined successfully")
+
+	// Clean up the temp audio file after successful refinement
+	if err := os.Remove(req.AudioPath); err != nil {
+		log.Warn().Err(err).Str("audioPath", req.AudioPath).Msg("failed to clean up temp audio file after refinement")
+	} else {
+		log.Info().Str("audioPath", req.AudioPath).Msg("cleaned up temp audio file after refinement")
+	}
+
+	c.JSON(http.StatusOK, RefineTranscriptResponse{
+		Text: asrResponse.Text,
+	})
 }
