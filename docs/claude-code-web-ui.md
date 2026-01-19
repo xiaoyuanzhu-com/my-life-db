@@ -5,11 +5,12 @@ This document outlines the features needed to implement a web UI for Claude Code
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Claude Code Features & UI Requirements](#claude-code-features--ui-requirements)
-3. [Phase 1: Core Features](#phase-1-core-features)
-4. [Phase 2: Enhanced Features](#phase-2-enhanced-features)
-5. [Phase 3: Advanced Features](#phase-3-advanced-features)
-6. [UI Component Architecture](#ui-component-architecture)
+2. [VS Code Extension Architecture Research](#vs-code-extension-architecture-research)
+3. [Claude Code Features & UI Requirements](#claude-code-features--ui-requirements)
+4. [Phase 1: Core Features](#phase-1-core-features)
+5. [Phase 2: Enhanced Features](#phase-2-enhanced-features)
+6. [Phase 3: Advanced Features](#phase-3-advanced-features)
+7. [UI Component Architecture](#ui-component-architecture)
 
 ---
 
@@ -26,6 +27,114 @@ Mimic [claude.ai/code](https://claude.ai/code) - an input box at the bottom with
 - **Progressive disclosure**: Show basic features first, reveal advanced features as needed
 - **Real-time feedback**: Stream responses, show tool execution progress
 - **Keyboard-first**: Support power users with keyboard shortcuts
+
+---
+
+## VS Code Extension Architecture Research
+
+Understanding the VS Code extension architecture informs our web UI design decisions.
+
+### Architecture Overview
+
+The VS Code extension uses a **process-based architecture** where the extension acts as a bridge between the CLI and VS Code's UI:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      VS Code Extension                          │
+│  ┌──────────────────┐    JSON-lines     ┌──────────────────┐   │
+│  │   Webview UI     │◄──── stdin ──────►│   Claude CLI     │   │
+│  │   (React-based)  │      stdout       │   (subprocess)   │   │
+│  └──────────────────┘                   └──────────────────┘   │
+│          │                                       │              │
+│          │ VS Code API                           │ API calls    │
+│          ▼                                       ▼              │
+│  ┌──────────────────┐                   ┌──────────────────┐   │
+│  │   Editor/Diff    │                   │   Anthropic API  │   │
+│  │   Integration    │                   │   MCP Servers    │   │
+│  └──────────────────┘                   └──────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+1. **CLI as subprocess** - Extension spawns CLI, communicates via JSON-lines protocol over stdin/stdout
+2. **Clean separation** - Extension never directly calls Anthropic API or orchestrates tool execution
+3. **Shared configuration** - Both extension and CLI use `~/.claude/settings.json`
+4. **Session portability** - Conversations can resume in CLI via `claude --resume`
+
+### Communication Protocol
+
+**Message Types:**
+- **Regular messages**: Agent responses, tool outputs, cost tracking
+- **Control messages**: Permission requests, hook callbacks
+
+**Message Flow:**
+
+| Direction | Message Types |
+|-----------|---------------|
+| Extension → CLI | User prompts, tool approvals, hook responses, permission decisions |
+| CLI → Extension | Streamed text (deltas), tool requests, hook invocations, structured results |
+
+**Tool Execution Flow:**
+```
+1. CLI sends:    { "type": "tool_use", "name": "bash", "input": {...} }
+2. Extension:    Displays to user with accept/reject UI
+3. User action:  { "type": "tool_decision", "approve": true }
+4. CLI executes: Runs tool in sandbox
+5. CLI returns:  { "type": "tool_result", "output": "..." }
+```
+
+### UI Patterns from VS Code Extension
+
+**Diff Visualization (Primary Feature):**
+- Inline diffs appear directly in editor (not just in chat)
+- Color-coded additions/deletions
+- Accept/reject buttons for each change
+- Colored gutter indicators with line counts
+- Click gutter to open side-by-side diff viewer
+
+**Chat Interface:**
+- Rich markdown rendering with syntax highlighting
+- `/` prefix for slash commands
+- `@` mentions for file references with line ranges
+- `Alt+K` auto-inserts file references when text selected
+
+**State Management:**
+- Memory-based state (`setState()`) for UI state while webview active
+- Persistent state (`globalState`) survives VS Code restarts
+- `retainContextWhenHidden: true` prevents reload when panel hidden
+
+### Key Learnings for Web UI
+
+| VS Code Pattern | Web UI Adaptation |
+|-----------------|-------------------|
+| JSON-lines protocol | WebSocket/SSE with JSON messages |
+| Webview state | React state + localStorage/IndexedDB |
+| Inline editor diffs | Monaco editor or custom diff component |
+| Gutter indicators | Sidebar indicators + inline badges |
+| Selection-based references | Text selection + keyboard shortcut |
+| Permission modal | Modal dialog with allow/deny/always |
+
+### Performance Optimizations Used
+
+1. **Lazy Loading Tools** - Tools loaded on-demand (85% context reduction)
+2. **Session Compression** - Conversations auto-compacted at context limits
+3. **Streaming** - Responses streamed for perceived responsiveness
+4. **Webview Retention** - Panel context retained when hidden
+
+### Architecture Implications for Our Web UI
+
+**What to Adopt:**
+- Streaming responses via WebSocket/SSE
+- JSON-based message protocol for tool calls
+- Inline diff visualization for file edits
+- Permission request flow with allow/deny/always options
+- Lazy loading patterns for tool definitions
+
+**What's Different for Web:**
+- No subprocess model - we run the agent directly on backend
+- No VS Code APIs - need our own file browser, diff viewer
+- Session storage in database instead of filesystem
+- Web-based authentication instead of local config
 
 ---
 
