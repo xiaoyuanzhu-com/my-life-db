@@ -25,6 +25,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
   const durationIntervalRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const wsDoneResolverRef = useRef<(() => void) | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
@@ -133,6 +134,12 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
 
             case 'done':
               console.log('🏁 ASR finished');
+
+              // Notify that WebSocket is done (for stopRecording to wait)
+              if (wsDoneResolverRef.current) {
+                wsDoneResolverRef.current();
+                wsDoneResolverRef.current = null;
+              }
 
               // Close WebSocket gracefully after receiving done
               if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -265,7 +272,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
   const stopRecording = useCallback(async () => {
     console.log('🛑 Stop recording called, saveAudio:', saveAudio);
 
-    // Send stop message (our vendor-agnostic schema)
+    // Send stop message (our vendor-agnostic schema) and wait for WebSocket to finish
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const stopMsg = {
         type: 'stop',
@@ -273,8 +280,20 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
       };
       console.log('📤 Sending stop:', stopMsg);
       wsRef.current.send(JSON.stringify(stopMsg));
-      // Don't close immediately - wait for 'done' response
-      // The ws.onmessage handler will close when it receives 'done'
+
+      // Wait for 'done' response before proceeding with refinement
+      await new Promise<void>((resolve) => {
+        wsDoneResolverRef.current = resolve;
+        // Timeout after 5 seconds if no 'done' message
+        setTimeout(() => {
+          if (wsDoneResolverRef.current === resolve) {
+            console.warn('⚠️ WebSocket done timeout, proceeding anyway');
+            wsDoneResolverRef.current = null;
+            resolve();
+          }
+        }, 5000);
+      });
+      console.log('✅ WebSocket finished, proceeding with refinement');
     }
 
     // Always record audio (for refinement), regardless of saveAudio setting

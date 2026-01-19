@@ -15,6 +15,7 @@ export interface VoiceInputControls {
     partial: string;
   };
   recordedAudio: Blob | null;
+  isRefining: boolean;
 
   // Actions
   start: () => Promise<void>;
@@ -90,6 +91,7 @@ export function useVoiceInputWithSaveAudio(options?: UseVoiceInputOptions) {
     rawTranscript,
     partialSentence,
     recordedAudio,
+    isRefining,
     startRecording,
     stopRecording
   } = useRealtimeASR({
@@ -107,6 +109,7 @@ export function useVoiceInputWithSaveAudio(options?: UseVoiceInputOptions) {
       partial: partialSentence
     },
     recordedAudio,
+    isRefining,
     saveAudioRef, // Expose ref for external control
     start: startRecording,
     stop: stopRecording
