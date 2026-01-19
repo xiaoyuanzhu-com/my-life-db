@@ -2,10 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { SessionTab } from '~/components/claude/session-tab'
 import { SessionList } from '~/components/claude/session-list'
+import { ChatInterface } from '~/components/claude/chat'
 import { Button } from '~/components/ui/button'
-import { Plus, Menu } from 'lucide-react'
+import { Plus, Menu, Terminal, MessageSquare } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useAuth } from '~/contexts/auth-context'
+import { cn } from '~/lib/utils'
+
+type UIMode = 'terminal' | 'chat'
 
 interface Session {
   id: string
@@ -24,8 +28,12 @@ export default function ClaudePage() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [uiMode, setUiMode] = useState<UIMode>('chat') // Default to new chat UI
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
+
+  // Get active session
+  const activeSession = sessions.find((s) => s.id === activeSessionId)
 
   // Load sessions on mount
   useEffect(() => {
@@ -209,6 +217,34 @@ export default function ClaudePage() {
             <Menu className="h-4 w-4" />
           </Button>
           <h1 className="text-lg font-semibold">Claude Code</h1>
+
+          {/* UI Mode Toggle */}
+          <div className="ml-4 flex items-center rounded-lg border border-border p-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2',
+                uiMode === 'chat' && 'bg-muted'
+              )}
+              onClick={() => setUiMode('chat')}
+              title="Chat UI"
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2',
+                uiMode === 'terminal' && 'bg-muted'
+              )}
+              onClick={() => setUiMode('terminal')}
+              title="Terminal UI"
+            >
+              <Terminal className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <Button onClick={createSession} size="sm">
@@ -219,6 +255,20 @@ export default function ClaudePage() {
 
       {/* Mobile Action Buttons - Top Right, below status */}
       <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
+        {/* UI Mode Toggle (mobile) */}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
+          onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
+          title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
+        >
+          {uiMode === 'chat' ? (
+            <Terminal className="h-4 w-4" />
+          ) : (
+            <MessageSquare className="h-4 w-4" />
+          )}
+        </Button>
         <Button
           size="icon"
           variant="ghost"
@@ -271,18 +321,29 @@ export default function ClaudePage() {
           </SheetContent>
         </Sheet>
 
-        {/* Terminal area - fullscreen on mobile */}
+        {/* Main area - Terminal or Chat UI */}
         <div className="flex-1 bg-background overflow-hidden min-w-0">
-          {sessions.length > 0 ? (
-            <>
-              {sessions.map((session) => (
-                <SessionTab
-                  key={session.id}
-                  sessionId={session.id}
-                  isActive={session.id === activeSessionId}
-                />
-              ))}
-            </>
+          {sessions.length > 0 && activeSessionId ? (
+            uiMode === 'terminal' ? (
+              // Terminal UI
+              <>
+                {sessions.map((session) => (
+                  <SessionTab
+                    key={session.id}
+                    sessionId={session.id}
+                    isActive={session.id === activeSessionId}
+                  />
+                ))}
+              </>
+            ) : (
+              // Chat UI
+              <ChatInterface
+                sessionId={activeSessionId}
+                sessionName={activeSession?.title || 'Session'}
+                workingDir={activeSession?.workingDir}
+                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+              />
+            )
           ) : (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
