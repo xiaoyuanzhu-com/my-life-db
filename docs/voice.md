@@ -8,26 +8,26 @@ MyLifeDB features a real-time voice input system inspired by Plaud Note, providi
 
 ### Recording Experience
 
-#### Two-Pass ASR System
+#### Real-time ASR with Optional Audio Saving
 
-**First Pass: Real-time Transcription**:
+**Real-time Transcription**:
 - Uses `fun-asr-realtime` model for instant feedback during recording
 - Streams partial transcripts with ~1-2 second latency
-- Low accuracy but provides immediate visual feedback
+- Provides immediate visual feedback while speaking
+- Client-side audio recording using MediaRecorder API
 
-**Second Pass: High-Quality Refinement**:
-- Automatically triggered after stopping recording
-- Uses `fun-asr` (non-realtime) model for better accuracy
-- Processes the saved audio file through batch ASR
-- Replaces real-time transcript with refined version
-- Shows "Refining transcript..." placeholder during processing
-- Typically completes in 2-5 seconds for short recordings
+**Optional Audio Saving**:
+- "Save Audio" toggle next to waveform (default: off)
+- When enabled: Records audio as WebM blob on client side
+- Audio file automatically attached to inbox entry after stopping
+- No server-side temp files - all recording happens in browser
+- Can process saved audio through batch ASR later for higher accuracy
 
 **Benefits**:
-- User sees instant feedback during recording (real-time pass)
-- Final transcript is more accurate (refinement pass)
-- Best of both worlds: responsiveness + quality
-- No user action required - fully automatic
+- Instant feedback during recording (real-time ASR)
+- Simple architecture - no server-side temp file complexity
+- Privacy-friendly - audio only saved if explicitly enabled
+- User control over storage vs. privacy trade-off
 
 #### Visual Feedback During Recording
 
@@ -194,17 +194,27 @@ interface UseRealtimeASRReturn {
   recordingDuration: number;      // Elapsed seconds
   rawTranscript: string;          // Accumulated final sentences
   partialSentence: string;        // Current partial sentence
-  isRefining: boolean;            // Refinement in progress
+  recordedAudio: Blob | null;     // Recorded audio blob (if saveAudio enabled)
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+}
+
+interface UseRealtimeASROptions {
+  saveAudio?: boolean;            // Whether to record audio (default: false)
+  onTranscript?: (text: string, isFinal: boolean) => void;
+  onError?: (error: string) => void;
+  onRecordingComplete?: (audioBlob: Blob | null) => void;
+  sampleRate?: number;            // Audio sample rate (default: 16000)
 }
 ```
 
 **Audio Processing**:
-- `AudioContext` at 16kHz sample rate
+- `AudioContext` at 16kHz sample rate for real-time ASR
 - `AnalyserNode` for amplitude extraction (FFT size: 256)
 - `ScriptProcessorNode` for audio chunking (4096 samples)
-- WebSocket binary messages for audio streaming
+- `MediaRecorder` for client-side audio capture (when saveAudio enabled)
+- WebSocket binary messages for audio streaming to ASR provider
+- Audio recorded as WebM format for browser compatibility
 
 **Level Calculation**:
 ```javascript
@@ -377,9 +387,7 @@ Client (Browser)
 // Backend responds "done" when ASR has finished
 {
   "type": "done",
-  "payload": {
-    "temp_audio_path": "/path/to/temp/20060102_150405.pcm"  // Optional: Path for refinement
-  }
+  "payload": {}
 }
 
 // Backend sends "error" if something goes wrong
@@ -431,23 +439,19 @@ Backend → Client:
 { "type": "done", "payload": {} }
 ```
 
-**Crash Protection & Refinement**:
-- Auto-save audio chunks to `APP_DATA_DIR/recordings/temp/[timestamp].pcm`
-- File persists if browser/server crashes
-- Temp file path sent to client in `done` message for refinement
-- Client triggers refinement via `/api/asr/refine` endpoint
-- Backend cleans up temp file after successful refinement
-- If refinement fails, temp files remain for recovery (manual cleanup >24h)
+**Client-Side Recording**:
+- Audio recording handled by browser MediaRecorder API
+- No server-side temp files during realtime recording
+- User explicitly enables "Save Audio" toggle to capture audio
+- Audio blob automatically attached to inbox entry when enabled
+- Can process saved audio through `/api/asr` endpoint later for better accuracy
 
 **Goroutine Architecture**:
 ```go
 // Goroutine 1: Client → Aliyun
 for {
   msg := clientConn.ReadMessage()
-  if binary {
-    audioFile.Write(msg)  // Auto-save
-  }
-  aliyunConn.WriteMessage(msg)  // Forward
+  aliyunConn.WriteMessage(msg)  // Forward (no temp file saving)
 }
 
 // Goroutine 2: Aliyun → Client
@@ -587,9 +591,9 @@ POST /api/asr                  - Non-realtime ASR processing
 **Non-realtime ASR Request**:
 ```json
 {
-  "file_path": "recordings/temp/20060102_150405.pcm",  // Relative to APP_DATA_DIR or absolute
-  "file_url": "https://...",                            // Alternative: presigned URL (not yet implemented)
-  "diarization": false                                  // Optional: enable speaker diarization
+  "file_path": "path/to/audio.webm",        // Absolute path to audio file
+  "file_url": "https://...",                // Alternative: presigned URL (not yet implemented)
+  "diarization": false                      // Optional: enable speaker diarization
 }
 ```
 
@@ -614,9 +618,9 @@ POST /api/asr                  - Non-realtime ASR processing
 ```
 
 **Notes**:
-- `file_path` can be relative to `APP_DATA_DIR` or an absolute path
-- Temp files from realtime recording are relative: `recordings/temp/[timestamp].pcm`
-- The endpoint automatically cleans up temp files after processing
+- `file_path` should be an absolute path to the audio file
+- Client records audio in WebM format using MediaRecorder API
+- For batch processing, upload the audio file to the server first
 - Future: Support `file_url` for processing remote audio files
 
 **Phase 3 - Recordings Library**:
@@ -670,10 +674,11 @@ OPENAI_MODEL=gpt-4o-mini        # Model for summarization
 - Audio level visualization with waveform
 - Recording timer with duration tracking
 - Enhanced button states with pulse animation
-- Backend auto-save for crash protection
 - Real-time partial transcript overlay
-- Two-pass ASR: Real-time + refinement for better accuracy
-- Automatic transcript refinement after recording stops
+- Client-side audio recording with MediaRecorder API
+- "Save Audio" toggle for optional audio capture
+- Audio automatically attached to inbox entry when enabled
+- No server-side temp files - simpler, privacy-friendly architecture
 
 ### 🚧 Phase 2: Three-Tab Review Modal (Next)
 1. Create modal component with tab navigation

@@ -36,6 +36,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [saveAudio, setSaveAudio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,10 +47,21 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   });
 
   // Real-time ASR hook
-  const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+  const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, recordedAudio, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+    saveAudio,
     onError: (errorMsg) => {
       setError(`Voice input error: ${errorMsg}`);
       console.error('ASR error:', errorMsg);
+    },
+    onRecordingComplete: (audioBlob) => {
+      if (audioBlob && saveAudio) {
+        // Convert blob to File and add to selectedFiles
+        const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, {
+          type: 'audio/webm'
+        });
+        setSelectedFiles(prev => [...prev, audioFile]);
+        console.log('📎 Attached audio file to inbox entry:', audioFile.name);
+      }
     }
   });
 
@@ -515,7 +527,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           <div className="flex-1 flex items-center justify-center">
             {isRecording ? (
               <div className="flex items-center gap-3">
-                <InlineWaveform audioLevel={audioLevel} />
+                <InlineWaveform
+                  audioLevel={audioLevel}
+                  saveAudio={saveAudio}
+                  onSaveAudioChange={setSaveAudio}
+                />
                 <span className="text-xs font-mono text-muted-foreground tabular-nums">
                   {Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:
                   {(recordingDuration % 60).toString().padStart(2, '0')}

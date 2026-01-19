@@ -79,11 +79,10 @@ func (h *Handlers) RealtimeASR(c *gin.Context) {
 }
 
 // proxyAliyunRealtimeASR proxies messages between client and Aliyun Fun-ASR Realtime
-// Returns the path to the temp audio file for refinement
-func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) string {
+func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) {
 	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
 		sendError(clientConn, "Aliyun API key not configured")
-		return ""
+		return
 	}
 
 	apiKey := settings.Vendors.Aliyun.APIKey
@@ -106,36 +105,11 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	if err != nil {
 		log.Error().Err(err).Str("url", wsURL).Msg("failed to connect to Aliyun WebSocket")
 		sendError(clientConn, "failed to connect to ASR provider: "+err.Error())
-		return ""
+		return
 	}
 	defer aliyunConn.Close()
 
 	log.Info().Str("url", wsURL).Msg("connected to Aliyun Fun-ASR Realtime")
-
-	// Create temporary recording file for crash protection
-	cfg := config.Get()
-	tempDir := filepath.Join(cfg.GetAppDataDir(), "recordings", "temp")
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		log.Error().Err(err).Msg("failed to create temp recordings directory")
-	}
-
-	timestamp := time.Now().Format("20060102_150405")
-	tempFile := filepath.Join(tempDir, timestamp+".pcm")
-	audioFile, err := os.Create(tempFile)
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to create temp audio file, continuing without auto-save")
-		audioFile = nil
-	} else {
-		log.Info().Str("file", tempFile).Msg("saving audio chunks for crash protection")
-		defer func() {
-			if audioFile != nil {
-				audioFile.Close()
-				// Note: We don't delete the temp file here anymore
-				// It will be deleted after refinement by the RefineTranscript endpoint
-				log.Info().Str("file", tempFile).Msg("temp audio file saved for refinement")
-			}
-		}()
-	}
 
 	// Use goroutines to handle bidirectional communication
 	var wg sync.WaitGroup
@@ -189,13 +163,6 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 				// Forward binary audio data directly (no transformation needed)
 				log.Debug().Int("bytes", len(message)).Msg("🎤 Client → Aliyun (binary audio)")
 
-				// Save audio chunk to temp file for crash protection
-				if audioFile != nil {
-					if _, err := audioFile.Write(message); err != nil {
-						log.Warn().Err(err).Msg("failed to write audio chunk to temp file")
-					}
-				}
-
 				if err := aliyunConn.WriteMessage(websocket.BinaryMessage, message); err != nil {
 					log.Error().Err(err).Msg("failed to forward audio to Aliyun")
 					errChan <- err
@@ -228,8 +195,8 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 			if messageType == websocket.TextMessage {
 				log.Info().RawJSON("aliyunMsg", message).Msg("📥 Aliyun message (Aliyun schema)")
 
-				// Transform Aliyun schema to our schema, passing temp file path for "done" messages
-				ourMsg, err := transformAliyunToOurs(message, tempFile)
+				// Transform Aliyun schema to our schema
+				ourMsg, err := transformAliyunToOurs(message)
 				if err != nil {
 					log.Error().Err(err).Msg("failed to transform Aliyun message to our format")
 					continue
@@ -263,13 +230,10 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 			sendError(clientConn, err.Error())
 		}
 	}
-
-	return tempFile
 }
 
 // transformAliyunToOurs converts Aliyun message format to our vendor-agnostic format
-// If tempAudioPath is provided and the message is "task-finished", includes it in the done payload
-func transformAliyunToOurs(aliyunMsg []byte, tempAudioPath string) ([]byte, error) {
+func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
 	var msg AliyunASRMessage
 	if err := json.Unmarshal(aliyunMsg, &msg); err != nil {
 		return nil, err
@@ -325,23 +289,9 @@ func transformAliyunToOurs(aliyunMsg []byte, tempAudioPath string) ([]byte, erro
 		}
 
 	case "task-finished":
-		payload := map[string]interface{}{}
-		// Include temp audio path for refinement if available
-		if tempAudioPath != "" {
-			// Convert absolute path to relative path (relative to AppDataDir)
-			cfg := config.Get()
-			relPath, err := filepath.Rel(cfg.GetAppDataDir(), tempAudioPath)
-			if err == nil {
-				// Use relative path
-				payload["temp_audio_path"] = relPath
-			} else {
-				// Fallback to absolute path if Rel fails
-				payload["temp_audio_path"] = tempAudioPath
-			}
-		}
 		ourMsg = ASRMessage{
 			Type:    "done",
-			Payload: payload,
+			Payload: map[string]interface{}{},
 		}
 
 	case "task-failed":

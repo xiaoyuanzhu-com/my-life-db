@@ -3,21 +3,26 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 interface UseRealtimeASROptions {
   onTranscript?: (text: string, isFinal: boolean) => void;
   onError?: (error: string) => void;
+  onRecordingComplete?: (audioBlob: Blob | null) => void; // Called when recording stops
+  saveAudio?: boolean; // Whether to save audio recording
   sampleRate?: number;
 }
 
-export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: UseRealtimeASROptions = {}) {
+export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, saveAudio = false, sampleRate = 16000 }: UseRealtimeASROptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [rawTranscript, setRawTranscript] = useState(''); // Accumulated final sentences
   const [partialSentence, setPartialSentence] = useState(''); // Current partial sentence
+  const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null); // Recorded audio blob
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -38,6 +43,24 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       // Get microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
+      // Initialize MediaRecorder if saveAudio is enabled
+      if (saveAudio) {
+        audioChunksRef.current = []; // Reset chunks
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm' // Use WebM for better browser support
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.start(1000); // Collect data every second
+        mediaRecorderRef.current = mediaRecorder;
+        console.log('🎙️ MediaRecorder started');
+      }
 
       // Create WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -251,6 +274,28 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       // The ws.onmessage handler will close when it receives 'done'
     }
 
+    // Stop MediaRecorder and create audio blob
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+
+      mediaRecorderRef.current.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: 'audio/webm'
+        });
+        console.log('🎙️ MediaRecorder stopped, created blob:', audioBlob.size, 'bytes');
+        setRecordedAudio(audioBlob);
+        onRecordingComplete?.(audioBlob);
+
+        // Clean up
+        mediaRecorderRef.current = null;
+        audioChunksRef.current = [];
+      };
+    } else {
+      // If saveAudio was off, clear recorded audio
+      setRecordedAudio(null);
+      onRecordingComplete?.(null);
+    }
+
     // Stop duration timer
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
@@ -283,15 +328,16 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     // Don't set isRecording = false here - let ws.onclose do it after final transcript arrives
     setAudioLevel(0);
     setRecordingDuration(0);
-  }, []);
+  }, [onRecordingComplete]);
 
-  // Reset transcripts only when starting new recording (not when stopping)
+  // Reset transcripts and audio only when starting new recording (not when stopping)
   const wasRecordingRef = useRef(false);
   useEffect(() => {
     if (isRecording && !wasRecordingRef.current) {
       // Just started recording (transition from false to true)
       setRawTranscript('');
       setPartialSentence('');
+      setRecordedAudio(null);
     }
     wasRecordingRef.current = isRecording;
   }, [isRecording]);
@@ -311,6 +357,7 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     recordingDuration,
     rawTranscript,
     partialSentence,
+    recordedAudio,
     startRecording,
     stopRecording
   };

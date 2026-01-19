@@ -3,10 +3,12 @@ import { useEffect, useRef } from 'react';
 interface RecordingVisualizerProps {
   audioLevel: number; // 0-100 scale
   duration: number; // seconds elapsed
+  saveAudio?: boolean; // Whether to save audio recording
+  onSaveAudioChange?: (enabled: boolean) => void; // Toggle save audio
   className?: string;
 }
 
-export function RecordingVisualizer({ audioLevel, duration, className = '' }: RecordingVisualizerProps) {
+export function RecordingVisualizer({ audioLevel, duration, saveAudio = false, onSaveAudioChange, className = '' }: RecordingVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Format duration as MM:SS
@@ -75,10 +77,25 @@ export function RecordingVisualizer({ audioLevel, duration, className = '' }: Re
           <span className="text-muted-foreground font-medium">Recording</span>
         </div>
 
-        {/* Duration timer */}
-        <span className="font-mono text-muted-foreground tabular-nums">
-          {formatDuration(duration)}
-        </span>
+        <div className="flex items-center gap-3">
+          {/* Save Audio Toggle */}
+          {onSaveAudioChange && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={saveAudio}
+                onChange={(e) => onSaveAudioChange(e.target.checked)}
+                className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
+              />
+              <span className="text-xs text-muted-foreground select-none">Save Audio</span>
+            </label>
+          )}
+
+          {/* Duration timer */}
+          <span className="font-mono text-muted-foreground tabular-nums">
+            {formatDuration(duration)}
+          </span>
+        </div>
       </div>
 
       {/* Waveform Canvas */}

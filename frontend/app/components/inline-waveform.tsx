@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 
 interface InlineWaveformProps {
   audioLevel: number; // 0-100 scale
+  saveAudio?: boolean; // Whether to save audio recording
+  onSaveAudioChange?: (enabled: boolean) => void; // Toggle save audio
   className?: string;
 }
 
-export function InlineWaveform({ audioLevel, className = '' }: InlineWaveformProps) {
+export function InlineWaveform({ audioLevel, saveAudio = false, onSaveAudioChange, className = '' }: InlineWaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Draw compact waveform on canvas
@@ -58,10 +60,23 @@ export function InlineWaveform({ audioLevel, className = '' }: InlineWaveformPro
   }, [audioLevel]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`h-5 w-16 ${className}`}
-      style={{ imageRendering: 'crisp-edges' }}
-    />
+    <div className={`flex items-center gap-2 ${className}`}>
+      <canvas
+        ref={canvasRef}
+        className="h-5 w-16"
+        style={{ imageRendering: 'crisp-edges' }}
+      />
+      {onSaveAudioChange && (
+        <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={saveAudio}
+            onChange={(e) => onSaveAudioChange(e.target.checked)}
+            className="w-3 h-3 rounded border-border bg-background text-primary focus:ring-1 focus:ring-primary cursor-pointer"
+          />
+          <span className="text-xs text-muted-foreground select-none">Save Audio</span>
+        </label>
+      )}
+    </div>
   );
 }
