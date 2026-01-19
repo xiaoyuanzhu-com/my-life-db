@@ -259,6 +259,18 @@ func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 	// Read JSONL file using the session reader
 	messages, err := claude.ReadSessionHistory(sessionID, projectPath)
 	if err != nil {
+		// Check if it's a "file not found" error - this is OK for new sessions
+		if err.Error() == "session file not found for session "+sessionID {
+			// Session exists but has no history yet (no conversation started)
+			log.Debug().Str("sessionId", sessionID).Msg("session has no history file yet")
+			c.JSON(http.StatusOK, gin.H{
+				"sessionId": sessionID,
+				"messages":  []claude.SessionMessage{},
+			})
+			return
+		}
+
+		// Other errors are actual failures
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read session history"})
 		return

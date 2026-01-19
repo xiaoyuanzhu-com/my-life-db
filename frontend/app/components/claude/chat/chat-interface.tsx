@@ -133,9 +133,18 @@ export function ChatInterface({
         break
 
       case 'text_delta':
-        // Streaming text response
+        // SKIP: We use structured history from JSONL files instead of raw terminal output
+        // The WebSocket sends raw terminal ANSI codes which we don't want to display
+        // Only process text_delta if it's explicitly marked as non-raw
+        const deltaData = msg.data as { delta: string; raw?: boolean }
+        if (deltaData.raw) {
+          // Skip raw terminal output - we use structured history instead
+          break
+        }
+
+        // Streaming text response (for future real-time updates)
         setIsStreaming(true)
-        setStreamingContent((prev) => prev + (msg.data as { delta: string }).delta)
+        setStreamingContent((prev) => prev + deltaData.delta)
         break
 
       case 'text_complete':
