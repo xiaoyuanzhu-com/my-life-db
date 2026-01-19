@@ -94,6 +94,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// WebSocket routes - register on main router to bypass API group middleware
 	r.GET("/api/claude/sessions/:id/ws", h.ClaudeWebSocket)
+	r.GET("/api/claude/sessions/:id/chat", h.ClaudeChatWebSocket)
 	r.GET("/api/asr/realtime", h.RealtimeASR)
 
 	// Raw file serving

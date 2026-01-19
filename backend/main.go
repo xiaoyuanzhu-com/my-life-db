@@ -80,6 +80,11 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	// Shutdown Claude manager first (kills all sessions)
+	if err := api.ShutdownClaudeManager(ctx); err != nil {
+		log.Error().Err(err).Msg("claude manager shutdown error")
+	}
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")
 	}
