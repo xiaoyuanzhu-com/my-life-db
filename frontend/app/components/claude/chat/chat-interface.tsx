@@ -14,7 +14,13 @@ import type {
   WSMessage,
   PermissionDecision,
 } from '~/types/claude'
-import { useClaudeSessionHistory, filterConversationMessages, type SessionMessage } from '~/hooks/use-claude-session-history'
+import {
+  useClaudeSessionHistory,
+  filterConversationMessages,
+  isTextBlock,
+  isToolUseBlock,
+  type SessionMessage,
+} from '~/hooks/use-claude-session-history'
 
 interface ChatInterfaceProps {
   sessionId: string
@@ -52,26 +58,41 @@ export function ChatInterface({
 
   // Convert SessionMessage to Message format
   const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
-    // Skip internal events
+    // Skip internal events (summaries, tool_results, etc.)
     if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
       return null
     }
 
-    const content = Array.isArray(sessionMsg.message.content) ? sessionMsg.message.content : []
-    const textBlocks = content.filter(c => c.type === 'text' && c.text).map(c => c.text).join('\n')
-    const toolCalls = content
-      .filter(c => c.type === 'tool_use')
-      .map((c): ToolCall => ({
-        id: c.id || crypto.randomUUID(),
-        name: (c.name || 'unknown') as ToolCall['name'],
-        parameters: c.input || {},
-        status: 'completed',
-      }))
+    const { content, role } = sessionMsg.message
+
+    // Handle content - can be string (user messages) or array (assistant messages)
+    let textContent = ''
+    let toolCalls: ToolCall[] = []
+
+    if (typeof content === 'string') {
+      // User message with plain text content
+      textContent = content
+    } else if (Array.isArray(content)) {
+      // Assistant message with structured content blocks
+      // Extract text from text blocks
+      const textBlocks = content.filter(isTextBlock).map(block => block.text)
+      textContent = textBlocks.join('\n')
+
+      // Extract tool calls from tool_use blocks
+      toolCalls = content
+        .filter(isToolUseBlock)
+        .map((block): ToolCall => ({
+          id: block.id,
+          name: block.name as ToolCall['name'],
+          parameters: block.input,
+          status: 'completed',
+        }))
+    }
 
     return {
       id: sessionMsg.uuid,
-      role: sessionMsg.message.role || 'user',
-      content: textBlocks,
+      role: role || 'user',
+      content: textContent,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       timestamp: new Date(sessionMsg.timestamp).getTime(),
     }

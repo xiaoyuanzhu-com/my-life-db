@@ -1,31 +1,50 @@
 import { useState, useEffect } from 'react'
 
+// Content block types from Claude API
+export interface TextContentBlock {
+  type: 'text'
+  text: string
+}
+
+export interface ToolUseContentBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface ToolResultContentBlock {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string | Array<{ type: string; [key: string]: unknown }>
+  is_error?: boolean
+}
+
+export type ContentBlock = TextContentBlock | ToolUseContentBlock | ToolResultContentBlock | { type: string; [key: string]: unknown }
+
+// Message structure in JSONL files
+export interface ClaudeMessage {
+  role: 'user' | 'assistant'
+  // User messages: string content
+  // Assistant messages: array of content blocks
+  content: string | ContentBlock[]
+  model?: string
+  id?: string
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    cache_creation_input_tokens?: number
+    cache_read_input_tokens?: number
+  }
+}
+
 // Session message from Claude Code JSONL files
 export interface SessionMessage {
-  type: string // "user", "assistant", "tool_result", "queue-operation", etc.
+  type: 'user' | 'assistant' | 'tool_result' | 'queue-operation' | 'summary' | string
   uuid: string
   parentUuid?: string | null
   timestamp: string
-  message?: {
-    role?: 'user' | 'assistant'
-    content?: Array<{
-      type: string
-      text?: string
-      tool_use_id?: string
-      id?: string
-      name?: string
-      input?: Record<string, unknown>
-      [key: string]: unknown
-    }>
-    model?: string
-    id?: string
-    usage?: {
-      input_tokens?: number
-      output_tokens?: number
-      cache_creation_input_tokens?: number
-      cache_read_input_tokens?: number
-    }
-  }
+  message?: ClaudeMessage | null
 
   // Additional fields
   isSidechain?: boolean
@@ -98,6 +117,27 @@ export function useClaudeSessionHistory(
     error,
     refetch: fetchHistory,
   }
+}
+
+/**
+ * Type guard to check if a content block is a text block
+ */
+export function isTextBlock(block: ContentBlock): block is TextContentBlock {
+  return block.type === 'text' && 'text' in block
+}
+
+/**
+ * Type guard to check if a content block is a tool use block
+ */
+export function isToolUseBlock(block: ContentBlock): block is ToolUseContentBlock {
+  return block.type === 'tool_use' && 'id' in block && 'name' in block && 'input' in block
+}
+
+/**
+ * Type guard to check if a content block is a tool result block
+ */
+export function isToolResultBlock(block: ContentBlock): block is ToolResultContentBlock {
+  return block.type === 'tool_result' && 'tool_use_id' in block
 }
 
 /**
