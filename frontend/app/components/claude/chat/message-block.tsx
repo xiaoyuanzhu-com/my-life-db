@@ -2,6 +2,8 @@ import { User, Bot } from 'lucide-react'
 import { ToolBlock } from './tool-block'
 import { cn } from '~/lib/utils'
 import type { Message } from '~/types/claude'
+import { marked } from 'marked'
+import { useEffect, useState } from 'react'
 
 interface MessageBlockProps {
   message: Message
@@ -73,60 +75,31 @@ export function MessageBlock({ message }: MessageBlockProps) {
   )
 }
 
-// Simple markdown-like content renderer
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true, // Convert \n to <br>
+  gfm: true, // GitHub Flavored Markdown
+})
+
+// Markdown content renderer using marked
 function MessageContent({ content }: { content: string }) {
-  // Split content by code blocks
-  const parts = content.split(/(```[\s\S]*?```|`[^`]+`)/g)
+  const [html, setHtml] = useState('')
+
+  useEffect(() => {
+    // Parse markdown to HTML (synchronous in marked v17)
+    const parsed = marked.parse(content)
+    setHtml(parsed as string)
+  }, [content])
 
   return (
-    <div className="whitespace-pre-wrap break-words">
-      {parts.map((part, index) => {
-        // Fenced code block
-        if (part.startsWith('```')) {
-          const match = part.match(/```(\w+)?\n?([\s\S]*?)```/)
-          if (match) {
-            const [, lang, code] = match
-            return (
-              <pre
-                key={index}
-                className="my-2 p-3 bg-background/50 rounded-md overflow-x-auto text-xs font-mono"
-              >
-                {lang && (
-                  <div className="text-muted-foreground text-xs mb-2">{lang}</div>
-                )}
-                <code>{code.trim()}</code>
-              </pre>
-            )
-          }
-        }
-
-        // Inline code
-        if (part.startsWith('`') && part.endsWith('`')) {
-          return (
-            <code
-              key={index}
-              className="px-1 py-0.5 bg-background/50 rounded text-xs font-mono"
-            >
-              {part.slice(1, -1)}
-            </code>
-          )
-        }
-
-        // Regular text - handle bold and italic
-        return (
-          <span key={index}>
-            {part.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((textPart, i) => {
-              if (textPart.startsWith('**') && textPart.endsWith('**')) {
-                return <strong key={i}>{textPart.slice(2, -2)}</strong>
-              }
-              if (textPart.startsWith('*') && textPart.endsWith('*')) {
-                return <em key={i}>{textPart.slice(1, -1)}</em>
-              }
-              return textPart
-            })}
-          </span>
-        )
-      })}
-    </div>
+    <div
+      className="prose prose-sm dark:prose-invert max-w-none
+        prose-pre:bg-zinc-900 prose-pre:text-zinc-100
+        prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+        prose-code:before:content-none prose-code:after:content-none
+        prose-p:my-1 prose-ul:my-1 prose-ol:my-1
+        prose-headings:mt-3 prose-headings:mb-2"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }
