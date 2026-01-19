@@ -139,9 +139,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     if (clearSearchTrigger && clearSearchTrigger > 0) {
       setContent('');
       setKeywordResults(null);
-      setSemanticResults(null);
+      // TEMPORARILY DISABLED: Don't clear semantic results (semantic search disabled)
+      // setSemanticResults(null);
       setKeywordError(null);
-      setSemanticError(null);
+      // TEMPORARILY DISABLED: Don't clear semantic error (semantic search disabled)
+      // setSemanticError(null);
     }
   }, [clearSearchTrigger]);
 
@@ -177,9 +179,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
     // Start both searches
     setIsKeywordSearching(true);
-    setIsSemanticSearching(true);
+    // TEMPORARILY DISABLED: Semantic search
+    // setIsSemanticSearching(true);
     setKeywordError(null);
-    setSemanticError(null);
+    // TEMPORARILY DISABLED: Clear semantic error
+    // setSemanticError(null);
 
     // Capture the query for this search to check staleness
     const searchQuery = query;
@@ -217,42 +221,44 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       }
     };
 
-    // Fire semantic search
-    const fetchSemantic = async () => {
-      try {
-        const params = new URLSearchParams({ q: searchQuery, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await fetch(`/api/search?${params}`, {
-          signal: semanticController.signal,
-          credentials: 'same-origin',
-        });
+    // TEMPORARILY DISABLED: Semantic search
+    // // Fire semantic search
+    // const fetchSemantic = async () => {
+    //   try {
+    //     const params = new URLSearchParams({ q: searchQuery, types: 'semantic', limit: String(SEARCH_BATCH_SIZE) });
+    //     const response = await fetch(`/api/search?${params}`, {
+    //       signal: semanticController.signal,
+    //       credentials: 'same-origin',
+    //     });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
+    //     if (!response.ok) {
+    //       const errorData = await response.json().catch(() => ({}));
+    //       throw new Error(errorData.error || `HTTP ${response.status}`);
+    //     }
 
-        const data: SearchResponse = await response.json();
-        // Only update state if this response is for the current query
-        if (currentQueryRef.current === searchQuery) {
-          setSemanticResults(data);
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        console.error('Semantic search error:', err);
-        const errorMsg = err instanceof Error ? err.message : 'Semantic search failed';
-        if (currentQueryRef.current === searchQuery) {
-          setSemanticError(errorMsg);
-        }
-      } finally {
-        if (currentQueryRef.current === searchQuery) {
-          setIsSemanticSearching(false);
-        }
-      }
-    };
+    //     const data: SearchResponse = await response.json();
+    //     // Only update state if this response is for the current query
+    //     if (currentQueryRef.current === searchQuery) {
+    //       setSemanticResults(data);
+    //     }
+    //   } catch (err) {
+    //     if (err instanceof Error && err.name === 'AbortError') return;
+    //     console.error('Semantic search error:', err);
+    //     const errorMsg = err instanceof Error ? err.message : 'Semantic search failed';
+    //     if (currentQueryRef.current === searchQuery) {
+    //       setSemanticError(errorMsg);
+    //     }
+    //   } finally {
+    //     if (currentQueryRef.current === searchQuery) {
+    //       setIsSemanticSearching(false);
+    //     }
+    //   }
+    // };
 
-    // Fire both in parallel
+    // Fire keyword search only (semantic search disabled)
     fetchKeyword();
-    fetchSemantic();
+    // TEMPORARILY DISABLED: Semantic search
+    // fetchSemantic();
   }, []);
 
   // Notify parent of search state changes
@@ -282,11 +288,14 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       // Update ref so any in-flight responses are ignored as stale
       currentQueryRef.current = '';
       setKeywordResults(null);
-      setSemanticResults(null);
+      // TEMPORARILY DISABLED: Don't clear semantic results (semantic search disabled)
+      // setSemanticResults(null);
       setKeywordError(null);
-      setSemanticError(null);
+      // TEMPORARILY DISABLED: Don't clear semantic error (semantic search disabled)
+      // setSemanticError(null);
       setIsKeywordSearching(false);
-      setIsSemanticSearching(false);
+      // TEMPORARILY DISABLED: Don't update semantic searching state (semantic search disabled)
+      // setIsSemanticSearching(false);
       return;
     }
 
@@ -328,9 +337,11 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
       setContent('');
       setSelectedFiles([]);
       setKeywordResults(null);
-      setSemanticResults(null);
+      // TEMPORARILY DISABLED: Don't clear semantic results (semantic search disabled)
+      // setSemanticResults(null);
       setKeywordError(null);
-      setSemanticError(null);
+      // TEMPORARILY DISABLED: Don't clear semantic error (semantic search disabled)
+      // setSemanticError(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
