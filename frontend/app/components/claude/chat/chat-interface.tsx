@@ -125,84 +125,21 @@ export function ChatInterface({
     }
   }, [sessionId])
 
-  // Handle incoming messages
+  // Handle incoming WebSocket messages
+  // NOTE: Chat UI uses structured history from JSONL files, not WebSocket
+  // WebSocket only handles real-time interactive events
   const handleMessage = (msg: WSMessage) => {
     switch (msg.type) {
       case 'connected':
-        // Session connected, maybe load history
+        // Session connected
         break
 
       case 'text_delta':
-        // SKIP: We use structured history from JSONL files instead of raw terminal output
-        // The WebSocket sends raw terminal ANSI codes which we don't want to display
-        // Only process text_delta if it's explicitly marked as non-raw
-        const deltaData = msg.data as { delta: string; raw?: boolean }
-        if (deltaData.raw) {
-          // Skip raw terminal output - we use structured history instead
-          break
-        }
-
-        // Streaming text response (for future real-time updates)
-        setIsStreaming(true)
-        setStreamingContent((prev) => prev + deltaData.delta)
-        break
-
       case 'text_complete':
-        // Response complete
-        setIsStreaming(false)
-        if (streamingContent) {
-          const newMessage: Message = {
-            id: msg.messageId || crypto.randomUUID(),
-            role: 'assistant',
-            content: streamingContent,
-            timestamp: Date.now(),
-          }
-          setMessages((prev) => [...prev, newMessage])
-          setStreamingContent('')
-        }
-        break
-
       case 'tool_use':
-        // Tool invocation
-        const toolCall = msg.data as ToolCall
-        setMessages((prev) => {
-          const lastMsg = prev[prev.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...lastMsg,
-                toolCalls: [...(lastMsg.toolCalls || []), toolCall],
-              },
-            ]
-          }
-          return prev
-        })
-        break
-
       case 'tool_result':
-        // Tool result
-        const result = msg.data as { toolCallId: string; result: unknown; error?: string }
-        setMessages((prev) => {
-          return prev.map((m) => {
-            if (m.toolCalls) {
-              return {
-                ...m,
-                toolCalls: m.toolCalls.map((tc) =>
-                  tc.id === result.toolCallId
-                    ? {
-                        ...tc,
-                        status: result.error ? 'failed' : 'completed',
-                        result: result.result,
-                        error: result.error,
-                      }
-                    : tc
-                ),
-              }
-            }
-            return m
-          })
-        })
+        // SKIP: Chat interface uses structured history from JSONL files via API
+        // For raw terminal output, use the Terminal tab (xterm.js component)
         break
 
       case 'permission_request':
