@@ -11,23 +11,65 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
+// ContentBlock represents a content block in a Claude message.
+// Messages can contain different types of blocks:
+// - "text": Text content from the assistant
+// - "tool_use": A tool invocation (e.g., Bash, Read, Edit)
+// - "tool_result": The result of a tool execution
+type ContentBlock struct {
+	Type      string                 `json:"type"`                // "text", "tool_use", "tool_result"
+	Text      string                 `json:"text,omitempty"`      // For text blocks
+	ID        string                 `json:"id,omitempty"`        // For tool_use blocks
+	Name      string                 `json:"name,omitempty"`      // For tool_use blocks
+	Input     map[string]interface{} `json:"input,omitempty"`     // For tool_use blocks
+	ToolUseID string                 `json:"tool_use_id,omitempty"` // For tool_result blocks
+	Content   interface{}            `json:"content,omitempty"`   // For tool_result blocks (string or array)
+	IsError   *bool                  `json:"is_error,omitempty"`  // For tool_result blocks
+}
+
+// ClaudeMessage represents a message in the Claude API format.
+// The Content field has different types depending on the role:
+// - User messages: string (plain text)
+// - Assistant messages: []ContentBlock (structured content with text and tool calls)
+type ClaudeMessage struct {
+	Role    string      `json:"role"`              // "user" or "assistant"
+	Content interface{} `json:"content,omitempty"` // string for user, []ContentBlock for assistant
+	Model   string      `json:"model,omitempty"`   // Model used (e.g., "claude-opus-4-5-20251101")
+	ID      string      `json:"id,omitempty"`      // Message ID from Claude API
+	Usage   *TokenUsage `json:"usage,omitempty"`   // Token usage for this message
+}
+
+// TokenUsage represents token usage statistics
+type TokenUsage struct {
+	InputTokens              int `json:"input_tokens,omitempty"`
+	OutputTokens             int `json:"output_tokens,omitempty"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+}
+
 // SessionMessage represents a single message in a session JSONL file
 type SessionMessage struct {
-	Type       string          `json:"type"`       // "user", "assistant", "tool_result", etc.
-	UUID       string          `json:"uuid"`       // Message ID
-	ParentUUID *string         `json:"parentUuid"` // Parent message ID (null for root)
-	Timestamp  string          `json:"timestamp"`  // ISO 8601 timestamp
-	Message    json.RawMessage `json:"message"`    // Full message object (role, content, etc.)
+	Type       string         `json:"type"`       // "user", "assistant", "tool_result", "queue-operation", "summary", etc.
+	UUID       string         `json:"uuid"`       // Message ID
+	ParentUUID *string        `json:"parentUuid"` // Parent message ID (null for root)
+	Timestamp  string         `json:"timestamp"`  // ISO 8601 timestamp
+	Message    *ClaudeMessage `json:"message"`    // Full message object (role, content, etc.)
 
 	// Additional fields that may be present
-	IsSidechain  *bool           `json:"isSidechain,omitempty"`
-	UserType     string          `json:"userType,omitempty"`
-	CWD          string          `json:"cwd,omitempty"`
-	SessionID    string          `json:"sessionId,omitempty"`
-	Version      string          `json:"version,omitempty"`
-	GitBranch    string          `json:"gitBranch,omitempty"`
-	RequestID    string          `json:"requestId,omitempty"`
-	ToolUseResult json.RawMessage `json:"toolUseResult,omitempty"`
+	IsSidechain   *bool                  `json:"isSidechain,omitempty"`
+	UserType      string                 `json:"userType,omitempty"`
+	CWD           string                 `json:"cwd,omitempty"`
+	SessionID     string                 `json:"sessionId,omitempty"`
+	Version       string                 `json:"version,omitempty"`
+	GitBranch     string                 `json:"gitBranch,omitempty"`
+	RequestID     string                 `json:"requestId,omitempty"`
+	ToolUseResult *ToolUseResultMetadata `json:"toolUseResult,omitempty"`
+}
+
+// ToolUseResultMetadata contains metadata about a tool use result
+type ToolUseResultMetadata struct {
+	ToolUseID string `json:"toolUseId,omitempty"`
+	IsError   bool   `json:"isError,omitempty"`
 }
 
 // SessionIndex represents the sessions-index.json file
@@ -192,4 +234,95 @@ func GetSessionIndexForProject(projectPath string) (*SessionIndex, error) {
 	indexPath := filepath.Join(homeDir, ".claude", "projects", sanitizedPath, "sessions-index.json")
 
 	return readSessionIndex(indexPath)
+}
+
+// Helper methods for SessionMessage
+
+// IsConversationMessage returns true if this is a user or assistant message
+func (m *SessionMessage) IsConversationMessage() bool {
+	return m.Type == "user" || m.Type == "assistant"
+}
+
+// IsUserMessage returns true if this is a user message
+func (m *SessionMessage) IsUserMessage() bool {
+	return m.Type == "user"
+}
+
+// IsAssistantMessage returns true if this is an assistant message
+func (m *SessionMessage) IsAssistantMessage() bool {
+	return m.Type == "assistant"
+}
+
+// GetTextContent extracts text content from a message
+// For user messages: returns the string content directly
+// For assistant messages: extracts and joins text from all text blocks
+func (m *SessionMessage) GetTextContent() string {
+	if m.Message == nil || m.Message.Content == nil {
+		return ""
+	}
+
+	// User messages have string content
+	if str, ok := m.Message.Content.(string); ok {
+		return str
+	}
+
+	// Assistant messages have []ContentBlock (comes as []interface{})
+	if blocks, ok := m.Message.Content.([]interface{}); ok {
+		var texts []string
+		for _, block := range blocks {
+			if blockMap, ok := block.(map[string]interface{}); ok {
+				if blockMap["type"] == "text" {
+					if text, ok := blockMap["text"].(string); ok {
+						texts = append(texts, text)
+					}
+				}
+			}
+		}
+		return strings.Join(texts, "\n")
+	}
+
+	return ""
+}
+
+// GetToolCalls extracts tool use blocks from an assistant message
+func (m *SessionMessage) GetToolCalls() []ContentBlock {
+	if m.Message == nil || m.Message.Content == nil {
+		return nil
+	}
+
+	// Only assistant messages have tool calls
+	if m.Type != "assistant" {
+		return nil
+	}
+
+	blocks, ok := m.Message.Content.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	var toolCalls []ContentBlock
+	for _, block := range blocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if blockMap["type"] == "tool_use" {
+			toolCall := ContentBlock{
+				Type: "tool_use",
+			}
+			if id, ok := blockMap["id"].(string); ok {
+				toolCall.ID = id
+			}
+			if name, ok := blockMap["name"].(string); ok {
+				toolCall.Name = name
+			}
+			if input, ok := blockMap["input"].(map[string]interface{}); ok {
+				toolCall.Input = input
+			}
+			toolCalls = append(toolCalls, toolCall)
+		}
+	}
+
+	return toolCalls
 }
