@@ -27,11 +27,14 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     console.log('🔄 Starting transcript refinement...');
 
     try {
-      const response = await fetch('/api/asr/refine', {
+      const response = await fetch('/api/asr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ audio_path: audioPath })
+        body: JSON.stringify({
+          file_path: audioPath,
+          diarization: false
+        })
       });
 
       if (!response.ok) {

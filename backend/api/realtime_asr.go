@@ -420,22 +420,24 @@ func sendError(conn *websocket.Conn, errMsg string) {
 	conn.WriteJSON(msg)
 }
 
-// RefineTranscriptRequest represents the request to refine a transcript using non-realtime ASR
-type RefineTranscriptRequest struct {
-	AudioPath string `json:"audio_path" binding:"required"` // Path to the temporary audio file
+// ASRRequest represents the request for non-realtime ASR
+type ASRRequest struct {
+	FileURL string `json:"file_url,omitempty"`       // URL to audio file (e.g., presigned OSS URL)
+	FilePath string `json:"file_path,omitempty"`     // Local file path (absolute or relative to app data dir)
+	Diarization bool `json:"diarization,omitempty"`  // Enable speaker diarization
 }
 
-// RefineTranscriptResponse represents the response from transcript refinement
-type RefineTranscriptResponse struct {
-	Text  string `json:"text"`
-	Error string `json:"error,omitempty"`
-}
-
-// RefineTranscript processes the recorded audio through non-realtime Fun-ASR for better quality
-func (h *Handlers) RefineTranscript(c *gin.Context) {
-	var req RefineTranscriptRequest
+// ASRHandler processes audio through non-realtime ASR (Aliyun Fun-ASR)
+func (h *Handlers) ASRHandler(c *gin.Context) {
+	var req ASRRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		return
+	}
+
+	// Validate: must have either file_url or file_path
+	if req.FileURL == "" && req.FilePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "either file_url or file_path is required"})
 		return
 	}
 
@@ -458,30 +460,53 @@ func (h *Handlers) RefineTranscript(c *gin.Context) {
 		return
 	}
 
+	// Determine the audio source
+	audioPath := req.FilePath
+	if audioPath == "" {
+		// If file_url is provided, we'd need to download it first
+		// For now, we only support file_path
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file_url not yet supported, use file_path"})
+		return
+	}
+
+	// Ensure the path is absolute
+	if !filepath.IsAbs(audioPath) {
+		// If relative, assume it's relative to app data dir (where temp files are stored)
+		cfg := config.Get()
+		audioPath = filepath.Join(cfg.GetAppDataDir(), audioPath)
+	}
+
+	log.Info().
+		Str("audioPath", audioPath).
+		Bool("diarization", req.Diarization).
+		Msg("starting non-realtime ASR")
+
 	// Perform non-realtime ASR using fun-asr model
-	asrResponse, err := aliyunClient.SpeechRecognition(req.AudioPath, vendors.ASROptions{
+	asrResponse, err := aliyunClient.SpeechRecognition(audioPath, vendors.ASROptions{
 		Model:       "fun-asr",
-		Diarization: false,
+		Diarization: req.Diarization,
 	})
 	if err != nil {
-		log.Error().Err(err).Str("audioPath", req.AudioPath).Msg("failed to refine transcript")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "transcript refinement failed: " + err.Error()})
+		log.Error().Err(err).Str("audioPath", audioPath).Msg("ASR failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ASR failed: " + err.Error()})
 		return
 	}
 
 	log.Info().
-		Str("audioPath", req.AudioPath).
+		Str("audioPath", audioPath).
 		Int("textLength", len(asrResponse.Text)).
-		Msg("transcript refined successfully")
+		Int("segmentCount", len(asrResponse.Segments)).
+		Msg("ASR completed successfully")
 
-	// Clean up the temp audio file after successful refinement
-	if err := os.Remove(req.AudioPath); err != nil {
-		log.Warn().Err(err).Str("audioPath", req.AudioPath).Msg("failed to clean up temp audio file after refinement")
-	} else {
-		log.Info().Str("audioPath", req.AudioPath).Msg("cleaned up temp audio file after refinement")
+	// Clean up the temp audio file if it's from our temp directory
+	if filepath.Dir(audioPath) == filepath.Join(config.Get().GetAppDataDir(), "recordings", "temp") {
+		if err := os.Remove(audioPath); err != nil {
+			log.Warn().Err(err).Str("audioPath", audioPath).Msg("failed to clean up temp audio file")
+		} else {
+			log.Info().Str("audioPath", audioPath).Msg("cleaned up temp audio file")
+		}
 	}
 
-	c.JSON(http.StatusOK, RefineTranscriptResponse{
-		Text: asrResponse.Text,
-	})
+	// Return the full ASR response
+	c.JSON(http.StatusOK, asrResponse)
 }

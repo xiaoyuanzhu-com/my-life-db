@@ -581,22 +581,43 @@ CREATE INDEX idx_recordings_created ON recordings(created_at DESC);
 **Realtime ASR**:
 ```
 GET  /api/asr/realtime         - WebSocket endpoint for real-time ASR
-POST /api/asr/refine           - Refine transcript using non-realtime ASR
+POST /api/asr                  - Non-realtime ASR processing
 ```
 
-**Refinement Request**:
+**Non-realtime ASR Request**:
 ```json
 {
-  "audio_path": "/path/to/temp/20060102_150405.pcm"
+  "file_path": "recordings/temp/20060102_150405.pcm",  // Relative to APP_DATA_DIR or absolute
+  "file_url": "https://...",                            // Alternative: presigned URL (not yet implemented)
+  "diarization": false                                  // Optional: enable speaker diarization
 }
 ```
 
-**Refinement Response**:
+**Non-realtime ASR Response** (full ASRResponse):
 ```json
 {
-  "text": "Refined transcript text with better accuracy"
+  "request_id": "task_20060102150405",
+  "processing_time_ms": 0,
+  "text": "Complete transcript text with better accuracy",
+  "language": "zh",
+  "model": "fun-asr",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "text": "First sentence",
+      "speaker": "SPEAKER_1"  // If diarization enabled
+    }
+  ],
+  "speakers": []  // If diarization enabled
 }
 ```
+
+**Notes**:
+- `file_path` can be relative to `APP_DATA_DIR` or an absolute path
+- Temp files from realtime recording are relative: `recordings/temp/[timestamp].pcm`
+- The endpoint automatically cleans up temp files after processing
+- Future: Support `file_url` for processing remote audio files
 
 **Phase 3 - Recordings Library**:
 ```
