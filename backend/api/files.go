@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
@@ -80,48 +81,28 @@ func (h *Handlers) SaveRawFile(c *gin.Context) {
 		return
 	}
 
-	cfg := config.Get()
-	fullPath := filepath.Join(cfg.UserDataDir, path)
-
-	// Ensure parent directory exists
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Error().Err(err).Msg("failed to create directory")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
-		return
-	}
-
-	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	// Use fs.Service.WriteFile() - single entry point for all file operations
+	// This handles: file locking, metadata computation (hash, text preview), DB upsert, digest notification
+	mimeType := utils.DetectMimeType(path)
+	result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
+		Path:            path,
+		Content:         c.Request.Body,
+		MimeType:        mimeType,
+		Source:          "raw-api",
+		ComputeMetadata: true,
+		Sync:            true, // Compute metadata synchronously for immediate availability
+	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
-		return
-	}
-
-	// Write file
-	if err := os.WriteFile(fullPath, body, 0644); err != nil {
-		log.Error().Err(err).Msg("failed to write file")
+		log.Error().Err(err).Str("path", path).Msg("failed to write file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
 		return
 	}
 
-	// Update database
-	info, _ := os.Stat(fullPath)
-	size := info.Size()
-	mimeType := utils.DetectMimeType(path)
-	now := db.NowUTC()
-
-	// Ignore isNew return value since this is a metadata update
-	_, _ = db.UpsertFile(&db.FileRecord{
-		Path:          path,
-		Name:          filepath.Base(path),
-		IsFolder:      false,
-		Size:          &size,
-		MimeType:      &mimeType,
-		ModifiedAt:    now,
-		CreatedAt:     now,
-		LastScannedAt: now,
-	})
+	log.Info().
+		Str("path", path).
+		Bool("isNew", result.IsNew).
+		Bool("hashComputed", result.HashComputed).
+		Msg("raw file saved")
 
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
