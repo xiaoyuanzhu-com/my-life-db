@@ -396,9 +396,17 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Write user message to PTY (add newline to submit)
-			if _, err := session.PTY.Write([]byte(inMsg.Content + "\n")); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+			// Write user message to PTY character by character (like typing)
+			// This ensures readline-style interfaces process it correctly
+			for _, ch := range inMsg.Content {
+				if _, err := session.PTY.Write([]byte(string(ch))); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
+					break
+				}
+			}
+			// Then send Enter key (carriage return)
+			if _, err := session.PTY.Write([]byte("\r")); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
 				errMsg := ChatMessage{
 					Type: "error",
 					Data: map[string]string{"message": "Failed to send message"},
