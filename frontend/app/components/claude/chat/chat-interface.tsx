@@ -14,6 +14,7 @@ import type {
   WSMessage,
   PermissionDecision,
 } from '~/types/claude'
+import { useClaudeSessionHistory, filterConversationMessages, type SessionMessage } from '~/hooks/use-claude-session-history'
 
 interface ChatInterfaceProps {
   sessionId: string
@@ -28,6 +29,9 @@ export function ChatInterface({
   workingDir = '',
   onSessionNameChange,
 }: ChatInterfaceProps) {
+  // Load structured history from JSONL files
+  const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
+
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -45,6 +49,44 @@ export function ChatInterface({
 
   // Token usage
   const [tokenUsage, setTokenUsage] = useState({ used: 0, limit: 200000 })
+
+  // Convert SessionMessage to Message format
+  const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
+    // Skip internal events
+    if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
+      return null
+    }
+
+    const content = sessionMsg.message.content || []
+    const textBlocks = content.filter(c => c.type === 'text' && c.text).map(c => c.text).join('\n')
+    const toolCalls = content
+      .filter(c => c.type === 'tool_use')
+      .map((c): ToolCall => ({
+        id: c.id || crypto.randomUUID(),
+        name: c.name || 'unknown',
+        input: c.input || {},
+        status: 'completed',
+      }))
+
+    return {
+      id: sessionMsg.uuid,
+      role: sessionMsg.message.role || 'user',
+      content: textBlocks,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      timestamp: new Date(sessionMsg.timestamp).getTime(),
+    }
+  }
+
+  // Load history on mount and convert to Message format
+  useEffect(() => {
+    if (historyMessages.length > 0) {
+      const conversationMessages = filterConversationMessages(historyMessages)
+      const converted = conversationMessages
+        .map(convertToMessage)
+        .filter((m): m is Message => m !== null)
+      setMessages(converted)
+    }
+  }, [historyMessages])
 
   // Connect to WebSocket
   const connect = useCallback(() => {

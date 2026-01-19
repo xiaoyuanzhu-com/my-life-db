@@ -241,6 +241,35 @@ type ChatMessage struct {
 	Data      interface{} `json:"data,omitempty"`
 }
 
+// GetClaudeSessionHistory handles GET /api/claude/sessions/:id/history
+func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	// Try to get project path from active session first
+	var projectPath string
+	session, err := claudeManager.GetSession(sessionID)
+	if err == nil {
+		projectPath = session.WorkingDir
+	} else {
+		// If not in active sessions, try to find it in Claude's session files
+		// Use empty project path - the reader will search all projects
+		projectPath = ""
+	}
+
+	// Read JSONL file using the session reader
+	messages, err := claude.ReadSessionHistory(sessionID, projectPath)
+	if err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read session history"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessionId": sessionID,
+		"messages":  messages,
+	})
+}
+
 // ClaudeChatWebSocket handles WebSocket connection for chat-style interface
 // This endpoint provides a JSON-based protocol on top of the terminal session
 func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
