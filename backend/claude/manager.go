@@ -121,7 +121,8 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	// Spawn claude process with PTY
 	// Uses default HOME so all sessions share the same .claude directory
-	cmd := exec.Command("claude")
+	// Pass our session ID so Claude uses it for the JSONL file
+	cmd := exec.Command("claude", "--session-id", sessionID)
 	cmd.Dir = workingDir
 	// No custom environment needed - just inherit everything from os.Environ()
 

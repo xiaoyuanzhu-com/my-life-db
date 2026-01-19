@@ -57,7 +57,7 @@ export function ChatInterface({
       return null
     }
 
-    const content = sessionMsg.message.content || []
+    const content = Array.isArray(sessionMsg.message.content) ? sessionMsg.message.content : []
     const textBlocks = content.filter(c => c.type === 'text' && c.text).map(c => c.text).join('\n')
     const toolCalls = content
       .filter(c => c.type === 'tool_use')
