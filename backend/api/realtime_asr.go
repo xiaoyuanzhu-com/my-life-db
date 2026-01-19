@@ -328,7 +328,16 @@ func transformAliyunToOurs(aliyunMsg []byte, tempAudioPath string) ([]byte, erro
 		payload := map[string]interface{}{}
 		// Include temp audio path for refinement if available
 		if tempAudioPath != "" {
-			payload["temp_audio_path"] = tempAudioPath
+			// Convert absolute path to relative path (relative to AppDataDir)
+			cfg := config.Get()
+			relPath, err := filepath.Rel(cfg.GetAppDataDir(), tempAudioPath)
+			if err == nil {
+				// Use relative path
+				payload["temp_audio_path"] = relPath
+			} else {
+				// Fallback to absolute path if Rel fails
+				payload["temp_audio_path"] = tempAudioPath
+			}
 		}
 		ourMsg = ASRMessage{
 			Type:    "done",

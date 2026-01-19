@@ -69,6 +69,14 @@ func load() *Config {
 	userDataDir := getEnv("USER_DATA_DIR", "./data")
 	appDataDir := getEnv("APP_DATA_DIR", "./.my-life-db")
 
+	// Convert to absolute paths
+	if absPath, err := filepath.Abs(userDataDir); err == nil {
+		userDataDir = absPath
+	}
+	if absPath, err := filepath.Abs(appDataDir); err == nil {
+		appDataDir = absPath
+	}
+
 	return &Config{
 		// Server
 		Port: getEnvInt("PORT", 12345),

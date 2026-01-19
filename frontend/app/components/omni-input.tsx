@@ -46,7 +46,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   });
 
   // Real-time ASR hook
-  const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, isRefining, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+  const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onError: (errorMsg) => {
       setError(`Voice input error: ${errorMsg}`);
       console.error('ASR error:', errorMsg);
@@ -314,8 +314,8 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Don't submit while recording or refining
-    if (isRecording || isRefining) {
+    // Don't submit while recording
+    if (isRecording) {
       return;
     }
 
@@ -430,15 +430,15 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={(e) => {
-              // Don't allow Enter to submit while recording or refining
-              if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isRefining) {
+              // Don't allow Enter to submit while recording
+              if (e.key === 'Enter' && !e.shiftKey && !isRecording) {
                 e.preventDefault();
                 if (content.trim() || selectedFiles.length > 0) {
                   handleSubmit(e);
                 }
               }
             }}
-            placeholder={isRecording ? '' : isRefining ? 'Refining transcript...' : 'What\'s up?'}
+            placeholder={isRecording ? '' : 'What\'s up?'}
             style={maxHeight ? { maxHeight } : undefined}
             className={cn(
               'border-0 bg-transparent shadow-none text-base resize-none cursor-text',
@@ -446,7 +446,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
               'placeholder:text-muted-foreground/50 min-h-[2.25rem] max-h-[50vh] overflow-y-auto px-4 pt-2'
             )}
             aria-invalid={!!error}
-            disabled={isRecording || isRefining}
+            disabled={isRecording}
           />
           {/* Show transcript as gray overlay text during recording */}
           {isRecording && (rawTranscript || partialSentence) && (

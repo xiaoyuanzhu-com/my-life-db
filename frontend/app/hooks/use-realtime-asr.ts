@@ -12,53 +12,12 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [rawTranscript, setRawTranscript] = useState(''); // Accumulated final sentences
   const [partialSentence, setPartialSentence] = useState(''); // Current partial sentence
-  const [isRefining, setIsRefining] = useState(false); // Refinement in progress
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
-  const tempAudioPathRef = useRef<string | null>(null); // Path to temp audio file for refinement
-
-  // Trigger refinement using non-realtime ASR
-  const triggerRefinement = useCallback(async (audioPath: string) => {
-    setIsRefining(true);
-    console.log('🔄 Starting transcript refinement...');
-
-    try {
-      const response = await fetch('/api/asr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          file_path: audioPath,
-          diarization: false
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      const data: { text: string } = await response.json();
-      console.log('✨ Refinement complete:', data.text);
-
-      // Replace the raw transcript with the refined version
-      setRawTranscript(data.text);
-
-      // Call onTranscript with the refined text (marked as final)
-      onTranscript?.(data.text, true);
-    } catch (err) {
-      console.error('❌ Refinement failed:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Refinement failed';
-      onError?.(`Refinement failed: ${errorMsg}`);
-    } finally {
-      setIsRefining(false);
-      tempAudioPathRef.current = null;
-    }
-  }, [onTranscript, onError]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -150,15 +109,6 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
 
             case 'done':
               console.log('🏁 ASR finished');
-
-              // Extract temp audio path if available
-              const tempAudioPath = payload?.temp_audio_path;
-              if (tempAudioPath) {
-                console.log('📁 Temp audio path received:', tempAudioPath);
-                tempAudioPathRef.current = tempAudioPath;
-                // Trigger refinement after a short delay
-                setTimeout(() => triggerRefinement(tempAudioPath), 500);
-              }
 
               // Close WebSocket gracefully after receiving done
               if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -361,7 +311,6 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     recordingDuration,
     rawTranscript,
     partialSentence,
-    isRefining,
     startRecording,
     stopRecording
   };
