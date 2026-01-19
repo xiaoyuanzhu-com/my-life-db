@@ -4,8 +4,7 @@ import { Button } from './ui/button';
 import { Upload, X, Plus, Mic } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
-import { RecordingVisualizer } from './recording-visualizer';
-import { RecordingReviewModal } from './recording-review-modal';
+import { InlineWaveform } from './inline-waveform';
 import type { SearchResponse } from '~/types/api';
 import { useSendQueue } from '~/lib/send-queue';
 import { useRealtimeASR } from '~/hooks/use-realtime-asr';
@@ -38,6 +37,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Use the local-first send queue
   const { send } = useSendQueue(() => {
@@ -46,9 +46,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
   });
 
   // Real-time ASR hook
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [recordingData, setRecordingData] = useState<{ transcript: string; duration: number } | null>(null);
-
   const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onTranscript: (text, isFinal) => {
       console.log('📝 OmniInput received transcript:', { text, isFinal, currentRaw: rawTranscript, currentPartial: partialSentence });
@@ -59,19 +56,39 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     }
   });
 
-  // Wrap stopRecording to show review modal
+  // Auto-resize textarea based on content
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    // Set height to scrollHeight, but respect max-height
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
+
+  // Adjust height when content or transcript changes
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [content, rawTranscript, partialSentence, adjustTextareaHeight]);
+
+  // Wrap stopRecording to append transcript to content
   const stopRecording = useCallback(() => {
-    // Save recording data before stopping
-    const finalTranscript = rawTranscript;
-    const finalDuration = recordingDuration;
+    // Append transcript to content (like the original design)
+    const finalTranscript = rawTranscript.trim();
+    if (finalTranscript) {
+      setContent(prev => {
+        const trimmed = prev.trim();
+        if (trimmed) {
+          return `${trimmed} ${finalTranscript}`;
+        }
+        return finalTranscript;
+      });
+    }
 
-    // Stop the recording first
+    // Stop the recording
     stopRecordingRaw();
-
-    // Show review modal with recording data (even if empty, to show user feedback)
-    setRecordingData({ transcript: finalTranscript, duration: finalDuration });
-    setShowReviewModal(true);
-  }, [stopRecordingRaw, rawTranscript, recordingDuration]);
+  }, [stopRecordingRaw, rawTranscript]);
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
@@ -395,6 +412,7 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
         {/* Textarea with regular placeholder */}
         <div className="relative">
           <Textarea
+            ref={textareaRef}
             id="omni-input"
             name="content"
             value={content}
@@ -411,9 +429,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             placeholder={isRecording ? '' : 'What\'s up?'}
             style={maxHeight ? { maxHeight } : undefined}
             className={cn(
-              'border-0 bg-transparent shadow-none text-base resize-none cursor-text overflow-y-auto',
+              'border-0 bg-transparent shadow-none text-base resize-none cursor-text',
               'focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0',
-              'placeholder:text-muted-foreground/50 min-h-9 px-4 pt-2'
+              'placeholder:text-muted-foreground/50 min-h-[2.25rem] max-h-[50vh] overflow-y-auto px-4 pt-2'
             )}
             aria-invalid={!!error}
             disabled={isRecording}
@@ -467,16 +485,9 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           </div>
         )}
 
-        {/* Recording Visualizer */}
-        {isRecording && (
-          <RecordingVisualizer
-            audioLevel={audioLevel}
-            duration={recordingDuration}
-          />
-        )}
-
         {/* Bottom control bar - floating buttons */}
         <div className="flex items-center justify-between px-3 h-9">
+          {/* Left side: Add file button */}
           <Button
             type="button"
             variant="ghost"
@@ -488,17 +499,27 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             <Plus className="h-4 w-4" />
           </Button>
 
-          {/* Show search status in the middle */}
-          {searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError || (searchStatus.resultCount && searchStatus.resultCount > 0)) && (
-            <SearchStatus
-              isSearching={searchStatus.isSearching}
-              hasNoResults={searchStatus.hasNoResults}
-              hasError={searchStatus.hasError}
-              resultCount={searchStatus.resultCount}
-            />
-          )}
+          {/* Middle: Recording waveform + timer OR search status */}
+          <div className="flex-1 flex items-center justify-center">
+            {isRecording ? (
+              <div className="flex items-center gap-3">
+                <InlineWaveform audioLevel={audioLevel} />
+                <span className="text-xs font-mono text-muted-foreground tabular-nums">
+                  {Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:
+                  {(recordingDuration % 60).toString().padStart(2, '0')}
+                </span>
+              </div>
+            ) : searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError || (searchStatus.resultCount && searchStatus.resultCount > 0)) ? (
+              <SearchStatus
+                isSearching={searchStatus.isSearching}
+                hasNoResults={searchStatus.hasNoResults}
+                hasError={searchStatus.hasError}
+                resultCount={searchStatus.resultCount}
+              />
+            ) : null}
+          </div>
 
-          {/* Recording state: enhanced stop button with pulse */}
+          {/* Right side: Recording stop button OR Send button OR Mic button */}
           {isRecording && (
             <Button
               type="button"
@@ -517,7 +538,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             </Button>
           )}
 
-          {/* Has content: send button */}
           {!isRecording && (content.trim() || selectedFiles.length > 0) && (
             <Button
               type="submit"
@@ -528,7 +548,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
             </Button>
           )}
 
-          {/* Empty state: ghost mic button with larger touch target */}
           {!isRecording && !content.trim() && selectedFiles.length === 0 && (
             <Button
               type="button"
@@ -565,34 +584,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           multiple
         />
       </form>
-
-      {/* Recording Review Modal */}
-      <RecordingReviewModal
-        isOpen={showReviewModal}
-        rawTranscript={recordingData?.transcript || ''}
-        duration={recordingData?.duration || 0}
-        onSaveToInbox={(transcript) => {
-          // Append to existing content or set as new content
-          setContent(prev => {
-            if (prev.trim()) {
-              return `${prev} ${transcript}`;
-            }
-            return transcript;
-          });
-          setShowReviewModal(false);
-          setRecordingData(null);
-        }}
-        onDiscard={() => {
-          setShowReviewModal(false);
-          setRecordingData(null);
-        }}
-        onClose={() => {
-          // Save as draft - for now just close
-          // TODO: Implement draft saving to recordings library
-          setShowReviewModal(false);
-          setRecordingData(null);
-        }}
-      />
     </div>
   );
 }
