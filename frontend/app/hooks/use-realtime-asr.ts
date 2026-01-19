@@ -91,13 +91,15 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
                 // Final: Append to accumulated transcript, clear partial
                 setRawTranscript(prev => prev ? `${prev} ${text}` : text);
                 setPartialSentence('');
+              } else if (isFinal && !hasText) {
+                // Empty final sentence (silence marker): just clear partial
+                setPartialSentence('');
               } else if (hasText) {
                 // Partial: Update current sentence being spoken
                 setPartialSentence(text);
-              } else if (isFinal) {
-                // Empty final sentence (silence marker): just clear partial
-                setPartialSentence('');
               }
+              // IMPORTANT: Ignore empty non-final transcripts - don't clear partialSentence
+              // This prevents the display from clearing when stop is sent
 
               // Call the callback for backwards compatibility (only if has text)
               if (hasText) {
@@ -277,7 +279,7 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
       streamRef.current = null;
     }
 
-    setIsRecording(false);
+    // Don't set isRecording = false here - let ws.onclose do it after final transcript arrives
     setAudioLevel(0);
     setRecordingDuration(0);
   }, []);

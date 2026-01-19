@@ -69,28 +69,27 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     adjustTextareaHeight();
   }, [content, rawTranscript, partialSentence, adjustTextareaHeight]);
 
-  // Track transcript in ref to avoid stale closure issues
-  const rawTranscriptRef = useRef('');
-  useEffect(() => {
-    rawTranscriptRef.current = rawTranscript;
-  }, [rawTranscript]);
-
-  // Wrap stopRecording to append transcript to content
+  // Wrap stopRecording (just calls the raw version)
   const stopRecording = useCallback(() => {
-    // Capture transcript BEFORE stopping
-    const finalTranscript = rawTranscriptRef.current.trim();
-
-    // Stop the recording
     stopRecordingRaw();
-
-    // Append transcript to content
-    if (finalTranscript) {
-      setContent(prev => {
-        const trimmed = prev.trim();
-        return trimmed ? `${trimmed} ${finalTranscript}` : finalTranscript;
-      });
-    }
   }, [stopRecordingRaw]);
+
+  // When recording stops, append the accumulated transcript to content
+  const wasRecordingRef = useRef(false);
+  useEffect(() => {
+    // Detect transition from recording to not recording
+    if (wasRecordingRef.current && !isRecording) {
+      // Recording just stopped - append transcript to content
+      const finalTranscript = rawTranscript.trim();
+      if (finalTranscript) {
+        setContent(prev => {
+          const trimmed = prev.trim();
+          return trimmed ? `${trimmed} ${finalTranscript}` : finalTranscript;
+        });
+      }
+    }
+    wasRecordingRef.current = isRecording;
+  }, [isRecording, rawTranscript]);
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
