@@ -47,9 +47,6 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
   // Real-time ASR hook
   const { isRecording, audioLevel, recordingDuration, rawTranscript, partialSentence, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
-    onTranscript: (text, isFinal) => {
-      console.log('📝 OmniInput received transcript:', { text, isFinal, currentRaw: rawTranscript, currentPartial: partialSentence });
-    },
     onError: (errorMsg) => {
       setError(`Voice input error: ${errorMsg}`);
       console.error('ASR error:', errorMsg);
@@ -72,23 +69,28 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     adjustTextareaHeight();
   }, [content, rawTranscript, partialSentence, adjustTextareaHeight]);
 
+  // Track transcript in ref to avoid stale closure issues
+  const rawTranscriptRef = useRef('');
+  useEffect(() => {
+    rawTranscriptRef.current = rawTranscript;
+  }, [rawTranscript]);
+
   // Wrap stopRecording to append transcript to content
   const stopRecording = useCallback(() => {
-    // Append transcript to content (like the original design)
-    const finalTranscript = rawTranscript.trim();
-    if (finalTranscript) {
-      setContent(prev => {
-        const trimmed = prev.trim();
-        if (trimmed) {
-          return `${trimmed} ${finalTranscript}`;
-        }
-        return finalTranscript;
-      });
-    }
+    // Capture transcript BEFORE stopping
+    const finalTranscript = rawTranscriptRef.current.trim();
 
     // Stop the recording
     stopRecordingRaw();
-  }, [stopRecordingRaw, rawTranscript]);
+
+    // Append transcript to content
+    if (finalTranscript) {
+      setContent(prev => {
+        const trimmed = prev.trim();
+        return trimmed ? `${trimmed} ${finalTranscript}` : finalTranscript;
+      });
+    }
+  }, [stopRecordingRaw]);
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);

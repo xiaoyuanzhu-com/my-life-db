@@ -282,12 +282,15 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     setRecordingDuration(0);
   }, []);
 
-  // Reset transcripts when starting new recording
+  // Reset transcripts only when starting new recording (not when stopping)
+  const wasRecordingRef = useRef(false);
   useEffect(() => {
-    if (isRecording) {
+    if (isRecording && !wasRecordingRef.current) {
+      // Just started recording (transition from false to true)
       setRawTranscript('');
       setPartialSentence('');
     }
+    wasRecordingRef.current = isRecording;
   }, [isRecording]);
 
   // Clean up on unmount
