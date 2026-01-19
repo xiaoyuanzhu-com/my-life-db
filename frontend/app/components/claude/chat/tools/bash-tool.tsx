@@ -7,7 +7,7 @@ interface BashToolViewProps {
 }
 
 export function BashToolView({ toolCall }: BashToolViewProps) {
-  const params = toolCall.parameters as BashToolParams
+  const params = (toolCall.parameters || {}) as BashToolParams
   const result = toolCall.result as BashToolResult | string | undefined
 
   // Parse result
@@ -20,10 +20,10 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
       {/* Command header */}
       <div className="flex items-center gap-2 flex-wrap">
         <Terminal className="h-4 w-4 text-purple-500" />
-        {params.description && (
+        {params?.description && (
           <span className="text-xs text-muted-foreground">{params.description}</span>
         )}
-        {params.run_in_background && (
+        {params?.run_in_background && (
           <span className="text-xs bg-muted px-1.5 py-0.5 rounded">background</span>
         )}
       </div>
@@ -33,7 +33,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
         <div className="flex items-start gap-2">
           <span className="text-green-400 select-none">$</span>
           <pre className="text-zinc-100 overflow-x-auto whitespace-pre-wrap break-all">
-            {params.command}
+            {params?.command || 'No command'}
           </pre>
         </div>
       </div>

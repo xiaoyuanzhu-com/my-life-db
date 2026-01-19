@@ -63,8 +63,8 @@ export function ChatInterface({
       .filter(c => c.type === 'tool_use')
       .map((c): ToolCall => ({
         id: c.id || crypto.randomUUID(),
-        name: c.name || 'unknown',
-        input: c.input || {},
+        name: (c.name || 'unknown') as ToolCall['name'],
+        parameters: c.input || {},
         status: 'completed',
       }))
 
