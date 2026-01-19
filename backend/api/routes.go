@@ -64,6 +64,9 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// Search
 	api.GET("/search", h.Search)
 
+	// AI routes
+	api.POST("/ai/summarize", h.Summarize)
+
 	// Settings
 	api.GET("/settings", h.GetSettings)
 	api.PUT("/settings", h.UpdateSettings)

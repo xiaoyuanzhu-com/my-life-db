@@ -5,6 +5,7 @@ import { Upload, X, Plus, Mic } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { SearchStatus } from './search-status';
 import { RecordingVisualizer } from './recording-visualizer';
+import { RecordingReviewModal } from './recording-review-modal';
 import type { SearchResponse } from '~/types/api';
 import { useSendQueue } from '~/lib/send-queue';
 import { useRealtimeASR } from '~/hooks/use-realtime-asr';
@@ -46,11 +47,13 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
 
   // Real-time ASR hook
   const [partialTranscript, setPartialTranscript] = useState('');
-  const { isRecording, audioLevel, recordingDuration, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [recordingData, setRecordingData] = useState<{ transcript: string; duration: number } | null>(null);
+
+  const { isRecording, audioLevel, recordingDuration, rawTranscript, startRecording, stopRecording: stopRecordingRaw } = useRealtimeASR({
     onTranscript: (text, isFinal) => {
       if (isFinal) {
-        // Append final transcript to content
-        setContent(prev => prev ? `${prev} ${text}` : text);
+        // Don't append to content anymore - will be handled by modal
         setPartialTranscript(''); // Clear partial text after final
       } else {
         // Only show partial transcript temporarily, don't append to content
@@ -63,11 +66,22 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
     }
   });
 
-  // Wrap stopRecording to clear partial transcript
+  // Wrap stopRecording to show review modal
   const stopRecording = useCallback(() => {
+    // Save recording data before stopping
+    const finalTranscript = rawTranscript;
+    const finalDuration = recordingDuration;
+
+    // Stop the recording first
     stopRecordingRaw();
-    setPartialTranscript(''); // Clear any remaining partial transcript
-  }, [stopRecordingRaw]);
+
+    // Clear partial transcript immediately
+    setPartialTranscript('');
+
+    // Show review modal with recording data (even if empty, to show user feedback)
+    setRecordingData({ transcript: finalTranscript, duration: finalDuration });
+    setShowReviewModal(true);
+  }, [stopRecordingRaw, rawTranscript, recordingDuration]);
 
   // Search state - separate tracking for keyword and semantic
   const [keywordResults, setKeywordResults] = useState<SearchResponse | null>(null);
@@ -552,6 +566,34 @@ export function OmniInput({ onEntryCreated, onSearchResultsChange, searchStatus,
           multiple
         />
       </form>
+
+      {/* Recording Review Modal */}
+      <RecordingReviewModal
+        isOpen={showReviewModal}
+        rawTranscript={recordingData?.transcript || ''}
+        duration={recordingData?.duration || 0}
+        onSaveToInbox={(transcript) => {
+          // Append to existing content or set as new content
+          setContent(prev => {
+            if (prev.trim()) {
+              return `${prev} ${transcript}`;
+            }
+            return transcript;
+          });
+          setShowReviewModal(false);
+          setRecordingData(null);
+        }}
+        onDiscard={() => {
+          setShowReviewModal(false);
+          setRecordingData(null);
+        }}
+        onClose={() => {
+          // Save as draft - for now just close
+          // TODO: Implement draft saving to recordings library
+          setShowReviewModal(false);
+          setRecordingData(null);
+        }}
+      />
     </div>
   );
 }

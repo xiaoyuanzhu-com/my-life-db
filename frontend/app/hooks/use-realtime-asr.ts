@@ -10,6 +10,8 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [rawTranscript, setRawTranscript] = useState(''); // Accumulated final sentences
+  const [partialSentence, setPartialSentence] = useState(''); // Current partial sentence
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -98,9 +100,27 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
               // Extract transcription from Aliyun format
               const output = payload?.output;
               const sentence = output?.sentence;
-              console.log('🗣️ Result generated:', { sentence, isFinal: sentence?.end_time > 0 });
-              if (sentence?.text) {
-                const isFinal = sentence.end_time && sentence.end_time > 0;
+              console.log('🗣️ Result generated:', JSON.stringify({ sentence, isFinal: sentence?.end_time > 0 }));
+
+              const isFinal = sentence?.end_time && sentence.end_time > 0;
+              const hasText = sentence?.text && sentence.text.trim().length > 0;
+
+              // Update transcript state
+              // Aliyun sends progressive FULL updates per sentence, then finalizes with end_time > 0
+              if (isFinal && hasText) {
+                // Final: Append to accumulated transcript, clear partial
+                setRawTranscript(prev => prev ? `${prev} ${sentence.text}` : sentence.text);
+                setPartialSentence('');
+              } else if (hasText) {
+                // Partial: Update current sentence being spoken
+                setPartialSentence(sentence.text);
+              } else if (isFinal) {
+                // Empty final sentence (silence marker): just clear partial
+                setPartialSentence('');
+              }
+
+              // Call the callback for backwards compatibility (only if has text)
+              if (hasText) {
                 onTranscript?.(sentence.text, isFinal);
               }
               break;
@@ -288,6 +308,14 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     setRecordingDuration(0);
   }, []);
 
+  // Reset transcripts when starting new recording
+  useEffect(() => {
+    if (isRecording) {
+      setRawTranscript('');
+      setPartialSentence('');
+    }
+  }, [isRecording]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -301,6 +329,8 @@ export function useRealtimeASR({ onTranscript, onError, sampleRate = 16000 }: Us
     isRecording,
     audioLevel,
     recordingDuration,
+    rawTranscript,
+    partialSentence,
     startRecording,
     stopRecording
   };
