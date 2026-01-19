@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -23,18 +24,66 @@ const MaxSessions = 10
 type Manager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
+
+	// Context for graceful shutdown
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewManager creates a new session manager
 func NewManager() (*Manager, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	m := &Manager{
 		sessions: make(map[string]*Session),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// Start background cleanup worker
+	m.wg.Add(1)
 	go m.cleanupWorker()
 
 	return m, nil
+}
+
+// Shutdown gracefully stops all sessions and goroutines
+func (m *Manager) Shutdown(ctx context.Context) error {
+	log.Info().Msg("shutting down Claude manager")
+
+	// Signal all goroutines to stop
+	m.cancel()
+
+	// Kill all sessions
+	m.mu.Lock()
+	for id, session := range m.sessions {
+		log.Info().Str("sessionId", id).Msg("killing session during shutdown")
+		if session.Cmd != nil && session.Cmd.Process != nil {
+			session.Cmd.Process.Kill()
+		}
+		if session.PTY != nil {
+			session.PTY.Close()
+		}
+	}
+	m.sessions = make(map[string]*Session)
+	m.mu.Unlock()
+
+	// Wait for goroutines with timeout
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Info().Msg("Claude manager shutdown complete")
+		return nil
+	case <-ctx.Done():
+		log.Warn().Msg("Claude manager shutdown timed out")
+		return ctx.Err()
+	}
 }
 
 // CreateSession spawns a new Claude Code process
@@ -87,9 +136,11 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 	session.ProcessID = cmd.Process.Pid
 
 	// Start PTY reader that broadcasts to all clients
+	m.wg.Add(1)
 	go m.readPTY(session)
 
 	// Monitor process state in background
+	m.wg.Add(1)
 	go m.monitorProcess(session)
 
 	m.sessions[session.ID] = session
@@ -175,36 +226,54 @@ func (m *Manager) DeleteSession(id string) error {
 
 // cleanupWorker periodically cleans up dead sessions
 func (m *Manager) cleanupWorker() {
+	defer m.wg.Done()
+
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		m.mu.Lock()
-		for id, session := range m.sessions {
-			// Check if process is dead
-			if session.Cmd != nil && session.Cmd.ProcessState != nil && session.Cmd.ProcessState.Exited() {
-				log.Info().Str("sessionId", id).Msg("cleaning up dead session")
+	for {
+		select {
+		case <-m.ctx.Done():
+			log.Debug().Msg("cleanup worker stopping")
+			return
+		case <-ticker.C:
+			m.mu.Lock()
+			for id, session := range m.sessions {
+				// Check if process is dead
+				if session.Cmd != nil && session.Cmd.ProcessState != nil && session.Cmd.ProcessState.Exited() {
+					log.Info().Str("sessionId", id).Msg("cleaning up dead session")
 
-				// Close PTY
-				if session.PTY != nil {
-					session.PTY.Close()
+					// Close PTY
+					if session.PTY != nil {
+						session.PTY.Close()
+					}
+
+					delete(m.sessions, id)
 				}
-
-				delete(m.sessions, id)
 			}
+			m.mu.Unlock()
 		}
-		m.mu.Unlock()
 	}
 }
 
 // monitorProcess monitors the claude process and logs when it exits
 func (m *Manager) monitorProcess(session *Session) {
+	defer m.wg.Done()
+
 	if session.Cmd == nil {
 		return
 	}
 
 	// Wait for process to exit
 	err := session.Cmd.Wait()
+
+	// Check if we're shutting down - if so, don't log as error
+	select {
+	case <-m.ctx.Done():
+		log.Debug().Str("sessionId", session.ID).Msg("process monitor stopping (shutdown)")
+		return
+	default:
+	}
 
 	session.mu.Lock()
 	session.Status = "dead"
@@ -229,8 +298,18 @@ func (m *Manager) monitorProcess(session *Session) {
 
 // readPTY reads from PTY and broadcasts to all connected clients
 func (m *Manager) readPTY(session *Session) {
+	defer m.wg.Done()
+
 	buf := make([]byte, 4096)
 	for {
+		// Check for shutdown
+		select {
+		case <-m.ctx.Done():
+			log.Debug().Str("sessionId", session.ID).Msg("PTY reader stopping (shutdown)")
+			return
+		default:
+		}
+
 		n, err := session.PTY.Read(buf)
 		if err != nil {
 			// PTY closed or process died - silent, process monitor will log exit
