@@ -75,7 +75,7 @@ export function ChatInterface({
     // Handle content - can be string (user messages) or array (assistant messages)
     let textContent = ''
     let toolCalls: ToolCall[] = []
-    let hasThinking = false
+    let thinkingBlocks: { type: 'thinking'; thinking: string; signature?: string }[] = []
 
     if (typeof content === 'string') {
       // User message with plain text content
@@ -86,8 +86,14 @@ export function ChatInterface({
       const textBlocks = content.filter(isTextBlock).map(block => block.text)
       textContent = textBlocks.join('\n')
 
-      // Check for thinking blocks
-      hasThinking = content.some(block => block.type === 'thinking')
+      // Extract thinking blocks
+      thinkingBlocks = content
+        .filter(block => block.type === 'thinking')
+        .map(block => ({
+          type: 'thinking' as const,
+          thinking: (block as any).thinking || '',
+          signature: (block as any).signature,
+        }))
 
       // Extract tool calls from tool_use blocks
       toolCalls = content
@@ -100,17 +106,12 @@ export function ChatInterface({
         }))
     }
 
-    // Always render the message, even if it only has thinking blocks
-    // If there's no text but there's thinking, show a placeholder
-    if (!textContent && !toolCalls.length && hasThinking) {
-      textContent = '_[Extended thinking]_'
-    }
-
     return {
       id: sessionMsg.uuid,
       role: role || 'user',
       content: textContent,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
       timestamp: new Date(sessionMsg.timestamp).getTime(),
     }
   }

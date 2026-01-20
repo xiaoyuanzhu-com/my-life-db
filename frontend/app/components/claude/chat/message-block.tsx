@@ -29,11 +29,12 @@ export function MessageBlock({ message }: MessageBlockProps) {
       )}
 
       {/* Assistant messages: bullet + markdown content */}
-      {!isUser && message.content && (
+      {!isUser && (message.content || message.thinking) && (
         <div className="flex items-start gap-2">
           <MessageDot status="assistant" />
           <div className="flex-1 min-w-0">
-            <MessageContent content={message.content} />
+            {message.content && <MessageContent content={message.content} />}
+            {message.thinking && <ThinkingBlocks thinking={message.thinking} />}
             {message.isStreaming && (
               <span
                 className="inline-block w-[10px] h-[18px] ml-1 align-middle"
@@ -173,5 +174,56 @@ function MessageContent({ content }: { content: string }) {
       } as React.CSSProperties & { '--code-bg': string; '--code-color': string; '--pre-bg': string }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
+  )
+}
+
+// Thinking blocks renderer - collapsible extended thinking
+interface ThinkingBlock {
+  type: 'thinking'
+  thinking: string
+  signature?: string
+}
+
+function ThinkingBlocks({ thinking }: { thinking: ThinkingBlock[] }) {
+  if (thinking.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      {thinking.map((block, index) => (
+        <ThinkingBlockItem key={index} block={block} />
+      ))}
+    </div>
+  )
+}
+
+function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  return (
+    <div className="my-2">
+      {/* Collapsible header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="font-mono text-[13px] leading-[1.5] flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity italic"
+        style={{ color: 'var(--claude-text-secondary)' }}
+      >
+        <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
+        <span>Extended thinking</span>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div
+          className="mt-2 ml-6 p-3 rounded-lg font-mono text-[13px] leading-[1.5] whitespace-pre-wrap"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            color: 'var(--claude-text-secondary)',
+          }}
+        >
+          {block.thinking}
+        </div>
+      )}
+    </div>
   )
 }

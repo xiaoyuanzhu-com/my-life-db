@@ -188,11 +188,18 @@ export interface ToolCall {
   startTime?: number
 }
 
+export interface ThinkingBlock {
+  type: 'thinking'
+  thinking: string
+  signature?: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
   toolCalls?: ToolCall[]
+  thinking?: ThinkingBlock[]
   timestamp: number
   isStreaming?: boolean
 }
