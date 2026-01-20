@@ -28,8 +28,9 @@ log_warn() {
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
-# Default data directory (can be overridden by MY_DATA_DIR env var)
-DATA_DIR="${MY_DATA_DIR:-$PROJECT_ROOT/data}"
+# Default data directories (can be overridden by env vars)
+USER_DATA_DIR="${USER_DATA_DIR:-$PROJECT_ROOT/data}"
+APP_DATA_DIR="${APP_DATA_DIR:-$PROJECT_ROOT/.my-life-db}"
 
 # Service functions
 run_meilisearch() {
@@ -37,7 +38,7 @@ run_meilisearch() {
 
     local MEILI_VERSION="v1.27"
     local MEILI_PORT="7700"
-    local MEILI_DATA_DIR="$DATA_DIR/.my-life-db/meili"
+    local MEILI_DATA_DIR="$APP_DATA_DIR/meili"
 
     # Create data directory if it doesn't exist
     mkdir -p "$MEILI_DATA_DIR"
@@ -72,7 +73,7 @@ run_qdrant() {
 
     local QDRANT_VERSION="v1.16"
     local QDRANT_PORT="6333"
-    local QDRANT_DATA_DIR="$DATA_DIR/.my-life-db/qdrant"
+    local QDRANT_DATA_DIR="$APP_DATA_DIR/qdrant"
 
     # Create data directory if it doesn't exist
     mkdir -p "$QDRANT_DATA_DIR"
