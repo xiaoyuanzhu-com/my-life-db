@@ -19,6 +19,7 @@ import {
   deleteItem,
   getAllItems,
   getNextItemToProcess,
+  getNextItemAndLock,
   acquireLock,
   updateHeartbeat,
   updateProgress,
@@ -347,37 +348,41 @@ export class UploadQueueManager {
   /**
    * Process the next item in the queue
    */
+  /**
+   * Process next items from queue (fills up to MAX_CONCURRENT_UPLOADS)
+   *
+   * Uses atomic database operation (getNextItemAndLock) to prevent race conditions.
+   * No application-level locks needed - database transaction handles atomicity.
+   */
   async processNext(): Promise<void> {
-    // Don't start if we're at max concurrent uploads
-    if (this.activeUploads.size >= MAX_CONCURRENT_UPLOADS) {
-      return;
-    }
+    // Fill up to max concurrent uploads
+    while (this.activeUploads.size < MAX_CONCURRENT_UPLOADS) {
+      // Atomically get next item AND lock it in a single DB transaction
+      // This is race-condition-free: only one call can lock a given item
+      const item = await getNextItemAndLock(this.tabId);
 
-    // Get next item to process
-    const item = await getNextItemToProcess(this.tabId);
-    if (!item) {
-      return;
-    }
+      if (!item) {
+        // No more items available to process
+        break;
+      }
 
-    // Skip if already being processed
-    if (this.activeUploads.has(item.id)) {
-      return;
-    }
+      // Defensive check - should never happen since DB ensures uniqueness
+      if (this.activeUploads.has(item.id)) {
+        console.error('[UploadQueue] IMPOSSIBLE: Item already in activeUploads after atomic lock:', item.id);
+        continue;
+      }
 
-    // Try to acquire lock
-    const locked = await acquireLock(item.id, this.tabId);
-    if (!locked) {
-      // Another tab got it, try next
-      this.processNext();
-      return;
-    }
+      // Track upload in memory for abort/cleanup
+      this.activeUploads.set(item.id, {
+        itemId: item.id,
+        abortController: new AbortController(),
+      });
 
-    // Start upload
-    this.uploadItem(item);
-
-    // Try to process more items (up to max concurrent)
-    if (this.activeUploads.size < MAX_CONCURRENT_UPLOADS) {
-      this.processNext();
+      // Start upload asynchronously (don't await - we want concurrent uploads)
+      this.uploadItem(item).catch((err) => {
+        // uploadItem handles its own errors, but catch to prevent unhandled rejection
+        console.error('[UploadQueue] Unexpected error in uploadItem:', err);
+      });
     }
   }
 
@@ -385,13 +390,12 @@ export class UploadQueueManager {
    * Upload a single item using TUS
    */
   private async uploadItem(item: PendingInboxItem): Promise<void> {
-    const abortController = new AbortController();
-    const activeUpload: ActiveUpload = {
-      itemId: item.id,
-      abortController,
-    };
-
-    this.activeUploads.set(item.id, activeUpload);
+    // Get the activeUpload entry that was created in processNext
+    const activeUpload = this.activeUploads.get(item.id);
+    if (!activeUpload) {
+      console.error('[UploadQueue] Item not found in activeUploads (should not happen):', item.id);
+      return;
+    }
 
     // Start heartbeat
     activeUpload.heartbeatInterval = setInterval(() => {
@@ -423,7 +427,7 @@ export class UploadQueueManager {
       console.error('[UploadQueue] Upload failed:', err);
 
       // Check if aborted
-      if (abortController.signal.aborted) {
+      if (activeUpload.abortController.signal.aborted) {
         return;
       }
 

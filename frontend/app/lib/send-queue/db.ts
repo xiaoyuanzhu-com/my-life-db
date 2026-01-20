@@ -182,6 +182,92 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
 }
 
 /**
+ * Atomically get next item and acquire lock in a single transaction
+ * This prevents race conditions where multiple processNext() calls try to process the same item
+ */
+export async function getNextItemAndLock(tabId: string): Promise<PendingInboxItem | null> {
+  const db = await openDatabase();
+  const now = new Date().toISOString();
+  const staleThreshold = Date.now() - LOCK_STALE_THRESHOLD_MS;
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getAllRequest = store.getAll();
+
+    getAllRequest.onerror = () => reject(new Error(`Failed to query items: ${getAllRequest.error?.message}`));
+    getAllRequest.onsuccess = () => {
+      const items: PendingInboxItem[] = getAllRequest.result || [];
+
+      // Filter items that are ready to process (same logic as getNextItemToProcess)
+      const ready = items.filter((item) => {
+        if (item.status === 'uploaded') return false;
+        if (item.status === 'saved') return true;
+
+        if (item.status === 'uploading') {
+          if (item.uploadingBy === tabId) return true;
+
+          if (item.uploadingAt) {
+            const lockTime = new Date(item.uploadingAt).getTime();
+            if (lockTime < staleThreshold) {
+              if (!item.nextRetryAt || item.nextRetryAt <= now) {
+                return true;
+              }
+            }
+          }
+
+          if (item.nextRetryAt && item.nextRetryAt <= now) {
+            if (!item.uploadingAt || new Date(item.uploadingAt).getTime() < staleThreshold) {
+              return true;
+            }
+          }
+        }
+
+        return false;
+      });
+
+      // Sort by priority
+      ready.sort((a, b) => {
+        if (a.nextRetryAt && b.nextRetryAt) {
+          return a.nextRetryAt.localeCompare(b.nextRetryAt);
+        }
+        if (!a.nextRetryAt && b.nextRetryAt) return -1;
+        if (a.nextRetryAt && !b.nextRetryAt) return 1;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+
+      const item = ready[0];
+      if (!item) {
+        resolve(null);
+        return;
+      }
+
+      // Check if already locked by another tab with fresh lock
+      if (item.uploadingBy && item.uploadingBy !== tabId && item.uploadingAt) {
+        const lockTime = new Date(item.uploadingAt).getTime();
+        if (lockTime >= staleThreshold) {
+          // Already locked by another tab, return null
+          resolve(null);
+          return;
+        }
+      }
+
+      // Acquire the lock atomically
+      const lockedItem: PendingInboxItem = {
+        ...item,
+        status: 'uploading',
+        uploadingBy: tabId,
+        uploadingAt: now,
+      };
+
+      const putRequest = store.put(lockedItem);
+      putRequest.onerror = () => reject(new Error(`Failed to lock item: ${putRequest.error?.message}`));
+      putRequest.onsuccess = () => resolve(lockedItem);
+    };
+  });
+}
+
+/**
  * Acquire lock on an item for uploading
  * Returns true if lock was acquired, false if another tab got it
  */
