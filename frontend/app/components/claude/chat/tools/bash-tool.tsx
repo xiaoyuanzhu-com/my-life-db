@@ -1,5 +1,3 @@
-import { Terminal, Clock, AlertCircle, CheckCircle } from 'lucide-react'
-import { cn } from '~/lib/utils'
 import type { ToolCall, BashToolParams, BashToolResult } from '~/types/claude'
 
 interface BashToolViewProps {
@@ -16,23 +14,25 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const duration = typeof result === 'object' ? result?.duration : toolCall.duration
 
   return (
-    <div className="space-y-2">
-      {/* Command header */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Terminal className="h-4 w-4 text-purple-500" />
-        {params?.description && (
-          <span className="text-xs text-muted-foreground">{params.description}</span>
-        )}
-        {params?.run_in_background && (
-          <span className="text-xs bg-muted px-1.5 py-0.5 rounded">background</span>
-        )}
-      </div>
+    <div>
+      {/* Description if provided */}
+      {params?.description && (
+        <div
+          className="font-mono text-[13px] mb-2"
+          style={{ color: 'var(--claude-text-secondary)' }}
+        >
+          {params.description}
+        </div>
+      )}
 
-      {/* Command */}
-      <div className="rounded-md bg-zinc-900 p-3 font-mono text-sm">
-        <div className="flex items-start gap-2">
-          <span className="text-green-400 select-none">$</span>
-          <pre className="text-zinc-100 overflow-x-auto whitespace-pre-wrap break-all">
+      {/* Command - Terminal style with dark background */}
+      <div
+        className="rounded-md p-3 mb-2"
+        style={{ backgroundColor: '#1A1A1A' }}
+      >
+        <div className="flex items-start gap-2 font-mono text-[13px]">
+          <span style={{ color: '#22C55E' }} className="select-none">$</span>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all" style={{ color: '#E8E8E8' }}>
             {params?.command || 'No command'}
           </pre>
         </div>
@@ -40,41 +40,39 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
 
       {/* Output */}
       {output && (
-        <div className="rounded-md bg-zinc-900 p-3 font-mono text-xs max-h-48 overflow-auto">
-          <pre className="text-zinc-300 whitespace-pre-wrap break-all">
+        <div
+          className="rounded-md p-3 font-mono text-[13px] max-h-64 overflow-auto"
+          style={{ backgroundColor: '#1A1A1A' }}
+        >
+          <pre className="whitespace-pre-wrap break-all" style={{ color: '#D1D1D1' }}>
             {output}
           </pre>
         </div>
       )}
 
-      {/* Status bar */}
+      {/* Status footer */}
       {(exitCode !== undefined || duration) && (
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div
+          className="flex items-center gap-4 font-mono text-[13px] mt-2"
+          style={{ color: 'var(--claude-text-tertiary)' }}
+        >
           {exitCode !== undefined && (
-            <div className="flex items-center gap-1">
-              {exitCode === 0 ? (
-                <CheckCircle className="h-3 w-3 text-green-500" />
-              ) : (
-                <AlertCircle className="h-3 w-3 text-red-500" />
-              )}
-              <span className={cn(exitCode === 0 ? 'text-green-500' : 'text-red-500')}>
-                exit {exitCode}
-              </span>
-            </div>
+            <span style={{ color: exitCode === 0 ? 'var(--claude-diff-add-fg)' : 'var(--claude-status-alert)' }}>
+              exit {exitCode}
+            </span>
           )}
           {duration && (
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              <span>{(duration / 1000).toFixed(2)}s</span>
-            </div>
+            <span>⏱ {(duration / 1000).toFixed(2)}s</span>
           )}
         </div>
       )}
 
       {/* Error */}
       {toolCall.error && (
-        <div className="text-xs text-red-500 flex items-center gap-1">
-          <AlertCircle className="h-3 w-3" />
+        <div
+          className="font-mono text-[13px] mt-2"
+          style={{ color: 'var(--claude-status-alert)' }}
+        >
           {toolCall.error}
         </div>
       )}

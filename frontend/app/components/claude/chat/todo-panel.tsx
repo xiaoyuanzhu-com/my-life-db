@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronDown, Circle, CircleDot, CheckCircle2 } from 'lucide-react'
-import { cn } from '~/lib/utils'
 import type { TodoItem } from '~/types/claude'
 
 interface TodoPanelProps {
@@ -17,37 +15,46 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   if (todos.length === 0) return null
 
   return (
-    <div className="w-64 border-l border-border bg-muted/10 flex flex-col">
+    <div
+      className="w-72 flex flex-col"
+      style={{
+        borderLeft: '1px solid var(--claude-border-light)',
+        backgroundColor: 'var(--claude-bg-subtle)',
+      }}
+    >
       {/* Header */}
       <button
         type="button"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="flex items-center gap-2 px-3 py-2 border-b border-border hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-2 px-4 py-3 font-mono text-[13px] font-medium hover:opacity-80 transition-opacity"
+        style={{
+          color: 'var(--claude-text-secondary)',
+          borderBottom: '1px solid var(--claude-border-light)',
+        }}
       >
-        {isCollapsed ? (
-          <ChevronRight className="h-4 w-4" />
-        ) : (
-          <ChevronDown className="h-4 w-4" />
-        )}
-        <span className="text-sm font-medium">Tasks</span>
-        <span className="text-xs text-muted-foreground">
-          ({completedCount}/{totalCount})
-        </span>
+        <span className="select-none">{isCollapsed ? '▶' : '▼'}</span>
+        <span>Tasks ({completedCount}/{totalCount})</span>
         <span className="flex-1" />
-        <span className="text-xs text-muted-foreground">{progressPercent}%</span>
+        <span>{progressPercent}%</span>
       </button>
 
       {/* Progress bar */}
-      <div className="h-1 bg-muted">
+      <div
+        className="h-1"
+        style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+      >
         <div
-          className="h-full bg-primary transition-all"
-          style={{ width: `${progressPercent}%` }}
+          className="h-full transition-all"
+          style={{
+            width: `${progressPercent}%`,
+            backgroundColor: 'var(--claude-diff-add-fg)',
+          }}
         />
       </div>
 
       {/* Todo list */}
       {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {todos.map((todo, index) => (
             <TodoItemView key={index} todo={todo} />
           ))}
@@ -58,35 +65,29 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 }
 
 function TodoItemView({ todo }: { todo: TodoItem }) {
+  // Status indicators: ○ pending, ◐ in progress, ● completed
   const statusIcon = () => {
     switch (todo.status) {
       case 'pending':
-        return <Circle className="h-4 w-4 text-muted-foreground" />
+        return <span style={{ color: 'var(--claude-text-tertiary)' }}>○</span>
       case 'in_progress':
-        return <CircleDot className="h-4 w-4 text-primary animate-pulse" />
+        return <span style={{ color: 'var(--claude-diff-add-fg)' }}>◐</span>
       case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />
+        return <span style={{ color: 'var(--claude-diff-add-fg)' }}>●</span>
     }
   }
 
   return (
-    <div
-      className={cn(
-        'flex items-start gap-2 rounded-md px-2 py-1.5 text-sm',
-        todo.status === 'in_progress' && 'bg-primary/10',
-        todo.status === 'completed' && 'opacity-60'
-      )}
-    >
+    <div className="flex items-start gap-2 text-[15px] leading-relaxed">
       <div className="mt-0.5">{statusIcon()}</div>
-      <div className="flex-1 min-w-0">
-        <div
-          className={cn(
-            'truncate',
-            todo.status === 'completed' && 'line-through text-muted-foreground'
-          )}
-        >
-          {todo.status === 'in_progress' ? todo.activeForm : todo.content}
-        </div>
+      <div
+        className="flex-1 min-w-0"
+        style={{
+          color: todo.status === 'completed' ? 'var(--claude-text-tertiary)' : 'var(--claude-text-primary)',
+          textDecoration: todo.status === 'completed' ? 'line-through' : 'none',
+        }}
+      >
+        {todo.status === 'in_progress' ? todo.activeForm : todo.content}
       </div>
     </div>
   )

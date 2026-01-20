@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Check, X, AlertCircle } from 'lucide-react'
-import { cn } from '~/lib/utils'
 import type { ToolCall, ToolName } from '~/types/claude'
 
 // Tool-specific visualizations
@@ -18,77 +16,58 @@ interface ToolBlockProps {
   toolCall: ToolCall
 }
 
-// Tool icon and color mapping
-const toolMeta: Record<ToolName, { icon: string; color: string }> = {
-  Read: { icon: '📖', color: 'bg-blue-500/10 border-blue-500/30' },
-  Write: { icon: '✏️', color: 'bg-green-500/10 border-green-500/30' },
-  Edit: { icon: '📝', color: 'bg-yellow-500/10 border-yellow-500/30' },
-  Bash: { icon: '💻', color: 'bg-purple-500/10 border-purple-500/30' },
-  Glob: { icon: '🔍', color: 'bg-cyan-500/10 border-cyan-500/30' },
-  Grep: { icon: '🔎', color: 'bg-cyan-500/10 border-cyan-500/30' },
-  WebFetch: { icon: '🌐', color: 'bg-orange-500/10 border-orange-500/30' },
-  WebSearch: { icon: '🔍', color: 'bg-orange-500/10 border-orange-500/30' },
-  Task: { icon: '🤖', color: 'bg-indigo-500/10 border-indigo-500/30' },
-  TodoWrite: { icon: '📋', color: 'bg-pink-500/10 border-pink-500/30' },
-  AskUserQuestion: { icon: '❓', color: 'bg-amber-500/10 border-amber-500/30' },
-  NotebookEdit: { icon: '📓', color: 'bg-teal-500/10 border-teal-500/30' },
-  Skill: { icon: '⚡', color: 'bg-violet-500/10 border-violet-500/30' },
-  KillShell: { icon: '🛑', color: 'bg-red-500/10 border-red-500/30' },
-  TaskOutput: { icon: '📤', color: 'bg-gray-500/10 border-gray-500/30' },
+// Get tool summary for collapsed view
+function getToolSummary(toolCall: ToolCall): string {
+  const params = toolCall.parameters
+
+  switch (toolCall.name) {
+    case 'Read':
+      return params.file_path || 'file'
+    case 'Write':
+      return params.file_path || 'file'
+    case 'Edit':
+      return params.file_path || 'file'
+    case 'Bash':
+      return params.command || 'command'
+    case 'Glob':
+      return params.pattern || 'pattern'
+    case 'Grep':
+      return params.pattern || 'pattern'
+    case 'WebFetch':
+      return params.url || 'URL'
+    case 'WebSearch':
+      return params.query || 'query'
+    case 'Task':
+      return params.description || 'task'
+    default:
+      return ''
+  }
 }
 
 export function ToolBlock({ toolCall }: ToolBlockProps) {
-  const [isExpanded, setIsExpanded] = useState(true)
-  const meta = toolMeta[toolCall.name] || { icon: '🔧', color: 'bg-muted' }
-
-  const statusIcon = () => {
-    switch (toolCall.status) {
-      case 'running':
-      case 'pending':
-        return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-      case 'completed':
-        return <Check className="h-3 w-3 text-green-500" />
-      case 'failed':
-        return <X className="h-3 w-3 text-red-500" />
-      case 'permission_required':
-        return <AlertCircle className="h-3 w-3 text-yellow-500" />
-      default:
-        return null
-    }
-  }
+  const [isExpanded, setIsExpanded] = useState(false) // Default collapsed
+  const summary = getToolSummary(toolCall)
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border text-left',
-        meta.color
-      )}
-    >
-      {/* Header */}
+    <div className="my-2">
+      {/* Collapsible Header - Claude Code Style */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+        className="font-mono text-[13px] leading-tight cursor-pointer hover:opacity-80 transition-opacity"
+        style={{ color: 'var(--claude-text-secondary)' }}
       >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        )}
-        <span>{meta.icon}</span>
-        <span className="font-medium">{toolCall.name}</span>
-        <span className="flex-1" />
-        {statusIcon()}
-        {toolCall.duration && (
-          <span className="text-xs text-muted-foreground">
-            {(toolCall.duration / 1000).toFixed(1)}s
-          </span>
+        <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
+        {' '}
+        {toolCall.name}
+        {summary && (
+          <span className="ml-2 opacity-70">{summary}</span>
         )}
       </button>
 
-      {/* Content */}
+      {/* Expanded Content */}
       {isExpanded && (
-        <div className="border-t border-border/50 px-3 py-2">
+        <div className="ml-6 mt-2">
           <ToolContent toolCall={toolCall} />
         </div>
       )}

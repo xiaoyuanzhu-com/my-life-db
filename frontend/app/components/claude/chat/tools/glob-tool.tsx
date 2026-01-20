@@ -1,4 +1,3 @@
-import { FolderSearch, File, Folder } from 'lucide-react'
 import type { ToolCall, GlobToolParams, GlobToolResult } from '~/types/claude'
 
 interface GlobToolViewProps {
@@ -9,53 +8,51 @@ export function GlobToolView({ toolCall }: GlobToolViewProps) {
   const params = toolCall.parameters as GlobToolParams
   const result = toolCall.result as GlobToolResult | string[] | undefined
 
-  // Normalize result
   const files = Array.isArray(result) ? result : result?.files || []
-  const count = Array.isArray(result) ? result.length : result?.count || files.length
 
   return (
-    <div className="space-y-2">
+    <div>
       {/* Pattern */}
-      <div className="flex items-center gap-2 text-sm">
-        <FolderSearch className="h-4 w-4 text-cyan-500" />
-        <span className="font-mono text-xs">{params.pattern}</span>
-        {params.path && (
-          <span className="text-xs text-muted-foreground">in {params.path}</span>
-        )}
+      <div
+        className="font-mono text-[13px] mb-2"
+        style={{ color: 'var(--claude-text-secondary)' }}
+      >
+        {params.pattern}
+        {params.path && <span className="opacity-70 ml-2">in {params.path}</span>}
       </div>
 
-      {/* Results */}
+      {/* File list */}
       {files.length > 0 ? (
-        <div className="rounded-md bg-background border border-border">
-          <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border">
-            Found {count} file{count !== 1 ? 's' : ''}
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {files.slice(0, 20).map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-muted/50"
-              >
-                {file.endsWith('/') ? (
-                  <Folder className="h-3 w-3 text-muted-foreground" />
-                ) : (
-                  <File className="h-3 w-3 text-muted-foreground" />
-                )}
-                <span className="truncate">{file}</span>
-              </div>
-            ))}
-            {files.length > 20 && (
-              <div className="px-3 py-1.5 text-xs text-muted-foreground">
-                ... and {files.length - 20} more
-              </div>
-            )}
-          </div>
+        <div
+          className="font-mono text-[13px] rounded-md p-3"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            color: 'var(--claude-text-primary)',
+          }}
+        >
+          {files.map((file, i) => (
+            <div key={i} className="py-0.5">
+              {file}
+            </div>
+          ))}
         </div>
-      ) : toolCall.status === 'completed' ? (
-        <div className="text-xs text-muted-foreground">
-          No files found matching pattern
+      ) : (
+        <div
+          className="font-mono text-[13px]"
+          style={{ color: 'var(--claude-text-tertiary)' }}
+        >
+          No files found
         </div>
-      ) : null}
+      )}
+
+      {files.length > 0 && (
+        <div
+          className="font-mono text-[13px] mt-1"
+          style={{ color: 'var(--claude-text-tertiary)' }}
+        >
+          {files.length} file{files.length !== 1 ? 's' : ''} found
+        </div>
+      )}
     </div>
   )
 }
