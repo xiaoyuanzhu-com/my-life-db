@@ -157,8 +157,9 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
   }, []);
 
   // Notify on changes
+  const onResultsChange = options?.onResultsChange;
   useEffect(() => {
-    options?.onResultsChange?.({
+    onResultsChange?.({
       keywordResults,
       semanticResults,
       isKeywordSearching,
@@ -166,7 +167,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
       keywordError,
       semanticError,
     });
-  }, [keywordResults, semanticResults, isKeywordSearching, isSemanticSearching, keywordError, semanticError, options]);
+  }, [keywordResults, semanticResults, isKeywordSearching, isSemanticSearching, keywordError, semanticError, onResultsChange]);
 
   // Build results state
   const results: SearchState = {

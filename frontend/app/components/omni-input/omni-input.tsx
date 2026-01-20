@@ -116,9 +116,10 @@ export function OmniInput({
   }, [voice.isRefining, voice.transcript.finalized]);
 
   // Coordination: When content changes, trigger search
+  const { search: performSearch } = search;
   useEffect(() => {
-    search.search(content);
-  }, [content, search]);
+    performSearch(content);
+  }, [content, performSearch]);
 
   // Coordination: When voice recording completes with audio, add to files
   useEffect(() => {
@@ -156,12 +157,13 @@ export function OmniInput({
   }, [content]);
 
   // Clear search when clearSearchTrigger changes
+  const { clear: clearSearch } = search;
   useEffect(() => {
     if (clearSearchTrigger && clearSearchTrigger > 0) {
       setContent('');
-      search.clear();
+      clearSearch();
     }
-  }, [clearSearchTrigger, search]);
+  }, [clearSearchTrigger, clearSearch]);
 
   // Submit handler
   async function handleSubmit(e: React.FormEvent) {
