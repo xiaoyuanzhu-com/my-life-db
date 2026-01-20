@@ -159,10 +159,16 @@ export function MessageDot({ status = 'assistant' }: MessageDotProps) {
 ### A. The "User Prompt" Block
 User input that initiates the conversation or task.
 
-*   **Style:** Minimal gray background pill or plain text depending on scroll state
-*   **Alignment:** Left-aligned or centered (depending on container width)
-*   **Typography:** Sans-serif, $text-primary
+*   **Style:** Minimal gray background pill with rounded corners
+    *   **Background:** `$bg-subtle` (#F9FAFB in light mode)
+    *   **Padding:** `12px 16px` (vertical, horizontal)
+    *   **Border-radius:** `12px`
+    *   **Max-width:** Content-based (fits to text, not full width)
+    *   **Display:** Inline-block (wraps to content width)
+*   **Alignment:** Right-aligned (using flex justify-end on container)
+*   **Typography:** Sans-serif, 15px, $text-primary, line-height 1.6
 *   **No bullet indicator** - plain text only
+*   **Spacing:** `16px` margin-bottom for separation from next message
 
 ### B. The "Status Item" / Issue List
 Used to display categorized issues (e.g., Security, Performance, Memory).

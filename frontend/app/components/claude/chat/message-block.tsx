@@ -13,10 +13,18 @@ export function MessageBlock({ message }: MessageBlockProps) {
 
   return (
     <div className="mb-4">
-      {/* User messages: minimal styling, left-aligned */}
+      {/* User messages: gray background pill, right-aligned */}
       {isUser && message.content && (
-        <div className="text-[15px] leading-relaxed" style={{ color: 'var(--claude-text-primary)' }}>
-          {message.content}
+        <div className="flex justify-end">
+          <div
+            className="inline-block px-4 py-3 rounded-xl text-[15px] leading-relaxed"
+            style={{
+              backgroundColor: 'var(--claude-bg-subtle)',
+              color: 'var(--claude-text-primary)',
+            }}
+          >
+            {message.content}
+          </div>
         </div>
       )}
 
