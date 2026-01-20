@@ -40,9 +40,10 @@ export function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Send on Enter (without Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
+      e.preventDefault() // Prevent newline from being added
       handleSend()
     }
+    // Shift+Enter: allow default behavior (add newline)
   }
 
   const handleAttachClick = () => {

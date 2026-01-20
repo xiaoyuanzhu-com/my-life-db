@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -221,6 +222,15 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		if msgType != websocket.MessageBinary {
 			continue
 		}
+
+		// Log what xterm is sending
+		log.Info().
+			Str("sessionId", sessionID).
+			Str("source", "xterm").
+			Str("data", string(msg)).
+			Int("length", len(msg)).
+			Str("hex", fmt.Sprintf("%x", msg)).
+			Msg("xterm → PTY")
 
 		if _, err := session.PTY.Write(msg); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
@@ -496,24 +506,22 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Write user message to PTY character by character (like typing)
-			// This ensures readline-style interfaces process it correctly
-			for _, ch := range inMsg.Content {
-				if _, err := session.PTY.Write([]byte(string(ch))); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
-					break
-				}
-			}
-			// Then send Enter key (carriage return)
-			if _, err := session.PTY.Write([]byte("\r")); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
-				errMsg := ChatMessage{
-					Type: "error",
-					Data: map[string]string{"message": "Failed to send message"},
-				}
-				if msgBytes, err := json.Marshal(errMsg); err == nil {
-					conn.Write(ctx, websocket.MessageText, msgBytes)
-				}
+			// Write message + Enter in one operation to avoid character echoing
+			// PTY expects \r for Enter key (carriage return)
+			message := inMsg.Content + "\r"
+			messageBytes := []byte(message)
+
+			// Log what chat is sending
+			log.Info().
+				Str("sessionId", sessionID).
+				Str("source", "chat").
+				Str("data", message).
+				Int("length", len(messageBytes)).
+				Str("hex", fmt.Sprintf("%x", messageBytes)).
+				Msg("chat → PTY")
+
+			if _, err := session.PTY.Write(messageBytes); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
 			}
 			session.LastActivity = time.Now()
 
