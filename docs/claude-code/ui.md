@@ -365,10 +365,49 @@ All tool blocks follow this unified design pattern based on the official Claude 
 └ Additional metadata (duration, status, etc.)
 ```
 
+**Tool Grouping (Multiple Consecutive Calls):**
+
+When multiple tool calls of the same type occur consecutively, they are grouped with a collapsible header:
+
+```
+∨ Read 2 files
+
+  ● Read /home/user/my-life-db/backend/fs/metadata.go
+  └ Read 147 lines
+
+  ● Read /home/user/my-life-db/backend/fs/service.go
+  └ Read 163 lines
+```
+
+**Grouping Rules:**
+- **Only consecutive calls** of the same tool type are grouped
+- Group header uses caret: `∨` (expanded) or `>` (collapsed)
+- Header text: `{ToolName} {count} file{s}` (e.g., "Read 2 files")
+- Header color: `var(--claude-text-secondary)` (gray)
+- Individual tools are indented 24px (`ml-6` in Tailwind)
+- Single tool calls are NOT grouped (render directly)
+- Mixed tool types break the group
+
+**Example (No Grouping - Mixed Types):**
+```
+● Read file.go
+└ Read 100 lines
+
+● Bash ls -la
+└ exit 0
+
+● Read another.go  ← Different Read, not consecutive
+└ Read 50 lines
+```
+
 **Design Specifications:**
 
-1. **Header Line:**
-   - Green bullet indicator: `●` (`#22C55E`)
+1. **Header Line (Individual Tool):**
+   - Status-colored bullet indicator:
+     - 🟢 Green `●` (`#22C55E`) - Success/completed
+     - 🔴 Red `●` (`#D92D20`) - Failed/error
+     - 🟡 Orange `●` (`#F59E0B`) - Running/permission required
+     - ⚪ Gray `○` (`#9CA3AF`) - Pending (outline)
    - Tool name in bold/semi-bold
    - Parameters in gray monospace text
    - All on single line, no background boxes
@@ -380,7 +419,7 @@ All tool blocks follow this unified design pattern based on the official Claude 
    - No borders or containers
 
 3. **Color Palette:**
-   - Bullet: `#22C55E` (green success indicator)
+   - Bullet: Status-dependent (see above)
    - Tool name: `var(--claude-text-primary)` (near black)
    - Parameters: `var(--claude-text-secondary)` (cool gray `#5F6368`)
    - Output: `var(--claude-text-secondary)` or `var(--claude-text-tertiary)`

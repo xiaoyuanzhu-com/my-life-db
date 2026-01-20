@@ -1,5 +1,5 @@
 import { ToolBlock } from './tool-block'
-import type { Message } from '~/types/claude'
+import type { Message, ToolCall } from '~/types/claude'
 import { marked } from 'marked'
 import { useEffect, useState } from 'react'
 
@@ -37,9 +37,7 @@ export function MessageBlock({ message }: MessageBlockProps) {
       {/* Tool calls */}
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="mt-3 space-y-2">
-          {message.toolCalls.map((toolCall) => (
-            <ToolBlock key={toolCall.id} toolCall={toolCall} />
-          ))}
+          <ToolCallGroups toolCalls={message.toolCalls} />
         </div>
       )}
     </div>
@@ -51,6 +49,79 @@ marked.setOptions({
   breaks: true, // Convert \n to <br>
   gfm: true, // GitHub Flavored Markdown
 })
+
+// Group consecutive tool calls of the same type
+function ToolCallGroups({ toolCalls }: { toolCalls: ToolCall[] }) {
+  // Group consecutive tool calls by name
+  const groups: ToolCall[][] = []
+  let currentGroup: ToolCall[] = []
+  let currentName: string | null = null
+
+  toolCalls.forEach((toolCall) => {
+    if (toolCall.name === currentName) {
+      // Same tool type - add to current group
+      currentGroup.push(toolCall)
+    } else {
+      // Different tool type - start new group
+      if (currentGroup.length > 0) {
+        groups.push(currentGroup)
+      }
+      currentGroup = [toolCall]
+      currentName = toolCall.name
+    }
+  })
+
+  // Push final group
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup)
+  }
+
+  return (
+    <>
+      {groups.map((group, groupIndex) => {
+        // Single tool call - render directly
+        if (group.length === 1) {
+          return <ToolBlock key={group[0].id} toolCall={group[0]} />
+        }
+
+        // Multiple tool calls of same type - render as collapsible group
+        return <ToolCallGroup key={`group-${groupIndex}`} toolCalls={group} />
+      })}
+    </>
+  )
+}
+
+// Collapsible group for multiple tool calls of the same type
+function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
+  const [isExpanded, setIsExpanded] = useState(true)
+  const toolName = toolCalls[0].name
+
+  return (
+    <div>
+      {/* Group header - collapsible */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="font-mono text-[13px] leading-[1.5] flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
+        style={{ color: 'var(--claude-text-secondary)' }}
+      >
+        <span className="select-none">{isExpanded ? '∨' : '>'}</span>
+        <span>
+          {toolName} {toolCalls.length} file{toolCalls.length !== 1 ? 's' : ''}
+        </span>
+      </button>
+
+      {/* Individual tool calls - indented */}
+      {isExpanded && (
+        <div className="ml-6 mt-2 space-y-2">
+          {toolCalls.map((toolCall) => (
+            <ToolBlock key={toolCall.id} toolCall={toolCall} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Markdown content renderer using marked - Claude Code style
 function MessageContent({ content }: { content: string }) {

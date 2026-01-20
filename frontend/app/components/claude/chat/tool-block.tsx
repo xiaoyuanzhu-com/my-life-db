@@ -45,34 +45,9 @@ function getToolSummary(toolCall: ToolCall): string {
 }
 
 export function ToolBlock({ toolCall }: ToolBlockProps) {
-  const [isExpanded, setIsExpanded] = useState(false) // Default collapsed
-  const summary = getToolSummary(toolCall)
-
-  return (
-    <div className="my-2">
-      {/* Collapsible Header - Claude Code Style */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="font-mono text-[13px] leading-tight cursor-pointer hover:opacity-80 transition-opacity"
-        style={{ color: 'var(--claude-text-secondary)' }}
-      >
-        <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
-        {' '}
-        {toolCall.name}
-        {summary && (
-          <span className="ml-2 opacity-70">{summary}</span>
-        )}
-      </button>
-
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="ml-6 mt-2">
-          <ToolContent toolCall={toolCall} />
-        </div>
-      )}
-    </div>
-  )
+  // Tool components are now self-contained with their own headers and collapse/expand logic
+  // Just render them directly
+  return <ToolContent toolCall={toolCall} />
 }
 
 function ToolContent({ toolCall }: { toolCall: ToolCall }) {
