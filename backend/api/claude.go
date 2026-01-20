@@ -467,10 +467,12 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
+			log.Info().Err(err).Str("sessionId", sessionID).Msg("Chat WebSocket read error (client disconnected)")
 			break
 		}
 
 		if msgType != websocket.MessageText {
+			log.Debug().Str("sessionId", sessionID).Int("msgType", int(msgType)).Msg("Ignoring non-text message")
 			continue
 		}
 
@@ -483,6 +485,8 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 			log.Debug().Err(err).Msg("Failed to parse chat message")
 			continue
 		}
+
+		log.Info().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("Received chat message")
 
 		switch inMsg.Type {
 		case "user_message":
