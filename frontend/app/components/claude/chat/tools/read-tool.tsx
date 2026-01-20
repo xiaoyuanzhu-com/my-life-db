@@ -9,41 +9,39 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
   const result = toolCall.result as ReadToolResult | string | undefined
 
   const content = typeof result === 'string' ? result : result?.content
+  const lineCount = typeof result === 'object' ? result?.lineCount : undefined
+
+  // Count lines in content for summary
+  const actualLineCount = lineCount || (content ? content.split('\n').length : 0)
 
   return (
-    <div>
-      {/* File path header - monospace, gray */}
-      <div
-        className="font-mono text-[13px] font-medium mb-2"
-        style={{ color: 'var(--claude-text-secondary)' }}
-      >
-        {params.file_path}
-        {params.offset !== undefined && (
-          <span className="ml-2 font-normal opacity-70">
-            (lines {params.offset}–{params.offset + (params.limit || 2000)})
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Green bullet + "Read" + file path */}
+      <div className="flex items-start gap-2">
+        <span className="text-[#22C55E] select-none">●</span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            Read
           </span>
-        )}
+          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+            {params.file_path}
+          </span>
+        </div>
       </div>
 
-      {/* Content with line numbers */}
-      {content && (
-        <pre
-          className="font-mono text-[13px] leading-[1.5] p-3 rounded-md overflow-x-auto"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            color: 'var(--claude-text-primary)',
-          }}
-        >
-          <code>{content}</code>
-        </pre>
+      {/* Summary: Read X lines */}
+      {actualLineCount > 0 && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Read {actualLineCount} lines</span>
+        </div>
       )}
 
+      {/* Truncation notice */}
       {typeof result === 'object' && result?.truncated && (
-        <div
-          className="font-mono text-[13px] mt-1"
-          style={{ color: 'var(--claude-text-tertiary)' }}
-        >
-          Content truncated ({result.lineCount} total lines)
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-tertiary)' }}>
+          <span className="select-none">└</span>
+          <span>Content truncated ({result.lineCount} total lines)</span>
         </div>
       )}
     </div>

@@ -14,66 +14,52 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const duration = typeof result === 'object' ? result?.duration : toolCall.duration
 
   return (
-    <div>
-      {/* Description if provided */}
-      {params?.description && (
-        <div
-          className="font-mono text-[13px] mb-2"
-          style={{ color: 'var(--claude-text-secondary)' }}
-        >
-          {params.description}
-        </div>
-      )}
-
-      {/* Command - Terminal style with dark background */}
-      <div
-        className="rounded-md p-3 mb-2"
-        style={{ backgroundColor: '#1A1A1A' }}
-      >
-        <div className="flex items-start gap-2 font-mono text-[13px]">
-          <span style={{ color: '#22C55E' }} className="select-none">$</span>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all" style={{ color: '#E8E8E8' }}>
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Green bullet + "Bash" + command */}
+      <div className="flex items-start gap-2">
+        <span className="text-[#22C55E] select-none">●</span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            Bash
+          </span>
+          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
             {params?.command || 'No command'}
-          </pre>
+          </span>
         </div>
       </div>
 
-      {/* Output */}
+      {/* Output with L-shaped indent */}
       {output && (
-        <div
-          className="rounded-md p-3 font-mono text-[13px] max-h-64 overflow-auto"
-          style={{ backgroundColor: '#1A1A1A' }}
-        >
-          <pre className="whitespace-pre-wrap break-all" style={{ color: '#D1D1D1' }}>
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <pre className="flex-1 min-w-0 whitespace-pre-wrap break-all overflow-x-auto">
             {output}
           </pre>
         </div>
       )}
 
-      {/* Status footer */}
+      {/* Status footer with L-shaped indent */}
       {(exitCode !== undefined || duration) && (
-        <div
-          className="flex items-center gap-4 font-mono text-[13px] mt-2"
-          style={{ color: 'var(--claude-text-tertiary)' }}
-        >
-          {exitCode !== undefined && (
-            <span style={{ color: exitCode === 0 ? 'var(--claude-diff-add-fg)' : 'var(--claude-status-alert)' }}>
-              exit {exitCode}
-            </span>
-          )}
-          {duration && (
-            <span>⏱ {(duration / 1000).toFixed(2)}s</span>
-          )}
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-tertiary)' }}>
+          <span className="select-none">└</span>
+          <div className="flex items-center gap-4">
+            {exitCode !== undefined && (
+              <span style={{ color: exitCode === 0 ? 'var(--claude-diff-add-fg)' : 'var(--claude-status-alert)' }}>
+                exit {exitCode}
+              </span>
+            )}
+            {duration && (
+              <span>⏱ {(duration / 1000).toFixed(2)}s</span>
+            )}
+          </div>
         </div>
       )}
 
       {/* Error */}
       {toolCall.error && (
-        <div
-          className="font-mono text-[13px] mt-2"
-          style={{ color: 'var(--claude-status-alert)' }}
-        >
-          {toolCall.error}
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
+          <span className="select-none">└</span>
+          <div className="flex-1 min-w-0">{toolCall.error}</div>
         </div>
       )}
     </div>
