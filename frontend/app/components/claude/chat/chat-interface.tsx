@@ -75,6 +75,7 @@ export function ChatInterface({
     // Handle content - can be string (user messages) or array (assistant messages)
     let textContent = ''
     let toolCalls: ToolCall[] = []
+    let hasThinking = false
 
     if (typeof content === 'string') {
       // User message with plain text content
@@ -85,6 +86,9 @@ export function ChatInterface({
       const textBlocks = content.filter(isTextBlock).map(block => block.text)
       textContent = textBlocks.join('\n')
 
+      // Check for thinking blocks
+      hasThinking = content.some(block => block.type === 'thinking')
+
       // Extract tool calls from tool_use blocks
       toolCalls = content
         .filter(isToolUseBlock)
@@ -94,6 +98,12 @@ export function ChatInterface({
           parameters: block.input,
           status: 'completed',
         }))
+    }
+
+    // Always render the message, even if it only has thinking blocks
+    // If there's no text but there's thinking, show a placeholder
+    if (!textContent && !toolCalls.length && hasThinking) {
+      textContent = '_[Extended thinking]_'
     }
 
     return {

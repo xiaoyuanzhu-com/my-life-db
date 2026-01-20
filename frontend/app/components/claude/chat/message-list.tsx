@@ -11,15 +11,33 @@ export function MessageList({ messages, streamingContent }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isInitialMount = useRef(true)
+  const userHasScrolledUp = useRef(false)
+
+  // Detect when user scrolls away from bottom
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50
+      userHasScrolledUp.current = !isAtBottom
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Auto-scroll to bottom when new messages arrive OR on initial load
+  // Only if user hasn't scrolled up
   useEffect(() => {
     if (isInitialMount.current && messages.length > 0) {
       // On initial mount with messages, scroll immediately without animation
       bottomRef.current?.scrollIntoView({ behavior: 'instant' })
       isInitialMount.current = false
-    } else if (!isInitialMount.current) {
-      // Subsequent updates: smooth scroll
+      userHasScrolledUp.current = false
+    } else if (!isInitialMount.current && !userHasScrolledUp.current) {
+      // Subsequent updates: smooth scroll only if user is at bottom
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, streamingContent])
