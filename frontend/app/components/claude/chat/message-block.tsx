@@ -147,7 +147,7 @@ function MessageContent({ content }: { content: string }) {
 
   return (
     <div
-      className="max-w-none text-[15px] leading-relaxed
+      className="max-w-none text-[15px] leading-relaxed select-text
         [&_p]:my-4 [&_p:first-child]:mt-0
         [&_h1]:text-[16px] [&_h1]:font-bold [&_h1]:leading-[1.5] [&_h1]:mb-3 [&_h1]:mt-4
         [&_h2]:text-[16px] [&_h2]:font-semibold [&_h2]:leading-[1.5] [&_h2]:mb-3 [&_h2]:mt-4
@@ -155,12 +155,16 @@ function MessageContent({ content }: { content: string }) {
         [&_ul]:my-4 [&_ul]:pl-6 [&_ul]:list-disc
         [&_ol]:my-4 [&_ol]:pl-6 [&_ol]:list-decimal
         [&_li]:mb-1
-        [&_code]:font-mono [&_code]:text-[13px] [&_code]:px-[5px] [&_code]:py-[2px] [&_code]:rounded
+        [&_code]:font-mono [&_code]:text-[13px] [&_code]:px-[5px] [&_code]:py-[2px] [&_code]:rounded [&_code]:bg-[var(--code-bg)]
         [&_code]:before:content-none [&_code]:after:content-none
-        [&_pre]:my-3 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto
+        [&_pre]:my-3 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:bg-[var(--pre-bg)]
         [&_pre_code]:p-0 [&_pre_code]:bg-transparent [&_pre_code]:text-[13px] [&_pre_code]:leading-[1.5]
         [&_strong]:font-semibold
-        [&_a]:underline [&_a]:underline-offset-2"
+        [&_a]:underline [&_a]:underline-offset-2
+        [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:border [&_table]:border-[var(--claude-border-light)]
+        [&_thead]:bg-[var(--claude-bg-subtle)]
+        [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:border [&_th]:border-[var(--claude-border-light)]
+        [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-[var(--claude-border-light)]"
       style={{
         color: 'var(--claude-text-primary)',
         '--code-bg': 'var(--claude-bg-inline)',
