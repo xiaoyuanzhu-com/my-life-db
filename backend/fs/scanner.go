@@ -153,45 +153,23 @@ func (s *scanner) checkNeedsProcessing(path string, info os.FileInfo) (bool, str
 	// Get database record
 	record, err := s.service.cfg.DB.GetFileByPath(path)
 	if err != nil || record == nil {
-		log.Debug().Str("path", path).Msg("scan: file not in db")
 		return true, "not_in_db"
 	}
 
-	// Gather state for logging
-	hasHash := record.Hash != nil && *record.Hash != ""
-	hasTextPreview := record.TextPreview != nil && *record.TextPreview != ""
-	isTextFile := s.service.processor.isTextFile(path)
-
 	// Check if hash is missing
-	if !hasHash {
-		log.Debug().Str("path", path).Msg("scan: missing hash")
+	if record.Hash == nil || *record.Hash == "" {
 		return true, "missing_hash"
 	}
 
 	// Check if modified_at differs (file changed externally)
 	fileModTime := info.ModTime().UTC().Format(time.RFC3339)
 	if record.ModifiedAt != fileModTime {
-		log.Debug().
-			Str("path", path).
-			Str("dbTime", record.ModifiedAt).
-			Str("fileTime", fileModTime).
-			Msg("scan: modified time changed")
 		return true, "modified_time_changed"
 	}
 
 	// Check if text preview is missing (and file type supports it)
-	if !hasTextPreview && isTextFile {
-		log.Debug().Str("path", path).Msg("scan: missing text preview")
+	if record.TextPreview == nil && s.service.processor.isTextFile(path) {
 		return true, "missing_text_preview"
-	}
-
-	// Log text files that are up to date (for debugging)
-	if isTextFile {
-		log.Debug().
-			Str("path", path).
-			Bool("hasHash", hasHash).
-			Bool("hasTextPreview", hasTextPreview).
-			Msg("scan: text file up to date")
 	}
 
 	return false, "" // File is up to date

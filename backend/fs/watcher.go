@@ -261,13 +261,17 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 			Str("path", path).
 			Msg("failed to compute metadata for external file")
 
-		// Fallback: create basic record without metadata
-		record := w.service.buildFileRecord(path, info, nil)
-		if _, err := w.service.cfg.DB.UpsertFile(record); err != nil {
-			log.Error().
-				Err(err).
-				Str("path", path).
-				Msg("failed to upsert basic file record")
+		// Only create a basic record if no record exists yet.
+		// If a record already exists (possibly with hash/preview from a previous scan),
+		// don't overwrite it with empty metadata - let the scanner fix it later.
+		if existing == nil {
+			record := w.service.buildFileRecord(path, info, nil)
+			if _, err := w.service.cfg.DB.UpsertFile(record); err != nil {
+				log.Error().
+					Err(err).
+					Str("path", path).
+					Msg("failed to upsert basic file record")
+			}
 		}
 		return
 	}
