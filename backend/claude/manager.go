@@ -364,6 +364,13 @@ func (m *Manager) monitorProcess(session *Session) {
 
 	// Notify all connected clients that the session ended
 	session.Broadcast([]byte("\r\n\x1b[33mSession process has ended\x1b[0m\r\n"))
+
+	// Remove the dead session from the manager's pool
+	m.mu.Lock()
+	delete(m.sessions, session.ID)
+	m.mu.Unlock()
+
+	log.Info().Str("sessionId", session.ID).Msg("removed dead session from pool")
 }
 
 // readPTY reads from PTY and broadcasts to all connected clients
