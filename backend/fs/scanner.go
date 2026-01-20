@@ -79,28 +79,14 @@ func (s *scanner) Stop() {
 // scan performs a full filesystem scan
 func (s *scanner) scan() {
 	log.Info().Str("root", s.service.cfg.DataRoot).Msg("starting filesystem scan")
-
-	// Check if data root exists
-	if stat, err := os.Stat(s.service.cfg.DataRoot); err != nil {
-		log.Error().Err(err).Str("root", s.service.cfg.DataRoot).Msg("DEBUG SCAN: data root stat failed")
-		return
-	} else {
-		log.Info().
-			Str("root", s.service.cfg.DataRoot).
-			Bool("isDir", stat.IsDir()).
-			Msg("DEBUG SCAN: data root exists")
-	}
-
 	startTime := time.Now()
 
 	var filesToProcess []fileToProcess
 
 	// 1. Walk filesystem and identify files needing processing
 	var totalFiles, excludedFiles, dirs int
-	log.Info().Str("root", s.service.cfg.DataRoot).Msg("DEBUG SCAN: starting filepath.Walk")
 	err := filepath.Walk(s.service.cfg.DataRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Warn().Err(err).Str("path", path).Msg("DEBUG SCAN: walk error for path")
 			return nil // Skip errors
 		}
 
@@ -112,7 +98,6 @@ func (s *scanner) scan() {
 
 		// Skip excluded paths (skip entire directory if excluded)
 		if s.service.validator.isExcluded(relPath) {
-			log.Info().Str("path", relPath).Msg("DEBUG SCAN: excluded path")
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -127,12 +112,10 @@ func (s *scanner) scan() {
 		}
 
 		totalFiles++
-		log.Info().Str("path", relPath).Msg("DEBUG SCAN: evaluating file")
 
 		// Check if file needs processing
 		needsProcessing, reason := s.checkNeedsProcessing(relPath, info)
 		if needsProcessing {
-			log.Info().Str("path", relPath).Str("reason", reason).Msg("DEBUG SCAN: FILE NEEDS PROCESSING")
 			filesToProcess = append(filesToProcess, fileToProcess{
 				path:   relPath,
 				info:   info,
@@ -143,8 +126,6 @@ func (s *scanner) scan() {
 		return nil
 	})
 
-	log.Info().Msg("DEBUG SCAN: filepath.Walk completed")
-
 	if err != nil {
 		log.Error().Err(err).Msg("scan walk error")
 		return
@@ -152,9 +133,6 @@ func (s *scanner) scan() {
 
 	log.Info().
 		Int("filesNeedingProcessing", len(filesToProcess)).
-		Int("totalFiles", totalFiles).
-		Int("excludedFiles", excludedFiles).
-		Int("dirs", dirs).
 		Dur("walkDuration", time.Since(startTime)).
 		Msg("filesystem walk complete, processing files")
 
@@ -180,41 +158,25 @@ func (s *scanner) checkNeedsProcessing(path string, info os.FileInfo) (bool, str
 	// Get database record
 	record, err := s.service.cfg.DB.GetFileByPath(path)
 	if err != nil || record == nil {
-		log.Info().Str("path", path).Msg("DEBUG: not_in_db")
 		return true, "not_in_db"
 	}
 
 	// Check if hash is missing
 	if record.Hash == nil || *record.Hash == "" {
-		log.Info().Str("path", path).Msg("DEBUG: missing_hash")
 		return true, "missing_hash"
 	}
 
 	// Check if modified_at differs (file changed externally)
 	fileModTime := info.ModTime().UTC().Format(time.RFC3339)
-	log.Info().
-		Str("path", path).
-		Str("fileModTime", fileModTime).
-		Str("recordModTime", record.ModifiedAt).
-		Bool("timesMatch", fileModTime == record.ModifiedAt).
-		Msg("DEBUG: checking modified_at")
 	if record.ModifiedAt != fileModTime {
 		return true, "modified_time_changed"
 	}
 
 	// Check if text preview is missing (and file type supports it)
-	isTextFile := s.service.processor.isTextFile(path)
-	hasPreview := record.TextPreview != nil
-	log.Info().
-		Str("path", path).
-		Bool("isTextFile", isTextFile).
-		Bool("hasPreview", hasPreview).
-		Msg("DEBUG: checking text_preview")
 	if record.TextPreview == nil && s.service.processor.isTextFile(path) {
 		return true, "missing_text_preview"
 	}
 
-	log.Info().Str("path", path).Msg("DEBUG: file is up to date, skipping")
 	return false, "" // File is up to date
 }
 
@@ -239,7 +201,7 @@ func (s *scanner) processFiles(files []fileToProcess) {
 
 			// Check if already being processed
 			if s.service.fileLock.isProcessing(f.path) {
-				log.Info().
+				log.Debug().
 					Str("path", f.path).
 					Msg("file already being processed, skipping scan")
 				return
@@ -280,8 +242,6 @@ func (s *scanner) processFiles(files []fileToProcess) {
 
 // processFile processes a single file during scan
 func (s *scanner) processFile(f fileToProcess) error {
-	log.Info().Str("path", f.path).Str("reason", f.reason).Msg("DEBUG SCAN: processFile starting")
-
 	// Get existing record (for change detection)
 	existing, _ := s.service.cfg.DB.GetFileByPath(f.path)
 	oldHash := ""
@@ -290,7 +250,6 @@ func (s *scanner) processFile(f fileToProcess) error {
 	}
 
 	// Compute metadata
-	log.Info().Str("path", f.path).Msg("DEBUG SCAN: computing metadata")
 	metadata, err := s.service.processor.ComputeMetadata(context.Background(), f.path)
 	if err != nil {
 		log.Error().
@@ -300,24 +259,12 @@ func (s *scanner) processFile(f fileToProcess) error {
 		return err
 	}
 
-	log.Info().
-		Str("path", f.path).
-		Str("hash", metadata.Hash).
-		Bool("hasTextPreview", metadata.TextPreview != nil).
-		Msg("DEBUG SCAN: metadata computed")
-
 	// Create/update database record with metadata
 	record := s.service.buildFileRecord(f.path, f.info, metadata)
 	isNew, err := s.service.cfg.DB.UpsertFile(record)
 	if err != nil {
-		log.Error().Err(err).Str("path", f.path).Msg("DEBUG SCAN: upsert failed")
 		return err
 	}
-
-	log.Info().
-		Str("path", f.path).
-		Bool("isNew", isNew).
-		Msg("DEBUG SCAN: file upserted to database")
 
 	// Detect content change
 	newHash := metadata.Hash
@@ -339,7 +286,7 @@ func (s *scanner) processFile(f fileToProcess) error {
 		})
 	}
 
-	log.Info().
+	log.Debug().
 		Str("path", f.path).
 		Bool("isNew", isNew).
 		Str("reason", f.reason).

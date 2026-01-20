@@ -8,9 +8,12 @@ import (
 
 // Default exclusion patterns for filesystem operations
 var defaultExclusionPatterns = []string{
-	`^\..+`,      // Any path starting with a dot + more chars (e.g., .obsidian, .git, .DS_Store) - excludes "." itself
-	`/\.[^/]+`,   // Any path component starting with a dot in subdirectories (e.g., inbox/.hidden)
-	`(^|/)~.*$`,  // Backup files starting with ~
+	`^\..+`,                  // Any path starting with a dot + more chars (e.g., .git, .venv, .next) - excludes "." itself
+	`/\.[^/]+`,               // Any path component starting with a dot in subdirectories (e.g., inbox/.hidden)
+	`(^|/)~.*$`,              // Backup files starting with ~
+	`(^|/)node_modules($|/)`, // Node.js dependencies
+	`(^|/)__pycache__($|/)`,  // Python cache
+	`(^|/)venv($|/)`,         // Python virtual environment (non-hidden)
 }
 
 // validator handles path validation and exclusion checks
