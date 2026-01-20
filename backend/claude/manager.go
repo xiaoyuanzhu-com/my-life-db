@@ -87,7 +87,13 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 }
 
 // CreateSession spawns a new Claude Code process
+// If resumeSessionID is provided, it will resume from that session's conversation history
 func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
+	return m.CreateSessionWithID(workingDir, title, "")
+}
+
+// CreateSessionWithID spawns a new Claude Code process with an optional session ID to resume
+func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -96,7 +102,14 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 		return nil, ErrTooManySessions
 	}
 
-	sessionID := uuid.New().String()
+	// If resuming, use the provided session ID; otherwise generate a new one
+	var sessionID string
+	if resumeSessionID != "" {
+		sessionID = resumeSessionID
+		log.Info().Str("sessionId", sessionID).Msg("resuming session with existing ID")
+	} else {
+		sessionID = uuid.New().String()
+	}
 
 	// Default working directory
 	if workingDir == "" {
@@ -105,7 +118,11 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	// Default title
 	if title == "" {
-		title = fmt.Sprintf("Session %d", len(m.sessions)+1)
+		if resumeSessionID != "" {
+			title = "Resumed Session"
+		} else {
+			title = fmt.Sprintf("Session %d", len(m.sessions)+1)
+		}
 	}
 
 	session := &Session{
@@ -121,8 +138,14 @@ func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
 
 	// Spawn claude process with PTY
 	// Uses default HOME so all sessions share the same .claude directory
-	// Pass our session ID so Claude uses it for the JSONL file
-	cmd := exec.Command("claude", "--session-id", sessionID)
+	var cmd *exec.Cmd
+	if resumeSessionID != "" {
+		// Resume existing session using --resume flag
+		cmd = exec.Command("claude", "--resume", resumeSessionID)
+	} else {
+		// Create new session with specific session ID
+		cmd = exec.Command("claude", "--session-id", sessionID)
+	}
 	cmd.Dir = workingDir
 	// No custom environment needed - just inherit everything from os.Environ()
 

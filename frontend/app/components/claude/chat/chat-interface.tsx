@@ -5,6 +5,8 @@ import { SessionHeader } from './session-header'
 import { TodoPanel } from './todo-panel'
 import { PermissionModal } from './permission-modal'
 import { AskUserQuestion } from './ask-user-question'
+import { Button } from '~/components/ui/button'
+import { Play } from 'lucide-react'
 import type {
   Message,
   ToolCall,
@@ -28,6 +30,7 @@ interface ChatInterfaceProps {
   workingDir?: string
   onSessionNameChange?: (name: string) => void
   readOnly?: boolean
+  onResume?: () => void
 }
 
 export function ChatInterface({
@@ -36,6 +39,7 @@ export function ChatInterface({
   workingDir = '',
   onSessionNameChange,
   readOnly = false,
+  onResume,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files
   const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
@@ -308,8 +312,20 @@ export function ChatInterface({
             />
           )}
           {readOnly && (
-            <div className="border-t border-border bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
-              This is a historical session. View only.
+            <div className="border-t border-border bg-muted/30 px-4 py-3 flex items-center justify-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                This is a historical session.
+              </span>
+              {onResume && (
+                <Button
+                  onClick={onResume}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Play className="h-4 w-4" />
+                  Resume Session
+                </Button>
+              )}
             </div>
           )}
         </div>

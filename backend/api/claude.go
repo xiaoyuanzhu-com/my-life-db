@@ -53,8 +53,9 @@ func (h *Handlers) ListClaudeSessions(c *gin.Context) {
 // CreateClaudeSession handles POST /api/claude/sessions
 func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	var body struct {
-		WorkingDir string `json:"workingDir"`
-		Title      string `json:"title"`
+		WorkingDir      string `json:"workingDir"`
+		Title           string `json:"title"`
+		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -67,7 +68,8 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		body.WorkingDir = config.Get().UserDataDir
 	}
 
-	session, err := claudeManager.CreateSession(body.WorkingDir, body.Title)
+	// Create session (will resume if resumeSessionId is provided)
+	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID)
 	if err != nil {
 		if err == claude.ErrTooManySessions {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many sessions"})

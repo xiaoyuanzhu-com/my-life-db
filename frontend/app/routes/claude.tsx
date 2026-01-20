@@ -160,6 +160,38 @@ export default function ClaudePage() {
     }
   }
 
+  const resumeSession = async (sessionId: string) => {
+    try {
+      // Find the historical session to get its details
+      const historicalSession = sessions.find(s => s.id === sessionId)
+      if (!historicalSession) return
+
+      const response = await fetch('/api/claude/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: historicalSession.title,
+          workingDir: historicalSession.workingDir,
+          resumeSessionId: sessionId, // Resume from this session
+        }),
+      })
+
+      if (response.ok) {
+        const resumedSession = await response.json()
+        console.log('[resumeSession] resumed session:', resumedSession.id)
+
+        // Reload sessions to get updated list
+        await loadSessions()
+
+        // Switch to the resumed session
+        setActiveSessionId(resumedSession.id)
+        console.log('[resumeSession] set activeSessionId to:', resumedSession.id)
+      }
+    } catch (error) {
+      console.error('Failed to resume session:', error)
+    }
+  }
+
   const deleteSession = async (sessionId: string) => {
     try {
       const response = await fetch(`/api/claude/sessions/${sessionId}`, {
@@ -344,13 +376,14 @@ export default function ClaudePage() {
           {sessions.length > 0 && activeSessionId ? (
             // Check if session is historical (archived)
             activeSession?.isActive === false ? (
-              // Historical session - show chat history in read-only mode
+              // Historical session - show chat history with resume option
               <ChatInterface
                 sessionId={activeSessionId}
                 sessionName={activeSession?.title || 'Session'}
                 workingDir={activeSession?.workingDir}
                 onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
                 readOnly={true}
+                onResume={() => resumeSession(activeSessionId)}
               />
             ) : uiMode === 'terminal' ? (
               // Active session - Terminal UI
