@@ -264,6 +264,12 @@ The backend uses structured logging via zerolog:
 - Includes Gin request logging middleware
 - Logs are in JSON format in production, pretty-printed in development
 
+**CRITICAL - Log Level Usage:**
+- **ALWAYS use `log.Info()` for important debugging messages** - Debug level is often disabled in production
+- Use `log.Debug()` only for verbose/noisy logs that should be filtered out
+- Use `log.Error()` for actual errors
+- **When adding temporary debug logging, use `log.Info()` so it's actually visible**
+
 ## Git Workflow
 
 Do NOT create git commits automatically. Only commit when explicitly instructed.
