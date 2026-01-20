@@ -30,7 +30,7 @@ export function MessageDot({ status = 'assistant' }: MessageDotProps) {
 
   return (
     <span
-      className="select-none text-[13px] leading-[1.5]"
+      className="select-none font-mono text-[13px] leading-[1.5]"
       style={{ color: getBulletColor() }}
     >
       {bulletChar}

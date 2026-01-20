@@ -92,13 +92,15 @@ The UI is built as a stack of **"Blocks."** The page is a linear stream where ea
 Each message turn (user and assistant) has a bullet indicator to visually separate conversation turns:
 
 *   **User messages:** No bullet - plain text, left-aligned
-*   **Assistant messages:** Gray bullet (`•`) before content
+*   **Assistant messages:** Gray bullet (`●`) before content
     *   **Color:** $text-secondary (`#5F6368` / `#6B7280`)
     *   **Size:** 13px (unified across all message types)
+    *   **Font:** Monospace (ensures consistent bullet size across all contexts)
     *   **Spacing:** 8px gap between bullet and content
     *   **Alignment:** Top-aligned with first line of content
 *   **Tool calls:** Status-colored bullets (`●` or `○`)
-    *   **Size:** 13px (same as assistant messages for visual consistency)
+    *   **Size:** 13px (identical to assistant messages)
+    *   **Font:** Monospace (same as assistant message bullets)
     *   **Colors:**
         *   Green (`#22C55E`) - Success/completed
         *   Red (`#D92D20`) - Failed/error
@@ -128,7 +130,7 @@ export function MessageDot({ status = 'assistant' }: MessageDotProps) {
 
   return (
     <span
-      className="select-none text-[13px] leading-[1.5]"
+      className="select-none font-mono text-[13px] leading-[1.5]"
       style={{ color: getBulletColor() }}
     >
       {bulletChar}
