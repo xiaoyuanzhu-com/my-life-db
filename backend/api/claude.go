@@ -490,19 +490,29 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Send message character-by-character to simulate typing (like xterm does)
-			// This prevents readline from treating it as a paste operation
+			// Send each character separately to avoid readline paste detection
+			// No delay between characters for faster input
 			for _, ch := range inMsg.Content {
 				charByte := []byte(string(ch))
+				log.Info().
+					Str("sessionId", sessionID).
+					Str("source", "chat").
+					Str("char", string(ch)).
+					Str("hex", fmt.Sprintf("%x", charByte)).
+					Msg("chat → PTY (char)")
 				if _, err := session.PTY.Write(charByte); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
 					break
 				}
-				// Tiny delay to simulate human typing (1ms per character)
-				time.Sleep(1 * time.Millisecond)
 			}
 
-			// Send Enter key (\r) at the end
+			// Small delay before Enter to ensure readline processes the input correctly
+			time.Sleep(50 * time.Millisecond)
+			log.Info().
+				Str("sessionId", sessionID).
+				Str("source", "chat").
+				Str("hex", "0d").
+				Msg("chat → PTY (enter)")
 			if _, err := session.PTY.Write([]byte("\r")); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
 			}
