@@ -13,7 +13,7 @@ interface SessionHeaderProps {
     limit: number
   }
   onNameChange?: (name: string) => void
-  readOnly?: boolean
+  isHistorical?: boolean
 }
 
 export function SessionHeader({
@@ -22,7 +22,7 @@ export function SessionHeader({
   status,
   tokenUsage,
   onNameChange,
-  readOnly = false,
+  isHistorical = false,
 }: SessionHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(sessionName)
@@ -66,12 +66,12 @@ export function SessionHeader({
           </div>
         ) : (
           <div className="flex items-center gap-2 min-w-0">
-            {readOnly && <Archive className="h-4 w-4 text-muted-foreground" />}
+            {isHistorical && <Archive className="h-4 w-4 text-muted-foreground" />}
             <h1 className="text-sm font-medium text-foreground truncate">{sessionName}</h1>
-            {readOnly && (
+            {isHistorical && (
               <span className="text-xs text-muted-foreground">(Historical)</span>
             )}
-            {onNameChange && !readOnly && (
+            {onNameChange && !isHistorical && (
               <Button
                 variant="ghost"
                 size="icon"

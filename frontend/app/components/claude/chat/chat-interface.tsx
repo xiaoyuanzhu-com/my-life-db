@@ -29,8 +29,7 @@ interface ChatInterfaceProps {
   sessionName?: string
   workingDir?: string
   onSessionNameChange?: (name: string) => void
-  readOnly?: boolean
-  onResume?: () => void
+  isHistorical?: boolean
 }
 
 export function ChatInterface({
@@ -38,8 +37,7 @@ export function ChatInterface({
   sessionName = 'New Conversation',
   workingDir = '',
   onSessionNameChange,
-  readOnly = false,
-  onResume,
+  isHistorical = false,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files
   const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
@@ -256,14 +254,9 @@ export function ChatInterface({
     [pendingQuestion]
   )
 
-  // Connect on mount (skip if read-only)
+  // Connect on mount
+  // For historical sessions, try to connect but don't block the UI
   useEffect(() => {
-    // Don't connect WebSocket for read-only historical sessions
-    if (readOnly) {
-      setStatus('disconnected')
-      return
-    }
-
     connect()
 
     return () => {
@@ -274,7 +267,7 @@ export function ChatInterface({
         wsRef.current.close()
       }
     }
-  }, [connect, readOnly])
+  }, [connect])
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -285,7 +278,7 @@ export function ChatInterface({
         status={status}
         tokenUsage={tokenUsage}
         onNameChange={onSessionNameChange}
-        readOnly={readOnly}
+        isHistorical={isHistorical}
       />
 
       {/* Main content area */}
@@ -297,37 +290,18 @@ export function ChatInterface({
             streamingContent={isStreaming ? streamingContent : undefined}
           />
 
-          {/* Chat Input - hide for read-only mode */}
-          {!readOnly && (
-            <ChatInput
-              onSend={sendMessage}
-              disabled={status !== 'connected' || isStreaming}
-              placeholder={
-                status !== 'connected'
-                  ? 'Connecting...'
-                  : isStreaming
-                    ? 'Claude is thinking...'
-                    : 'Type a message...'
-              }
-            />
-          )}
-          {readOnly && (
-            <div className="border-t border-border bg-muted/30 px-4 py-3 flex items-center justify-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                This is a historical session.
-              </span>
-              {onResume && (
-                <Button
-                  onClick={onResume}
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Play className="h-4 w-4" />
-                  Resume Session
-                </Button>
-              )}
-            </div>
-          )}
+          {/* Chat Input - always show, backend will activate session on first message */}
+          <ChatInput
+            onSend={sendMessage}
+            disabled={status !== 'connected' || isStreaming}
+            placeholder={
+              status !== 'connected'
+                ? isHistorical ? 'Starting session...' : 'Connecting...'
+                : isStreaming
+                  ? 'Claude is thinking...'
+                  : 'Type a message...'
+            }
+          />
         </div>
 
         {/* Todo Panel (collapsible) */}

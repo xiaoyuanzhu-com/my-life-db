@@ -160,38 +160,6 @@ export default function ClaudePage() {
     }
   }
 
-  const resumeSession = async (sessionId: string) => {
-    try {
-      // Find the historical session to get its details
-      const historicalSession = sessions.find(s => s.id === sessionId)
-      if (!historicalSession) return
-
-      const response = await fetch('/api/claude/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: historicalSession.title,
-          workingDir: historicalSession.workingDir,
-          resumeSessionId: sessionId, // Resume from this session
-        }),
-      })
-
-      if (response.ok) {
-        const resumedSession = await response.json()
-        console.log('[resumeSession] resumed session:', resumedSession.id)
-
-        // Reload sessions to get updated list
-        await loadSessions()
-
-        // Switch to the resumed session
-        setActiveSessionId(resumedSession.id)
-        console.log('[resumeSession] set activeSessionId to:', resumedSession.id)
-      }
-    } catch (error) {
-      console.error('Failed to resume session:', error)
-    }
-  }
-
   const deleteSession = async (sessionId: string) => {
     try {
       const response = await fetch(`/api/claude/sessions/${sessionId}`, {
@@ -374,18 +342,8 @@ export default function ClaudePage() {
         {/* Main area - Terminal or Chat UI */}
         <div className="flex-1 bg-background overflow-hidden min-w-0">
           {sessions.length > 0 && activeSessionId ? (
-            // Check if session is historical (archived)
-            activeSession?.isActive === false ? (
-              // Historical session - show chat history with resume option
-              <ChatInterface
-                sessionId={activeSessionId}
-                sessionName={activeSession?.title || 'Session'}
-                workingDir={activeSession?.workingDir}
-                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-                readOnly={true}
-                onResume={() => resumeSession(activeSessionId)}
-              />
-            ) : uiMode === 'terminal' ? (
+            // Check if session is active for UI mode switching
+            activeSession?.isActive === true && uiMode === 'terminal' ? (
               // Active session - Terminal UI
               <>
                 {sessions.map((session) => (
@@ -397,13 +355,14 @@ export default function ClaudePage() {
                 ))}
               </>
             ) : (
-              // Active session - Chat UI
+              // Chat UI for both active and historical sessions
+              // Historical sessions will be automatically activated on first message
               <ChatInterface
                 sessionId={activeSessionId}
                 sessionName={activeSession?.title || 'Session'}
                 workingDir={activeSession?.workingDir}
                 onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-                readOnly={false}
+                isHistorical={activeSession?.isActive === false}
               />
             )
           ) : (
