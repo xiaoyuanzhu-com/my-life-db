@@ -1,4 +1,5 @@
 import { ToolBlock } from './tool-block'
+import { MessageDot } from './message-dot'
 import type { Message, ToolCall } from '~/types/claude'
 import { marked } from 'marked'
 import { useEffect, useState } from 'react'
@@ -19,18 +20,21 @@ export function MessageBlock({ message }: MessageBlockProps) {
         </div>
       )}
 
-      {/* Assistant messages: markdown content */}
+      {/* Assistant messages: bullet + markdown content */}
       {!isUser && message.content && (
-        <div className="pl-0">
-          <MessageContent content={message.content} />
-          {message.isStreaming && (
-            <span
-              className="inline-block w-[10px] h-[18px] ml-1 align-middle"
-              style={{ backgroundColor: 'var(--claude-text-primary)' }}
-            >
-              █
-            </span>
-          )}
+        <div className="flex items-start gap-2">
+          <MessageDot status="assistant" />
+          <div className="flex-1 min-w-0">
+            <MessageContent content={message.content} />
+            {message.isStreaming && (
+              <span
+                className="inline-block w-[10px] h-[18px] ml-1 align-middle"
+                style={{ backgroundColor: 'var(--claude-text-primary)' }}
+              >
+                █
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -136,7 +140,7 @@ function MessageContent({ content }: { content: string }) {
   return (
     <div
       className="max-w-none text-[15px] leading-relaxed
-        [&_p]:my-4
+        [&_p]:my-4 [&_p:first-child]:mt-0
         [&_h1]:text-[16px] [&_h1]:font-bold [&_h1]:leading-[1.5] [&_h1]:mb-3 [&_h1]:mt-4
         [&_h2]:text-[16px] [&_h2]:font-semibold [&_h2]:leading-[1.5] [&_h2]:mb-3 [&_h2]:mt-4
         [&_h3]:text-[16px] [&_h3]:font-semibold [&_h3]:leading-[1.5] [&_h3]:mb-2 [&_h3]:mt-3

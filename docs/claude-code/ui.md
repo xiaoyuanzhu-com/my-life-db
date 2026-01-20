@@ -87,12 +87,80 @@ The system uses a pairing of a clean modern Sans-Serif and a highly legible Mono
 
 The UI is built as a stack of **"Blocks."** The page is a linear stream where each block handles a specific type of content.
 
+### Message-Level Bullets
+
+Each message turn (user and assistant) has a bullet indicator to visually separate conversation turns:
+
+*   **User messages:** No bullet - plain text, left-aligned
+*   **Assistant messages:** Gray bullet (`•`) before content
+    *   **Color:** $text-secondary (`#5F6368` / `#6B7280`)
+    *   **Size:** 13px (unified across all message types)
+    *   **Spacing:** 8px gap between bullet and content
+    *   **Alignment:** Top-aligned with first line of content
+*   **Tool calls:** Status-colored bullets (`●` or `○`)
+    *   **Size:** 13px (same as assistant messages for visual consistency)
+    *   **Colors:**
+        *   Green (`#22C55E`) - Success/completed
+        *   Red (`#D92D20`) - Failed/error
+        *   Orange (`#F59E0B`) - Running/permission required
+        *   Gray (`#9CA3AF`) - Pending
+    *   **Outline circle (`○`)** for pending state, **filled circle (`●`)** for all other states
+
+**Implementation:**
+
+The `MessageDot` component provides unified bullet styling across all message types:
+
+```tsx
+// Shared MessageDot component (frontend/app/components/claude/chat/message-dot.tsx)
+export function MessageDot({ status = 'assistant' }: MessageDotProps) {
+  if (status === 'user') return null
+
+  const getBulletColor = () => {
+    if (status === 'assistant') return '#5F6368' // Gray
+    if (status === 'failed') return '#D92D20' // Red
+    if (status === 'running') return '#F59E0B' // Orange
+    if (status === 'pending') return '#9CA3AF' // Gray
+    if (status === 'permission_required') return '#F59E0B' // Orange
+    return '#22C55E' // Green (success/completed)
+  }
+
+  const bulletChar = status === 'pending' ? '○' : '●'
+
+  return (
+    <span
+      className="select-none text-[13px] leading-[1.5]"
+      style={{ color: getBulletColor() }}
+    >
+      {bulletChar}
+    </span>
+  )
+}
+
+// Usage in message blocks
+<div className="flex items-start gap-2">
+  <MessageDot status="assistant" />
+  <div className="flex-1 min-w-0">
+    <MessageContent content={message.content} />
+  </div>
+</div>
+
+// Usage in tool blocks
+<div className="flex items-start gap-2">
+  <MessageDot status={toolCall.status} />
+  <div className="flex-1 min-w-0">
+    <span className="font-semibold">Bash</span>
+    <span className="ml-2">git status</span>
+  </div>
+</div>
+```
+
 ### A. The "User Prompt" Block
 User input that initiates the conversation or task.
 
 *   **Style:** Minimal gray background pill or plain text depending on scroll state
 *   **Alignment:** Left-aligned or centered (depending on container width)
 *   **Typography:** Sans-serif, $text-primary
+*   **No bullet indicator** - plain text only
 
 ### B. The "Status Item" / Issue List
 Used to display categorized issues (e.g., Security, Performance, Memory).

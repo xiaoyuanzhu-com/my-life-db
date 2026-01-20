@@ -1,3 +1,4 @@
+import { MessageDot } from '../message-dot'
 import type { ToolCall, WebSearchToolParams, WebSearchToolResult } from '~/types/claude'
 
 interface WebSearchToolViewProps {
@@ -10,25 +11,11 @@ export function WebSearchToolView({ toolCall }: WebSearchToolViewProps) {
 
   const resultCount = result?.results?.length || 0
 
-  // Determine bullet color based on status
-  const getBulletColor = () => {
-    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
-    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
-    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
-    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
-    return '#22C55E' // Green for success
-  }
-
-  // Use outline for pending state
-  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
-
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "WebSearch" + query */}
       <div className="flex items-start gap-2">
-        <span className="select-none" style={{ color: getBulletColor() }}>
-          {bulletChar}
-        </span>
+        <MessageDot status={toolCall.status} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             WebSearch

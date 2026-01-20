@@ -1,3 +1,4 @@
+import { MessageDot } from '../message-dot'
 import type { ToolCall, EditToolParams } from '~/types/claude'
 
 interface EditToolViewProps {
@@ -11,25 +12,11 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
   const oldLines = params.old_string.split('\n')
   const newLines = params.new_string.split('\n')
 
-  // Determine bullet color based on status
-  const getBulletColor = () => {
-    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
-    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
-    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
-    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
-    return '#22C55E' // Green for success
-  }
-
-  // Use outline for pending state
-  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
-
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "Edit" + file path */}
       <div className="flex items-start gap-2 mb-3">
-        <span className="select-none" style={{ color: getBulletColor() }}>
-          {bulletChar}
-        </span>
+        <MessageDot status={toolCall.status} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Edit
