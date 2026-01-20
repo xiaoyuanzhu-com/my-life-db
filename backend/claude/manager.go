@@ -179,14 +179,60 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 }
 
 // GetSession retrieves a session by ID
+// If the session is not active but exists in history, it will be automatically resumed
 func (m *Manager) GetSession(id string) (*Session, error) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	session, ok := m.sessions[id]
-	if !ok {
+	m.mu.RUnlock()
+
+	if ok {
+		// Session is already active
+		return session, nil
+	}
+
+	// Session not in active pool - try to find it in history and resume
+	log.Info().Str("sessionId", id).Msg("session not active, attempting to resume from history")
+
+	// Find session info from Claude's index to get working directory
+	// Try to find it in the user's data directory first
+	index, err := GetSessionIndexForProject(config.Get().UserDataDir)
+	var workingDir string
+	var title string
+	found := false
+
+	if err == nil {
+		// Find the session in the index
+		for _, entry := range index.Entries {
+			if entry.SessionID == id {
+				workingDir = entry.ProjectPath
+				title = entry.FirstPrompt
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		// Session doesn't exist in history either
 		return nil, ErrSessionNotFound
 	}
+
+	// Default to data dir if not found in index
+	if workingDir == "" {
+		workingDir = config.Get().UserDataDir
+	}
+	if title == "" {
+		title = "Resumed Session"
+	}
+
+	// Resume the session (this will add it to the active pool)
+	session, err = m.CreateSessionWithID(workingDir, title, id)
+	if err != nil {
+		log.Error().Err(err).Str("sessionId", id).Msg("failed to resume session from history")
+		return nil, fmt.Errorf("failed to resume session: %w", err)
+	}
+
+	log.Info().Str("sessionId", id).Msg("session resumed successfully from history")
 	return session, nil
 }
 

@@ -142,6 +142,7 @@ func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
+	// GetSession will auto-resume from history if not active
 	session, err := claudeManager.GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -358,49 +359,14 @@ func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 
 // ClaudeChatWebSocket handles WebSocket connection for chat-style interface
 // This endpoint provides a JSON-based protocol on top of the terminal session
-// If the session is not active, it will be automatically activated (resumed)
 func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	// Try to get existing active session
+	// GetSession will auto-resume from history if not active
 	session, err := claudeManager.GetSession(sessionID)
 	if err != nil {
-		// Session not active - try to activate it by resuming
-		log.Info().Str("sessionId", sessionID).Msg("session not active, attempting to resume")
-
-		// Find session info from Claude's index to get working directory
-		index, indexErr := claude.GetSessionIndexForProject(config.Get().UserDataDir)
-		var workingDir string
-		var title string
-
-		if indexErr == nil {
-			// Find the session in the index
-			for _, entry := range index.Entries {
-				if entry.SessionID == sessionID {
-					workingDir = entry.ProjectPath
-					title = entry.FirstPrompt
-					break
-				}
-			}
-		}
-
-		// Default to data dir if not found
-		if workingDir == "" {
-			workingDir = config.Get().UserDataDir
-		}
-		if title == "" {
-			title = "Resumed Session"
-		}
-
-		// Resume the session
-		session, err = claudeManager.CreateSessionWithID(workingDir, title, sessionID)
-		if err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to resume session")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate session"})
-			return
-		}
-
-		log.Info().Str("sessionId", sessionID).Msg("session resumed successfully")
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
 	}
 
 	// Get the underlying http.ResponseWriter from Gin's wrapper
