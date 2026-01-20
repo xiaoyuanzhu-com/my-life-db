@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Input } from '~/components/ui/input'
 import { Button } from '~/components/ui/button'
-import { Edit2, Check, X, FolderOpen } from 'lucide-react'
+import { Edit2, Check, X, FolderOpen, Archive } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface SessionHeaderProps {
@@ -13,6 +13,7 @@ interface SessionHeaderProps {
     limit: number
   }
   onNameChange?: (name: string) => void
+  readOnly?: boolean
 }
 
 export function SessionHeader({
@@ -21,6 +22,7 @@ export function SessionHeader({
   status,
   tokenUsage,
   onNameChange,
+  readOnly = false,
 }: SessionHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(sessionName)
@@ -64,8 +66,12 @@ export function SessionHeader({
           </div>
         ) : (
           <div className="flex items-center gap-2 min-w-0">
+            {readOnly && <Archive className="h-4 w-4 text-muted-foreground" />}
             <h1 className="text-sm font-medium text-foreground truncate">{sessionName}</h1>
-            {onNameChange && (
+            {readOnly && (
+              <span className="text-xs text-muted-foreground">(Historical)</span>
+            )}
+            {onNameChange && !readOnly && (
               <Button
                 variant="ghost"
                 size="icon"

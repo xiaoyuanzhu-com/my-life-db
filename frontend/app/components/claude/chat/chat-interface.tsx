@@ -27,6 +27,7 @@ interface ChatInterfaceProps {
   sessionName?: string
   workingDir?: string
   onSessionNameChange?: (name: string) => void
+  readOnly?: boolean
 }
 
 export function ChatInterface({
@@ -34,6 +35,7 @@ export function ChatInterface({
   sessionName = 'New Conversation',
   workingDir = '',
   onSessionNameChange,
+  readOnly = false,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files
   const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
@@ -250,8 +252,14 @@ export function ChatInterface({
     [pendingQuestion]
   )
 
-  // Connect on mount
+  // Connect on mount (skip if read-only)
   useEffect(() => {
+    // Don't connect WebSocket for read-only historical sessions
+    if (readOnly) {
+      setStatus('disconnected')
+      return
+    }
+
     connect()
 
     return () => {
@@ -262,7 +270,7 @@ export function ChatInterface({
         wsRef.current.close()
       }
     }
-  }, [connect])
+  }, [connect, readOnly])
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -273,6 +281,7 @@ export function ChatInterface({
         status={status}
         tokenUsage={tokenUsage}
         onNameChange={onSessionNameChange}
+        readOnly={readOnly}
       />
 
       {/* Main content area */}
@@ -284,18 +293,25 @@ export function ChatInterface({
             streamingContent={isStreaming ? streamingContent : undefined}
           />
 
-          {/* Chat Input */}
-          <ChatInput
-            onSend={sendMessage}
-            disabled={status !== 'connected' || isStreaming}
-            placeholder={
-              status !== 'connected'
-                ? 'Connecting...'
-                : isStreaming
-                  ? 'Claude is thinking...'
-                  : 'Type a message...'
-            }
-          />
+          {/* Chat Input - hide for read-only mode */}
+          {!readOnly && (
+            <ChatInput
+              onSend={sendMessage}
+              disabled={status !== 'connected' || isStreaming}
+              placeholder={
+                status !== 'connected'
+                  ? 'Connecting...'
+                  : isStreaming
+                    ? 'Claude is thinking...'
+                    : 'Type a message...'
+              }
+            />
+          )}
+          {readOnly && (
+            <div className="border-t border-border bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
+              This is a historical session. View only.
+            </div>
+          )}
         </div>
 
         {/* Todo Panel (collapsible) */}

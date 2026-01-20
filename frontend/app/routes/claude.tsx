@@ -16,9 +16,12 @@ interface Session {
   id: string
   title: string
   workingDir: string
-  status: 'active' | 'disconnected' | 'dead'
+  status: 'active' | 'disconnected' | 'dead' | 'archived'
   createdAt: string
   lastActivity: string
+  isActive?: boolean
+  messageCount?: number
+  gitBranch?: string
 }
 
 export default function ClaudePage() {
@@ -95,22 +98,36 @@ export default function ClaudePage() {
 
   const loadSessions = async () => {
     try {
-      const response = await fetch('/api/claude/sessions')
+      // Fetch all sessions (both active and historical)
+      const response = await fetch('/api/claude/sessions/all')
       const data = await response.json()
-      setSessions(data.sessions || [])
+      const allSessions = data.sessions || []
 
-      // Auto-select first session ONLY on initial load
+      // Sort: active sessions first, then by last activity (most recent first)
+      const sortedSessions = allSessions.sort((a: Session, b: Session) => {
+        // Active sessions come first
+        if (a.isActive && !b.isActive) return -1
+        if (!a.isActive && b.isActive) return 1
+
+        // Within same type, sort by lastActivity
+        return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+      })
+
+      setSessions(sortedSessions)
+
+      // Auto-select first ACTIVE session ONLY on initial load
       // Use callback form to get current state, preventing override of user's selection
       setActiveSessionId((currentId) => {
-        console.log('[loadSessions] currentId:', currentId, 'sessions:', data.sessions?.map((s: Session) => s.id))
+        console.log('[loadSessions] currentId:', currentId, 'sessions:', sortedSessions?.map((s: Session) => s.id))
         // If user already selected/created a session, preserve it
         if (currentId !== null) {
           console.log('[loadSessions] preserving currentId:', currentId)
           return currentId
         }
-        // Otherwise auto-select first session if available
-        const firstId = data.sessions?.length > 0 ? data.sessions[0].id : null
-        console.log('[loadSessions] auto-selecting first session:', firstId)
+        // Otherwise auto-select first active session if available
+        const firstActiveSession = sortedSessions.find((s: Session) => s.isActive)
+        const firstId = firstActiveSession ? firstActiveSession.id : null
+        console.log('[loadSessions] auto-selecting first active session:', firstId)
         return firstId
       })
     } catch (error) {
@@ -325,8 +342,18 @@ export default function ClaudePage() {
         {/* Main area - Terminal or Chat UI */}
         <div className="flex-1 bg-background overflow-hidden min-w-0">
           {sessions.length > 0 && activeSessionId ? (
-            uiMode === 'terminal' ? (
-              // Terminal UI
+            // Check if session is historical (archived)
+            activeSession?.isActive === false ? (
+              // Historical session - show chat history in read-only mode
+              <ChatInterface
+                sessionId={activeSessionId}
+                sessionName={activeSession?.title || 'Session'}
+                workingDir={activeSession?.workingDir}
+                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                readOnly={true}
+              />
+            ) : uiMode === 'terminal' ? (
+              // Active session - Terminal UI
               <>
                 {sessions.map((session) => (
                   <SessionTab
@@ -337,12 +364,13 @@ export default function ClaudePage() {
                 ))}
               </>
             ) : (
-              // Chat UI
+              // Active session - Chat UI
               <ChatInterface
                 sessionId={activeSessionId}
                 sessionName={activeSession?.title || 'Session'}
                 workingDir={activeSession?.workingDir}
                 onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                readOnly={false}
               />
             )
           ) : (

@@ -241,6 +241,68 @@ type ChatMessage struct {
 	Data      interface{} `json:"data,omitempty"`
 }
 
+// ListAllClaudeSessions handles GET /api/claude/sessions/all
+// Returns both active and historical sessions from Claude's session index
+func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
+	// Get working directory (project path)
+	projectPath := config.Get().UserDataDir
+
+	// Read sessions index from Claude's directory
+	index, err := claude.GetSessionIndexForProject(projectPath)
+	if err != nil {
+		// If no sessions-index.json exists yet, just return active sessions
+		log.Debug().Err(err).Msg("no session index found, returning active sessions only")
+		activeSessions := claudeManager.ListSessions()
+		result := make([]map[string]interface{}, len(activeSessions))
+		for i, s := range activeSessions {
+			sessionData := s.ToJSON()
+			sessionData["isActive"] = true
+			result[i] = sessionData
+		}
+		c.JSON(http.StatusOK, gin.H{"sessions": result})
+		return
+	}
+
+	// Get active session IDs for quick lookup
+	activeSessionIDs := make(map[string]bool)
+	activeSessions := claudeManager.ListSessions()
+	for _, s := range activeSessions {
+		activeSessionIDs[s.ID] = true
+	}
+
+	// Convert index entries to response format
+	result := make([]map[string]interface{}, 0, len(index.Entries))
+	for _, entry := range index.Entries {
+		sessionData := map[string]interface{}{
+			"id":           entry.SessionID,
+			"title":        entry.FirstPrompt,
+			"workingDir":   entry.ProjectPath,
+			"createdAt":    entry.Created,
+			"lastActivity": entry.Modified,
+			"messageCount": entry.MessageCount,
+			"gitBranch":    entry.GitBranch,
+			"isActive":     activeSessionIDs[entry.SessionID],
+			"isSidechain":  entry.IsSidechain,
+		}
+
+		// If session is active, add additional live data
+		if activeSessionIDs[entry.SessionID] {
+			activeSession, _ := claudeManager.GetSession(entry.SessionID)
+			if activeSession != nil {
+				sessionData["status"] = activeSession.Status
+				sessionData["processId"] = activeSession.ProcessID
+				sessionData["clients"] = len(activeSession.Clients)
+			}
+		} else {
+			sessionData["status"] = "archived"
+		}
+
+		result = append(result, sessionData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"sessions": result})
+}
+
 // GetClaudeSessionHistory handles GET /api/claude/sessions/:id/history
 func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 	sessionID := c.Param("id")

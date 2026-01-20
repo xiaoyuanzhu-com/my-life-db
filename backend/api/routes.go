@@ -87,6 +87,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// Claude Code routes
 	api.GET("/claude/sessions", h.ListClaudeSessions)
+	api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
 	api.POST("/claude/sessions", h.CreateClaudeSession)
 	api.GET("/claude/sessions/:id", h.GetClaudeSession)
 	api.GET("/claude/sessions/:id/history", h.GetClaudeSessionHistory)
