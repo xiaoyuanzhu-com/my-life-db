@@ -22,7 +22,9 @@ export function useCardModal(file: FileWithDigests) {
     if (navigation) {
       navigation.openModal(file);
     }
-  }, [navigation, file]);
+  }, [navigation]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: file is intentionally not in deps to avoid infinite re-renders
+  // The callback always uses the latest file from closure
 }
 
 interface UseModalNavigationOptions extends ModalNavigationProps {
