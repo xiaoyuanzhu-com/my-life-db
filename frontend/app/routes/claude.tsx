@@ -8,6 +8,7 @@ import { Plus, Menu, Terminal, MessageSquare } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useAuth } from '~/contexts/auth-context'
 import { cn } from '~/lib/utils'
+import '@fontsource/jetbrains-mono'
 
 type UIMode = 'terminal' | 'chat'
 
