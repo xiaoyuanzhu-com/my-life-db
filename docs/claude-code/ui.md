@@ -23,8 +23,8 @@ The palette is restrained, relying on high-contrast grays and specific semantic 
 ### Base Colors
 | Token | Hex Value | Application |
 | :--- | :--- | :--- |
-| **$bg-canvas** | `#FFFFFF` | Main page/application background. |
-| **$bg-subtle** | `#F9FAFB` | Background for large code containers or "Artifact" wrappers. |
+| **$bg-canvas** | `#FFFFFF` | Main page/application background (white). |
+| **$bg-subtle** | `#F5F4EE` | User message pill background (warm off-white/beige). |
 | **$bg-code-block** | `#F5F5F5` | Background for standard code snippets (block). |
 | **$bg-inline** | `#F3F4F6` | Background for inline code snippets. |
 | **$accent-edit** | `#FAF9F6` | Very subtle off-white/beige background for large file edit containers. |
@@ -159,8 +159,8 @@ export function MessageDot({ status = 'assistant' }: MessageDotProps) {
 ### A. The "User Prompt" Block
 User input that initiates the conversation or task.
 
-*   **Style:** Minimal gray background pill with rounded corners
-    *   **Background:** `$bg-subtle` (#F9FAFB in light mode)
+*   **Style:** Minimal warm beige background pill with rounded corners
+    *   **Background:** `$bg-subtle` (#F5F4EE in light mode - warm off-white/beige)
     *   **Padding:** `12px 16px` (vertical, horizontal)
     *   **Border-radius:** `12px`
     *   **Max-width:** Content-based (fits to text, not full width)

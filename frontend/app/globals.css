@@ -291,7 +291,7 @@
 .claude-interface {
   /* Base Colors */
   --claude-bg-canvas: #FFFFFF;
-  --claude-bg-subtle: #F9FAFB;
+  --claude-bg-subtle: #F5F4EE;
   --claude-bg-code-block: #F5F5F5;
   --claude-bg-inline: #F3F4F6;
   --claude-accent-edit: #FAF9F6;
