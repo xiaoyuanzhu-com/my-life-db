@@ -357,22 +357,165 @@ Each tool type has a specific visualization pattern in the official UI:
 
 **Common Tool Block Structure:**
 
-```
-┌─────────────────────────────────────────────┐
-│ ▶ Tool Name  [parameters preview]           │ ← Collapsed state
-└─────────────────────────────────────────────┘
+All tool blocks follow this unified design pattern based on the official Claude Code UI:
 
-┌─────────────────────────────────────────────┐
-│ ▼ Tool Name  [parameters preview]           │ ← Expanded state
-│                                             │
-│   Parameter Name: value                     │
-│   Parameter Name: value                     │
-│   ─────────────────────────────────────     │
-│   [Tool-specific output visualization]      │
-│                                             │
-│   ⏱ Duration: 1.2s                          │
-└─────────────────────────────────────────────┘
 ```
+● Tool Name parameter_preview
+└ Summary or result
+└ Additional metadata (duration, status, etc.)
+```
+
+**Design Specifications:**
+
+1. **Header Line:**
+   - Green bullet indicator: `●` (`#22C55E`)
+   - Tool name in bold/semi-bold
+   - Parameters in gray monospace text
+   - All on single line, no background boxes
+
+2. **Output Lines (L-shaped indent):**
+   - Use `└` character for visual hierarchy
+   - Monospace 13px font
+   - Secondary/tertiary gray colors
+   - No borders or containers
+
+3. **Color Palette:**
+   - Bullet: `#22C55E` (green success indicator)
+   - Tool name: `var(--claude-text-primary)` (near black)
+   - Parameters: `var(--claude-text-secondary)` (cool gray `#5F6368`)
+   - Output: `var(--claude-text-secondary)` or `var(--claude-text-tertiary)`
+   - Errors: `var(--claude-status-alert)` (red)
+
+**Specific Tool Implementations:**
+
+<details>
+<summary><strong>Read Tool - Detailed Spec</strong></summary>
+
+**Collapsed State:**
+```
+● Read /path/to/file.tsx
+└ Read 316 lines
+```
+
+**Layout:**
+```tsx
+<div className="font-mono text-[13px] leading-[1.5]">
+  <div className="flex items-start gap-2">
+    <span className="text-[#22C55E]">●</span>
+    <span className="font-semibold text-primary">Read</span>
+    <span className="text-secondary">/path/to/file.tsx</span>
+  </div>
+  <div className="mt-1 flex gap-2 text-secondary">
+    <span>└</span>
+    <span>Read 316 lines</span>
+  </div>
+</div>
+```
+
+**Key Features:**
+- No code block container in collapsed state
+- Clean summary with line count
+- Green bullet indicates successful read
+- L-shaped indent for output summary
+
+</details>
+
+<details>
+<summary><strong>Bash Tool - Detailed Spec</strong></summary>
+
+**Collapsed State:**
+```
+● Bash git log --oneline -3
+└ 91e3760 feat: add debug endpoint
+  f4ec671 fix: route SaveRawFile through fs.Service
+  6cdfe90 fix: address Claude Code production readiness
+```
+
+**Layout:**
+```tsx
+<div className="font-mono text-[13px] leading-[1.5]">
+  <div className="flex items-start gap-2">
+    <span className="text-[#22C55E]">●</span>
+    <span className="font-semibold text-primary">Bash</span>
+    <span className="text-secondary">git log --oneline -3</span>
+  </div>
+  <div className="mt-1 flex gap-2 text-secondary">
+    <span>└</span>
+    <pre className="whitespace-pre-wrap">{output}</pre>
+  </div>
+  {/* Optional status */}
+  <div className="mt-1 flex gap-2 text-tertiary">
+    <span>└</span>
+    <div>
+      <span className="text-success">exit 0</span>
+      <span>⏱ 0.24s</span>
+    </div>
+  </div>
+</div>
+```
+
+**Key Features:**
+- NO dark terminal background (uses light theme)
+- Command shown in header line, not in separate box
+- Output uses L-shaped indent with light gray text
+- Exit code and duration on separate line with L-indent
+- Success = green exit code, failure = red
+
+</details>
+
+<details>
+<summary><strong>Write Tool - Detailed Spec</strong></summary>
+
+**Pattern:**
+```
+● Write /path/to/new-file.tsx
+└ Created file (42 lines)
+```
+
+Or for modifications:
+```
+● Write /path/to/existing.tsx
+└ Modified file (156 lines)
+```
+
+</details>
+
+<details>
+<summary><strong>Glob Tool - Detailed Spec</strong></summary>
+
+**Pattern:**
+```
+● Glob **/*.tsx
+└ Found 23 files
+  frontend/app/components/file-card.tsx
+  frontend/app/components/url-crawler.tsx
+  ...
+```
+
+</details>
+
+<details>
+<summary><strong>Grep Tool - Detailed Spec</strong></summary>
+
+**Pattern:**
+```
+● Grep "useState" --type tsx
+└ Found in 8 files
+  frontend/app/routes/home.tsx:15
+  frontend/app/routes/inbox.tsx:22
+  ...
+```
+
+</details>
+
+**Anti-Patterns (DO NOT DO):**
+
+❌ Dark terminal backgrounds for Bash output
+❌ Code block containers around tool output
+❌ Colored bubbles or heavy chrome
+❌ Multi-line headers with parameters on separate lines
+❌ Missing green bullet indicators
+❌ Using `>` or `▶` instead of `●` for tool headers
 
 ### 6.2 Data Model
 

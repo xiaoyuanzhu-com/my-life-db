@@ -13,11 +13,26 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const exitCode = typeof result === 'object' ? result?.exitCode : undefined
   const duration = typeof result === 'object' ? result?.duration : toolCall.duration
 
+  // Determine bullet color based on status and exit code
+  const getBulletColor = () => {
+    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
+    if (exitCode !== undefined && exitCode !== 0) return '#D92D20' // Red for non-zero exit
+    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
+    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
+    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
+    return '#22C55E' // Green for success
+  }
+
+  // Use outline for pending state
+  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: Green bullet + "Bash" + command */}
+      {/* Header: Status-colored bullet + "Bash" + command */}
       <div className="flex items-start gap-2">
-        <span className="text-[#22C55E] select-none">●</span>
+        <span className="select-none" style={{ color: getBulletColor() }}>
+          {bulletChar}
+        </span>
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Bash
