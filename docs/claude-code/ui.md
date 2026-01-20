@@ -200,6 +200,104 @@ Used for variables, paths, or short commands inside prose.
     color: #1F2937; /* $text-primary */
     ```
 
+### G. Interactive Components
+
+#### AskUserQuestion Block
+When Claude needs user input, display an inline question component.
+
+**Layout:**
+*   Background: Subtle highlight or card background (`$bg-subtle`)
+*   Border-radius: `8px`
+*   Padding: `16px`
+*   Margin: `12px 0`
+
+**Question Header:**
+*   Icon: `❓` or question icon
+*   Text: "Claude needs your input" (Sans, Semi-bold, $text-secondary)
+
+**Question Text:**
+*   Typography: Body text style (15px, $text-primary)
+*   Margin-bottom: `12px`
+
+**Options:**
+*   Radio buttons or checkboxes (if multiSelect)
+*   Each option:
+    *   Label: Bold, $text-primary
+    *   Description: Regular, $text-secondary, slightly smaller (14px)
+    *   Padding: `8px`
+    *   Hover state: Subtle background change
+*   "Other" option with text input field
+
+**Actions:**
+*   Button group: right-aligned
+*   "Skip" button (secondary)
+*   "Submit Answer" button (primary)
+
+#### TodoList Panel
+Task tracking panel, can be inline or sidebar.
+
+**Container:**
+*   Border: `1px solid $border-light`
+*   Border-radius: `6px`
+*   Background: `$bg-canvas` or `$bg-subtle`
+*   Padding: `12px`
+
+**Header:**
+*   Text: "Tasks (2/5 complete)" - Mono, Medium, $text-secondary
+*   Collapsible caret icon
+
+**Task Items:**
+*   Layout: Flex row
+*   Status icon (left):
+    *   ○ Pending (gray outline circle)
+    *   ◐ In Progress (half-filled circle, accent color)
+    *   ● Completed (filled circle, green/success color)
+*   Task text: Body text, $text-primary
+*   Current task indicator: Subtle arrow or highlight
+*   Spacing: `8px` between tasks
+
+**Progress Bar:**
+*   Height: `4px`
+*   Background: `$bg-code-block`
+*   Fill: Accent/primary color
+*   Position: Bottom of header or top of panel
+
+#### Permission Request Modal
+Modal overlay for tool execution approval.
+
+**Overlay:**
+*   Background: `rgba(0, 0, 0, 0.4)` (semi-transparent black)
+*   Backdrop-blur: `4px` (optional, for modern browsers)
+
+**Modal Card:**
+*   Width: `480px` max
+*   Background: `$bg-canvas`
+*   Border-radius: `12px`
+*   Box-shadow: `0 20px 25px -5px rgba(0, 0, 0, 0.1)`
+*   Padding: `24px`
+
+**Header:**
+*   Icon: `🔐` or lock icon
+*   Text: "Permission Required" (Sans, Bold, 16px, $text-primary)
+
+**Description:**
+*   Text: "Claude wants to execute a bash command:" (Body text)
+*   Margin: `12px 0`
+
+**Command Preview:**
+*   Background: `$bg-code-block`
+*   Border: `1px solid $border-light`
+*   Border-radius: `6px`
+*   Padding: `12px`
+*   Font: Monospace, 13px
+*   Color: $text-primary
+
+**Actions:**
+*   Button group: Right-aligned, flex row, `8px` gap
+*   "Deny" button (secondary, gray)
+*   "Allow Once" button (primary, default)
+*   "Always Allow" button (primary, success color)
+
 ---
 
 ## 5. Interaction Patterns & "Feel" Guidelines
@@ -239,12 +337,50 @@ Large content blocks should not dominate the screen.
 
 ## 6. Implementation Guide for Frontend Engineering
 
-### 6.1 Data Model
+### 6.1 Tool-Specific Visualizations
+
+Each tool type has a specific visualization pattern in the official UI:
+
+| Tool | Visualization Pattern |
+|------|----------------------|
+| **Read** | File path header (mono, gray) + syntax-highlighted content with line numbers |
+| **Write** | File path with "Created" or "Modified" badge + collapsed content preview |
+| **Edit** | Side-by-side or unified diff view with file path header (see component E) |
+| **Bash** | Terminal-style output: command line + streaming output in monospace, dark-on-light |
+| **Glob** | File list with file type icons, grouped by directory, monospace paths |
+| **Grep** | Matched files list OR content with line numbers and search term highlighted |
+| **WebFetch** | URL header + extracted/summarized content as markdown |
+| **WebSearch** | Search query + results as clickable links with descriptions |
+| **Task** | Agent name + type badge + status indicator + collapsible output |
+| **AskUserQuestion** | Inline question card (see component G) |
+| **TodoWrite** | Task list panel update (see component G) |
+
+**Common Tool Block Structure:**
+
+```
+┌─────────────────────────────────────────────┐
+│ ▶ Tool Name  [parameters preview]           │ ← Collapsed state
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│ ▼ Tool Name  [parameters preview]           │ ← Expanded state
+│                                             │
+│   Parameter Name: value                     │
+│   Parameter Name: value                     │
+│   ─────────────────────────────────────     │
+│   [Tool-specific output visualization]      │
+│                                             │
+│   ⏱ Duration: 1.2s                          │
+└─────────────────────────────────────────────┘
+```
+
+### 6.2 Data Model
 
 To replicate this effectively, structure the React/Vue components with these TypeScript interfaces:
 
 ```typescript
 type MessageType = 'user' | 'assistant' | 'system';
+type ToolStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 interface DiffHunk {
   originalLineStart: number;
@@ -255,10 +391,35 @@ interface DiffHunk {
   }>;
 }
 
+interface ToolCall {
+  id: string;
+  name: string;
+  parameters: Record<string, any>;
+  status: ToolStatus;
+  result?: any;
+  duration?: number;
+  isCollapsed?: boolean;
+}
+
+interface TodoItem {
+  content: string;
+  activeForm: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+interface Question {
+  question: string;
+  header: string;
+  options: Array<{
+    label: string;
+    description: string;
+  }>;
+  multiSelect: boolean;
+}
+
 interface Block {
-  type: 'text' | 'code' | 'diff' | 'tool_call' | 'status_list';
-  content: string | DiffHunk;
-  isCollapsed?: boolean; // For tool calls
+  type: 'text' | 'code' | 'diff' | 'tool_call' | 'status_list' | 'question' | 'todo';
+  content: string | DiffHunk | ToolCall | Question | TodoItem[];
   metadata?: {
     filePath?: string;
     language?: string;
@@ -268,14 +429,28 @@ interface Block {
 
 interface Message {
   id: string;
-  type: MessageType;
+  role: MessageType;
   blocks: Block[];
   timestamp: Date;
   isStreaming?: boolean;
 }
+
+interface ClaudeSession {
+  id: string;
+  name: string;
+  createdAt: Date;
+  messages: Message[];
+  tokenUsage: {
+    used: number;
+    limit: number;
+  };
+  model: string;
+  permissionMode: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+  currentBranch?: string;
+}
 ```
 
-### 6.2 Tailwind CSS Utility Classes
+### 6.3 Tailwind CSS Utility Classes
 
 Quick reference for styling with Tailwind:
 
@@ -298,7 +473,7 @@ Quick reference for styling with Tailwind:
 "bg-[#ffebe9] text-[#cb2431] font-mono whitespace-pre" // Deleted line
 ```
 
-### 6.3 Critical Rendering Logic
+### 6.4 Critical Rendering Logic
 
 #### Markdown Parsing
 You cannot use a standard Markdown renderer out of the box. Use a custom renderer (e.g., `react-markdown` with custom components) to handle:
@@ -338,7 +513,58 @@ useEffect(() => {
 }, [messageBlocks, isStreaming, userHasScrolledUp]);
 ```
 
-### 6.4 Component Structure (React Example)
+### 6.5 Component Structure & Directory Organization
+
+**Recommended Directory Structure:**
+
+```
+frontend/app/
+├── components/
+│   └── claude/
+│       ├── ChatInterface.tsx         # Main chat container
+│       ├── MessageList.tsx           # Message history display
+│       ├── MessageBlock.tsx          # Individual message wrapper
+│       ├── BlockRenderer.tsx         # Block type router
+│       ├── ChatInput.tsx             # Input with @ and / support
+│       ├── SessionHeader.tsx         # Session info bar
+│       ├── blocks/
+│       │   ├── MarkdownBlock.tsx     # Markdown rendering
+│       │   ├── CodeBlock.tsx         # Code with syntax highlighting
+│       │   ├── DiffView.tsx          # Unified diff viewer
+│       │   ├── ToolLog.tsx           # Collapsible tool invocation
+│       │   ├── StatusList.tsx        # Issue/status list
+│       │   ├── QuestionBlock.tsx     # AskUserQuestion
+│       │   └── TodoPanel.tsx         # TodoWrite visualization
+│       ├── tools/
+│       │   ├── ReadTool.tsx          # Read tool visualization
+│       │   ├── WriteTool.tsx         # Write tool visualization
+│       │   ├── EditTool.tsx          # Edit tool with diff
+│       │   ├── BashTool.tsx          # Terminal-style output
+│       │   ├── GlobTool.tsx          # File list display
+│       │   ├── GrepTool.tsx          # Search results
+│       │   ├── WebFetchTool.tsx      # Web content display
+│       │   └── WebSearchTool.tsx     # Search results links
+│       ├── modals/
+│       │   ├── PermissionModal.tsx   # Permission request modal
+│       │   └── SettingsModal.tsx     # Settings configuration
+│       └── ui/
+│           ├── StreamingCursor.tsx   # Blinking cursor component
+│           ├── ToolBlock.tsx         # Generic tool wrapper
+│           └── CollapsibleSection.tsx # Reusable collapsible
+├── hooks/
+│   ├── useClaude.ts                  # Claude API integration
+│   ├── useClaudeSession.ts           # Session management
+│   ├── useStreamingResponse.ts       # SSE/WebSocket streaming
+│   └── useToolExecution.ts           # Tool state management
+├── contexts/
+│   └── ClaudeContext.tsx             # Global Claude state
+├── routes/
+│   └── claude.tsx                    # Claude Code page route
+└── types/
+    └── claude.ts                     # TypeScript types
+```
+
+**Component Structure Example:**
 
 ```tsx
 // Top-level message stream
@@ -370,9 +596,182 @@ function BlockRenderer({ block }: { block: Block }) {
 }
 ```
 
-### 6.5 Accessibility Considerations
+### 6.6 Backend Integration & Communication Protocol
+
+**API Endpoints Required:**
+
+```typescript
+// Session Management
+GET    /api/claude/sessions              // List all sessions
+POST   /api/claude/sessions              // Create new session
+GET    /api/claude/sessions/:id          // Get session details
+DELETE /api/claude/sessions/:id          // Delete session
+PUT    /api/claude/sessions/:id/name     // Rename session
+
+// Messaging (SSE/WebSocket)
+POST   /api/claude/sessions/:id/messages // Send message, get streaming response
+GET    /api/claude/sessions/:id/stream   // SSE endpoint for streaming
+
+// Tool Execution
+POST   /api/claude/tools/:name/approve   // Approve tool execution
+POST   /api/claude/tools/:name/deny      // Deny tool execution
+
+// Context & State
+GET    /api/claude/sessions/:id/context  // Get context usage
+POST   /api/claude/sessions/:id/compact  // Trigger compaction
+
+// Permissions
+GET    /api/claude/permissions           // Get permission settings
+PUT    /api/claude/permissions/mode      // Update permission mode
+```
+
+**Message Protocol (Streaming):**
+
+The backend should stream messages using SSE or WebSocket with JSON payloads:
+
+```typescript
+// Text delta (streaming response)
+{
+  "type": "content_delta",
+  "delta": "partial text...",
+  "messageId": "msg_123"
+}
+
+// Tool use request
+{
+  "type": "tool_use",
+  "toolCall": {
+    "id": "tool_456",
+    "name": "bash",
+    "parameters": { "command": "ls -la" }
+  },
+  "requiresApproval": true
+}
+
+// Tool result
+{
+  "type": "tool_result",
+  "toolCallId": "tool_456",
+  "result": "...",
+  "duration": 1234
+}
+
+// Question from Claude
+{
+  "type": "ask_user_question",
+  "question": {...}
+}
+
+// Todo update
+{
+  "type": "todo_update",
+  "todos": [...]
+}
+
+// Message complete
+{
+  "type": "message_complete",
+  "messageId": "msg_123",
+  "tokenUsage": { "input": 100, "output": 200 }
+}
+```
+
+### 6.7 Accessibility Considerations
 
 *   **Keyboard Navigation:** Ensure collapsible sections are keyboard-accessible (Enter/Space to toggle)
 *   **Screen Readers:** Use semantic HTML (`<details>`, `<summary>` for collapsible content)
 *   **Color Contrast:** All text must meet WCAG AA standards (diff colors already comply)
 *   **Focus Indicators:** Visible focus states for interactive elements (2px outline recommended)
+*   **ARIA Labels:** Proper labeling for tool blocks, status indicators, and interactive elements
+*   **Keyboard Shortcuts:** Document and support keyboard shortcuts (see section below)
+
+### 6.8 Keyboard Shortcuts
+
+Essential keyboard shortcuts for power users:
+
+| Shortcut | Action | Context |
+|----------|--------|---------|
+| `Ctrl+Enter` / `Cmd+Enter` | Submit message | Chat input focused |
+| `Shift+Enter` | New line in message | Chat input |
+| `Ctrl+L` | Clear screen (scroll to top) | Anywhere |
+| `Ctrl+C` | Cancel current operation | During streaming |
+| `/` | Open command palette | Chat input (at start) |
+| `@` | Open file/resource picker | Chat input |
+| `Esc` | Close modal/cancel | Modal open |
+| `↑` | Navigate to previous message | Chat input empty |
+| `↓` | Navigate to next message | Chat input (after ↑) |
+| `Ctrl+K` | Focus search/command palette | Anywhere |
+
+---
+
+## 7. Implementation Checklist
+
+### Phase 1: Core UI (Pixel-Perfect Focus)
+
+**Design System Implementation:**
+- [ ] Set up color tokens (CSS variables or Tailwind theme)
+- [ ] Configure typography (Inter + JetBrains Mono with proper weights)
+- [ ] Implement spacing system (16px vertical rhythm, 24px indentation)
+- [ ] Create base layout container (max-w-3xl, centered)
+
+**Core Components:**
+- [ ] MessageList with streaming support
+- [ ] MessageBlock (user vs assistant styling)
+- [ ] BlockRenderer (route to correct component)
+- [ ] MarkdownBlock with custom renderer (marked library)
+- [ ] CodeBlock with syntax highlighting (Shiki)
+- [ ] DiffView (unified, with line numbers)
+- [ ] ToolLog (collapsible)
+- [ ] StreamingCursor (blinking █)
+
+**Interactive Components:**
+- [ ] ChatInput (with @ and / triggers)
+- [ ] SessionHeader (name, tokens, model)
+- [ ] QuestionBlock (AskUserQuestion)
+- [ ] TodoPanel (status indicators)
+- [ ] PermissionModal
+
+**Tool Visualizations:**
+- [ ] ReadTool (syntax-highlighted content)
+- [ ] WriteTool (created file badge)
+- [ ] EditTool (delegates to DiffView)
+- [ ] BashTool (terminal output)
+- [ ] GlobTool (file list with icons)
+- [ ] GrepTool (search results)
+- [ ] WebFetchTool (URL + content)
+- [ ] WebSearchTool (result links)
+
+**Backend Integration:**
+- [ ] SSE/WebSocket streaming setup
+- [ ] Message protocol implementation
+- [ ] Session management endpoints
+- [ ] Tool approval flow
+- [ ] State persistence (localStorage/IndexedDB)
+
+**Polish:**
+- [ ] Auto-scroll with user override
+- [ ] Smart collapsing for long diffs
+- [ ] Loading states
+- [ ] Error handling
+- [ ] Keyboard shortcuts
+- [ ] Accessibility (ARIA, focus management)
+
+### Phase 2: Enhanced Features (Future)
+- [ ] Session list sidebar
+- [ ] File browser integration
+- [ ] Command palette
+- [ ] Git status integration
+- [ ] Background task monitor
+- [ ] MCP server management
+- [ ] Context visualization
+- [ ] Settings UI
+
+### Success Criteria
+- [ ] Visual parity with claude.ai/code (pixel-perfect where feasible)
+- [ ] Smooth streaming experience (no flicker)
+- [ ] All core tools render correctly
+- [ ] Responsive on different screen sizes
+- [ ] Keyboard navigation works
+- [ ] Accessible to screen readers
+- [ ] Fast initial load (<2s)
+- [ ] Handles long conversations gracefully
