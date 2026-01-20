@@ -171,6 +171,13 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// Ensure session is activated before connecting client
+	if err := session.EnsureActivated(); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+		conn.Close(websocket.StatusInternalError, "Failed to activate session")
+		return
+	}
+
 	// Create a new client and register it with the session
 	client := &claude.Client{
 		Conn: conn,
@@ -386,6 +393,13 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	ctx := c.Request.Context()
+
+	// Ensure session is activated before proceeding
+	if err := session.EnsureActivated(); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+		conn.Close(websocket.StatusInternalError, "Failed to activate session")
+		return
+	}
 
 	// Send connected message
 	connectedMsg := ChatMessage{

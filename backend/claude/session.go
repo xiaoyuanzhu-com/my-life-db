@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -22,7 +23,7 @@ type Session struct {
 	WorkingDir   string    `json:"workingDir"`
 	CreatedAt    time.Time `json:"createdAt"`
 	LastActivity time.Time `json:"lastActivity"`
-	Status       string    `json:"status"` // "active", "disconnected", "dead"
+	Status       string    `json:"status"` // "archived", "active", "dead"
 	Title        string    `json:"title"`
 
 	// Internal fields (not serialized)
@@ -33,6 +34,10 @@ type Session struct {
 	broadcast  chan []byte      `json:"-"`
 	backlog    []byte           `json:"-"` // Recent output for new clients
 	backlogMu  sync.RWMutex     `json:"-"`
+
+	// Lazy activation support
+	activated  bool             `json:"-"` // Whether the Claude process has been spawned
+	activateFn func() error     `json:"-"` // Function to activate this session
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -86,6 +91,35 @@ func (s *Session) Broadcast(data []byte) {
 			// Client's send buffer is full, skip
 		}
 	}
+}
+
+// EnsureActivated ensures the session is activated (Claude process is running)
+// If not activated, it calls the activation function to spawn the process
+func (s *Session) EnsureActivated() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activated {
+		return nil
+	}
+
+	if s.activateFn == nil {
+		return fmt.Errorf("session cannot be activated: no activation function")
+	}
+
+	if err := s.activateFn(); err != nil {
+		return fmt.Errorf("failed to activate session: %w", err)
+	}
+
+	s.activated = true
+	return nil
+}
+
+// IsActivated returns whether the session process is currently running
+func (s *Session) IsActivated() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activated
 }
 
 // ToJSON returns a JSON-safe representation of the session

@@ -134,6 +134,7 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 		Status:       "active",
 		Clients:      make(map[*Client]bool),
 		broadcast:    make(chan []byte, 256),
+		activated:    true, // Sessions created via CreateSessionWithID are immediately activated
 	}
 
 	// Spawn claude process with PTY
@@ -178,30 +179,28 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 	return session, nil
 }
 
-// GetSession retrieves a session by ID
-// If the session is not active but exists in history, it will be automatically resumed
+// GetSession retrieves a session by ID from the pool
+// If session is not in pool but exists in history, creates a non-activated shell session
 func (m *Manager) GetSession(id string) (*Session, error) {
 	m.mu.RLock()
 	session, ok := m.sessions[id]
 	m.mu.RUnlock()
 
 	if ok {
-		// Session is already active
+		// Session already in pool (may or may not be activated)
 		return session, nil
 	}
 
-	// Session not in active pool - try to find it in history and resume
-	log.Info().Str("sessionId", id).Msg("session not active, attempting to resume from history")
+	// Session not in pool - try to find it in history and create shell session
+	log.Debug().Str("sessionId", id).Msg("session not in pool, checking history")
 
-	// Find session info from Claude's index to get working directory
-	// Try to find it in the user's data directory first
+	// Find session info from Claude's index
 	index, err := GetSessionIndexForProject(config.Get().UserDataDir)
 	var workingDir string
 	var title string
 	found := false
 
 	if err == nil {
-		// Find the session in the index
 		for _, entry := range index.Entries {
 			if entry.SessionID == id {
 				workingDir = entry.ProjectPath
@@ -213,27 +212,93 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	}
 
 	if !found {
-		// Session doesn't exist in history either
+		// Session doesn't exist anywhere
 		return nil, ErrSessionNotFound
 	}
 
-	// Default to data dir if not found in index
+	// Default values
 	if workingDir == "" {
 		workingDir = config.Get().UserDataDir
 	}
 	if title == "" {
-		title = "Resumed Session"
+		title = "Archived Session"
 	}
 
-	// Resume the session (this will add it to the active pool)
-	session, err = m.CreateSessionWithID(workingDir, title, id)
-	if err != nil {
-		log.Error().Err(err).Str("sessionId", id).Msg("failed to resume session from history")
-		return nil, fmt.Errorf("failed to resume session: %w", err)
+	// Create a non-activated shell session
+	return m.createShellSession(id, workingDir, title)
+}
+
+// createShellSession creates a non-activated session (just metadata, no process)
+func (m *Manager) createShellSession(id, workingDir, title string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if it was added while we were waiting for lock
+	if existing, ok := m.sessions[id]; ok {
+		return existing, nil
 	}
 
-	log.Info().Str("sessionId", id).Msg("session resumed successfully from history")
+	// Check session limit
+	if len(m.sessions) >= MaxSessions {
+		return nil, ErrTooManySessions
+	}
+
+	session := &Session{
+		ID:           id,
+		WorkingDir:   workingDir,
+		Title:        title,
+		CreatedAt:    time.Now(),
+		LastActivity: time.Now(),
+		Status:       "archived",
+		Clients:      make(map[*Client]bool),
+		broadcast:    make(chan []byte, 256),
+		activated:    false,
+	}
+
+	// Set up activation function
+	session.activateFn = func() error {
+		return m.activateSession(session)
+	}
+
+	m.sessions[id] = session
+
+	log.Debug().Str("sessionId", id).Msg("created shell session (not activated)")
+
 	return session, nil
+}
+
+// activateSession spawns the actual Claude process for a shell session
+func (m *Manager) activateSession(session *Session) error {
+	// Spawn claude process with PTY
+	var cmd *exec.Cmd
+	cmd = exec.Command("claude", "--resume", session.ID)
+	cmd.Dir = session.WorkingDir
+
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
+		return fmt.Errorf("failed to start claude: %w", err)
+	}
+
+	session.PTY = ptmx
+	session.Cmd = cmd
+	session.ProcessID = cmd.Process.Pid
+	session.Status = "active"
+
+	// Start PTY reader that broadcasts to all clients
+	m.wg.Add(1)
+	go m.readPTY(session)
+
+	// Monitor process state in background
+	m.wg.Add(1)
+	go m.monitorProcess(session)
+
+	log.Info().
+		Str("sessionId", session.ID).
+		Int("pid", session.ProcessID).
+		Msg("activated session")
+
+	return nil
 }
 
 // ListSessions returns all sessions
