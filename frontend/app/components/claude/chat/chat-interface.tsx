@@ -40,7 +40,7 @@ export function ChatInterface({
   isHistorical = false,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files
-  const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
+  const { messages: historyMessages, isLoading: historyLoading, error: historyError, refetch } = useClaudeSessionHistory(sessionId)
 
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
@@ -51,6 +51,9 @@ export function ChatInterface({
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
+
+  // Track if Claude is actively working
+  const hasActiveTasks = activeTodos.some(todo => todo.status === 'in_progress')
 
   // Connection state
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -112,6 +115,17 @@ export function ChatInterface({
       setMessages(converted)
     }
   }, [historyMessages])
+
+  // Auto-refresh history every 2 seconds when session is active
+  useEffect(() => {
+    if (isHistorical) return // Don't poll for historical sessions
+
+    const interval = setInterval(() => {
+      refetch()
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [isHistorical, refetch])
 
   // Connect to WebSocket
   const connect = useCallback(() => {
@@ -279,6 +293,7 @@ export function ChatInterface({
         tokenUsage={tokenUsage}
         onNameChange={onSessionNameChange}
         isHistorical={isHistorical}
+        hasActiveTasks={hasActiveTasks}
       />
 
       {/* Main content area */}

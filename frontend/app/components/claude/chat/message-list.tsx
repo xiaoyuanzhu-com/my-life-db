@@ -10,10 +10,18 @@ interface MessageListProps {
 export function MessageList({ messages, streamingContent }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const isInitialMount = useRef(true)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive OR on initial load
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isInitialMount.current && messages.length > 0) {
+      // On initial mount with messages, scroll immediately without animation
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+      isInitialMount.current = false
+    } else if (!isInitialMount.current) {
+      // Subsequent updates: smooth scroll
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, streamingContent])
 
   return (

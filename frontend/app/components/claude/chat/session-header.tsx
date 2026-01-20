@@ -14,6 +14,7 @@ interface SessionHeaderProps {
   }
   onNameChange?: (name: string) => void
   isHistorical?: boolean
+  hasActiveTasks?: boolean
 }
 
 export function SessionHeader({
@@ -23,6 +24,7 @@ export function SessionHeader({
   tokenUsage,
   onNameChange,
   isHistorical = false,
+  hasActiveTasks = false,
 }: SessionHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(sessionName)
@@ -113,6 +115,14 @@ export function SessionHeader({
             />
           </div>
         </div>
+
+        {/* Working indicator */}
+        {hasActiveTasks && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            <span className="hidden sm:inline">Working...</span>
+          </div>
+        )}
 
         {/* Connection status */}
         <div className="flex items-center gap-2">
