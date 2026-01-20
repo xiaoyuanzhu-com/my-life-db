@@ -472,23 +472,23 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Write message + Enter in one operation to avoid character echoing
-			// PTY expects \r for Enter key (carriage return)
-			message := inMsg.Content + "\r"
-			messageBytes := []byte(message)
-
-			// Log what chat is sending
-			log.Info().
-				Str("sessionId", sessionID).
-				Str("source", "chat").
-				Str("data", message).
-				Int("length", len(messageBytes)).
-				Str("hex", fmt.Sprintf("%x", messageBytes)).
-				Msg("chat → PTY")
-
-			if _, err := session.PTY.Write(messageBytes); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+			// Send message character-by-character to simulate typing (like xterm does)
+			// This prevents readline from treating it as a paste operation
+			for _, ch := range inMsg.Content {
+				charByte := []byte(string(ch))
+				if _, err := session.PTY.Write(charByte); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
+					break
+				}
+				// Tiny delay to simulate human typing (1ms per character)
+				time.Sleep(1 * time.Millisecond)
 			}
+
+			// Send Enter key (\r) at the end
+			if _, err := session.PTY.Write([]byte("\r")); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
+			}
+
 			session.LastActivity = time.Now()
 
 		default:
