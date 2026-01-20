@@ -8,11 +8,9 @@ import (
 
 // Default exclusion patterns for filesystem operations
 var defaultExclusionPatterns = []string{
-	`^\.`,              // Any directory starting with . at root (e.g., .my-life-db, .git, .obsidian, .claude)
-	`/\.[^/]+/`,        // Any directory starting with . in subdirectories
-	`(^|/)\.DS_Store$`, // macOS metadata files (anywhere)
-	`(^|/)\..*\.swp$`,  // Vim swap files
-	`(^|/)~.*$`,        // Backup files
+	`^\..+`,      // Any path starting with a dot + more chars (e.g., .obsidian, .git, .DS_Store) - excludes "." itself
+	`/\.[^/]+`,   // Any path component starting with a dot in subdirectories (e.g., inbox/.hidden)
+	`(^|/)~.*$`,  // Backup files starting with ~
 }
 
 // validator handles path validation and exclusion checks

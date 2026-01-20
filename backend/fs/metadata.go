@@ -69,13 +69,18 @@ func (p *metadataProcessor) ComputeMetadata(ctx context.Context, path string) (*
 
 	// Extract text preview (if applicable)
 	var textPreview *string
-	if p.isTextFile(path) {
+	isTextFile := p.isTextFile(path)
+	log.Info().Str("path", path).Bool("isTextFile", isTextFile).Msg("DEBUG METADATA: checking if text file")
+	if isTextFile {
 		preview, err := p.extractTextPreview(file)
 		if err != nil {
 			log.Warn().Err(err).Str("path", path).Msg("failed to extract text preview")
 			// Non-fatal: continue without preview
 		} else if preview != nil && *preview != "" {
 			textPreview = preview
+			log.Info().Str("path", path).Int("previewLen", len(*preview)).Msg("DEBUG METADATA: text preview extracted")
+		} else {
+			log.Info().Str("path", path).Msg("DEBUG METADATA: preview was nil or empty")
 		}
 	}
 
