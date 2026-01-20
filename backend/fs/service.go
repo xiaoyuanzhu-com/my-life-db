@@ -156,8 +156,3 @@ func (s *Service) ProcessMetadata(ctx context.Context, path string) (*MetadataRe
 
 	return s.processor.ComputeMetadata(ctx, path)
 }
-
-// IsTextFile checks if a file is a text file based on extension
-func (s *Service) IsTextFile(path string) bool {
-	return s.processor.isTextFile(path)
-}

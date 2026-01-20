@@ -29,7 +29,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	api.DELETE("/inbox/:id", h.DeleteInboxItem)
 	api.POST("/inbox/:id/reenrich", h.ReenrichInboxItem)
 	api.GET("/inbox/:id/status", h.GetInboxItemStatus)
-	api.GET("/inbox/:id/debug", h.GetInboxItemDebug)
 
 	// Digest routes - static routes first
 	api.GET("/digest/digesters", h.GetDigesters)
