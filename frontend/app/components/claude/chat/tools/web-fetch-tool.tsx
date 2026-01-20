@@ -1,4 +1,3 @@
-import { Globe, ExternalLink } from 'lucide-react'
 import type { ToolCall, WebFetchToolParams } from '~/types/claude'
 
 interface WebFetchToolViewProps {
@@ -17,31 +16,48 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
     domain = params.url
   }
 
+  // Determine bullet color based on status
+  const getBulletColor = () => {
+    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
+    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
+    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
+    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
+    return '#22C55E' // Green for success
+  }
+
+  // Use outline for pending state
+  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
+
   return (
-    <div className="space-y-2">
-      {/* URL */}
-      <div className="flex items-center gap-2">
-        <Globe className="h-4 w-4 text-orange-500" />
-        <a
-          href={params.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-mono text-primary hover:underline truncate flex items-center gap-1"
-        >
-          {domain}
-          <ExternalLink className="h-3 w-3" />
-        </a>
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Status-colored bullet + "WebFetch" + URL */}
+      <div className="flex items-start gap-2">
+        <span className="select-none" style={{ color: getBulletColor() }}>
+          {bulletChar}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            WebFetch
+          </span>
+          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+            {domain}
+          </span>
+        </div>
       </div>
 
-      {/* Prompt */}
-      <div className="text-xs text-muted-foreground">
-        <span className="font-medium">Prompt:</span> {params.prompt}
-      </div>
-
-      {/* Result */}
+      {/* Summary: Fetched content */}
       {result && (
-        <div className="rounded-md bg-background border border-border p-3 text-sm max-h-64 overflow-y-auto">
-          {result}
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Fetched {result.length} characters</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {toolCall.error && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
+          <span className="select-none">└</span>
+          <div className="flex-1 min-w-0">{toolCall.error}</div>
         </div>
       )}
     </div>

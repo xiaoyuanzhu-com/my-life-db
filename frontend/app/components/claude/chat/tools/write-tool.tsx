@@ -11,48 +11,47 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
 
   const lines = params.content.split('\n')
 
+  // Determine bullet color based on status
+  const getBulletColor = () => {
+    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
+    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
+    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
+    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
+    return '#22C55E' // Green for success
+  }
+
+  // Use outline for pending state
+  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
+
   return (
-    <div>
-      {/* File path header with "Created" badge */}
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className="font-mono text-[13px] font-medium"
-          style={{ color: 'var(--claude-text-secondary)' }}
-        >
-          {params.file_path}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Status-colored bullet + "Write" + file path */}
+      <div className="flex items-start gap-2">
+        <span className="select-none" style={{ color: getBulletColor() }}>
+          {bulletChar}
         </span>
-        <span
-          className="font-mono text-[11px] px-1.5 py-0.5 rounded"
-          style={{
-            backgroundColor: 'var(--claude-diff-add-bg)',
-            color: 'var(--claude-diff-add-fg)',
-          }}
-        >
-          Created
-        </span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            Write
+          </span>
+          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+            {params.file_path}
+          </span>
+        </div>
       </div>
 
-      {/* Content toggle */}
-      <button
-        type="button"
-        onClick={() => setShowContent(!showContent)}
-        className="font-mono text-[13px] mb-2 hover:opacity-80"
-        style={{ color: 'var(--claude-text-secondary)' }}
-      >
-        {showContent ? '▼' : '▶'} {showContent ? 'Hide' : 'Show'} content ({lines.length} lines)
-      </button>
+      {/* Summary: Created file */}
+      <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+        <span className="select-none">└</span>
+        <span>Created file ({lines.length} lines)</span>
+      </div>
 
-      {/* Content */}
-      {showContent && (
-        <pre
-          className="font-mono text-[13px] leading-[1.5] p-3 rounded-md overflow-x-auto max-h-64 overflow-y-auto"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            color: 'var(--claude-text-primary)',
-          }}
-        >
-          <code>{params.content}</code>
-        </pre>
+      {/* Error */}
+      {toolCall.error && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
+          <span className="select-none">└</span>
+          <div className="flex-1 min-w-0">{toolCall.error}</div>
+        </div>
       )}
     </div>
   )

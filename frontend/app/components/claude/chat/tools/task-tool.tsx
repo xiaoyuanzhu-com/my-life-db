@@ -1,4 +1,3 @@
-import { Bot, Play, Clock } from 'lucide-react'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
 
 interface TaskToolViewProps {
@@ -9,59 +8,58 @@ export function TaskToolView({ toolCall }: TaskToolViewProps) {
   const params = toolCall.parameters as TaskToolParams
   const result = toolCall.result as string | undefined
 
-  // Model badge color
-  const modelColors: Record<string, string> = {
-    opus: 'bg-purple-500/20 text-purple-500',
-    sonnet: 'bg-blue-500/20 text-blue-500',
-    haiku: 'bg-green-500/20 text-green-500',
+  // Determine bullet color based on status
+  const getBulletColor = () => {
+    if (toolCall.error || toolCall.status === 'failed') return '#D92D20' // Red
+    if (toolCall.status === 'running') return '#F59E0B' // Orange/Yellow
+    if (toolCall.status === 'pending') return '#9CA3AF' // Gray
+    if (toolCall.status === 'permission_required') return '#F59E0B' // Orange
+    return '#22C55E' // Green for success
   }
 
+  // Use outline for pending state
+  const bulletChar = toolCall.status === 'pending' ? '○' : '●'
+
   return (
-    <div className="space-y-2">
-      {/* Header */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Bot className="h-4 w-4 text-indigo-500" />
-        <span className="text-xs font-medium">{params.description}</span>
-        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-          {params.subagent_type}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Status-colored bullet + "Task" + description */}
+      <div className="flex items-start gap-2">
+        <span className="select-none" style={{ color: getBulletColor() }}>
+          {bulletChar}
         </span>
-        {params.model && (
-          <span className={`text-xs px-1.5 py-0.5 rounded ${modelColors[params.model] || 'bg-muted'}`}>
-            {params.model}
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            Task
           </span>
-        )}
-        {params.run_in_background && (
-          <span className="text-xs bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            background
+          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+            {params.description} ({params.subagent_type})
+            {params.model && <span className="opacity-70 ml-1">[{params.model}]</span>}
+            {params.run_in_background && <span className="opacity-70 ml-1">[background]</span>}
           </span>
-        )}
+        </div>
       </div>
 
-      {/* Prompt (collapsed by default for long prompts) */}
-      <div className="text-xs text-muted-foreground">
-        <details>
-          <summary className="cursor-pointer hover:text-foreground">
-            View prompt
-          </summary>
-          <pre className="mt-2 p-2 bg-background rounded text-xs whitespace-pre-wrap">
-            {params.prompt}
-          </pre>
-        </details>
-      </div>
-
-      {/* Running indicator */}
-      {(toolCall.status === 'running' || toolCall.status === 'pending') && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Play className="h-3 w-3 animate-pulse" />
-          Agent is working...
+      {/* Status indicator */}
+      {toolCall.status === 'running' && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Agent is working...</span>
         </div>
       )}
 
-      {/* Result */}
+      {/* Result summary */}
       {result && (
-        <div className="rounded-md bg-background border border-border p-3 text-sm max-h-64 overflow-y-auto">
-          {result}
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Completed</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {toolCall.error && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
+          <span className="select-none">└</span>
+          <div className="flex-1 min-w-0">{toolCall.error}</div>
         </div>
       )}
     </div>
