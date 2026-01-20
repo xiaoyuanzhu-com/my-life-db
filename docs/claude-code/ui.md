@@ -338,6 +338,66 @@ Task tracking panel, can be inline or sidebar.
 *   Fill: Accent/primary color
 *   Position: Bottom of header or top of panel
 
+#### Chat Input Component
+Minimal, clean input field for user messages. Designed to be unobtrusive and content-first.
+
+**Container:**
+*   Width: Matches message container (`max-w-3xl mx-auto`)
+*   Background: `$bg-canvas` (white)
+*   Padding: `24px` horizontal (to align with messages)
+*   Bottom padding: `16px`
+*   No top border or separator (seamless with content)
+
+**Input Card:**
+*   Layout: **2-row vertical layout**
+*   Border: `1px solid #E5E7EB` ($border-light)
+*   Border-radius: `12px` (rounded corners, not pill-shaped)
+*   Background: `#FFFFFF` (white)
+*   Padding: `16px` internal
+
+**Row 1 - Text Input:**
+*   Full width text input field
+*   No border, no background (transparent)
+*   Font: Sans-serif, 15-16px, $text-primary
+*   Placeholder: "Reply..." in $text-secondary (`#9CA3AF`)
+*   Min-height: `24px`
+*   Focus state: No visible outline (focus handled by container)
+*   Multi-line capable (textarea)
+
+**Row 2 - Action Row:**
+*   Margin-top: `12px` from input field
+*   Flex row: space-between alignment
+*   Contains: Attachment icon (left) and Submit button (right)
+
+**Attachment Icon (Bottom-Left):**
+*   Icon: Image icon (outlined)
+*   Size: `20px`
+*   Color: $text-system (`#4A4A4A`)
+*   Interactive: Clickable button for file attachment
+*   No background, just icon
+
+**Submit Button (Bottom-Right):**
+*   Shape: Rounded square button
+*   Size: `36px × 36px`
+*   Border-radius: `8px`
+*   Background: Soft warm beige/pink (`#E5D5C5` or similar)
+*   Icon: Arrow up (`↑`)
+*   Icon color: Near black (`#1A1A1A`)
+*   Icon size: `16px`
+*   Disabled state: Lower opacity (40%) when input is empty
+
+**States:**
+*   **Empty:** Submit button at 40% opacity
+*   **Typing:** Submit button at full opacity, ready to send
+*   **Disabled:** Entire input grayed out, not interactive
+
+**No Extra Chrome:**
+*   No hint text below input
+*   No @ or / buttons (triggered by typing)
+*   No visible attachment list (shown inline after selection)
+*   Maximum simplicity and focus
+*   Clean 2-row layout with clear visual hierarchy
+
 #### Permission Request Modal
 Modal overlay for tool execution approval.
 

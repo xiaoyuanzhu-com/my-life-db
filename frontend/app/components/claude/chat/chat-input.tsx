@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { Button } from '~/components/ui/button'
-import { Send, Paperclip, AtSign, Slash } from 'lucide-react'
+import { useState, useRef, KeyboardEvent, useEffect } from 'react'
+import { ArrowUp, Image } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface ChatInputProps {
@@ -12,12 +11,12 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
-  placeholder = 'Type a message...',
+  placeholder = 'Reply...',
 }: ChatInputProps) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Auto-resize textarea
+  // Auto-resize textarea as content grows
   useEffect(() => {
     const textarea = textareaRef.current
     if (textarea) {
@@ -31,7 +30,7 @@ export function ChatInput({
     if (trimmed && !disabled) {
       onSend(trimmed)
       setContent('')
-      // Reset textarea height
+      // Reset height after sending
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
@@ -46,86 +45,18 @@ export function ChatInput({
     }
   }
 
-  const handleAtClick = () => {
-    // Insert @ at cursor position
-    const textarea = textareaRef.current
-    if (textarea) {
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const newContent = content.slice(0, start) + '@' + content.slice(end)
-      setContent(newContent)
-      // Move cursor after @
-      setTimeout(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + 1
-        textarea.focus()
-      }, 0)
-    }
-  }
-
-  const handleSlashClick = () => {
-    // Insert / at the beginning if empty, or at cursor
-    const textarea = textareaRef.current
-    if (textarea) {
-      if (content === '') {
-        setContent('/')
-        setTimeout(() => {
-          textarea.selectionStart = textarea.selectionEnd = 1
-          textarea.focus()
-        }, 0)
-      } else {
-        const start = textarea.selectionStart
-        const end = textarea.selectionEnd
-        const newContent = content.slice(0, start) + '/' + content.slice(end)
-        setContent(newContent)
-        setTimeout(() => {
-          textarea.selectionStart = textarea.selectionEnd = start + 1
-          textarea.focus()
-        }, 0)
-      }
-    }
+  const handleAttachClick = () => {
+    // TODO: Implement file attachment
+    console.log('Attach file clicked')
   }
 
   return (
-    <div className="border-t border-border bg-background p-4">
-      <div className="flex items-end gap-2">
-        {/* Quick action buttons */}
-        <div className="flex gap-1 pb-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleAtClick}
-            disabled={disabled}
-            title="Reference file (@)"
-          >
-            <AtSign className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleSlashClick}
-            disabled={disabled}
-            title="Command (/)"
-          >
-            <Slash className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            disabled={disabled}
-            title="Attach file"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Input area */}
-        <div className="flex-1 relative">
+    <div className="bg-white pb-4">
+      {/* Container matches message width */}
+      <div className="max-w-3xl mx-auto px-6">
+        {/* Input card with 2-row layout */}
+        <div className="border border-[#E5E7EB] rounded-xl bg-white px-3 py-2">
+          {/* Row 1: Text input */}
           <textarea
             ref={textareaRef}
             value={content}
@@ -135,31 +66,51 @@ export function ChatInput({
             disabled={disabled}
             rows={1}
             className={cn(
-              'w-full resize-none rounded-lg border border-input bg-background px-3 py-2',
-              'text-sm placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-2 focus:ring-ring',
+              'w-full resize-none',
+              'text-[15px] text-[#1A1A1A]',
+              'placeholder:text-[#9CA3AF]',
+              'bg-transparent border-none outline-none',
               'disabled:cursor-not-allowed disabled:opacity-50',
-              'min-h-[40px] max-h-[200px]'
+              'min-h-[24px]'
             )}
           />
+
+          {/* Row 2: Actions */}
+          <div className="flex items-center justify-between mt-2">
+            {/* Attachment icon - left */}
+            <button
+              type="button"
+              onClick={handleAttachClick}
+              disabled={disabled}
+              className={cn(
+                'text-[#4A4A4A] hover:text-[#1A1A1A]',
+                'transition-colors',
+                'disabled:opacity-50 disabled:cursor-not-allowed'
+              )}
+              aria-label="Attach file"
+            >
+              <Image className="h-5 w-5" />
+            </button>
+
+            {/* Submit button - right */}
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={disabled || !content.trim()}
+              className={cn(
+                'h-9 w-9 rounded-lg',
+                'bg-[#E5D5C5] hover:bg-[#D5C5B5]',
+                'flex items-center justify-center',
+                'transition-all',
+                'disabled:cursor-not-allowed',
+                !content.trim() ? 'opacity-40' : 'opacity-100'
+              )}
+              aria-label="Send message"
+            >
+              <ArrowUp className="h-4 w-4 text-[#1A1A1A]" strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
-
-        {/* Send button */}
-        <Button
-          type="button"
-          size="icon"
-          className="h-10 w-10"
-          onClick={handleSend}
-          disabled={disabled || !content.trim()}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Hints */}
-      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Press Enter to send, Shift+Enter for new line</span>
-        <span className="hidden sm:inline">@ for files, / for commands</span>
       </div>
     </div>
   )
