@@ -109,19 +109,9 @@ export function SessionList({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         {session.isActive && (
-                          <div
-                            className={cn(
-                              'h-2 w-2 rounded-full',
-                              session.status === 'active' && 'bg-green-500',
-                              session.status === 'disconnected' && 'bg-yellow-500',
-                              session.status === 'dead' && 'bg-red-500'
-                            )}
-                          />
+                          <div className="h-2 w-2 rounded-full shrink-0 bg-green-500" />
                         )}
-                        <h3 className={cn(
-                          'truncate text-sm font-medium',
-                          session.isActive ? 'text-foreground' : 'text-muted-foreground'
-                        )}>
+                        <h3 className="truncate text-sm font-medium text-foreground">
                           {session.title}
                         </h3>
                       </div>
