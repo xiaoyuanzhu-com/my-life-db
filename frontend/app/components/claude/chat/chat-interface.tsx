@@ -41,8 +41,6 @@ export function ChatInterface({
 
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
   const [wsConnected, setWsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,6 +48,9 @@ export function ChatInterface({
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
+
+  // Progress state - shows WIP indicator when Claude is working
+  const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
@@ -149,10 +150,9 @@ export function ChatInterface({
   // Clear messages and reset state when sessionId changes
   useEffect(() => {
     setMessages([])
-    setStreamingContent('')
-    setIsStreaming(false)
     setActiveTodos([])
     setError(null)
+    setProgressMessage(null)
     accumulatedMessagesRef.current = []
   }, [sessionId])
 
@@ -200,7 +200,6 @@ export function ChatInterface({
         if (data.type === 'error') {
           console.error('[ChatInterface] Error from server:', data.error)
           setError(data.error || 'An error occurred')
-          setIsStreaming(false)
           // Clear error after 5 seconds
           setTimeout(() => setError(null), 5000)
           return
@@ -211,6 +210,15 @@ export function ChatInterface({
           const todos: TodoItem[] = data.data?.todos || []
           setActiveTodos(todos)
           console.log('[ChatInterface] Received todo update:', todos)
+          return
+        }
+
+        // Handle progress updates - show WIP indicator
+        if (data.type === 'progress') {
+          // Progress can have message at top level or in data.message
+          const msg = data.message || data.data?.message || null
+          setProgressMessage(msg)
+          console.log('[ChatInterface] Received progress:', msg)
           return
         }
 
@@ -243,9 +251,9 @@ export function ChatInterface({
             return [...withoutOptimistic, converted]
           })
 
-          // If we received an assistant message, stop streaming indicator
+          // If we received an assistant message, clear progress
           if (converted.role === 'assistant') {
-            setIsStreaming(false)
+            setProgressMessage(null)
           }
         } else if (sessionMsg.toolUseResult) {
           // This is a tool result message - need to update the corresponding assistant message
@@ -264,7 +272,6 @@ export function ChatInterface({
         }
       } catch (error) {
         console.error('[ChatInterface] Failed to parse WebSocket message:', error)
-        setIsStreaming(false)
       }
     }
 
@@ -293,8 +300,6 @@ export function ChatInterface({
         return
       }
 
-      setIsStreaming(true)
-
       // Add user message immediately to UI (optimistic update)
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -316,12 +321,9 @@ export function ChatInterface({
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
-        setIsStreaming(false)
         // Clear error after 5 seconds
         setTimeout(() => setError(null), 5000)
       }
-      // Note: setIsStreaming(false) will happen when we receive the assistant's response
-      // via WebSocket, or we can add a timeout
     },
     [sessionId]
   )
@@ -359,30 +361,22 @@ export function ChatInterface({
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
         <div className="flex flex-1 flex-col">
-          <MessageList
-            messages={messages}
-            streamingContent={isStreaming ? streamingContent : undefined}
-          />
+          <MessageList messages={messages} />
 
-          {/* Work-in-Progress Indicator */}
-          {activeTodos.some((t) => t.status === 'in_progress') && (
+          {/* Work-in-Progress Indicator - show when there's progress event or in-progress todo */}
+          {(progressMessage || activeTodos.some((t) => t.status === 'in_progress')) && (
             <div className="px-4 py-2 border-t border-border">
               <ClaudeWIP
-                text={activeTodos.find((t) => t.status === 'in_progress')?.activeForm || 'Working...'}
+                text={
+                  activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
+                  progressMessage ||
+                  'Working...'
+                }
               />
             </div>
           )}
 
-          {/* Chat Input - always enabled */}
-          <ChatInput
-            onSend={sendMessage}
-            disabled={isStreaming}
-            placeholder={
-              isStreaming
-                ? 'Claude is thinking...'
-                : 'Type a message...'
-            }
-          />
+          <ChatInput onSend={sendMessage} />
         </div>
 
         {/* Todo Panel (collapsible) */}
