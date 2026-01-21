@@ -111,17 +111,32 @@ func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error)
 	defer file.Close()
 
 	var messages []SessionMessage
-	scanner := bufio.NewScanner(file)
-
-	// Increase buffer size for large lines (some tool results can be huge)
-	const maxCapacity = 1024 * 1024 // 1MB
-	buf := make([]byte, maxCapacity)
-	scanner.Buffer(buf, maxCapacity)
-
+	reader := bufio.NewReader(file)
 	lineNum := 0
-	for scanner.Scan() {
+
+	for {
 		lineNum++
-		line := strings.TrimSpace(scanner.Text())
+
+		// ReadBytes reads until delimiter, no size limit
+		lineBytes, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err.Error() == "EOF" {
+				// Process last line if it exists
+				if len(lineBytes) > 0 {
+					line := strings.TrimSpace(string(lineBytes))
+					if line != "" {
+						var msg SessionMessage
+						if err := json.Unmarshal([]byte(line), &msg); err == nil {
+							messages = append(messages, msg)
+						}
+					}
+				}
+				break
+			}
+			return nil, fmt.Errorf("error reading session file: %w", err)
+		}
+
+		line := strings.TrimSpace(string(lineBytes))
 
 		// Skip empty lines
 		if line == "" {
@@ -141,10 +156,6 @@ func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error)
 		}
 
 		messages = append(messages, msg)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading session file: %w", err)
 	}
 
 	return messages, nil
