@@ -64,13 +64,18 @@ projects/
   "version": 1,
   "entries": [
     {
-      "sessionId": "1c6bd30d-17eb-4def-8d93-580fd1295870",
-      "fullPath": "/Users/iloahz/.claude/projects/-Users-iloahz-projects-my-life-db/1c6bd30d-17eb-4def-8d93-580fd1295870.jsonl",
-      "fileMtime": 1768215263093,
-      "firstPrompt": "<ide_opened_file>The user opened the file...",
-      "messageCount": 3,
-      "created": "2026-01-12T10:53:54.952Z",
-      "modified": "2026-01-12T10:54:23.072Z",
+      "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
+      "fullPath": "/Users/iloahz/.claude/projects/-Users-iloahz-projects-my-life-db/04361723-fde4-4be9-8e44-e2b0f9b524c4.jsonl",
+      "fileMtime": 1768991158926,
+      "firstPrompt": "<ide_opened_file>The user opened the file /Users/iloahz/projects/my-life-db/.env in the IDE...</ide_opened_file>",
+      "summary": "Disable Semantic Search Frontend Temporarily",
+      "customTitle": "My Custom Session Name",
+      "tag": "feature",
+      "agentName": "explore-agent",
+      "agentColor": "#4CAF50",
+      "messageCount": 11,
+      "created": "2026-01-19T04:45:15.012Z",
+      "modified": "2026-01-19T04:46:54.480Z",
       "gitBranch": "main",
       "projectPath": "/Users/iloahz/projects/my-life-db",
       "isSidechain": false
@@ -80,22 +85,44 @@ projects/
 ```
 
 **Fields**:
-- `sessionId` - Unique UUID for session
-- `fullPath` - Absolute path to session JSONL file
-- `fileMtime` - Last modification time (Unix ms)
-- `firstPrompt` - First user message (truncated)
-- `messageCount` - Total messages in conversation
-- `created` - Session start timestamp (ISO 8601)
-- `modified` - Last activity timestamp (ISO 8601)
-- `gitBranch` - Git branch when session started
-- `projectPath` - Working directory for session
-- `isSidechain` - Whether session is a branch/fork
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sessionId` | string | Unique UUID for session |
+| `fullPath` | string | Absolute path to session JSONL file |
+| `fileMtime` | number | Last modification time (Unix ms) |
+| `firstPrompt` | string | First user message (may include IDE context tags) |
+| `summary` | string? | **Claude-generated 5-10 word title** (auto-generated on session index rebuild) |
+| `customTitle` | string? | User-set custom title (via `/title` command) |
+| `tag` | string? | User-assigned session tag (via `/tag` command) |
+| `agentName` | string? | Name for subagent sessions |
+| `agentColor` | string? | Color hex code for subagent sessions |
+| `messageCount` | number | Total messages in conversation |
+| `created` | string | Session start timestamp (ISO 8601) |
+| `modified` | string | Last activity timestamp (ISO 8601) |
+| `gitBranch` | string | Git branch when session started |
+| `projectPath` | string | Working directory for session |
+| `isSidechain` | bool | Whether session is a branch/fork |
+
+**Title Resolution Priority** (for display):
+1. `agentName` - If set (for subagent sessions)
+2. `customTitle` - If user set a custom title
+3. `summary` - Claude-generated title (most common)
+4. `firstPrompt` - Fallback to first message
+5. `"Autonomous session"` - For sidechain sessions with no other title
+
+**Summary Generation**:
+- Claude CLI auto-generates summaries when rebuilding the session index
+- Uses a prompt: "Summarize this coding conversation in under 50 characters. Capture the main task, key files, problems addressed, and current status."
+- Stored in JSONL as `{"type":"summary","summary":"...","leafUuid":"..."}`
 
 **Web UI Usage**:
 - **List all sessions** for a project
 - **Sort by recent activity** (`modified` field)
-- **Display session previews** (`firstPrompt`, `messageCount`)
+- **Display session title** (prefer `summary` over `firstPrompt`)
 - **Filter by branch** (`gitBranch`)
+- **Filter by tag** (`tag` field)
+- **Show subagent sessions** with color indicator
 
 #### {sessionId}.jsonl
 
@@ -103,9 +130,43 @@ projects/
 
 **Content**: Complete conversation history with all messages, tool calls, and results.
 
-**Message Types**:
+**Message Types** (`type` field):
 
-1. **User Messages**
+| Type | Description |
+|------|-------------|
+| `user` | User input or tool results |
+| `assistant` | Claude's responses (text and/or tool calls) |
+| `system` | System messages (e.g., conversation compacted) |
+| `progress` | Progress updates (e.g., hook execution) |
+| `summary` | Auto-generated session summary |
+| `custom-title` | User-set custom title |
+| `tag` | User-assigned session tag |
+| `agent-name` | Subagent name assignment |
+| `queue-operation` | Internal queue management |
+| `file-history-snapshot` | File version tracking |
+
+**Common Message Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uuid` | string | Unique message identifier |
+| `parentUuid` | string? | Parent message UUID (for threading) |
+| `timestamp` | string | ISO 8601 timestamp |
+| `type` | string | Message type (see table above) |
+| `sessionId` | string | Session UUID |
+| `cwd` | string | Working directory |
+| `version` | string | Claude Code version (e.g., "2.1.11") |
+| `gitBranch` | string | Current git branch |
+| `isSidechain` | bool | Whether in a branch/fork |
+| `userType` | string | User type ("external") |
+| `agentId` | string? | Subagent ID (e.g., "a081313") |
+| `slug` | string? | Human-readable session slug |
+
+---
+
+#### Message Type Details
+
+**1. User Messages**
 ```json
 {
   "parentUuid": null,
@@ -130,7 +191,7 @@ projects/
 }
 ```
 
-2. **Assistant Messages (Text)**
+**2. Assistant Messages (Text)**
 ```json
 {
   "parentUuid": "c0a21d6f-3652-4f86-a36b-b98d75a15298",
@@ -138,6 +199,7 @@ projects/
   "message": {
     "model": "claude-sonnet-4-5-20250929",
     "id": "msg_011ZDfTwZ6PbL4YwkoxGTyTE",
+    "type": "message",
     "role": "assistant",
     "content": [
       {
@@ -146,11 +208,17 @@ projects/
       }
     ],
     "stop_reason": null,
+    "stop_sequence": null,
     "usage": {
       "input_tokens": 3,
+      "output_tokens": 1,
       "cache_creation_input_tokens": 7513,
       "cache_read_input_tokens": 17070,
-      "output_tokens": 1
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 7513,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
     }
   },
   "requestId": "req_011CXG8NGkcHf7UFyKrGqvEg",
@@ -159,7 +227,31 @@ projects/
 }
 ```
 
-3. **Assistant Messages (Tool Use)**
+**Assistant Message Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message.model` | string | Model used (e.g., "claude-opus-4-5-20251101") |
+| `message.id` | string | Claude API message ID |
+| `message.role` | string | Always "assistant" |
+| `message.content` | array | Content blocks (text, tool_use, thinking) |
+| `message.stop_reason` | string? | Why generation stopped |
+| `message.usage` | object | Token usage statistics |
+| `requestId` | string | API request ID |
+
+**Usage Object Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input_tokens` | number | Input tokens used |
+| `output_tokens` | number | Output tokens generated |
+| `cache_creation_input_tokens` | number | Tokens used to create cache |
+| `cache_read_input_tokens` | number | Tokens read from cache |
+| `cache_creation.ephemeral_5m_input_tokens` | number | 5-minute cache tokens |
+| `cache_creation.ephemeral_1h_input_tokens` | number | 1-hour cache tokens |
+| `service_tier` | string | Service tier ("standard") |
+
+**3. Assistant Messages (Tool Use)**
 ```json
 {
   "parentUuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
@@ -182,10 +274,20 @@ projects/
 }
 ```
 
-4. **Tool Results**
+**Content Block Types**:
+
+| Type | Description | Fields |
+|------|-------------|--------|
+| `text` | Text response | `text` |
+| `tool_use` | Tool invocation | `id`, `name`, `input` |
+| `thinking` | Extended thinking (Opus 4.5+) | `thinking`, `signature` |
+| `tool_result` | Tool execution result | `tool_use_id`, `content`, `is_error` |
+
+**4. Tool Results**
 ```json
 {
   "type": "user",
+  "parentUuid": "75819da3-58d5-4d30-a167-a1449fd87738",
   "message": {
     "role": "user",
     "content": [
@@ -200,15 +302,79 @@ projects/
     "toolUseId": "toolu_014EkHUXLk8xUUUqjocQNd8g",
     "isError": false
   },
+  "sourceToolAssistantUUID": "75819da3-58d5-4d30-a167-a1449fd87738",
   "uuid": "8f3c5d2a-...",
   "timestamp": "2026-01-19T04:45:19.123Z"
 }
 ```
 
-5. **Internal Events**
+**5. System Messages**
+```json
+{
+  "parentUuid": null,
+  "logicalParentUuid": "ad679bef-2e91-4ed9-a209-180f922e66bf",
+  "type": "system",
+  "subtype": "compact_boundary",
+  "content": "Conversation compacted",
+  "isMeta": false,
+  "level": "info",
+  "compactMetadata": {
+    "trigger": "auto",
+    "preTokens": 158933
+  },
+  "timestamp": "2026-01-12T08:57:09.474Z",
+  "uuid": "4a85087f-5458-426b-8fce-84a4c4d3c46c"
+}
+```
+
+**6. Progress Messages**
+```json
+{
+  "type": "progress",
+  "data": {
+    "type": "hook_progress",
+    "hookEvent": "SessionStart",
+    "hookName": "SessionStart:startup",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" session-start.sh"
+  },
+  "parentToolUseID": "33ffc13a-212e-4bdd-ba49-6580bac743e8",
+  "toolUseID": "33ffc13a-212e-4bdd-ba49-6580bac743e8",
+  "timestamp": "2026-01-20T07:56:11.367Z",
+  "uuid": "d4298bf0-3c9f-4430-ac8e-416986f0858f"
+}
+```
+
+**7. Summary (Auto-generated title)**
+```json
+{
+  "type": "summary",
+  "summary": "Disable Semantic Search Frontend Temporarily",
+  "leafUuid": "4d3be2fe-ce98-404b-ad87-6d18b18f0c82"
+}
+```
+
+**8. Custom Title (User-set)**
+```json
+{
+  "type": "custom-title",
+  "customTitle": "My Feature Branch Work",
+  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4"
+}
+```
+
+**9. Tag (User-assigned)**
+```json
+{
+  "type": "tag",
+  "tag": "feature",
+  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4"
+}
+```
+
+**10. Internal Events**
 ```json
 {"type":"queue-operation","operation":"dequeue","timestamp":"2026-01-19T04:45:15.003Z","sessionId":"..."}
-{"type":"file-history-snapshot","messageId":"...","snapshot":{...},"isSnapshotUpdate":false}
+{"type":"file-history-snapshot","messageId":"...","snapshot":{"trackedFileBackups":{},"timestamp":"..."},"isSnapshotUpdate":false}
 ```
 
 **Threading**: Messages form a tree structure using `uuid` and `parentUuid`:
@@ -636,7 +802,16 @@ const sessions = index.entries.sort((a, b) =>
   new Date(b.modified).getTime() - new Date(a.modified).getTime()
 )
 
-// Display: title, firstPrompt, messageCount, modified
+// Get display title (priority: agentName > customTitle > summary > firstPrompt)
+function getSessionTitle(entry: SessionIndexEntry): string {
+  return entry.agentName
+    || entry.customTitle
+    || entry.summary
+    || entry.firstPrompt
+    || (entry.isSidechain ? 'Autonomous session' : 'Untitled')
+}
+
+// Display: title, messageCount, modified, gitBranch
 ```
 
 ### 6. Real-time Updates
@@ -705,18 +880,30 @@ function calculateCost(usage: TokenUsage, model: string) {
 const projectDir = '~/.claude/projects/-Users-iloahz-projects-my-life-db'
 const index = JSON.parse(fs.readFileSync(`${projectDir}/sessions-index.json`))
 
-// 2. Load session conversation
+// 2. Get display title for session
+function getSessionTitle(entry: SessionIndexEntry): string {
+  return entry.agentName
+    || entry.customTitle
+    || entry.summary
+    || entry.firstPrompt?.slice(0, 50)
+    || (entry.isSidechain ? 'Autonomous session' : 'Untitled')
+}
+
+// 3. Load session conversation
 const sessionFile = `${projectDir}/${sessionId}.jsonl`
 const lines = fs.readFileSync(sessionFile, 'utf-8').split('\n').filter(Boolean)
 const messages = lines.map(line => JSON.parse(line))
 
-// 3. Load todos for session
+// 4. Load todos for session
 const todoFile = `~/.claude/todos/${sessionId}-agent-main.json`
 const todos = fs.existsSync(todoFile) ? JSON.parse(fs.readFileSync(todoFile)) : []
 
-// 4. Build UI
+// 5. Build UI
 <SessionView>
-  <SessionHeader session={index.entries.find(e => e.sessionId === sessionId)} />
+  <SessionHeader
+    session={index.entries.find(e => e.sessionId === sessionId)}
+    title={getSessionTitle(session)}
+  />
   <MessageList messages={messages} />
   <TodoPanel todos={todos} />
 </SessionView>
