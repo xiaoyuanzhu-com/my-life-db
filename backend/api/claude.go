@@ -436,8 +436,8 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 			return
 		}
 
-		// Small delay after prompt to ensure readline is ready for input
-		time.Sleep(150 * time.Millisecond)
+		// Brief delay to ensure readline is fully initialized
+		time.Sleep(200 * time.Millisecond)
 		log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 	}
 
@@ -725,8 +725,8 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					break
 				}
 
-				// Small delay after prompt to ensure readline is ready for input
-				time.Sleep(150 * time.Millisecond)
+				// Brief delay to ensure readline is fully initialized
+				time.Sleep(200 * time.Millisecond)
 				log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 			}
 

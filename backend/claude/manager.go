@@ -476,8 +476,45 @@ func (m *Manager) monitorProcess(session *Session) {
 func (m *Manager) readPTY(session *Session) {
 	defer m.wg.Done()
 
-	readySignaled := false
 	buf := make([]byte, 4096)
+
+	// Goroutine to signal ready after a period of silence (output stopped)
+	var readyOnce sync.Once
+	lastOutputTime := time.Now()
+	var lastOutputMu sync.Mutex
+
+	if session.ready != nil {
+		go func() {
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+
+			firstOutput := false
+			for {
+				select {
+				case <-m.ctx.Done():
+					return
+				case <-ticker.C:
+					lastOutputMu.Lock()
+					timeSinceLastOutput := time.Since(lastOutputTime)
+					hadOutput := firstOutput
+					lastOutputMu.Unlock()
+
+					// If we've seen output and there's been 300ms of silence, signal ready
+					if hadOutput && timeSinceLastOutput >= 300*time.Millisecond {
+						readyOnce.Do(func() {
+							close(session.ready)
+							log.Info().
+								Str("sessionId", session.ID).
+								Dur("silence", timeSinceLastOutput).
+								Msg("Claude ready (silence detected after output)")
+						})
+						return
+					}
+				}
+			}
+		}()
+	}
+
 	for {
 		// Check for shutdown
 		select {
@@ -496,6 +533,11 @@ func (m *Manager) readPTY(session *Session) {
 			return
 		}
 
+		// Update last output time for silence detection
+		lastOutputMu.Lock()
+		lastOutputTime = time.Now()
+		lastOutputMu.Unlock()
+
 		// Make a copy of the data to broadcast
 		data := make([]byte, n)
 		copy(data, buf[:n])
@@ -503,18 +545,5 @@ func (m *Manager) readPTY(session *Session) {
 		// Broadcast to all connected clients
 		session.Broadcast(data)
 		session.LastActivity = time.Now()
-
-		// Signal that Claude is ready when we see a newline (prompt is complete)
-		// Only signal once on first chunk containing newline
-		if !readySignaled && session.ready != nil {
-			for i := 0; i < n; i++ {
-				if data[i] == '\n' {
-					close(session.ready)
-					readySignaled = true
-					log.Info().Str("sessionId", session.ID).Msg("Claude prompt complete (newline detected)")
-					break
-				}
-			}
-		}
 	}
 }
