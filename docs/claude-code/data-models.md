@@ -4,6 +4,9 @@
 
 Claude Code stores all session data, configuration, and cache files in `~/.claude/`. This document comprehensively describes every directory and file, with special focus on what's relevant for building a web UI.
 
+**Related Documentation**:
+- [websocket-protocol.md](./websocket-protocol.md) - Real-time WebSocket protocol for session updates
+
 ---
 
 ## Directory Structure
@@ -637,9 +640,28 @@ const sessions = index.entries.sort((a, b) =>
 ```
 
 ### 6. Real-time Updates
-Two strategies:
 
-**Option A: Polling** (simpler)
+**Recommended: WebSocket Protocol** (production-ready)
+
+See [websocket-protocol.md](./websocket-protocol.md) for complete documentation.
+
+```typescript
+// Connect to session WebSocket
+const ws = new WebSocket(`ws://localhost:12345/api/claude/sessions/${sessionId}/subscribe`)
+
+ws.onmessage = (event) => {
+  const sessionMsg: SessionMessage = JSON.parse(event.data)
+  appendMessage(sessionMsg)
+}
+
+// Send user message
+ws.send(JSON.stringify({
+  type: 'user_message',
+  content: 'What files are here?'
+}))
+```
+
+**Alternative: File Polling** (simpler, higher latency)
 ```typescript
 setInterval(() => {
   const newLines = readNewLines(sessionFilePath, lastPosition)
@@ -648,7 +670,7 @@ setInterval(() => {
 }, 1000)
 ```
 
-**Option B: File Watching** (efficient)
+**Alternative: File Watching** (efficient, requires filesystem access)
 ```typescript
 fs.watch(sessionFilePath, () => {
   const newLines = readNewLines(sessionFilePath, lastPosition)

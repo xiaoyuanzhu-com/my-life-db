@@ -133,7 +133,17 @@ export function ChatInterface({
 
     ws.onmessage = (event) => {
       try {
-        const sessionMsg: SessionMessage = JSON.parse(event.data)
+        const data = JSON.parse(event.data)
+
+        // Handle error messages
+        if (data.type === 'error') {
+          console.error('[ChatInterface] Error from server:', data.error)
+          setIsStreaming(false)
+          return
+        }
+
+        // Handle SessionMessage format
+        const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
         // Convert to Message format and append
@@ -146,9 +156,15 @@ export function ChatInterface({
             }
             return [...prev, converted]
           })
+
+          // If we received an assistant message, stop streaming indicator
+          if (converted.role === 'assistant') {
+            setIsStreaming(false)
+          }
         }
       } catch (error) {
         console.error('[ChatInterface] Failed to parse WebSocket message:', error)
+        setIsStreaming(false)
       }
     }
 
@@ -169,12 +185,17 @@ export function ChatInterface({
     }
   }, [sessionId, isHistorical])
 
-  // Send message to server via HTTP POST
+  // Send message to server via WebSocket
   const sendMessage = useCallback(
     async (content: string) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error('WebSocket not connected')
+        return
+      }
+
       setIsStreaming(true)
 
-      // Add user message immediately to UI
+      // Add user message immediately to UI (optimistic update)
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -184,27 +205,22 @@ export function ChatInterface({
       setMessages((prev) => [...prev, userMessage])
 
       try {
-        // Send message via HTTP POST
-        const response = await fetch(`/api/claude/sessions/${sessionId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        })
+        // Send message via WebSocket
+        wsRef.current.send(JSON.stringify({
+          type: 'user_message',
+          content,
+        }))
 
-        if (!response.ok) {
-          throw new Error(`Failed to send message: ${response.statusText}`)
-        }
-
-        // WebSocket will automatically receive the response messages
-        // No need to manually refetch
+        console.log('[ChatInterface] Sent message via WebSocket:', content)
       } catch (error) {
         console.error('Failed to send message:', error)
         // TODO: Show error to user
-      } finally {
         setIsStreaming(false)
       }
+      // Note: setIsStreaming(false) will happen when we receive the assistant's response
+      // via WebSocket, or we can add a timeout
     },
-    [sessionId]
+    []
   )
 
   // Handle permission decision (placeholder for future implementation)

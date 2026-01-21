@@ -624,6 +624,27 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Track last known message count to detect new messages
 	lastMessageCount := 0
 
+	// Send existing messages immediately on connect
+	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+	if err == nil && len(initialMessages) > 0 {
+		log.Info().
+			Str("sessionId", sessionID).
+			Int("messageCount", len(initialMessages)).
+			Msg("sending initial messages")
+
+		for _, msg := range initialMessages {
+			if msgBytes, err := json.Marshal(msg); err == nil {
+				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
+					return
+				}
+			}
+		}
+		lastMessageCount = len(initialMessages)
+	} else if err != nil {
+		log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
+	}
+
 	// Polling goroutine - polls session file for new messages
 	pollTicker := time.NewTicker(500 * time.Millisecond)
 	defer pollTicker.Stop()
@@ -646,6 +667,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				// Send any new messages
 				if len(messages) > lastMessageCount {
 					newMessages := messages[lastMessageCount:]
+					log.Info().
+						Str("sessionId", sessionID).
+						Int("newCount", len(newMessages)).
+						Int("totalCount", len(messages)).
+						Msg("sending new messages via WebSocket")
+
 					for _, msg := range newMessages {
 						// Send the entire SessionMessage as-is
 						if msgBytes, err := json.Marshal(msg); err == nil {
@@ -680,12 +707,61 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Keep connection alive - just read to detect disconnection
+	// Read messages from client (for sending user messages)
 	for {
-		_, _, err := conn.Read(ctx)
+		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
 			log.Info().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket read error (client disconnected)")
 			break
+		}
+
+		if msgType != websocket.MessageText {
+			log.Debug().Str("sessionId", sessionID).Int("msgType", int(msgType)).Msg("Ignoring non-text message")
+			continue
+		}
+
+		// Parse incoming message
+		var inMsg struct {
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(msg, &inMsg); err != nil {
+			log.Debug().Err(err).Msg("Failed to parse subscribe message")
+			continue
+		}
+
+		log.Info().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("Received subscribe message")
+
+		switch inMsg.Type {
+		case "user_message":
+			// Send message to Claude by writing to PTY
+			// Send each character separately to avoid readline paste detection
+			messageWithNewline := inMsg.Content + "\n"
+			for _, ch := range messageWithNewline {
+				charByte := []byte(string(ch))
+				if _, err := session.PTY.Write(charByte); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+					// Send error back to client
+					errMsg := map[string]interface{}{
+						"type":  "error",
+						"error": "Failed to send message to session",
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+					break
+				}
+			}
+
+			session.LastActivity = time.Now()
+
+			log.Info().
+				Str("sessionId", sessionID).
+				Str("content", inMsg.Content).
+				Msg("message sent to claude session via WebSocket")
+
+		default:
+			log.Debug().Str("type", inMsg.Type).Msg("Unknown subscribe message type")
 		}
 	}
 
