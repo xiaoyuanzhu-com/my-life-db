@@ -286,6 +286,7 @@ func (m *Manager) activateSession(session *Session) error {
 	session.Cmd = cmd
 	session.ProcessID = cmd.Process.Pid
 	session.Status = "active"
+	session.ready = make(chan struct{}) // Will be closed when first output is received
 
 	// Start PTY reader that broadcasts to all clients
 	m.wg.Add(1)
@@ -475,6 +476,7 @@ func (m *Manager) monitorProcess(session *Session) {
 func (m *Manager) readPTY(session *Session) {
 	defer m.wg.Done()
 
+	readySignaled := false
 	buf := make([]byte, 4096)
 	for {
 		// Check for shutdown
@@ -501,5 +503,18 @@ func (m *Manager) readPTY(session *Session) {
 		// Broadcast to all connected clients
 		session.Broadcast(data)
 		session.LastActivity = time.Now()
+
+		// Signal that Claude is ready when we see a newline (prompt is complete)
+		// Only signal once on first chunk containing newline
+		if !readySignaled && session.ready != nil {
+			for i := 0; i < n; i++ {
+				if data[i] == '\n' {
+					close(session.ready)
+					readySignaled = true
+					log.Info().Str("sessionId", session.ID).Msg("Claude prompt complete (newline detected)")
+					break
+				}
+			}
+		}
 	}
 }

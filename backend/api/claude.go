@@ -421,10 +421,24 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 	}
 
 	// Ensure session is activated
+	wasInactive := !session.IsActivated()
 	if err := session.EnsureActivated(); err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate session"})
 		return
+	}
+
+	// Wait for Claude to be ready if we just activated it
+	if wasInactive {
+		if err := session.WaitUntilReady(5 * time.Second); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("session not ready in time")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session activation timed out"})
+			return
+		}
+
+		// Small delay after prompt to ensure readline is ready for input
+		time.Sleep(150 * time.Millisecond)
+		log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 	}
 
 	// Send message to Claude by writing to PTY
@@ -683,7 +697,8 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		switch inMsg.Type {
 		case "user_message":
 			// Activate session on first message (lazy activation)
-			if !session.IsActivated() {
+			wasInactive := !session.IsActivated()
+			if wasInactive {
 				log.Info().Str("sessionId", sessionID).Msg("Activating session on first message")
 				if err := session.EnsureActivated(); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
@@ -696,6 +711,23 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					}
 					break
 				}
+
+				// Wait for Claude to be ready (first output received)
+				if err := session.WaitUntilReady(5 * time.Second); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("session not ready in time")
+					errMsg := map[string]interface{}{
+						"type":  "error",
+						"error": "Session activation timed out",
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+					break
+				}
+
+				// Small delay after prompt to ensure readline is ready for input
+				time.Sleep(150 * time.Millisecond)
+				log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 			}
 
 			// Send message to Claude by writing to PTY

@@ -38,6 +38,7 @@ type Session struct {
 	// Lazy activation support
 	activated  bool             `json:"-"` // Whether the Claude process has been spawned
 	activateFn func() error     `json:"-"` // Function to activate this session
+	ready      chan struct{}    `json:"-"` // Closed when Claude is ready to receive input
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -126,6 +127,32 @@ func (s *Session) IsActivated() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.activated
+}
+
+// WaitUntilReady waits for the session to be ready to receive input
+// Returns error if timeout is reached or session is not activated
+func (s *Session) WaitUntilReady(timeout time.Duration) error {
+	s.mu.RLock()
+	readyChan := s.ready
+	activated := s.activated
+	s.mu.RUnlock()
+
+	if !activated {
+		return fmt.Errorf("session not activated")
+	}
+
+	if readyChan == nil {
+		// Session was activated before the ready channel was added (legacy sessions)
+		// Assume it's ready
+		return nil
+	}
+
+	select {
+	case <-readyChan:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("timeout waiting for session to be ready")
+	}
 }
 
 // ToJSON returns a JSON-safe representation of the session
