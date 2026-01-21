@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -500,6 +501,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Track last known message count to detect new messages
 	lastMessageCount := 0
 	lastTodoCount := 0
+	var updateMutex sync.Mutex // Protect concurrent access to lastMessageCount/lastTodoCount
 
 	// Send existing messages immediately on connect
 	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
@@ -538,6 +540,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	// Helper function to send updates
 	sendUpdates := func(updateType string) {
+		updateMutex.Lock()
+		defer updateMutex.Unlock()
+
 		if updateType == "messages" || updateType == "all" {
 			// Read session history
 			messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
