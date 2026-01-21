@@ -16,10 +16,14 @@ import type {
 import {
   useClaudeSessionHistory,
   filterConversationMessages,
+  buildToolResultMap,
   isTextBlock,
   isThinkingBlock,
   isToolUseBlock,
+  isToolResultError,
+  isBashToolResult,
   type SessionMessage,
+  type ExtractedToolResult,
 } from '~/hooks/use-claude-session-history'
 
 interface ChatInterfaceProps {
@@ -50,8 +54,15 @@ export function ChatInterface({
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
 
+  // Accumulated session messages for building tool result map during real-time updates
+  const accumulatedMessagesRef = useRef<SessionMessage[]>([])
+
   // Convert SessionMessage to Message format
-  const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
+  // toolResultMap is used to attach results to tool calls
+  const convertToMessage = (
+    sessionMsg: SessionMessage,
+    toolResultMap: Map<string, ExtractedToolResult>
+  ): Message | null => {
     // Skip internal events (summaries, tool_results, etc.)
     if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
       return null
@@ -82,15 +93,47 @@ export function ChatInterface({
           signature: block.signature,
         }))
 
-      // Extract tool calls from tool_use blocks
+      // Extract tool calls from tool_use blocks and attach results
       toolCalls = content
         .filter(isToolUseBlock)
-        .map((block): ToolCall => ({
-          id: block.id,
-          name: block.name as ToolCall['name'],
-          parameters: block.input,
-          status: 'completed',
-        }))
+        .map((block): ToolCall => {
+          const toolResult = toolResultMap.get(block.id)
+
+          // Determine result and error based on toolUseResult format
+          let result: unknown = undefined
+          let error: string | undefined = undefined
+          let status: ToolCall['status'] = toolResult ? 'completed' : 'pending'
+
+          if (toolResult) {
+            if (isToolResultError(toolResult.toolUseResult)) {
+              // Error case: toolUseResult is a string
+              error = toolResult.toolUseResult
+              status = 'failed'
+            } else if (isBashToolResult(toolResult.toolUseResult)) {
+              // Bash success: extract stdout/stderr
+              const bashResult = toolResult.toolUseResult
+              result = {
+                output: bashResult.stdout || '',
+                exitCode: toolResult.isError ? 1 : 0,
+              }
+              if (toolResult.isError) {
+                status = 'failed'
+              }
+            } else {
+              // Other tool results: pass through the toolUseResult
+              result = toolResult.toolUseResult || toolResult.content
+            }
+          }
+
+          return {
+            id: block.id,
+            name: block.name as ToolCall['name'],
+            parameters: block.input,
+            status,
+            result,
+            error,
+          }
+        })
     }
 
     return {
@@ -110,14 +153,23 @@ export function ChatInterface({
     setIsStreaming(false)
     setActiveTodos([])
     setError(null)
+    accumulatedMessagesRef.current = []
   }, [sessionId])
 
   // Load history and convert to Message format
   useEffect(() => {
     console.log('[ChatInterface] Loading history for session:', sessionId, 'message count:', historyMessages.length)
+
+    // Initialize accumulated messages ref from history for WebSocket tool result mapping
+    accumulatedMessagesRef.current = [...historyMessages]
+
+    // Build tool result map from all messages first
+    const toolResultMap = buildToolResultMap(historyMessages)
+
+    // Convert only conversation messages (user/assistant)
     const conversationMessages = filterConversationMessages(historyMessages)
     const converted = conversationMessages
-      .map(convertToMessage)
+      .map((msg) => convertToMessage(msg, toolResultMap))
       .filter((m): m is Message => m !== null)
     setMessages(converted)
   }, [historyMessages])
@@ -166,16 +218,26 @@ export function ChatInterface({
         const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
+        // Accumulate all messages (including tool results) for building the map
+        accumulatedMessagesRef.current = [...accumulatedMessagesRef.current, sessionMsg]
+
+        // Build tool result map from accumulated messages
+        const toolResultMap = buildToolResultMap(accumulatedMessagesRef.current)
+
         // Convert to Message format and append
-        const converted = convertToMessage(sessionMsg)
+        const converted = convertToMessage(sessionMsg, toolResultMap)
         if (converted) {
           setMessages((prev) => {
             // Clear all optimistic messages when we receive any server message
             const withoutOptimistic = prev.filter((m) => !m.isOptimistic)
 
             // Check if message already exists (by uuid)
-            if (withoutOptimistic.some((m) => m.id === converted.id)) {
-              return withoutOptimistic
+            const existingIndex = withoutOptimistic.findIndex((m) => m.id === converted.id)
+            if (existingIndex >= 0) {
+              // Update existing message (tool results may have arrived)
+              const updated = [...withoutOptimistic]
+              updated[existingIndex] = converted
+              return updated
             }
 
             return [...withoutOptimistic, converted]
@@ -185,6 +247,20 @@ export function ChatInterface({
           if (converted.role === 'assistant') {
             setIsStreaming(false)
           }
+        } else if (sessionMsg.toolUseResult) {
+          // This is a tool result message - need to update the corresponding assistant message
+          // Rebuild all messages with updated tool results
+          const allAccumulated = accumulatedMessagesRef.current
+          const newToolResultMap = buildToolResultMap(allAccumulated)
+          const conversationMsgs = filterConversationMessages(allAccumulated)
+
+          setMessages(() => {
+            const updatedMessages = conversationMsgs
+              .map((msg) => convertToMessage(msg, newToolResultMap))
+              .filter((m): m is Message => m !== null)
+
+            return updatedMessages
+          })
         }
       } catch (error) {
         console.error('[ChatInterface] Failed to parse WebSocket message:', error)

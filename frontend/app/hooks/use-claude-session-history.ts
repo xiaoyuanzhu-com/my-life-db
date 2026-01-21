@@ -266,6 +266,46 @@ export function filterConversationMessages(messages: SessionMessage[]): SessionM
 }
 
 /**
+ * Tool result with all relevant fields extracted from the message
+ */
+export interface ExtractedToolResult {
+  toolUseId: string
+  content: string  // The content from tool_result block
+  isError: boolean
+  toolUseResult: ToolUseResult | undefined  // The rich metadata (stdout/stderr for Bash, etc.)
+}
+
+/**
+ * Build a mapping from tool_use_id to tool result
+ * Tool results are stored in 'user' type messages that have toolUseResult field
+ */
+export function buildToolResultMap(messages: SessionMessage[]): Map<string, ExtractedToolResult> {
+  const resultMap = new Map<string, ExtractedToolResult>()
+
+  for (const msg of messages) {
+    // Tool results are in 'user' type messages with toolUseResult field
+    if (msg.type !== 'user' || !msg.toolUseResult) continue
+
+    // Extract tool_use_id from message.content
+    const content = msg.message?.content
+    if (!Array.isArray(content)) continue
+
+    for (const block of content) {
+      if (isToolResultBlock(block)) {
+        resultMap.set(block.tool_use_id, {
+          toolUseId: block.tool_use_id,
+          content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+          isError: block.is_error ?? false,
+          toolUseResult: msg.toolUseResult,
+        })
+      }
+    }
+  }
+
+  return resultMap
+}
+
+/**
  * Build a message tree from flat array using uuid/parentUuid relationships
  */
 export interface MessageNode extends SessionMessage {
