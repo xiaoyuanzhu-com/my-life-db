@@ -580,3 +580,115 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 	<-sendDone
 	<-pingDone
 }
+
+// ClaudeSubscribeWebSocket handles WebSocket connection for real-time session updates
+// Similar to claude.ai/code's /v1/sessions/ws/:id/subscribe endpoint
+// This provides structured message streaming with tool calls, thinking blocks, etc.
+func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	// GetSession will auto-resume from history if not active
+	session, err := claudeManager.GetSession(sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	// Get the underlying http.ResponseWriter from Gin's wrapper
+	var w http.ResponseWriter = c.Writer
+	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
+		w = unwrapper.Unwrap()
+	}
+
+	// Accept WebSocket connection
+	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
+		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
+	})
+	if err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket upgrade failed")
+		return
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	ctx := c.Request.Context()
+
+	// Ensure session is activated before proceeding
+	if err := session.EnsureActivated(); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+		conn.Close(websocket.StatusInternalError, "Failed to activate session")
+		return
+	}
+
+	log.Info().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected")
+
+	// Track last known message count to detect new messages
+	lastMessageCount := 0
+
+	// Polling goroutine - polls session file for new messages
+	pollTicker := time.NewTicker(500 * time.Millisecond)
+	defer pollTicker.Stop()
+
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-pollTicker.C:
+				// Read session history
+				messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+				if err != nil {
+					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
+					continue
+				}
+
+				// Send any new messages
+				if len(messages) > lastMessageCount {
+					newMessages := messages[lastMessageCount:]
+					for _, msg := range newMessages {
+						// Send the entire SessionMessage as-is
+						if msgBytes, err := json.Marshal(msg); err == nil {
+							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+								log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+								return
+							}
+						}
+					}
+					lastMessageCount = len(messages)
+				}
+			}
+		}
+	}()
+
+	// Ping goroutine
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
+
+	pingDone := make(chan struct{})
+	go func() {
+		defer close(pingDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-pingTicker.C:
+				if err := conn.Ping(ctx); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Keep connection alive - just read to detect disconnection
+	for {
+		_, _, err := conn.Read(ctx)
+		if err != nil {
+			log.Info().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket read error (client disconnected)")
+			break
+		}
+	}
+
+	<-pollDone
+	<-pingDone
+}

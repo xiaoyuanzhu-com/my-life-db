@@ -6,6 +6,12 @@ export interface TextContentBlock {
   text: string
 }
 
+export interface ThinkingContentBlock {
+  type: 'thinking'
+  thinking: string
+  signature?: string
+}
+
 export interface ToolUseContentBlock {
   type: 'tool_use'
   id: string
@@ -20,7 +26,7 @@ export interface ToolResultContentBlock {
   is_error?: boolean
 }
 
-export type ContentBlock = TextContentBlock | ToolUseContentBlock | ToolResultContentBlock | { type: string; [key: string]: unknown }
+export type ContentBlock = TextContentBlock | ThinkingContentBlock | ToolUseContentBlock | ToolResultContentBlock | { type: string; [key: string]: unknown }
 
 // Message structure in JSONL files
 export interface ClaudeMessage {
@@ -131,6 +137,13 @@ export function isTextBlock(block: ContentBlock): block is TextContentBlock {
  */
 export function isToolUseBlock(block: ContentBlock): block is ToolUseContentBlock {
   return block.type === 'tool_use' && 'id' in block && 'name' in block && 'input' in block
+}
+
+/**
+ * Type guard to check if a content block is a thinking block
+ */
+export function isThinkingBlock(block: ContentBlock): block is ThinkingContentBlock {
+  return block.type === 'thinking' && 'thinking' in block
 }
 
 /**

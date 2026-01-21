@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
@@ -16,6 +16,7 @@ import {
   useClaudeSessionHistory,
   filterConversationMessages,
   isTextBlock,
+  isThinkingBlock,
   isToolUseBlock,
   type SessionMessage,
 } from '~/hooks/use-claude-session-history'
@@ -32,18 +33,22 @@ export function ChatInterface({
   sessionId,
   isHistorical = false,
 }: ChatInterfaceProps) {
-  // Load structured history from JSONL files
-  const { messages: historyMessages, isLoading: historyLoading, error: historyError, refetch } = useClaudeSessionHistory(sessionId)
+  // Load structured history from JSONL files (initial load only)
+  const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
 
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [wsConnected, setWsConnected] = useState(false)
 
   // Tool state - kept for future implementation
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
+
+  // WebSocket ref
+  const wsRef = useRef<WebSocket | null>(null)
 
   // Convert SessionMessage to Message format
   const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
@@ -70,11 +75,11 @@ export function ChatInterface({
 
       // Extract thinking blocks
       thinkingBlocks = content
-        .filter(block => block.type === 'thinking')
+        .filter(isThinkingBlock)
         .map(block => ({
           type: 'thinking' as const,
-          thinking: (block as any).thinking || '',
-          signature: (block as any).signature,
+          thinking: block.thinking,
+          signature: block.signature,
         }))
 
       // Extract tool calls from tool_use blocks
@@ -98,7 +103,7 @@ export function ChatInterface({
     }
   }
 
-  // Load history on mount and convert to Message format
+  // Load history on mount and convert to Message format (initial load only)
   useEffect(() => {
     if (historyMessages.length > 0) {
       const conversationMessages = filterConversationMessages(historyMessages)
@@ -109,16 +114,60 @@ export function ChatInterface({
     }
   }, [historyMessages])
 
-  // Auto-refresh history every 2 seconds when session is active
+  // WebSocket connection for real-time updates
   useEffect(() => {
-    if (isHistorical) return // Don't poll for historical sessions
+    if (isHistorical) return // Don't connect WebSocket for historical sessions
 
-    const interval = setInterval(() => {
-      refetch()
-    }, 2000)
+    // Connect to subscribe endpoint
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
 
-    return () => clearInterval(interval)
-  }, [isHistorical, refetch])
+    console.log('[ChatInterface] Connecting to WebSocket:', wsUrl)
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log('[ChatInterface] WebSocket connected')
+      setWsConnected(true)
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const sessionMsg: SessionMessage = JSON.parse(event.data)
+        console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
+
+        // Convert to Message format and append
+        const converted = convertToMessage(sessionMsg)
+        if (converted) {
+          setMessages((prev) => {
+            // Check if message already exists (by uuid)
+            if (prev.some((m) => m.id === converted.id)) {
+              return prev
+            }
+            return [...prev, converted]
+          })
+        }
+      } catch (error) {
+        console.error('[ChatInterface] Failed to parse WebSocket message:', error)
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('[ChatInterface] WebSocket error:', error)
+      setWsConnected(false)
+    }
+
+    ws.onclose = () => {
+      console.log('[ChatInterface] WebSocket disconnected')
+      setWsConnected(false)
+    }
+
+    return () => {
+      console.log('[ChatInterface] Cleaning up WebSocket')
+      ws.close()
+      wsRef.current = null
+    }
+  }, [sessionId, isHistorical])
 
   // Send message to server via HTTP POST
   const sendMessage = useCallback(
@@ -146,9 +195,8 @@ export function ChatInterface({
           throw new Error(`Failed to send message: ${response.statusText}`)
         }
 
-        // Trigger immediate refetch to get Claude's response
-        // Don't wait for the 2-second polling interval
-        refetch()
+        // WebSocket will automatically receive the response messages
+        // No need to manually refetch
       } catch (error) {
         console.error('Failed to send message:', error)
         // TODO: Show error to user
@@ -156,7 +204,7 @@ export function ChatInterface({
         setIsStreaming(false)
       }
     },
-    [sessionId, refetch]
+    [sessionId]
   )
 
   // Handle permission decision (placeholder for future implementation)
