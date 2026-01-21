@@ -223,7 +223,14 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
-			// Silent disconnect - normal for page refresh, tab close, etc.
+			// Normal closures (page refresh, navigation) → DEBUG
+			// Unexpected errors → INFO
+			closeStatus := websocket.CloseStatus(err)
+			if closeStatus == websocket.StatusGoingAway || closeStatus == websocket.StatusNormalClosure {
+				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("Terminal WebSocket closed normally")
+			} else {
+				log.Info().Err(err).Str("sessionId", sessionID).Msg("Terminal WebSocket read error")
+			}
 			break
 		}
 
