@@ -259,8 +259,8 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 			continue
 		}
 
-		// Log what xterm is sending
-		log.Info().
+		// Log what xterm is sending (debug level - very noisy)
+		log.Debug().
 			Str("sessionId", sessionID).
 			Str("source", "xterm").
 			Str("data", string(msg)).
@@ -358,19 +358,19 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	log.Info().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: fetching history")
+	log.Debug().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: fetching history")
 
 	// Try to get project path from active session first
 	var projectPath string
 	session, err := claudeManager.GetSession(sessionID)
 	if err == nil {
 		projectPath = session.WorkingDir
-		log.Info().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("GetClaudeSessionHistory: got session from manager")
+		log.Debug().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("GetClaudeSessionHistory: got session from manager")
 	} else {
 		// If not in active sessions, try to find it in Claude's session files
 		// Use empty project path - the reader will search all projects
 		projectPath = ""
-		log.Info().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: session not found in manager")
+		log.Debug().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: session not found in manager")
 	}
 
 	// Read JSONL file using the session reader
@@ -478,7 +478,7 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	log.Info().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: WebSocket connection request")
+	log.Debug().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: WebSocket connection request")
 
 	// GetSession will auto-resume from history if not active
 	session, err := claudeManager.GetSession(sessionID)
@@ -488,7 +488,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		return
 	}
 
-	log.Info().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("ClaudeSubscribeWebSocket: got session")
+	log.Debug().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("ClaudeSubscribeWebSocket: got session")
 
 	// Get the underlying http.ResponseWriter from Gin's wrapper
 	var w http.ResponseWriter = c.Writer
@@ -513,7 +513,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
-	log.Info().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
+	log.Debug().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
 
 	// Track last known message count to detect new messages
 	lastMessageCount := 0
@@ -523,7 +523,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Send existing messages immediately on connect
 	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
 	if err == nil && len(initialMessages) > 0 {
-		log.Info().
+		log.Debug().
 			Str("sessionId", sessionID).
 			Int("messageCount", len(initialMessages)).
 			Msg("sending initial messages")
@@ -568,24 +568,16 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			} else if len(messages) > lastMessageCount {
 				// Send any new messages (including progress messages)
 				newMessages := messages[lastMessageCount:]
-				log.Info().
-					Str("sessionId", sessionID).
-					Int("newCount", len(newMessages)).
-					Int("totalCount", len(messages)).
-					Str("source", "fsnotify").
-					Msg("sending new messages via WebSocket")
 
 				for _, msg := range newMessages {
 					// Send ALL message types (user, assistant, progress, queue-operation, etc.)
 					if msgBytes, err := json.Marshal(msg); err == nil {
 						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-							log.Info().Err(err).Str("sessionId", sessionID).Msg("sendUpdates: WebSocket write failed, returning early")
 							return
 						}
 					}
 				}
 				lastMessageCount = len(messages)
-				log.Info().Str("sessionId", sessionID).Int("lastMessageCount", lastMessageCount).Msg("sendUpdates: updated lastMessageCount")
 			}
 		}
 
@@ -619,10 +611,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	pollDone := make(chan struct{})
 	go func() {
-		defer func() {
-			log.Info().Str("sessionId", sessionID).Msg("poll goroutine exiting")
-			close(pollDone)
-		}()
+		defer close(pollDone)
 
 		// Get update channel (nil-safe)
 		var updateChan <-chan string
@@ -633,23 +622,19 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Info().Str("sessionId", sessionID).Msg("poll goroutine: ctx.Done() received")
 				return
 
 			case updateType, ok := <-updateChan:
 				// Fast path: fsnotify detected a change
 				if !ok {
-					log.Info().Str("sessionId", sessionID).Msg("poll goroutine: updateChan closed")
 					return
 				}
 				if updateType != "" {
-					log.Info().Str("sessionId", sessionID).Str("updateType", updateType).Msg("poll goroutine: received update from watcher")
 					sendUpdates(updateType)
 				}
 
 			case <-pollTicker.C:
 				// Slow path: safety net polling to catch anything fsnotify missed
-				log.Info().Str("sessionId", sessionID).Msg("poll goroutine: poll tick")
 				sendUpdates("all")
 			}
 		}
@@ -675,7 +660,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}()
 
 	// Read messages from client (for sending user messages)
-	log.Info().Str("sessionId", sessionID).Msg("entering main read loop")
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
@@ -685,11 +669,10 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			if closeStatus == websocket.StatusGoingAway ||
 			   closeStatus == websocket.StatusNormalClosure ||
 			   closeStatus == websocket.StatusNoStatusRcvd {
-				log.Info().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("WebSocket closed normally")
+				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("WebSocket closed normally")
 			} else {
-				log.Info().Err(err).Str("sessionId", sessionID).Msg("WebSocket read error")
+				log.Debug().Err(err).Str("sessionId", sessionID).Msg("WebSocket read error")
 			}
-			log.Info().Str("sessionId", sessionID).Msg("breaking out of main read loop")
 			cancel() // Signal goroutines to stop
 			break
 		}
@@ -709,14 +692,14 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			continue
 		}
 
-		log.Info().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("Received subscribe message")
+		log.Debug().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("Received subscribe message")
 
 		switch inMsg.Type {
 		case "user_message":
 			// Activate session on first message (lazy activation)
 			wasInactive := !session.IsActivated()
 			if wasInactive {
-				log.Info().Str("sessionId", sessionID).Msg("Activating session on first message")
+				log.Debug().Str("sessionId", sessionID).Msg("Activating session on first message")
 				if err := session.EnsureActivated(); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
 					errMsg := map[string]interface{}{
@@ -744,7 +727,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 				// Brief delay to ensure readline is fully initialized
 				time.Sleep(200 * time.Millisecond)
-				log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 			}
 
 			// Send message to Claude by writing to PTY
@@ -784,9 +766,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}
 
-	log.Info().Str("sessionId", sessionID).Msg("waiting for pollDone")
 	<-pollDone
-	log.Info().Str("sessionId", sessionID).Msg("waiting for pingDone")
 	<-pingDone
-	log.Info().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket handler exiting")
 }

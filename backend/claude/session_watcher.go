@@ -58,8 +58,6 @@ func (sw *sessionWatcher) Start(ctx context.Context) error {
 		sw.sessionFile = sessionFile
 		if err := sw.watcher.Add(sessionFile); err != nil {
 			log.Warn().Err(err).Str("file", sessionFile).Msg("failed to watch session file")
-		} else {
-			log.Info().Str("sessionId", sw.sessionID).Str("file", sessionFile).Msg("watching session file")
 		}
 	}
 
@@ -70,9 +68,7 @@ func (sw *sessionWatcher) Start(ctx context.Context) error {
 		sw.todoFile = todoFile
 
 		// Try to watch todo file (ignore if doesn't exist)
-		if err := sw.watcher.Add(todoFile); err == nil {
-			log.Info().Str("sessionId", sw.sessionID).Str("file", todoFile).Msg("watching todo file")
-		}
+		sw.watcher.Add(todoFile)
 	}
 
 	// Event loop

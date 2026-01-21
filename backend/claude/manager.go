@@ -187,13 +187,10 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	m.mu.RUnlock()
 
 	if ok {
-		// Session already in pool (may or may not be activated)
-		log.Info().Str("sessionId", id).Bool("activated", session.IsActivated()).Msg("GetSession: found in pool")
 		return session, nil
 	}
 
 	// Session not in pool - try to find it in history and create shell session
-	log.Info().Str("sessionId", id).Msg("GetSession: not in pool, checking history")
 
 	// Find session info from Claude's index
 	index, err := GetSessionIndexForProject(config.Get().UserDataDir)
@@ -226,7 +223,6 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	}
 
 	// Create a non-activated shell session
-	log.Info().Str("sessionId", id).Str("workingDir", workingDir).Msg("GetSession: creating shell session from history")
 	return m.createShellSession(id, workingDir, title)
 }
 
@@ -296,7 +292,7 @@ func (m *Manager) activateSession(session *Session) error {
 	m.wg.Add(1)
 	go m.monitorProcess(session)
 
-	log.Info().
+	log.Debug().
 		Str("sessionId", session.ID).
 		Int("pid", session.ProcessID).
 		Msg("activated session")
@@ -485,7 +481,6 @@ func (m *Manager) readPTY(session *Session) {
 	var lastOutputMu sync.Mutex
 
 	if session.ready != nil {
-		log.Info().Str("sessionId", session.ID).Msg("Starting readiness detection goroutine")
 		go func() {
 			ticker := time.NewTicker(50 * time.Millisecond)
 			defer ticker.Stop()
@@ -496,7 +491,6 @@ func (m *Manager) readPTY(session *Session) {
 			for {
 				select {
 				case <-m.ctx.Done():
-					log.Info().Str("sessionId", session.ID).Msg("Readiness detection cancelled (context done)")
 					return
 				case <-ticker.C:
 					lastOutputMu.Lock()
@@ -508,9 +502,6 @@ func (m *Manager) readPTY(session *Session) {
 					if time.Since(startTime) >= maxWaitTime {
 						readyOnce.Do(func() {
 							close(session.ready)
-							log.Info().
-								Str("sessionId", session.ID).
-								Msg("Claude ready (failsafe timeout)")
 						})
 						return
 					}
@@ -519,10 +510,6 @@ func (m *Manager) readPTY(session *Session) {
 					if hadOutput && timeSinceLastOutput >= 300*time.Millisecond {
 						readyOnce.Do(func() {
 							close(session.ready)
-							log.Info().
-								Str("sessionId", session.ID).
-								Dur("silence", timeSinceLastOutput).
-								Msg("Claude ready (silence detected after output)")
 						})
 						return
 					}
@@ -551,17 +538,9 @@ func (m *Manager) readPTY(session *Session) {
 
 		// Update last output time for silence detection
 		lastOutputMu.Lock()
-		wasFirstOutput := !firstOutputReceived
 		lastOutputTime = time.Now()
 		firstOutputReceived = true
 		lastOutputMu.Unlock()
-
-		if wasFirstOutput && session.ready != nil {
-			log.Info().
-				Str("sessionId", session.ID).
-				Int("bytes", n).
-				Msg("First output received from Claude process")
-		}
 
 		// Make a copy of the data to broadcast
 		data := make([]byte, n)
