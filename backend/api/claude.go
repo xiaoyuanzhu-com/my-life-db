@@ -161,7 +161,8 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 
 	// Accept WebSocket connection (coder/websocket)
 	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
+		InsecureSkipVerify: true,                              // Skip origin check - auth is handled at higher layer
+		CompressionMode:    websocket.CompressionContextTakeover, // Enable permessage-deflate compression
 	})
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket upgrade failed")
@@ -384,7 +385,8 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 
 	// Accept WebSocket connection
 	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
+		InsecureSkipVerify: true,                              // Skip origin check - auth is handled at higher layer
+		CompressionMode:    websocket.CompressionContextTakeover, // Enable permessage-deflate compression
 	})
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("Chat WebSocket upgrade failed")
