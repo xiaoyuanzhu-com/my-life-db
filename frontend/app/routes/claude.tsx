@@ -30,6 +30,7 @@ export default function ClaudePage() {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uiMode, setUiMode] = useState<'chat' | 'terminal'>('chat')
+  const userClearedSelection = useRef(false)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -46,6 +47,7 @@ export default function ClaudePage() {
     if (activeSessionId) {
       // Update URL to include session ID
       navigate(`/claude/${activeSessionId}`, { replace: true })
+      userClearedSelection.current = false // Reset flag when selecting a session
     } else if (urlSessionId) {
       // URL has session ID but we don't have it set - navigate to base
       navigate('/claude', { replace: true })
@@ -132,12 +134,18 @@ export default function ClaudePage() {
 
       // Auto-select first ACTIVE session ONLY if no URL session ID and no current selection
       setActiveSessionId((currentId) => {
-        console.log('[loadSessions] currentId:', currentId, 'urlSessionId:', urlSessionId, 'sessions:', sortedSessions?.map((s: Session) => s.id))
+        console.log('[loadSessions] currentId:', currentId, 'urlSessionId:', urlSessionId, 'userClearedSelection:', userClearedSelection.current, 'sessions:', sortedSessions?.map((s: Session) => s.id))
 
         // If URL has a session ID, use it (already set in useEffect)
         if (urlSessionId) {
           console.log('[loadSessions] using URL session ID:', urlSessionId)
           return urlSessionId
+        }
+
+        // If user explicitly cleared selection, don't auto-select
+        if (userClearedSelection.current) {
+          console.log('[loadSessions] user cleared selection, not auto-selecting')
+          return null
         }
 
         // If user already selected/created a session, preserve it
@@ -277,7 +285,10 @@ export default function ClaudePage() {
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2
             className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-            onClick={() => setActiveSessionId(null)}
+            onClick={() => {
+              userClearedSelection.current = true
+              setActiveSessionId(null)
+            }}
             title="Clear selection"
           >
             Sessions
