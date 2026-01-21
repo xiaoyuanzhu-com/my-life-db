@@ -138,6 +138,23 @@ func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// DeactivateClaudeSession handles POST /api/claude/sessions/:id/deactivate
+// Deactivates (archives) a session without deleting it from history
+func (h *Handlers) DeactivateClaudeSession(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	if err := claudeManager.DeactivateSession(sessionID); err != nil {
+		if err == claude.ErrSessionNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // ClaudeWebSocket handles WebSocket connection for terminal I/O
 func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")

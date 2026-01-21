@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Check, X } from 'lucide-react'
+import { Check, X, Archive } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface Session {
@@ -22,6 +22,7 @@ interface SessionListProps {
   onSelect: (sessionId: string) => void
   onDelete: (sessionId: string) => void
   onRename: (sessionId: string, title: string) => void
+  onArchive: (sessionId: string) => void
 }
 
 export function SessionList({
@@ -30,6 +31,7 @@ export function SessionList({
   onSelect,
   onDelete,
   onRename,
+  onArchive,
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -128,6 +130,20 @@ export function SessionList({
                         )}
                       </div>
                     </div>
+                    {session.isActive && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onArchive(session.id)
+                        }}
+                        title="Archive session"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </>
               )}

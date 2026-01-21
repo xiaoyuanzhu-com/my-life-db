@@ -375,6 +375,37 @@ func (m *Manager) DeleteSession(id string) error {
 	return nil
 }
 
+// DeactivateSession stops a session process but keeps it in the active sessions map
+// This allows the session to be archived while preserving its state in the history
+func (m *Manager) DeactivateSession(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+
+	// Kill the process
+	if session.Cmd != nil && session.Cmd.Process != nil {
+		if err := session.Cmd.Process.Kill(); err != nil {
+			log.Warn().Err(err).Msg("failed to kill process")
+		}
+	}
+
+	// Close PTY
+	if session.PTY != nil {
+		session.PTY.Close()
+	}
+
+	// Remove from active sessions map (will show as archived in ListAllClaudeSessions)
+	delete(m.sessions, id)
+
+	log.Info().Str("sessionId", id).Msg("deactivated claude session")
+
+	return nil
+}
+
 // cleanupWorker periodically cleans up dead sessions
 func (m *Manager) cleanupWorker() {
 	defer m.wg.Done()

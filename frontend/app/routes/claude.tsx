@@ -192,6 +192,31 @@ export default function ClaudePage() {
     }
   }
 
+  const archiveSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/claude/sessions/${sessionId}/deactivate`, {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        // Mark session as archived in the UI
+        setSessions(
+          sessions.map((s) =>
+            s.id === sessionId ? { ...s, isActive: false, status: 'archived' as const } : s
+          )
+        )
+
+        // If archived session was active, switch to first active session or first session
+        if (activeSessionId === sessionId) {
+          const remaining = sessions.filter((s) => s.id !== sessionId && s.isActive)
+          setActiveSessionId(remaining.length > 0 ? remaining[0].id : null)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive session:', error)
+    }
+  }
+
   // Show loading state while checking authentication
   if (authLoading || loading) {
     return (
@@ -252,6 +277,7 @@ export default function ClaudePage() {
             onSelect={setActiveSessionId}
             onDelete={deleteSession}
             onRename={updateSessionTitle}
+            onArchive={archiveSession}
           />
         </div>
       </div>
@@ -271,6 +297,7 @@ export default function ClaudePage() {
             }}
             onDelete={deleteSession}
             onRename={updateSessionTitle}
+            onArchive={archiveSession}
           />
         </SheetContent>
       </Sheet>
