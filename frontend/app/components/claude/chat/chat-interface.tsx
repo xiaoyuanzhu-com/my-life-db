@@ -159,11 +159,15 @@ export function ChatInterface({
         const converted = convertToMessage(sessionMsg)
         if (converted) {
           setMessages((prev) => {
+            // Clear all optimistic messages when we receive any server message
+            const withoutOptimistic = prev.filter((m) => !m.isOptimistic)
+
             // Check if message already exists (by uuid)
-            if (prev.some((m) => m.id === converted.id)) {
-              return prev
+            if (withoutOptimistic.some((m) => m.id === converted.id)) {
+              return withoutOptimistic
             }
-            return [...prev, converted]
+
+            return [...withoutOptimistic, converted]
           })
 
           // If we received an assistant message, stop streaming indicator
@@ -210,6 +214,7 @@ export function ChatInterface({
         role: 'user',
         content,
         timestamp: Date.now(),
+        isOptimistic: true,  // Mark as temporary
       }
       setMessages((prev) => [...prev, userMessage])
 

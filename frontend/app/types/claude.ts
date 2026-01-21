@@ -202,6 +202,7 @@ export interface Message {
   thinking?: ThinkingBlock[]
   timestamp: number
   isStreaming?: boolean
+  isOptimistic?: boolean  // Temporary message, will be replaced by server
 }
 
 // ============================================================================
