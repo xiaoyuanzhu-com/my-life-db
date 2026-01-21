@@ -240,10 +240,12 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
-			// Normal closures (page refresh, navigation) → DEBUG
+			// Normal closures (page refresh, navigation, switching sessions) → DEBUG
 			// Unexpected errors → INFO
 			closeStatus := websocket.CloseStatus(err)
-			if closeStatus == websocket.StatusGoingAway || closeStatus == websocket.StatusNormalClosure {
+			if closeStatus == websocket.StatusGoingAway ||
+			   closeStatus == websocket.StatusNormalClosure ||
+			   closeStatus == websocket.StatusNoStatusRcvd {
 				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("Terminal WebSocket closed normally")
 			} else {
 				log.Info().Err(err).Str("sessionId", sessionID).Msg("Terminal WebSocket read error")
@@ -611,10 +613,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
-			// Normal closures (page refresh, navigation) → DEBUG
+			// Normal closures (page refresh, navigation, switching sessions) → DEBUG
 			// Unexpected errors → INFO
 			closeStatus := websocket.CloseStatus(err)
-			if closeStatus == websocket.StatusGoingAway || closeStatus == websocket.StatusNormalClosure {
+			if closeStatus == websocket.StatusGoingAway ||
+			   closeStatus == websocket.StatusNormalClosure ||
+			   closeStatus == websocket.StatusNoStatusRcvd {
 				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("WebSocket closed normally")
 			} else {
 				log.Info().Err(err).Str("sessionId", sessionID).Msg("WebSocket read error")
