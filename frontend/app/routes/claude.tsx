@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface } from '~/components/claude/chat'
+import { ClaudeTerminal } from '~/components/claude/terminal'
 import { Button } from '~/components/ui/button'
-import { Plus, Menu } from 'lucide-react'
+import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useAuth } from '~/contexts/auth-context'
 import '@fontsource/jetbrains-mono'
@@ -27,6 +28,7 @@ export default function ClaudePage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [uiMode, setUiMode] = useState<'chat' | 'terminal'>('chat')
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -219,13 +221,27 @@ export default function ClaudePage() {
   return (
     <div className="flex h-full">
       {/* Left Column: Sessions Sidebar */}
-      <div className="hidden md:flex md:w-80 border-r border-border flex-col bg-muted/30">
+      <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
         {/* Sessions Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">Sessions</h2>
-          <Button onClick={createSession} size="sm">
-            New
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
+              title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
+            >
+              {uiMode === 'chat' ? (
+                <Terminal className="h-4 w-4" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </Button>
+            <Button onClick={createSession} size="sm">
+              New
+            </Button>
+          </div>
         </div>
 
         {/* Sessions List */}
@@ -279,15 +295,19 @@ export default function ClaudePage() {
         </Button>
       </div>
 
-      {/* Right Column: Chat Interface */}
+      {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
         {sessions.length > 0 && activeSessionId && activeSession ? (
-          <ChatInterface
-            sessionId={activeSessionId}
-            sessionName={activeSession.title || 'Session'}
-            workingDir={activeSession.workingDir}
-            onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-          />
+          uiMode === 'chat' ? (
+            <ChatInterface
+              sessionId={activeSessionId}
+              sessionName={activeSession.title || 'Session'}
+              workingDir={activeSession.workingDir}
+              onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+            />
+          ) : (
+            <ClaudeTerminal sessionId={activeSessionId} />
+          )
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
