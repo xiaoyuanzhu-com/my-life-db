@@ -27,10 +27,9 @@ interface SessionListProps {
   onArchive: (sessionId: string) => void
 }
 
-// Get the display title for a session with priority: customTitle > summary > title (firstPrompt)
+// Get the display title for a session
+// Backend computes the proper title with priority: customTitle > summary > firstUserPrompt
 function getSessionDisplayTitle(session: Session): string {
-  if (session.customTitle) return session.customTitle
-  if (session.summary) return session.summary
   return session.title || 'Untitled'
 }
 

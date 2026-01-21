@@ -328,6 +328,53 @@ func (m *SessionMessage) GetTextContent() string {
 	return ""
 }
 
+// GetUserPrompt extracts the actual user-typed text from a user message,
+// filtering out system-injected tags like <ide_opened_file>, <ide_selection>, <system-reminder>
+func (m *SessionMessage) GetUserPrompt() string {
+	if m.Message == nil || m.Message.Content == nil || m.Type != "user" {
+		return ""
+	}
+
+	var userTexts []string
+
+	// User messages can be string or []ContentBlock
+	if str, ok := m.Message.Content.(string); ok {
+		// Single string content - filter out system tags
+		filtered := filterSystemTags(str)
+		if filtered != "" {
+			userTexts = append(userTexts, filtered)
+		}
+	} else if blocks, ok := m.Message.Content.([]interface{}); ok {
+		// Array of content blocks
+		for _, block := range blocks {
+			if blockMap, ok := block.(map[string]interface{}); ok {
+				if blockMap["type"] == "text" {
+					if text, ok := blockMap["text"].(string); ok {
+						// Filter out system-injected tags
+						filtered := filterSystemTags(text)
+						if filtered != "" {
+							userTexts = append(userTexts, filtered)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return strings.Join(userTexts, "\n")
+}
+
+// filterSystemTags removes system-injected XML tags from text
+// Returns empty string if text is only system tags
+func filterSystemTags(text string) string {
+	// Check if text starts with a system tag
+	if strings.HasPrefix(text, "<ide_") ||
+		strings.HasPrefix(text, "<system-reminder>") {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
 // GetToolCalls extracts tool use blocks from an assistant message
 func (m *SessionMessage) GetToolCalls() []ContentBlock {
 	if m.Message == nil || m.Message.Content == nil {
@@ -369,6 +416,60 @@ func (m *SessionMessage) GetToolCalls() []ContentBlock {
 	}
 
 	return toolCalls
+}
+
+// GetFirstUserPrompt reads the session JSONL and extracts the actual first user prompt
+// (filtering out system-injected tags). Returns empty string if no user prompt found.
+func GetFirstUserPrompt(sessionID, projectPath string) string {
+	messages, err := ReadSessionHistory(sessionID, projectPath)
+	if err != nil {
+		return ""
+	}
+
+	// Find first user message with actual user content
+	for _, msg := range messages {
+		if msg.Type == "user" {
+			userPrompt := msg.GetUserPrompt()
+			if userPrompt != "" {
+				return userPrompt
+			}
+		}
+	}
+
+	return ""
+}
+
+// GetSessionDisplayTitle computes the display title for a session with priority:
+// 1. CustomTitle (user-set via /title command)
+// 2. Summary (Claude-generated)
+// 3. First actual user prompt from JSONL (only read if needed)
+// 4. "Untitled" as fallback
+func GetSessionDisplayTitle(entry SessionIndexEntry) string {
+	// Priority 1: User-set custom title
+	if entry.CustomTitle != "" {
+		return entry.CustomTitle
+	}
+
+	// Priority 2: Claude-generated summary
+	if entry.Summary != "" {
+		return entry.Summary
+	}
+
+	// Priority 3: Check if firstPrompt has actual user content (not just system tags)
+	// If firstPrompt starts with system tags, we need to read the JSONL
+	if !strings.HasPrefix(entry.FirstPrompt, "<ide_") &&
+		!strings.HasPrefix(entry.FirstPrompt, "<system-reminder>") {
+		// FirstPrompt contains actual user text
+		return entry.FirstPrompt
+	}
+
+	// FirstPrompt is only system tags - read JSONL to get real first user prompt
+	if userPrompt := GetFirstUserPrompt(entry.SessionID, entry.ProjectPath); userPrompt != "" {
+		return userPrompt
+	}
+
+	// Priority 4: Fallback
+	return "Untitled"
 }
 
 // TodoItem represents a task in a Claude Code session

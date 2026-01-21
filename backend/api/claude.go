@@ -346,23 +346,18 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	for _, entry := range index.Entries {
 		addedSessions[entry.SessionID] = true
 
+		// Compute display title with priority: customTitle > summary > firstUserPrompt
+		title := claude.GetSessionDisplayTitle(entry)
+
 		sessionData := map[string]interface{}{
 			"id":           entry.SessionID,
-			"title":        entry.FirstPrompt,
+			"title":        title,
 			"workingDir":   entry.ProjectPath,
 			"createdAt":    entry.Created,
 			"lastActivity": entry.Modified,
 			"messageCount": entry.MessageCount,
 			"gitBranch":    entry.GitBranch,
 			"isSidechain":  entry.IsSidechain,
-		}
-
-		// Include summary and customTitle if present
-		if entry.Summary != "" {
-			sessionData["summary"] = entry.Summary
-		}
-		if entry.CustomTitle != "" {
-			sessionData["customTitle"] = entry.CustomTitle
 		}
 
 		// Check if session is in our manager's pool
