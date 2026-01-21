@@ -52,18 +52,13 @@ export function SessionList({
   }
 
   return (
-    <div className="w-64 border-r border-border bg-muted/10">
-      <div className="border-b border-border p-4">
-        <h2 className="text-sm font-semibold text-foreground">Sessions</h2>
-      </div>
-
-      <div className="overflow-y-auto">
-        {sessions.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">
-            No sessions
-          </div>
-        ) : (
-          sessions.map((session) => (
+    <div className="h-full overflow-y-auto">
+      {sessions.length === 0 ? (
+        <div className="p-4 text-center text-sm text-muted-foreground">
+          No sessions
+        </div>
+      ) : (
+        sessions.map((session) => (
             <div
               key={session.id}
               className={cn(
@@ -180,7 +175,6 @@ export function SessionList({
             </div>
           ))
         )}
-      </div>
     </div>
   )
 }
