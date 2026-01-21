@@ -29,12 +29,11 @@ export function MessageBlock({ message }: MessageBlockProps) {
       )}
 
       {/* Assistant messages: bullet + markdown content */}
-      {!isUser && (message.content || message.thinking) && (
+      {!isUser && message.content && (
         <div className="flex gap-2">
-          <MessageDot status="assistant" />
+          <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
-            {message.content && <MessageContent content={message.content} />}
-            {message.thinking && <ThinkingBlocks thinking={message.thinking} />}
+            <MessageContent content={message.content} />
             {message.isStreaming && (
               <span
                 className="inline-block w-[10px] h-[18px] ml-1 align-middle"
@@ -44,6 +43,13 @@ export function MessageBlock({ message }: MessageBlockProps) {
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Thinking blocks: rendered separately with mono styling */}
+      {!isUser && message.thinking && (
+        <div className={message.content ? 'mt-2' : ''}>
+          <ThinkingBlocks thinking={message.thinking} />
         </div>
       )}
 

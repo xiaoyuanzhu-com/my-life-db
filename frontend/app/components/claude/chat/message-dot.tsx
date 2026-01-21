@@ -2,19 +2,20 @@ import type { ToolStatus } from '~/types/claude'
 
 interface MessageDotProps {
   status?: ToolStatus | 'assistant' | 'user'
+  /**
+   * Line height context for alignment:
+   * - 'prose': 24px (15px × 1.6) - for assistant message content
+   * - 'mono': 20px (13px × 1.5) - for tool blocks, thinking, etc.
+   */
+  lineHeight?: 'prose' | 'mono'
 }
 
 /**
- * Unified dot/bullet component for all message types
- * - User messages: no dot
- * - Assistant messages: gray dot
- * - Tool calls: status-colored dot
- *
- * Uses a fixed 24px height container to align with the first line of any text.
- * The dot is vertically centered within this container.
+ * Unified dot/bullet component for all message types.
+ * The dot is vertically centered within a container that matches
+ * the line-height of the adjacent text.
  */
-export function MessageDot({ status = 'assistant' }: MessageDotProps) {
-  // User messages don't get a dot
+export function MessageDot({ status = 'assistant', lineHeight = 'mono' }: MessageDotProps) {
   if (status === 'user') {
     return null
   }
@@ -28,12 +29,15 @@ export function MessageDot({ status = 'assistant' }: MessageDotProps) {
     return '#22C55E' // Green for success/completed
   }
 
-  // Use outline circle for pending state, filled for everything else
   const bulletChar = status === 'pending' ? '○' : '●'
+
+  // Match the line-height of the text context
+  // prose: 15px * 1.6 = 24px, mono: 13px * 1.5 = 19.5px ≈ 20px
+  const heightClass = lineHeight === 'prose' ? 'h-6' : 'h-5'
 
   return (
     <span
-      className="select-none font-mono text-xs h-6 flex items-center"
+      className={`select-none font-mono text-xs ${heightClass} flex items-center shrink-0`}
       style={{ color: getBulletColor() }}
     >
       {bulletChar}
