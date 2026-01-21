@@ -1,16 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { SessionTab } from '~/components/claude/session-tab'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface } from '~/components/claude/chat'
 import { Button } from '~/components/ui/button'
-import { Plus, Menu, Terminal, MessageSquare } from 'lucide-react'
+import { Plus, Menu } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useAuth } from '~/contexts/auth-context'
-import { cn } from '~/lib/utils'
 import '@fontsource/jetbrains-mono'
-
-type UIMode = 'terminal' | 'chat'
 
 interface Session {
   id: string
@@ -29,10 +25,8 @@ export default function ClaudePage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
-  const [showSidebar, setShowSidebar] = useState(true)
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [uiMode, setUiMode] = useState<UIMode>('chat') // Default to new chat UI
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -223,70 +217,50 @@ export default function ClaudePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Desktop Header - hidden on mobile */}
-      <div className="hidden md:flex items-center justify-between border-b border-border bg-background px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowSidebar(!showSidebar)}
-          >
-            <Menu className="h-4 w-4" />
+    <div className="flex h-full">
+      {/* Left Column: Sessions Sidebar */}
+      <div className="hidden md:flex md:w-80 border-r border-border flex-col bg-muted/30">
+        {/* Sessions Header */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">Sessions</h2>
+          <Button onClick={createSession} size="sm">
+            <Plus className="h-4 w-4" />
           </Button>
-          <h1 className="text-lg font-semibold">Claude Code</h1>
-
-          {/* UI Mode Toggle */}
-          <div className="ml-4 flex items-center rounded-lg border border-border p-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 px-2',
-                uiMode === 'chat' && 'bg-muted'
-              )}
-              onClick={() => setUiMode('chat')}
-              title="Chat UI"
-            >
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 px-2',
-                uiMode === 'terminal' && 'bg-muted'
-              )}
-              onClick={() => setUiMode('terminal')}
-              title="Terminal UI"
-            >
-              <Terminal className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
 
-        <Button onClick={createSession} size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          New Session
-        </Button>
+        {/* Sessions List */}
+        <div className="flex-1 overflow-hidden">
+          <SessionList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelect={setActiveSessionId}
+            onDelete={deleteSession}
+            onRename={updateSessionTitle}
+          />
+        </div>
       </div>
 
-      {/* Mobile Action Buttons - Top Right, below status */}
+      {/* Mobile Sidebar Sheet */}
+      <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
+        <SheetContent side="left" className="w-[280px] p-0 md:hidden">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle>Sessions</SheetTitle>
+          </SheetHeader>
+          <SessionList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelect={(id) => {
+              setActiveSessionId(id)
+              setShowMobileSidebar(false)
+            }}
+            onDelete={deleteSession}
+            onRename={updateSessionTitle}
+          />
+        </SheetContent>
+      </Sheet>
+
+      {/* Mobile Action Buttons - Top Right */}
       <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
-        {/* UI Mode Toggle (mobile) */}
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
-          onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
-          title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
-        >
-          {uiMode === 'chat' ? (
-            <Terminal className="h-4 w-4" />
-          ) : (
-            <MessageSquare className="h-4 w-4" />
-          )}
-        </Button>
         <Button
           size="icon"
           variant="ghost"
@@ -305,78 +279,27 @@ export default function ClaudePage() {
         </Button>
       </div>
 
-      {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar */}
-        {showSidebar && (
-          <div className="hidden md:block">
-            <SessionList
-              sessions={sessions}
-              activeSessionId={activeSessionId}
-              onSelect={setActiveSessionId}
-              onDelete={deleteSession}
-              onRename={updateSessionTitle}
-            />
+      {/* Right Column: Chat Interface */}
+      <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
+        {sessions.length > 0 && activeSessionId ? (
+          <ChatInterface
+            sessionId={activeSessionId}
+            sessionName={activeSession?.title || 'Session'}
+            workingDir={activeSession?.workingDir}
+            onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+            isHistorical={activeSession?.isActive === false}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <p className="text-muted-foreground mb-4">No sessions</p>
+              <Button onClick={createSession}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create First Session
+              </Button>
+            </div>
           </div>
         )}
-
-        {/* Mobile Sidebar Sheet */}
-        <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
-          <SheetContent side="left" className="w-[280px] p-0 md:hidden">
-            <SheetHeader className="px-4 py-3 border-b">
-              <SheetTitle>Sessions</SheetTitle>
-            </SheetHeader>
-            <SessionList
-              sessions={sessions}
-              activeSessionId={activeSessionId}
-              onSelect={(id) => {
-                setActiveSessionId(id)
-                setShowMobileSidebar(false)
-              }}
-              onDelete={deleteSession}
-              onRename={updateSessionTitle}
-            />
-          </SheetContent>
-        </Sheet>
-
-        {/* Main area - Terminal or Chat UI */}
-        <div className="flex-1 bg-background overflow-hidden min-w-0">
-          {sessions.length > 0 && activeSessionId ? (
-            // Check if session is active for UI mode switching
-            activeSession?.isActive === true && uiMode === 'terminal' ? (
-              // Active session - Terminal UI
-              <>
-                {sessions.map((session) => (
-                  <SessionTab
-                    key={session.id}
-                    sessionId={session.id}
-                    isActive={session.id === activeSessionId}
-                  />
-                ))}
-              </>
-            ) : (
-              // Chat UI for both active and historical sessions
-              // Historical sessions will be automatically activated on first message
-              <ChatInterface
-                sessionId={activeSessionId}
-                sessionName={activeSession?.title || 'Session'}
-                workingDir={activeSession?.workingDir}
-                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-                isHistorical={activeSession?.isActive === false}
-              />
-            )
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <p className="text-muted-foreground mb-4">No sessions</p>
-                <Button onClick={createSession}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create First Session
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

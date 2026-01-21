@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
-import { SessionHeader } from './session-header'
 import { TodoPanel } from './todo-panel'
 import { PermissionModal } from './permission-modal'
 import { AskUserQuestion } from './ask-user-question'
-import { Button } from '~/components/ui/button'
-import { Play } from 'lucide-react'
 import type {
   Message,
   ToolCall,
@@ -34,9 +31,6 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({
   sessionId,
-  sessionName = 'New Conversation',
-  workingDir = '',
-  onSessionNameChange,
   isHistorical = false,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files
@@ -52,16 +46,10 @@ export function ChatInterface({
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
 
-  // Track if Claude is actively working
-  const hasActiveTasks = activeTodos.some(todo => todo.status === 'in_progress')
-
   // Connection state
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
-
-  // Token usage
-  const [tokenUsage, setTokenUsage] = useState({ used: 0, limit: 200000 })
 
   // Convert SessionMessage to Message format
   const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
@@ -205,10 +193,7 @@ export function ChatInterface({
         break
 
       case 'session_update':
-        const update = msg.data as { tokenUsage?: { used: number; limit: number } }
-        if (update.tokenUsage) {
-          setTokenUsage(update.tokenUsage)
-        }
+        // Session metadata updates (e.g., token usage)
         break
 
       case 'error':
@@ -296,17 +281,6 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Session Header */}
-      <SessionHeader
-        sessionName={sessionName}
-        workingDir={workingDir}
-        status={status}
-        tokenUsage={tokenUsage}
-        onNameChange={onSessionNameChange}
-        isHistorical={isHistorical}
-        hasActiveTasks={hasActiveTasks}
-      />
-
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
