@@ -499,6 +499,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	// Track last known message count to detect new messages
 	lastMessageCount := 0
+	lastTodoCount := 0
 
 	// Send existing messages immediately on connect
 	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
@@ -521,71 +522,102 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 	}
 
-	// Polling goroutine - polls session file for new messages AND todos
-	pollTicker := time.NewTicker(500 * time.Millisecond)
-	defer pollTicker.Stop()
+	// Setup hybrid watcher (fsnotify + polling fallback)
+	watcher, err := claude.NewSessionWatcher(sessionID, session.WorkingDir)
+	if err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session watcher, falling back to polling only")
+		watcher = nil // Explicitly set to nil for safety
+	} else {
+		defer watcher.Close()
+		if err := watcher.Start(ctx); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to start session watcher")
+			watcher.Close()
+			watcher = nil
+		}
+	}
 
-	pollDone := make(chan struct{})
-	go func() {
-		defer close(pollDone)
-		lastTodoCount := 0
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-pollTicker.C:
-				// Read session history
-				messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
-				if err != nil {
-					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
-					continue
-				}
-
+	// Helper function to send updates
+	sendUpdates := func(updateType string) {
+		if updateType == "messages" || updateType == "all" {
+			// Read session history
+			messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+			if err != nil {
+				log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
+			} else if len(messages) > lastMessageCount {
 				// Send any new messages
-				if len(messages) > lastMessageCount {
-					newMessages := messages[lastMessageCount:]
-					log.Info().
-						Str("sessionId", sessionID).
-						Int("newCount", len(newMessages)).
-						Int("totalCount", len(messages)).
-						Msg("sending new messages via WebSocket")
+				newMessages := messages[lastMessageCount:]
+				log.Info().
+					Str("sessionId", sessionID).
+					Int("newCount", len(newMessages)).
+					Int("totalCount", len(messages)).
+					Str("source", "fsnotify").
+					Msg("sending new messages via WebSocket")
 
-					for _, msg := range newMessages {
-						// Send the entire SessionMessage as-is
-						if msgBytes, err := json.Marshal(msg); err == nil {
-							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-								log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
-								return
-							}
-						}
-					}
-					lastMessageCount = len(messages)
-				}
-
-				// Read todos
-				todos, err := claude.ReadSessionTodos(sessionID)
-				if err != nil {
-					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
-					continue
-				}
-
-				// Send todos if they changed (check count as simple heuristic)
-				if len(todos) != lastTodoCount {
-					todoMsg := map[string]interface{}{
-						"type": "todo_update",
-						"data": map[string]interface{}{
-							"todos": todos,
-						},
-					}
-					if msgBytes, err := json.Marshal(todoMsg); err == nil {
+				for _, msg := range newMessages {
+					// Send the entire SessionMessage as-is
+					if msgBytes, err := json.Marshal(msg); err == nil {
 						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
 							return
 						}
 					}
-					lastTodoCount = len(todos)
 				}
+				lastMessageCount = len(messages)
+			}
+		}
+
+		if updateType == "todos" || updateType == "all" {
+			// Read todos
+			todos, err := claude.ReadSessionTodos(sessionID)
+			if err != nil {
+				log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
+			} else if len(todos) != lastTodoCount {
+				// Send todos if they changed
+				todoMsg := map[string]interface{}{
+					"type": "todo_update",
+					"data": map[string]interface{}{
+						"todos": todos,
+					},
+				}
+				if msgBytes, err := json.Marshal(todoMsg); err == nil {
+					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+						log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+						return
+					}
+				}
+				lastTodoCount = len(todos)
+			}
+		}
+	}
+
+	// Polling + fsnotify goroutine (hybrid approach)
+	pollTicker := time.NewTicker(5 * time.Second) // Reduced frequency - fsnotify handles most updates
+	defer pollTicker.Stop()
+
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+
+		// Get update channel (nil-safe)
+		var updateChan <-chan string
+		if watcher != nil {
+			updateChan = watcher.Updates()
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case updateType := <-updateChan:
+				// Fast path: fsnotify detected a change
+				if updateType != "" {
+					sendUpdates(updateType)
+				}
+
+			case <-pollTicker.C:
+				// Slow path: safety net polling to catch anything fsnotify missed
+				sendUpdates("all")
 			}
 		}
 	}()
