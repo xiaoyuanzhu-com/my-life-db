@@ -62,8 +62,10 @@ export function SessionList({
             <div
               key={session.id}
               className={cn(
-                'group relative border-b border-border p-3 hover:bg-muted/50 cursor-pointer transition-colors',
-                activeSessionId === session.id && 'bg-muted'
+                'group relative border-b border-border p-3 cursor-pointer transition-colors',
+                activeSessionId === session.id
+                  ? 'bg-primary/10'
+                  : 'hover:bg-muted/50'
               )}
               onClick={() => onSelect(session.id)}
             >
