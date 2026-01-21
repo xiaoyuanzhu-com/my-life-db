@@ -12,19 +12,27 @@ interface MessageBlockProps {
 export function MessageBlock({ message }: MessageBlockProps) {
   const isUser = message.role === 'user'
 
+  const hasUserContent = isUser && message.content
+  const hasAssistantContent = !isUser && message.content
+  const hasThinking = !isUser && message.thinking && message.thinking.length > 0
+  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
+
+  // Skip rendering if there's nothing to show
+  if (!hasUserContent && !hasAssistantContent && !hasThinking && !hasToolCalls) {
+    return null
+  }
+
   return (
     <div className="mb-4">
       {/* User messages: gray background pill, right-aligned */}
-      {isUser && message.content && (
-        <UserMessageBlock content={message.content} />
-      )}
+      {hasUserContent && <UserMessageBlock content={message.content!} />}
 
       {/* Assistant messages: bullet + markdown content */}
-      {!isUser && message.content && (
+      {hasAssistantContent && (
         <div className="flex gap-2">
           <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
-            <MessageContent content={message.content} />
+            <MessageContent content={message.content!} />
             {message.isStreaming && (
               <span
                 className="inline-block w-[10px] h-[18px] ml-1 align-middle"
@@ -38,16 +46,16 @@ export function MessageBlock({ message }: MessageBlockProps) {
       )}
 
       {/* Thinking blocks: rendered separately with mono styling */}
-      {!isUser && message.thinking && (
+      {hasThinking && (
         <div className={message.content ? 'mt-2' : ''}>
-          <ThinkingBlocks thinking={message.thinking} />
+          <ThinkingBlocks thinking={message.thinking!} />
         </div>
       )}
 
       {/* Tool calls */}
-      {message.toolCalls && message.toolCalls.length > 0 && (
+      {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={message.toolCalls} />
+          <ToolCallGroups toolCalls={message.toolCalls!} />
         </div>
       )}
     </div>
