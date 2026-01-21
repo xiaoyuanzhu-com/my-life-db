@@ -92,6 +92,7 @@ export function useClaudeSessionHistory(
       return
     }
 
+    console.log('[useClaudeSessionHistory] Fetching history for session:', sessionId)
     setIsLoading(true)
     setError(null)
 
@@ -103,6 +104,7 @@ export function useClaudeSessionHistory(
       }
 
       const data = await response.json()
+      console.log('[useClaudeSessionHistory] Fetched history, message count:', data.messages?.length || 0)
       setMessages(data.messages || [])
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'

@@ -281,13 +281,12 @@ export default function ClaudePage() {
 
       {/* Right Column: Chat Interface */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-        {sessions.length > 0 && activeSessionId ? (
+        {sessions.length > 0 && activeSessionId && activeSession ? (
           <ChatInterface
             sessionId={activeSessionId}
-            sessionName={activeSession?.title || 'Session'}
-            workingDir={activeSession?.workingDir}
+            sessionName={activeSession.title || 'Session'}
+            workingDir={activeSession.workingDir}
             onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-            isHistorical={activeSession?.isActive === false}
           />
         ) : (
           <div className="flex h-full items-center justify-center">

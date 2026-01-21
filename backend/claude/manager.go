@@ -188,11 +188,12 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 
 	if ok {
 		// Session already in pool (may or may not be activated)
+		log.Info().Str("sessionId", id).Bool("activated", session.IsActivated()).Msg("GetSession: found in pool")
 		return session, nil
 	}
 
 	// Session not in pool - try to find it in history and create shell session
-	log.Debug().Str("sessionId", id).Msg("session not in pool, checking history")
+	log.Info().Str("sessionId", id).Msg("GetSession: not in pool, checking history")
 
 	// Find session info from Claude's index
 	index, err := GetSessionIndexForProject(config.Get().UserDataDir)
@@ -225,6 +226,7 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	}
 
 	// Create a non-activated shell session
+	log.Info().Str("sessionId", id).Str("workingDir", workingDir).Msg("GetSession: creating shell session from history")
 	return m.createShellSession(id, workingDir, title)
 }
 

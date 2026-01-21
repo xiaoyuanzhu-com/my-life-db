@@ -285,10 +285,13 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	}
 
 	// Get active session IDs for quick lookup
+	// IMPORTANT: Only mark as active if the session process is actually running (activated)
 	activeSessionIDs := make(map[string]bool)
 	activeSessions := claudeManager.ListSessions()
 	for _, s := range activeSessions {
-		activeSessionIDs[s.ID] = true
+		if s.IsActivated() {
+			activeSessionIDs[s.ID] = true
+		}
 	}
 
 	// Convert index entries to response format
@@ -306,7 +309,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"isSidechain":  entry.IsSidechain,
 		}
 
-		// If session is active, add additional live data
+		// If session is active (activated), add additional live data
 		if activeSessionIDs[entry.SessionID] {
 			activeSession, _ := claudeManager.GetSession(entry.SessionID)
 			if activeSession != nil {
@@ -328,15 +331,19 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 	sessionID := c.Param("id")
 
+	log.Info().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: fetching history")
+
 	// Try to get project path from active session first
 	var projectPath string
 	session, err := claudeManager.GetSession(sessionID)
 	if err == nil {
 		projectPath = session.WorkingDir
+		log.Info().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("GetClaudeSessionHistory: got session from manager")
 	} else {
 		// If not in active sessions, try to find it in Claude's session files
 		// Use empty project path - the reader will search all projects
 		projectPath = ""
+		log.Info().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: session not found in manager")
 	}
 
 	// Read JSONL file using the session reader
@@ -587,12 +594,17 @@ func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {
 func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
+	log.Info().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: WebSocket connection request")
+
 	// GetSession will auto-resume from history if not active
 	session, err := claudeManager.GetSession(sessionID)
 	if err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: session not found")
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
 	}
+
+	log.Info().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("ClaudeSubscribeWebSocket: got session")
 
 	// Get the underlying http.ResponseWriter from Gin's wrapper
 	var w http.ResponseWriter = c.Writer
@@ -612,14 +624,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Ensure session is activated before proceeding
-	if err := session.EnsureActivated(); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
-		conn.Close(websocket.StatusInternalError, "Failed to activate session")
-		return
-	}
-
-	log.Info().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected")
+	// DON'T activate on connection - wait for first message
+	// This allows viewing historical sessions without activating them
+	log.Info().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
 
 	// Track last known message count to detect new messages
 	lastMessageCount := 0
@@ -760,6 +767,22 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
+			// Activate session on first message (lazy activation)
+			if !session.IsActivated() {
+				log.Info().Str("sessionId", sessionID).Msg("Activating session on first message")
+				if err := session.EnsureActivated(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+					errMsg := map[string]interface{}{
+						"type":  "error",
+						"error": "Failed to activate session",
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+					break
+				}
+			}
+
 			// Send message to Claude by writing to PTY
 			// Send each character separately to avoid readline paste detection
 			messageWithNewline := inMsg.Content + "\n"

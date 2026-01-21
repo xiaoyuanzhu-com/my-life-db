@@ -27,12 +27,10 @@ interface ChatInterfaceProps {
   sessionName?: string
   workingDir?: string
   onSessionNameChange?: (name: string) => void
-  isHistorical?: boolean
 }
 
 export function ChatInterface({
   sessionId,
-  isHistorical = false,
 }: ChatInterfaceProps) {
   // Load structured history from JSONL files (initial load only)
   const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
@@ -106,6 +104,7 @@ export function ChatInterface({
 
   // Load history on mount and convert to Message format (initial load only)
   useEffect(() => {
+    console.log('[ChatInterface] Loading history for session:', sessionId)
     if (historyMessages.length > 0) {
       const conversationMessages = filterConversationMessages(historyMessages)
       const converted = conversationMessages
@@ -116,14 +115,15 @@ export function ChatInterface({
   }, [historyMessages])
 
   // WebSocket connection for real-time updates
+  // Always connect - backend will activate session lazily on first message
   useEffect(() => {
-    if (isHistorical) return // Don't connect WebSocket for historical sessions
+    console.log('[ChatInterface] Connecting WebSocket for session:', sessionId)
 
     // Connect to subscribe endpoint
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
 
-    console.log('[ChatInterface] Connecting to WebSocket:', wsUrl)
+    console.log('[ChatInterface] WebSocket URL:', wsUrl)
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
@@ -192,7 +192,7 @@ export function ChatInterface({
       ws.close()
       wsRef.current = null
     }
-  }, [sessionId, isHistorical])
+  }, [sessionId])
 
   // Send message to server via WebSocket
   const sendMessage = useCallback(
@@ -229,7 +229,7 @@ export function ChatInterface({
       // Note: setIsStreaming(false) will happen when we receive the assistant's response
       // via WebSocket, or we can add a timeout
     },
-    []
+    [sessionId]
   )
 
   // Handle permission decision (placeholder for future implementation)
@@ -279,9 +279,7 @@ export function ChatInterface({
             placeholder={
               isStreaming
                 ? 'Claude is thinking...'
-                : isHistorical
-                  ? 'Type a message to resume this session...'
-                  : 'Type a message...'
+                : 'Type a message...'
             }
           />
         </div>

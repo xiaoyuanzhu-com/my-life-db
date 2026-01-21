@@ -103,15 +103,21 @@ func (s *Session) EnsureActivated() error {
 		return nil
 	}
 
+	fmt.Printf("[EnsureActivated] Session %s is being activated (stack trace below)\n", s.ID)
+	// Print stack trace to see who called this
+	// Uncomment if needed: debug.PrintStack()
+
 	if s.activateFn == nil {
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
+	fmt.Printf("[EnsureActivated] Calling activateFn for session %s\n", s.ID)
 	if err := s.activateFn(); err != nil {
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
 	s.activated = true
+	fmt.Printf("[EnsureActivated] Session %s successfully activated\n", s.ID)
 	return nil
 }
 
