@@ -254,23 +254,47 @@ projects/
 **3. Assistant Messages (Tool Use)**
 ```json
 {
-  "parentUuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
   "type": "assistant",
+  "uuid": "75819da3-58d5-4d30-a167-a1449fd87738",
+  "parentUuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
+  "timestamp": "2026-01-19T04:45:18.615Z",
   "message": {
     "role": "assistant",
     "content": [
       {
         "type": "tool_use",
         "id": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-        "name": "Read",
+        "name": "Bash",
         "input": {
-          "file_path": "/Users/iloahz/projects/my-life-db/frontend/app/routes/home.tsx"
+          "command": "cd /path/to/dir && go build .",
+          "description": "Build from backend directory"
         }
       }
-    ]
+    ],
+    "model": "claude-opus-4-5-20251101",
+    "id": "msg_01ML3PjZMxy3rDy3swDQt5JX",
+    "type": "message",
+    "stop_reason": null,
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 1,
+      "output_tokens": 24,
+      "cache_creation_input_tokens": 144,
+      "cache_read_input_tokens": 86830,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 144,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
   },
-  "uuid": "75819da3-58d5-4d30-a167-a1449fd87738",
-  "timestamp": "2026-01-19T04:45:18.615Z"
+  "isSidechain": false,
+  "userType": "external",
+  "cwd": "/Users/iloahz/projects/my-life-db",
+  "sessionId": "8c6161b9-4c82-4689-880c-a3f662124b54",
+  "version": "2.1.11",
+  "gitBranch": "main",
+  "requestId": "req_011CXLvVsj7Na55XGwXeScNm"
 }
 ```
 

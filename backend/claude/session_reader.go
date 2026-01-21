@@ -35,19 +35,30 @@ type ContentBlock struct {
 // - User messages: string (plain text)
 // - Assistant messages: []ContentBlock (structured content with text and tool calls)
 type ClaudeMessage struct {
-	Role    string      `json:"role"`              // "user" or "assistant"
-	Content interface{} `json:"content,omitempty"` // string for user, []ContentBlock for assistant
-	Model   string      `json:"model,omitempty"`   // Model used (e.g., "claude-opus-4-5-20251101")
-	ID      string      `json:"id,omitempty"`      // Message ID from Claude API
-	Usage   *TokenUsage `json:"usage,omitempty"`   // Token usage for this message
+	Role         string      `json:"role"`                    // "user" or "assistant"
+	Content      interface{} `json:"content,omitempty"`       // string for user, []ContentBlock for assistant
+	Model        string      `json:"model,omitempty"`         // Model used (e.g., "claude-opus-4-5-20251101")
+	ID           string      `json:"id,omitempty"`            // Message ID from Claude API
+	Type         string      `json:"type,omitempty"`          // "message" for assistant responses
+	StopReason   *string     `json:"stop_reason,omitempty"`   // Why generation stopped (e.g., "end_turn", "tool_use")
+	StopSequence *string     `json:"stop_sequence,omitempty"` // Stop sequence that triggered stop (if any)
+	Usage        *TokenUsage `json:"usage,omitempty"`         // Token usage for this message
 }
 
 // TokenUsage represents token usage statistics
 type TokenUsage struct {
-	InputTokens              int `json:"input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens,omitempty"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	InputTokens              int           `json:"input_tokens,omitempty"`
+	OutputTokens             int           `json:"output_tokens,omitempty"`
+	CacheCreationInputTokens int           `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int           `json:"cache_read_input_tokens,omitempty"`
+	CacheCreation            *CacheDetails `json:"cache_creation,omitempty"`
+	ServiceTier              string        `json:"service_tier,omitempty"` // e.g., "standard"
+}
+
+// CacheDetails represents cache creation details
+type CacheDetails struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens,omitempty"`
 }
 
 // SessionMessage represents a single message in a session JSONL file
@@ -59,14 +70,15 @@ type SessionMessage struct {
 	Message    *ClaudeMessage `json:"message"`    // Full message object (role, content, etc.)
 
 	// Additional fields that may be present
-	IsSidechain   *bool                  `json:"isSidechain,omitempty"`
-	UserType      string                 `json:"userType,omitempty"`
-	CWD           string                 `json:"cwd,omitempty"`
-	SessionID     string                 `json:"sessionId,omitempty"`
-	Version       string                 `json:"version,omitempty"`
-	GitBranch     string                 `json:"gitBranch,omitempty"`
-	RequestID     string                 `json:"requestId,omitempty"`
-	ToolUseResult ToolUseResult `json:"toolUseResult,omitempty"`
+	IsSidechain            *bool         `json:"isSidechain,omitempty"`
+	UserType               string        `json:"userType,omitempty"`
+	CWD                    string        `json:"cwd,omitempty"`
+	SessionID              string        `json:"sessionId,omitempty"`
+	Version                string        `json:"version,omitempty"`
+	GitBranch              string        `json:"gitBranch,omitempty"`
+	RequestID              string        `json:"requestId,omitempty"`
+	ToolUseResult          ToolUseResult `json:"toolUseResult,omitempty"`
+	SourceToolAssistantUUID string       `json:"sourceToolAssistantUUID,omitempty"` // For tool results: UUID of the assistant message that initiated the tool call
 }
 
 // ToolUseResult represents the toolUseResult field which varies by tool type.
