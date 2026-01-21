@@ -167,19 +167,14 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Get the underlying http.ResponseWriter from Gin's wrapper
-	// Gin wraps the response writer to track state, but WebSocket needs the raw writer
-	var w http.ResponseWriter = c.Writer
-
-	// Try to unwrap to get the actual response writer
-	// Gin's ResponseWriter may wrap the original, we need the original for hijacking
-	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
-		w = unwrapper.Unwrap()
-	}
+	// Mark connection as hijacked BEFORE websocket.Accept() to prevent middleware
+	// from accessing the response writer after the connection is upgraded.
+	// This must be done first because websocket.Accept() hijacks the connection.
+	log.MarkHijacked(c)
 
 	// Accept WebSocket connection (coder/websocket)
-	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,                              // Skip origin check - auth is handled at higher layer
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,                                 // Skip origin check - auth is handled at higher layer
 		CompressionMode:    websocket.CompressionContextTakeover, // Enable permessage-deflate compression
 	})
 	if err != nil {
@@ -187,9 +182,6 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
-
-	// Abort Gin context to prevent middleware from writing headers on hijacked connection
-	c.Abort()
 
 	// Create a cancellable context - we cancel it when WebSocket closes
 	// Gin's request context doesn't cancel when WebSocket connection closes
@@ -509,14 +501,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	log.Debug().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("ClaudeSubscribeWebSocket: got session")
 
-	// Get the underlying http.ResponseWriter from Gin's wrapper
-	var w http.ResponseWriter = c.Writer
-	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
-		w = unwrapper.Unwrap()
-	}
+	// Mark connection as hijacked BEFORE websocket.Accept() to prevent middleware
+	// from accessing the response writer after the connection is upgraded.
+	log.MarkHijacked(c)
 
 	// Accept WebSocket connection
-	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
 	})
 	if err != nil {
@@ -524,9 +514,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
-
-	// Abort Gin context to prevent middleware from writing headers on hijacked connection
-	c.Abort()
 
 	// Create a cancellable context - we cancel it when WebSocket closes
 	// Gin's request context doesn't cancel when WebSocket connection closes

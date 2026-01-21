@@ -58,6 +58,10 @@ type AliyunASRMessage struct {
 // RealtimeASR proxies WebSocket connections directly to Aliyun Fun-ASR Realtime
 // Client and server communicate using Aliyun's message schema directly
 func (h *Handlers) RealtimeASR(c *gin.Context) {
+	// Mark connection as hijacked BEFORE upgrading to prevent middleware
+	// from accessing the response writer after the connection is upgraded.
+	log.MarkHijacked(c)
+
 	// Upgrade HTTP connection to WebSocket
 	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
