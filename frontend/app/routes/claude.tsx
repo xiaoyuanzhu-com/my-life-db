@@ -30,7 +30,6 @@ export default function ClaudePage() {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uiMode, setUiMode] = useState<'chat' | 'terminal'>('chat')
-  const userClearedSelection = useRef(false)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -47,7 +46,6 @@ export default function ClaudePage() {
     if (activeSessionId) {
       // Update URL to include session ID
       navigate(`/claude/${activeSessionId}`, { replace: true })
-      userClearedSelection.current = false // Reset flag when selecting a session
     } else if (urlSessionId) {
       // URL has session ID but we don't have it set - navigate to base
       navigate('/claude', { replace: true })
@@ -132,34 +130,7 @@ export default function ClaudePage() {
 
       setSessions(sortedSessions)
 
-      // Auto-select first ACTIVE session ONLY if no URL session ID and no current selection
-      setActiveSessionId((currentId) => {
-        console.log('[loadSessions] currentId:', currentId, 'urlSessionId:', urlSessionId, 'userClearedSelection:', userClearedSelection.current, 'sessions:', sortedSessions?.map((s: Session) => s.id))
-
-        // If URL has a session ID, use it (already set in useEffect)
-        if (urlSessionId) {
-          console.log('[loadSessions] using URL session ID:', urlSessionId)
-          return urlSessionId
-        }
-
-        // If user explicitly cleared selection, don't auto-select
-        if (userClearedSelection.current) {
-          console.log('[loadSessions] user cleared selection, not auto-selecting')
-          return null
-        }
-
-        // If user already selected/created a session, preserve it
-        if (currentId !== null) {
-          console.log('[loadSessions] preserving currentId:', currentId)
-          return currentId
-        }
-
-        // Otherwise auto-select first active session if available
-        const firstActiveSession = sortedSessions.find((s: Session) => s.isActive)
-        const firstId = firstActiveSession ? firstActiveSession.id : null
-        console.log('[loadSessions] auto-selecting first active session:', firstId)
-        return firstId
-      })
+      // Session selection is now URL-driven, no auto-selection needed
     } catch (error) {
       console.error('Failed to load sessions:', error)
     } finally {
@@ -285,10 +256,7 @@ export default function ClaudePage() {
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2
             className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-            onClick={() => {
-              userClearedSelection.current = true
-              setActiveSessionId(null)
-            }}
+            onClick={() => setActiveSessionId(null)}
             title="Clear selection"
           >
             Sessions
