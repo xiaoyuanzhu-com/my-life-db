@@ -114,24 +114,10 @@ func (s *Server) setupRouter() {
 	}
 
 	// Gzip compression (skip SSE and WebSocket endpoints)
-	// WebSocket endpoints MUST be excluded from gzip middleware to avoid
-	// "http: response.WriteHeader on hijacked connection" warnings.
-	// When websocket.Accept() hijacks the connection, the gzip middleware's
-	// wrapped response writer still holds a reference. After the handler
-	// completes, gzip tries to finalize/flush, triggering WriteHeader on
-	// the already-hijacked connection. c.Abort() alone is insufficient
-	// because it only prevents future middleware, not middleware that's
-	// already wrapping the response.
-	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
-		gzip.WithExcludedPaths([]string{
-			"/api/notifications/stream", // SSE - needs streaming
-			"/api/asr/realtime",         // WebSocket - protocol upgrade
-		}),
-		gzip.WithExcludedPathsRegexs([]string{
-			"/api/claude/sessions/[^/]+/ws$",        // Claude terminal WebSocket
-			"/api/claude/sessions/[^/]+/subscribe$", // Claude subscribe WebSocket
-		}),
-	))
+	s.router.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
+		"/api/notifications/stream", // SSE - needs streaming
+		"/api/asr/realtime",         // WebSocket - protocol upgrade
+	})))
 
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)
