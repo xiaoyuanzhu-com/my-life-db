@@ -31,8 +31,8 @@ github.com/gabriel-vasile/mimetype v1.4.12 h1:e9hWvmLYvtp846tLHam2o++qitpguFiYCK
 github.com/gabriel-vasile/mimetype v1.4.12/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9tea18J8ufA774AB3s=
 github.com/gen2brain/heic v0.4.9 h1:sHM7kjMV2+AlrSfYNsJiD0NrqAJqIMWAOqMSZ0HXrU8=
 github.com/gen2brain/heic v0.4.9/go.mod h1:0/0SrVQnUhOA3ekFY5/lApZYniF/DsgS3g9COWe83dM=
-github.com/gin-contrib/gzip v1.2.2 h1:B8K3MQmYk+AkpYUjT2TMNt5fGfKCdoHLgKY+rGLjPMI=
-github.com/gin-contrib/gzip v1.2.2/go.mod h1:i6ThIqgMWJmDATm+FmwP+ELZzKj30kQdMYlEFRPZaaw=
+github.com/gin-contrib/gzip v1.2.2 h1:iUU/EYCM8ENfkjmZaVrxbjF/ZC267Iqv5S0MMCMEliI=
+github.com/gin-contrib/gzip v1.2.2/go.mod h1:C1a5cacjlDsS20cKnHlZRCPUu57D3qH6B2pV0rl+Y/s=
 github.com/gin-contrib/sse v1.1.0 h1:n0w2GMuUpWDVp7qSpvze6fAu9iRxJY4Hmj6AmBOU05w=
 github.com/gin-contrib/sse v1.1.0/go.mod h1:hxRZ5gVpWMT7Z0B0gSNYqqsSCNIJMjzvm6fqCz9vjwM=
 github.com/gin-gonic/gin v1.11.0 h1:OW/6PLjyusp2PPXtyxKHU0RbX6I/l28FTdDlae5ueWk=

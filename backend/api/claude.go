@@ -409,14 +409,22 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 
 	// Send message to Claude by writing to PTY
 	// Send each character separately to avoid readline paste detection
-	messageWithNewline := req.Content + "\n"
-	for _, ch := range messageWithNewline {
+	// No delay between characters for faster input
+	for _, ch := range req.Content {
 		charByte := []byte(string(ch))
 		if _, err := session.PTY.Write(charByte); err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
 			return
 		}
+	}
+
+	// Small delay before Enter to ensure readline processes the input correctly
+	time.Sleep(50 * time.Millisecond)
+	if _, err := session.PTY.Write([]byte("\r")); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
+		return
 	}
 
 	log.Info().
@@ -634,11 +642,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 			// Send message to Claude by writing to PTY
 			// Send each character separately to avoid readline paste detection
-			messageWithNewline := inMsg.Content + "\n"
-			for _, ch := range messageWithNewline {
+			// No delay between characters for faster input
+			for _, ch := range inMsg.Content {
 				charByte := []byte(string(ch))
 				if _, err := session.PTY.Write(charByte); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
 					// Send error back to client
 					errMsg := map[string]interface{}{
 						"type":  "error",
@@ -649,6 +657,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					}
 					break
 				}
+			}
+
+			// Small delay before Enter to ensure readline processes the input correctly
+			time.Sleep(50 * time.Millisecond)
+			if _, err := session.PTY.Write([]byte("\r")); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
 			}
 
 			session.LastActivity = time.Now()
