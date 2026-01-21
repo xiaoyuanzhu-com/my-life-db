@@ -66,6 +66,10 @@ export const routes: RouteObject[] = [
         path: "claude",
         Component: Claude,
       },
+      {
+        path: "claude/:sessionId",
+        Component: Claude,
+      },
     ],
   },
 ];

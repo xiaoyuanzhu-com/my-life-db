@@ -5,7 +5,7 @@ import "./globals.css";
 
 function ConditionalHeader() {
   const location = useLocation();
-  const isClaudePage = location.pathname === '/claude';
+  const isClaudePage = location.pathname.startsWith('/claude');
 
   // Hide header on mobile for Claude page, always show on desktop
   return (

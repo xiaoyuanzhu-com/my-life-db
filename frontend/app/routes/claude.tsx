@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface } from '~/components/claude/chat'
 import { ClaudeTerminal } from '~/components/claude/terminal'
@@ -24,8 +24,9 @@ interface Session {
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const { sessionId: urlSessionId } = useParams()
   const [sessions, setSessions] = useState<Session[]>([])
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId || null)
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uiMode, setUiMode] = useState<'chat' | 'terminal'>('chat')
@@ -39,6 +40,24 @@ export default function ClaudePage() {
   useEffect(() => {
     loadSessions()
   }, [])
+
+  // Sync URL with active session
+  useEffect(() => {
+    if (activeSessionId) {
+      // Update URL to include session ID
+      navigate(`/claude/${activeSessionId}`, { replace: true })
+    } else if (urlSessionId) {
+      // URL has session ID but we don't have it set - navigate to base
+      navigate('/claude', { replace: true })
+    }
+  }, [activeSessionId, urlSessionId, navigate])
+
+  // Initialize active session from URL on mount
+  useEffect(() => {
+    if (urlSessionId) {
+      setActiveSessionId(urlSessionId)
+    }
+  }, [urlSessionId])
 
   // Swipe gesture handler for mobile back navigation
   useEffect(() => {
@@ -111,15 +130,22 @@ export default function ClaudePage() {
 
       setSessions(sortedSessions)
 
-      // Auto-select first ACTIVE session ONLY on initial load
-      // Use callback form to get current state, preventing override of user's selection
+      // Auto-select first ACTIVE session ONLY if no URL session ID and no current selection
       setActiveSessionId((currentId) => {
-        console.log('[loadSessions] currentId:', currentId, 'sessions:', sortedSessions?.map((s: Session) => s.id))
+        console.log('[loadSessions] currentId:', currentId, 'urlSessionId:', urlSessionId, 'sessions:', sortedSessions?.map((s: Session) => s.id))
+
+        // If URL has a session ID, use it (already set in useEffect)
+        if (urlSessionId) {
+          console.log('[loadSessions] using URL session ID:', urlSessionId)
+          return urlSessionId
+        }
+
         // If user already selected/created a session, preserve it
         if (currentId !== null) {
           console.log('[loadSessions] preserving currentId:', currentId)
           return currentId
         }
+
         // Otherwise auto-select first active session if available
         const firstActiveSession = sortedSessions.find((s: Session) => s.isActive)
         const firstId = firstActiveSession ? firstActiveSession.id : null
