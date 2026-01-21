@@ -364,6 +364,57 @@ func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 	})
 }
 
+// SendClaudeMessage handles POST /api/claude/sessions/:id/messages
+// Sends a message to a Claude session via HTTP (alternative to WebSocket)
+func (h *Handlers) SendClaudeMessage(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	// Get or create session (will auto-resume from history if not active)
+	session, err := claudeManager.GetSession(sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	// Ensure session is activated
+	if err := session.EnsureActivated(); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate session"})
+		return
+	}
+
+	// Send message to Claude by writing to PTY
+	// Send each character separately to avoid readline paste detection
+	messageWithNewline := req.Content + "\n"
+	for _, ch := range messageWithNewline {
+		charByte := []byte(string(ch))
+		if _, err := session.PTY.Write(charByte); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
+			return
+		}
+	}
+
+	log.Info().
+		Str("sessionId", sessionID).
+		Str("content", req.Content).
+		Msg("message sent to claude session via HTTP")
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessionId": sessionID,
+		"status":    "sent",
+	})
+}
+
 // ClaudeChatWebSocket handles WebSocket connection for chat-style interface
 // This endpoint provides a JSON-based protocol on top of the terminal session
 func (h *Handlers) ClaudeChatWebSocket(c *gin.Context) {

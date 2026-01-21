@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
@@ -10,7 +10,6 @@ import type {
   TodoItem,
   PermissionRequest,
   UserQuestion,
-  WSMessage,
   PermissionDecision,
 } from '~/types/claude'
 import {
@@ -41,15 +40,10 @@ export function ChatInterface({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
 
-  // Tool state
+  // Tool state - kept for future implementation
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
-
-  // Connection state
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<number | undefined>(undefined)
 
   // Convert SessionMessage to Message format
   const convertToMessage = (sessionMsg: SessionMessage): Message | null => {
@@ -126,91 +120,12 @@ export function ChatInterface({
     return () => clearInterval(interval)
   }, [isHistorical, refetch])
 
-  // Connect to WebSocket
-  const connect = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/chat`
-
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setStatus('connected')
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const msg: WSMessage = JSON.parse(event.data)
-        handleMessage(msg)
-      } catch (e) {
-        console.error('Failed to parse message:', e)
-      }
-    }
-
-    ws.onerror = () => {
-      setStatus('disconnected')
-    }
-
-    ws.onclose = () => {
-      setStatus('disconnected')
-      // Attempt reconnect after 2 seconds
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        if (wsRef.current?.readyState !== WebSocket.OPEN) {
-          setStatus('connecting')
-          connect()
-        }
-      }, 2000)
-    }
-  }, [sessionId])
-
-  // Handle incoming WebSocket messages
-  // NOTE: Chat UI uses structured history from JSONL files, not WebSocket
-  // WebSocket only handles real-time interactive events
-  const handleMessage = (msg: WSMessage) => {
-    switch (msg.type) {
-      case 'connected':
-        // Session connected
-        break
-
-      case 'text_delta':
-      case 'text_complete':
-      case 'tool_use':
-      case 'tool_result':
-        // SKIP: Chat interface uses structured history from JSONL files via API
-        // For raw terminal output, use the Terminal tab (xterm.js component)
-        break
-
-      case 'permission_request':
-        setPendingPermission(msg.data as PermissionRequest)
-        break
-
-      case 'user_question':
-        setPendingQuestion(msg.data as UserQuestion)
-        break
-
-      case 'todo_update':
-        setActiveTodos((msg.data as { todos: TodoItem[] }).todos)
-        break
-
-      case 'session_update':
-        // Session metadata updates (e.g., token usage)
-        break
-
-      case 'error':
-        console.error('Server error:', msg.data)
-        break
-    }
-  }
-
-  // Send message to server
+  // Send message to server via HTTP POST
   const sendMessage = useCallback(
-    (content: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket not connected')
-        return
-      }
+    async (content: string) => {
+      setIsStreaming(true)
 
-      // Add user message immediately
+      // Add user message immediately to UI
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -219,65 +134,50 @@ export function ChatInterface({
       }
       setMessages((prev) => [...prev, userMessage])
 
-      // Send to server
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'user_message',
-          content,
+      try {
+        // Send message via HTTP POST
+        const response = await fetch(`/api/claude/sessions/${sessionId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
         })
-      )
+
+        if (!response.ok) {
+          throw new Error(`Failed to send message: ${response.statusText}`)
+        }
+
+        // Trigger immediate refetch to get Claude's response
+        // Don't wait for the 2-second polling interval
+        refetch()
+      } catch (error) {
+        console.error('Failed to send message:', error)
+        // TODO: Show error to user
+      } finally {
+        setIsStreaming(false)
+      }
+    },
+    [sessionId, refetch]
+  )
+
+  // Handle permission decision (placeholder for future implementation)
+  const handlePermissionDecision = useCallback(
+    (decision: PermissionDecision) => {
+      // TODO: Implement permission handling via HTTP
+      console.log('Permission decision:', decision)
+      setPendingPermission(null)
     },
     []
   )
 
-  // Handle permission decision
-  const handlePermissionDecision = useCallback(
-    (decision: PermissionDecision) => {
-      if (!pendingPermission || !wsRef.current) return
-
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'permission_decision',
-          requestId: pendingPermission.id,
-          decision,
-        })
-      )
-      setPendingPermission(null)
-    },
-    [pendingPermission]
-  )
-
-  // Handle question answer
+  // Handle question answer (placeholder for future implementation)
   const handleQuestionAnswer = useCallback(
     (answers: Record<string, string | string[]>) => {
-      if (!pendingQuestion || !wsRef.current) return
-
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'question_answer',
-          questionId: pendingQuestion.id,
-          answers,
-        })
-      )
+      // TODO: Implement question handling via HTTP
+      console.log('Question answers:', answers)
       setPendingQuestion(null)
     },
-    [pendingQuestion]
+    []
   )
-
-  // Connect on mount
-  // For historical sessions, try to connect but don't block the UI
-  useEffect(() => {
-    connect()
-
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-    }
-  }, [connect])
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -290,15 +190,15 @@ export function ChatInterface({
             streamingContent={isStreaming ? streamingContent : undefined}
           />
 
-          {/* Chat Input - always show, backend will activate session on first message */}
+          {/* Chat Input - always enabled */}
           <ChatInput
             onSend={sendMessage}
-            disabled={status !== 'connected' || isStreaming}
+            disabled={isStreaming}
             placeholder={
-              status !== 'connected'
-                ? isHistorical ? 'Starting session...' : 'Connecting...'
-                : isStreaming
-                  ? 'Claude is thinking...'
+              isStreaming
+                ? 'Claude is thinking...'
+                : isHistorical
+                  ? 'Type a message to resume this session...'
                   : 'Type a message...'
             }
           />
