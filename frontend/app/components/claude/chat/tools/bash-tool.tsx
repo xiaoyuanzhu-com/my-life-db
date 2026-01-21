@@ -49,9 +49,9 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
       {output && (
         <div className="flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
           <span className="select-none">└</span>
-          <pre className="flex-1 min-w-0 whitespace-pre-wrap break-all overflow-x-auto">
+          <div className="flex-1 min-w-0 whitespace-pre-wrap break-all">
             {output}
-          </pre>
+          </div>
         </div>
       )}
 
