@@ -481,23 +481,39 @@ func (m *Manager) readPTY(session *Session) {
 	// Goroutine to signal ready after a period of silence (output stopped)
 	var readyOnce sync.Once
 	lastOutputTime := time.Now()
+	firstOutputReceived := false
 	var lastOutputMu sync.Mutex
 
 	if session.ready != nil {
+		log.Info().Str("sessionId", session.ID).Msg("Starting readiness detection goroutine")
 		go func() {
 			ticker := time.NewTicker(50 * time.Millisecond)
 			defer ticker.Stop()
 
-			firstOutput := false
+			maxWaitTime := 3 * time.Second // Failsafe: mark ready after 3s even without silence
+			startTime := time.Now()
+
 			for {
 				select {
 				case <-m.ctx.Done():
+					log.Info().Str("sessionId", session.ID).Msg("Readiness detection cancelled (context done)")
 					return
 				case <-ticker.C:
 					lastOutputMu.Lock()
 					timeSinceLastOutput := time.Since(lastOutputTime)
-					hadOutput := firstOutput
+					hadOutput := firstOutputReceived
 					lastOutputMu.Unlock()
+
+					// Failsafe: if we've been waiting too long, just mark as ready
+					if time.Since(startTime) >= maxWaitTime {
+						readyOnce.Do(func() {
+							close(session.ready)
+							log.Info().
+								Str("sessionId", session.ID).
+								Msg("Claude ready (failsafe timeout)")
+						})
+						return
+					}
 
 					// If we've seen output and there's been 300ms of silence, signal ready
 					if hadOutput && timeSinceLastOutput >= 300*time.Millisecond {
@@ -535,8 +551,17 @@ func (m *Manager) readPTY(session *Session) {
 
 		// Update last output time for silence detection
 		lastOutputMu.Lock()
+		wasFirstOutput := !firstOutputReceived
 		lastOutputTime = time.Now()
+		firstOutputReceived = true
 		lastOutputMu.Unlock()
+
+		if wasFirstOutput && session.ready != nil {
+			log.Info().
+				Str("sessionId", session.ID).
+				Int("bytes", n).
+				Msg("First output received from Claude process")
+		}
 
 		// Make a copy of the data to broadcast
 		data := make([]byte, n)

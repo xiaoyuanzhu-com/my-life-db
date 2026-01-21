@@ -40,6 +40,7 @@ export function ChatInterface({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [wsConnected, setWsConnected] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Tool state - kept for future implementation
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
@@ -139,7 +140,10 @@ export function ChatInterface({
         // Handle error messages
         if (data.type === 'error') {
           console.error('[ChatInterface] Error from server:', data.error)
+          setError(data.error || 'An error occurred')
           setIsStreaming(false)
+          // Clear error after 5 seconds
+          setTimeout(() => setError(null), 5000)
           return
         }
 
@@ -228,8 +232,10 @@ export function ChatInterface({
         console.log('[ChatInterface] Sent message via WebSocket:', content)
       } catch (error) {
         console.error('Failed to send message:', error)
-        // TODO: Show error to user
+        setError('Failed to send message. Please try again.')
         setIsStreaming(false)
+        // Clear error after 5 seconds
+        setTimeout(() => setError(null), 5000)
       }
       // Note: setIsStreaming(false) will happen when we receive the assistant's response
       // via WebSocket, or we can add a timeout
@@ -259,6 +265,13 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-background">
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
