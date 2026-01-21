@@ -113,9 +113,10 @@ func (s *Server) setupRouter() {
 		s.router.Use(s.securityHeadersMiddleware())
 	}
 
-	// Gzip compression (skip SSE endpoints which need streaming)
+	// Gzip compression (skip SSE and WebSocket endpoints)
 	s.router.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
-		"/api/notifications/stream",
+		"/api/notifications/stream", // SSE - needs streaming
+		"/api/asr/realtime",         // WebSocket - protocol upgrade
 	})))
 
 	// Trust proxy headers
