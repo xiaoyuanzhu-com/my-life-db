@@ -2,6 +2,7 @@ package log
 
 import (
 	"io"
+	stdlog "log"
 	"os"
 	"strings"
 	"sync"
@@ -96,4 +97,28 @@ func Fatal() *zerolog.Event {
 // Logger returns the underlying zerolog.Logger for integrations
 func Logger() zerolog.Logger {
 	return logger
+}
+
+// StdLogger returns a standard library *log.Logger that writes to zerolog at the specified level.
+// Useful for passing to http.Server.ErrorLog and other stdlib integrations.
+func StdLogger(level zerolog.Level) *stdlog.Logger {
+	return stdlog.New(logger.Level(level), "", 0)
+}
+
+// zerologWriter wraps a zerolog.Logger to implement io.Writer
+type zerologWriter struct {
+	logger zerolog.Logger
+}
+
+func (w zerologWriter) Write(p []byte) (n int, err error) {
+	// Trim trailing newline that stdlib log adds
+	msg := strings.TrimSuffix(string(p), "\n")
+	w.logger.Warn().Msg(msg)
+	return len(p), nil
+}
+
+// StdErrorLogger returns a standard library *log.Logger that writes to zerolog.
+// Useful for passing to http.Server.ErrorLog.
+func StdErrorLogger() *stdlog.Logger {
+	return stdlog.New(zerologWriter{logger: logger}, "", 0)
 }

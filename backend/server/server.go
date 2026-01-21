@@ -199,8 +199,9 @@ func (s *Server) Start() error {
 
 	// Create HTTP server
 	s.http = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
-		Handler: s.router,
+		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
+		Handler:  s.router,
+		ErrorLog: log.StdErrorLogger(), // Route Go's internal HTTP errors through zerolog
 	}
 
 	log.Info().

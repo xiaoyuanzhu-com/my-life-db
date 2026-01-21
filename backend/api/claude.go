@@ -188,6 +188,9 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
+	// Abort Gin context to prevent middleware from writing headers on hijacked connection
+	c.Abort()
+
 	ctx := c.Request.Context()
 
 	// Ensure session is activated before connecting client
@@ -505,6 +508,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	// Abort Gin context to prevent middleware from writing headers on hijacked connection
+	c.Abort()
 
 	// Create a cancellable context - we cancel it when WebSocket closes
 	// Gin's request context doesn't cancel when WebSocket connection closes
