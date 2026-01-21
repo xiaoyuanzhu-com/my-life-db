@@ -398,3 +398,120 @@
 .claude-interface pre code {
   background-color: transparent;
 }
+
+/* Prose styling for markdown content in Claude chat */
+.prose-claude {
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.6;
+  user-select: text;
+  color: var(--claude-text-primary);
+}
+
+.prose-claude p {
+  margin: 1rem 0;
+}
+
+.prose-claude p:first-child {
+  margin-top: 0;
+}
+
+.prose-claude h1 {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+
+.prose-claude h2 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+
+.prose-claude h3 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.prose-claude ul {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.prose-claude ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
+}
+
+.prose-claude li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-claude code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
+  font-size: 13px;
+  padding: 2px 5px;
+  border-radius: 0.25rem;
+  background-color: var(--claude-bg-inline);
+}
+
+.prose-claude code::before,
+.prose-claude code::after {
+  content: none;
+}
+
+.prose-claude pre {
+  margin: 0.75rem 0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  background-color: var(--claude-bg-code-block);
+}
+
+.prose-claude pre code {
+  padding: 0;
+  background-color: transparent;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.prose-claude strong {
+  font-weight: 600;
+}
+
+.prose-claude a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-claude table {
+  margin: 1rem 0;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--claude-border-light);
+}
+
+.prose-claude thead {
+  background-color: var(--claude-bg-subtle);
+}
+
+.prose-claude th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border: 1px solid var(--claude-border-light);
+}
+
+.prose-claude td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--claude-border-light);
+}
