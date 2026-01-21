@@ -506,7 +506,10 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	ctx := c.Request.Context()
+	// Create a cancellable context - we cancel it when WebSocket closes
+	// Gin's request context doesn't cancel when WebSocket connection closes
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
@@ -576,12 +579,13 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					// Send ALL message types (user, assistant, progress, queue-operation, etc.)
 					if msgBytes, err := json.Marshal(msg); err == nil {
 						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+							log.Info().Err(err).Str("sessionId", sessionID).Msg("sendUpdates: WebSocket write failed, returning early")
 							return
 						}
 					}
 				}
 				lastMessageCount = len(messages)
+				log.Info().Str("sessionId", sessionID).Int("lastMessageCount", lastMessageCount).Msg("sendUpdates: updated lastMessageCount")
 			}
 		}
 
@@ -615,7 +619,10 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	pollDone := make(chan struct{})
 	go func() {
-		defer close(pollDone)
+		defer func() {
+			log.Info().Str("sessionId", sessionID).Msg("poll goroutine exiting")
+			close(pollDone)
+		}()
 
 		// Get update channel (nil-safe)
 		var updateChan <-chan string
@@ -626,16 +633,23 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		for {
 			select {
 			case <-ctx.Done():
+				log.Info().Str("sessionId", sessionID).Msg("poll goroutine: ctx.Done() received")
 				return
 
-			case updateType := <-updateChan:
+			case updateType, ok := <-updateChan:
 				// Fast path: fsnotify detected a change
+				if !ok {
+					log.Info().Str("sessionId", sessionID).Msg("poll goroutine: updateChan closed")
+					return
+				}
 				if updateType != "" {
+					log.Info().Str("sessionId", sessionID).Str("updateType", updateType).Msg("poll goroutine: received update from watcher")
 					sendUpdates(updateType)
 				}
 
 			case <-pollTicker.C:
 				// Slow path: safety net polling to catch anything fsnotify missed
+				log.Info().Str("sessionId", sessionID).Msg("poll goroutine: poll tick")
 				sendUpdates("all")
 			}
 		}
@@ -661,6 +675,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}()
 
 	// Read messages from client (for sending user messages)
+	log.Info().Str("sessionId", sessionID).Msg("entering main read loop")
 	for {
 		msgType, msg, err := conn.Read(ctx)
 		if err != nil {
@@ -670,10 +685,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			if closeStatus == websocket.StatusGoingAway ||
 			   closeStatus == websocket.StatusNormalClosure ||
 			   closeStatus == websocket.StatusNoStatusRcvd {
-				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("WebSocket closed normally")
+				log.Info().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("WebSocket closed normally")
 			} else {
 				log.Info().Err(err).Str("sessionId", sessionID).Msg("WebSocket read error")
 			}
+			log.Info().Str("sessionId", sessionID).Msg("breaking out of main read loop")
+			cancel() // Signal goroutines to stop
 			break
 		}
 
@@ -767,6 +784,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}
 
+	log.Info().Str("sessionId", sessionID).Msg("waiting for pollDone")
 	<-pollDone
+	log.Info().Str("sessionId", sessionID).Msg("waiting for pingDone")
 	<-pingDone
+	log.Info().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket handler exiting")
 }
