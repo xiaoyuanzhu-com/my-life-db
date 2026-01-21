@@ -250,33 +250,6 @@ func GetSessionIndexForProject(projectPath string) (*SessionIndex, error) {
 	return readSessionIndex(indexPath)
 }
 
-// Helper methods for SessionMessage
-
-// IsConversationMessage returns true if this is a user or assistant message
-func (m *SessionMessage) IsConversationMessage() bool {
-	return m.Type == "user" || m.Type == "assistant"
-}
-
-// IsUserMessage returns true if this is a user message
-func (m *SessionMessage) IsUserMessage() bool {
-	return m.Type == "user"
-}
-
-// IsAssistantMessage returns true if this is an assistant message
-func (m *SessionMessage) IsAssistantMessage() bool {
-	return m.Type == "assistant"
-}
-
-// IsProgressMessage returns true if this is a progress message
-func (m *SessionMessage) IsProgressMessage() bool {
-	return m.Type == "progress"
-}
-
-// IsQueueOperation returns true if this is a queue operation message
-func (m *SessionMessage) IsQueueOperation() bool {
-	return m.Type == "queue-operation"
-}
-
 // GetTextContent extracts text content from a message
 // For user messages: returns the string content directly
 // For assistant messages: extracts and joins text from all text blocks
