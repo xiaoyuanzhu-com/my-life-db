@@ -250,6 +250,51 @@ func GetSessionIndexForProject(projectPath string) (*SessionIndex, error) {
 	return readSessionIndex(indexPath)
 }
 
+// GetAllSessionIndexes returns sessions from all Claude project directories
+func GetAllSessionIndexes() (*SessionIndex, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	projectsDir := filepath.Join(homeDir, ".claude", "projects")
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read projects directory: %w", err)
+	}
+
+	// Collect all sessions from all project directories
+	allEntries := make([]SessionIndexEntry, 0)
+	seenSessions := make(map[string]bool)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		indexPath := filepath.Join(projectsDir, entry.Name(), "sessions-index.json")
+		index, err := readSessionIndex(indexPath)
+		if err != nil {
+			// Skip directories without index files
+			continue
+		}
+
+		for _, sessionEntry := range index.Entries {
+			// Avoid duplicates (same session could theoretically appear in multiple indexes)
+			if seenSessions[sessionEntry.SessionID] {
+				continue
+			}
+			seenSessions[sessionEntry.SessionID] = true
+			allEntries = append(allEntries, sessionEntry)
+		}
+	}
+
+	return &SessionIndex{
+		Version: 1,
+		Entries: allEntries,
+	}, nil
+}
+
 // GetTextContent extracts text content from a message
 // For user messages: returns the string content directly
 // For assistant messages: extracts and joins text from all text blocks

@@ -309,40 +309,43 @@ type ChatMessage struct {
 }
 
 // ListAllClaudeSessions handles GET /api/claude/sessions/all
-// Returns both active and historical sessions from Claude's session index
+// Returns both active and historical sessions from all Claude project directories
 func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
-	// Get working directory (project path)
-	projectPath := config.Get().UserDataDir
+	// Get all sessions from our manager's pool (includes newly created sessions)
+	activeSessions := claudeManager.ListSessions()
+	activeSessionMap := make(map[string]*claude.Session)
+	for _, s := range activeSessions {
+		activeSessionMap[s.ID] = s
+	}
 
-	// Read sessions index from Claude's directory
-	index, err := claude.GetSessionIndexForProject(projectPath)
+	log.Info().
+		Int("managerSessionCount", len(activeSessions)).
+		Msg("ListAllClaudeSessions: fetching sessions")
+
+	// Track which sessions we've already added (to avoid duplicates)
+	addedSessions := make(map[string]bool)
+	result := make([]map[string]interface{}, 0)
+
+	// Read sessions from all Claude project directories
+	index, err := claude.GetAllSessionIndexes()
 	if err != nil {
-		// If no sessions-index.json exists yet, just return active sessions
-		log.Debug().Err(err).Msg("no session index found, returning active sessions only")
-		activeSessions := claudeManager.ListSessions()
-		result := make([]map[string]interface{}, len(activeSessions))
-		for i, s := range activeSessions {
+		// If no sessions found, just return active sessions from manager
+		log.Info().Err(err).Msg("no session indexes found, returning active sessions only")
+		for _, s := range activeSessions {
 			sessionData := s.ToJSON()
-			sessionData["isActive"] = true
-			result[i] = sessionData
+			sessionData["isActive"] = s.IsActivated()
+			result = append(result, sessionData)
 		}
 		c.JSON(http.StatusOK, gin.H{"sessions": result})
 		return
 	}
 
-	// Get active session IDs for quick lookup
-	// IMPORTANT: Only mark as active if the session process is actually running (activated)
-	activeSessionIDs := make(map[string]bool)
-	activeSessions := claudeManager.ListSessions()
-	for _, s := range activeSessions {
-		if s.IsActivated() {
-			activeSessionIDs[s.ID] = true
-		}
-	}
+	log.Info().Int("indexEntryCount", len(index.Entries)).Msg("ListAllClaudeSessions: read all indexes")
 
 	// Convert index entries to response format
-	result := make([]map[string]interface{}, 0, len(index.Entries))
 	for _, entry := range index.Entries {
+		addedSessions[entry.SessionID] = true
+
 		sessionData := map[string]interface{}{
 			"id":           entry.SessionID,
 			"title":        entry.FirstPrompt,
@@ -351,24 +354,41 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"lastActivity": entry.Modified,
 			"messageCount": entry.MessageCount,
 			"gitBranch":    entry.GitBranch,
-			"isActive":     activeSessionIDs[entry.SessionID],
 			"isSidechain":  entry.IsSidechain,
 		}
 
-		// If session is active (activated), add additional live data
-		if activeSessionIDs[entry.SessionID] {
-			activeSession, _ := claudeManager.GetSession(entry.SessionID)
-			if activeSession != nil {
-				sessionData["status"] = activeSession.Status
-				sessionData["processId"] = activeSession.ProcessID
-				sessionData["clients"] = len(activeSession.Clients)
-			}
+		// Check if session is in our manager's pool
+		if activeSession, ok := activeSessionMap[entry.SessionID]; ok {
+			sessionData["isActive"] = activeSession.IsActivated()
+			sessionData["status"] = activeSession.Status
+			sessionData["processId"] = activeSession.ProcessID
+			sessionData["clients"] = len(activeSession.Clients)
 		} else {
+			sessionData["isActive"] = false
 			sessionData["status"] = "archived"
 		}
 
 		result = append(result, sessionData)
 	}
+
+	// Add any sessions from manager that aren't in the index yet (newly created)
+	addedFromManager := 0
+	for _, s := range activeSessions {
+		if addedSessions[s.ID] {
+			continue // Already added from index
+		}
+		sessionData := s.ToJSON()
+		sessionData["isActive"] = s.IsActivated()
+		result = append(result, sessionData)
+		addedFromManager++
+		log.Info().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in index)")
+	}
+
+	log.Info().
+		Int("totalSessions", len(result)).
+		Int("fromIndex", len(index.Entries)).
+		Int("fromManager", addedFromManager).
+		Msg("ListAllClaudeSessions: returning sessions")
 
 	c.JSON(http.StatusOK, gin.H{"sessions": result})
 }

@@ -235,8 +235,8 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 
 	// Session not in pool - try to find it in history and create shell session
 
-	// Find session info from Claude's index
-	index, err := GetSessionIndexForProject(config.Get().UserDataDir)
+	// Find session info from all Claude project indexes
+	index, err := GetAllSessionIndexes()
 	var workingDir string
 	var title string
 	found := false

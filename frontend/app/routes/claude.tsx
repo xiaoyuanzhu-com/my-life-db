@@ -151,8 +151,12 @@ export default function ClaudePage() {
 
       if (response.ok) {
         const newSession = await response.json()
-        // Use functional update to ensure we have the latest sessions array
-        setSessions((prevSessions) => [...prevSessions, newSession])
+        // Add new session at the beginning (most recent first)
+        // Mark as active since it was just created
+        setSessions((prevSessions) => [
+          { ...newSession, isActive: true },
+          ...prevSessions,
+        ])
         setActiveSessionId(newSession.id)
       }
     } catch (error) {
