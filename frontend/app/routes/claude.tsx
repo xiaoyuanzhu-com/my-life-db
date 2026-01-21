@@ -275,7 +275,13 @@ export default function ClaudePage() {
       <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
         {/* Sessions Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">Sessions</h2>
+          <h2
+            className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
+            onClick={() => setActiveSessionId(null)}
+            title="Clear selection"
+          >
+            Sessions
+          </h2>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
