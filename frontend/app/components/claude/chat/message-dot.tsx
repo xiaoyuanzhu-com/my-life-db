@@ -2,8 +2,6 @@ import type { ToolStatus } from '~/types/claude'
 
 interface MessageDotProps {
   status?: ToolStatus | 'assistant' | 'user'
-  /** Size preset: 'prose' for 15px/1.6 (message content), 'mono' for 13px/1.5 (tool blocks) */
-  size?: 'prose' | 'mono'
 }
 
 /**
@@ -11,8 +9,11 @@ interface MessageDotProps {
  * - User messages: no dot
  * - Assistant messages: gray dot
  * - Tool calls: status-colored dot
+ *
+ * Uses a fixed 24px height container to align with the first line of any text.
+ * The dot is vertically centered within this container.
  */
-export function MessageDot({ status = 'assistant', size = 'mono' }: MessageDotProps) {
+export function MessageDot({ status = 'assistant' }: MessageDotProps) {
   // User messages don't get a dot
   if (status === 'user') {
     return null
@@ -30,13 +31,9 @@ export function MessageDot({ status = 'assistant', size = 'mono' }: MessageDotPr
   // Use outline circle for pending state, filled for everything else
   const bulletChar = status === 'pending' ? '○' : '●'
 
-  const sizeClasses = size === 'prose'
-    ? 'text-[15px] leading-[1.6]'
-    : 'text-[13px] leading-[1.5]'
-
   return (
     <span
-      className={`select-none font-mono ${sizeClasses}`}
+      className="select-none font-mono text-xs h-6 flex items-center"
       style={{ color: getBulletColor() }}
     >
       {bulletChar}
