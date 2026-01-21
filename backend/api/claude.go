@@ -191,7 +191,10 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	// Abort Gin context to prevent middleware from writing headers on hijacked connection
 	c.Abort()
 
-	ctx := c.Request.Context()
+	// Create a cancellable context - we cancel it when WebSocket closes
+	// Gin's request context doesn't cancel when WebSocket connection closes
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 
 	// Ensure session is activated before connecting client
 	if err := session.EnsureActivated(); err != nil {
@@ -212,10 +215,21 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sendDone := make(chan struct{})
 	go func() {
 		defer close(sendDone)
-		for data := range client.Send {
-			if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket write failed")
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case data, ok := <-client.Send:
+				if !ok {
+					return // Channel closed
+				}
+				if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
+					// Only log as error if context wasn't cancelled
+					if ctx.Err() == nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket write failed")
+					}
+					return
+				}
 			}
 		}
 	}()
@@ -254,6 +268,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 			} else {
 				log.Info().Err(err).Str("sessionId", sessionID).Msg("Terminal WebSocket read error")
 			}
+			cancel() // Signal goroutines to stop
 			break
 		}
 
@@ -273,6 +288,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 
 		if _, err := session.PTY.Write(msg); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
+			cancel() // Signal goroutines to stop
 			conn.Close(websocket.StatusInternalError, "PTY write error")
 			break
 		}
