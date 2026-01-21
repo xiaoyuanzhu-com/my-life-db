@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -111,6 +112,11 @@ func (s *Server) setupRouter() {
 	if !s.cfg.IsDevelopment() {
 		s.router.Use(s.securityHeadersMiddleware())
 	}
+
+	// Gzip compression (skip SSE endpoints which need streaming)
+	s.router.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
+		"/api/notifications/stream",
+	})))
 
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)

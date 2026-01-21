@@ -9,6 +9,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gen2brain/heic v0.4.9
+	github.com/gin-contrib/gzip v1.2.2
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.33
