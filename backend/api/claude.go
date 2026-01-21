@@ -645,13 +645,15 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 	}
 
-	// Polling goroutine - polls session file for new messages
+	// Polling goroutine - polls session file for new messages AND todos
 	pollTicker := time.NewTicker(500 * time.Millisecond)
 	defer pollTicker.Stop()
 
 	pollDone := make(chan struct{})
 	go func() {
 		defer close(pollDone)
+		lastTodoCount := 0
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -683,6 +685,30 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 						}
 					}
 					lastMessageCount = len(messages)
+				}
+
+				// Read todos
+				todos, err := claude.ReadSessionTodos(sessionID)
+				if err != nil {
+					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
+					continue
+				}
+
+				// Send todos if they changed (check count as simple heuristic)
+				if len(todos) != lastTodoCount {
+					todoMsg := map[string]interface{}{
+						"type": "todo_update",
+						"data": map[string]interface{}{
+							"todos": todos,
+						},
+					}
+					if msgBytes, err := json.Marshal(todoMsg); err == nil {
+						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+							return
+						}
+					}
+					lastTodoCount = len(todos)
 				}
 			}
 		}

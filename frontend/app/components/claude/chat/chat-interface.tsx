@@ -4,6 +4,7 @@ import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { PermissionModal } from './permission-modal'
 import { AskUserQuestion } from './ask-user-question'
+import { ClaudeWIP } from './claude-wip'
 import type {
   Message,
   ToolCall,
@@ -142,6 +143,14 @@ export function ChatInterface({
           return
         }
 
+        // Handle todo updates
+        if (data.type === 'todo_update') {
+          const todos: TodoItem[] = data.data?.todos || []
+          setActiveTodos(todos)
+          console.log('[ChatInterface] Received todo update:', todos)
+          return
+        }
+
         // Handle SessionMessage format
         const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
@@ -253,6 +262,15 @@ export function ChatInterface({
             messages={messages}
             streamingContent={isStreaming ? streamingContent : undefined}
           />
+
+          {/* Work-in-Progress Indicator */}
+          {activeTodos.some((t) => t.status === 'in_progress') && (
+            <div className="px-4 py-2 border-t border-border">
+              <ClaudeWIP
+                text={activeTodos.find((t) => t.status === 'in_progress')?.activeForm || 'Working...'}
+              />
+            </div>
+          )}
 
           {/* Chat Input - always enabled */}
           <ChatInput

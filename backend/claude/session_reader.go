@@ -329,3 +329,43 @@ func (m *SessionMessage) GetToolCalls() []ContentBlock {
 
 	return toolCalls
 }
+
+// TodoItem represents a task in a Claude Code session
+type TodoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`     // "pending", "in_progress", "completed"
+	ActiveForm string `json:"activeForm"` // Present continuous form (e.g., "Running tests")
+}
+
+// ReadSessionTodos reads the todo file for a session
+// Todo files are stored at ~/.claude/todos/{sessionId}-agent-{agentId}.json
+// For now, we only read the main agent's todos ({sessionId}-agent-main.json)
+func ReadSessionTodos(sessionID string) ([]TodoItem, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Try to read main agent todos
+	todoPath := filepath.Join(homeDir, ".claude", "todos", sessionID+"-agent-main.json")
+
+	// Check if file exists
+	if _, err := os.Stat(todoPath); os.IsNotExist(err) {
+		// No todos file - return empty array (not an error)
+		return []TodoItem{}, nil
+	}
+
+	// Read file
+	data, err := os.ReadFile(todoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read todos file: %w", err)
+	}
+
+	// Parse JSON
+	var todos []TodoItem
+	if err := json.Unmarshal(data, &todos); err != nil {
+		return nil, fmt.Errorf("failed to parse todos file: %w", err)
+	}
+
+	return todos, nil
+}

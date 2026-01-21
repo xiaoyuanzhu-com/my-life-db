@@ -284,6 +284,16 @@
   overflow: hidden;
 }
 
+/* Blink animation for typing cursor in Claude WIP indicator */
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 /* ============================================
    Claude Code Interface - Scoped Design System
    ============================================ */
