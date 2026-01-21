@@ -89,7 +89,30 @@ func GetMeiliClient() *MeiliClient {
 			return
 		}
 
-		index := client.Index(cfg.MeiliIndex)
+		// Ensure index exists
+		indexUID := cfg.MeiliIndex
+		_, err = client.GetIndex(indexUID)
+		if err != nil {
+			// Index doesn't exist, create it
+			log.Info().Str("index", indexUID).Msg("creating Meilisearch index")
+			taskInfo, err := client.CreateIndex(&meilisearch.IndexConfig{
+				Uid:        indexUID,
+				PrimaryKey: "documentId",
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("failed to create Meilisearch index")
+				return
+			}
+			// Wait for index creation to complete
+			_, err = client.WaitForTask(taskInfo.TaskUID, 0)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to wait for Meilisearch index creation")
+				return
+			}
+			log.Info().Str("index", indexUID).Msg("Meilisearch index created")
+		}
+
+		index := client.Index(indexUID)
 
 		meiliClient = &MeiliClient{
 			client:   client,
