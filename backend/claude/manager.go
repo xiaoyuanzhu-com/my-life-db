@@ -20,6 +20,54 @@ var (
 
 const MaxSessions = 10
 
+// Permission configuration for Claude CLI
+// These control which tools are auto-approved vs blocked
+var (
+	// Tools that are always allowed without prompting (read-only, safe operations)
+	allowedTools = []string{
+		"Read",
+		"Glob",
+		"Grep",
+		"WebFetch",
+		"WebSearch",
+		"TodoWrite",
+		"Task",
+	}
+
+	// Tools/commands that are never allowed (dangerous operations)
+	disallowedTools = []string{
+		"Bash(rm -rf:*)",
+		"Bash(sudo:*)",
+	}
+)
+
+// buildClaudeArgs constructs the command-line arguments for launching Claude
+// with appropriate permission settings for web UI usage
+func buildClaudeArgs(sessionID string, resume bool) []string {
+	args := []string{
+		"--dangerously-skip-permissions", // Skip interactive permission prompts
+	}
+
+	// Add allowed tools
+	for _, tool := range allowedTools {
+		args = append(args, "--allowedTools", tool)
+	}
+
+	// Add disallowed tools
+	for _, tool := range disallowedTools {
+		args = append(args, "--disallowedTools", tool)
+	}
+
+	// Add session flag
+	if resume {
+		args = append(args, "--resume", sessionID)
+	} else {
+		args = append(args, "--session-id", sessionID)
+	}
+
+	return args
+}
+
 // Manager manages Claude Code sessions in memory
 type Manager struct {
 	sessions map[string]*Session
@@ -139,14 +187,9 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 
 	// Spawn claude process with PTY
 	// Uses default HOME so all sessions share the same .claude directory
-	var cmd *exec.Cmd
-	if resumeSessionID != "" {
-		// Resume existing session using --resume flag
-		cmd = exec.Command("claude", "--resume", resumeSessionID)
-	} else {
-		// Create new session with specific session ID
-		cmd = exec.Command("claude", "--session-id", sessionID)
-	}
+	// Permission flags bypass interactive prompts while maintaining safety guardrails
+	args := buildClaudeArgs(sessionID, resumeSessionID != "")
+	cmd := exec.Command("claude", args...)
 	cmd.Dir = workingDir
 	// No custom environment needed - just inherit everything from os.Environ()
 
@@ -268,8 +311,9 @@ func (m *Manager) createShellSession(id, workingDir, title string) (*Session, er
 // activateSession spawns the actual Claude process for a shell session
 func (m *Manager) activateSession(session *Session) error {
 	// Spawn claude process with PTY
-	var cmd *exec.Cmd
-	cmd = exec.Command("claude", "--resume", session.ID)
+	// Permission flags bypass interactive prompts while maintaining safety guardrails
+	args := buildClaudeArgs(session.ID, true) // Always resume for activation
+	cmd := exec.Command("claude", args...)
 	cmd.Dir = session.WorkingDir
 
 	ptmx, err := pty.Start(cmd)
