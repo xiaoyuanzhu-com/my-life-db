@@ -156,6 +156,13 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 		return nil, fmt.Errorf("failed to start claude: %w", err)
 	}
 
+	// Disable bracketed paste mode to ensure input is processed correctly
+	// Bracketed paste mode can interfere with programmatic input
+	// ESC[?2004l disables it (see https://cirw.in/blog/bracketed-paste)
+	if _, err := ptmx.Write([]byte("\x1b[?2004l")); err != nil {
+		log.Warn().Err(err).Msg("failed to disable bracketed paste mode")
+	}
+
 	session.PTY = ptmx
 	session.Cmd = cmd
 	session.ProcessID = cmd.Process.Pid
@@ -280,6 +287,13 @@ func (m *Manager) activateSession(session *Session) error {
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
 		return fmt.Errorf("failed to start claude: %w", err)
+	}
+
+	// Disable bracketed paste mode to ensure input is processed correctly
+	// Bracketed paste mode can interfere with programmatic input
+	// ESC[?2004l disables it (see https://cirw.in/blog/bracketed-paste)
+	if _, err := ptmx.Write([]byte("\x1b[?2004l")); err != nil {
+		log.Warn().Err(err).Msg("failed to disable bracketed paste mode")
 	}
 
 	session.PTY = ptmx
