@@ -66,14 +66,16 @@ type SessionMessage struct {
 	Version       string                 `json:"version,omitempty"`
 	GitBranch     string                 `json:"gitBranch,omitempty"`
 	RequestID     string                 `json:"requestId,omitempty"`
-	ToolUseResult *ToolUseResultMetadata `json:"toolUseResult,omitempty"`
+	ToolUseResult ToolUseResult `json:"toolUseResult,omitempty"`
 }
 
-// ToolUseResultMetadata contains metadata about a tool use result
-type ToolUseResultMetadata struct {
-	ToolUseID string `json:"toolUseId,omitempty"`
-	IsError   bool   `json:"isError,omitempty"`
-}
+// ToolUseResult represents the toolUseResult field which varies by tool type.
+// Can be:
+// - string: For errors (e.g., "Error: Exit code 1\n...")
+// - object: Tool-specific metadata (Bash: stdout/stderr, Read: file content, etc.)
+//
+// See docs/claude-code/data-models.md for full schema documentation.
+type ToolUseResult = interface{}
 
 // SessionIndex represents the sessions-index.json file
 type SessionIndex struct {

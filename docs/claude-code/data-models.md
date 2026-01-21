@@ -284,28 +284,139 @@ projects/
 | `tool_result` | Tool execution result | `tool_use_id`, `content`, `is_error` |
 
 **4. Tool Results**
+
+Tool results are stored as `type: "user"` messages with `tool_result` content blocks.
+
+The `toolUseResult` field contains tool-specific metadata in **different formats per tool**:
+
+**4a. Bash Tool Results**
 ```json
 {
   "type": "user",
-  "parentUuid": "75819da3-58d5-4d30-a167-a1449fd87738",
   "message": {
     "role": "user",
-    "content": [
-      {
-        "tool_use_id": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-        "type": "tool_result",
-        "content": "import { useState } from 'react'\n..."
-      }
-    ]
+    "content": [{
+      "tool_use_id": "toolu_...",
+      "type": "tool_result",
+      "content": "file1.txt\nfile2.txt",
+      "is_error": false
+    }]
   },
   "toolUseResult": {
-    "toolUseId": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-    "isError": false
+    "stdout": "file1.txt\nfile2.txt",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false
   },
-  "sourceToolAssistantUUID": "75819da3-58d5-4d30-a167-a1449fd87738",
-  "uuid": "8f3c5d2a-...",
-  "timestamp": "2026-01-19T04:45:19.123Z"
+  "sourceToolAssistantUUID": "..."
 }
+```
+
+**4b. Bash Tool Results (Error)**
+```json
+{
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": [{
+      "tool_use_id": "toolu_...",
+      "type": "tool_result",
+      "content": "Exit code 1\ngo: cannot find main module...",
+      "is_error": true
+    }]
+  },
+  "toolUseResult": "Error: Exit code 1\ngo: cannot find main module...",
+  "sourceToolAssistantUUID": "..."
+}
+```
+
+**4c. Read Tool Results**
+```json
+{
+  "toolUseResult": {
+    "type": "text",
+    "file": {
+      "filePath": "/path/to/file.ts",
+      "content": "file contents..."
+    }
+  }
+}
+```
+
+**4d. Edit Tool Results**
+```json
+{
+  "toolUseResult": {
+    "filePath": "/path/to/file.ts",
+    "oldString": "original code",
+    "newString": "modified code",
+    "originalFile": "full original file",
+    "replaceAll": false,
+    "structuredPatch": "...",
+    "userModified": false
+  }
+}
+```
+
+**4e. Grep/Glob Tool Results**
+```json
+{
+  "toolUseResult": {
+    "mode": "files_with_matches",
+    "filenames": ["file1.ts", "file2.ts"]
+  }
+}
+```
+
+**4f. WebFetch Tool Results**
+```json
+{
+  "toolUseResult": {
+    "bytes": 304170,
+    "code": 200,
+    "codeText": "OK",
+    "result": "# Page Title\n\nContent...",
+    "durationMs": 7615,
+    "url": "https://example.com/page"
+  }
+}
+```
+
+**4g. WebSearch Tool Results**
+```json
+{
+  "toolUseResult": {
+    "query": "search query here"
+  }
+}
+```
+
+**4h. Task Tool Results**
+```json
+{
+  "toolUseResult": {
+    "status": "completed",
+    "prompt": "Task description..."
+  }
+}
+```
+
+**toolUseResult Schema Summary**:
+
+| Tool | Format | Key Fields |
+|------|--------|------------|
+| Bash (success) | object | `stdout`, `stderr`, `interrupted`, `isImage` |
+| Bash (error) | **string** | Error message directly |
+| Read | object | `type`, `file.filePath`, `file.content` |
+| Edit | object | `filePath`, `oldString`, `newString`, `structuredPatch` |
+| Grep/Glob | object | `mode`, `filenames` |
+| WebFetch | object | `bytes`, `code`, `result`, `durationMs`, `url` |
+| WebSearch | object | `query` |
+| Task | object | `status`, `prompt` |
+
+**Important**: The `toolUseResult` field type varies:
+- Usually an **object** with tool-specific fields
+- For errors (especially Bash), can be a **string** containing the error message
 ```
 
 **5. System Messages**
