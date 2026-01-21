@@ -30,8 +30,10 @@ export function MessageBlock({ message }: MessageBlockProps) {
 
       {/* Assistant messages: bullet + markdown content */}
       {!isUser && (message.content || message.thinking) && (
-        <div className="flex items-start gap-2">
-          <MessageDot status="assistant" />
+        <div className="flex gap-2">
+          <div className="pt-[3px]">
+            <MessageDot status="assistant" />
+          </div>
           <div className="flex-1 min-w-0">
             {message.content && <MessageContent content={message.content} />}
             {message.thinking && <ThinkingBlocks thinking={message.thinking} />}
