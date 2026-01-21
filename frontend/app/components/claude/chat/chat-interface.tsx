@@ -103,16 +103,23 @@ export function ChatInterface({
     }
   }
 
-  // Load history on mount and convert to Message format (initial load only)
+  // Clear messages and reset state when sessionId changes
   useEffect(() => {
-    console.log('[ChatInterface] Loading history for session:', sessionId)
-    if (historyMessages.length > 0) {
-      const conversationMessages = filterConversationMessages(historyMessages)
-      const converted = conversationMessages
-        .map(convertToMessage)
-        .filter((m): m is Message => m !== null)
-      setMessages(converted)
-    }
+    setMessages([])
+    setStreamingContent('')
+    setIsStreaming(false)
+    setActiveTodos([])
+    setError(null)
+  }, [sessionId])
+
+  // Load history and convert to Message format
+  useEffect(() => {
+    console.log('[ChatInterface] Loading history for session:', sessionId, 'message count:', historyMessages.length)
+    const conversationMessages = filterConversationMessages(historyMessages)
+    const converted = conversationMessages
+      .map(convertToMessage)
+      .filter((m): m is Message => m !== null)
+    setMessages(converted)
   }, [historyMessages])
 
   // WebSocket connection for real-time updates

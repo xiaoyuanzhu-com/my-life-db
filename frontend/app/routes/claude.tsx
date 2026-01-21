@@ -151,10 +151,9 @@ export default function ClaudePage() {
 
       if (response.ok) {
         const newSession = await response.json()
-        console.log('[createSession] created new session:', newSession.id)
-        setSessions([...sessions, newSession])
+        // Use functional update to ensure we have the latest sessions array
+        setSessions((prevSessions) => [...prevSessions, newSession])
         setActiveSessionId(newSession.id)
-        console.log('[createSession] set activeSessionId to:', newSession.id)
       }
     } catch (error) {
       console.error('Failed to create session:', error)
