@@ -11,7 +11,9 @@ import '@fontsource/jetbrains-mono'
 
 interface Session {
   id: string
-  title: string
+  title: string // firstPrompt - fallback title
+  summary?: string // Claude-generated 5-10 word title
+  customTitle?: string // User-set custom title (via /title command)
   workingDir: string
   status: 'active' | 'disconnected' | 'dead' | 'archived'
   createdAt: string

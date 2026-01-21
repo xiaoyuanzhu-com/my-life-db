@@ -6,7 +6,9 @@ import { cn } from '~/lib/utils'
 
 interface Session {
   id: string
-  title: string
+  title: string // firstPrompt - fallback title
+  summary?: string // Claude-generated 5-10 word title
+  customTitle?: string // User-set custom title (via /title command)
   workingDir: string
   status: 'active' | 'disconnected' | 'dead' | 'archived'
   createdAt: string
@@ -25,6 +27,13 @@ interface SessionListProps {
   onArchive: (sessionId: string) => void
 }
 
+// Get the display title for a session with priority: customTitle > summary > title (firstPrompt)
+function getSessionDisplayTitle(session: Session): string {
+  if (session.customTitle) return session.customTitle
+  if (session.summary) return session.summary
+  return session.title || 'Untitled'
+}
+
 export function SessionList({
   sessions,
   activeSessionId,
@@ -38,7 +47,7 @@ export function SessionList({
 
   const startEdit = (session: Session) => {
     setEditingId(session.id)
-    setEditTitle(session.title)
+    setEditTitle(getSessionDisplayTitle(session))
   }
 
   const saveEdit = () => {
@@ -116,7 +125,7 @@ export function SessionList({
                           <div className="h-2 w-2 rounded-full shrink-0 bg-green-500" />
                         )}
                         <h3 className="truncate text-sm font-medium text-foreground">
-                          {session.title}
+                          {getSessionDisplayTitle(session)}
                         </h3>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">

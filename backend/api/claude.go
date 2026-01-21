@@ -357,6 +357,14 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"isSidechain":  entry.IsSidechain,
 		}
 
+		// Include summary and customTitle if present
+		if entry.Summary != "" {
+			sessionData["summary"] = entry.Summary
+		}
+		if entry.CustomTitle != "" {
+			sessionData["customTitle"] = entry.CustomTitle
+		}
+
 		// Check if session is in our manager's pool
 		if activeSession, ok := activeSessionMap[entry.SessionID]; ok {
 			sessionData["isActive"] = activeSession.IsActivated()
