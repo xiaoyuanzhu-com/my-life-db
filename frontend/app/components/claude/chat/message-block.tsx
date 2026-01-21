@@ -1,5 +1,6 @@
 import { ToolBlock } from './tool-block'
 import { MessageDot } from './message-dot'
+import { splitMessageContent } from './file-ref'
 import type { Message, ToolCall } from '~/types/claude'
 import { marked } from 'marked'
 import { useEffect, useState } from 'react'
@@ -15,17 +16,7 @@ export function MessageBlock({ message }: MessageBlockProps) {
     <div className="mb-4">
       {/* User messages: gray background pill, right-aligned */}
       {isUser && message.content && (
-        <div className="flex justify-end">
-          <div
-            className="inline-block px-4 py-3 rounded-xl text-[15px] leading-relaxed"
-            style={{
-              backgroundColor: 'var(--claude-bg-subtle)',
-              color: 'var(--claude-text-primary)',
-            }}
-          >
-            {message.content}
-          </div>
-        </div>
+        <UserMessageBlock content={message.content} />
       )}
 
       {/* Assistant messages: bullet + markdown content */}
@@ -205,6 +196,31 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
           }}
         >
           {block.thinking}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// User message with file context extraction
+function UserMessageBlock({ content }: { content: string }) {
+  const { context, message } = splitMessageContent(content)
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {/* File context shown above the message bubble */}
+      {context}
+
+      {/* Message bubble - only show if there's actual message content */}
+      {message && (
+        <div
+          className="inline-block px-4 py-3 rounded-xl text-[15px] leading-relaxed"
+          style={{
+            backgroundColor: 'var(--claude-bg-subtle)',
+            color: 'var(--claude-text-primary)',
+          }}
+        >
+          {message}
         </div>
       )}
     </div>
