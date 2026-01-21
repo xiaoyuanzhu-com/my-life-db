@@ -39,6 +39,47 @@ sequenceDiagram
 
 ---
 
+## Working State Detection
+
+The client can determine if Claude is actively working by tracking message patterns:
+
+**Working indicators**:
+- **Progress messages** (`type: "progress"`) - Tool execution in progress
+- **Incomplete conversation** - User message sent but no final assistant response yet
+- **Multiple assistant messages in sequence** - Claude is still generating (tool calls, thinking, final response)
+
+**Idle indicators**:
+- **Queue operation** (`type: "queue-operation", operation: "dequeue"`) - Claude finished processing and returned to prompt
+- **Final assistant message** - Last message is assistant text (no tool calls)
+
+**Frontend implementation**:
+```typescript
+// Track working state
+let isWorking = false
+let lastMessageType = null
+let lastAssistantHasToolCalls = false
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data)
+
+  if (msg.type === 'user') {
+    isWorking = true // User sent message, Claude will respond
+  } else if (msg.type === 'progress') {
+    isWorking = true // Tool executing
+  } else if (msg.type === 'assistant') {
+    const hasToolCalls = msg.message.content?.some(b => b.type === 'tool_use')
+    lastAssistantHasToolCalls = hasToolCalls
+    isWorking = hasToolCalls // Still working if tool calls present
+  } else if (msg.type === 'queue-operation' && msg.operation === 'dequeue') {
+    isWorking = false // Claude returned to prompt, done working
+  }
+
+  setIsStreaming(isWorking)
+}
+```
+
+---
+
 ## Message Types
 
 ### 1. Client → Server
@@ -153,6 +194,33 @@ All messages from server follow the `SessionMessage` structure from Claude's JSO
     "toolUseId": "toolu_014EkHUXLk8xUUUqjocQNd8g",
     "isError": false
   }
+}
+```
+
+**Progress Message (Tool Execution)**:
+```json
+{
+  "type": "progress",
+  "uuid": "26978643-ffbd-4e71-8fe2-16f258a3ce06",
+  "parentUuid": "67d14f47-796f-4d74-89a2-355aca40aa7b",
+  "timestamp": "2026-01-21T09:36:55.890Z",
+  "data": {
+    "type": "hook_progress",
+    "hookEvent": "PreToolUse",
+    "hookName": "PreToolUse:Read",
+    "command": "callback"
+  },
+  "toolUseID": "toolu_01X5nzhSfiEL5MQ8DUeeFZhY"
+}
+```
+
+**Queue Operation (Session State)**:
+```json
+{
+  "type": "queue-operation",
+  "operation": "dequeue",
+  "timestamp": "2026-01-21T09:56:54.360Z",
+  "sessionId": "7afc3e49-d4dd-410a-8fc2-8d26cf6e1f80"
 }
 ```
 

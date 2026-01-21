@@ -544,7 +544,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			if err != nil {
 				log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
 			} else if len(messages) > lastMessageCount {
-				// Send any new messages
+				// Send any new messages (including progress messages)
 				newMessages := messages[lastMessageCount:]
 				log.Info().
 					Str("sessionId", sessionID).
@@ -554,7 +554,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Msg("sending new messages via WebSocket")
 
 				for _, msg := range newMessages {
-					// Send the entire SessionMessage as-is
+					// Send ALL message types (user, assistant, progress, queue-operation, etc.)
 					if msgBytes, err := json.Marshal(msg); err == nil {
 						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
