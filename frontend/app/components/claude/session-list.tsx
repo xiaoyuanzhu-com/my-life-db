@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Trash2, Edit2, Check, X, Archive } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface Session {
@@ -108,7 +108,7 @@ export function SessionList({
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        {session.isActive ? (
+                        {session.isActive && (
                           <div
                             className={cn(
                               'h-2 w-2 rounded-full',
@@ -117,8 +117,6 @@ export function SessionList({
                               session.status === 'dead' && 'bg-red-500'
                             )}
                           />
-                        ) : (
-                          <Archive className="h-3 w-3 text-muted-foreground" />
                         )}
                         <h3 className={cn(
                           'truncate text-sm font-medium',
@@ -137,37 +135,6 @@ export function SessionList({
                           </span>
                         )}
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {session.isActive && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              startEdit(session)
-                            }}
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (confirm('Delete this session?')) {
-                                onDelete(session.id)
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
                     </div>
                   </div>
                 </>
