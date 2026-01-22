@@ -15,7 +15,6 @@ import type {
 } from '~/types/claude'
 import {
   useClaudeSessionHistory,
-  filterConversationMessages,
   buildToolResultMap,
   isTextBlock,
   isThinkingBlock,
@@ -67,22 +66,18 @@ export function ChatInterface({
     sessionMsg: SessionMessage,
     toolResultMap: Map<string, ExtractedToolResult>
   ): Message | null => {
-    // Skip internal events that shouldn't be rendered
+    // Skip known internal events that shouldn't be rendered
     const skipTypes = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot']
     if (skipTypes.includes(sessionMsg.type)) {
       return null
     }
 
-    // Handle unknown message types as system messages for debugging
+    // Handle unknown message types - render raw JSON for debugging
     if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
-      // Render unknown types for visibility
-      // Try to extract any useful info from the message
-      const msgAny = sessionMsg as unknown as Record<string, unknown>
-      const extraInfo = msgAny.subtype ? ` (${msgAny.subtype})` : ''
       return {
         id: sessionMsg.uuid || crypto.randomUUID(),
         role: 'system',
-        content: `[${sessionMsg.type}${extraInfo}]`,
+        content: JSON.stringify(sessionMsg, null, 2),
         timestamp: new Date(sessionMsg.timestamp).getTime(),
       }
     }
@@ -185,9 +180,8 @@ export function ChatInterface({
     // Build tool result map from all messages first
     const toolResultMap = buildToolResultMap(historyMessages)
 
-    // Convert only conversation messages (user/assistant)
-    const conversationMessages = filterConversationMessages(historyMessages)
-    const converted = conversationMessages
+    // Convert all messages - convertToMessage handles skipping internal events
+    const converted = historyMessages
       .map((msg) => convertToMessage(msg, toolResultMap))
       .filter((m): m is Message => m !== null)
     setMessages(converted)
@@ -302,10 +296,9 @@ export function ChatInterface({
           // Rebuild all messages with updated tool results
           const allAccumulated = accumulatedMessagesRef.current
           const newToolResultMap = buildToolResultMap(allAccumulated)
-          const conversationMsgs = filterConversationMessages(allAccumulated)
 
           setMessages(() => {
-            const updatedMessages = conversationMsgs
+            const updatedMessages = allAccumulated
               .map((msg) => convertToMessage(msg, newToolResultMap))
               .filter((m): m is Message => m !== null)
 

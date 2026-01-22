@@ -255,17 +255,6 @@ export function isWebFetchToolResult(result: ToolUseResult | undefined): result 
 }
 
 /**
- * Filter messages to only include user and assistant messages (skip internal events)
- */
-export function filterConversationMessages(messages: SessionMessage[]): SessionMessage[] {
-  return messages.filter(
-    (msg) =>
-      msg.type === 'user' ||
-      msg.type === 'assistant'
-  )
-}
-
-/**
  * Tool result with all relevant fields extracted from the message
  */
 export interface ExtractedToolResult {
