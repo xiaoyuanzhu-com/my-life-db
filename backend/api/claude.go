@@ -318,7 +318,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		activeSessionMap[s.ID] = s
 	}
 
-	log.Info().
+	log.Debug().
 		Int("managerSessionCount", len(activeSessions)).
 		Msg("ListAllClaudeSessions: fetching sessions")
 
@@ -340,7 +340,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		return
 	}
 
-	log.Info().Int("indexEntryCount", len(index.Entries)).Msg("ListAllClaudeSessions: read all indexes")
+	log.Debug().Int("indexEntryCount", len(index.Entries)).Msg("ListAllClaudeSessions: read all indexes")
 
 	// Convert index entries to response format
 	for _, entry := range index.Entries {
@@ -384,10 +384,10 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		sessionData["isActive"] = s.IsActivated()
 		result = append(result, sessionData)
 		addedFromManager++
-		log.Info().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in index)")
+		log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in index)")
 	}
 
-	log.Info().
+	log.Debug().
 		Int("totalSessions", len(result)).
 		Int("fromIndex", len(index.Entries)).
 		Int("fromManager", addedFromManager).

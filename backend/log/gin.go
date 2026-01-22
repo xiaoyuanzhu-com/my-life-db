@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 )
 
 // GinLogger returns a Gin middleware that logs requests using zerolog
@@ -31,11 +32,13 @@ func GinLogger() gin.HandlerFunc {
 		}
 
 		// Log based on status code
-		event := Info()
+		var event *zerolog.Event
 		if status >= 500 {
 			event = Error()
 		} else if status >= 400 {
 			event = Warn()
+		} else {
+			event = Debug()
 		}
 
 		event.
