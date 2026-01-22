@@ -67,7 +67,7 @@ export function ChatInterface({
     toolResultMap: Map<string, ExtractedToolResult>
   ): Message | null => {
     // Skip known internal events that shouldn't be rendered
-    const skipTypes = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot']
+    const skipTypes = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot', 'progress']
     if (skipTypes.includes(sessionMsg.type)) {
       return null
     }
@@ -258,10 +258,24 @@ export function ChatInterface({
 
         // Handle progress updates - show WIP indicator
         if (data.type === 'progress') {
-          // Progress can have message at top level or in data.message
-          const msg = data.message || data.data?.message || null
+          const progressData = data.data
+          let msg: string | null = null
+
+          if (progressData?.type === 'bash_progress') {
+            // Bash progress: show elapsed time and line count
+            const elapsed = progressData.elapsedTimeSeconds || 0
+            const lines = progressData.totalLines || 0
+            msg = `Running command... (${elapsed}s${lines > 0 ? `, ${lines} lines` : ''})`
+          } else if (progressData?.type === 'hook_progress') {
+            // Hook progress: show hook name
+            msg = progressData.hookName || 'Running hook...'
+          } else {
+            // Fallback for unknown progress types
+            msg = data.message || progressData?.message || null
+          }
+
           setProgressMessage(msg)
-          console.log('[ChatInterface] Received progress:', msg)
+          console.log('[ChatInterface] Received progress:', progressData?.type, msg)
           return
         }
 
