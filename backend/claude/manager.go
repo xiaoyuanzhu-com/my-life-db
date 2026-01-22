@@ -2,6 +2,7 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -728,6 +729,8 @@ func (m *Manager) readPTY(session *Session) {
 }
 
 // readJSON reads JSON lines from stdout and broadcasts to all connected clients (UI mode)
+// Claude may output multiple JSON objects concatenated on a single line (especially on resume),
+// so we split them before broadcasting.
 func (m *Manager) readJSON(session *Session) {
 	defer m.wg.Done()
 
@@ -741,9 +744,9 @@ func (m *Manager) readJSON(session *Session) {
 	firstMessageReceived := false
 
 	scanner := bufio.NewScanner(session.Stdout)
-	// Set a large buffer for potentially large JSON messages (1MB)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
+	// Set a large buffer for potentially large JSON messages (10MB for resumed sessions with history)
+	buf := make([]byte, 10*1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
 
 	for scanner.Scan() {
 		// Check for shutdown
@@ -769,28 +772,30 @@ func (m *Manager) readJSON(session *Session) {
 			}
 		}
 
-		// Parse the JSON to check for control requests
-		var msg map[string]interface{}
-		if err := json.Unmarshal(line, &msg); err != nil {
-			log.Debug().Err(err).Str("sessionId", session.ID).Msg("failed to parse JSON line")
-			continue
+		// Split concatenated JSON objects (Claude may output multiple on one line)
+		jsonObjects := splitConcatenatedJSON(line)
+
+		for _, jsonData := range jsonObjects {
+			// Parse the JSON to check for control requests
+			var msg map[string]interface{}
+			if err := json.Unmarshal(jsonData, &msg); err != nil {
+				log.Debug().Err(err).Str("sessionId", session.ID).Str("data", string(jsonData)).Msg("failed to parse JSON object")
+				continue
+			}
+
+			// Check if this is a control request that needs to be handled
+			if msgType, ok := msg["type"].(string); ok && msgType == "control_request" {
+				// Broadcast control request to clients for UI handling
+				log.Debug().
+					Str("sessionId", session.ID).
+					Interface("request", msg).
+					Msg("received control request")
+			}
+
+			// Broadcast to all connected clients (and cache for late-joining clients)
+			session.BroadcastUIMessage(jsonData)
 		}
 
-		// Check if this is a control request that needs to be handled
-		if msgType, ok := msg["type"].(string); ok && msgType == "control_request" {
-			// Broadcast control request to clients for UI handling
-			log.Debug().
-				Str("sessionId", session.ID).
-				Interface("request", msg).
-				Msg("received control request")
-		}
-
-		// Make a copy of the line to broadcast
-		data := make([]byte, len(line))
-		copy(data, line)
-
-		// Broadcast to all connected clients
-		session.Broadcast(data)
 		session.LastActivity = time.Now()
 	}
 
@@ -802,6 +807,30 @@ func (m *Manager) readJSON(session *Session) {
 	session.mu.Lock()
 	session.Status = "dead"
 	session.mu.Unlock()
+}
+
+// splitConcatenatedJSON splits a byte slice containing concatenated JSON objects
+// e.g., `{"a":1}{"b":2}` becomes `[{"a":1}, {"b":2}]`
+func splitConcatenatedJSON(data []byte) [][]byte {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var result [][]byte
+	decoder := json.NewDecoder(bytes.NewReader(data))
+
+	for {
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			break
+		}
+		// Make a copy since raw may be backed by the original slice
+		obj := make([]byte, len(raw))
+		copy(obj, raw)
+		result = append(result, obj)
+	}
+
+	return result
 }
 
 // readStderr reads stderr output for debugging (UI mode)

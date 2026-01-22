@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -53,6 +54,13 @@ type Session struct {
 	Stdin  io.WriteCloser `json:"-"`
 	Stdout io.ReadCloser  `json:"-"`
 	Stderr io.ReadCloser  `json:"-"`
+
+	// UI mode message cache - stores all messages for clients connecting at any time
+	// Before activation: loaded from JSONL file
+	// After activation: replaced with Claude's stdout (init + history)
+	cachedMessages   [][]byte     `json:"-"`
+	cacheLoaded      bool         `json:"-"`
+	cacheMu          sync.RWMutex `json:"-"`
 
 	// Pending control requests (UI mode) - maps request_id to response channel
 	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
@@ -221,6 +229,86 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 	)
 	_, err := s.Stdin.Write([]byte(data + "\n"))
 	return err
+}
+
+// LoadMessageCache loads messages from JSONL file into cache (UI mode)
+// Only loads once; subsequent calls are no-op
+func (s *Session) LoadMessageCache() error {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	if s.cacheLoaded {
+		return nil
+	}
+
+	// Read from JSONL file
+	messages, err := ReadSessionHistory(s.ID, s.WorkingDir)
+	if err != nil {
+		// Not an error if file doesn't exist (new session)
+		s.cacheLoaded = true
+		return nil
+	}
+
+	// Convert to [][]byte
+	for _, msg := range messages {
+		if data, err := json.Marshal(msg); err == nil {
+			s.cachedMessages = append(s.cachedMessages, data)
+		}
+	}
+
+	s.cacheLoaded = true
+	return nil
+}
+
+// GetCachedMessages returns a copy of all cached messages (UI mode)
+func (s *Session) GetCachedMessages() [][]byte {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+
+	result := make([][]byte, len(s.cachedMessages))
+	for i, msg := range s.cachedMessages {
+		msgCopy := make([]byte, len(msg))
+		copy(msgCopy, msg)
+		result[i] = msgCopy
+	}
+	return result
+}
+
+// BroadcastUIMessage handles a message from Claude stdout (UI mode)
+// - Detects "init" message and clears cache (fresh start from Claude)
+// - Adds message to cache
+// - Broadcasts to all connected clients
+func (s *Session) BroadcastUIMessage(data []byte) {
+	// Check if this is an init message (signals fresh start from Claude)
+	var msg map[string]interface{}
+	if err := json.Unmarshal(data, &msg); err == nil {
+		if msgType, _ := msg["type"].(string); msgType == "system" {
+			if subtype, _ := msg["subtype"].(string); subtype == "init" {
+				// Clear cache - Claude is providing fresh history
+				s.cacheMu.Lock()
+				s.cachedMessages = nil
+				s.cacheMu.Unlock()
+			}
+		}
+	}
+
+	// Add to cache
+	s.cacheMu.Lock()
+	msgCopy := make([]byte, len(data))
+	copy(msgCopy, data)
+	s.cachedMessages = append(s.cachedMessages, msgCopy)
+	s.cacheMu.Unlock()
+
+	// Broadcast to all connected clients
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for client := range s.Clients {
+		select {
+		case client.Send <- data:
+		default:
+			// Client's send buffer is full, skip
+		}
+	}
 }
 
 // RegisterControlRequest registers a pending control request and returns a channel for the response

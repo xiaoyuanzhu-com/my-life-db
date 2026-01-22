@@ -583,25 +583,28 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	lastTodoCount := 0
 	var updateMutex sync.Mutex // Protect concurrent access to lastMessageCount/lastTodoCount
 
-	// Send existing messages immediately on connect (both modes)
-	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
-	if err == nil && len(initialMessages) > 0 {
-		log.Debug().
-			Str("sessionId", sessionID).
-			Int("messageCount", len(initialMessages)).
-			Msg("sending initial messages")
+	// For CLI mode only: Send existing messages from JSONL file on connect
+	// For UI mode: Claude outputs history on stdout when session activates, so no need to read JSONL
+	if session.Mode == claude.ModeCLI {
+		initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+		if err == nil && len(initialMessages) > 0 {
+			log.Debug().
+				Str("sessionId", sessionID).
+				Int("messageCount", len(initialMessages)).
+				Msg("sending initial messages (CLI mode)")
 
-		for _, msg := range initialMessages {
-			if msgBytes, err := json.Marshal(msg); err == nil {
-				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
-					return
+			for _, msg := range initialMessages {
+				if msgBytes, err := json.Marshal(msg); err == nil {
+					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
+						return
+					}
 				}
 			}
+			lastMessageCount = len(initialMessages)
+		} else if err != nil {
+			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 		}
-		lastMessageCount = len(initialMessages)
-	} else if err != nil {
-		log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 	}
 
 	// For UI mode: Register as a broadcast client to receive real-time JSON messages
@@ -610,6 +613,28 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	pollDone := make(chan struct{})
 
 	if session.Mode == claude.ModeUI {
+		// Load message cache from JSONL (if not already loaded or activated)
+		// This allows viewing history before activation
+		if err := session.LoadMessageCache(); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
+		}
+
+		// Send all cached messages to this client
+		cachedMessages := session.GetCachedMessages()
+		if len(cachedMessages) > 0 {
+			log.Debug().
+				Str("sessionId", sessionID).
+				Int("messageCount", len(cachedMessages)).
+				Msg("sending cached messages to new client")
+
+			for _, msgBytes := range cachedMessages {
+				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
+					return
+				}
+			}
+		}
+
 		// UI mode: Create a client to receive broadcasts from readJSON
 		uiClient = &claude.Client{
 			Conn: conn,
