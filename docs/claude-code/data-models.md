@@ -457,6 +457,14 @@ System messages report internal events. The `subtype` field determines the speci
 | `turn_duration` | Duration metrics for a turn |
 
 **5a. Init (Session Initialization)**
+
+**Lifecycle**: The `init` message is output to stdout when Claude CLI **starts** - either for a fresh session or when resuming an existing one. It is **NOT persisted to JSONL files** because it's session metadata, not conversation history.
+
+**Important for Web UI**:
+- When viewing historical sessions (reading JSONL), there is no `init` message
+- The `init` message only arrives when Claude CLI is actively running
+- As soon as a user sends a message (triggering Claude CLI to start), the `init` message is output first
+
 ```json
 {
   "type": "system",
