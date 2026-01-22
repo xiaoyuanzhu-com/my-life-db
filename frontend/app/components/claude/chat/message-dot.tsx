@@ -1,7 +1,7 @@
 import type { ToolStatus } from '~/types/claude'
 
 interface MessageDotProps {
-  status?: ToolStatus | 'assistant' | 'user'
+  status?: ToolStatus | 'assistant' | 'user' | 'system'
   /**
    * Line height context for alignment:
    * - 'prose': 24px (15px × 1.6) - for assistant message content
@@ -22,6 +22,7 @@ export function MessageDot({ status = 'assistant', lineHeight = 'mono' }: Messag
 
   const getBulletColor = () => {
     if (status === 'assistant') return '#5F6368' // Gray for assistant messages
+    if (status === 'system') return '#6B7280' // Muted gray for system/debug messages
     if (status === 'failed') return '#D92D20' // Red
     if (status === 'running') return '#F59E0B' // Orange/Yellow
     if (status === 'pending') return '#9CA3AF' // Gray

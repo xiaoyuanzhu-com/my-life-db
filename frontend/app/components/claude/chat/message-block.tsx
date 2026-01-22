@@ -29,18 +29,27 @@ export function MessageBlock({ message }: MessageBlockProps) {
       {/* User messages: gray background pill, right-aligned */}
       {hasUserContent && <UserMessageBlock content={message.content!} />}
 
-      {/* System messages: raw JSON code block for unknown message types */}
+      {/* System messages: rendered like assistant messages with type title and JSON block */}
       {hasSystemContent && (
-        <div className="flex justify-center">
-          <pre
-            className="text-xs font-mono px-3 py-2 rounded overflow-x-auto max-w-full"
-            style={{
-              color: 'var(--claude-text-secondary)',
-              backgroundColor: 'var(--claude-bg-code-block)',
-            }}
-          >
-            <code>{message.content}</code>
-          </pre>
+        <div className="flex gap-2">
+          <MessageDot status="system" lineHeight="prose" />
+          <div className="flex-1 min-w-0">
+            <div
+              className="text-sm font-medium mb-1"
+              style={{ color: 'var(--claude-text-secondary)' }}
+            >
+              {message.systemType || 'unknown'}
+            </div>
+            <pre
+              className="text-xs font-mono px-3 py-2 rounded overflow-x-auto"
+              style={{
+                color: 'var(--claude-text-secondary)',
+                backgroundColor: 'var(--claude-bg-code-block)',
+              }}
+            >
+              <code>{message.content}</code>
+            </pre>
+          </div>
         </div>
       )}
 

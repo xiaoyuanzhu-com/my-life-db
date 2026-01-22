@@ -203,6 +203,7 @@ export interface Message {
   timestamp: number
   isStreaming?: boolean
   isOptimistic?: boolean  // Temporary message, will be replaced by server
+  systemType?: string  // Original message type for system messages (debugging)
 }
 
 // ============================================================================

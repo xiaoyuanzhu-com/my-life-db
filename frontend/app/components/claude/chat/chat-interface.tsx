@@ -79,6 +79,7 @@ export function ChatInterface({
         role: 'system',
         content: JSON.stringify(sessionMsg, null, 2),
         timestamp: new Date(sessionMsg.timestamp).getTime(),
+        systemType: sessionMsg.type,
       }
     }
 
