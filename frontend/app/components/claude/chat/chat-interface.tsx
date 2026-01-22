@@ -287,6 +287,28 @@ export function ChatInterface({
           return
         }
 
+        // Handle system init message (sent at session start with tools, model, etc.)
+        if (data.type === 'system' && data.subtype === 'init') {
+          console.log('[ChatInterface] Received system init:', data.session_id, data.model)
+          const initMessage: Message = {
+            id: data.uuid || crypto.randomUUID(),
+            role: 'system',
+            content: JSON.stringify(data, null, 2),
+            timestamp: Date.now(),
+            systemType: 'system',
+          }
+          setMessages((prev) => {
+            // Check if init message already exists
+            const existingIndex = prev.findIndex((m) => m.id === initMessage.id)
+            if (existingIndex >= 0) {
+              return prev
+            }
+            // Add init message at the beginning
+            return [initMessage, ...prev]
+          })
+          return
+        }
+
         // Handle SessionMessage format
         const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)

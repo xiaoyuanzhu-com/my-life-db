@@ -356,3 +356,36 @@ export interface ToolBlockProps {
 export interface MessageProps {
   message: Message
 }
+
+// ============================================================================
+// System Init Message (type: "system", subtype: "init")
+// ============================================================================
+
+export interface MCPServer {
+  name: string
+  status: 'connected' | 'disabled' | string
+}
+
+export interface PluginInfo {
+  name: string
+  path: string
+}
+
+export interface SystemInitData {
+  type: 'system'
+  subtype: 'init'
+  cwd: string
+  session_id: string
+  tools: string[]
+  mcp_servers: MCPServer[]
+  model: string
+  permissionMode: string
+  slash_commands: string[]
+  apiKeySource: string
+  claude_code_version: string
+  output_style: string
+  agents: string[]
+  skills: string[]
+  plugins: PluginInfo[]
+  uuid: string
+}

@@ -1,9 +1,10 @@
 import { ToolBlock } from './tool-block'
 import { MessageDot } from './message-dot'
 import { splitMessageContent } from './file-ref'
-import type { Message, ToolCall } from '~/types/claude'
+import { SystemInitBlock } from './system-init-block'
+import type { Message, ToolCall, SystemInitData } from '~/types/claude'
 import { marked } from 'marked'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
   message: Message
@@ -19,6 +20,20 @@ export function MessageBlock({ message }: MessageBlockProps) {
   const hasThinking = !isUser && !isSystem && message.thinking && message.thinking.length > 0
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
 
+  // Parse system message content to check for init subtype
+  const systemInitData = useMemo(() => {
+    if (!isSystem || !message.content) return null
+    try {
+      const parsed = JSON.parse(message.content)
+      if (parsed.type === 'system' && parsed.subtype === 'init') {
+        return parsed as SystemInitData
+      }
+    } catch {
+      // Not JSON or invalid format
+    }
+    return null
+  }, [isSystem, message.content])
+
   // Skip rendering if there's nothing to show
   if (!hasUserContent && !hasAssistantContent && !hasSystemContent && !hasThinking && !hasToolCalls) {
     return null
@@ -29,8 +44,18 @@ export function MessageBlock({ message }: MessageBlockProps) {
       {/* User messages: gray background pill, right-aligned */}
       {hasUserContent && <UserMessageBlock content={message.content!} />}
 
-      {/* System messages: rendered like assistant messages with type title and JSON block */}
-      {hasSystemContent && (
+      {/* System init messages: special formatted display */}
+      {systemInitData && (
+        <div className="flex gap-2">
+          <MessageDot status="system" lineHeight="prose" />
+          <div className="flex-1 min-w-0">
+            <SystemInitBlock data={systemInitData} />
+          </div>
+        </div>
+      )}
+
+      {/* Other system messages: rendered with type title and JSON block */}
+      {hasSystemContent && !systemInitData && (
         <div className="flex gap-2">
           <MessageDot status="system" lineHeight="prose" />
           <div className="flex-1 min-w-0">
