@@ -52,6 +52,9 @@ export function ChatInterface({
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
+  // Working state - tracks whether Claude is actively processing (between user message and result)
+  const [isWorking, setIsWorking] = useState(false)
+
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -153,6 +156,7 @@ export function ChatInterface({
     setActiveTodos([])
     setError(null)
     setProgressMessage(null)
+    setIsWorking(false)
     accumulatedMessagesRef.current = []
   }, [sessionId])
 
@@ -172,6 +176,21 @@ export function ChatInterface({
       .map((msg) => convertToMessage(msg, toolResultMap))
       .filter((m): m is Message => m !== null)
     setMessages(converted)
+
+    // Check if session is still working (no result message after last user/assistant message)
+    // Per data-models.md: "Before receiving `result`, Claude is still working"
+    if (historyMessages.length > 0) {
+      const lastConversationMsg = [...historyMessages].reverse().find(m => m.type === 'user' || m.type === 'assistant')
+
+      if (lastConversationMsg?.type === 'assistant') {
+        // Check if there's a result after the last assistant message
+        const lastAssistantIdx = historyMessages.findIndex(m => m.uuid === lastConversationMsg.uuid)
+        const hasResultAfter = historyMessages.slice(lastAssistantIdx).some(m => m.type === 'result')
+        if (!hasResultAfter) {
+          setIsWorking(true)
+        }
+      }
+    }
   }, [historyMessages])
 
   // WebSocket connection for real-time updates
@@ -219,6 +238,14 @@ export function ChatInterface({
           const msg = data.message || data.data?.message || null
           setProgressMessage(msg)
           console.log('[ChatInterface] Received progress:', msg)
+          return
+        }
+
+        // Handle result messages - Claude's turn is complete (session terminator)
+        if (data.type === 'result') {
+          console.log('[ChatInterface] Received result (turn complete):', data.subtype, 'duration:', data.duration_ms)
+          setIsWorking(false)
+          setProgressMessage(null)
           return
         }
 
@@ -300,6 +327,9 @@ export function ChatInterface({
         return
       }
 
+      // Mark as working - Claude is now processing
+      setIsWorking(true)
+
       // Add user message immediately to UI (optimistic update)
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -363,8 +393,8 @@ export function ChatInterface({
         <div className="flex flex-1 flex-col">
           <MessageList messages={messages} />
 
-          {/* Work-in-Progress Indicator - show when there's progress event or in-progress todo */}
-          {(progressMessage || activeTodos.some((t) => t.status === 'in_progress')) && (
+          {/* Work-in-Progress Indicator - show when Claude is working (before result message) */}
+          {isWorking && (
             <div className="px-4 py-2 border-t border-border">
               <ClaudeWIP
                 text={
