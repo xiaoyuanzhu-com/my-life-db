@@ -2,7 +2,8 @@ package models
 
 import "encoding/json"
 
-// SystemSessionMessage represents system events (compaction, init, turn_duration, etc).
+// SystemSessionMessage represents system events (compact_boundary, turn_duration, etc).
+// For session initialization (subtype: "init"), use SystemInitMessage instead.
 type SystemSessionMessage struct {
 	RawJSON
 	BaseMessage

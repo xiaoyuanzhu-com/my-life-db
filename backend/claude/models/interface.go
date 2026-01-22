@@ -15,6 +15,7 @@ var (
 	_ SessionMessageI = (*UserSessionMessage)(nil)
 	_ SessionMessageI = (*AssistantSessionMessage)(nil)
 	_ SessionMessageI = (*SystemSessionMessage)(nil)
+	_ SessionMessageI = (*SystemInitMessage)(nil)
 	_ SessionMessageI = (*ResultSessionMessage)(nil)
 	_ SessionMessageI = (*ProgressSessionMessage)(nil)
 	_ SessionMessageI = (*SummarySessionMessage)(nil)

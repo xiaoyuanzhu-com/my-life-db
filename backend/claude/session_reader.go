@@ -108,6 +108,21 @@ func parseTypedMessage(lineBytes []byte, lineNum int, sessionID string) models.S
 		return &msg
 
 	case "system":
+		// Check subtype to determine which struct to use
+		var subtypeOnly struct {
+			Subtype string `json:"subtype"`
+		}
+		json.Unmarshal([]byte(line), &subtypeOnly)
+
+		if subtypeOnly.Subtype == "init" {
+			var msg models.SystemInitMessage
+			if err := json.Unmarshal([]byte(line), &msg); err != nil {
+				log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse system init message")
+			}
+			msg.Raw = rawCopy
+			return &msg
+		}
+
 		var msg models.SystemSessionMessage
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse system message")

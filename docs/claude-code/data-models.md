@@ -445,6 +445,72 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
 ```
 
 **5. System Messages**
+
+System messages report internal events. The `subtype` field determines the specific event type.
+
+**System Subtypes**:
+
+| subtype | Description |
+|---------|-------------|
+| `init` | Session initialization with tools, model, and configuration |
+| `compact_boundary` | Conversation was compacted to reduce context |
+| `turn_duration` | Duration metrics for a turn |
+
+**5a. Init (Session Initialization)**
+```json
+{
+  "type": "system",
+  "subtype": "init",
+  "cwd": "/Users/iloahz/projects/my-life-db/data",
+  "session_id": "3e90710d-d94c-4f27-9118-7f96dfbc82ed",
+  "tools": ["Task", "Bash", "Glob", "Grep", "Read", "Edit", "Write", "..."],
+  "mcp_servers": [
+    {
+      "name": "context7",
+      "status": "disabled"
+    },
+    {
+      "name": "plugin:context7:context7",
+      "status": "connected"
+    }
+  ],
+  "model": "claude-opus-4-5-20251101",
+  "permissionMode": "default",
+  "slash_commands": ["compact", "context", "cost", "init", "..."],
+  "apiKeySource": "none",
+  "claude_code_version": "2.1.15",
+  "output_style": "default",
+  "agents": ["Bash", "general-purpose", "Explore", "Plan", "..."],
+  "skills": ["frontend-design:frontend-design", "superpowers:brainstorming", "..."],
+  "plugins": [
+    {
+      "name": "frontend-design",
+      "path": "/Users/iloahz/.claude/plugins/cache/claude-plugins-official/frontend-design/e30768372b41"
+    }
+  ],
+  "uuid": "757363a3-8dc8-45d7-870f-6d713298c9bd"
+}
+```
+
+**Init Message Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cwd` | string | Current working directory for the session |
+| `session_id` | string | Session UUID |
+| `tools` | string[] | List of available tools (Bash, Read, Edit, etc.) |
+| `mcp_servers` | object[] | MCP server status (name, status: "connected"/"disabled") |
+| `model` | string | Model ID (e.g., "claude-opus-4-5-20251101") |
+| `permissionMode` | string | Permission mode ("default", "plan", etc.) |
+| `slash_commands` | string[] | Available slash commands |
+| `apiKeySource` | string | API key source ("none", "env", etc.) |
+| `claude_code_version` | string | Claude Code CLI version |
+| `output_style` | string | Output style ("default", etc.) |
+| `agents` | string[] | Available agent types |
+| `skills` | string[] | Available skills (slash commands from plugins) |
+| `plugins` | object[] | Loaded plugins (name, path) |
+
+**5b. Compact Boundary**
 ```json
 {
   "parentUuid": null,
