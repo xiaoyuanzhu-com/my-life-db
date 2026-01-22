@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
@@ -6,8 +6,6 @@ import { PermissionModal } from './permission-modal'
 import { AskUserQuestion } from './ask-user-question'
 import { ClaudeWIP } from './claude-wip'
 import type {
-  Message,
-  ToolCall,
   TodoItem,
   PermissionRequest,
   UserQuestion,
@@ -15,13 +13,7 @@ import type {
 } from '~/types/claude'
 import {
   buildToolResultMap,
-  isTextBlock,
-  isThinkingBlock,
-  isToolUseBlock,
-  isToolResultError,
-  isBashToolResult,
   type SessionMessage,
-  type ExtractedToolResult,
 } from '~/lib/session-message-utils'
 
 interface ChatInterfaceProps {
@@ -31,13 +23,19 @@ interface ChatInterfaceProps {
   onSessionNameChange?: (name: string) => void
 }
 
+// Types that should not be rendered as messages
+const SKIP_TYPES = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot', 'progress']
+
 export function ChatInterface({
   sessionId,
 }: ChatInterfaceProps) {
-  // Message state
-  const [messages, setMessages] = useState<Message[]>([])
+  // Raw session messages - store as-is from WebSocket
+  const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
   const [wsConnected, setWsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Optimistic user message (shown immediately before server confirms)
+  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null)
 
   // Tool state - kept for future implementation
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
@@ -53,118 +51,28 @@ export function ChatInterface({
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
 
-  // Accumulated session messages for building tool result map during real-time updates
-  const accumulatedMessagesRef = useRef<SessionMessage[]>([])
+  // Build tool result map from raw messages (derived state)
+  const toolResultMap = useMemo(() => buildToolResultMap(rawMessages), [rawMessages])
 
-  // Convert SessionMessage to Message format
-  // toolResultMap is used to attach results to tool calls
-  const convertToMessage = (
-    sessionMsg: SessionMessage,
-    toolResultMap: Map<string, ExtractedToolResult>
-  ): Message | null => {
-    // Skip known internal events that shouldn't be rendered
-    const skipTypes = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot', 'progress']
-    if (skipTypes.includes(sessionMsg.type)) {
-      return null
-    }
-
-    // Handle unknown message types - render raw JSON for debugging
-    if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
-      return {
-        id: sessionMsg.uuid || crypto.randomUUID(),
-        role: 'system',
-        content: JSON.stringify(sessionMsg, null, 2),
-        timestamp: new Date(sessionMsg.timestamp).getTime(),
-        systemType: sessionMsg.type,
-      }
-    }
-
-    const { content, role } = sessionMsg.message
-
-    // Handle content - can be string (user messages) or array (assistant messages)
-    let textContent = ''
-    let toolCalls: ToolCall[] = []
-    let thinkingBlocks: { type: 'thinking'; thinking: string; signature?: string }[] = []
-
-    if (typeof content === 'string') {
-      // User message with plain text content
-      textContent = content
-    } else if (Array.isArray(content)) {
-      // Assistant message with structured content blocks
-      // Extract text from text blocks
-      const textBlocks = content.filter(isTextBlock).map(block => block.text)
-      textContent = textBlocks.join('\n')
-
-      // Extract thinking blocks
-      thinkingBlocks = content
-        .filter(isThinkingBlock)
-        .map(block => ({
-          type: 'thinking' as const,
-          thinking: block.thinking,
-          signature: block.signature,
-        }))
-
-      // Extract tool calls from tool_use blocks and attach results
-      toolCalls = content
-        .filter(isToolUseBlock)
-        .map((block): ToolCall => {
-          const toolResult = toolResultMap.get(block.id)
-
-          // Determine result and error based on toolUseResult format
-          let result: unknown = undefined
-          let error: string | undefined = undefined
-          let status: ToolCall['status'] = toolResult ? 'completed' : 'pending'
-
-          if (toolResult) {
-            if (isToolResultError(toolResult.toolUseResult)) {
-              // Error case: toolUseResult is a string
-              error = toolResult.toolUseResult
-              status = 'failed'
-            } else if (isBashToolResult(toolResult.toolUseResult)) {
-              // Bash success: extract stdout/stderr
-              const bashResult = toolResult.toolUseResult
-              result = {
-                output: bashResult.stdout || '',
-                exitCode: toolResult.isError ? 1 : 0,
-              }
-              if (toolResult.isError) {
-                status = 'failed'
-              }
-            } else {
-              // Other tool results: pass through the toolUseResult
-              result = toolResult.toolUseResult || toolResult.content
-            }
-          }
-
-          return {
-            id: block.id,
-            name: block.name as ToolCall['name'],
-            parameters: block.input,
-            status,
-            result,
-            error,
-          }
-        })
-    }
-
-    return {
-      id: sessionMsg.uuid,
-      role: role || 'user',
-      content: textContent,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
-      timestamp: new Date(sessionMsg.timestamp).getTime(),
-    }
-  }
+  // Filter messages for rendering (derived state)
+  const renderableMessages = useMemo(() => {
+    return rawMessages.filter((msg) => {
+      // Skip internal event types
+      if (SKIP_TYPES.includes(msg.type)) return false
+      // Skip tool result messages (they're used to populate toolResultMap, not rendered directly)
+      if (msg.type === 'user' && msg.toolUseResult) return false
+      return true
+    })
+  }, [rawMessages])
 
   // Clear messages and reset state when sessionId changes
   useEffect(() => {
-    setMessages([])
+    setRawMessages([])
+    setOptimisticMessage(null)
     setActiveTodos([])
     setError(null)
     setProgressMessage(null)
     setIsWorking(false)
-    accumulatedMessagesRef.current = []
   }, [sessionId])
 
   // WebSocket connection for real-time updates
@@ -239,74 +147,52 @@ export function ChatInterface({
         }
 
         // Handle system init message (sent at session start with tools, model, etc.)
+        // Store as a regular SessionMessage
         if (data.type === 'system' && data.subtype === 'init') {
           console.log('[ChatInterface] Received system init:', data.session_id, data.model)
-          const initMessage: Message = {
-            id: data.uuid || crypto.randomUUID(),
-            role: 'system',
-            content: JSON.stringify(data, null, 2),
-            timestamp: Date.now(),
-            systemType: 'system',
+          const initMsg: SessionMessage = {
+            type: 'system',
+            uuid: data.uuid || crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            // Store the full init data for rendering
+            ...data,
           }
-          setMessages((prev) => {
+          setRawMessages((prev) => {
             // Check if init message already exists
-            const existingIndex = prev.findIndex((m) => m.id === initMessage.id)
-            if (existingIndex >= 0) {
-              return prev
-            }
+            const exists = prev.some((m) => m.uuid === initMsg.uuid)
+            if (exists) return prev
             // Add init message at the beginning
-            return [initMessage, ...prev]
+            return [initMsg, ...prev]
           })
           return
         }
 
-        // Handle SessionMessage format
+        // Handle SessionMessage format - store raw
         const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
-        // Accumulate all messages (including tool results) for building the map
-        accumulatedMessagesRef.current = [...accumulatedMessagesRef.current, sessionMsg]
-
-        // Build tool result map from accumulated messages
-        const toolResultMap = buildToolResultMap(accumulatedMessagesRef.current)
-
-        // Convert to Message format and append
-        const converted = convertToMessage(sessionMsg, toolResultMap)
-        if (converted) {
-          setMessages((prev) => {
-            // Clear all optimistic messages when we receive any server message
-            const withoutOptimistic = prev.filter((m) => !m.isOptimistic)
-
-            // Check if message already exists (by uuid)
-            const existingIndex = withoutOptimistic.findIndex((m) => m.id === converted.id)
-            if (existingIndex >= 0) {
-              // Update existing message (tool results may have arrived)
-              const updated = [...withoutOptimistic]
-              updated[existingIndex] = converted
-              return updated
-            }
-
-            return [...withoutOptimistic, converted]
-          })
-
-          // If we received an assistant message, clear progress
-          if (converted.role === 'assistant') {
-            setProgressMessage(null)
-          }
-        } else if (sessionMsg.toolUseResult) {
-          // This is a tool result message - need to update the corresponding assistant message
-          // Rebuild all messages with updated tool results
-          const allAccumulated = accumulatedMessagesRef.current
-          const newToolResultMap = buildToolResultMap(allAccumulated)
-
-          setMessages(() => {
-            const updatedMessages = allAccumulated
-              .map((msg) => convertToMessage(msg, newToolResultMap))
-              .filter((m): m is Message => m !== null)
-
-            return updatedMessages
-          })
+        // Clear optimistic message when we receive the real user message
+        if (sessionMsg.type === 'user' && !sessionMsg.toolUseResult) {
+          setOptimisticMessage(null)
         }
+
+        // If assistant message, clear progress
+        if (sessionMsg.type === 'assistant') {
+          setProgressMessage(null)
+        }
+
+        // Accumulate raw messages
+        setRawMessages((prev) => {
+          // Check if message already exists
+          const existingIndex = prev.findIndex((m) => m.uuid === sessionMsg.uuid)
+          if (existingIndex >= 0) {
+            // Update existing message
+            const updated = [...prev]
+            updated[existingIndex] = sessionMsg
+            return updated
+          }
+          return [...prev, sessionMsg]
+        })
       } catch (error) {
         console.error('[ChatInterface] Failed to parse WebSocket message:', error)
       }
@@ -340,15 +226,8 @@ export function ChatInterface({
       // Mark as working - Claude is now processing
       setIsWorking(true)
 
-      // Add user message immediately to UI (optimistic update)
-      const userMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content,
-        timestamp: Date.now(),
-        isOptimistic: true,  // Mark as temporary
-      }
-      setMessages((prev) => [...prev, userMessage])
+      // Show optimistic message immediately
+      setOptimisticMessage(content)
 
       try {
         // Send message via WebSocket
@@ -361,6 +240,7 @@ export function ChatInterface({
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
+        setOptimisticMessage(null)
         // Clear error after 5 seconds
         setTimeout(() => setError(null), 5000)
       }
@@ -401,7 +281,11 @@ export function ChatInterface({
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
         <div className="flex flex-1 flex-col">
-          <MessageList messages={messages} />
+          <MessageList
+            messages={renderableMessages}
+            toolResultMap={toolResultMap}
+            optimisticMessage={optimisticMessage}
+          />
 
           {/* Work-in-Progress Indicator - show when Claude is working (before result message) */}
           {isWorking && (

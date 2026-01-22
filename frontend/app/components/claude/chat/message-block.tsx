@@ -2,60 +2,134 @@ import { ToolBlock } from './tool-block'
 import { MessageDot } from './message-dot'
 import { splitMessageContent } from './file-ref'
 import { SystemInitBlock } from './system-init-block'
-import type { Message, ToolCall, SystemInitData } from '~/types/claude'
+import type { ToolCall, SystemInitData, ToolStatus } from '~/types/claude'
+import {
+  isTextBlock,
+  isThinkingBlock,
+  isToolUseBlock,
+  isToolResultError,
+  isBashToolResult,
+  type SessionMessage,
+  type ExtractedToolResult,
+} from '~/lib/session-message-utils'
 import { marked } from 'marked'
 import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
-  message: Message
+  message: SessionMessage
+  toolResultMap: Map<string, ExtractedToolResult>
 }
 
-export function MessageBlock({ message }: MessageBlockProps) {
-  const isUser = message.role === 'user'
-  const isSystem = message.role === 'system'
+export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
+  const isUser = message.type === 'user'
+  const isAssistant = message.type === 'assistant'
+  const isSystem = message.type === 'system'
 
-  const hasUserContent = isUser && message.content
-  const hasAssistantContent = !isUser && !isSystem && message.content
-  const hasSystemContent = isSystem && message.content
-  const hasThinking = !isUser && !isSystem && message.thinking && message.thinking.length > 0
-  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
+  // Extract content from message
+  const content = message.message?.content
 
-  // Parse system message content to check for init subtype
-  const systemInitData = useMemo(() => {
-    if (!isSystem || !message.content) return null
-    try {
-      const parsed = JSON.parse(message.content)
-      if (parsed.type === 'system' && parsed.subtype === 'init') {
-        return parsed as SystemInitData
+  // For user messages: content is a string
+  const userTextContent = isUser && typeof content === 'string' ? content : null
+
+  // For assistant messages: extract text, thinking, and tool_use blocks from array
+  const { textContent, thinkingBlocks, toolUseBlocks } = useMemo(() => {
+    if (!isAssistant || !Array.isArray(content)) {
+      return { textContent: '', thinkingBlocks: [], toolUseBlocks: [] }
+    }
+
+    const texts = content.filter(isTextBlock).map((block) => block.text)
+    const thinking = content.filter(isThinkingBlock)
+    const toolUses = content.filter(isToolUseBlock)
+
+    return {
+      textContent: texts.join('\n'),
+      thinkingBlocks: thinking,
+      toolUseBlocks: toolUses,
+    }
+  }, [isAssistant, content])
+
+  // Convert tool_use blocks to ToolCall format with results from map
+  const toolCalls = useMemo((): ToolCall[] => {
+    return toolUseBlocks.map((block) => {
+      const toolResult = toolResultMap.get(block.id)
+
+      // Determine result and error based on toolUseResult format
+      let result: unknown = undefined
+      let error: string | undefined = undefined
+      let status: ToolStatus = toolResult ? 'completed' : 'pending'
+
+      if (toolResult) {
+        if (isToolResultError(toolResult.toolUseResult)) {
+          // Error case: toolUseResult is a string
+          error = toolResult.toolUseResult
+          status = 'failed'
+        } else if (isBashToolResult(toolResult.toolUseResult)) {
+          // Bash success: extract stdout/stderr
+          const bashResult = toolResult.toolUseResult
+          result = {
+            output: bashResult.stdout || '',
+            exitCode: toolResult.isError ? 1 : 0,
+          }
+          if (toolResult.isError) {
+            status = 'failed'
+          }
+        } else {
+          // Other tool results: pass through the toolUseResult
+          result = toolResult.toolUseResult || toolResult.content
+        }
       }
-    } catch {
-      // Not JSON or invalid format
+
+      return {
+        id: block.id,
+        name: block.name as ToolCall['name'],
+        parameters: block.input,
+        status,
+        result,
+        error,
+      }
+    })
+  }, [toolUseBlocks, toolResultMap])
+
+  // Parse system init data
+  const systemInitData = useMemo((): SystemInitData | null => {
+    if (!isSystem) return null
+    // System init messages have the data spread on the message itself
+    if ((message as unknown as { subtype?: string }).subtype === 'init') {
+      return message as unknown as SystemInitData
     }
     return null
-  }, [isSystem, message.content])
+  }, [isSystem, message])
+
+  // Determine what to render
+  const hasUserContent = isUser && userTextContent
+  const hasAssistantText = isAssistant && textContent
+  const hasThinking = thinkingBlocks.length > 0
+  const hasToolCalls = toolCalls.length > 0
+  const hasSystemInit = systemInitData !== null
+  const hasUnknownSystem = isSystem && !hasSystemInit
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantContent && !hasSystemContent && !hasThinking && !hasToolCalls) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !hasUnknownSystem) {
     return null
   }
 
   return (
     <div className="mb-4">
       {/* User messages: gray background pill, right-aligned */}
-      {hasUserContent && <UserMessageBlock content={message.content!} />}
+      {hasUserContent && <UserMessageBlock content={userTextContent!} />}
 
       {/* System init messages: special formatted display */}
-      {systemInitData && (
+      {hasSystemInit && (
         <div className="flex items-start gap-2">
           <MessageDot status="completed" lineHeight="mono" />
           <div className="flex-1 min-w-0">
-            <SystemInitBlock data={systemInitData} />
+            <SystemInitBlock data={systemInitData!} />
           </div>
         </div>
       )}
 
-      {/* Other system messages: rendered with type title and JSON block */}
-      {hasSystemContent && !systemInitData && (
+      {/* Unknown system messages: render raw JSON for debugging */}
+      {hasUnknownSystem && (
         <div className="flex gap-2">
           <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
@@ -63,7 +137,7 @@ export function MessageBlock({ message }: MessageBlockProps) {
               className="text-sm font-medium mb-1"
               style={{ color: 'var(--claude-text-secondary)' }}
             >
-              {message.systemType || 'unknown'}
+              {message.type}
             </div>
             <pre
               className="text-xs font-mono px-3 py-2 rounded overflow-x-auto"
@@ -72,41 +146,33 @@ export function MessageBlock({ message }: MessageBlockProps) {
                 backgroundColor: 'var(--claude-bg-code-block)',
               }}
             >
-              <code>{message.content}</code>
+              <code>{JSON.stringify(message, null, 2)}</code>
             </pre>
           </div>
         </div>
       )}
 
       {/* Assistant messages: bullet + markdown content */}
-      {hasAssistantContent && (
+      {hasAssistantText && (
         <div className="flex gap-2">
           <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
-            <MessageContent content={message.content!} />
-            {message.isStreaming && (
-              <span
-                className="inline-block w-[10px] h-[18px] ml-1 align-middle"
-                style={{ backgroundColor: 'var(--claude-text-primary)' }}
-              >
-                █
-              </span>
-            )}
+            <MessageContent content={textContent} />
           </div>
         </div>
       )}
 
       {/* Thinking blocks: rendered separately with mono styling */}
       {hasThinking && (
-        <div className={message.content ? 'mt-2' : ''}>
-          <ThinkingBlocks thinking={message.thinking!} />
+        <div className={textContent ? 'mt-2' : ''}>
+          <ThinkingBlocks thinking={thinkingBlocks} />
         </div>
       )}
 
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={message.toolCalls!} />
+          <ToolCallGroups toolCalls={toolCalls} />
         </div>
       )}
     </div>
