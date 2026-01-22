@@ -130,21 +130,50 @@ projects/
 
 **Content**: Complete conversation history with all messages, tool calls, and results.
 
+#### Message Sources: JSONL vs Stdout ⭐⭐⭐ CRITICAL
+
+Claude Code outputs messages in **two different contexts** with subtle differences:
+
+| Source | When | Persistence | Notes |
+|--------|------|-------------|-------|
+| **JSONL files** | Historical sessions | Persisted to disk | What you read when viewing past sessions |
+| **Stdout** (`--output-format stream-json`) | Live execution | Only persisted after turn completes | What WebSocket receives in real-time |
+
+**Key differences:**
+- `system:init` message: **stdout only** - never written to JSONL
+- `result` message: **stdout only** - summarizes the completed turn, not persisted
+- `queue-operation`: **both** - appears in real-time and is persisted
+- `progress` messages: **both** - persisted to JSONL for replay
+
+**Implication for Web UI:**
+- When **viewing historical sessions** (reading JSONL): No `init` or `result` messages
+- When **watching live sessions** (WebSocket/stdout): Receive `init` first, `result` last
+
+---
+
 **Message Types** (`type` field):
 
-| Type | Description |
-|------|-------------|
-| `user` | User input or tool results |
-| `assistant` | Claude's responses (text and/or tool calls) |
-| `result` | **Turn complete** - sent when Claude finishes (contains stats, cost, duration) |
-| `system` | System messages (e.g., conversation compacted) |
-| `progress` | Progress updates (e.g., hook execution) |
-| `summary` | Auto-generated session summary |
-| `custom-title` | User-set custom title |
-| `tag` | User-assigned session tag |
-| `agent-name` | Subagent name assignment |
-| `queue-operation` | Internal queue management |
-| `file-history-snapshot` | File version tracking |
+| Type | Has Subtype? | Description |
+|------|-------------|-------------|
+| `user` | ❌ | User input or tool results |
+| `assistant` | ❌ | Claude's responses (text and/or tool calls) |
+| `result` | ✅ `subtype` | **Turn complete** - sent when Claude finishes (stdout only) |
+| `system` | ✅ `subtype` | System messages (init, errors, compaction) |
+| `progress` | ✅ `data.type` | Progress updates (hooks, bash, agents, search) |
+| `summary` | ❌ | Auto-generated session summary |
+| `custom-title` | ❌ | User-set custom title |
+| `tag` | ❌ | User-assigned session tag |
+| `agent-name` | ❌ | Subagent name assignment |
+| `queue-operation` | ❌ | Internal queue management |
+| `file-history-snapshot` | ❌ | File version tracking |
+
+**Subtype Reference:**
+
+| Type | Subtypes |
+|------|----------|
+| `system` | `init`, `compact_boundary`, `turn_duration`, `api_error`, `local_command` |
+| `progress` | `hook_progress`, `bash_progress`, `agent_progress`, `query_update`, `search_results_received` |
+| `result` | `success`, `error` |
 
 **Common Message Fields**:
 
@@ -191,6 +220,20 @@ projects/
   "timestamp": "2026-01-19T04:45:15.012Z"
 }
 ```
+
+**Additional User Message Fields** (may appear in some messages):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `toolUseResult` | object/string | Tool execution result (for tool result messages) |
+| `sourceToolAssistantUUID` | string | UUID of assistant message that triggered the tool |
+| `sourceToolUseID` | string | ID of the tool_use block |
+| `todos` | array | Current todo list state |
+| `permissionMode` | string | Permission mode active during this message |
+| `isVisibleInTranscriptOnly` | boolean | Whether message is only for transcript display |
+| `isCompactSummary` | boolean | Whether this is a compaction summary |
+| `thinkingMetadata` | object | Metadata about thinking blocks |
+| `isMeta` | boolean | Whether this is a meta message |
 
 **2. Assistant Messages (Text)**
 ```json
@@ -239,6 +282,13 @@ projects/
 | `message.stop_reason` | string? | Why generation stopped |
 | `message.usage` | object | Token usage statistics |
 | `requestId` | string | API request ID |
+
+**Additional Assistant Message Fields** (may appear in some messages):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isApiErrorMessage` | boolean | Whether this is a synthetic error message |
+| `error` | string | Error type (e.g., "authentication_failed") |
 
 **Usage Object Fields**:
 
@@ -450,11 +500,13 @@ System messages report internal events. The `subtype` field determines the speci
 
 **System Subtypes**:
 
-| subtype | Description |
-|---------|-------------|
-| `init` | Session initialization with tools, model, and configuration |
-| `compact_boundary` | Conversation was compacted to reduce context |
-| `turn_duration` | Duration metrics for a turn |
+| subtype | Description | Persisted to JSONL? |
+|---------|-------------|---------------------|
+| `init` | Session initialization with tools, model, and configuration | ❌ No (stdout only) |
+| `compact_boundary` | Conversation was compacted to reduce context | ✅ Yes |
+| `turn_duration` | Duration metrics for a turn | ✅ Yes |
+| `api_error` | API call failed, will retry | ✅ Yes |
+| `local_command` | Local slash command executed (e.g., `/doctor`) | ✅ Yes |
 
 **5a. Init (Session Initialization)**
 
@@ -537,6 +589,64 @@ System messages report internal events. The `subtype` field determines the speci
 }
 ```
 
+**5c. API Error (Retry)**
+```json
+{
+  "parentUuid": "b92bd8a9-4789-4180-8702-53cfcedce96e",
+  "type": "system",
+  "subtype": "api_error",
+  "level": "error",
+  "error": {
+    "status": 529,
+    "headers": {},
+    "requestID": "req_011CX7BcN34LYzwsmHbBHT5s",
+    "error": {
+      "type": "error",
+      "error": {
+        "type": "overloaded_error",
+        "message": "Overloaded"
+      }
+    }
+  },
+  "retryInMs": 542.08,
+  "retryAttempt": 1,
+  "maxRetries": 10,
+  "timestamp": "2026-01-14T11:22:29.146Z",
+  "uuid": "abee88b6-8f4e-42fe-897a-fac8f4327e9a"
+}
+```
+
+**API Error Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error` | object | Error details from API (status, type, message) |
+| `retryInMs` | number | Milliseconds until retry |
+| `retryAttempt` | number | Current retry attempt (1-indexed) |
+| `maxRetries` | number | Maximum retries configured |
+
+**5d. Local Command**
+```json
+{
+  "parentUuid": null,
+  "type": "system",
+  "subtype": "local_command",
+  "content": "<command-name>/doctor</command-name>\n<command-message>doctor</command-message>\n<command-args></command-args>",
+  "level": "info",
+  "isMeta": false,
+  "timestamp": "2026-01-13T09:58:08.236Z",
+  "uuid": "d882f0aa-b203-4986-8df6-a35fe66ac09f"
+}
+```
+
+**Local Command Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | XML-formatted command details (name, message, args) |
+| `level` | string | Log level ("info") |
+| `isMeta` | boolean | Whether this is a meta command |
+
 **6. Progress Messages**
 
 Progress messages report real-time updates during long-running operations. The `data.type` field determines the progress subtype.
@@ -547,6 +657,9 @@ Progress messages report real-time updates during long-running operations. The `
 |-----------|-------------|
 | `hook_progress` | Hook execution progress |
 | `bash_progress` | Bash command execution progress |
+| `agent_progress` | Subagent spawned and processing |
+| `query_update` | Web search query being executed |
+| `search_results_received` | Web search results received |
 
 **6a. Hook Progress**
 ```json
@@ -591,6 +704,78 @@ Progress messages report real-time updates during long-running operations. The `
 | `fullOutput` | string | Complete output accumulated so far |
 | `elapsedTimeSeconds` | number | Seconds since command started |
 | `totalLines` | number | Total lines of output produced |
+
+**6c. Agent Progress**
+```json
+{
+  "type": "progress",
+  "data": {
+    "type": "agent_progress",
+    "prompt": "Explore the codebase to understand session management...",
+    "agentId": "a824cfd",
+    "message": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Explore the codebase..."}]
+      },
+      "uuid": "cb9b2291-65f4-42cd-8c97-bbf7b025a685"
+    },
+    "normalizedMessages": [...]
+  },
+  "toolUseID": "agent_msg_012eXrDKR9oFi6UJ4MFNkHE5",
+  "parentToolUseID": "toolu_01NBGiNA4gjTnW1ArN2VeFAB",
+  "uuid": "5914fa35-84b1-4d10-949a-43c4409815eb",
+  "timestamp": "2026-01-20T07:56:46.552Z"
+}
+```
+
+**Agent Progress Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data.prompt` | string | The prompt sent to the subagent |
+| `data.agentId` | string | Unique identifier for the spawned agent |
+| `data.message` | object | The user message being processed |
+| `data.normalizedMessages` | array | Normalized message history for the agent |
+
+**6d. Query Update (Web Search)**
+```json
+{
+  "type": "progress",
+  "data": {
+    "type": "query_update",
+    "query": "Claude Code CLI resume session by ID documentation 2026"
+  },
+  "toolUseID": "search-progress-1",
+  "parentToolUseID": "toolu_013sLNePKoFVKwhYC9xPBupv",
+  "uuid": "e281157a-f590-408c-8b13-badd953d801e",
+  "timestamp": "2026-01-20T08:41:27.302Z"
+}
+```
+
+**6e. Search Results Received**
+```json
+{
+  "type": "progress",
+  "data": {
+    "type": "search_results_received",
+    "resultCount": 10,
+    "query": "Claude Code CLI resume session by ID documentation 2026"
+  },
+  "toolUseID": "srvtoolu_01T8DHkkSp6aDHzqgYWqgq9k",
+  "parentToolUseID": "toolu_013sLNePKoFVKwhYC9xPBupv",
+  "uuid": "237c791c-c077-4ff3-8ae9-cdcd88e13cb0",
+  "timestamp": "2026-01-20T08:41:29.761Z"
+}
+```
+
+**Search Progress Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data.query` | string | The search query being executed |
+| `data.resultCount` | number | Number of results received (search_results_received only) |
 
 **7. Summary (Auto-generated title)**
 ```json

@@ -44,23 +44,34 @@ func TestMessageTypeCoverage(t *testing.T) {
 	parseErrors := 0
 
 	// Known types from our models
+	// See docs/claude-code/data-models.md for full documentation
 	knownTypes := map[string]bool{
+		// Main message types
 		"user":                  true,
 		"assistant":             true,
-		"system":                true,
-		"system:init":           true,
-		"system:compact_boundary": true,
-		"system:turn_duration":  true,
 		"result":                true,
-		"progress":              true,
-		"progress:hook_progress": true,
-		"progress:bash_progress": true,
 		"summary":               true,
 		"custom-title":          true,
 		"tag":                   true,
 		"agent-name":            true,
 		"queue-operation":       true,
 		"file-history-snapshot": true,
+
+		// System subtypes
+		"system":                   true,
+		"system:init":              true,
+		"system:compact_boundary":  true,
+		"system:turn_duration":     true,
+		"system:api_error":         true,
+		"system:local_command":     true,
+
+		// Progress subtypes
+		"progress":                       true,
+		"progress:hook_progress":         true,
+		"progress:bash_progress":         true,
+		"progress:agent_progress":        true,
+		"progress:query_update":          true,
+		"progress:search_results_received": true,
 	}
 
 	// Walk through all .jsonl files
@@ -113,6 +124,11 @@ func TestMessageTypeCoverage(t *testing.T) {
 			// Determine the type key
 			typeKey := base.Type
 			subtype := base.Subtype
+
+			// Skip invalid/empty types
+			if typeKey == "" {
+				continue
+			}
 
 			// For progress messages, check data.type
 			if base.Type == "progress" && len(base.Data) > 0 {
@@ -269,7 +285,7 @@ func TestMessageTypeCoverage(t *testing.T) {
 
 	// Print extra fields analysis for supported types
 	fmt.Println("\n" + strings.Repeat("=", 100))
-	fmt.Println("FIELD COVERAGE ANALYSIS (fields in JSON not yet in structs)")
+	fmt.Println("EXTRA FIELDS (fields in JSON not captured by current structs)")
 	fmt.Println(strings.Repeat("=", 100))
 
 	hasExtraFields := false
@@ -277,6 +293,10 @@ func TestMessageTypeCoverage(t *testing.T) {
 		s := stats[key]
 		if len(s.ExtraFields) > 0 {
 			hasExtraFields = true
+			// Skip types with very low count that might be noise
+			if s.Count < 5 {
+				continue
+			}
 			fmt.Printf("\n%s:\n", key)
 
 			// Sort extra fields by count
@@ -312,9 +332,15 @@ var envelopeFields = map[string]bool{
 var knownFieldsByType = map[string]map[string]bool{
 	"user": {
 		"message": true, "toolUseResult": true, "sourceToolAssistantUUID": true,
+		// Additional fields found in real sessions
+		"todos": true, "permissionMode": true, "isVisibleInTranscriptOnly": true,
+		"isCompactSummary": true, "thinkingMetadata": true, "isMeta": true,
+		"sourceToolUseID": true,
 	},
 	"assistant": {
 		"message": true,
+		// Additional fields found in real sessions
+		"isApiErrorMessage": true, "error": true,
 	},
 	"system": {
 		"subtype": true, "content": true, "level": true, "isMeta": true,
