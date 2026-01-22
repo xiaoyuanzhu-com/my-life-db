@@ -46,8 +46,8 @@ export function MessageBlock({ message }: MessageBlockProps) {
 
       {/* System init messages: special formatted display */}
       {systemInitData && (
-        <div className="flex gap-2">
-          <MessageDot status="system" lineHeight="prose" />
+        <div className="flex items-start gap-2">
+          <MessageDot status="completed" lineHeight="mono" />
           <div className="flex-1 min-w-0">
             <SystemInitBlock data={systemInitData} />
           </div>
@@ -57,7 +57,7 @@ export function MessageBlock({ message }: MessageBlockProps) {
       {/* Other system messages: rendered with type title and JSON block */}
       {hasSystemContent && !systemInitData && (
         <div className="flex gap-2">
-          <MessageDot status="system" lineHeight="prose" />
+          <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
             <div
               className="text-sm font-medium mb-1"
