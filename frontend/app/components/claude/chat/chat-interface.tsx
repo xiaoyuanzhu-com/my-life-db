@@ -185,7 +185,19 @@ export function ChatInterface({
     const converted = historyMessages
       .map((msg) => convertToMessage(msg, toolResultMap))
       .filter((m): m is Message => m !== null)
-    setMessages(converted)
+
+    // Merge with existing messages, preserving init message if present
+    setMessages((prev) => {
+      // Find init message from previous state (received via WebSocket)
+      const initMessage = prev.find(
+        (m) => m.role === 'system' && m.systemType === 'system'
+      )
+      if (initMessage) {
+        // Prepend init message to converted history
+        return [initMessage, ...converted]
+      }
+      return converted
+    })
 
     // Check if session is still working (Claude actively processing)
     // Per data-models.md: "Before receiving `result`, Claude is still working"
