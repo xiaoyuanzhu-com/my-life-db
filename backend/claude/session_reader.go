@@ -8,111 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/xiaoyuanzhu-com/my-life-db/claude/models"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// ContentBlock represents a content block in a Claude message.
-// Messages can contain different types of blocks:
-// - "text": Text content from the assistant
-// - "thinking": Extended thinking from the assistant (Opus 4.5+)
-// - "tool_use": A tool invocation (e.g., Bash, Read, Edit)
-// - "tool_result": The result of a tool execution
-type ContentBlock struct {
-	Type      string                 `json:"type"`                  // "text", "thinking", "tool_use", "tool_result"
-	Text      string                 `json:"text,omitempty"`        // For text blocks
-	Thinking  string                 `json:"thinking,omitempty"`    // For thinking blocks
-	Signature string                 `json:"signature,omitempty"`   // For thinking blocks (verification signature)
-	ID        string                 `json:"id,omitempty"`          // For tool_use blocks
-	Name      string                 `json:"name,omitempty"`        // For tool_use blocks
-	Input     map[string]interface{} `json:"input,omitempty"`       // For tool_use blocks
-	ToolUseID string                 `json:"tool_use_id,omitempty"` // For tool_result blocks
-	Content   interface{}            `json:"content,omitempty"`     // For tool_result blocks (string or array)
-	IsError   *bool                  `json:"is_error,omitempty"`    // For tool_result blocks
-}
-
-// ClaudeMessage represents a message in the Claude API format.
-// The Content field has different types depending on the role:
-// - User messages: string (plain text)
-// - Assistant messages: []ContentBlock (structured content with text and tool calls)
-type ClaudeMessage struct {
-	Role         string      `json:"role"`                    // "user" or "assistant"
-	Content      interface{} `json:"content,omitempty"`       // string for user, []ContentBlock for assistant
-	Model        string      `json:"model,omitempty"`         // Model used (e.g., "claude-opus-4-5-20251101")
-	ID           string      `json:"id,omitempty"`            // Message ID from Claude API
-	Type         string      `json:"type,omitempty"`          // "message" for assistant responses
-	StopReason   *string     `json:"stop_reason,omitempty"`   // Why generation stopped (e.g., "end_turn", "tool_use")
-	StopSequence *string     `json:"stop_sequence,omitempty"` // Stop sequence that triggered stop (if any)
-	Usage        *TokenUsage `json:"usage,omitempty"`         // Token usage for this message
-}
-
-// TokenUsage represents token usage statistics
-type TokenUsage struct {
-	InputTokens              int           `json:"input_tokens,omitempty"`
-	OutputTokens             int           `json:"output_tokens,omitempty"`
-	CacheCreationInputTokens int           `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int           `json:"cache_read_input_tokens,omitempty"`
-	CacheCreation            *CacheDetails `json:"cache_creation,omitempty"`
-	ServiceTier              string        `json:"service_tier,omitempty"` // e.g., "standard"
-}
-
-// CacheDetails represents cache creation details
-type CacheDetails struct {
-	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens,omitempty"`
-	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens,omitempty"`
-}
-
-// SessionMessage represents a single message in a session JSONL file
-type SessionMessage struct {
-	Type       string         `json:"type"`       // "user", "assistant", "tool_result", "queue-operation", "summary", etc.
-	UUID       string         `json:"uuid"`       // Message ID
-	ParentUUID *string        `json:"parentUuid"` // Parent message ID (null for root)
-	Timestamp  string         `json:"timestamp"`  // ISO 8601 timestamp
-	Message    *ClaudeMessage `json:"message"`    // Full message object (role, content, etc.)
-
-	// Additional fields that may be present
-	IsSidechain            *bool         `json:"isSidechain,omitempty"`
-	UserType               string        `json:"userType,omitempty"`
-	CWD                    string        `json:"cwd,omitempty"`
-	SessionID              string        `json:"sessionId,omitempty"`
-	Version                string        `json:"version,omitempty"`
-	GitBranch              string        `json:"gitBranch,omitempty"`
-	RequestID              string        `json:"requestId,omitempty"`
-	ToolUseResult          ToolUseResult `json:"toolUseResult,omitempty"`
-	SourceToolAssistantUUID string       `json:"sourceToolAssistantUUID,omitempty"` // For tool results: UUID of the assistant message that initiated the tool call
-}
-
-// ToolUseResult represents the toolUseResult field which varies by tool type.
-// Can be:
-// - string: For errors (e.g., "Error: Exit code 1\n...")
-// - object: Tool-specific metadata (Bash: stdout/stderr, Read: file content, etc.)
-//
-// See docs/claude-code/data-models.md for full schema documentation.
-type ToolUseResult = interface{}
-
-// SessionIndex represents the sessions-index.json file
-type SessionIndex struct {
-	Version int                  `json:"version"`
-	Entries []SessionIndexEntry `json:"entries"`
-}
-
-// SessionIndexEntry represents a single session in the index
-type SessionIndexEntry struct {
-	SessionID    string `json:"sessionId"`
-	FullPath     string `json:"fullPath"`
-	FileMtime    int64  `json:"fileMtime"`
-	FirstPrompt  string `json:"firstPrompt"`
-	Summary      string `json:"summary,omitempty"`      // Claude-generated 5-10 word title
-	CustomTitle  string `json:"customTitle,omitempty"`  // User-set custom title (via /title command)
-	MessageCount int    `json:"messageCount"`
-	Created      string `json:"created"`
-	Modified     string `json:"modified"`
-	GitBranch    string `json:"gitBranch"`
-	ProjectPath  string `json:"projectPath"`
-	IsSidechain  bool   `json:"isSidechain"`
-}
-
-// ReadSessionHistory reads and parses a session JSONL file
-func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error) {
+// ReadSessionHistoryRaw reads a session JSONL file and returns typed messages.
+// Each message is parsed into its specific type (UserSessionMessage, AssistantSessionMessage, etc.)
+// All messages preserve raw JSON for passthrough serialization.
+func ReadSessionHistoryRaw(sessionID, projectPath string) ([]models.SessionMessageI, error) {
 	// Find the JSONL file
 	filePath, err := findSessionFile(sessionID, projectPath)
 	if err != nil {
@@ -126,7 +29,188 @@ func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error)
 	}
 	defer file.Close()
 
-	var messages []SessionMessage
+	var messages []models.SessionMessageI
+	reader := bufio.NewReader(file)
+	lineNum := 0
+
+	for {
+		lineNum++
+
+		// ReadBytes reads until delimiter, no size limit
+		lineBytes, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err.Error() == "EOF" {
+				// Process last line if it exists
+				if len(lineBytes) > 0 {
+					msg := parseTypedMessage(lineBytes, lineNum, sessionID)
+					if msg != nil {
+						messages = append(messages, msg)
+					}
+				}
+				break
+			}
+			return nil, fmt.Errorf("error reading session file: %w", err)
+		}
+
+		msg := parseTypedMessage(lineBytes, lineNum, sessionID)
+		if msg != nil {
+			messages = append(messages, msg)
+		}
+	}
+
+	return messages, nil
+}
+
+// parseTypedMessage parses a line into the appropriate typed message struct.
+// Raw JSON is always preserved for passthrough serialization.
+// Returns nil only for empty lines.
+func parseTypedMessage(lineBytes []byte, lineNum int, sessionID string) models.SessionMessageI {
+	line := strings.TrimSpace(string(lineBytes))
+	if line == "" {
+		return nil
+	}
+
+	// Make a copy for the Raw field - used for serialization
+	rawCopy := make([]byte, len(line))
+	copy(rawCopy, []byte(line))
+
+	// Extract type to determine which struct to use
+	var typeOnly struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(line), &typeOnly); err != nil {
+		log.Warn().
+			Err(err).
+			Int("line", lineNum).
+			Str("sessionId", sessionID).
+			Msg("failed to parse message type, returning unknown")
+		return &models.UnknownSessionMessage{
+			RawJSON: models.RawJSON{Raw: rawCopy},
+		}
+	}
+
+	// Parse into appropriate typed struct based on type
+	switch typeOnly.Type {
+	case "user":
+		var msg models.UserSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse user message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "assistant":
+		var msg models.AssistantSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse assistant message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "system":
+		var msg models.SystemSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse system message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "result":
+		var msg models.ResultSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse result message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "progress":
+		var msg models.ProgressSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse progress message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "summary":
+		var msg models.SummarySessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse summary message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "custom-title":
+		var msg models.CustomTitleSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse custom-title message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "tag":
+		var msg models.TagSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse tag message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "agent-name":
+		var msg models.AgentNameSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse agent-name message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "queue-operation":
+		var msg models.QueueOperationSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse queue-operation message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	case "file-history-snapshot":
+		var msg models.FileHistorySnapshotSessionMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse file-history-snapshot message")
+		}
+		msg.Raw = rawCopy
+		return &msg
+
+	default:
+		// Unknown type - return as unknown with raw JSON preserved
+		log.Debug().
+			Str("type", typeOnly.Type).
+			Int("line", lineNum).
+			Str("sessionId", sessionID).
+			Msg("unknown message type, returning raw")
+		return &models.UnknownSessionMessage{
+			RawJSON:     models.RawJSON{Raw: rawCopy},
+			BaseMessage: models.BaseMessage{Type: typeOnly.Type},
+		}
+	}
+}
+
+// ReadSessionHistory reads and parses a session JSONL file (typed version).
+// This is used for internal operations that need typed access (e.g., title extraction).
+// For API responses, use ReadSessionHistoryRaw instead.
+func ReadSessionHistory(sessionID, projectPath string) ([]models.SessionMessage, error) {
+	// Find the JSONL file
+	filePath, err := findSessionFile(sessionID, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Open the file
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open session file: %w", err)
+	}
+	defer file.Close()
+
+	var messages []models.SessionMessage
 	reader := bufio.NewReader(file)
 	lineNum := 0
 
@@ -141,7 +225,7 @@ func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error)
 				if len(lineBytes) > 0 {
 					line := strings.TrimSpace(string(lineBytes))
 					if line != "" {
-						var msg SessionMessage
+						var msg models.SessionMessage
 						if err := json.Unmarshal([]byte(line), &msg); err == nil {
 							messages = append(messages, msg)
 						}
@@ -160,7 +244,7 @@ func ReadSessionHistory(sessionID, projectPath string) ([]SessionMessage, error)
 		}
 
 		// Try to parse the line as JSON
-		var msg SessionMessage
+		var msg models.SessionMessage
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			// Skip lines that fail to parse (may be mid-write or malformed)
 			log.Debug().
@@ -224,13 +308,13 @@ func findSessionFile(sessionID, projectPath string) (string, error) {
 }
 
 // readSessionIndex reads and parses a sessions-index.json file
-func readSessionIndex(path string) (*SessionIndex, error) {
+func readSessionIndex(path string) (*models.SessionIndex, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var index SessionIndex
+	var index models.SessionIndex
 	if err := json.Unmarshal(data, &index); err != nil {
 		return nil, err
 	}
@@ -254,7 +338,7 @@ func sanitizeProjectPath(path string) string {
 }
 
 // GetSessionIndexForProject returns all sessions for a project
-func GetSessionIndexForProject(projectPath string) (*SessionIndex, error) {
+func GetSessionIndexForProject(projectPath string) (*models.SessionIndex, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
@@ -267,7 +351,7 @@ func GetSessionIndexForProject(projectPath string) (*SessionIndex, error) {
 }
 
 // GetAllSessionIndexes returns sessions from all Claude project directories
-func GetAllSessionIndexes() (*SessionIndex, error) {
+func GetAllSessionIndexes() (*models.SessionIndex, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
@@ -280,7 +364,7 @@ func GetAllSessionIndexes() (*SessionIndex, error) {
 	}
 
 	// Collect all sessions from all project directories
-	allEntries := make([]SessionIndexEntry, 0)
+	allEntries := make([]models.SessionIndexEntry, 0)
 	seenSessions := make(map[string]bool)
 
 	for _, entry := range entries {
@@ -305,131 +389,10 @@ func GetAllSessionIndexes() (*SessionIndex, error) {
 		}
 	}
 
-	return &SessionIndex{
+	return &models.SessionIndex{
 		Version: 1,
 		Entries: allEntries,
 	}, nil
-}
-
-// GetTextContent extracts text content from a message
-// For user messages: returns the string content directly
-// For assistant messages: extracts and joins text from all text blocks
-func (m *SessionMessage) GetTextContent() string {
-	if m.Message == nil || m.Message.Content == nil {
-		return ""
-	}
-
-	// User messages have string content
-	if str, ok := m.Message.Content.(string); ok {
-		return str
-	}
-
-	// Assistant messages have []ContentBlock (comes as []interface{})
-	if blocks, ok := m.Message.Content.([]interface{}); ok {
-		var texts []string
-		for _, block := range blocks {
-			if blockMap, ok := block.(map[string]interface{}); ok {
-				if blockMap["type"] == "text" {
-					if text, ok := blockMap["text"].(string); ok {
-						texts = append(texts, text)
-					}
-				}
-			}
-		}
-		return strings.Join(texts, "\n")
-	}
-
-	return ""
-}
-
-// GetUserPrompt extracts the actual user-typed text from a user message,
-// filtering out system-injected tags like <ide_opened_file>, <ide_selection>, <system-reminder>
-func (m *SessionMessage) GetUserPrompt() string {
-	if m.Message == nil || m.Message.Content == nil || m.Type != "user" {
-		return ""
-	}
-
-	var userTexts []string
-
-	// User messages can be string or []ContentBlock
-	if str, ok := m.Message.Content.(string); ok {
-		// Single string content - filter out system tags
-		filtered := filterSystemTags(str)
-		if filtered != "" {
-			userTexts = append(userTexts, filtered)
-		}
-	} else if blocks, ok := m.Message.Content.([]interface{}); ok {
-		// Array of content blocks
-		for _, block := range blocks {
-			if blockMap, ok := block.(map[string]interface{}); ok {
-				if blockMap["type"] == "text" {
-					if text, ok := blockMap["text"].(string); ok {
-						// Filter out system-injected tags
-						filtered := filterSystemTags(text)
-						if filtered != "" {
-							userTexts = append(userTexts, filtered)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return strings.Join(userTexts, "\n")
-}
-
-// filterSystemTags removes system-injected XML tags from text
-// Returns empty string if text is only system tags
-func filterSystemTags(text string) string {
-	// Check if text starts with a system tag
-	if strings.HasPrefix(text, "<ide_") ||
-		strings.HasPrefix(text, "<system-reminder>") {
-		return ""
-	}
-	return strings.TrimSpace(text)
-}
-
-// GetToolCalls extracts tool use blocks from an assistant message
-func (m *SessionMessage) GetToolCalls() []ContentBlock {
-	if m.Message == nil || m.Message.Content == nil {
-		return nil
-	}
-
-	// Only assistant messages have tool calls
-	if m.Type != "assistant" {
-		return nil
-	}
-
-	blocks, ok := m.Message.Content.([]interface{})
-	if !ok {
-		return nil
-	}
-
-	var toolCalls []ContentBlock
-	for _, block := range blocks {
-		blockMap, ok := block.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if blockMap["type"] == "tool_use" {
-			toolCall := ContentBlock{
-				Type: "tool_use",
-			}
-			if id, ok := blockMap["id"].(string); ok {
-				toolCall.ID = id
-			}
-			if name, ok := blockMap["name"].(string); ok {
-				toolCall.Name = name
-			}
-			if input, ok := blockMap["input"].(map[string]interface{}); ok {
-				toolCall.Input = input
-			}
-			toolCalls = append(toolCalls, toolCall)
-		}
-	}
-
-	return toolCalls
 }
 
 // GetFirstUserPrompt reads the session JSONL and extracts the actual first user prompt
@@ -458,7 +421,7 @@ func GetFirstUserPrompt(sessionID, projectPath string) string {
 // 2. Summary (Claude-generated)
 // 3. First actual user prompt from JSONL (only read if needed)
 // 4. "Untitled" as fallback
-func GetSessionDisplayTitle(entry SessionIndexEntry) string {
+func GetSessionDisplayTitle(entry models.SessionIndexEntry) string {
 	// Priority 1: User-set custom title
 	if entry.CustomTitle != "" {
 		return entry.CustomTitle
@@ -486,17 +449,10 @@ func GetSessionDisplayTitle(entry SessionIndexEntry) string {
 	return "Untitled"
 }
 
-// TodoItem represents a task in a Claude Code session
-type TodoItem struct {
-	Content    string `json:"content"`
-	Status     string `json:"status"`     // "pending", "in_progress", "completed"
-	ActiveForm string `json:"activeForm"` // Present continuous form (e.g., "Running tests")
-}
-
 // ReadSessionTodos reads the todo file for a session
 // Todo files are stored at ~/.claude/todos/{sessionId}-agent-{agentId}.json
 // For now, we only read the main agent's todos ({sessionId}-agent-main.json)
-func ReadSessionTodos(sessionID string) ([]TodoItem, error) {
+func ReadSessionTodos(sessionID string) ([]models.TodoItem, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
@@ -508,7 +464,7 @@ func ReadSessionTodos(sessionID string) ([]TodoItem, error) {
 	// Check if file exists
 	if _, err := os.Stat(todoPath); os.IsNotExist(err) {
 		// No todos file - return empty array (not an error)
-		return []TodoItem{}, nil
+		return []models.TodoItem{}, nil
 	}
 
 	// Read file
@@ -518,7 +474,7 @@ func ReadSessionTodos(sessionID string) ([]TodoItem, error) {
 	}
 
 	// Parse JSON
-	var todos []TodoItem
+	var todos []models.TodoItem
 	if err := json.Unmarshal(data, &todos); err != nil {
 		return nil, fmt.Errorf("failed to parse todos file: %w", err)
 	}

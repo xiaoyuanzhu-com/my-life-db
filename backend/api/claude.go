@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
+	"github.com/xiaoyuanzhu-com/my-life-db/claude/models"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -422,8 +423,8 @@ func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 		log.Debug().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: session not found in manager")
 	}
 
-	// Read JSONL file using the session reader
-	messages, err := claude.ReadSessionHistory(sessionID, projectPath)
+	// Read JSONL file using the raw session reader (no transformation)
+	messages, err := claude.ReadSessionHistoryRaw(sessionID, projectPath)
 	if err != nil {
 		// Check if it's a "file not found" error - this is OK for new sessions
 		if err.Error() == "session file not found for session "+sessionID {
@@ -431,7 +432,7 @@ func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
 			log.Debug().Str("sessionId", sessionID).Msg("session has no history file yet")
 			c.JSON(http.StatusOK, gin.H{
 				"sessionId": sessionID,
-				"messages":  []claude.SessionMessage{},
+				"messages":  []models.SessionMessageI{},
 			})
 			return
 		}
