@@ -75,6 +75,84 @@ Claude Code uses a **session-centric architecture**:
 
 ---
 
+## SDK & Extension Communication Protocol
+
+The VSCode extension and Claude Agent SDK communicate with the CLI via **structured JSON streaming over stdin/stdout** - not by parsing shell output.
+
+### How It Works
+
+```
+┌─────────────────────┐         stdin (JSON)         ┌─────────────────────┐
+│  VSCode Extension   │  ─────────────────────────▶  │                     │
+│        or           │                              │   Claude Code CLI   │
+│   Claude Agent SDK  │  ◀─────────────────────────  │                     │
+└─────────────────────┘        stdout (JSON)         └─────────────────────┘
+```
+
+**1. Spawn CLI with JSON flags:**
+```bash
+claude --output-format stream-json --input-format stream-json --verbose
+```
+
+**2. Communication uses newline-delimited JSON (JSON-lines):**
+- Each line is a complete JSON object
+- Deterministic and parseable (not flaky shell output)
+- 1MB default buffer for accumulating partial JSON
+
+### Message Types
+
+**Two categories of messages:**
+
+| Category | Examples |
+|----------|----------|
+| **Regular messages** | Agent responses, tool outputs, cost tracking |
+| **Control messages** | Permission requests, hook callbacks |
+
+### Control Protocol Example
+
+**Permission request (CLI → SDK/Extension):**
+```json
+{
+  "type": "control_request",
+  "request_id": "req_1_abc123",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "Bash",
+    "input": {"command": "ls /home"}
+  }
+}
+```
+
+**Permission response (SDK/Extension → CLI via stdin):**
+```json
+{
+  "type": "control_response",
+  "request_id": "req_1_abc123",
+  "response": {"subtype": "success", "response": {"behavior": "allow"}}
+}
+```
+
+### Key Implementation Details
+
+| Aspect | Details |
+|--------|---------|
+| **Protocol** | Newline-delimited JSON (JSON-lines) |
+| **Input flag** | `--input-format stream-json` |
+| **Output flag** | `--output-format stream-json` |
+| **Max buffer** | 1MB default |
+| **Concurrency** | Async with write locks to prevent race conditions |
+| **Request multiplexing** | `request_id` enables concurrent operations |
+
+### Source Code Reference
+
+The actual implementation is in the open-source Claude Agent SDK:
+- **Python**: [`src/claude_agent_sdk/_internal/transport/subprocess_cli.py`](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/transport/subprocess_cli.py)
+- **TypeScript**: Equivalent implementation in `@anthropic-ai/claude-agent-sdk`
+
+The VSCode extension uses this same mechanism - it's "Claude Code as a library."
+
+---
+
 ## Configuration Hierarchy
 
 Claude Code uses a **scope system** to determine configuration (highest priority first):
