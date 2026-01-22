@@ -187,8 +187,12 @@ export function ChatInterface({
       .filter((m): m is Message => m !== null)
     setMessages(converted)
 
-    // Check if session is still working (no result message after last user/assistant message)
+    // Check if session is still working (Claude actively processing)
     // Per data-models.md: "Before receiving `result`, Claude is still working"
+    // We check multiple signals to avoid false positives:
+    // 1. If there's a `result` message → completed
+    // 2. If assistant message has stop_reason (e.g., "end_turn") → completed
+    // 3. If session data is stale (old timestamp) → assume completed
     if (historyMessages.length > 0) {
       const lastConversationMsg = [...historyMessages].reverse().find(m => m.type === 'user' || m.type === 'assistant')
 
@@ -196,7 +200,17 @@ export function ChatInterface({
         // Check if there's a result after the last assistant message
         const lastAssistantIdx = historyMessages.findIndex(m => m.uuid === lastConversationMsg.uuid)
         const hasResultAfter = historyMessages.slice(lastAssistantIdx).some(m => m.type === 'result')
-        if (!hasResultAfter) {
+
+        // Check if assistant message has a stop_reason (indicates completion)
+        const stopReason = lastConversationMsg.message?.stop_reason
+        const hasStopReason = stopReason !== null && stopReason !== undefined
+
+        // Check if the message is recent (within last 60 seconds)
+        const messageTime = new Date(lastConversationMsg.timestamp).getTime()
+        const isRecent = Date.now() - messageTime < 60000
+
+        // Only show working if: no result, no stop_reason, AND message is recent
+        if (!hasResultAfter && !hasStopReason && isRecent) {
           setIsWorking(true)
         }
       }

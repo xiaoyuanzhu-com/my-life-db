@@ -209,6 +209,39 @@ Each session stores:
 - Context usage metrics
 - Cost tracking
 
+### Detecting Work-in-Progress State
+
+To determine if Claude is actively working on a session, check these signals:
+
+| Signal | Indicates Completed |
+|--------|---------------------|
+| `result` message exists after last assistant message | ✅ Yes |
+| Assistant message has `stop_reason` (e.g., `"end_turn"`) | ✅ Yes |
+| Last message timestamp is stale (> 60 seconds old) | ✅ Yes (assume completed) |
+
+**Case 1: Completed session (no `result`, no `stop_reason`, but stale)**
+
+```json
+{
+  "messages": [
+    {"type": "queue-operation", "operation": "dequeue", "timestamp": "2026-01-22T14:16:23.027Z"},
+    {"type": "file-history-snapshot", "messageId": "60b658ab-..."},
+    {"type": "user", "uuid": "60b658ab-...", "message": {"role": "user", "content": "say hello"}, "timestamp": "2026-01-22T14:16:23.115Z"},
+    {"type": "assistant", "uuid": "c087e3e0-...", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hello! How can I help you?"}], "stop_reason": null}, "timestamp": "2026-01-22T14:16:26.272Z"}
+  ]
+}
+```
+
+This session is **NOT work-in-progress** because:
+- No `result` message ❌
+- `stop_reason` is `null` ❌
+- But timestamp is old (> 60 seconds ago) ✅ → **Completed**
+
+**Only show WIP indicator when ALL conditions favor "working":**
+1. No `result` message after last assistant message
+2. No `stop_reason` in assistant message
+3. Message is recent (within last 60 seconds)
+
 ---
 
 ## 2. Tool System
