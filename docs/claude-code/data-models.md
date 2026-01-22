@@ -136,6 +136,7 @@ projects/
 |------|-------------|
 | `user` | User input or tool results |
 | `assistant` | Claude's responses (text and/or tool calls) |
+| `result` | **Turn complete** - sent when Claude finishes (contains stats, cost, duration) |
 | `system` | System messages (e.g., conversation compacted) |
 | `progress` | Progress updates (e.g., hook execution) |
 | `summary` | Auto-generated session summary |
@@ -969,6 +970,186 @@ ws.send(JSON.stringify({
   type: 'user_message',
   content: 'What files are here?'
 }))
+```
+
+#### Two-Level Type System ⭐⭐⭐ CRITICAL
+
+Claude's stream-json output has **two levels of types**:
+
+| Level | Purpose | Types |
+|-------|---------|-------|
+| **Outer** (message envelope) | Message routing & lifecycle | `user`, `assistant`, `result`, `queue-operation`, `system` |
+| **Inner** (content blocks) | Actual content within messages | `text`, `tool_use`, `tool_result` |
+
+**Outer Types (envelope):**
+
+| Type | Description | When Sent |
+|------|-------------|-----------|
+| `queue-operation` | Session queued for processing | At session start |
+| `user` | User input OR tool results | User sends message, or tool completes |
+| `assistant` | Claude's response (text and/or tool calls) | Claude responds |
+| `system` | System messages (compaction, etc.) | Internal events |
+| `result` | **Session turn complete** ⭐ TERMINATOR | End of Claude's turn |
+
+**Inner Types (content blocks in `message.content[]`):**
+
+| Type | Description | Parent |
+|------|-------------|--------|
+| `text` | Text response | `assistant` |
+| `tool_use` | Tool invocation request | `assistant` |
+| `tool_result` | Tool execution result | `user` (as tool response) |
+
+**Example message with nested types:**
+```json
+{
+  "type": "assistant",                    // ← OUTER type
+  "uuid": "a7989bd7-...",
+  "message": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",                   // ← INNER type
+        "text": "Let me read that file."
+      },
+      {
+        "type": "tool_use",               // ← INNER type
+        "id": "toolu_01P3X1jpr9...",
+        "name": "Read",
+        "input": {"file_path": "/path/to/file.ts"}
+      }
+    ]
+  }
+}
+```
+
+#### The `result` Message (Session Terminator) ⭐⭐⭐
+
+The `result` message marks the **end of Claude's turn**. Before receiving `result`, Claude is still working.
+
+**Structure:**
+```json
+{
+  "type": "result",
+  "subtype": "success",           // or "error"
+  "is_error": false,
+  "duration_ms": 43606,           // Total wall-clock time
+  "duration_api_ms": 237870,      // API processing time
+  "num_turns": 7,                 // Number of tool call rounds
+  "result": "Here's what I found...",  // Final text summary
+  "session_id": "c50700dd-...",
+  "total_cost_usd": 1.128,        // Session cost
+  "usage": {
+    "input_tokens": 9,
+    "cache_creation_input_tokens": 2864,
+    "cache_read_input_tokens": 339309,
+    "output_tokens": 2270,
+    "service_tier": "standard"
+  },
+  "modelUsage": {
+    "claude-opus-4-5-20251101": {
+      "inputTokens": 32,
+      "outputTokens": 11327,
+      "costUSD": 1.09
+    }
+  }
+}
+```
+
+**UI State Machine:**
+```
+[user sends message]
+    ↓
+isWorking = true
+    ↓
+[receive: assistant with tool_use] → show "Running Bash..."
+[receive: user with tool_result]   → show tool output
+[receive: assistant with text]     → show response text
+    ↓ (repeat for multi-turn)
+[receive: result]
+    ↓
+isWorking = false  ← TERMINATOR
+```
+
+#### Message Lifecycle (Complete Flow)
+
+```
+1. queue-operation     → Session queued
+2. user                → User's initial message
+3. assistant           → Claude calls tool (tool_use)
+4. user                → Tool result (tool_result)
+   ... repeat 3-4 for multiple tools ...
+5. assistant           → Claude's text response
+6. result              → Turn complete (TERMINATOR)
+```
+
+**Real example from WebSocket:**
+```
+← {"type":"queue-operation","uuid":"","timestamp":"..."}
+← {"type":"user","message":{"content":"list files"},"uuid":"90aa59d3-..."}
+← {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]},"uuid":"1686f76d-..."}
+← {"type":"user","message":{"content":[{"type":"tool_result","content":"file1.txt\nfile2.txt"}]},"uuid":"37d6a88e-..."}
+← {"type":"assistant","message":{"content":[{"type":"text","text":"Found 2 files..."}]},"uuid":"a7989bd7-..."}
+← {"type":"result","subtype":"success","duration_ms":5230,"result":"Found 2 files..."}
+```
+
+#### Permission Handling
+
+When Claude needs permission for a tool, the flow differs:
+
+**Without permission (denied/timeout):**
+```json
+{
+  "type": "user",
+  "message": {
+    "content": [{
+      "type": "tool_result",
+      "content": "Claude requested permissions to write to /path/file.sh, but you haven't granted it yet.",
+      "is_error": true,
+      "tool_use_id": "toolu_01DwYwVK..."
+    }]
+  }
+}
+```
+
+**Key fields for permission errors:**
+- `is_error: true` in tool_result
+- Error message describes what permission was needed
+- Claude may retry with different approach or ask user
+
+**Note:** `control_request` messages (permission prompts) require UI implementation to handle interactively. If not handled, tools fail with permission errors as shown above.
+
+#### Progress Tracking
+
+**No streaming deltas** - Claude sends complete messages, not character-by-character streaming.
+
+For progress updates:
+- ✅ Show each **tool call** as it arrives (each `assistant` with `tool_use`)
+- ✅ Show **tool results** as they complete (each `user` with `tool_result`)
+- ✅ Show **text responses** when assistant messages with `text` arrive
+- ✅ Use `result.duration_ms` and `result.num_turns` for summary stats
+- ❌ Cannot stream text character-by-character (not supported)
+
+**Progress indicator logic:**
+```typescript
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data)
+
+  switch (msg.type) {
+    case 'queue-operation':
+      setStatus('Queued...')
+      break
+    case 'assistant':
+      const toolUse = msg.message.content.find(b => b.type === 'tool_use')
+      if (toolUse) {
+        setStatus(`Running ${toolUse.name}...`)
+      }
+      break
+    case 'result':
+      setStatus('Complete')
+      setIsWorking(false)
+      break
+  }
+}
 ```
 
 **Alternative: File Polling** (simpler, higher latency)
