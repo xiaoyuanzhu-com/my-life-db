@@ -11,14 +11,16 @@ interface MessageBlockProps {
 
 export function MessageBlock({ message }: MessageBlockProps) {
   const isUser = message.role === 'user'
+  const isSystem = message.role === 'system'
 
   const hasUserContent = isUser && message.content
-  const hasAssistantContent = !isUser && message.content
-  const hasThinking = !isUser && message.thinking && message.thinking.length > 0
+  const hasAssistantContent = !isUser && !isSystem && message.content
+  const hasSystemContent = isSystem && message.content
+  const hasThinking = !isUser && !isSystem && message.thinking && message.thinking.length > 0
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantContent && !hasThinking && !hasToolCalls) {
+  if (!hasUserContent && !hasAssistantContent && !hasSystemContent && !hasThinking && !hasToolCalls) {
     return null
   }
 
@@ -26,6 +28,21 @@ export function MessageBlock({ message }: MessageBlockProps) {
     <div className="mb-4">
       {/* User messages: gray background pill, right-aligned */}
       {hasUserContent && <UserMessageBlock content={message.content!} />}
+
+      {/* System messages: muted centered text for unknown/debug messages */}
+      {hasSystemContent && (
+        <div className="flex justify-center">
+          <span
+            className="text-xs font-mono px-2 py-1 rounded"
+            style={{
+              color: 'var(--claude-text-secondary)',
+              backgroundColor: 'var(--claude-bg-subtle)',
+            }}
+          >
+            {message.content}
+          </span>
+        </div>
+      )}
 
       {/* Assistant messages: bullet + markdown content */}
       {hasAssistantContent && (

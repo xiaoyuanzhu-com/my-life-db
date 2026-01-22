@@ -67,9 +67,24 @@ export function ChatInterface({
     sessionMsg: SessionMessage,
     toolResultMap: Map<string, ExtractedToolResult>
   ): Message | null => {
-    // Skip internal events (summaries, tool_results, etc.)
-    if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
+    // Skip internal events that shouldn't be rendered
+    const skipTypes = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot']
+    if (skipTypes.includes(sessionMsg.type)) {
       return null
+    }
+
+    // Handle unknown message types as system messages for debugging
+    if (!sessionMsg.message || (sessionMsg.type !== 'user' && sessionMsg.type !== 'assistant')) {
+      // Render unknown types for visibility
+      // Try to extract any useful info from the message
+      const msgAny = sessionMsg as unknown as Record<string, unknown>
+      const extraInfo = msgAny.subtype ? ` (${msgAny.subtype})` : ''
+      return {
+        id: sessionMsg.uuid || crypto.randomUUID(),
+        role: 'system',
+        content: `[${sessionMsg.type}${extraInfo}]`,
+        timestamp: new Date(sessionMsg.timestamp).getTime(),
+      }
     }
 
     const { content, role } = sessionMsg.message
