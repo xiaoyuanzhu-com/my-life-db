@@ -58,7 +58,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		WorkingDir      string `json:"workingDir"`
 		Title           string `json:"title"`
 		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
-		Mode            string `json:"mode"`            // Optional: "cli" (default) or "ui"
+		Mode            string `json:"mode"`            // Optional: "ui" (default) or "cli"
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -71,10 +71,10 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		body.WorkingDir = config.Get().UserDataDir
 	}
 
-	// Parse mode (default to CLI)
-	mode := claude.ModeCLI
-	if body.Mode == "ui" {
-		mode = claude.ModeUI
+	// Parse mode (default to UI)
+	mode := claude.ModeUI
+	if body.Mode == "cli" {
+		mode = claude.ModeCLI
 	}
 
 	// Create session (will resume if resumeSessionId is provided)

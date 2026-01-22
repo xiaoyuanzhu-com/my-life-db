@@ -188,9 +188,9 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		}
 	}
 
-	// Default mode to CLI if not specified
+	// Default mode to UI if not specified
 	if mode == "" {
-		mode = ModeCLI
+		mode = ModeUI
 	}
 
 	session := &Session{
@@ -324,8 +324,8 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 		title = "Archived Session"
 	}
 
-	// Create a non-activated shell session (default to CLI mode for historical sessions)
-	return m.createShellSession(id, workingDir, title, ModeCLI)
+	// Create a non-activated shell session (default to UI mode for historical sessions)
+	return m.createShellSession(id, workingDir, title, ModeUI)
 }
 
 // createShellSession creates a non-activated session (just metadata, no process)
@@ -343,9 +343,9 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 		return nil, ErrTooManySessions
 	}
 
-	// Default mode to CLI if not specified
+	// Default mode to UI if not specified
 	if mode == "" {
-		mode = ModeCLI
+		mode = ModeUI
 	}
 
 	session := &Session{
