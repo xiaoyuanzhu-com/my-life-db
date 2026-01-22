@@ -207,18 +207,40 @@ export interface Message {
 }
 
 // ============================================================================
-// Permission request
+// Control Protocol (Permission Requests/Responses)
 // ============================================================================
 
-export interface PermissionRequest {
-  id: string
-  toolName: ToolName
-  toolCallId: string
-  parameters: ToolParams
-  description: string
+// Raw control_request from Claude CLI stdout
+export interface ControlRequest {
+  type: 'control_request'
+  request_id: string
+  request: {
+    subtype: 'can_use_tool'
+    tool_name: string
+    input: Record<string, unknown>
+  }
 }
 
-export type PermissionDecision = 'allow' | 'deny' | 'always_allow'
+// control_response to send via stdin
+export interface ControlResponse {
+  type: 'control_response'
+  request_id: string
+  response: {
+    subtype: 'success'
+    response: {
+      behavior: 'allow' | 'deny'
+    }
+  }
+}
+
+// UI-friendly permission request (derived from ControlRequest)
+export interface PermissionRequest {
+  requestId: string      // from control_request.request_id
+  toolName: string       // from control_request.request.tool_name
+  input: Record<string, unknown>  // from control_request.request.input
+}
+
+export type PermissionDecision = 'allow' | 'deny'
 
 // ============================================================================
 // User question (from AskUserQuestion tool)
@@ -269,7 +291,7 @@ export type MessageType =
   | 'text_complete'
   | 'tool_use'
   | 'tool_result'
-  | 'permission_request'
+  | 'control_request'  // Permission request from Claude CLI
   | 'user_question'
   | 'todo_update'
   | 'error'
@@ -304,9 +326,9 @@ export interface ToolResultMessage extends WSMessage {
   }
 }
 
-export interface PermissionRequestMessage extends WSMessage {
-  type: 'permission_request'
-  data: PermissionRequest
+export interface ControlRequestMessage extends WSMessage {
+  type: 'control_request'
+  data: ControlRequest
 }
 
 export interface UserQuestionMessage extends WSMessage {

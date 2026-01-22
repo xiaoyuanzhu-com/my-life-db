@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { Shield, AlertTriangle } from 'lucide-react'
-import type { PermissionRequest, PermissionDecision, ToolParams } from '~/types/claude'
+import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
 interface PermissionModalProps {
   request: PermissionRequest
@@ -37,17 +37,12 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Description */}
-          {request.description && (
-            <p className="text-sm text-foreground">{request.description}</p>
-          )}
-
           {/* Tool parameters */}
           <div className="rounded-lg bg-muted p-3">
             <div className="text-xs text-muted-foreground mb-2">Details</div>
             <ParameterPreview
               toolName={request.toolName}
-              parameters={request.parameters}
+              input={request.input}
             />
           </div>
 
@@ -71,16 +66,10 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
             Deny
           </Button>
           <Button
-            variant="secondary"
+            variant="default"
             onClick={() => onDecision('allow')}
           >
-            Allow Once
-          </Button>
-          <Button
-            variant="default"
-            onClick={() => onDecision('always_allow')}
-          >
-            Always Allow
+            Allow
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -90,24 +79,24 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
 
 function ParameterPreview({
   toolName,
-  parameters,
+  input,
 }: {
   toolName: string
-  parameters: ToolParams
+  input: Record<string, unknown>
 }) {
   // Render tool-specific parameter preview
   switch (toolName) {
     case 'Bash':
       return (
         <pre className="text-xs font-mono bg-background rounded p-2 overflow-x-auto">
-          $ {(parameters as { command?: string }).command}
+          $ {input.command as string}
         </pre>
       )
 
     case 'Read':
       return (
         <div className="text-sm font-mono">
-          {(parameters as { file_path?: string }).file_path}
+          {input.file_path as string}
         </div>
       )
 
@@ -116,7 +105,7 @@ function ParameterPreview({
       return (
         <div className="space-y-2">
           <div className="text-sm font-mono">
-            {(parameters as { file_path?: string }).file_path}
+            {input.file_path as string}
           </div>
           {toolName === 'Edit' && (
             <div className="text-xs text-muted-foreground">
@@ -129,14 +118,21 @@ function ParameterPreview({
     case 'WebFetch':
       return (
         <div className="text-sm font-mono truncate">
-          {(parameters as { url?: string }).url}
+          {input.url as string}
+        </div>
+      )
+
+    case 'WebSearch':
+      return (
+        <div className="text-sm font-mono">
+          Search: {input.query as string}
         </div>
       )
 
     default:
       return (
-        <pre className="text-xs font-mono overflow-x-auto">
-          {JSON.stringify(parameters, null, 2)}
+        <pre className="text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto">
+          {JSON.stringify(input, null, 2)}
         </pre>
       )
   }

@@ -863,12 +863,16 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				break
 			}
 
-			// Parse the control response
+			// Parse the control response (nested structure from frontend)
 			var controlResp struct {
 				Type      string `json:"type"`
 				RequestID string `json:"request_id"`
-				Subtype   string `json:"subtype"`
-				Behavior  string `json:"behavior"`
+				Response  struct {
+					Subtype  string `json:"subtype"`
+					Response struct {
+						Behavior string `json:"behavior"`
+					} `json:"response"`
+				} `json:"response"`
 			}
 			if err := json.Unmarshal(msg, &controlResp); err != nil {
 				log.Debug().Err(err).Msg("Failed to parse control_response")
@@ -876,13 +880,13 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 			// Send the response to Claude
-			if err := session.SendControlResponse(controlResp.RequestID, controlResp.Subtype, controlResp.Behavior); err != nil {
+			if err := session.SendControlResponse(controlResp.RequestID, controlResp.Response.Subtype, controlResp.Response.Response.Behavior); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send control response")
 			} else {
-				log.Debug().
+				log.Info().
 					Str("sessionId", sessionID).
 					Str("requestId", controlResp.RequestID).
-					Str("behavior", controlResp.Behavior).
+					Str("behavior", controlResp.Response.Response.Behavior).
 					Msg("sent control response to Claude")
 			}
 

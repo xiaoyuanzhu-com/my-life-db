@@ -10,6 +10,8 @@ import type {
   PermissionRequest,
   UserQuestion,
   PermissionDecision,
+  ControlRequest,
+  ControlResponse,
 } from '~/types/claude'
 import {
   buildToolResultMap,
@@ -146,6 +148,17 @@ export function ChatInterface({
           return
         }
 
+        // Handle control_request - permission needed for tool use
+        if (data.type === 'control_request' && data.request?.subtype === 'can_use_tool') {
+          console.log('[ChatInterface] Received control_request:', data.request_id, data.request.tool_name)
+          setPendingPermission({
+            requestId: data.request_id,
+            toolName: data.request.tool_name,
+            input: data.request.input || {},
+          })
+          return
+        }
+
         // Handle system init message (sent at session start with tools, model, etc.)
         // Store as a regular SessionMessage
         if (data.type === 'system' && data.subtype === 'init') {
@@ -248,14 +261,37 @@ export function ChatInterface({
     [sessionId]
   )
 
-  // Handle permission decision (placeholder for future implementation)
+  // Handle permission decision - send control_response via WebSocket
   const handlePermissionDecision = useCallback(
     (decision: PermissionDecision) => {
-      // TODO: Implement permission handling via HTTP
-      console.log('Permission decision:', decision)
+      if (!pendingPermission) {
+        console.warn('[ChatInterface] No pending permission to respond to')
+        return
+      }
+
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error('[ChatInterface] WebSocket not connected, cannot send permission response')
+        setPendingPermission(null)
+        return
+      }
+
+      // Build control_response
+      const response: ControlResponse = {
+        type: 'control_response',
+        request_id: pendingPermission.requestId,
+        response: {
+          subtype: 'success',
+          response: {
+            behavior: decision,
+          },
+        },
+      }
+
+      console.log('[ChatInterface] Sending permission response:', response)
+      wsRef.current.send(JSON.stringify(response))
       setPendingPermission(null)
     },
-    []
+    [pendingPermission]
   )
 
   // Handle question answer (placeholder for future implementation)

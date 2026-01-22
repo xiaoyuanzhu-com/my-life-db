@@ -1389,11 +1389,97 @@ isWorking = false  ← TERMINATOR
 ← {"type":"result","subtype":"success","duration_ms":5230,"result":"Found 2 files..."}
 ```
 
-#### Permission Handling
+#### Permission Handling (control_request / control_response) ⭐⭐⭐ CRITICAL
 
-When Claude needs permission for a tool, the flow differs:
+When Claude needs permission for a tool, it sends a `control_request` message. The UI must respond with a `control_response` via stdin to approve or deny.
 
-**Without permission (denied/timeout):**
+**Flow:**
+```
+Claude CLI                          Web UI
+    │                                  │
+    │──── control_request ────────────▶│  (stdout)
+    │     (permission needed)          │
+    │                                  │  [Show permission modal]
+    │                                  │  [User clicks Allow/Deny]
+    │◀─── control_response ────────────│  (stdin)
+    │     (allow/deny)                 │
+    │                                  │
+    │──── tool_result ────────────────▶│  (tool executes or fails)
+```
+
+**1. control_request (CLI → UI via stdout)**
+
+Sent when Claude wants to use a tool that requires permission.
+
+```json
+{
+  "type": "control_request",
+  "request_id": "req_1_toolu_01CcgPn3gbKvK9faEzSmaqfR",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "WebSearch",
+    "input": {
+      "query": "today's news January 23 2026"
+    }
+  }
+}
+```
+
+**control_request Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"control_request"` |
+| `request_id` | string | Unique ID to correlate response (format: `req_{n}_{tool_use_id}`) |
+| `request.subtype` | string | Request type - currently only `"can_use_tool"` |
+| `request.tool_name` | string | Tool requesting permission (Bash, Write, Edit, WebSearch, etc.) |
+| `request.input` | object | Tool parameters (same as `tool_use.input`) |
+
+**2. control_response (UI → CLI via stdin)**
+
+Send this JSON to Claude's stdin to respond to a permission request.
+
+**Allow:**
+```json
+{
+  "type": "control_response",
+  "request_id": "req_1_toolu_01CcgPn3gbKvK9faEzSmaqfR",
+  "response": {
+    "subtype": "success",
+    "response": {
+      "behavior": "allow"
+    }
+  }
+}
+```
+
+**Deny:**
+```json
+{
+  "type": "control_response",
+  "request_id": "req_1_toolu_01CcgPn3gbKvK9faEzSmaqfR",
+  "response": {
+    "subtype": "success",
+    "response": {
+      "behavior": "deny"
+    }
+  }
+}
+```
+
+**control_response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"control_response"` |
+| `request_id` | string | Must match the `request_id` from control_request |
+| `response.subtype` | string | Always `"success"` for permission responses |
+| `response.response.behavior` | string | `"allow"` or `"deny"` |
+
+**3. What Happens If Not Handled**
+
+If no `control_response` is sent (or timeout), the tool fails with a permission error:
+
 ```json
 {
   "type": "user",
@@ -1413,7 +1499,37 @@ When Claude needs permission for a tool, the flow differs:
 - Error message describes what permission was needed
 - Claude may retry with different approach or ask user
 
-**Note:** `control_request` messages (permission prompts) require UI implementation to handle interactively. If not handled, tools fail with permission errors as shown above.
+**4. Web UI Implementation**
+
+```typescript
+// In WebSocket message handler
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data)
+
+  // Handle control_request - show permission modal
+  if (data.type === 'control_request' && data.request?.subtype === 'can_use_tool') {
+    setPendingPermission({
+      requestId: data.request_id,
+      toolName: data.request.tool_name,
+      input: data.request.input,
+    })
+    return
+  }
+}
+
+// When user clicks Allow/Deny
+async function handlePermissionDecision(decision: 'allow' | 'deny') {
+  await fetch(`/api/claude/sessions/${sessionId}/permission`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      request_id: pendingPermission.requestId,
+      behavior: decision,
+    }),
+  })
+  setPendingPermission(null)
+}
+```
 
 #### Progress Tracking
 
