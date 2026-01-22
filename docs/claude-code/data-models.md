@@ -464,6 +464,17 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
 ```
 
 **6. Progress Messages**
+
+Progress messages report real-time updates during long-running operations. The `data.type` field determines the progress subtype.
+
+**Progress Subtypes**:
+
+| data.type | Description |
+|-----------|-------------|
+| `hook_progress` | Hook execution progress |
+| `bash_progress` | Bash command execution progress |
+
+**6a. Hook Progress**
 ```json
 {
   "type": "progress",
@@ -479,6 +490,33 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
   "uuid": "d4298bf0-3c9f-4430-ac8e-416986f0858f"
 }
 ```
+
+**6b. Bash Progress**
+```json
+{
+  "type": "progress",
+  "data": {
+    "type": "bash_progress",
+    "output": "",
+    "fullOutput": "",
+    "elapsedTimeSeconds": 4,
+    "totalLines": 0
+  },
+  "parentToolUseID": "toolu_013GUpFpp4BSLVRp8bAD4MFW",
+  "toolUseID": "bash-progress-2",
+  "timestamp": "2026-01-22T14:27:38.962Z",
+  "uuid": "8717d304-0d87-4a10-8510-2ff041016c33"
+}
+```
+
+**Bash Progress Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `output` | string | Recent/incremental output from the command |
+| `fullOutput` | string | Complete output accumulated so far |
+| `elapsedTimeSeconds` | number | Seconds since command started |
+| `totalLines` | number | Total lines of output produced |
 
 **7. Summary (Auto-generated title)**
 ```json
