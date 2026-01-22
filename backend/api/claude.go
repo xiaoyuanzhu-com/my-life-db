@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
-	"github.com/xiaoyuanzhu-com/my-life-db/claude/models"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -402,51 +401,6 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		Msg("ListAllClaudeSessions: returning sessions")
 
 	c.JSON(http.StatusOK, gin.H{"sessions": result})
-}
-
-// GetClaudeSessionHistory handles GET /api/claude/sessions/:id/history
-func (h *Handlers) GetClaudeSessionHistory(c *gin.Context) {
-	sessionID := c.Param("id")
-
-	log.Debug().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: fetching history")
-
-	// Try to get project path from active session first
-	var projectPath string
-	session, err := claudeManager.GetSession(sessionID)
-	if err == nil {
-		projectPath = session.WorkingDir
-		log.Debug().Str("sessionId", sessionID).Bool("activated", session.IsActivated()).Msg("GetClaudeSessionHistory: got session from manager")
-	} else {
-		// If not in active sessions, try to find it in Claude's session files
-		// Use empty project path - the reader will search all projects
-		projectPath = ""
-		log.Debug().Str("sessionId", sessionID).Msg("GetClaudeSessionHistory: session not found in manager")
-	}
-
-	// Read JSONL file using the raw session reader (no transformation)
-	messages, err := claude.ReadSessionHistoryRaw(sessionID, projectPath)
-	if err != nil {
-		// Check if it's a "file not found" error - this is OK for new sessions
-		if err.Error() == "session file not found for session "+sessionID {
-			// Session exists but has no history yet (no conversation started)
-			log.Debug().Str("sessionId", sessionID).Msg("session has no history file yet")
-			c.JSON(http.StatusOK, gin.H{
-				"sessionId": sessionID,
-				"messages":  []models.SessionMessageI{},
-			})
-			return
-		}
-
-		// Other errors are actual failures
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read session history"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"sessionId": sessionID,
-		"messages":  messages,
-	})
 }
 
 // SendClaudeMessage handles POST /api/claude/sessions/:id/messages

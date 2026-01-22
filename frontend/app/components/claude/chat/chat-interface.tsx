@@ -14,7 +14,6 @@ import type {
   PermissionDecision,
 } from '~/types/claude'
 import {
-  useClaudeSessionHistory,
   buildToolResultMap,
   isTextBlock,
   isThinkingBlock,
@@ -23,7 +22,7 @@ import {
   isBashToolResult,
   type SessionMessage,
   type ExtractedToolResult,
-} from '~/hooks/use-claude-session-history'
+} from '~/lib/session-message-utils'
 
 interface ChatInterfaceProps {
   sessionId: string
@@ -35,9 +34,6 @@ interface ChatInterfaceProps {
 export function ChatInterface({
   sessionId,
 }: ChatInterfaceProps) {
-  // Load structured history from JSONL files (initial load only)
-  const { messages: historyMessages, isLoading: historyLoading, error: historyError } = useClaudeSessionHistory(sessionId)
-
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
   const [wsConnected, setWsConnected] = useState(false)
@@ -171,65 +167,8 @@ export function ChatInterface({
     accumulatedMessagesRef.current = []
   }, [sessionId])
 
-  // Load history and convert to Message format
-  useEffect(() => {
-    console.log('[ChatInterface] Loading history for session:', sessionId, 'message count:', historyMessages.length)
-
-    // Initialize accumulated messages ref from history for WebSocket tool result mapping
-    accumulatedMessagesRef.current = [...historyMessages]
-
-    // Build tool result map from all messages first
-    const toolResultMap = buildToolResultMap(historyMessages)
-
-    // Convert all messages - convertToMessage handles skipping internal events
-    const converted = historyMessages
-      .map((msg) => convertToMessage(msg, toolResultMap))
-      .filter((m): m is Message => m !== null)
-
-    // Merge with existing messages, preserving init message if present
-    setMessages((prev) => {
-      // Find init message from previous state (received via WebSocket)
-      const initMessage = prev.find(
-        (m) => m.role === 'system' && m.systemType === 'system'
-      )
-      if (initMessage) {
-        // Prepend init message to converted history
-        return [initMessage, ...converted]
-      }
-      return converted
-    })
-
-    // Check if session is still working (Claude actively processing)
-    // Per data-models.md: "Before receiving `result`, Claude is still working"
-    // We check multiple signals to avoid false positives:
-    // 1. If there's a `result` message → completed
-    // 2. If assistant message has stop_reason (e.g., "end_turn") → completed
-    // 3. If session data is stale (old timestamp) → assume completed
-    if (historyMessages.length > 0) {
-      const lastConversationMsg = [...historyMessages].reverse().find(m => m.type === 'user' || m.type === 'assistant')
-
-      if (lastConversationMsg?.type === 'assistant') {
-        // Check if there's a result after the last assistant message
-        const lastAssistantIdx = historyMessages.findIndex(m => m.uuid === lastConversationMsg.uuid)
-        const hasResultAfter = historyMessages.slice(lastAssistantIdx).some(m => m.type === 'result')
-
-        // Check if assistant message has a stop_reason (indicates completion)
-        const stopReason = lastConversationMsg.message?.stop_reason
-        const hasStopReason = stopReason !== null && stopReason !== undefined
-
-        // Check if the message is recent (within last 60 seconds)
-        const messageTime = new Date(lastConversationMsg.timestamp).getTime()
-        const isRecent = Date.now() - messageTime < 60000
-
-        // Only show working if: no result, no stop_reason, AND message is recent
-        if (!hasResultAfter && !hasStopReason && isRecent) {
-          setIsWorking(true)
-        }
-      }
-    }
-  }, [historyMessages])
-
   // WebSocket connection for real-time updates
+  // Backend sends cached messages on connect, then real-time updates
   // Always connect - backend will activate session lazily on first message
   useEffect(() => {
     console.log('[ChatInterface] Connecting WebSocket for session:', sessionId)

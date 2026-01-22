@@ -90,7 +90,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
 	api.POST("/claude/sessions", h.CreateClaudeSession)
 	api.GET("/claude/sessions/:id", h.GetClaudeSession)
-	api.GET("/claude/sessions/:id/history", h.GetClaudeSessionHistory)
 	api.POST("/claude/sessions/:id/messages", h.SendClaudeMessage)
 	api.PATCH("/claude/sessions/:id", h.UpdateClaudeSession)
 	api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
