@@ -58,6 +58,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		WorkingDir      string `json:"workingDir"`
 		Title           string `json:"title"`
 		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
+		Mode            string `json:"mode"`            // Optional: "cli" (default) or "ui"
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -70,8 +71,14 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		body.WorkingDir = config.Get().UserDataDir
 	}
 
+	// Parse mode (default to CLI)
+	mode := claude.ModeCLI
+	if body.Mode == "ui" {
+		mode = claude.ModeUI
+	}
+
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID)
+	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode)
 	if err != nil {
 		if err == claude.ErrTooManySessions {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many sessions"})
@@ -478,34 +485,45 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 			return
 		}
 
-		// Brief delay to ensure readline is fully initialized
-		time.Sleep(200 * time.Millisecond)
+		// Brief delay for CLI mode to ensure readline is fully initialized
+		if session.Mode == claude.ModeCLI {
+			time.Sleep(200 * time.Millisecond)
+		}
 		log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
 	}
 
-	// Send message to Claude by writing to PTY
-	// Send each character separately to avoid readline paste detection
-	// No delay between characters for faster input
-	for _, ch := range req.Content {
-		charByte := []byte(string(ch))
-		if _, err := session.PTY.Write(charByte); err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
+	// Send message based on mode
+	if session.Mode == claude.ModeUI {
+		// UI mode: send JSON message to stdin
+		if err := session.SendInputUI(req.Content); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
+			return
+		}
+	} else {
+		// CLI mode: send to PTY character by character
+		for _, ch := range req.Content {
+			charByte := []byte(string(ch))
+			if _, err := session.PTY.Write(charByte); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
+				return
+			}
+		}
+
+		// Small delay before Enter to ensure readline processes the input correctly
+		time.Sleep(50 * time.Millisecond)
+		if _, err := session.PTY.Write([]byte("\r")); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
 			return
 		}
 	}
 
-	// Small delay before Enter to ensure readline processes the input correctly
-	time.Sleep(50 * time.Millisecond)
-	if _, err := session.PTY.Write([]byte("\r")); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
-		return
-	}
-
 	log.Info().
 		Str("sessionId", sessionID).
 		Str("content", req.Content).
+		Str("mode", string(session.Mode)).
 		Msg("message sent to claude session via HTTP")
 
 	c.JSON(http.StatusOK, gin.H{
@@ -558,14 +576,14 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
-	log.Debug().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
+	log.Debug().Str("sessionId", sessionID).Str("mode", string(session.Mode)).Msg("Subscribe WebSocket connected (not activated yet)")
 
-	// Track last known message count to detect new messages
+	// Track last known message count to detect new messages (CLI mode only)
 	lastMessageCount := 0
 	lastTodoCount := 0
 	var updateMutex sync.Mutex // Protect concurrent access to lastMessageCount/lastTodoCount
 
-	// Send existing messages immediately on connect
+	// Send existing messages immediately on connect (both modes)
 	initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
 	if err == nil && len(initialMessages) > 0 {
 		log.Debug().
@@ -586,104 +604,139 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 	}
 
-	// Setup hybrid watcher (fsnotify + polling fallback)
-	watcher, err := claude.NewSessionWatcher(sessionID, session.WorkingDir)
-	if err != nil {
-		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session watcher, falling back to polling only")
-		watcher = nil // Explicitly set to nil for safety
-	} else {
-		defer watcher.Close()
-		if err := watcher.Start(ctx); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to start session watcher")
-			watcher.Close()
-			watcher = nil
+	// For UI mode: Register as a broadcast client to receive real-time JSON messages
+	// For CLI mode: Use file watcher/polling for updates
+	var uiClient *claude.Client
+	pollDone := make(chan struct{})
+
+	if session.Mode == claude.ModeUI {
+		// UI mode: Create a client to receive broadcasts from readJSON
+		uiClient = &claude.Client{
+			Conn: conn,
+			Send: make(chan []byte, 256),
 		}
-	}
+		session.AddClient(uiClient)
+		defer session.RemoveClient(uiClient)
 
-	// Helper function to send updates
-	sendUpdates := func(updateType string) {
-		updateMutex.Lock()
-		defer updateMutex.Unlock()
-
-		if updateType == "messages" || updateType == "all" {
-			// Read session history
-			messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
-			if err != nil {
-				log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
-			} else if len(messages) > lastMessageCount {
-				// Send any new messages (including progress messages)
-				newMessages := messages[lastMessageCount:]
-
-				for _, msg := range newMessages {
-					// Send ALL message types (user, assistant, progress, queue-operation, etc.)
-					if msgBytes, err := json.Marshal(msg); err == nil {
-						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-							return
-						}
+		// Start goroutine to forward broadcasts to WebSocket
+		go func() {
+			defer close(pollDone) // Reuse pollDone for consistency
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case data, ok := <-uiClient.Send:
+					if !ok {
+						return
 					}
-				}
-				lastMessageCount = len(messages)
-			}
-		}
-
-		if updateType == "todos" || updateType == "all" {
-			// Read todos
-			todos, err := claude.ReadSessionTodos(sessionID)
-			if err != nil {
-				log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
-			} else if len(todos) != lastTodoCount {
-				// Send todos if they changed
-				todoMsg := map[string]interface{}{
-					"type": "todo_update",
-					"data": map[string]interface{}{
-						"todos": todos,
-					},
-				}
-				if msgBytes, err := json.Marshal(todoMsg); err == nil {
-					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-						log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+					if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+						if ctx.Err() == nil {
+							log.Debug().Err(err).Str("sessionId", sessionID).Msg("UI mode WebSocket write failed")
+						}
 						return
 					}
 				}
-				lastTodoCount = len(todos)
+			}
+		}()
+	} else {
+		// CLI mode: Setup hybrid watcher (fsnotify + polling fallback)
+		watcher, err := claude.NewSessionWatcher(sessionID, session.WorkingDir)
+		if err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session watcher, falling back to polling only")
+			watcher = nil // Explicitly set to nil for safety
+		} else {
+			defer watcher.Close()
+			if err := watcher.Start(ctx); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to start session watcher")
+				watcher.Close()
+				watcher = nil
 			}
 		}
-	}
 
-	// Polling + fsnotify goroutine (hybrid approach)
-	pollTicker := time.NewTicker(5 * time.Second) // Reduced frequency - fsnotify handles most updates
-	defer pollTicker.Stop()
+		// Helper function to send updates (CLI mode only)
+		sendUpdates := func(updateType string) {
+			updateMutex.Lock()
+			defer updateMutex.Unlock()
 
-	pollDone := make(chan struct{})
-	go func() {
-		defer close(pollDone)
+			if updateType == "messages" || updateType == "all" {
+				// Read session history
+				messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+				if err != nil {
+					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
+				} else if len(messages) > lastMessageCount {
+					// Send any new messages (including progress messages)
+					newMessages := messages[lastMessageCount:]
 
-		// Get update channel (nil-safe)
-		var updateChan <-chan string
-		if watcher != nil {
-			updateChan = watcher.Updates()
+					for _, msg := range newMessages {
+						// Send ALL message types (user, assistant, progress, queue-operation, etc.)
+						if msgBytes, err := json.Marshal(msg); err == nil {
+							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+								return
+							}
+						}
+					}
+					lastMessageCount = len(messages)
+				}
+			}
+
+			if updateType == "todos" || updateType == "all" {
+				// Read todos
+				todos, err := claude.ReadSessionTodos(sessionID)
+				if err != nil {
+					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
+				} else if len(todos) != lastTodoCount {
+					// Send todos if they changed
+					todoMsg := map[string]interface{}{
+						"type": "todo_update",
+						"data": map[string]interface{}{
+							"todos": todos,
+						},
+					}
+					if msgBytes, err := json.Marshal(todoMsg); err == nil {
+						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
+							return
+						}
+					}
+					lastTodoCount = len(todos)
+				}
+			}
 		}
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
+		// Polling + fsnotify goroutine (hybrid approach) - CLI mode only
+		pollTicker := time.NewTicker(5 * time.Second) // Reduced frequency - fsnotify handles most updates
 
-			case updateType, ok := <-updateChan:
-				// Fast path: fsnotify detected a change
-				if !ok {
+		go func() {
+			defer close(pollDone)
+			defer pollTicker.Stop()
+
+			// Get update channel (nil-safe)
+			var updateChan <-chan string
+			if watcher != nil {
+				updateChan = watcher.Updates()
+			}
+
+			for {
+				select {
+				case <-ctx.Done():
 					return
-				}
-				if updateType != "" {
-					sendUpdates(updateType)
-				}
 
-			case <-pollTicker.C:
-				// Slow path: safety net polling to catch anything fsnotify missed
-				sendUpdates("all")
+				case updateType, ok := <-updateChan:
+					// Fast path: fsnotify detected a change
+					if !ok {
+						return
+					}
+					if updateType != "" {
+						sendUpdates(updateType)
+					}
+
+				case <-pollTicker.C:
+					// Slow path: safety net polling to catch anything fsnotify missed
+					sendUpdates("all")
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// Ping goroutine
 	pingTicker := time.NewTicker(30 * time.Second)
@@ -770,18 +823,17 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					break
 				}
 
-				// Brief delay to ensure readline is fully initialized
-				time.Sleep(200 * time.Millisecond)
+				// Brief delay for CLI mode to ensure readline is fully initialized
+				if session.Mode == claude.ModeCLI {
+					time.Sleep(200 * time.Millisecond)
+				}
 			}
 
-			// Send message to Claude by writing to PTY
-			// Send each character separately to avoid readline paste detection
-			// No delay between characters for faster input
-			for _, ch := range inMsg.Content {
-				charByte := []byte(string(ch))
-				if _, err := session.PTY.Write(charByte); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
-					// Send error back to client
+			// Send message based on mode
+			if session.Mode == claude.ModeUI {
+				// UI mode: send JSON message to stdin
+				if err := session.SendInputUI(inMsg.Content); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
 					errMsg := map[string]interface{}{
 						"type":  "error",
 						"error": "Failed to send message to session",
@@ -791,12 +843,29 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					}
 					break
 				}
-			}
+			} else {
+				// CLI mode: Send message to Claude by writing to PTY
+				// Send each character separately to avoid readline paste detection
+				for _, ch := range inMsg.Content {
+					charByte := []byte(string(ch))
+					if _, err := session.PTY.Write(charByte); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
+						errMsg := map[string]interface{}{
+							"type":  "error",
+							"error": "Failed to send message to session",
+						}
+						if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+							conn.Write(ctx, websocket.MessageText, msgBytes)
+						}
+						break
+					}
+				}
 
-			// Small delay before Enter to ensure readline processes the input correctly
-			time.Sleep(50 * time.Millisecond)
-			if _, err := session.PTY.Write([]byte("\r")); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
+				// Small delay before Enter to ensure readline processes the input correctly
+				time.Sleep(50 * time.Millisecond)
+				if _, err := session.PTY.Write([]byte("\r")); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
+				}
 			}
 
 			session.LastActivity = time.Now()
@@ -804,7 +873,38 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Info().
 				Str("sessionId", sessionID).
 				Str("content", inMsg.Content).
+				Str("mode", string(session.Mode)).
 				Msg("message sent to claude session via WebSocket")
+
+		case "control_response":
+			// UI mode only: Handle permission responses from the frontend
+			if session.Mode != claude.ModeUI {
+				log.Debug().Str("sessionId", sessionID).Msg("control_response received for non-UI session, ignoring")
+				break
+			}
+
+			// Parse the control response
+			var controlResp struct {
+				Type      string `json:"type"`
+				RequestID string `json:"request_id"`
+				Subtype   string `json:"subtype"`
+				Behavior  string `json:"behavior"`
+			}
+			if err := json.Unmarshal(msg, &controlResp); err != nil {
+				log.Debug().Err(err).Msg("Failed to parse control_response")
+				break
+			}
+
+			// Send the response to Claude
+			if err := session.SendControlResponse(controlResp.RequestID, controlResp.Subtype, controlResp.Behavior); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send control response")
+			} else {
+				log.Debug().
+					Str("sessionId", sessionID).
+					Str("requestId", controlResp.RequestID).
+					Str("behavior", controlResp.Behavior).
+					Msg("sent control response to Claude")
+			}
 
 		default:
 			log.Debug().Str("type", inMsg.Type).Msg("Unknown subscribe message type")

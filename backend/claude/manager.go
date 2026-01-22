@@ -1,7 +1,9 @@
 package claude
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -43,19 +45,32 @@ var (
 
 // buildClaudeArgs constructs the command-line arguments for launching Claude
 // with appropriate permission settings for web UI usage
-func buildClaudeArgs(sessionID string, resume bool) []string {
-	args := []string{
-		"--dangerously-skip-permissions", // Skip interactive permission prompts
-	}
+func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
+	var args []string
 
-	// Add allowed tools
-	for _, tool := range allowedTools {
-		args = append(args, "--allowedTools", tool)
-	}
+	if mode == ModeUI {
+		// UI mode: JSON streaming with interactive permission handling
+		args = []string{
+			"--output-format", "stream-json",
+			"--input-format", "stream-json",
+			"--verbose",
+		}
+		// Don't skip permissions - we'll handle control_request in the UI
+	} else {
+		// CLI mode: PTY with skipped permissions (legacy behavior)
+		args = []string{
+			"--dangerously-skip-permissions", // Skip interactive permission prompts
+		}
 
-	// Add disallowed tools
-	for _, tool := range disallowedTools {
-		args = append(args, "--disallowedTools", tool)
+		// Add allowed tools
+		for _, tool := range allowedTools {
+			args = append(args, "--allowedTools", tool)
+		}
+
+		// Add disallowed tools
+		for _, tool := range disallowedTools {
+			args = append(args, "--disallowedTools", tool)
+		}
 	}
 
 	// Add session flag
@@ -136,12 +151,12 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 
 // CreateSession spawns a new Claude Code process
 // If resumeSessionID is provided, it will resume from that session's conversation history
-func (m *Manager) CreateSession(workingDir, title string) (*Session, error) {
-	return m.CreateSessionWithID(workingDir, title, "")
+func (m *Manager) CreateSession(workingDir, title string, mode SessionMode) (*Session, error) {
+	return m.CreateSessionWithID(workingDir, title, "", mode)
 }
 
 // CreateSessionWithID spawns a new Claude Code process with an optional session ID to resume
-func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string) (*Session, error) {
+func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string, mode SessionMode) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -173,10 +188,16 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 		}
 	}
 
+	// Default mode to CLI if not specified
+	if mode == "" {
+		mode = ModeCLI
+	}
+
 	session := &Session{
 		ID:           sessionID,
 		WorkingDir:   workingDir,
 		Title:        title,
+		Mode:         mode,
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),
 		Status:       "active",
@@ -185,27 +206,64 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 		activated:    true, // Sessions created via CreateSessionWithID are immediately activated
 	}
 
-	// Spawn claude process with PTY
-	// Uses default HOME so all sessions share the same .claude directory
-	// Permission flags bypass interactive prompts while maintaining safety guardrails
-	args := buildClaudeArgs(sessionID, resumeSessionID != "")
+	// Build args based on mode
+	args := buildClaudeArgs(sessionID, resumeSessionID != "", mode)
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = workingDir
-	// No custom environment needed - just inherit everything from os.Environ()
 
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
-		return nil, fmt.Errorf("failed to start claude: %w", err)
+	if mode == ModeUI {
+		// UI mode: use stdin/stdout pipes for JSON streaming
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stdin pipe")
+			return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stdout pipe")
+			return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stderr pipe")
+			return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		if err := cmd.Start(); err != nil {
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
+			return nil, fmt.Errorf("failed to start claude: %w", err)
+		}
+
+		session.Stdin = stdin
+		session.Stdout = stdout
+		session.Stderr = stderr
+		session.Cmd = cmd
+		session.ProcessID = cmd.Process.Pid
+		session.pendingRequests = make(map[string]chan map[string]interface{})
+
+		// Start JSON reader that broadcasts to all clients
+		m.wg.Add(1)
+		go m.readJSON(session)
+
+		// Start stderr reader for debugging
+		m.wg.Add(1)
+		go m.readStderr(session)
+	} else {
+		// CLI mode: use PTY for raw terminal I/O
+		ptmx, err := pty.Start(cmd)
+		if err != nil {
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
+			return nil, fmt.Errorf("failed to start claude: %w", err)
+		}
+
+		session.PTY = ptmx
+		session.Cmd = cmd
+		session.ProcessID = cmd.Process.Pid
+
+		// Start PTY reader that broadcasts to all clients
+		m.wg.Add(1)
+		go m.readPTY(session)
 	}
-
-	session.PTY = ptmx
-	session.Cmd = cmd
-	session.ProcessID = cmd.Process.Pid
-
-	// Start PTY reader that broadcasts to all clients
-	m.wg.Add(1)
-	go m.readPTY(session)
 
 	// Monitor process state in background
 	m.wg.Add(1)
@@ -217,6 +275,7 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string)
 		Str("sessionId", sessionID).
 		Int("pid", session.ProcessID).
 		Str("workingDir", workingDir).
+		Str("mode", string(mode)).
 		Msg("created claude session")
 
 	return session, nil
@@ -265,12 +324,12 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 		title = "Archived Session"
 	}
 
-	// Create a non-activated shell session
-	return m.createShellSession(id, workingDir, title)
+	// Create a non-activated shell session (default to CLI mode for historical sessions)
+	return m.createShellSession(id, workingDir, title, ModeCLI)
 }
 
 // createShellSession creates a non-activated session (just metadata, no process)
-func (m *Manager) createShellSession(id, workingDir, title string) (*Session, error) {
+func (m *Manager) createShellSession(id, workingDir, title string, mode SessionMode) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -284,10 +343,16 @@ func (m *Manager) createShellSession(id, workingDir, title string) (*Session, er
 		return nil, ErrTooManySessions
 	}
 
+	// Default mode to CLI if not specified
+	if mode == "" {
+		mode = ModeCLI
+	}
+
 	session := &Session{
 		ID:           id,
 		WorkingDir:   workingDir,
 		Title:        title,
+		Mode:         mode,
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),
 		Status:       "archived",
@@ -303,34 +368,75 @@ func (m *Manager) createShellSession(id, workingDir, title string) (*Session, er
 
 	m.sessions[id] = session
 
-	log.Debug().Str("sessionId", id).Msg("created shell session (not activated)")
+	log.Debug().Str("sessionId", id).Str("mode", string(mode)).Msg("created shell session (not activated)")
 
 	return session, nil
 }
 
 // activateSession spawns the actual Claude process for a shell session
 func (m *Manager) activateSession(session *Session) error {
-	// Spawn claude process with PTY
-	// Permission flags bypass interactive prompts while maintaining safety guardrails
-	args := buildClaudeArgs(session.ID, true) // Always resume for activation
+	// Build args based on mode (always resume for activation)
+	args := buildClaudeArgs(session.ID, true, session.Mode)
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = session.WorkingDir
 
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
-		return fmt.Errorf("failed to start claude: %w", err)
-	}
-
-	session.PTY = ptmx
-	session.Cmd = cmd
-	session.ProcessID = cmd.Process.Pid
-	session.Status = "active"
 	session.ready = make(chan struct{}) // Will be closed when first output is received
 
-	// Start PTY reader that broadcasts to all clients
-	m.wg.Add(1)
-	go m.readPTY(session)
+	if session.Mode == ModeUI {
+		// UI mode: use stdin/stdout pipes for JSON streaming
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stdin pipe")
+			return fmt.Errorf("failed to create stdin pipe: %w", err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stdout pipe")
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stderr pipe")
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		if err := cmd.Start(); err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
+			return fmt.Errorf("failed to start claude: %w", err)
+		}
+
+		session.Stdin = stdin
+		session.Stdout = stdout
+		session.Stderr = stderr
+		session.Cmd = cmd
+		session.ProcessID = cmd.Process.Pid
+		session.Status = "active"
+		session.pendingRequests = make(map[string]chan map[string]interface{})
+
+		// Start JSON reader that broadcasts to all clients
+		m.wg.Add(1)
+		go m.readJSON(session)
+
+		// Start stderr reader for debugging
+		m.wg.Add(1)
+		go m.readStderr(session)
+	} else {
+		// CLI mode: use PTY for raw terminal I/O
+		ptmx, err := pty.Start(cmd)
+		if err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
+			return fmt.Errorf("failed to start claude: %w", err)
+		}
+
+		session.PTY = ptmx
+		session.Cmd = cmd
+		session.ProcessID = cmd.Process.Pid
+		session.Status = "active"
+
+		// Start PTY reader that broadcasts to all clients
+		m.wg.Add(1)
+		go m.readPTY(session)
+	}
 
 	// Monitor process state in background
 	m.wg.Add(1)
@@ -339,6 +445,7 @@ func (m *Manager) activateSession(session *Session) error {
 	log.Debug().
 		Str("sessionId", session.ID).
 		Int("pid", session.ProcessID).
+		Str("mode", string(session.Mode)).
 		Msg("activated session")
 
 	return nil
@@ -390,9 +497,21 @@ func (m *Manager) DeleteSession(id string) error {
 		}
 	}
 
-	// Close PTY
-	if session.PTY != nil {
-		session.PTY.Close()
+	// Close resources based on mode
+	if session.Mode == ModeUI {
+		if session.Stdin != nil {
+			session.Stdin.Close()
+		}
+		if session.Stdout != nil {
+			session.Stdout.Close()
+		}
+		if session.Stderr != nil {
+			session.Stderr.Close()
+		}
+	} else {
+		if session.PTY != nil {
+			session.PTY.Close()
+		}
 	}
 
 	delete(m.sessions, id)
@@ -420,9 +539,21 @@ func (m *Manager) DeactivateSession(id string) error {
 		}
 	}
 
-	// Close PTY
-	if session.PTY != nil {
-		session.PTY.Close()
+	// Close resources based on mode
+	if session.Mode == ModeUI {
+		if session.Stdin != nil {
+			session.Stdin.Close()
+		}
+		if session.Stdout != nil {
+			session.Stdout.Close()
+		}
+		if session.Stderr != nil {
+			session.Stderr.Close()
+		}
+	} else {
+		if session.PTY != nil {
+			session.PTY.Close()
+		}
 	}
 
 	// Remove from active sessions map (will show as archived in ListAllClaudeSessions)
@@ -593,5 +724,109 @@ func (m *Manager) readPTY(session *Session) {
 		// Broadcast to all connected clients
 		session.Broadcast(data)
 		session.LastActivity = time.Now()
+	}
+}
+
+// readJSON reads JSON lines from stdout and broadcasts to all connected clients (UI mode)
+func (m *Manager) readJSON(session *Session) {
+	defer m.wg.Done()
+
+	if session.Stdout == nil {
+		log.Error().Str("sessionId", session.ID).Msg("readJSON called but stdout is nil")
+		return
+	}
+
+	// Signal ready immediately for UI mode since we get structured events
+	var readyOnce sync.Once
+	firstMessageReceived := false
+
+	scanner := bufio.NewScanner(session.Stdout)
+	// Set a large buffer for potentially large JSON messages (1MB)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		// Check for shutdown
+		select {
+		case <-m.ctx.Done():
+			log.Debug().Str("sessionId", session.ID).Msg("JSON reader stopping (shutdown)")
+			return
+		default:
+		}
+
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		// Signal ready after first message
+		if !firstMessageReceived {
+			firstMessageReceived = true
+			if session.ready != nil {
+				readyOnce.Do(func() {
+					close(session.ready)
+				})
+			}
+		}
+
+		// Parse the JSON to check for control requests
+		var msg map[string]interface{}
+		if err := json.Unmarshal(line, &msg); err != nil {
+			log.Debug().Err(err).Str("sessionId", session.ID).Msg("failed to parse JSON line")
+			continue
+		}
+
+		// Check if this is a control request that needs to be handled
+		if msgType, ok := msg["type"].(string); ok && msgType == "control_request" {
+			// Broadcast control request to clients for UI handling
+			log.Debug().
+				Str("sessionId", session.ID).
+				Interface("request", msg).
+				Msg("received control request")
+		}
+
+		// Make a copy of the line to broadcast
+		data := make([]byte, len(line))
+		copy(data, line)
+
+		// Broadcast to all connected clients
+		session.Broadcast(data)
+		session.LastActivity = time.Now()
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Debug().Err(err).Str("sessionId", session.ID).Msg("JSON scanner error")
+	}
+
+	// Mark session as dead when stdout closes
+	session.mu.Lock()
+	session.Status = "dead"
+	session.mu.Unlock()
+}
+
+// readStderr reads stderr output for debugging (UI mode)
+func (m *Manager) readStderr(session *Session) {
+	defer m.wg.Done()
+
+	if session.Stderr == nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(session.Stderr)
+	for scanner.Scan() {
+		// Check for shutdown
+		select {
+		case <-m.ctx.Done():
+			return
+		default:
+		}
+
+		line := scanner.Text()
+		if line != "" {
+			log.Debug().
+				Str("sessionId", session.ID).
+				Str("stderr", line).
+				Msg("claude stderr")
+		}
 	}
 }

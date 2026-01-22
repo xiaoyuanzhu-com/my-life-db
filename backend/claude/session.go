@@ -2,12 +2,23 @@ package claude
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
+)
+
+// SessionMode defines how a session communicates with the Claude CLI
+type SessionMode string
+
+const (
+	// ModeCLI uses PTY for raw terminal I/O (xterm.js rendering)
+	ModeCLI SessionMode = "cli"
+	// ModeUI uses JSON streaming over stdin/stdout (structured chat UI)
+	ModeUI SessionMode = "ui"
 )
 
 // Client represents a WebSocket connection to a session
@@ -18,27 +29,39 @@ type Client struct {
 
 // Session represents a Claude Code CLI session
 type Session struct {
-	ID           string    `json:"id"`
-	ProcessID    int       `json:"processId"`
-	WorkingDir   string    `json:"workingDir"`
-	CreatedAt    time.Time `json:"createdAt"`
-	LastActivity time.Time `json:"lastActivity"`
-	Status       string    `json:"status"` // "archived", "active", "dead"
-	Title        string    `json:"title"`
+	ID           string      `json:"id"`
+	ProcessID    int         `json:"processId"`
+	WorkingDir   string      `json:"workingDir"`
+	CreatedAt    time.Time   `json:"createdAt"`
+	LastActivity time.Time   `json:"lastActivity"`
+	Status       string      `json:"status"` // "archived", "active", "dead"
+	Title        string      `json:"title"`
+	Mode         SessionMode `json:"mode"` // "cli" or "ui"
 
 	// Internal fields (not serialized)
-	PTY        *os.File         `json:"-"`
-	Cmd        *exec.Cmd        `json:"-"`
-	Clients    map[*Client]bool `json:"-"`
-	mu         sync.RWMutex     `json:"-"`
-	broadcast  chan []byte      `json:"-"`
-	backlog    []byte           `json:"-"` // Recent output for new clients
-	backlogMu  sync.RWMutex     `json:"-"`
+	Cmd     *exec.Cmd        `json:"-"`
+	Clients map[*Client]bool `json:"-"`
+	mu      sync.RWMutex     `json:"-"`
+
+	// CLI mode (PTY-based)
+	PTY       *os.File     `json:"-"`
+	broadcast chan []byte  `json:"-"`
+	backlog   []byte       `json:"-"` // Recent output for new clients
+	backlogMu sync.RWMutex `json:"-"`
+
+	// UI mode (JSON streaming)
+	Stdin  io.WriteCloser `json:"-"`
+	Stdout io.ReadCloser  `json:"-"`
+	Stderr io.ReadCloser  `json:"-"`
+
+	// Pending control requests (UI mode) - maps request_id to response channel
+	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
+	pendingRequestsMu sync.RWMutex                           `json:"-"`
 
 	// Lazy activation support
-	activated  bool             `json:"-"` // Whether the Claude process has been spawned
-	activateFn func() error     `json:"-"` // Function to activate this session
-	ready      chan struct{}    `json:"-"` // Closed when Claude is ready to receive input
+	activated  bool          `json:"-"` // Whether the Claude process has been spawned
+	activateFn func() error  `json:"-"` // Function to activate this session
+	ready      chan struct{} `json:"-"` // Closed when Claude is ready to receive input
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -161,6 +184,73 @@ func (s *Session) ToJSON() map[string]interface{} {
 		"lastActivity": s.LastActivity,
 		"status":       s.Status,
 		"title":        s.Title,
+		"mode":         s.Mode,
 		"clients":      len(s.Clients),
+	}
+}
+
+// SendInputUI sends a user message to Claude via JSON stdin (UI mode only)
+func (s *Session) SendInputUI(content string) error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("SendInputUI called on non-UI session")
+	}
+	if s.Stdin == nil {
+		return fmt.Errorf("session stdin not available")
+	}
+
+	// Format as JSON user message
+	msg := fmt.Sprintf(`{"type":"user","message":{"role":"user","content":%q}}`, content)
+	_, err := s.Stdin.Write([]byte(msg + "\n"))
+	return err
+}
+
+// SendControlResponse sends a response to a control request (UI mode only)
+func (s *Session) SendControlResponse(requestID string, subtype string, behavior string) error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("SendControlResponse called on non-UI session")
+	}
+	if s.Stdin == nil {
+		return fmt.Errorf("session stdin not available")
+	}
+
+	// Format as control response JSON
+	data := fmt.Sprintf(`{"type":"control_response","request_id":%q,"response":{"subtype":%q,"response":{"behavior":%q}}}`,
+		requestID,
+		subtype,
+		behavior,
+	)
+	_, err := s.Stdin.Write([]byte(data + "\n"))
+	return err
+}
+
+// RegisterControlRequest registers a pending control request and returns a channel for the response
+func (s *Session) RegisterControlRequest(requestID string) chan map[string]interface{} {
+	s.pendingRequestsMu.Lock()
+	defer s.pendingRequestsMu.Unlock()
+
+	if s.pendingRequests == nil {
+		s.pendingRequests = make(map[string]chan map[string]interface{})
+	}
+
+	ch := make(chan map[string]interface{}, 1)
+	s.pendingRequests[requestID] = ch
+	return ch
+}
+
+// ResolveControlRequest resolves a pending control request with a response
+func (s *Session) ResolveControlRequest(requestID string, response map[string]interface{}) {
+	s.pendingRequestsMu.Lock()
+	ch, ok := s.pendingRequests[requestID]
+	if ok {
+		delete(s.pendingRequests, requestID)
+	}
+	s.pendingRequestsMu.Unlock()
+
+	if ok && ch != nil {
+		select {
+		case ch <- response:
+		default:
+		}
+		close(ch)
 	}
 }
