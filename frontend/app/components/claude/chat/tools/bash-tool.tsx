@@ -73,11 +73,11 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
         >
           {/* Command */}
           <div
-            className="px-3 py-2"
+            className="p-2"
             style={{ backgroundColor: 'var(--claude-bg-secondary)' }}
           >
             <pre
-              className="whitespace-pre-wrap break-all"
+              className="p-2 whitespace-pre-wrap break-all"
               style={{ color: 'var(--claude-text-primary)' }}
             >
               {displayCommandLines.join('\n')}
