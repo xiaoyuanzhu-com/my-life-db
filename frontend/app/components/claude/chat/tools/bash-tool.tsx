@@ -7,6 +7,23 @@ interface BashToolViewProps {
 }
 
 const MAX_LINES = 5
+const MAX_CHARS = 500
+
+// Truncate text to max lines OR max chars, whichever is shorter
+function truncateText(text: string): { display: string; truncated: boolean } {
+  const lines = text.split('\n')
+  let display = lines.slice(0, MAX_LINES).join('\n')
+  let truncated = lines.length > MAX_LINES
+
+  if (display.length > MAX_CHARS) {
+    display = [...display].slice(0, MAX_CHARS).join('')
+    truncated = true
+  } else if (text.length > display.length) {
+    truncated = true
+  }
+
+  return { display, truncated }
+}
 
 export function BashToolView({ toolCall }: BashToolViewProps) {
   const params = (toolCall.parameters || {}) as BashToolParams
@@ -17,26 +34,17 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const output = typeof result === 'string' ? result : result?.output
   const exitCode = typeof result === 'object' ? result?.exitCode : undefined
 
-  // Split into lines for truncation
-  const commandLines = (params?.command || 'No command').split('\n')
-  const outputLines = output ? output.split('\n') : []
-  const errorLines = toolCall.error ? toolCall.error.split('\n') : []
+  // Get full text content
+  const commandText = params?.command || 'No command'
+  const outputText = output || ''
+  const errorText = toolCall.error || ''
 
-  // Check if truncation is needed
-  const isTruncated =
-    commandLines.length > MAX_LINES ||
-    outputLines.length > MAX_LINES ||
-    errorLines.length > MAX_LINES
+  // Truncate each section
+  const command = truncateText(commandText)
+  const outputResult = truncateText(outputText)
+  const errorResult = truncateText(errorText)
 
-  // Get lines to display
-  const displayCommandLines = expanded ? commandLines : commandLines.slice(0, MAX_LINES)
-  const displayOutputLines = expanded ? outputLines : outputLines.slice(0, MAX_LINES)
-  const displayErrorLines = expanded ? errorLines : errorLines.slice(0, MAX_LINES)
-
-  const totalHiddenCount =
-    Math.max(0, commandLines.length - MAX_LINES) +
-    Math.max(0, outputLines.length - MAX_LINES) +
-    Math.max(0, errorLines.length - MAX_LINES)
+  const isTruncated = command.truncated || outputResult.truncated || errorResult.truncated
 
   // Determine status for dot - bash has special logic for exit codes
   const dotStatus = (() => {
@@ -80,7 +88,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               className="p-2 whitespace-pre-wrap break-all"
               style={{ color: 'var(--claude-text-primary)' }}
             >
-              {displayCommandLines.join('\n')}
+              {expanded ? commandText : command.display}
             </pre>
           </div>
 
@@ -94,7 +102,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               }}
             >
               <div className="whitespace-pre-wrap break-all">
-                {displayOutputLines.join('\n')}
+                {expanded ? outputText : outputResult.display}
               </div>
             </div>
           )}
@@ -108,7 +116,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
                 color: 'var(--claude-status-alert)',
               }}
             >
-              {displayErrorLines.join('\n')}
+              {expanded ? errorText : errorResult.display}
             </div>
           )}
         </div>
@@ -124,7 +132,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               borderTop: '1px solid var(--claude-border-light)',
             }}
           >
-            {expanded ? 'Show less' : `Show ${totalHiddenCount} more lines`}
+            {expanded ? 'Show less' : 'Show more'}
           </button>
         )}
       </div>
