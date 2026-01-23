@@ -322,6 +322,39 @@ func findSessionFile(sessionID, projectPath string) (string, error) {
 	return "", fmt.Errorf("session file not found for session %s", sessionID)
 }
 
+// findSessionByJSONL searches for a session JSONL file directly in all project directories.
+// Returns the project path (working directory) if found, and a boolean indicating if found.
+// This is used as a fallback when the session isn't in the index yet (Claude updates index asynchronously).
+func findSessionByJSONL(sessionID string) (projectPath string, found bool) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+
+	projectsDir := filepath.Join(homeDir, ".claude", "projects")
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return "", false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Check if this project has the session JSONL file
+		sessionFile := filepath.Join(projectsDir, entry.Name(), sessionID+".jsonl")
+		if _, err := os.Stat(sessionFile); err == nil {
+			// Found the JSONL file - extract project path from directory name
+			// Directory names are sanitized paths like "-Users-foo-projects-myapp"
+			// We can't reliably reverse this, so return empty and let caller use default
+			return "", true
+		}
+	}
+
+	return "", false
+}
+
 // readSessionIndex reads and parses a sessions-index.json file
 func readSessionIndex(path string) (*models.SessionIndex, error) {
 	data, err := os.ReadFile(path)

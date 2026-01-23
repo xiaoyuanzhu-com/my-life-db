@@ -361,6 +361,12 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 		}
 	}
 
+	// If not found in index, search for JSONL file directly
+	// (session might exist but not be in index yet - Claude updates index asynchronously)
+	if !found {
+		workingDir, found = findSessionByJSONL(id)
+	}
+
 	if !found {
 		// Session doesn't exist anywhere
 		return nil, ErrSessionNotFound
