@@ -256,9 +256,14 @@ This is the most visually distinct element, representing suggested changes to a 
 *   Full language-specific syntax highlighting must be applied *on top* of the diff background colors
 *   Use a theme compatible with light backgrounds (avoid dark themes)
 
-**Smart Collapsing:**
-*   If diff exceeds ~20 lines, show first 5 and last 5 lines
-*   Insert button/link: `Show 10 collapsed lines` or `Show full diff (XX more lines)`
+**Smart Collapsing (Truncation):**
+*   Limit display to **5 deleted lines + 5 added lines** by default
+*   If either old or new content exceeds 5 lines, show expand button
+*   Button text: `Show X more deleted + Y more added lines` (only shows counts > 0)
+*   When expanded:
+    *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
+    *   Button changes to `Show less`
+*   Full-width button at bottom of diff container with `borderTop` separator
 
 </details>
 
@@ -631,10 +636,19 @@ When multiple tool calls of the same type occur consecutively, they are grouped 
 
 **Key Features:**
 - NO dark terminal background (uses light theme)
-- Command shown in header line, not in separate box
-- Output uses L-shaped indent with light gray text
-- Exit code and duration on separate line with L-indent
+- Command and output in bordered container with rounded corners
+- Command section has `bg-secondary` background
+- Output section separated by `borderTop`
 - Success = green exit code, failure = red
+
+**Smart Collapsing (Truncation):**
+*   Limit display to **5 command lines + 5 output lines** by default
+*   If either command or output exceeds 5 lines, show expand button
+*   Button text: `Show X more command + Y more output lines` (only shows counts > 0)
+*   When expanded:
+    *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
+    *   Button changes to `Show less`
+*   Full-width button at bottom of container with `borderTop` separator
 
 </details>
 
