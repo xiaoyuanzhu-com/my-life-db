@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { MessageDot } from '../message-dot'
 import type { ToolCall, BashToolParams, BashToolResult } from '~/types/claude'
 
@@ -5,13 +6,32 @@ interface BashToolViewProps {
   toolCall: ToolCall
 }
 
+const MAX_LINES = 5
+
 export function BashToolView({ toolCall }: BashToolViewProps) {
   const params = (toolCall.parameters || {}) as BashToolParams
   const result = toolCall.result as BashToolResult | string | undefined
+  const [expanded, setExpanded] = useState(false)
 
   // Parse result
   const output = typeof result === 'string' ? result : result?.output
   const exitCode = typeof result === 'object' ? result?.exitCode : undefined
+
+  // Split into lines for truncation
+  const commandLines = (params?.command || 'No command').split('\n')
+  const outputLines = output ? output.split('\n') : []
+
+  // Check if truncation is needed
+  const isCommandTruncated = commandLines.length > MAX_LINES
+  const isOutputTruncated = outputLines.length > MAX_LINES
+  const isTruncated = isCommandTruncated || isOutputTruncated
+
+  // Get lines to display
+  const displayCommandLines = expanded ? commandLines : commandLines.slice(0, MAX_LINES)
+  const displayOutputLines = expanded ? outputLines : outputLines.slice(0, MAX_LINES)
+
+  const hiddenCommandCount = commandLines.length - MAX_LINES
+  const hiddenOutputCount = outputLines.length - MAX_LINES
 
   // Determine status for dot - bash has special logic for exit codes
   const dotStatus = (() => {
@@ -37,23 +57,59 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
         </div>
       </div>
 
-      {/* Line 2: Command with L-shaped indent */}
-      <div className="flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
-        <span className="select-none">{output || toolCall.error ? '│' : '└'}</span>
-        <pre className="flex-1 min-w-0 whitespace-pre-wrap break-all overflow-x-auto">
-          {params?.command || 'No command'}
-        </pre>
-      </div>
-
-      {/* Line 3: Output with L-shaped indent */}
-      {output && (
-        <div className="flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
-          <span className="select-none">└</span>
-          <div className="flex-1 min-w-0 whitespace-pre-wrap break-all">
-            {output}
-          </div>
+      {/* Command and Output container */}
+      <div
+        className={`rounded-md overflow-hidden ${expanded ? 'overflow-y-auto' : ''}`}
+        style={{
+          border: '1px solid var(--claude-border-light)',
+          ...(expanded && isTruncated ? { maxHeight: '60vh' } : {}),
+        }}
+      >
+        {/* Command */}
+        <div
+          className="px-3 py-2"
+          style={{ backgroundColor: 'var(--claude-bg-secondary)' }}
+        >
+          <pre
+            className="whitespace-pre-wrap break-all"
+            style={{ color: 'var(--claude-text-primary)' }}
+          >
+            {displayCommandLines.join('\n')}
+          </pre>
         </div>
-      )}
+
+        {/* Output */}
+        {output && (
+          <div
+            className="px-3 py-2"
+            style={{
+              borderTop: '1px solid var(--claude-border-light)',
+              color: 'var(--claude-text-secondary)',
+            }}
+          >
+            <div className="whitespace-pre-wrap break-all">
+              {displayOutputLines.join('\n')}
+            </div>
+          </div>
+        )}
+
+        {/* Expand/Collapse button */}
+        {isTruncated && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              backgroundColor: 'var(--claude-bg-secondary)',
+              color: 'var(--claude-text-secondary)',
+              borderTop: '1px solid var(--claude-border-light)',
+            }}
+          >
+            {expanded
+              ? 'Show less'
+              : `Show ${isCommandTruncated ? `${hiddenCommandCount} more command` : ''}${isCommandTruncated && isOutputTruncated ? ' + ' : ''}${isOutputTruncated ? `${hiddenOutputCount} more output` : ''} lines`}
+          </button>
+        )}
+      </div>
 
       {/* Error */}
       {toolCall.error && (
