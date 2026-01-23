@@ -20,19 +20,23 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   // Split into lines for truncation
   const commandLines = (params?.command || 'No command').split('\n')
   const outputLines = output ? output.split('\n') : []
+  const errorLines = toolCall.error ? toolCall.error.split('\n') : []
 
   // Check if truncation is needed
-  const isCommandTruncated = commandLines.length > MAX_LINES
-  const isOutputTruncated = outputLines.length > MAX_LINES
-  const isTruncated = isCommandTruncated || isOutputTruncated
+  const isTruncated =
+    commandLines.length > MAX_LINES ||
+    outputLines.length > MAX_LINES ||
+    errorLines.length > MAX_LINES
 
   // Get lines to display
   const displayCommandLines = expanded ? commandLines : commandLines.slice(0, MAX_LINES)
   const displayOutputLines = expanded ? outputLines : outputLines.slice(0, MAX_LINES)
+  const displayErrorLines = expanded ? errorLines : errorLines.slice(0, MAX_LINES)
 
   const totalHiddenCount =
     Math.max(0, commandLines.length - MAX_LINES) +
-    Math.max(0, outputLines.length - MAX_LINES)
+    Math.max(0, outputLines.length - MAX_LINES) +
+    Math.max(0, errorLines.length - MAX_LINES)
 
   // Determine status for dot - bash has special logic for exit codes
   const dotStatus = (() => {
@@ -94,6 +98,19 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               </div>
             </div>
           )}
+
+          {/* Error */}
+          {toolCall.error && (
+            <div
+              className="px-3 py-2 whitespace-pre-wrap break-all"
+              style={{
+                borderTop: '1px solid var(--claude-border-light)',
+                color: 'var(--claude-status-alert)',
+              }}
+            >
+              {displayErrorLines.join('\n')}
+            </div>
+          )}
         </div>
 
         {/* Expand/Collapse button */}
@@ -111,46 +128,6 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
           </button>
         )}
       </div>
-
-      {/* Error */}
-      {toolCall.error && (() => {
-        const errorLines = toolCall.error.split('\n')
-        const isErrorTruncated = errorLines.length > MAX_LINES
-        const displayErrorLines = expanded ? errorLines : errorLines.slice(0, MAX_LINES)
-        const hiddenErrorCount = errorLines.length - MAX_LINES
-
-        return (
-          <div
-            className="mt-2 rounded-md overflow-hidden"
-            style={{ border: '1px solid var(--claude-status-alert)' }}
-          >
-            <div
-              className={expanded && isErrorTruncated ? 'overflow-y-auto' : ''}
-              style={expanded && isErrorTruncated ? { maxHeight: '60vh' } : {}}
-            >
-              <div
-                className="px-3 py-2 whitespace-pre-wrap break-all"
-                style={{ color: 'var(--claude-status-alert)' }}
-              >
-                {displayErrorLines.join('\n')}
-              </div>
-            </div>
-            {isErrorTruncated && (
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{
-                  backgroundColor: 'var(--claude-bg-secondary)',
-                  color: 'var(--claude-text-secondary)',
-                  borderTop: '1px solid var(--claude-status-alert)',
-                }}
-              >
-                {expanded ? 'Show less' : `Show ${hiddenErrorCount} more lines`}
-              </button>
-            )}
-          </div>
-        )
-      })()}
     </div>
   )
 }
