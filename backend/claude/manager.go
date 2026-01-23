@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -46,6 +47,39 @@ var (
 
 // buildClaudeArgs constructs the command-line arguments for launching Claude
 // with appropriate permission settings for web UI usage
+// gracefulTerminate attempts to gracefully terminate a process by sending SIGTERM first,
+// waiting for a short period, then forcefully killing with SIGKILL if it doesn't exit.
+// This allows the process (Claude) to finish writing any pending data (like JSONL files).
+func gracefulTerminate(cmd *exec.Cmd, timeout time.Duration) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+
+	// Send SIGTERM for graceful shutdown
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		// Process might already be dead, try Kill anyway
+		cmd.Process.Kill()
+		return
+	}
+
+	// Wait for process to exit gracefully
+	done := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Process exited gracefully
+		return
+	case <-time.After(timeout):
+		// Timeout, force kill
+		log.Warn().Int("pid", cmd.Process.Pid).Msg("process didn't exit gracefully, sending SIGKILL")
+		cmd.Process.Kill()
+	}
+}
+
 func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 	var args []string
 
@@ -124,19 +158,29 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	// Signal all goroutines to stop
 	m.cancel()
 
-	// Kill all sessions
+	// Gracefully terminate all sessions
 	m.mu.Lock()
+	var wg sync.WaitGroup
 	for id, session := range m.sessions {
-		log.Info().Str("sessionId", id).Msg("killing session during shutdown")
-		if session.Cmd != nil && session.Cmd.Process != nil {
-			session.Cmd.Process.Kill()
-		}
-		if session.PTY != nil {
-			session.PTY.Close()
-		}
+		log.Info().Str("sessionId", id).Msg("gracefully terminating session during shutdown")
+		wg.Add(1)
+		go func(id string, s *Session) {
+			defer wg.Done()
+			// Close stdin/PTY first to signal EOF
+			if s.Mode == ModeUI && s.Stdin != nil {
+				s.Stdin.Close()
+			} else if s.PTY != nil {
+				s.PTY.Close()
+			}
+			// Gracefully terminate with 3 second timeout per session
+			gracefulTerminate(s.Cmd, 3*time.Second)
+		}(id, session)
 	}
 	m.sessions = make(map[string]*Session)
 	m.mu.Unlock()
+
+	// Wait for all terminations
+	wg.Wait()
 
 	// Wait for goroutines with timeout
 	done := make(chan struct{})
@@ -498,27 +542,27 @@ func (m *Manager) DeleteSession(id string) error {
 		return ErrSessionNotFound
 	}
 
-	// Kill the process
-	if session.Cmd != nil && session.Cmd.Process != nil {
-		if err := session.Cmd.Process.Kill(); err != nil {
-			log.Warn().Err(err).Msg("failed to kill process")
-		}
-	}
-
-	// Close resources based on mode
+	// Close stdin/PTY first to signal EOF to Claude
 	if session.Mode == ModeUI {
 		if session.Stdin != nil {
 			session.Stdin.Close()
 		}
+	} else {
+		if session.PTY != nil {
+			session.PTY.Close()
+		}
+	}
+
+	// Gracefully terminate the process (SIGTERM, wait, then SIGKILL)
+	gracefulTerminate(session.Cmd, 3*time.Second)
+
+	// Close remaining resources
+	if session.Mode == ModeUI {
 		if session.Stdout != nil {
 			session.Stdout.Close()
 		}
 		if session.Stderr != nil {
 			session.Stderr.Close()
-		}
-	} else {
-		if session.PTY != nil {
-			session.PTY.Close()
 		}
 	}
 
@@ -540,27 +584,27 @@ func (m *Manager) DeactivateSession(id string) error {
 		return ErrSessionNotFound
 	}
 
-	// Kill the process
-	if session.Cmd != nil && session.Cmd.Process != nil {
-		if err := session.Cmd.Process.Kill(); err != nil {
-			log.Warn().Err(err).Msg("failed to kill process")
-		}
-	}
-
-	// Close resources based on mode
+	// Close stdin/PTY first to signal EOF to Claude
 	if session.Mode == ModeUI {
 		if session.Stdin != nil {
 			session.Stdin.Close()
 		}
+	} else {
+		if session.PTY != nil {
+			session.PTY.Close()
+		}
+	}
+
+	// Gracefully terminate the process (SIGTERM, wait, then SIGKILL)
+	gracefulTerminate(session.Cmd, 3*time.Second)
+
+	// Close remaining resources
+	if session.Mode == ModeUI {
 		if session.Stdout != nil {
 			session.Stdout.Close()
 		}
 		if session.Stderr != nil {
 			session.Stderr.Close()
-		}
-	} else {
-		if session.PTY != nil {
-			session.PTY.Close()
 		}
 	}
 
