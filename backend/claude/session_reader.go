@@ -464,39 +464,6 @@ func GetFirstUserPrompt(sessionID, projectPath string) string {
 	return ""
 }
 
-// GetSessionDisplayTitle computes the display title for a session with priority:
-// 1. CustomTitle (user-set via /title command)
-// 2. Summary (Claude-generated)
-// 3. First actual user prompt from JSONL (only read if needed)
-// 4. "Untitled" as fallback
-func GetSessionDisplayTitle(entry models.SessionIndexEntry) string {
-	// Priority 1: User-set custom title
-	if entry.CustomTitle != "" {
-		return entry.CustomTitle
-	}
-
-	// Priority 2: Claude-generated summary
-	if entry.Summary != "" {
-		return entry.Summary
-	}
-
-	// Priority 3: Check if firstPrompt has actual user content (not just system tags)
-	// If firstPrompt starts with system tags, we need to read the JSONL
-	if !strings.HasPrefix(entry.FirstPrompt, "<ide_") &&
-		!strings.HasPrefix(entry.FirstPrompt, "<system-reminder>") {
-		// FirstPrompt contains actual user text
-		return entry.FirstPrompt
-	}
-
-	// FirstPrompt is only system tags - read JSONL to get real first user prompt
-	if userPrompt := GetFirstUserPrompt(entry.SessionID, entry.ProjectPath); userPrompt != "" {
-		return userPrompt
-	}
-
-	// Priority 4: Fallback
-	return "Untitled"
-}
-
 // ReadSessionTodos reads the todo file for a session
 // Todo files are stored at ~/.claude/todos/{sessionId}-agent-{agentId}.json
 // For now, we only read the main agent's todos ({sessionId}-agent-main.json)

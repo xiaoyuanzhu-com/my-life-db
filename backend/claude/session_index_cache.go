@@ -427,7 +427,8 @@ func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 // 1. CustomTitle (user-set)
 // 2. Summary (Claude-generated)
 // 3. FirstPrompt (if not system tags)
-// 4. "Untitled"
+// 4. First actual user prompt from JSONL (lazy fallback)
+// 5. "Untitled"
 func (e *CachedSessionEntry) GetDisplayTitle() string {
 	if e.CustomTitle != "" {
 		return e.CustomTitle
@@ -439,6 +440,10 @@ func (e *CachedSessionEntry) GetDisplayTitle() string {
 		!strings.HasPrefix(e.FirstPrompt, "<ide_") &&
 		!strings.HasPrefix(e.FirstPrompt, "<system-reminder>") {
 		return e.FirstPrompt
+	}
+	// FirstPrompt is empty or only system tags - read JSONL to get real first user prompt
+	if userPrompt := GetFirstUserPrompt(e.SessionID, e.ProjectPath); userPrompt != "" {
+		return userPrompt
 	}
 	return "Untitled"
 }
