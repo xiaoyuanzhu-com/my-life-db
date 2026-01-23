@@ -76,7 +76,14 @@ export interface SessionMessage {
 
   // Tool use result - varies by tool type (see docs/claude-code/data-models.md)
   // Can be string (for errors) or object (for success with tool-specific fields)
+  //
+  // IMPORTANT: Claude Code has inconsistent field naming between output formats:
+  // - JSONL files (historical sessions): uses camelCase "toolUseResult"
+  // - stdout (stream-json, live sessions): uses snake_case "tool_use_result"
+  // We handle both to support viewing historical sessions and live WebSocket streams.
+  // See docs/claude-code/data-models.md "Field Naming Inconsistency" section.
   toolUseResult?: ToolUseResult
+  tool_use_result?: ToolUseResult  // snake_case variant from stdout
 }
 
 // Tool use result types - varies by tool
@@ -205,19 +212,42 @@ export interface ExtractedToolResult {
 }
 
 /**
+ * Get the tool use result from a message, handling both field naming conventions.
+ *
+ * Claude Code has inconsistent field naming between output formats:
+ * - JSONL files (historical sessions): uses camelCase "toolUseResult"
+ * - stdout (stream-json, live sessions): uses snake_case "tool_use_result"
+ *
+ * This helper normalizes access to support both sources.
+ */
+export function getToolUseResult(msg: SessionMessage): ToolUseResult | undefined {
+  return msg.toolUseResult ?? msg.tool_use_result
+}
+
+/**
+ * Check if a message has a tool use result (either field naming convention)
+ */
+export function hasToolUseResult(msg: SessionMessage): boolean {
+  return msg.toolUseResult !== undefined || msg.tool_use_result !== undefined
+}
+
+/**
  * Build a mapping from tool_use_id to tool result
- * Tool results are stored in 'user' type messages that have toolUseResult field
+ * Tool results are stored in 'user' type messages that have toolUseResult/tool_use_result field
  */
 export function buildToolResultMap(messages: SessionMessage[]): Map<string, ExtractedToolResult> {
   const resultMap = new Map<string, ExtractedToolResult>()
 
   for (const msg of messages) {
-    // Tool results are in 'user' type messages with toolUseResult field
-    if (msg.type !== 'user' || !msg.toolUseResult) continue
+    // Tool results are in 'user' type messages with toolUseResult or tool_use_result field
+    // (Claude uses different naming in JSONL vs stdout - see getToolUseResult comments)
+    if (msg.type !== 'user' || !hasToolUseResult(msg)) continue
 
     // Extract tool_use_id from message.content
     const content = msg.message?.content
     if (!Array.isArray(content)) continue
+
+    const toolUseResult = getToolUseResult(msg)
 
     for (const block of content) {
       if (isToolResultBlock(block)) {
@@ -225,7 +255,7 @@ export function buildToolResultMap(messages: SessionMessage[]): Map<string, Extr
           toolUseId: block.tool_use_id,
           content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
           isError: block.is_error ?? false,
-          toolUseResult: msg.toolUseResult,
+          toolUseResult,
         })
       }
     }

@@ -145,9 +145,40 @@ Claude Code outputs messages in **two different contexts** with subtle differenc
 - `queue-operation`: **both** - appears in real-time and is persisted
 - `progress` messages: **both** - persisted to JSONL for replay
 
+#### Field Naming Inconsistency ⚠️ IMPORTANT
+
+Claude Code uses **different field naming conventions** between JSONL and stdout:
+
+| Field | JSONL (historical) | stdout (live) |
+|-------|-------------------|---------------|
+| Tool use result | `toolUseResult` (camelCase) | `tool_use_result` (snake_case) |
+
+**Example - same data, different field names:**
+
+JSONL file:
+```json
+{"type": "user", "toolUseResult": {"stdout": "...", "stderr": ""}, ...}
+```
+
+stdout (stream-json):
+```json
+{"type": "user", "tool_use_result": {"stdout": "...", "stderr": ""}, ...}
+```
+
+**Why this matters:**
+- If you only handle one format, tool results won't render correctly for the other source
+- Historical sessions (JSONL) use camelCase
+- Live WebSocket sessions (stdout) use snake_case
+
+**Recommended approach:**
+- Handle **both** field names in your code
+- Use helper functions like `getToolUseResult(msg)` that check both fields
+- Don't transform data in the backend - honor the raw output for easier debugging
+
 **Implication for Web UI:**
 - When **viewing historical sessions** (reading JSONL): No `init` or `result` messages
 - When **watching live sessions** (WebSocket/stdout): Receive `init` first, `result` last
+- **Must handle both** `toolUseResult` and `tool_use_result` field names
 
 ---
 
@@ -225,7 +256,7 @@ Claude Code outputs messages in **two different contexts** with subtle differenc
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `toolUseResult` | object/string | Tool execution result (for tool result messages) |
+| `toolUseResult` / `tool_use_result` | object/string | Tool execution result (for tool result messages). ⚠️ **Naming varies**: JSONL uses `toolUseResult`, stdout uses `tool_use_result`. See "Field Naming Inconsistency" section. |
 | `sourceToolAssistantUUID` | string | UUID of assistant message that triggered the tool |
 | `sourceToolUseID` | string | ID of the tool_use block |
 | `todos` | array | Current todo list state |

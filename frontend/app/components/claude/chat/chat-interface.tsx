@@ -15,6 +15,7 @@ import type {
 } from '~/types/claude'
 import {
   buildToolResultMap,
+  hasToolUseResult,
   type SessionMessage,
 } from '~/lib/session-message-utils'
 
@@ -62,7 +63,8 @@ export function ChatInterface({
       // Skip internal event types
       if (SKIP_TYPES.includes(msg.type)) return false
       // Skip tool result messages (they're used to populate toolResultMap, not rendered directly)
-      if (msg.type === 'user' && msg.toolUseResult) return false
+      // Note: hasToolUseResult handles both camelCase (JSONL) and snake_case (stdout) field names
+      if (msg.type === 'user' && hasToolUseResult(msg)) return false
       return true
     })
   }, [rawMessages])
@@ -184,8 +186,8 @@ export function ChatInterface({
         const sessionMsg: SessionMessage = data
         console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
-        // Clear optimistic message when we receive the real user message
-        if (sessionMsg.type === 'user' && !sessionMsg.toolUseResult) {
+        // Clear optimistic message when we receive the real user message (not tool results)
+        if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
           setOptimisticMessage(null)
         }
 
