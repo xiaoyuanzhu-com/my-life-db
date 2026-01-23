@@ -1,3 +1,5 @@
+import { MessageDot } from './message-dot'
+
 interface ClaudeWIPProps {
   /** The task text to display (e.g., "Finagling...", "Reading files...") */
   text: string
@@ -19,15 +21,7 @@ export function ClaudeWIP({ text, className = '' }: ClaudeWIPProps) {
 
   return (
     <div className={`flex gap-2 mb-4 ${className}`}>
-      {/* Blinking dot - matches MessageDot layout (h-6 for prose line-height) */}
-      <span
-        className="select-none font-mono text-xs h-6 flex items-center shrink-0 animate-pulse"
-        style={{ color: '#E07A5F' }}
-      >
-        ●
-      </span>
-
-      {/* WIP text */}
+      <MessageDot status="in_progress" lineHeight="prose" />
       <span
         className="text-[15px] leading-relaxed font-sans"
         style={{ color: '#E07A5F' }}

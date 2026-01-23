@@ -1,7 +1,7 @@
 import type { ToolStatus } from '~/types/claude'
 
 interface MessageDotProps {
-  status?: ToolStatus | 'assistant' | 'user'
+  status?: ToolStatus | 'assistant' | 'user' | 'in_progress'
   /**
    * Line height context for alignment:
    * - 'prose': 24px (15px × 1.6) - for assistant message content
@@ -26,18 +26,21 @@ export function MessageDot({ status = 'assistant', lineHeight = 'mono' }: Messag
     if (status === 'running') return '#F59E0B' // Orange/Yellow
     if (status === 'pending') return '#9CA3AF' // Gray
     if (status === 'permission_required') return '#F59E0B' // Orange
+    if (status === 'in_progress') return '#E07A5F' // Terracotta orange for WIP
     return '#22C55E' // Green for success/completed
   }
 
   const bulletChar = status === 'pending' ? '○' : '●'
+  const isAnimated = status === 'in_progress'
 
   // Match the line-height of the text context
   // prose: 15px * 1.6 = 24px, mono: 13px * 1.5 = 19.5px ≈ 20px
   const heightClass = lineHeight === 'prose' ? 'h-6' : 'h-5'
+  const animationClass = isAnimated ? 'animate-pulse' : ''
 
   return (
     <span
-      className={`select-none font-mono text-xs ${heightClass} flex items-center shrink-0`}
+      className={`select-none font-mono text-xs ${heightClass} flex items-center shrink-0 ${animationClass}`}
       style={{ color: getBulletColor() }}
     >
       {bulletChar}
