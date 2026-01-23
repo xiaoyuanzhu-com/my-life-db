@@ -57,6 +57,11 @@ func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 			"--permission-mode", "default", // Enable control_request for permission handling
 			"--verbose",
 		}
+
+		// Add allowed tools (auto-approved without prompting)
+		for _, tool := range allowedTools {
+			args = append(args, "--allowedTools", tool)
+		}
 	} else {
 		// CLI mode: PTY with skipped permissions (legacy behavior)
 		args = []string{
