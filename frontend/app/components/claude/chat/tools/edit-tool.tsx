@@ -24,8 +24,9 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
   const displayOldLines = expanded ? oldLines : oldLines.slice(0, MAX_OLD_LINES)
   const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
 
-  const hiddenOldCount = oldLines.length - MAX_OLD_LINES
-  const hiddenNewCount = newLines.length - MAX_NEW_LINES
+  const totalHiddenCount =
+    Math.max(0, oldLines.length - MAX_OLD_LINES) +
+    Math.max(0, newLines.length - MAX_NEW_LINES)
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -47,41 +48,43 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
 
       {/* Unified diff view */}
       <div
-        className={`rounded-md overflow-hidden ${expanded ? 'overflow-y-auto' : ''}`}
-        style={{
-          border: '1px solid var(--claude-border-light)',
-          ...(expanded && isTruncated ? { maxHeight: '60vh' } : {}),
-        }}
+        className="rounded-md overflow-hidden"
+        style={{ border: '1px solid var(--claude-border-light)' }}
       >
-        {/* Deleted lines */}
-        {displayOldLines.map((line, i) => (
-          <div
-            key={`del-${i}`}
-            className="font-mono text-[13px] leading-[1.5] flex"
-            style={{
-              backgroundColor: 'var(--claude-diff-del-bg)',
-              color: 'var(--claude-diff-del-fg)',
-            }}
-          >
-            <span className="inline-block px-3 select-none">-</span>
-            <span className="flex-1 pr-3 whitespace-pre-wrap break-all">{line}</span>
-          </div>
-        ))}
+        <div
+          className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+          style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+        >
+          {/* Deleted lines */}
+          {displayOldLines.map((line, i) => (
+            <div
+              key={`del-${i}`}
+              className="font-mono text-[13px] leading-[1.5] flex"
+              style={{
+                backgroundColor: 'var(--claude-diff-del-bg)',
+                color: 'var(--claude-diff-del-fg)',
+              }}
+            >
+              <span className="inline-block px-3 select-none">-</span>
+              <span className="flex-1 pr-3 whitespace-pre-wrap break-all">{line}</span>
+            </div>
+          ))}
 
-        {/* Added lines */}
-        {displayNewLines.map((line, i) => (
-          <div
-            key={`add-${i}`}
-            className="font-mono text-[13px] leading-[1.5] flex"
-            style={{
-              backgroundColor: 'var(--claude-diff-add-bg)',
-              color: 'var(--claude-diff-add-fg)',
-            }}
-          >
-            <span className="inline-block px-3 select-none">+</span>
-            <span className="flex-1 pr-3 whitespace-pre-wrap break-all">{line}</span>
-          </div>
-        ))}
+          {/* Added lines */}
+          {displayNewLines.map((line, i) => (
+            <div
+              key={`add-${i}`}
+              className="font-mono text-[13px] leading-[1.5] flex"
+              style={{
+                backgroundColor: 'var(--claude-diff-add-bg)',
+                color: 'var(--claude-diff-add-fg)',
+              }}
+            >
+              <span className="inline-block px-3 select-none">+</span>
+              <span className="flex-1 pr-3 whitespace-pre-wrap break-all">{line}</span>
+            </div>
+          ))}
+        </div>
 
         {/* Expand/Collapse button */}
         {isTruncated && (
@@ -94,9 +97,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
               borderTop: '1px solid var(--claude-border-light)',
             }}
           >
-            {expanded
-              ? 'Show less'
-              : `Show ${hiddenOldCount > 0 ? `${hiddenOldCount} more deleted` : ''}${hiddenOldCount > 0 && hiddenNewCount > 0 ? ' + ' : ''}${hiddenNewCount > 0 ? `${hiddenNewCount} more added` : ''} lines`}
+            {expanded ? 'Show less' : `Show ${totalHiddenCount} more lines`}
           </button>
         )}
       </div>

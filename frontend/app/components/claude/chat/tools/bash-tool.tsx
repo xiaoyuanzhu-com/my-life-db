@@ -30,8 +30,9 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const displayCommandLines = expanded ? commandLines : commandLines.slice(0, MAX_LINES)
   const displayOutputLines = expanded ? outputLines : outputLines.slice(0, MAX_LINES)
 
-  const hiddenCommandCount = commandLines.length - MAX_LINES
-  const hiddenOutputCount = outputLines.length - MAX_LINES
+  const totalHiddenCount =
+    Math.max(0, commandLines.length - MAX_LINES) +
+    Math.max(0, outputLines.length - MAX_LINES)
 
   // Determine status for dot - bash has special logic for exit codes
   const dotStatus = (() => {
@@ -59,39 +60,41 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
 
       {/* Command and Output container */}
       <div
-        className={`rounded-md overflow-hidden ${expanded ? 'overflow-y-auto' : ''}`}
-        style={{
-          border: '1px solid var(--claude-border-light)',
-          ...(expanded && isTruncated ? { maxHeight: '60vh' } : {}),
-        }}
+        className="rounded-md overflow-hidden"
+        style={{ border: '1px solid var(--claude-border-light)' }}
       >
-        {/* Command */}
         <div
-          className="px-3 py-2"
-          style={{ backgroundColor: 'var(--claude-bg-secondary)' }}
+          className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+          style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
         >
-          <pre
-            className="whitespace-pre-wrap break-all"
-            style={{ color: 'var(--claude-text-primary)' }}
-          >
-            {displayCommandLines.join('\n')}
-          </pre>
-        </div>
-
-        {/* Output */}
-        {output && (
+          {/* Command */}
           <div
             className="px-3 py-2"
-            style={{
-              borderTop: '1px solid var(--claude-border-light)',
-              color: 'var(--claude-text-secondary)',
-            }}
+            style={{ backgroundColor: 'var(--claude-bg-secondary)' }}
           >
-            <div className="whitespace-pre-wrap break-all">
-              {displayOutputLines.join('\n')}
-            </div>
+            <pre
+              className="whitespace-pre-wrap break-all"
+              style={{ color: 'var(--claude-text-primary)' }}
+            >
+              {displayCommandLines.join('\n')}
+            </pre>
           </div>
-        )}
+
+          {/* Output */}
+          {output && (
+            <div
+              className="px-3 py-2"
+              style={{
+                borderTop: '1px solid var(--claude-border-light)',
+                color: 'var(--claude-text-secondary)',
+              }}
+            >
+              <div className="whitespace-pre-wrap break-all">
+                {displayOutputLines.join('\n')}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Expand/Collapse button */}
         {isTruncated && (
@@ -104,9 +107,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               borderTop: '1px solid var(--claude-border-light)',
             }}
           >
-            {expanded
-              ? 'Show less'
-              : `Show ${isCommandTruncated ? `${hiddenCommandCount} more command` : ''}${isCommandTruncated && isOutputTruncated ? ' + ' : ''}${isOutputTruncated ? `${hiddenOutputCount} more output` : ''} lines`}
+            {expanded ? 'Show less' : `Show ${totalHiddenCount} more lines`}
           </button>
         )}
       </div>
@@ -120,17 +121,19 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
 
         return (
           <div
-            className={`mt-2 rounded-md overflow-hidden ${expanded && isErrorTruncated ? 'overflow-y-auto' : ''}`}
-            style={{
-              border: '1px solid var(--claude-status-alert)',
-              ...(expanded && isErrorTruncated ? { maxHeight: '60vh' } : {}),
-            }}
+            className="mt-2 rounded-md overflow-hidden"
+            style={{ border: '1px solid var(--claude-status-alert)' }}
           >
             <div
-              className="px-3 py-2 whitespace-pre-wrap break-all"
-              style={{ color: 'var(--claude-status-alert)' }}
+              className={expanded && isErrorTruncated ? 'overflow-y-auto' : ''}
+              style={expanded && isErrorTruncated ? { maxHeight: '60vh' } : {}}
             >
-              {displayErrorLines.join('\n')}
+              <div
+                className="px-3 py-2 whitespace-pre-wrap break-all"
+                style={{ color: 'var(--claude-status-alert)' }}
+              >
+                {displayErrorLines.join('\n')}
+              </div>
             </div>
             {isErrorTruncated && (
               <button
@@ -142,7 +145,7 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
                   borderTop: '1px solid var(--claude-status-alert)',
                 }}
               >
-                {expanded ? 'Show less' : `Show ${hiddenErrorCount} more error lines`}
+                {expanded ? 'Show less' : `Show ${hiddenErrorCount} more lines`}
               </button>
             )}
           </div>
