@@ -290,13 +290,6 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 				s.cacheMu.Unlock()
 			}
 		}
-		// Log control_request being broadcast
-		if msgType == "control_request" {
-			log.Info().
-				Str("sessionId", s.ID).
-				Int("numClients", len(s.Clients)).
-				Msg("broadcasting control_request to clients")
-		}
 	}
 
 	// Add to cache

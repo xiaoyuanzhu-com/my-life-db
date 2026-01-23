@@ -784,7 +784,6 @@ func (m *Manager) readPTY(session *Session) {
 // so we split them before broadcasting.
 func (m *Manager) readJSON(session *Session) {
 	defer m.wg.Done()
-	log.Info().Str("sessionId", session.ID).Msg("readJSON: goroutine started")
 
 	if session.Stdout == nil {
 		log.Error().Str("sessionId", session.ID).Msg("readJSON called but stdout is nil")
@@ -814,29 +813,6 @@ func (m *Manager) readJSON(session *Session) {
 		jsonObjects := splitConcatenatedJSON(line)
 
 		for _, jsonData := range jsonObjects {
-			// Parse the JSON to check for control requests
-			var msg map[string]interface{}
-			if err := json.Unmarshal(jsonData, &msg); err != nil {
-				log.Debug().Err(err).Str("sessionId", session.ID).Str("data", string(jsonData)).Msg("failed to parse JSON object")
-				continue
-			}
-
-			// Log all message types for debugging
-			msgType, _ := msg["type"].(string)
-			log.Info().
-				Str("sessionId", session.ID).
-				Str("type", msgType).
-				Msg("received message from Claude CLI")
-
-			// Check if this is a control request that needs to be handled
-			if msgType == "control_request" {
-				// Broadcast control request to clients for UI handling
-				log.Info().
-					Str("sessionId", session.ID).
-					Interface("request", msg).
-					Msg("control_request details")
-			}
-
 			// Broadcast to all connected clients (and cache for late-joining clients)
 			session.BroadcastUIMessage(jsonData)
 		}
