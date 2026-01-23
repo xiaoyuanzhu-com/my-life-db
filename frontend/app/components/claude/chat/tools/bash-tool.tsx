@@ -112,12 +112,42 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
       </div>
 
       {/* Error */}
-      {toolCall.error && (
-        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
-          <span className="select-none">└</span>
-          <div className="flex-1 min-w-0">{toolCall.error}</div>
-        </div>
-      )}
+      {toolCall.error && (() => {
+        const errorLines = toolCall.error.split('\n')
+        const isErrorTruncated = errorLines.length > MAX_LINES
+        const displayErrorLines = expanded ? errorLines : errorLines.slice(0, MAX_LINES)
+        const hiddenErrorCount = errorLines.length - MAX_LINES
+
+        return (
+          <div
+            className={`mt-2 rounded-md overflow-hidden ${expanded && isErrorTruncated ? 'overflow-y-auto' : ''}`}
+            style={{
+              border: '1px solid var(--claude-status-alert)',
+              ...(expanded && isErrorTruncated ? { maxHeight: '60vh' } : {}),
+            }}
+          >
+            <div
+              className="px-3 py-2 whitespace-pre-wrap break-all"
+              style={{ color: 'var(--claude-status-alert)' }}
+            >
+              {displayErrorLines.join('\n')}
+            </div>
+            {isErrorTruncated && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{
+                  backgroundColor: 'var(--claude-bg-secondary)',
+                  color: 'var(--claude-text-secondary)',
+                  borderTop: '1px solid var(--claude-status-alert)',
+                }}
+              >
+                {expanded ? 'Show less' : `Show ${hiddenErrorCount} more error lines`}
+              </button>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
