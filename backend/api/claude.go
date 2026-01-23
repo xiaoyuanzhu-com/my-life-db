@@ -10,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
@@ -757,6 +758,25 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 						conn.Write(ctx, websocket.MessageText, msgBytes)
 					}
 					break
+				}
+
+				// Broadcast synthetic user message back to clients
+				// This unifies behavior with CLI mode where user messages come from JSONL.
+				// Claude stdin doesn't echo user messages to stdout, so we synthesize one.
+				syntheticMsg := map[string]interface{}{
+					"type":      "user",
+					"uuid":      uuid.New().String(),
+					"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+					"sessionId": sessionID,
+					"message": map[string]interface{}{
+						"role": "user",
+						"content": []map[string]interface{}{
+							{"type": "text", "text": inMsg.Content},
+						},
+					},
+				}
+				if msgBytes, err := json.Marshal(syntheticMsg); err == nil {
+					session.BroadcastUIMessage(msgBytes)
 				}
 			} else {
 				// CLI mode: ensure activated, then send to PTY

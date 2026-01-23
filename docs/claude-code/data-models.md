@@ -144,6 +144,41 @@ Claude Code outputs messages in **two different contexts** with subtle differenc
 - `result` message: **stdout only** - summarizes the completed turn, not persisted
 - `queue-operation`: **both** - appears in real-time and is persisted
 - `progress` messages: **both** - persisted to JSONL for replay
+- `user` messages (user input): **JSONL only** - Claude stdin does NOT echo user messages to stdout
+
+#### Synthetic User Messages in UI Mode ⭐⭐⭐ CRITICAL
+
+When the backend receives a user message via WebSocket and sends it to Claude's stdin, Claude does **NOT** echo the user message back in stdout. This creates an inconsistency:
+
+| Mode | User Message Source | Behavior |
+|------|---------------------|----------|
+| **CLI mode (JSONL)** | Read from JSONL file | User messages included naturally |
+| **UI mode (stdin/stdout)** | Written to stdin | Claude doesn't echo back |
+
+**Problem:** In UI mode, the frontend shows an "optimistic" user message immediately. When the response arrives, this optimistic message should be replaced by the "real" message from the backend. But since Claude doesn't echo user messages, there's no real message to replace it with.
+
+**Solution:** The backend **synthesizes a user message** immediately after successfully sending to Claude's stdin, and broadcasts it to all connected clients via WebSocket.
+
+**Synthetic user message format:**
+```json
+{
+  "type": "user",
+  "uuid": "generated-uuid",
+  "timestamp": "2026-01-23T10:30:00.000Z",
+  "sessionId": "session-uuid",
+  "message": {
+    "role": "user",
+    "content": [{"type": "text", "text": "user's message"}]
+  }
+}
+```
+
+**Benefits:**
+1. **Unified client logic** - Frontend always receives user messages from backend
+2. **Consistent behavior** - Session replay (JSONL) matches live interaction
+3. **Proper optimistic update** - Optimistic message gets replaced correctly
+
+**Note:** This synthetic message is broadcast to clients but NOT written to JSONL (Claude handles persistence). When reopening a session, the user message will come from JSONL as usual.
 
 #### Field Naming Inconsistency ⚠️ IMPORTANT
 
