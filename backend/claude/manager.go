@@ -54,9 +54,9 @@ func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 		args = []string{
 			"--output-format", "stream-json",
 			"--input-format", "stream-json",
+			"--permission-mode", "default", // Enable control_request for permission handling
 			"--verbose",
 		}
-		// Don't skip permissions - we'll handle control_request in the UI
 	} else {
 		// CLI mode: PTY with skipped permissions (legacy behavior)
 		args = []string{
