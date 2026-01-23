@@ -128,6 +128,9 @@ type Manager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
 
+	// Session index cache (lazy-loaded, in-memory)
+	indexCache *SessionIndexCache
+
 	// Context for graceful shutdown
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -139,9 +142,10 @@ func NewManager() (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &Manager{
-		sessions: make(map[string]*Session),
-		ctx:      ctx,
-		cancel:   cancel,
+		sessions:   make(map[string]*Session),
+		indexCache: NewSessionIndexCache(),
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 
 	// Start background cleanup worker
@@ -154,6 +158,11 @@ func NewManager() (*Manager, error) {
 // Shutdown gracefully stops all sessions and goroutines
 func (m *Manager) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down Claude manager")
+
+	// Shutdown the index cache
+	if m.indexCache != nil {
+		m.indexCache.Shutdown(ctx)
+	}
 
 	// Signal all goroutines to stop
 	m.cancel()
@@ -509,7 +518,7 @@ func (m *Manager) activateSession(session *Session) error {
 	return nil
 }
 
-// ListSessions returns all sessions
+// ListSessions returns all active sessions in the manager's pool
 func (m *Manager) ListSessions() []*Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -519,6 +528,11 @@ func (m *Manager) ListSessions() []*Session {
 		sessions = append(sessions, s)
 	}
 	return sessions
+}
+
+// GetIndexCache returns the session index cache
+func (m *Manager) GetIndexCache() *SessionIndexCache {
+	return m.indexCache
 }
 
 // UpdateSession updates session metadata

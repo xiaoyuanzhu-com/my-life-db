@@ -1,6 +1,9 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // UserSessionMessage represents a user input or tool result message.
 type UserSessionMessage struct {
@@ -19,3 +22,37 @@ func (m UserSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias UserSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// GetUserPrompt extracts the actual user-typed text from a user message,
+// filtering out system-injected tags like <ide_opened_file>, <ide_selection>, <system-reminder>
+func (m *UserSessionMessage) GetUserPrompt() string {
+	if m.Message == nil || m.Message.Content == nil {
+		return ""
+	}
+
+	var userTexts []string
+
+	// User messages can be string or []ContentBlock
+	if str, ok := m.Message.Content.(string); ok {
+		filtered := filterSystemTags(str)
+		if filtered != "" {
+			userTexts = append(userTexts, filtered)
+		}
+	} else if blocks, ok := m.Message.Content.([]interface{}); ok {
+		for _, block := range blocks {
+			if blockMap, ok := block.(map[string]interface{}); ok {
+				if blockMap["type"] == "text" {
+					if text, ok := blockMap["text"].(string); ok {
+						filtered := filterSystemTags(text)
+						if filtered != "" {
+							userTexts = append(userTexts, filtered)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return strings.Join(userTexts, "\n")
+}
+

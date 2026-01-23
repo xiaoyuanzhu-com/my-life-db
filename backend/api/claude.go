@@ -316,7 +316,7 @@ type ChatMessage struct {
 }
 
 // ListAllClaudeSessions handles GET /api/claude/sessions/all
-// Returns both active and historical sessions from all Claude project directories
+// Returns both active and historical sessions using the in-memory cache
 func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// Get all sessions from our manager's pool (includes newly created sessions)
 	activeSessions := claudeManager.ListSessions()
@@ -325,40 +325,26 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		activeSessionMap[s.ID] = s
 	}
 
+	// Get all sessions from the index cache
+	indexCache := claudeManager.GetIndexCache()
+	cachedEntries := indexCache.GetAll()
+
 	log.Debug().
 		Int("managerSessionCount", len(activeSessions)).
+		Int("cacheEntryCount", len(cachedEntries)).
 		Msg("ListAllClaudeSessions: fetching sessions")
 
 	// Track which sessions we've already added (to avoid duplicates)
 	addedSessions := make(map[string]bool)
-	result := make([]map[string]interface{}, 0)
+	result := make([]map[string]interface{}, 0, len(cachedEntries))
 
-	// Read sessions from all Claude project directories
-	index, err := claude.GetAllSessionIndexes()
-	if err != nil {
-		// If no sessions found, just return active sessions from manager
-		log.Info().Err(err).Msg("no session indexes found, returning active sessions only")
-		for _, s := range activeSessions {
-			sessionData := s.ToJSON()
-			sessionData["isActive"] = s.IsActivated()
-			result = append(result, sessionData)
-		}
-		c.JSON(http.StatusOK, gin.H{"sessions": result})
-		return
-	}
-
-	log.Debug().Int("indexEntryCount", len(index.Entries)).Msg("ListAllClaudeSessions: read all indexes")
-
-	// Convert index entries to response format
-	for _, entry := range index.Entries {
+	// Convert cached entries to response format
+	for _, entry := range cachedEntries {
 		addedSessions[entry.SessionID] = true
-
-		// Compute display title with priority: customTitle > summary > firstUserPrompt
-		title := claude.GetSessionDisplayTitle(entry)
 
 		sessionData := map[string]interface{}{
 			"id":           entry.SessionID,
-			"title":        title,
+			"title":        entry.GetDisplayTitle(),
 			"workingDir":   entry.ProjectPath,
 			"createdAt":    entry.Created,
 			"lastActivity": entry.Modified,
@@ -381,22 +367,22 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		result = append(result, sessionData)
 	}
 
-	// Add any sessions from manager that aren't in the index yet (newly created)
+	// Add any sessions from manager that aren't in the cache yet (just created)
 	addedFromManager := 0
 	for _, s := range activeSessions {
 		if addedSessions[s.ID] {
-			continue // Already added from index
+			continue // Already added from cache
 		}
 		sessionData := s.ToJSON()
 		sessionData["isActive"] = s.IsActivated()
 		result = append(result, sessionData)
 		addedFromManager++
-		log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in index)")
+		log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in cache)")
 	}
 
 	log.Debug().
 		Int("totalSessions", len(result)).
-		Int("fromIndex", len(index.Entries)).
+		Int("fromCache", len(cachedEntries)).
 		Int("fromManager", addedFromManager).
 		Msg("ListAllClaudeSessions: returning sessions")
 
