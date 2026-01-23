@@ -28,8 +28,17 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   // Extract content from message
   const content = message.message?.content
 
-  // For user messages: content is a string
-  const userTextContent = isUser && typeof content === 'string' ? content : null
+  // For user messages: content can be a string OR an array of content blocks
+  const userTextContent = useMemo(() => {
+    if (!isUser) return null
+    if (typeof content === 'string') return content
+    // Handle array of content blocks (e.g., when IDE injects context)
+    if (Array.isArray(content)) {
+      const texts = content.filter(isTextBlock).map((block) => block.text)
+      return texts.join('\n') || null
+    }
+    return null
+  }, [isUser, content])
 
   // For assistant messages: extract text, thinking, and tool_use blocks from array
   const { textContent, thinkingBlocks, toolUseBlocks } = useMemo(() => {
