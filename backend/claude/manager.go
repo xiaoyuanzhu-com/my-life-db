@@ -386,7 +386,7 @@ func (m *Manager) activateSession(session *Session) error {
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = session.WorkingDir
 
-	session.ready = make(chan struct{}) // Will be closed when first output is received
+	session.ready = make(chan struct{}) // Will be closed when ready
 
 	if session.Mode == ModeUI {
 		// UI mode: use stdin/stdout pipes for JSON streaming
@@ -426,6 +426,14 @@ func (m *Manager) activateSession(session *Session) error {
 		// Start stderr reader for debugging
 		m.wg.Add(1)
 		go m.readStderr(session)
+
+		// UI mode: signal ready after brief delay (Claude waits for input before outputting)
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			if session.ready != nil {
+				close(session.ready)
+			}
+		}()
 	} else {
 		// CLI mode: use PTY for raw terminal I/O
 		ptmx, err := pty.Start(cmd)
@@ -447,12 +455,6 @@ func (m *Manager) activateSession(session *Session) error {
 	// Monitor process state in background
 	m.wg.Add(1)
 	go m.monitorProcess(session)
-
-	log.Debug().
-		Str("sessionId", session.ID).
-		Int("pid", session.ProcessID).
-		Str("mode", string(session.Mode)).
-		Msg("activated session")
 
 	return nil
 }
@@ -738,15 +740,12 @@ func (m *Manager) readPTY(session *Session) {
 // so we split them before broadcasting.
 func (m *Manager) readJSON(session *Session) {
 	defer m.wg.Done()
+	log.Info().Str("sessionId", session.ID).Msg("readJSON: goroutine started")
 
 	if session.Stdout == nil {
 		log.Error().Str("sessionId", session.ID).Msg("readJSON called but stdout is nil")
 		return
 	}
-
-	// Signal ready immediately for UI mode since we get structured events
-	var readyOnce sync.Once
-	firstMessageReceived := false
 
 	scanner := bufio.NewScanner(session.Stdout)
 	// Set a large buffer for potentially large JSON messages (10MB for resumed sessions with history)
@@ -765,16 +764,6 @@ func (m *Manager) readJSON(session *Session) {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
-		}
-
-		// Signal ready after first message
-		if !firstMessageReceived {
-			firstMessageReceived = true
-			if session.ready != nil {
-				readyOnce.Do(func() {
-					close(session.ready)
-				})
-			}
 		}
 
 		// Split concatenated JSON objects (Claude may output multiple on one line)

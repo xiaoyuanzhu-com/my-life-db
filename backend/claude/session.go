@@ -126,25 +126,42 @@ func (s *Session) Broadcast(data []byte) {
 	}
 }
 
-// EnsureActivated ensures the session is activated (Claude process is running)
-// If not activated, it calls the activation function to spawn the process
+// EnsureActivated ensures the session is activated and ready to receive input.
+// If not activated, it calls the activation function to spawn the process and waits for readiness.
 func (s *Session) EnsureActivated() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.activated {
+		s.mu.Unlock()
 		return nil
 	}
 
 	if s.activateFn == nil {
+		s.mu.Unlock()
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
 	if err := s.activateFn(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
 	s.activated = true
+	readyChan := s.ready
+	s.mu.Unlock()
+
+	// Wait for readiness (UI mode: 100ms timer, CLI mode: first output)
+	if readyChan != nil {
+		select {
+		case <-readyChan:
+		case <-time.After(5 * time.Second):
+		}
+	}
+
+	// Brief additional delay for CLI mode to ensure readline is fully initialized
+	if s.Mode == ModeCLI {
+		time.Sleep(200 * time.Millisecond)
+	}
+
 	return nil
 }
 
@@ -153,32 +170,6 @@ func (s *Session) IsActivated() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.activated
-}
-
-// WaitUntilReady waits for the session to be ready to receive input
-// Returns error if timeout is reached or session is not activated
-func (s *Session) WaitUntilReady(timeout time.Duration) error {
-	s.mu.RLock()
-	readyChan := s.ready
-	activated := s.activated
-	s.mu.RUnlock()
-
-	if !activated {
-		return fmt.Errorf("session not activated")
-	}
-
-	if readyChan == nil {
-		// Session was activated before the ready channel was added (legacy sessions)
-		// Assume it's ready
-		return nil
-	}
-
-	select {
-	case <-readyChan:
-		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout waiting for session to be ready")
-	}
 }
 
 // ToJSON returns a JSON-safe representation of the session
@@ -198,11 +189,18 @@ func (s *Session) ToJSON() map[string]interface{} {
 	}
 }
 
-// SendInputUI sends a user message to Claude via JSON stdin (UI mode only)
+// SendInputUI sends a user message to Claude via JSON stdin (UI mode only).
+// Automatically activates the session if needed.
 func (s *Session) SendInputUI(content string) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendInputUI called on non-UI session")
 	}
+
+	// Ensure session is activated and ready
+	if err := s.EnsureActivated(); err != nil {
+		return fmt.Errorf("failed to activate session: %w", err)
+	}
+
 	if s.Stdin == nil {
 		return fmt.Errorf("session stdin not available")
 	}

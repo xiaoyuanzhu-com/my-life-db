@@ -424,39 +424,23 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 		return
 	}
 
-	// Ensure session is activated
-	wasInactive := !session.IsActivated()
-	if err := session.EnsureActivated(); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate session"})
-		return
-	}
-
-	// Wait for Claude to be ready if we just activated it
-	if wasInactive {
-		if err := session.WaitUntilReady(5 * time.Second); err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("session not ready in time")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session activation timed out"})
-			return
-		}
-
-		// Brief delay for CLI mode to ensure readline is fully initialized
-		if session.Mode == claude.ModeCLI {
-			time.Sleep(200 * time.Millisecond)
-		}
-		log.Info().Str("sessionId", sessionID).Msg("Session ready, sending message")
-	}
-
 	// Send message based on mode
 	if session.Mode == claude.ModeUI {
-		// UI mode: send JSON message to stdin
+		// UI mode: SendInputUI handles activation internally
 		if err := session.SendInputUI(req.Content); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to session"})
 			return
 		}
 	} else {
-		// CLI mode: send to PTY character by character
+		// CLI mode: ensure activated, then send to PTY
+		if err := session.EnsureActivated(); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate session"})
+			return
+		}
+
+		// Send to PTY character by character
 		for _, ch := range req.Content {
 			charByte := []byte(string(ch))
 			if _, err := session.PTY.Write(charByte); err != nil {
@@ -774,44 +758,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Activate session on first message (lazy activation)
-			wasInactive := !session.IsActivated()
-			if wasInactive {
-				log.Debug().Str("sessionId", sessionID).Msg("Activating session on first message")
-				if err := session.EnsureActivated(); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
-					errMsg := map[string]interface{}{
-						"type":  "error",
-						"error": "Failed to activate session",
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						conn.Write(ctx, websocket.MessageText, msgBytes)
-					}
-					break
-				}
-
-				// Wait for Claude to be ready (first output received)
-				if err := session.WaitUntilReady(5 * time.Second); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("session not ready in time")
-					errMsg := map[string]interface{}{
-						"type":  "error",
-						"error": "Session activation timed out",
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						conn.Write(ctx, websocket.MessageText, msgBytes)
-					}
-					break
-				}
-
-				// Brief delay for CLI mode to ensure readline is fully initialized
-				if session.Mode == claude.ModeCLI {
-					time.Sleep(200 * time.Millisecond)
-				}
-			}
-
 			// Send message based on mode
 			if session.Mode == claude.ModeUI {
-				// UI mode: send JSON message to stdin
+				// UI mode: SendInputUI handles activation internally
 				if err := session.SendInputUI(inMsg.Content); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
 					errMsg := map[string]interface{}{
@@ -824,6 +773,18 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					break
 				}
 			} else {
+				// CLI mode: ensure activated, then send to PTY
+				if err := session.EnsureActivated(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
+					errMsg := map[string]interface{}{
+						"type":  "error",
+						"error": "Failed to activate session",
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+					break
+				}
 				// CLI mode: Send message to Claude by writing to PTY
 				// Send each character separately to avoid readline paste detection
 				for _, ch := range inMsg.Content {
