@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { MessageDot } from './message-dot'
 
 interface ClaudeWIPProps {
@@ -8,15 +9,31 @@ interface ClaudeWIPProps {
 }
 
 /**
- * ClaudeWIP - Work-in-Progress indicator with blinking dot
+ * ClaudeWIP - Work-in-Progress indicator with typing effect
  *
- * Displays a text string with a blinking orange dot, matching the official
- * Claude Code UI style. Renders in the same layout as message blocks.
+ * Displays a text string with a blinking orange dot and typing animation.
+ * The text types out character by character, then repeats.
  *
  * Example:
- * <ClaudeWIP text="Finagling..." />
+ * <ClaudeWIP text="Working..." />
  */
 export function ClaudeWIP({ text, className = '' }: ClaudeWIPProps) {
+  const [charIndex, setCharIndex] = useState(1)
+
+  useEffect(() => {
+    if (!text) return
+
+    const interval = setInterval(() => {
+      setCharIndex((prev) => (prev >= text.length ? 1 : prev + 1))
+    }, 80)
+
+    return () => clearInterval(interval)
+  }, [text])
+
+  useEffect(() => {
+    setCharIndex(1)
+  }, [text])
+
   if (!text) return null
 
   return (
@@ -26,7 +43,7 @@ export function ClaudeWIP({ text, className = '' }: ClaudeWIPProps) {
         className="text-[15px] leading-relaxed font-sans"
         style={{ color: '#E07A5F' }}
       >
-        {text}
+        {text.slice(0, charIndex)}
       </span>
     </div>
   )
