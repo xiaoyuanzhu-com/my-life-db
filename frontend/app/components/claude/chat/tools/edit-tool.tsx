@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { MessageDot } from '../message-dot'
 import type { ToolCall, EditToolParams } from '~/types/claude'
 
@@ -5,12 +6,26 @@ interface EditToolViewProps {
   toolCall: ToolCall
 }
 
+const MAX_OLD_LINES = 5
+const MAX_NEW_LINES = 5
+
 export function EditToolView({ toolCall }: EditToolViewProps) {
   const params = toolCall.parameters as EditToolParams
+  const [expanded, setExpanded] = useState(false)
 
   // Split into lines for unified diff view
   const oldLines = params.old_string.split('\n')
   const newLines = params.new_string.split('\n')
+
+  // Check if truncation is needed
+  const isTruncated = oldLines.length > MAX_OLD_LINES || newLines.length > MAX_NEW_LINES
+
+  // Get lines to display
+  const displayOldLines = expanded ? oldLines : oldLines.slice(0, MAX_OLD_LINES)
+  const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
+
+  const hiddenOldCount = oldLines.length - MAX_OLD_LINES
+  const hiddenNewCount = newLines.length - MAX_NEW_LINES
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -32,11 +47,14 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
 
       {/* Unified diff view */}
       <div
-        className="rounded-md overflow-hidden"
-        style={{ border: '1px solid var(--claude-border-light)' }}
+        className={`rounded-md overflow-hidden ${expanded ? 'overflow-y-auto' : ''}`}
+        style={{
+          border: '1px solid var(--claude-border-light)',
+          ...(expanded && isTruncated ? { maxHeight: '80vh' } : {}),
+        }}
       >
         {/* Deleted lines */}
-        {oldLines.map((line, i) => (
+        {displayOldLines.map((line, i) => (
           <div
             key={`del-${i}`}
             className="font-mono text-[13px] leading-[1.5] flex"
@@ -51,7 +69,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
         ))}
 
         {/* Added lines */}
-        {newLines.map((line, i) => (
+        {displayNewLines.map((line, i) => (
           <div
             key={`add-${i}`}
             className="font-mono text-[13px] leading-[1.5] flex"
@@ -64,6 +82,23 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
             <span className="flex-1 pr-3 whitespace-pre-wrap break-all">{line}</span>
           </div>
         ))}
+
+        {/* Expand/Collapse button */}
+        {isTruncated && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              backgroundColor: 'var(--claude-bg-secondary)',
+              color: 'var(--claude-text-secondary)',
+              borderTop: '1px solid var(--claude-border-light)',
+            }}
+          >
+            {expanded
+              ? 'Show less'
+              : `Show ${hiddenOldCount > 0 ? `${hiddenOldCount} more deleted` : ''}${hiddenOldCount > 0 && hiddenNewCount > 0 ? ' + ' : ''}${hiddenNewCount > 0 ? `${hiddenNewCount} more added` : ''} lines`}
+          </button>
+        )}
       </div>
 
       {/* Error */}
