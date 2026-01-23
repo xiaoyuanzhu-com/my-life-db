@@ -308,6 +308,64 @@ PERMISSION REQUEST
   - Solution: Use `CLAUDE_ENV_FILE=/path/to/setup.sh` before running `claude`
 - **Each command runs in fresh shell environment**
 
+### TodoWrite Tool
+
+The TodoWrite tool enables Claude to track task progress, giving users visibility into multi-step operations.
+
+**Message Flow:**
+
+1. **Assistant calls TodoWrite** (`tool_use`):
+```json
+{
+  "type": "assistant",
+  "message": {
+    "content": [{
+      "id": "toolu_01USWNXyVxLzK8uWHxanbaDJ",
+      "name": "TodoWrite",
+      "type": "tool_use",
+      "input": {
+        "todos": [
+          {"content": "Create new file", "activeForm": "Creating new file", "status": "in_progress"},
+          {"content": "Update imports", "activeForm": "Updating imports", "status": "pending"},
+          {"content": "Run tests", "activeForm": "Running tests", "status": "pending"}
+        ]
+      }
+    }]
+  }
+}
+```
+
+2. **System confirms** (`tool_result`):
+```json
+{
+  "type": "user",
+  "message": {
+    "content": [{
+      "type": "tool_result",
+      "tool_use_id": "toolu_01USWNXyVxLzK8uWHxanbaDJ",
+      "content": "Todos have been modified successfully..."
+    }]
+  },
+  "toolUseResult": {
+    "newTodos": [...],
+    "oldTodos": []
+  }
+}
+```
+
+**TodoItem Structure:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | Task description in imperative form ("Create file") |
+| `activeForm` | string | Present continuous form ("Creating file") - shown when in_progress |
+| `status` | `"pending"` \| `"in_progress"` \| `"completed"` | Current task state |
+
+**Display Rules:**
+- `pending` → Show `content` with empty checkbox (○)
+- `in_progress` → Show `activeForm` with half-filled indicator (◐)
+- `completed` → Show `content` with strikethrough and filled checkbox (●)
+
 ---
 
 ## 3. Permission System

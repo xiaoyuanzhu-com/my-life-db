@@ -11,6 +11,7 @@ import { GrepToolView } from './tools/grep-tool'
 import { WebFetchToolView } from './tools/web-fetch-tool'
 import { WebSearchToolView } from './tools/web-search-tool'
 import { TaskToolView } from './tools/task-tool'
+import { TodoToolView } from './tools/todo-tool'
 
 interface ToolBlockProps {
   toolCall: ToolCall
@@ -39,6 +40,8 @@ function getToolSummary(toolCall: ToolCall): string {
       return params.query || 'query'
     case 'Task':
       return params.description || 'task'
+    case 'TodoWrite':
+      return `${params.todos?.length || 0} items`
     default:
       return ''
   }
@@ -71,6 +74,8 @@ function ToolContent({ toolCall }: { toolCall: ToolCall }) {
       return <WebSearchToolView toolCall={toolCall} />
     case 'Task':
       return <TaskToolView toolCall={toolCall} />
+    case 'TodoWrite':
+      return <TodoToolView toolCall={toolCall} />
     default:
       return <GenericToolView toolCall={toolCall} />
   }
