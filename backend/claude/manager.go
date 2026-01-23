@@ -783,13 +783,20 @@ func (m *Manager) readJSON(session *Session) {
 				continue
 			}
 
+			// Log all message types for debugging
+			msgType, _ := msg["type"].(string)
+			log.Info().
+				Str("sessionId", session.ID).
+				Str("type", msgType).
+				Msg("received message from Claude CLI")
+
 			// Check if this is a control request that needs to be handled
-			if msgType, ok := msg["type"].(string); ok && msgType == "control_request" {
+			if msgType == "control_request" {
 				// Broadcast control request to clients for UI handling
-				log.Debug().
+				log.Info().
 					Str("sessionId", session.ID).
 					Interface("request", msg).
-					Msg("received control request")
+					Msg("control_request details")
 			}
 
 			// Broadcast to all connected clients (and cache for late-joining clients)

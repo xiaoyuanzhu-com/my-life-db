@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // SessionMode defines how a session communicates with the Claude CLI
@@ -282,13 +283,21 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	// Check if this is an init message (signals fresh start from Claude)
 	var msg map[string]interface{}
 	if err := json.Unmarshal(data, &msg); err == nil {
-		if msgType, _ := msg["type"].(string); msgType == "system" {
+		msgType, _ := msg["type"].(string)
+		if msgType == "system" {
 			if subtype, _ := msg["subtype"].(string); subtype == "init" {
 				// Clear cache - Claude is providing fresh history
 				s.cacheMu.Lock()
 				s.cachedMessages = nil
 				s.cacheMu.Unlock()
 			}
+		}
+		// Log control_request being broadcast
+		if msgType == "control_request" {
+			log.Info().
+				Str("sessionId", s.ID).
+				Int("numClients", len(s.Clients)).
+				Msg("broadcasting control_request to clients")
 		}
 	}
 
@@ -307,6 +316,7 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		case client.Send <- data:
 		default:
 			// Client's send buffer is full, skip
+			log.Warn().Str("sessionId", s.ID).Msg("client send buffer full, skipping message")
 		}
 	}
 }

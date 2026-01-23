@@ -325,7 +325,7 @@ export function ChatInterface({
 
           {/* Work-in-Progress Indicator - show when Claude is working (before result message) */}
           {isWorking && (
-            <div className="px-4 py-2 border-t border-border">
+            <div className="max-w-3xl mx-auto px-6">
               <ClaudeWIP
                 text={
                   activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||

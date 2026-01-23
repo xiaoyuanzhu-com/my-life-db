@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react'
-
 interface ClaudeWIPProps {
   /** The task text to display (e.g., "Finagling...", "Reading files...") */
   text: string
@@ -8,63 +6,33 @@ interface ClaudeWIPProps {
 }
 
 /**
- * ClaudeWIP - Work-in-Progress indicator with typing animation
+ * ClaudeWIP - Work-in-Progress indicator with blinking dot
  *
- * Displays a text string with a typewriter effect, similar to the official
- * Claude Code UI. The text cycles through showing characters with an ellipsis
- * animation to indicate ongoing work.
+ * Displays a text string with a blinking orange dot, matching the official
+ * Claude Code UI style. Renders in the same layout as message blocks.
  *
  * Example:
  * <ClaudeWIP text="Finagling..." />
- *
- * The animation creates a typing effect where characters appear one by one,
- * then the text resets and types again, creating a continuous loop.
  */
 export function ClaudeWIP({ text, className = '' }: ClaudeWIPProps) {
-  const [displayText, setDisplayText] = useState('')
-  const [charIndex, setCharIndex] = useState(0)
-
-  useEffect(() => {
-    // Reset animation when text changes
-    setCharIndex(0)
-    setDisplayText('')
-  }, [text])
-
-  useEffect(() => {
-    // Typing animation logic
-    if (charIndex < text.length) {
-      const timeout = setTimeout(() => {
-        setDisplayText(text.substring(0, charIndex + 1))
-        setCharIndex(charIndex + 1)
-      }, 100) // 100ms per character
-
-      return () => clearTimeout(timeout)
-    } else {
-      // When fully typed, wait 1 second then restart
-      const timeout = setTimeout(() => {
-        setCharIndex(0)
-        setDisplayText('')
-      }, 1000)
-
-      return () => clearTimeout(timeout)
-    }
-  }, [charIndex, text])
-
   if (!text) return null
 
   return (
-    <div className={`flex items-center gap-2 text-sm text-muted-foreground ${className}`}>
-      {/* Blinking dot indicator */}
-      <div className="relative flex h-2 w-2">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400/75"></span>
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-      </div>
+    <div className={`flex gap-2 mb-4 ${className}`}>
+      {/* Blinking dot - matches MessageDot layout (h-6 for prose line-height) */}
+      <span
+        className="select-none font-mono text-xs h-6 flex items-center shrink-0 animate-pulse"
+        style={{ color: '#E07A5F' }}
+      >
+        ●
+      </span>
 
-      {/* Typing text */}
-      <span className="font-mono">
-        {displayText}
-        {/* Blinking cursor */}
-        <span className="inline-block w-[2px] h-[1em] bg-current ml-[2px] animate-[blink_1s_ease-in-out_infinite]" />
+      {/* WIP text */}
+      <span
+        className="text-[15px] leading-relaxed font-sans"
+        style={{ color: '#E07A5F' }}
+      >
+        {text}
       </span>
     </div>
   )
