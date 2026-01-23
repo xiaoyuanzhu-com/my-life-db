@@ -217,7 +217,24 @@ func (c *SessionIndexCache) scanForMissingJSONL() {
 	}
 }
 
+// uselessMessageTypes defines message types that don't constitute meaningful session content.
+// A session with ONLY these message types will be ignored.
+var uselessMessageTypes = map[string]bool{
+	"file-history-snapshot": true,
+}
+
+// hasUsefulMessages checks if the session has at least one useful message.
+func hasUsefulMessages(messages []models.SessionMessageI) bool {
+	for _, msg := range messages {
+		if !uselessMessageTypes[msg.GetType()] {
+			return true
+		}
+	}
+	return false
+}
+
 // parseJSONLFile parses a JSONL file and extracts session metadata.
+// Returns nil if the session has no useful messages (sanity check).
 func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedSessionEntry {
 	messages, err := ReadSessionHistoryRaw(sessionID, "")
 	if err != nil {
@@ -226,6 +243,12 @@ func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedS
 	}
 
 	if len(messages) == 0 {
+		return nil
+	}
+
+	// Sanity check: ignore sessions with only useless messages
+	if !hasUsefulMessages(messages) {
+		log.Debug().Str("sessionId", sessionID).Int("messageCount", len(messages)).Msg("ignoring session with no useful messages")
 		return nil
 	}
 
