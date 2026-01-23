@@ -50,7 +50,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
         className={`rounded-md overflow-hidden ${expanded ? 'overflow-y-auto' : ''}`}
         style={{
           border: '1px solid var(--claude-border-light)',
-          ...(expanded && isTruncated ? { maxHeight: '80vh' } : {}),
+          ...(expanded && isTruncated ? { maxHeight: '60vh' } : {}),
         }}
       >
         {/* Deleted lines */}
