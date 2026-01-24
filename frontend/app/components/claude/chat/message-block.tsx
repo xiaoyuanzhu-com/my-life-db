@@ -141,16 +141,16 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
         </div>
       )}
 
-      {/* Compact boundary: system message style */}
+      {/* Compact boundary: system message style (matches Bash tool title) */}
       {isCompactBoundary && (
         <div className="flex items-start gap-2">
           <MessageDot status="completed" lineHeight="mono" />
-          <div
-            className="font-mono text-[13px] leading-[1.5]"
-            style={{ color: 'var(--claude-text-secondary)' }}
+          <span
+            className="font-mono text-[13px] leading-[1.5] font-semibold"
+            style={{ color: 'var(--claude-text-primary)' }}
           >
             Session compacted
-          </div>
+          </span>
         </div>
       )}
 
