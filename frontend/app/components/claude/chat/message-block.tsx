@@ -361,39 +361,61 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
 }
 
 // Compact summary block - collapsible markdown content for session continuations
-function CompactSummaryBlock({ content }: { content: string }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [html, setHtml] = useState('')
+const MAX_SUMMARY_LINES = 10
 
+function CompactSummaryBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const lines = content.split('\n')
+  const isTruncated = lines.length > MAX_SUMMARY_LINES
+  const displayContent = expanded ? content : lines.slice(0, MAX_SUMMARY_LINES).join('\n')
+
+  const [html, setHtml] = useState('')
   useEffect(() => {
-    const parsed = marked.parse(content)
+    const parsed = marked.parse(displayContent)
     setHtml(parsed as string)
-  }, [content])
+  }, [displayContent])
 
   return (
     <div className="flex items-start gap-2">
       <MessageDot status="completed" lineHeight="mono" />
       <div className="flex-1 min-w-0">
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="font-mono text-[13px] leading-[1.5] flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
+        <span
+          className="font-mono text-[13px] leading-[1.5] font-semibold"
           style={{ color: 'var(--claude-text-primary)' }}
         >
-          <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
-          <span className="font-semibold">Session continued</span>
-        </button>
+          Session continued
+        </span>
 
-        {isExpanded && (
+        <div
+          className="mt-2 rounded-md overflow-hidden"
+          style={{ border: '1px solid var(--claude-border-light)' }}
+        >
           <div
-            className="mt-2 ml-6 p-4 rounded-lg prose-claude overflow-y-auto"
-            style={{
-              backgroundColor: 'var(--claude-bg-code-block)',
-              maxHeight: '60vh',
-            }}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
+            className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+            style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+          >
+            <div
+              className="p-4 prose-claude"
+              style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+
+          {isTruncated && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{
+                backgroundColor: 'var(--claude-bg-secondary)',
+                color: 'var(--claude-text-secondary)',
+                borderTop: '1px solid var(--claude-border-light)',
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
