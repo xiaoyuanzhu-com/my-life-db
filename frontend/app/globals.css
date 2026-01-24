@@ -515,3 +515,19 @@
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--claude-border-light);
 }
+
+/* Shiki dual theme support - light mode by default */
+.shiki,
+.shiki span {
+  color: var(--shiki-light) !important;
+  background-color: var(--shiki-light-bg) !important;
+}
+
+/* Shiki dark mode via system preference */
+@media (prefers-color-scheme: dark) {
+  .shiki,
+  .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}

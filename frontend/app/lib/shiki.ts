@@ -4,6 +4,9 @@ import { marked } from 'marked'
 let highlighter: Highlighter | null = null
 let loading: Promise<Highlighter> | null = null
 
+const LIGHT_THEME = 'github-light'
+const DARK_THEME = 'github-dark'
+
 const PRELOADED_LANGS = [
   'javascript',
   'typescript',
@@ -29,7 +32,7 @@ export async function getHighlighter(): Promise<Highlighter> {
 
   if (!loading) {
     loading = createHighlighter({
-      themes: ['github-dark-dimmed'],
+      themes: [LIGHT_THEME, DARK_THEME],
       langs: PRELOADED_LANGS,
     }).then((h) => {
       highlighter = h
@@ -60,7 +63,11 @@ function configureMarked(hl: Highlighter) {
         try {
           return hl.codeToHtml(text, {
             lang: language,
-            theme: 'github-dark-dimmed',
+            themes: {
+              light: LIGHT_THEME,
+              dark: DARK_THEME,
+            },
+            defaultColor: false, // Use CSS variables, no default
           })
         } catch {
           // Unknown language - fall back to plain code block
