@@ -197,18 +197,32 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 
 ## Dark Mode (IMPORTANT)
 
-This project uses **CSS media query-based dark mode**, NOT class-based.
+This project uses **class-based dark mode** with `.dark` class on `<html>` element.
+
+**How it works:**
+- `ThemeToggle` component cycles between: `auto` → `light` → `dark`
+- In `light`/`dark` mode: adds `.light` or `.dark` class to `<html>`
+- In `auto` mode: removes classes, falls back to system preference via `matchMedia`
+- CSS variables in `globals.css` define colors for `:root` (light) and `.dark` (dark)
 
 ```tsx
-// WRONG - dark: variant won't work (no .dark class)
-className="bg-white dark:bg-zinc-900"
-
-// CORRECT - use semantic variables
+// CORRECT - use semantic variables (work in both themes)
 className="bg-background text-foreground"
 className="bg-muted border-border"
 
 // For status colors, use opacity
 className="bg-destructive/10 border-destructive/30"
+
+// Tailwind dark: variant also works (via @custom-variant in globals.css)
+className="bg-white dark:bg-zinc-900"
+```
+
+**For dynamic theme detection in JS:**
+```ts
+// Check if dark mode is active
+const isDark = document.documentElement.classList.contains('dark') ||
+  (!document.documentElement.classList.contains('light') &&
+   window.matchMedia('(prefers-color-scheme: dark)').matches)
 ```
 
 Available semantic colors: `background`, `foreground`, `card`, `muted`, `primary`, `destructive`, `border`, `input`, `ring`
