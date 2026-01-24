@@ -512,7 +512,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// For CLI mode only: Send existing messages from JSONL file on connect
 	// For UI mode: Claude outputs history on stdout when session activates, so no need to read JSONL
 	if session.Mode == claude.ModeCLI {
-		initialMessages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+		initialMessages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
 		if err == nil && len(initialMessages) > 0 {
 			log.Debug().
 				Str("sessionId", sessionID).
@@ -610,8 +610,8 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			defer updateMutex.Unlock()
 
 			if updateType == "messages" || updateType == "all" {
-				// Read session history
-				messages, err := claude.ReadSessionHistory(sessionID, session.WorkingDir)
+				// Read session history (use Raw version for passthrough serialization)
+				messages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
 				if err != nil {
 					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
 				} else if len(messages) > lastMessageCount {

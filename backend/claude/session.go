@@ -232,6 +232,10 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 
 // LoadMessageCache loads messages from JSONL file into cache (UI mode)
 // Only loads once; subsequent calls are no-op
+//
+// IMPORTANT: Uses ReadSessionHistoryRaw to preserve all message fields.
+// The SessionMessageI interface's MarshalJSON() returns raw bytes from the JSONL file,
+// ensuring system message fields (subtype, compactMetadata, etc.) are not lost.
 func (s *Session) LoadMessageCache() error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
@@ -240,15 +244,15 @@ func (s *Session) LoadMessageCache() error {
 		return nil
 	}
 
-	// Read from JSONL file
-	messages, err := ReadSessionHistory(s.ID, s.WorkingDir)
+	// Read from JSONL file using Raw reader to preserve all fields
+	messages, err := ReadSessionHistoryRaw(s.ID, s.WorkingDir)
 	if err != nil {
 		// Not an error if file doesn't exist (new session)
 		s.cacheLoaded = true
 		return nil
 	}
 
-	// Convert to [][]byte
+	// Convert to [][]byte - SessionMessageI.MarshalJSON() returns raw bytes
 	for _, msg := range messages {
 		if data, err := json.Marshal(msg); err == nil {
 			s.cachedMessages = append(s.cachedMessages, data)

@@ -9,6 +9,7 @@ import {
   isToolUseBlock,
   isToolResultError,
   isBashToolResult,
+  isCompactBoundaryMessage,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
@@ -109,16 +110,19 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
     return null
   }, [isSystem, message])
 
+  // Check for compact boundary
+  const isCompactBoundary = isCompactBoundaryMessage(message)
+
   // Determine what to render
   const hasUserContent = isUser && userTextContent
   const hasAssistantText = isAssistant && textContent
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !hasUnknownSystem) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !hasUnknownSystem) {
     return null
   }
 
@@ -133,6 +137,19 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
           <MessageDot status="completed" lineHeight="mono" />
           <div className="flex-1 min-w-0">
             <SystemInitBlock data={systemInitData!} />
+          </div>
+        </div>
+      )}
+
+      {/* Compact boundary: system message style */}
+      {isCompactBoundary && (
+        <div className="flex items-start gap-2">
+          <MessageDot status="completed" lineHeight="mono" />
+          <div
+            className="font-mono text-[13px] leading-[1.5]"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            Session compacted
           </div>
         </div>
       )}

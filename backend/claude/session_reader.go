@@ -14,7 +14,14 @@ import (
 
 // ReadSessionHistoryRaw reads a session JSONL file and returns typed messages.
 // Each message is parsed into its specific type (UserSessionMessage, AssistantSessionMessage, etc.)
-// All messages preserve raw JSON for passthrough serialization.
+// All messages preserve raw JSON for passthrough serialization via MarshalJSON().
+//
+// This is the ONLY session reader function - use for both API responses and internal operations.
+// For typed access (e.g., extracting user prompts), use type assertion:
+//
+//	if userMsg, ok := msg.(*models.UserSessionMessage); ok {
+//	    prompt := userMsg.GetUserPrompt()
+//	}
 func ReadSessionHistoryRaw(sessionID, projectPath string) ([]models.SessionMessageI, error) {
 	// Find the JSONL file
 	filePath, err := findSessionFile(sessionID, projectPath)
@@ -208,74 +215,6 @@ func parseTypedMessage(lineBytes []byte, lineNum int, sessionID string) models.S
 	}
 }
 
-// ReadSessionHistory reads and parses a session JSONL file (typed version).
-// This is used for internal operations that need typed access (e.g., title extraction).
-// For API responses, use ReadSessionHistoryRaw instead.
-func ReadSessionHistory(sessionID, projectPath string) ([]models.SessionMessage, error) {
-	// Find the JSONL file
-	filePath, err := findSessionFile(sessionID, projectPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Open the file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open session file: %w", err)
-	}
-	defer file.Close()
-
-	var messages []models.SessionMessage
-	reader := bufio.NewReader(file)
-	lineNum := 0
-
-	for {
-		lineNum++
-
-		// ReadBytes reads until delimiter, no size limit
-		lineBytes, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err.Error() == "EOF" {
-				// Process last line if it exists
-				if len(lineBytes) > 0 {
-					line := strings.TrimSpace(string(lineBytes))
-					if line != "" {
-						var msg models.SessionMessage
-						if err := json.Unmarshal([]byte(line), &msg); err == nil {
-							messages = append(messages, msg)
-						}
-					}
-				}
-				break
-			}
-			return nil, fmt.Errorf("error reading session file: %w", err)
-		}
-
-		line := strings.TrimSpace(string(lineBytes))
-
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-
-		// Try to parse the line as JSON
-		var msg models.SessionMessage
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			// Skip lines that fail to parse (may be mid-write or malformed)
-			log.Debug().
-				Err(err).
-				Int("line", lineNum).
-				Str("sessionId", sessionID).
-				Msg("skipped unparseable line in session file")
-			continue
-		}
-
-		messages = append(messages, msg)
-	}
-
-	return messages, nil
-}
-
 // findSessionFile locates the JSONL file for a session
 func findSessionFile(sessionID, projectPath string) (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -446,17 +385,20 @@ func GetAllSessionIndexes() (*models.SessionIndex, error) {
 // GetFirstUserPrompt reads the session JSONL and extracts the actual first user prompt
 // (filtering out system-injected tags). Returns empty string if no user prompt found.
 func GetFirstUserPrompt(sessionID, projectPath string) string {
-	messages, err := ReadSessionHistory(sessionID, projectPath)
+	messages, err := ReadSessionHistoryRaw(sessionID, projectPath)
 	if err != nil {
 		return ""
 	}
 
 	// Find first user message with actual user content
 	for _, msg := range messages {
-		if msg.Type == "user" {
-			userPrompt := msg.GetUserPrompt()
-			if userPrompt != "" {
-				return userPrompt
+		if msg.GetType() == "user" {
+			// Type assert to UserSessionMessage to access GetUserPrompt()
+			if userMsg, ok := msg.(*models.UserSessionMessage); ok {
+				userPrompt := userMsg.GetUserPrompt()
+				if userPrompt != "" {
+					return userPrompt
+				}
 			}
 		}
 	}
