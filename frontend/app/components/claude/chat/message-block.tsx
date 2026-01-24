@@ -14,7 +14,7 @@ import {
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
-import { marked } from 'marked'
+import { parseMarkdown } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
@@ -212,11 +212,6 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   )
 }
 
-// Configure marked for safe rendering
-marked.setOptions({
-  breaks: true, // Convert \n to <br>
-  gfm: true, // GitHub Flavored Markdown
-})
 
 // Group consecutive tool calls of the same type
 function ToolCallGroups({ toolCalls }: { toolCalls: ToolCall[] }) {
@@ -291,14 +286,20 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
   )
 }
 
-// Markdown content renderer using marked - Claude Code style
+// Markdown content renderer using marked + shiki
 function MessageContent({ content }: { content: string }) {
   const [html, setHtml] = useState('')
 
   useEffect(() => {
-    // Parse markdown to HTML (synchronous in marked v17)
-    const parsed = marked.parse(content)
-    setHtml(parsed as string)
+    let cancelled = false
+
+    parseMarkdown(content).then((parsed) => {
+      if (!cancelled) setHtml(parsed)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [content])
 
   return (
@@ -372,8 +373,15 @@ function CompactSummaryBlock({ content }: { content: string }) {
 
   const [html, setHtml] = useState('')
   useEffect(() => {
-    const parsed = marked.parse(displayContent)
-    setHtml(parsed as string)
+    let cancelled = false
+
+    parseMarkdown(displayContent).then((parsed) => {
+      if (!cancelled) setHtml(parsed)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [displayContent])
 
   return (

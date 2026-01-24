@@ -37,6 +37,7 @@
     "react-pdf": "^10.2.0",
     "react-resizable-panels": "^3.0.6",
     "react-router": "^7.1.0",
+    "shiki": "^3.21.0",
     "simple-icons": "^15.17.0",
     "tailwind-merge": "^3.3.1",
     "tus-js-client": "^4.3.1",
