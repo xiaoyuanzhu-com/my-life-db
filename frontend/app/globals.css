@@ -476,16 +476,12 @@
   border: 1px solid var(--claude-border-light);
 }
 
-/* Shiki dual theme support - light mode by default */
-.shiki,
+/* Shiki dual theme support - spans get color only, pre gets background */
 .shiki span {
   color: var(--shiki-light) !important;
-  background-color: var(--shiki-light-bg) !important;
+  background-color: transparent !important;
 }
 
-/* Shiki dark mode via .dark class */
-.dark .shiki,
 .dark .shiki span {
   color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
 }
