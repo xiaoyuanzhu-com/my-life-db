@@ -58,10 +58,11 @@ type Session struct {
 
 	// UI mode message cache - stores all messages for clients connecting at any time
 	// Before activation: loaded from JSONL file
-	// After activation: replaced with Claude's stdout (init + history)
-	cachedMessages   [][]byte     `json:"-"`
-	cacheLoaded      bool         `json:"-"`
-	cacheMu          sync.RWMutex `json:"-"`
+	// After activation: merged with Claude's stdout (deduped by UUID)
+	cachedMessages [][]byte         `json:"-"`
+	seenUUIDs      map[string]bool  `json:"-"` // Track seen message UUIDs for deduplication
+	cacheLoaded    bool             `json:"-"`
+	cacheMu        sync.RWMutex     `json:"-"`
 
 	// Pending control requests (UI mode) - maps request_id to response channel
 	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
@@ -244,6 +245,11 @@ func (s *Session) LoadMessageCache() error {
 		return nil
 	}
 
+	// Initialize seenUUIDs map
+	if s.seenUUIDs == nil {
+		s.seenUUIDs = make(map[string]bool)
+	}
+
 	// Read from JSONL file using Raw reader to preserve all fields
 	messages, err := ReadSessionHistoryRaw(s.ID, s.WorkingDir)
 	if err != nil {
@@ -252,10 +258,16 @@ func (s *Session) LoadMessageCache() error {
 		return nil
 	}
 
-	// Convert to [][]byte - SessionMessageI.MarshalJSON() returns raw bytes
+	// Convert to [][]byte and track UUIDs for deduplication
 	for _, msg := range messages {
 		if data, err := json.Marshal(msg); err == nil {
 			s.cachedMessages = append(s.cachedMessages, data)
+
+			// Extract and track UUID for deduplication
+			uuid := msg.GetUUID()
+			if uuid != "" {
+				s.seenUUIDs[uuid] = true
+			}
 		}
 	}
 
@@ -278,22 +290,31 @@ func (s *Session) GetCachedMessages() [][]byte {
 }
 
 // BroadcastUIMessage handles a message from Claude stdout (UI mode)
-// - Detects "init" message and clears cache (fresh start from Claude)
-// - Adds message to cache
-// - Broadcasts to all connected clients
+// - Deduplicates by UUID (skip if already seen from JSONL)
+// - Adds new messages to cache
+// - Broadcasts new messages to all connected clients
+//
+// NOTE: We merge JSONL messages with stdout messages, deduplicating by UUID.
+// This handles the case where Claude's stdout may replay some messages that
+// are already in the JSONL file.
 func (s *Session) BroadcastUIMessage(data []byte) {
-	// Check if this is an init message (signals fresh start from Claude)
-	var msg map[string]interface{}
-	if err := json.Unmarshal(data, &msg); err == nil {
-		msgType, _ := msg["type"].(string)
-		if msgType == "system" {
-			if subtype, _ := msg["subtype"].(string); subtype == "init" {
-				// Clear cache - Claude is providing fresh history
-				s.cacheMu.Lock()
-				s.cachedMessages = nil
-				s.cacheMu.Unlock()
-			}
+	// Extract UUID for deduplication
+	var msg struct {
+		UUID string `json:"uuid"`
+	}
+	if err := json.Unmarshal(data, &msg); err == nil && msg.UUID != "" {
+		s.cacheMu.Lock()
+		if s.seenUUIDs == nil {
+			s.seenUUIDs = make(map[string]bool)
 		}
+		if s.seenUUIDs[msg.UUID] {
+			// Already seen this message, skip
+			s.cacheMu.Unlock()
+			log.Debug().Str("uuid", msg.UUID).Str("sessionId", s.ID).Msg("skipping duplicate message")
+			return
+		}
+		s.seenUUIDs[msg.UUID] = true
+		s.cacheMu.Unlock()
 	}
 
 	// Add to cache

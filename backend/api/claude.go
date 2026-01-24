@@ -458,6 +458,53 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 	})
 }
 
+// GetClaudeSessionMessages handles GET /api/claude/sessions/:id/messages
+// Returns cached messages for a session (same as WebSocket initial payload)
+// This is useful for debugging without needing a WebSocket connection
+func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	// GetSession will auto-resume from history if not active
+	session, err := claudeManager.GetSession(sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	var messages []json.RawMessage
+
+	if session.Mode == claude.ModeUI {
+		// UI mode: Load from cache (same as WebSocket)
+		if err := session.LoadMessageCache(); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
+		}
+
+		cachedMessages := session.GetCachedMessages()
+		for _, msgBytes := range cachedMessages {
+			messages = append(messages, json.RawMessage(msgBytes))
+		}
+	} else {
+		// CLI mode: Read from JSONL file (same as WebSocket)
+		rawMessages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
+		if err != nil {
+			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no history found")
+		} else {
+			for _, msg := range rawMessages {
+				if msgBytes, err := json.Marshal(msg); err == nil {
+					messages = append(messages, json.RawMessage(msgBytes))
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessionId": sessionID,
+		"mode":      session.Mode,
+		"count":     len(messages),
+		"messages":  messages,
+	})
+}
+
 // ClaudeSubscribeWebSocket handles WebSocket connection for real-time session updates
 // Similar to claude.ai/code's /v1/sessions/ws/:id/subscribe endpoint
 // This provides structured message streaming with tool calls, thinking blocks, etc.
