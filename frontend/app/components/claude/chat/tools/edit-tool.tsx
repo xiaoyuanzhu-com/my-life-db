@@ -24,9 +24,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
   const displayOldLines = expanded ? oldLines : oldLines.slice(0, MAX_OLD_LINES)
   const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
 
-  const totalHiddenCount =
-    Math.max(0, oldLines.length - MAX_OLD_LINES) +
-    Math.max(0, newLines.length - MAX_NEW_LINES)
+  // No need to calculate hidden count - using simple "Show more/less" pattern
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -97,7 +95,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
               borderTop: '1px solid var(--claude-border-light)',
             }}
           >
-            {expanded ? 'Show less' : `Show ${totalHiddenCount} more lines`}
+            {expanded ? 'Show less' : 'Show more'}
           </button>
         )}
       </div>

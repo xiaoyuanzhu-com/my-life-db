@@ -222,7 +222,7 @@ This is the most visually distinct element, representing suggested changes to a 
 *   Icon: File type icon (Go, JS, etc.) or generic file icon (`📄`)
     *   Margin-right: `8px`
 *   Text: `path/to/file.go` (Monospace, Bold/Medium, 13px)
-*   Action Link: "Show full diff (XX more lines)" at bottom (if collapsed)
+*   Action Link: "Show more" / "Show less" at bottom (for truncated content)
 
 **The Diff View Grid:**
 *   **Layout:** Single-column unified diff view (not side-by-side)
@@ -259,10 +259,9 @@ This is the most visually distinct element, representing suggested changes to a 
 **Smart Collapsing (Truncation):**
 *   Limit display to **5 deleted lines + 5 added lines** by default
 *   If either old or new content exceeds 5 lines, show expand button
-*   Button text: `Show X more deleted + Y more added lines` (only shows counts > 0)
+*   Button text: `Show more` (collapsed) / `Show less` (expanded)
 *   When expanded:
     *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
-    *   Button changes to `Show less`
 *   Full-width button at bottom of diff container with `borderTop` separator
 
 </details>
@@ -460,8 +459,8 @@ The UI is not static and must handle real-time content generation.
 ### Smart Collapsing & Expansion
 Large content blocks should not dominate the screen.
 
-*   **Rule:** If a diff exceeds ~20 lines, show the first 5 and last 5, and insert an expansion control.
-*   **Button Text:** `Show 10 collapsed lines` or `Show full diff (XX more lines)`
+*   **Rule:** If content exceeds display limits (5 lines default), show truncated view with an expansion control.
+*   **Button Text:** `Show more` (collapsed) / `Show less` (expanded) - unified across all tool types
 *   **Interaction:** Click to expand inline, smooth animation preferred
 
 ### Iconography
@@ -642,12 +641,11 @@ When multiple tool calls of the same type occur consecutively, they are grouped 
 - Success = green exit code, failure = red
 
 **Smart Collapsing (Truncation):**
-*   Limit display to **5 command lines + 5 output lines** by default
-*   If either command or output exceeds 5 lines, show expand button
-*   Button text: `Show X more command + Y more output lines` (only shows counts > 0)
+*   Limit display to **5 lines + 500 characters** (whichever is shorter) for command and output
+*   If either command or output exceeds limits, show expand button
+*   Button text: `Show more` (collapsed) / `Show less` (expanded)
 *   When expanded:
     *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
-    *   Button changes to `Show less`
 *   Full-width button at bottom of container with `borderTop` separator
 
 </details>
