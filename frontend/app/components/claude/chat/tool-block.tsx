@@ -87,7 +87,10 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
       {/* Parameters */}
       <div>
         <div className="text-xs text-muted-foreground mb-1">Parameters</div>
-        <pre className="text-xs bg-background/50 rounded p-2 overflow-x-auto">
+        <pre
+          className="text-xs rounded p-2 overflow-x-auto"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+        >
           {JSON.stringify(toolCall.parameters, null, 2)}
         </pre>
       </div>
@@ -96,7 +99,10 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
       {toolCall.result !== undefined && (
         <div>
           <div className="text-xs text-muted-foreground mb-1">Result</div>
-          <pre className="text-xs bg-background/50 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto">
+          <pre
+            className="text-xs rounded p-2 overflow-x-auto max-h-48 overflow-y-auto"
+            style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+          >
             {typeof toolCall.result === 'string'
               ? toolCall.result
               : JSON.stringify(toolCall.result, null, 2)}

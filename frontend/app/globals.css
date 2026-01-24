@@ -258,10 +258,11 @@
 }
 
 /* ============================================
-   Claude Code Interface - Scoped Design System
+   Claude Code Interface - Design System
    ============================================ */
 
-.claude-interface {
+/* Claude CSS Variables - globally available */
+:root {
   /* Base Colors */
   --claude-bg-canvas: #FFFFFF;
   --claude-bg-subtle: #F5F4EE;
@@ -287,16 +288,9 @@
   /* Status Colors */
   --claude-status-alert: #D92D20;
   --claude-status-warn: #D97706;
-
-  /* Typography Scale */
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--claude-text-primary);
-  background: var(--claude-bg-canvas);
 }
 
-.dark .claude-interface {
+.dark {
   --claude-bg-canvas: #1A1A1A;
   --claude-bg-subtle: #2A2A2A;
   --claude-bg-code-block: #252525;
@@ -313,6 +307,19 @@
   --claude-diff-del-fg: #F97583;
   --claude-status-alert: #F97583;
   --claude-status-warn: #FFA657;
+}
+
+/* Claude background utility class */
+.claude-bg {
+  background: var(--claude-bg-canvas);
+}
+
+/* Claude interface typography/styling */
+.claude-interface {
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--claude-text-primary);
 }
 
 /* Claude Code Typography Utilities */

@@ -52,11 +52,14 @@ export function ChatInput({
   }
 
   return (
-    <div className="bg-background pb-4">
+    <div className="pb-4 claude-bg">
       {/* Container matches message width */}
       <div className="max-w-3xl mx-auto px-6">
         {/* Input card with 2-row layout */}
-        <div className="border border-border rounded-xl bg-background px-3 py-2">
+        <div
+          className="border border-border rounded-xl px-3 py-2"
+          style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
+        >
           {/* Row 1: Text input */}
           <textarea
             ref={textareaRef}

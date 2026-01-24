@@ -38,7 +38,10 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
 
         <div className="space-y-4">
           {/* Tool parameters */}
-          <div className="rounded-lg bg-muted p-3">
+          <div
+            className="rounded-lg p-3"
+            style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
+          >
             <div className="text-xs text-muted-foreground mb-2">Details</div>
             <ParameterPreview
               toolName={request.toolName}
@@ -88,7 +91,10 @@ function ParameterPreview({
   switch (toolName) {
     case 'Bash':
       return (
-        <pre className="text-xs font-mono bg-background rounded p-2 overflow-x-auto">
+        <pre
+          className="text-xs font-mono rounded p-2 overflow-x-auto"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+        >
           $ {input.command as string}
         </pre>
       )
