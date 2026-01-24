@@ -1,7 +1,22 @@
+import { useEffect } from "react";
 import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
 import "./globals.css";
+
+function useDarkMode() {
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const update = () => {
+      document.documentElement.classList.toggle('dark', mq.matches);
+    };
+
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+}
 
 function ConditionalHeader() {
   const location = useLocation();
@@ -16,6 +31,8 @@ function ConditionalHeader() {
 }
 
 export default function Root() {
+  useDarkMode();
+
   return (
     <div className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
       <AuthProvider>
