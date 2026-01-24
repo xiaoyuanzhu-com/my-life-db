@@ -52,11 +52,11 @@ export function ChatInput({
   }
 
   return (
-    <div className="bg-white pb-4">
+    <div className="bg-background pb-4">
       {/* Container matches message width */}
       <div className="max-w-3xl mx-auto px-6">
         {/* Input card with 2-row layout */}
-        <div className="border border-[#E5E7EB] rounded-xl bg-white px-3 py-2">
+        <div className="border border-border rounded-xl bg-background px-3 py-2">
           {/* Row 1: Text input */}
           <textarea
             ref={textareaRef}
@@ -68,8 +68,8 @@ export function ChatInput({
             rows={1}
             className={cn(
               'w-full resize-none',
-              'text-[15px] text-[#1A1A1A]',
-              'placeholder:text-[#9CA3AF]',
+              'text-[15px] text-foreground',
+              'placeholder:text-muted-foreground',
               'bg-transparent border-none outline-none',
               'disabled:cursor-not-allowed disabled:opacity-50',
               'min-h-[24px]'
@@ -84,7 +84,7 @@ export function ChatInput({
               onClick={handleAttachClick}
               disabled={disabled}
               className={cn(
-                'text-[#4A4A4A] hover:text-[#1A1A1A]',
+                'text-muted-foreground hover:text-foreground',
                 'transition-colors',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
@@ -100,7 +100,7 @@ export function ChatInput({
               disabled={disabled || !content.trim()}
               className={cn(
                 'h-9 w-9 rounded-lg',
-                'bg-[#E5D5C5] hover:bg-[#D5C5B5]',
+                'bg-primary hover:bg-primary/80',
                 'flex items-center justify-center',
                 'transition-all',
                 'disabled:cursor-not-allowed',
@@ -108,7 +108,7 @@ export function ChatInput({
               )}
               aria-label="Send message"
             >
-              <ArrowUp className="h-4 w-4 text-[#1A1A1A]" strokeWidth={2.5} />
+              <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
             </button>
           </div>
         </div>
