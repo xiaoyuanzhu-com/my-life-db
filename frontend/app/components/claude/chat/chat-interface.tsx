@@ -4,7 +4,6 @@ import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { PermissionModal } from './permission-modal'
 import { AskUserQuestion } from './ask-user-question'
-import { ClaudeWIP } from './claude-wip'
 import type {
   TodoItem,
   PermissionRequest,
@@ -323,20 +322,14 @@ export function ChatInterface({
             messages={renderableMessages}
             toolResultMap={toolResultMap}
             optimisticMessage={optimisticMessage}
-          />
-
-          {/* Work-in-Progress Indicator - show when Claude is working (before result message) */}
-          {isWorking && (
-            <div className="max-w-3xl mx-auto px-6">
-              <ClaudeWIP
-                text={
-                  activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
+            wipText={
+              isWorking
+                ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
                   progressMessage ||
                   'Working...'
-                }
-              />
-            </div>
-          )}
+                : null
+            }
+          />
 
           <ChatInput onSend={sendMessage} />
         </div>

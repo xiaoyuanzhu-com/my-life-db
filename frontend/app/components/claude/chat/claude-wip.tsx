@@ -11,40 +11,44 @@ interface ClaudeWIPProps {
 /**
  * ClaudeWIP - Work-in-Progress indicator with typing effect
  *
- * Displays a text string with a blinking orange dot and typing animation.
+ * Displays a text string with a pulsing orange dot and typing animation.
  * The text types out character by character, then repeats.
  *
  * Example:
  * <ClaudeWIP text="Working..." />
  */
-export function ClaudeWIP({ text, className = '' }: ClaudeWIPProps) {
-  const [charIndex, setCharIndex] = useState(1)
+export function ClaudeWIP({ text: rawText, className = '' }: ClaudeWIPProps) {
+  // Ensure text is always a string
+  const text = typeof rawText === 'string' ? rawText : ''
+  const [charIndex, setCharIndex] = useState(0)
 
   useEffect(() => {
     if (!text) return
 
-    const interval = setInterval(() => {
-      setCharIndex((prev) => (prev >= text.length ? 1 : prev + 1))
-    }, 80)
+    const isComplete = charIndex >= text.length
+    const delay = isComplete ? 240 : 120 // Pause at end
 
-    return () => clearInterval(interval)
-  }, [text])
+    const timeout = setTimeout(() => {
+      setCharIndex((prev) => (prev >= text.length ? 0 : prev + 1))
+    }, delay)
+
+    return () => clearTimeout(timeout)
+  }, [text, charIndex])
 
   useEffect(() => {
-    setCharIndex(1)
+    setCharIndex(0)
   }, [text])
 
   if (!text) return null
 
   return (
-    <div className={`flex gap-2 mb-4 ${className}`}>
-      <MessageDot status="in_progress" lineHeight="prose" />
-      <span
-        className="text-[15px] leading-relaxed font-sans"
-        style={{ color: '#E07A5F' }}
-      >
-        {text.slice(0, charIndex)}
-      </span>
+    <div className={`font-mono text-[13px] leading-[1.5] ${className}`}>
+      <div className="flex items-start gap-2">
+        <MessageDot status="in_progress" />
+        <div className="flex-1 min-w-0">
+          <span style={{ color: '#E07A5F' }}>{text.slice(0, charIndex)}</span>
+        </div>
+      </div>
     </div>
   )
 }

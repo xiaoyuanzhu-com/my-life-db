@@ -1,13 +1,15 @@
 import { MessageBlock } from './message-block'
+import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
 
 interface MessageListProps {
   messages: SessionMessage[]
   toolResultMap: Map<string, ExtractedToolResult>
   optimisticMessage?: string | null
+  wipText?: string | null
 }
 
-export function MessageList({ messages, toolResultMap, optimisticMessage }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, wipText }: MessageListProps) {
   return (
     <div className="flex-1 overflow-y-auto claude-interface claude-bg flex flex-col-reverse">
       {/* Centered content container - max-w-3xl like official UI */}
@@ -23,6 +25,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage }: Mess
           </div>
         ) : (
           <>
+            {/* Work-in-Progress indicator */}
+            {wipText && <ClaudeWIP text={wipText} />}
             {/* Optimistic user message (shown before server confirms) */}
             {optimisticMessage && (
               <div className="mb-4">
