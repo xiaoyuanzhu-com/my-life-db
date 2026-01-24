@@ -84,6 +84,45 @@ export interface SessionMessage {
   // See docs/claude-code/data-models.md "Field Naming Inconsistency" section.
   toolUseResult?: ToolUseResult
   tool_use_result?: ToolUseResult  // snake_case variant from stdout
+
+  // System message fields (when type === 'system')
+  // IMPORTANT: System messages do NOT have a `message` field - their data is on the root object
+  // See docs/claude-code/data-models.md "System Messages" section
+  subtype?: SystemSubtype
+  content?: string  // Human-readable message for system events
+  level?: 'info' | 'error'
+  isMeta?: boolean
+  logicalParentUuid?: string  // For compact_boundary: logical parent (different from parentUuid)
+  compactMetadata?: CompactMetadata
+  error?: ApiErrorDetails  // For api_error subtype
+  retryInMs?: number  // For api_error: milliseconds until retry
+  retryAttempt?: number  // For api_error: current retry attempt
+  maxRetries?: number  // For api_error: maximum retries
+  durationMs?: number  // For turn_duration: turn duration in ms
+}
+
+// System message subtypes
+// See docs/claude-code/data-models.md "System Subtypes" section
+export type SystemSubtype = 'init' | 'compact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | string
+
+// Compact metadata for compact_boundary messages
+export interface CompactMetadata {
+  trigger: 'auto' | 'manual' | string
+  preTokens: number
+}
+
+// API error details for api_error messages
+export interface ApiErrorDetails {
+  status: number
+  headers?: Record<string, string>
+  requestID?: string
+  error?: {
+    type: string
+    error?: {
+      type: string
+      message: string
+    }
+  }
 }
 
 // Tool use result types - varies by tool
@@ -164,6 +203,34 @@ export function isThinkingBlock(block: ContentBlock): block is ThinkingContentBl
  */
 export function isToolResultBlock(block: ContentBlock): block is ToolResultContentBlock {
   return block.type === 'tool_result' && 'tool_use_id' in block
+}
+
+/**
+ * Type guard to check if a message is a system message
+ */
+export function isSystemMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system'
+}
+
+/**
+ * Type guard to check if a message is a system init message
+ */
+export function isSystemInitMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'init'
+}
+
+/**
+ * Type guard to check if a message is a compact boundary message
+ */
+export function isCompactBoundaryMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'compact_boundary'
+}
+
+/**
+ * Type guard to check if a message is an API error message
+ */
+export function isApiErrorMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'api_error'
 }
 
 /**

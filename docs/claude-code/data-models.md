@@ -564,6 +564,22 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
 
 System messages report internal events. The `subtype` field determines the specific event type.
 
+**⚠️ IMPORTANT: System messages do NOT have a `message` field** - unlike `user` and `assistant` messages which have `message: { role, content }`, system messages have their data directly on the root object (`subtype`, `content`, `compactMetadata`, etc.).
+
+**System Message Common Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"system"` |
+| `subtype` | string | Event type (`init`, `compact_boundary`, `api_error`, etc.) |
+| `uuid` | string | Unique message identifier |
+| `parentUuid` | string? | Parent message UUID (usually `null` for system messages) |
+| `timestamp` | string | ISO 8601 timestamp |
+| `content` | string? | Human-readable message (not present on all subtypes) |
+| `level` | string? | Log level (`"info"`, `"error"`) |
+| `isMeta` | boolean? | Whether this is a meta message |
+| `logicalParentUuid` | string? | Logical parent for compaction (different from `parentUuid`) |
+
 **System Subtypes**:
 
 | subtype | Description | Persisted to JSONL? |
@@ -637,6 +653,9 @@ System messages report internal events. The `subtype` field determines the speci
 | `plugins` | object[] | Loaded plugins (name, path) |
 
 **5b. Compact Boundary**
+
+Marks where the conversation was compacted to reduce context. The next message (a `user` message with `isCompactSummary: true`) contains the summary of the compacted conversation.
+
 ```json
 {
   "parentUuid": null,
@@ -654,6 +673,18 @@ System messages report internal events. The `subtype` field determines the speci
   "uuid": "4a85087f-5458-426b-8fce-84a4c4d3c46c"
 }
 ```
+
+**Compact Boundary Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subtype` | string | Always `"compact_boundary"` |
+| `content` | string | Always `"Conversation compacted"` |
+| `level` | string | Always `"info"` |
+| `isMeta` | boolean | Always `false` |
+| `logicalParentUuid` | string | UUID of the last message before compaction (for logical threading) |
+| `compactMetadata.trigger` | string | What triggered compaction (`"auto"` or `"manual"`) |
+| `compactMetadata.preTokens` | number | Token count before compaction |
 
 **5c. API Error (Retry)**
 ```json
