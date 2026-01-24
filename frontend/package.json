@@ -32,6 +32,7 @@
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.545.0",
     "marked": "^17.0.1",
+    "mermaid": "^11.12.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-pdf": "^10.2.0",

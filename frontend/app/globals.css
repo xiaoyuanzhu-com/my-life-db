@@ -492,3 +492,27 @@
 .dark .shiki span {
   color: var(--shiki-dark) !important;
 }
+
+/* Mermaid diagram styling */
+.mermaid-diagram {
+  margin: 1rem 0;
+  display: flex;
+  justify-content: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--destructive);
+  border-radius: 0.5rem;
+  background: hsl(var(--destructive) / 0.1);
+}
+
+.mermaid-error pre {
+  margin-bottom: 0.5rem;
+}
