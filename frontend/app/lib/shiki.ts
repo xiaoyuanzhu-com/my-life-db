@@ -4,7 +4,7 @@ import mermaid from 'mermaid'
 
 let highlighter: Highlighter | null = null
 let loading: Promise<Highlighter> | null = null
-let mermaidInitialized = false
+let mermaidTheme: 'default' | 'dark' | null = null
 
 // Placeholder pattern for mermaid blocks
 const MERMAID_PLACEHOLDER_PREFIX = '___MERMAID_BLOCK_'
@@ -14,14 +14,63 @@ const MERMAID_PLACEHOLDER_REGEX = new RegExp(
   'g'
 )
 
+function isDarkMode(): boolean {
+  if (typeof document === 'undefined') return false
+  // Check for explicit .dark class on html element
+  if (document.documentElement.classList.contains('dark')) return true
+  // If no explicit class, check system preference (for "auto" mode)
+  if (!document.documentElement.classList.contains('light')) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  }
+  return false
+}
+
 function initMermaid() {
-  if (mermaidInitialized) return
+  const theme = isDarkMode() ? 'dark' : 'default'
+  // Re-initialize if theme changed
+  if (mermaidTheme === theme) return
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'default',
+    theme,
     securityLevel: 'loose',
   })
-  mermaidInitialized = true
+  mermaidTheme = theme
+}
+
+// Theme change listener system
+type ThemeChangeCallback = () => void
+const themeChangeCallbacks = new Set<ThemeChangeCallback>()
+let themeListenersInitialized = false
+
+function notifyThemeChange() {
+  // Reset mermaid theme so it re-initializes on next render
+  mermaidTheme = null
+  themeChangeCallbacks.forEach((cb) => cb())
+}
+
+function initThemeListeners() {
+  if (themeListenersInitialized || typeof document === 'undefined') return
+  themeListenersInitialized = true
+
+  // Watch for class changes on <html> element
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.attributeName === 'class') {
+        notifyThemeChange()
+        break
+      }
+    }
+  })
+  observer.observe(document.documentElement, { attributes: true })
+
+  // Watch for system preference changes (for "auto" mode)
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', notifyThemeChange)
+}
+
+export function onMermaidThemeChange(callback: ThemeChangeCallback): () => void {
+  initThemeListeners()
+  themeChangeCallbacks.add(callback)
+  return () => themeChangeCallbacks.delete(callback)
 }
 
 const LIGHT_THEME = 'github-light'

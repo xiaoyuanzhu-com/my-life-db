@@ -14,7 +14,7 @@ import {
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
-import { parseMarkdown } from '~/lib/shiki'
+import { parseMarkdown, onMermaidThemeChange } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
@@ -289,6 +289,12 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
 // Markdown content renderer using marked + shiki
 function MessageContent({ content }: { content: string }) {
   const [html, setHtml] = useState('')
+  const [themeKey, setThemeKey] = useState(0)
+
+  // Re-render when theme changes (for mermaid diagrams)
+  useEffect(() => {
+    return onMermaidThemeChange(() => setThemeKey((k) => k + 1))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -300,7 +306,7 @@ function MessageContent({ content }: { content: string }) {
     return () => {
       cancelled = true
     }
-  }, [content])
+  }, [content, themeKey])
 
   return (
     <div
@@ -366,6 +372,12 @@ const MAX_SUMMARY_LINES = 10
 
 function CompactSummaryBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [themeKey, setThemeKey] = useState(0)
+
+  // Re-render when theme changes (for mermaid diagrams)
+  useEffect(() => {
+    return onMermaidThemeChange(() => setThemeKey((k) => k + 1))
+  }, [])
 
   const lines = content.split('\n')
   const isTruncated = lines.length > MAX_SUMMARY_LINES
@@ -382,7 +394,7 @@ function CompactSummaryBlock({ content }: { content: string }) {
     return () => {
       cancelled = true
     }
-  }, [displayContent])
+  }, [displayContent, themeKey])
 
   return (
     <div className="flex items-start gap-2">
