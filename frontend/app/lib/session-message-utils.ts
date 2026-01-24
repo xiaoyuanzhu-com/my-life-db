@@ -66,6 +66,8 @@ export interface SessionMessage {
 
   // Additional fields
   isSidechain?: boolean
+  isCompactSummary?: boolean  // True for compact summary user messages
+  isVisibleInTranscriptOnly?: boolean
   userType?: string
   cwd?: string
   sessionId?: string
@@ -224,6 +226,13 @@ export function isSystemInitMessage(msg: SessionMessage): boolean {
  */
 export function isCompactBoundaryMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'compact_boundary'
+}
+
+/**
+ * Type guard to check if a message is a compact summary (continuation message)
+ */
+export function isCompactSummaryMessage(msg: SessionMessage): boolean {
+  return msg.type === 'user' && msg.isCompactSummary === true
 }
 
 /**

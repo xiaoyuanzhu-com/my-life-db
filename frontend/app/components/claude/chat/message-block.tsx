@@ -10,6 +10,7 @@ import {
   isToolResultError,
   isBashToolResult,
   isCompactBoundaryMessage,
+  isCompactSummaryMessage,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
@@ -110,11 +111,12 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
     return null
   }, [isSystem, message])
 
-  // Check for compact boundary
+  // Check for compact boundary and compact summary
   const isCompactBoundary = isCompactBoundaryMessage(message)
+  const isCompactSummary = isCompactSummaryMessage(message)
 
   // Determine what to render
-  const hasUserContent = isUser && userTextContent
+  const hasUserContent = isUser && userTextContent && !isCompactSummary
   const hasAssistantText = isAssistant && textContent
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
@@ -122,7 +124,7 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !hasUnknownSystem) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !hasUnknownSystem) {
     return null
   }
 
@@ -152,6 +154,11 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
             Session compacted
           </span>
         </div>
+      )}
+
+      {/* Compact summary: collapsible markdown content */}
+      {isCompactSummary && userTextContent && (
+        <CompactSummaryBlock content={userTextContent} />
       )}
 
       {/* Unknown system messages: render raw JSON for debugging */}
@@ -349,6 +356,45 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
           {block.thinking}
         </div>
       )}
+    </div>
+  )
+}
+
+// Compact summary block - collapsible markdown content for session continuations
+function CompactSummaryBlock({ content }: { content: string }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [html, setHtml] = useState('')
+
+  useEffect(() => {
+    const parsed = marked.parse(content)
+    setHtml(parsed as string)
+  }, [content])
+
+  return (
+    <div className="flex items-start gap-2">
+      <MessageDot status="completed" lineHeight="mono" />
+      <div className="flex-1 min-w-0">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="font-mono text-[13px] leading-[1.5] flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
+          style={{ color: 'var(--claude-text-primary)' }}
+        >
+          <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
+          <span className="font-semibold">Session continued</span>
+        </button>
+
+        {isExpanded && (
+          <div
+            className="mt-2 ml-6 p-4 rounded-lg prose-claude overflow-y-auto"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '60vh',
+            }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
+      </div>
     </div>
   )
 }
