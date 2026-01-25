@@ -42,6 +42,7 @@
     "simple-icons": "^15.17.0",
     "tailwind-merge": "^3.3.1",
     "tus-js-client": "^4.3.1",
+    "use-stick-to-bottom": "^1.1.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {

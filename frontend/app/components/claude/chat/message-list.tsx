@@ -1,3 +1,4 @@
+import { useStickToBottom } from 'use-stick-to-bottom'
 import { MessageBlock } from './message-block'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
@@ -10,10 +11,17 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, toolResultMap, optimisticMessage, wipText }: MessageListProps) {
+  const { scrollRef, contentRef } = useStickToBottom({
+    initial: 'instant',
+    resize: 'instant',
+  })
+
   return (
-    <div className="flex-1 overflow-y-auto claude-interface claude-bg flex flex-col-reverse">
-      {/* Centered content container - max-w-3xl like official UI */}
-      <div className="max-w-3xl mx-auto px-6 py-8 flex flex-col-reverse">
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto claude-interface claude-bg"
+    >
+      <div ref={contentRef} className="max-w-3xl mx-auto px-6 py-8">
         {messages.length === 0 && !optimisticMessage ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center" style={{ color: 'var(--claude-text-secondary)' }}>
@@ -25,8 +33,14 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
           </div>
         ) : (
           <>
-            {/* Work-in-Progress indicator */}
-            {wipText && <ClaudeWIP text={wipText} />}
+            {/* Messages in chronological order */}
+            {messages.map((message) => (
+              <MessageBlock
+                key={message.uuid}
+                message={message}
+                toolResultMap={toolResultMap}
+              />
+            ))}
             {/* Optimistic user message (shown before server confirms) */}
             {optimisticMessage && (
               <div className="mb-4">
@@ -43,14 +57,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
                 </div>
               </div>
             )}
-            {/* Messages in reverse order (newest at bottom) */}
-            {[...messages].reverse().map((message) => (
-              <MessageBlock
-                key={message.uuid}
-                message={message}
-                toolResultMap={toolResultMap}
-              />
-            ))}
+            {/* Work-in-Progress indicator */}
+            {wipText && <ClaudeWIP text={wipText} />}
           </>
         )}
       </div>
