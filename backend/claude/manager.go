@@ -33,7 +33,7 @@ var (
 		"Glob",
 		"Grep",
 		"WebFetch",
-		"WebSearch",
+		// "WebSearch",
 		"TodoWrite",
 		"Task",
 	}
@@ -828,6 +828,11 @@ func (m *Manager) readJSON(session *Session) {
 		if len(line) == 0 {
 			continue
 		}
+
+		log.Info().
+			Str("sessionId", session.ID).
+			Str("stdout", string(line)).
+			Msg("claude stdout raw")
 
 		// Split concatenated JSON objects (Claude may output multiple on one line)
 		jsonObjects := splitConcatenatedJSON(line)
