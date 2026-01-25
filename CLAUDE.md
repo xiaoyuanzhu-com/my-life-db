@@ -28,6 +28,14 @@ go test -v ./...  # Run Go tests
 go vet ./...      # Run Go linter
 ```
 
+### run.sh Helper Script
+```bash
+./run.sh frontend    # Start frontend dev server
+./run.sh backend     # Build and start backend (loads .env automatically)
+./run.sh meili       # Start Meilisearch via Docker
+./run.sh qdrant      # Start Qdrant via Docker
+```
+
 ### Full Stack Development
 ```bash
 # Terminal 1: Build frontend once or run in watch mode
@@ -57,9 +65,10 @@ my-life-db/
 │   ├── vite.config.ts  # Vite bundler config
 │   └── package.json
 ├── backend/            # Go 1.25 HTTP server (Gin framework)
-│   ├── api/            # HTTP handlers (~40 endpoints in routes.go)
+│   ├── api/            # HTTP handlers (50+ endpoints in routes.go)
 │   │   └── handlers.go # Handlers struct with server reference
-│   ├── auth/           # OAuth implementation
+│   ├── auth/           # OAuth/OIDC authentication
+│   ├── claude/         # Claude Code integration (session management, WebSocket, message parsing)
 │   ├── config/         # Configuration management
 │   ├── db/             # SQLite database layer + migrations
 │   ├── fs/             # Filesystem service
@@ -70,14 +79,13 @@ my-life-db/
 │   │   ├── server.go   # Server lifecycle & component management
 │   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
-│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI, HAID)
+│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI, HAID, Aliyun)
 │   ├── workers/
 │   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
 │   └── main.go         # Entry point - creates Server and wires routes
-└── docs/               # Product and technical design docs
-    ├── backend-arch.md # Backend architecture documentation
-    └── module-interfaces.md # Module interface specifications
+├── run.sh              # Helper script for running services
+└── docs/               # Product and technical design docs (voice, claude-code, etc.)
 ```
 
 ### Server Architecture
@@ -246,11 +254,20 @@ Never create shadcn components manually.
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
 | MEILI_HOST | | Meilisearch URL (optional) |
-| QDRANT_URL | | Qdrant URL (optional) |
+| QDRANT_HOST | | Qdrant URL (optional, env var name is `QDRANT_HOST`) |
 | QDRANT_API_KEY | | Qdrant API key (optional) |
 | OPENAI_API_KEY | | OpenAI API key (optional) |
+| OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
+| OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |
 | HAID_BASE_URL | | HAID embedding service URL (optional) |
 | HAID_API_KEY | | HAID API key (optional) |
+| MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
+| MLD_OAUTH_CLIENT_ID | | OAuth client ID |
+| MLD_OAUTH_CLIENT_SECRET | | OAuth client secret |
+| MLD_OAUTH_ISSUER_URL | | OIDC issuer URL |
+| MLD_OAUTH_REDIRECT_URI | | OAuth redirect URI |
+| MLD_EXPECTED_USERNAME | | Expected username for user instance |
+| DB_LOG_QUERIES | | Set to `1` to enable SQL query logging |
 
 ## API Routes
 
@@ -259,17 +276,44 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Group | Routes | Description |
 |-------|--------|-------------|
 | Auth | `/api/auth/*` | Login/logout |
-| OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh) |
-| Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment |
-| Library | `/api/library/*` | File management, tree structure, pinning |
-| Digest | `/api/digest/*` | Digester registry, stats, trigger digests |
-| People | `/api/people`, `/api/people/:id` | Person management + embeddings |
+| OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh, logout) |
+| Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
+| Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
+| Digest | `/api/digest/*` | Digester registry, stats, trigger/reset digests |
+| People | `/api/people`, `/api/people/:id` | Person management + merge + embeddings assign/unassign |
 | Search | `/api/search` | Full-text search |
-| Upload | `/api/upload/tus/*` | TUS protocol file uploads |
+| AI | `/api/ai/summarize` | AI summarization |
+| Settings | `/api/settings` | GET/PUT/POST (get, update, reset) |
+| Stats | `/api/stats` | Application statistics |
+| Upload | `/api/upload/tus/*`, `/api/upload/finalize` | TUS protocol file uploads + finalization |
+| Directories | `/api/directories` | List available directories |
+| Vendors | `/api/vendors/openai/models` | OpenAI model listing |
+| Claude | `/api/claude/sessions/*` | Session CRUD, messages, WebSocket connections |
+| ASR | `/api/asr`, `/api/asr/realtime` | Non-realtime ASR + real-time ASR WebSocket |
 | Notifications | `/api/notifications/stream` | SSE event stream |
-| ASR | `/api/asr/realtime` | Real-time ASR WebSocket (vendor-agnostic) |
-| Raw Files | `/raw/*path` | Serve/save raw files from data directory |
+| Raw Files | `/raw/*path` | Serve (GET) / save (PUT) raw files |
 | SQLAR | `/sqlar/*path` | Serve files from SQLAR archives |
+
+## Major Feature Modules
+
+### Claude Code Integration
+The app embeds Claude Code sessions with a web UI for interacting with Claude CLI:
+- **Backend** (`backend/claude/`): Session management, message parsing, WebSocket protocol for real-time communication, session index caching, file watching
+- **Frontend** (`frontend/app/routes/claude.tsx`, `frontend/app/components/claude/`): Terminal UI, session list, chat interface, permission modal, todo panel
+- **WebSocket routes**: `/api/claude/sessions/:id/ws` (bidirectional), `/api/claude/sessions/:id/subscribe` (read-only)
+- **Docs**: `docs/claude-code.md` and `docs/claude-code/` subdirectory
+
+### Voice / ASR System
+Real-time and batch speech recognition:
+- **Backend**: `backend/api/realtime_asr.go` (WebSocket), `backend/vendors/aliyun.go` (Aliyun Fun-ASR)
+- **Frontend**: `frontend/app/hooks/use-realtime-asr.ts`, `frontend/app/components/omni-input/` (multi-modal input: text, voice, files), recording visualizer, transcript viewer
+- **Docs**: `docs/voice.md`, `docs/realtime-asr.md`, `docs/aliyun-asr-config.md`, `docs/omni-input.md`
+
+### Authentication
+Three auth modes configured via `MLD_AUTH_MODE`:
+- `none` — no authentication (default)
+- `password` — simple password auth
+- `oauth` — OIDC/OAuth 2.0 flow (see `backend/auth/`)
 
 ## Logging
 
