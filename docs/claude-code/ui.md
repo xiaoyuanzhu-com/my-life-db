@@ -823,25 +823,34 @@ You cannot use a standard Markdown renderer out of the box. Use a custom rendere
 4.  **Integration:** Apply syntax highlighting *on top* of diff background colors
 5.  **Performance:** Consider lazy-loading or code-splitting for syntax highlighter
 
-#### Scroll Anchoring
-As the AI generates long diffs, implement smooth scroll behavior:
+#### Scroll Anchoring & Stick-to-Bottom
 
-1.  **Stick-to-Bottom Logic:** Auto-scroll to keep cursor visible during streaming
-2.  **User Override:** Allow users to scroll up without fighting auto-scroll
-3.  **Smart Resume:** If user scrolls to bottom manually, re-enable auto-scroll
-4.  **Smooth Animation:** Use smooth scroll behavior for better UX
+The message list uses [`use-stick-to-bottom`](https://github.com/stackblitz-labs/use-stick-to-bottom) — a zero-dependency React hook that uses `ResizeObserver` to detect content size changes and automatically maintain scroll position.
 
-**Example Implementation:**
+**Configuration:**
 ```tsx
-useEffect(() => {
-  if (isStreaming && !userHasScrolledUp) {
-    scrollContainerRef.current?.scrollTo({
-      top: scrollContainerRef.current.scrollHeight,
-      behavior: 'smooth'
-    });
-  }
-}, [messageBlocks, isStreaming, userHasScrolledUp]);
+const { scrollRef, contentRef } = useStickToBottom({
+  initial: 'instant',  // No animation on initial load
+  resize: 'instant',   // No animation when content resizes
+})
 ```
+
+**Scroll Behaviors:**
+
+1.  **Initial Load:** Scrolls to bottom instantly (before paint) when a session is opened. No visible scrolling animation — the user sees the bottom of the conversation immediately.
+2.  **New Messages / Content Changes:** When new messages arrive, images load, sections expand, or any content resizes, the `ResizeObserver` detects the size change and scrolls to bottom instantly — but only if the user is currently at the bottom (sticky).
+3.  **User Scrolls Up:** The library detects user-initiated scroll and "escapes from lock" — auto-scrolling stops so the user can read previous messages without being yanked back down.
+4.  **User Scrolls Back Down:** When the user scrolls back to the bottom, stickiness automatically resumes and new content will again trigger auto-scroll.
+
+**Why `use-stick-to-bottom` over manual `useLayoutEffect`:**
+- `useLayoutEffect` + `scrollTop = scrollHeight` fires after React DOM mutations but before paint — however, if content hasn't fully laid out (images, async content, expanding sections), `scrollHeight` may not be the final value, resulting in "near bottom" but not "at bottom".
+- `ResizeObserver` catches *all* content size changes (images loading, collapsible sections expanding, streaming text) and re-scrolls correctly.
+- The library correctly distinguishes user scroll from programmatic scroll without debouncing.
+
+**Architecture:**
+- `scrollRef` → attached to the outer scrollable container (`overflow-y: auto`)
+- `contentRef` → attached to the inner content div that holds all messages
+- The hook also exposes `isAtBottom` and `scrollToBottom()` for future use (e.g., a "scroll to bottom" button when the user has scrolled up)
 
 ### 6.5 Component Structure & Directory Organization
 
