@@ -199,10 +199,23 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	// Abort Gin context to prevent middleware from writing headers on hijacked connection
 	c.Abort()
 
-	// Create a cancellable context - we cancel it when WebSocket closes
-	// Gin's request context doesn't cancel when WebSocket connection closes
-	ctx, cancel := context.WithCancel(c.Request.Context())
+	// Create a cancellable context that responds to:
+	// 1. Server shutdown (graceful termination)
+	// 2. WebSocket connection close
+	// This ensures clean shutdown without "response.WriteHeader on hijacked connection" warnings.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Monitor server shutdown context
+	go func() {
+		select {
+		case <-h.server.ShutdownContext().Done():
+			log.Debug().Str("sessionId", sessionID).Msg("server shutdown, closing WebSocket")
+			cancel()
+		case <-ctx.Done():
+			// Handler is exiting, goroutine can stop
+		}
+	}()
 
 	// Ensure session is activated before connecting client
 	if err := session.EnsureActivated(); err != nil {
@@ -542,10 +555,23 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Abort Gin context to prevent middleware from writing headers on hijacked connection
 	c.Abort()
 
-	// Create a cancellable context - we cancel it when WebSocket closes
-	// Gin's request context doesn't cancel when WebSocket connection closes
-	ctx, cancel := context.WithCancel(c.Request.Context())
+	// Create a cancellable context that responds to:
+	// 1. Server shutdown (graceful termination)
+	// 2. WebSocket connection close
+	// This ensures clean shutdown without "response.WriteHeader on hijacked connection" warnings.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Monitor server shutdown context
+	go func() {
+		select {
+		case <-h.server.ShutdownContext().Done():
+			log.Debug().Str("sessionId", sessionID).Msg("server shutdown, closing subscribe WebSocket")
+			cancel()
+		case <-ctx.Done():
+			// Handler is exiting, goroutine can stop
+		}
+	}()
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them

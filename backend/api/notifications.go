@@ -34,9 +34,16 @@ func (h *Handlers) NotificationStream(c *gin.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	// Stream events
+	// Stream events - respond to either:
+	// 1. Server shutdown context (graceful termination)
+	// 2. Client disconnection (request context done)
+	// 3. Events channel closed (notification service shutdown)
 	for {
 		select {
+		case <-h.server.ShutdownContext().Done():
+			log.Debug().Msg("server shutdown, closing SSE stream")
+			return
+
 		case event, ok := <-events:
 			if !ok {
 				return

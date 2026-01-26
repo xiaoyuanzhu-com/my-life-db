@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -19,10 +20,15 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	database      *db.DB
-	fsService     *fs.Service
-	digestWorker  *digest.Worker
-	notifService  *notifications.Service
+	database     *db.DB
+	fsService    *fs.Service
+	digestWorker *digest.Worker
+	notifService *notifications.Service
+
+	// Shutdown context - cancelled when server is shutting down.
+	// Long-running handlers (WebSocket, SSE) should listen to this.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 
 	// HTTP
 	router *gin.Engine
@@ -31,7 +37,12 @@ type Server struct {
 
 // New creates a new server with all components initialized
 func New(cfg *Config) (*Server, error) {
-	s := &Server{cfg: cfg}
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &Server{
+		cfg:            cfg,
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
+	}
 
 	// 1. Open database
 	log.Info().Msg("initializing database")
@@ -217,11 +228,19 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
-	// Close notification service first to cleanly disconnect SSE clients
-	// This allows HTTP server to shutdown without waiting for SSE connections to timeout
+	// 1. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE)
+	// This allows them to stop gracefully before we close the HTTP server
+	log.Info().Msg("signaling handlers to stop")
+	s.shutdownCancel()
+
+	// Give handlers a moment to process the cancellation and close connections.
+	// This prevents "response.WriteHeader on hijacked connection" warnings.
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. Close notification service to cleanly disconnect SSE clients
 	s.notifService.Shutdown()
 
-	// Shutdown HTTP server (stop accepting new requests and wait for existing ones)
+	// 3. Shutdown HTTP server (stop accepting new requests and wait for existing ones)
 	if s.http != nil {
 		if err := s.http.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("http server shutdown error")
@@ -245,8 +264,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 // Component accessors for API handlers
-func (s *Server) DB() *db.DB                              { return s.database }
-func (s *Server) FS() *fs.Service                         { return s.fsService }
-func (s *Server) Digest() *digest.Worker                  { return s.digestWorker }
-func (s *Server) Notifications() *notifications.Service { return s.notifService }
-func (s *Server) Router() *gin.Engine                     { return s.router }
+func (s *Server) DB() *db.DB                             { return s.database }
+func (s *Server) FS() *fs.Service                        { return s.fsService }
+func (s *Server) Digest() *digest.Worker                 { return s.digestWorker }
+func (s *Server) Notifications() *notifications.Service  { return s.notifService }
+func (s *Server) Router() *gin.Engine                    { return s.router }
+func (s *Server) ShutdownContext() context.Context       { return s.shutdownCtx }

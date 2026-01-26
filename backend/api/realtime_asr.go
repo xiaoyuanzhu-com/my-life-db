@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -75,12 +76,12 @@ func (h *Handlers) RealtimeASR(c *gin.Context) {
 
 	log.Info().Msg("starting real-time ASR proxy session")
 
-	// Proxy to Aliyun Fun-ASR Realtime
-	h.proxyAliyunRealtimeASR(clientConn, settings)
+	// Proxy to Aliyun Fun-ASR Realtime, with shutdown context for graceful termination
+	h.proxyAliyunRealtimeASR(clientConn, settings, h.server.ShutdownContext())
 }
 
 // proxyAliyunRealtimeASR proxies messages between client and Aliyun Fun-ASR Realtime
-func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings) {
+func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *models.UserSettings, shutdownCtx context.Context) {
 	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
 		sendError(clientConn, "Aliyun API key not configured")
 		return
@@ -115,6 +116,14 @@ func (h *Handlers) proxyAliyunRealtimeASR(clientConn *websocket.Conn, settings *
 	// Use goroutines to handle bidirectional communication
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
+
+	// Monitor shutdown context and close connections on shutdown
+	go func() {
+		<-shutdownCtx.Done()
+		log.Debug().Msg("server shutdown, closing ASR WebSocket connections")
+		clientConn.Close()
+		aliyunConn.Close()
+	}()
 
 	// Generate task ID for this session
 	taskID := "task_" + time.Now().Format("20060102150405")
