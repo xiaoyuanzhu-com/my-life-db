@@ -16,7 +16,8 @@ interface TaskToolViewProps {
 }
 
 export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskToolViewProps) {
-  const [resultExpanded, setResultExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [resultFullyExpanded, setResultFullyExpanded] = useState(false)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [resultHtml, setResultHtml] = useState('')
 
@@ -68,10 +69,13 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
 
   const hasNestedSession = nestedMessages.length > 0
 
-  // Check if result needs truncation
+  // Check if result needs truncation (for show more/less within expanded view)
   const resultLines = result?.split('\n') || []
   const isResultTruncated = resultLines.length > MAX_RESULT_LINES
-  const displayResult = resultExpanded ? result : resultLines.slice(0, MAX_RESULT_LINES).join('\n')
+  const displayResult = resultFullyExpanded ? result : resultLines.slice(0, MAX_RESULT_LINES).join('\n')
+
+  // Determine if header should be expandable
+  const hasExpandableContent = result || hasNestedSession
 
   // Parse result as markdown or highlight as JSON
   useEffect(() => {
@@ -112,20 +116,46 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: Status-colored bullet + "Task" + description */}
-      <div className="flex items-start gap-2">
-        <MessageDot status={toolCall.status} />
-        <div className="flex-1 min-w-0">
-          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
-            Task
-          </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
-            {params.description} ({params.subagent_type})
-            {params.model && <span className="opacity-70 ml-1">[{params.model}]</span>}
-            {params.run_in_background && <span className="opacity-70 ml-1">[background]</span>}
-          </span>
+      {/* Header: Status-colored bullet + "Task" + description (clickable to expand) */}
+      {hasExpandableContent ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <MessageDot status={toolCall.status} />
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+              Task
+            </span>
+            <span style={{ color: 'var(--claude-text-secondary)' }}>
+              {params.description} ({params.subagent_type})
+              {params.model && <span className="opacity-70 ml-1">[{params.model}]</span>}
+              {params.run_in_background && <span className="opacity-70 ml-1">[background]</span>}
+            </span>
+            <span
+              className="select-none text-[11px]"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {expanded ? '▾' : '▸'}
+            </span>
+          </div>
+        </button>
+      ) : (
+        <div className="flex items-start gap-2">
+          <MessageDot status={toolCall.status} />
+          <div className="flex-1 min-w-0">
+            <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+              Task
+            </span>
+            <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+              {params.description} ({params.subagent_type})
+              {params.model && <span className="opacity-70 ml-1">[{params.model}]</span>}
+              {params.run_in_background && <span className="opacity-70 ml-1">[background]</span>}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Status indicator when running */}
       {toolCall.status === 'running' && !result && (
@@ -135,81 +165,86 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
         </div>
       )}
 
-      {/* Result content (rendered as markdown or JSON with show more/less) */}
-      {result && (
-        <div
-          className="mt-2 ml-5 rounded-md overflow-hidden"
-          style={{ border: '1px solid var(--claude-border-light)' }}
-        >
-          <div
-            className={resultExpanded && isResultTruncated ? 'overflow-y-auto' : ''}
-            style={resultExpanded && isResultTruncated ? { maxHeight: '60vh' } : {}}
-          >
+      {/* Expanded content: result + sub-agent session */}
+      {expanded && (
+        <>
+          {/* Result content (rendered as markdown or JSON with show more/less) */}
+          {result && (
             <div
-              className={`p-3 text-[12px] ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent'}`}
-              style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-              dangerouslySetInnerHTML={{ __html: resultHtml }}
-            />
-          </div>
-
-          {isResultTruncated && (
-            <button
-              onClick={() => setResultExpanded(!resultExpanded)}
-              className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
-              style={{
-                backgroundColor: 'var(--claude-bg-secondary)',
-                color: 'var(--claude-text-secondary)',
-                borderTop: '1px solid var(--claude-border-light)',
-              }}
+              className="mt-2 ml-5 rounded-md overflow-hidden"
+              style={{ border: '1px solid var(--claude-border-light)' }}
             >
-              {resultExpanded ? 'Show less' : 'Show more'}
-            </button>
+              <div
+                className={resultFullyExpanded && isResultTruncated ? 'overflow-y-auto' : ''}
+                style={resultFullyExpanded && isResultTruncated ? { maxHeight: '60vh' } : {}}
+              >
+                <div
+                  className={`p-3 text-[12px] ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent'}`}
+                  style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+                  dangerouslySetInnerHTML={{ __html: resultHtml }}
+                />
+              </div>
+
+              {isResultTruncated && (
+                <button
+                  onClick={() => setResultFullyExpanded(!resultFullyExpanded)}
+                  className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{
+                    backgroundColor: 'var(--claude-bg-secondary)',
+                    color: 'var(--claude-text-secondary)',
+                    borderTop: '1px solid var(--claude-border-light)',
+                  }}
+                >
+                  {resultFullyExpanded ? 'Show less' : 'Show more'}
+                </button>
+              )}
+            </div>
           )}
-        </div>
+
+          {/* Sub-agent session (separate expandable section) */}
+          {hasNestedSession && (
+            <div className="mt-2 ml-5">
+              <button
+                type="button"
+                onClick={() => setAgentExpanded(!agentExpanded)}
+                className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                style={{ color: 'var(--claude-text-secondary)' }}
+              >
+                <span
+                  className="select-none text-[11px]"
+                  style={{ color: 'var(--claude-text-tertiary)' }}
+                >
+                  {agentExpanded ? '▾' : '▸'}
+                </span>
+                <span className="text-[12px]">
+                  Sub-agent conversation ({nestedMessages.length} messages)
+                </span>
+              </button>
+
+              {agentExpanded && (
+                <div
+                  className="mt-2 pl-3 overflow-y-auto"
+                  style={{
+                    borderLeft: '2px solid var(--claude-border-light)',
+                    maxHeight: '60vh',
+                  }}
+                >
+                  <SessionMessages
+                    messages={nestedMessages}
+                    depth={depth + 1}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Error */}
+      {/* Error (always visible) */}
       {toolCall.error && (
         <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
           <span className="select-none">└</span>
           <div className="flex-1 min-w-0">{toolCall.error}</div>
-        </div>
-      )}
-
-      {/* Sub-agent session (separate expandable section) */}
-      {hasNestedSession && (
-        <div className="mt-2 ml-5">
-          <button
-            type="button"
-            onClick={() => setAgentExpanded(!agentExpanded)}
-            className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity cursor-pointer"
-            style={{ color: 'var(--claude-text-secondary)' }}
-          >
-            <span
-              className="select-none text-[11px]"
-              style={{ color: 'var(--claude-text-tertiary)' }}
-            >
-              {agentExpanded ? '▾' : '▸'}
-            </span>
-            <span className="text-[12px]">
-              Sub-agent conversation ({nestedMessages.length} messages)
-            </span>
-          </button>
-
-          {agentExpanded && (
-            <div
-              className="mt-2 pl-3 overflow-y-auto"
-              style={{
-                borderLeft: '2px solid var(--claude-border-light)',
-                maxHeight: '60vh',
-              }}
-            >
-              <SessionMessages
-                messages={nestedMessages}
-                depth={depth + 1}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
