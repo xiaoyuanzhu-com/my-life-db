@@ -206,9 +206,12 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--permission-mode", opts.PermissionMode)
 	}
 
-	// NOTE: --permission-prompt-tool-name is only available in the bundled CLI from Python SDK
-	// The standalone Claude CLI (installed via curl) doesn't support this flag
-	// Skipping this flag - control protocol may work differently with standalone CLI
+	// Permission prompt tool name - enables control protocol for tool permissions
+	// When set to "stdio", the CLI sends control_request messages for permission decisions
+	// instead of prompting interactively. The SDK/caller must respond with control_response.
+	if opts.PermissionPromptToolName != "" {
+		cmd = append(cmd, "--permission-prompt-tool", opts.PermissionPromptToolName)
+	}
 
 	// Max turns
 	if opts.MaxTurns != nil {

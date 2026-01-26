@@ -894,14 +894,18 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	session.sdkCtx = ctx
 	session.sdkCancel = cancel
 
-	// Build SDK options
-	// NOTE: CanUseTool callback requires --permission-prompt-tool-name which isn't available
-	// in standalone Claude CLI. Skip it for now and use --permission-mode default.
-	// Permissions will be handled via the existing control_request flow in UI mode.
+	// Initialize pendingSDKPermissions map before creating the callback
+	session.pendingSDKPermissions = make(map[string]chan PermissionResponse)
+
+	// Build SDK options with CanUseTool callback for permission handling
+	// When CanUseTool is set, the SDK automatically enables --permission-prompt-tool stdio
+	// which makes the CLI send control_request messages for tool permissions instead of
+	// prompting interactively. The callback bridges to WebSocket clients for approval.
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                session.WorkingDir,
 		AllowedTools:       allowedTools,
 		PermissionMode:     sdk.PermissionModeDefault,
+		CanUseTool:         session.CreatePermissionCallback(),
 		SkipInitialization: true, // Standalone CLI doesn't support initialize control request
 	}
 
@@ -925,7 +929,6 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 
 	session.sdkClient = client
 	session.Status = "active"
-	session.pendingSDKPermissions = make(map[string]chan PermissionResponse)
 
 	// Start message forwarding goroutine
 	m.wg.Add(1)

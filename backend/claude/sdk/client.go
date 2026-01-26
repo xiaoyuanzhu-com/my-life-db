@@ -75,15 +75,18 @@ func (c *ClaudeSDKClient) Connect(ctx context.Context, prompt string) error {
 		return ErrConnectionClosed
 	}
 
-	// Validate options
-	if c.options.CanUseTool != nil && c.options.PermissionPromptToolName != "" {
-		return fmt.Errorf("can_use_tool callback cannot be used with permission_prompt_tool_name: please use one or the other")
-	}
-
-	// NOTE: --permission-prompt-tool-name is only available in the bundled CLI from Python SDK
-	// The standalone Claude CLI doesn't support this flag, so we skip setting it
-	// Permissions will be handled via control_request messages forwarded to WebSocket
+	// Copy options so we can modify them
 	options := c.options
+
+	// When CanUseTool callback is provided, automatically enable the permission control protocol
+	// by setting PermissionPromptToolName to "stdio". This tells the CLI to send control_request
+	// messages for tool permissions instead of prompting interactively.
+	if options.CanUseTool != nil {
+		if options.PermissionPromptToolName != "" && options.PermissionPromptToolName != "stdio" {
+			return fmt.Errorf("can_use_tool callback requires permission_prompt_tool_name to be 'stdio' or empty")
+		}
+		options.PermissionPromptToolName = "stdio"
+	}
 
 	// Create transport if not provided
 	var t transport.Transport
