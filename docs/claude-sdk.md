@@ -77,7 +77,49 @@ for msg := range client.Messages() {
 
 ### Permission Handling
 
-Custom permission callback for tool authorization:
+#### How Tool Permission Flow Works
+
+When Claude wants to use a tool that's not in `AllowedTools`, a permission decision is required. The SDK supports this via the `CanUseTool` callback and the `--permission-prompt-tool` CLI flag.
+
+**The Flow:**
+
+```
+┌─────────────┐     tool_use      ┌─────────────┐
+│   Claude    │ ─────────────────>│  Claude CLI │
+│   (API)     │                   │             │
+└─────────────┘                   └──────┬──────┘
+                                         │
+                                         │ control_request
+                                         │ (subtype: can_use_tool)
+                                         ▼
+                                  ┌─────────────┐
+                                  │   Go SDK    │
+                                  │   Query     │
+                                  └──────┬──────┘
+                                         │
+                                         │ CanUseTool callback
+                                         ▼
+                                  ┌─────────────┐
+                                  │  Your App   │
+                                  │  (approve?) │
+                                  └──────┬──────┘
+                                         │
+                                         │ PermissionResultAllow/Deny
+                                         ▼
+                                  ┌─────────────┐
+                                  │   Go SDK    │ ─── control_response ───> CLI
+                                  └─────────────┘
+```
+
+**Key Mechanism: `--permission-prompt-tool stdio`**
+
+When `CanUseTool` callback is provided, the SDK automatically adds `--permission-prompt-tool stdio` to the CLI arguments. This flag tells the CLI to:
+1. Send `control_request` messages (type: `can_use_tool`) via stdout instead of prompting interactively
+2. Wait for `control_response` messages via stdin with the permission decision
+
+This enables programmatic permission handling in non-interactive environments (web UIs, automated systems, etc.).
+
+#### Basic Permission Callback
 
 ```go
 client := sdk.NewClaudeSDKClient(sdk.ClaudeAgentOptions{
@@ -101,6 +143,86 @@ client := sdk.NewClaudeSDKClient(sdk.ClaudeAgentOptions{
     },
 })
 ```
+
+#### WebSocket-based Approval (Web UI)
+
+For web applications that need user confirmation via UI, see the implementation in `backend/claude/session.go`:
+
+```go
+// CreatePermissionCallback bridges SDK's synchronous callback with async WebSocket flow
+func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
+    return func(toolName string, input map[string]any, ctx sdk.ToolPermissionContext) (sdk.PermissionResult, error) {
+        // 1. Generate unique request ID for tracking
+        requestID := fmt.Sprintf("sdk-perm-%d", time.Now().UnixNano())
+
+        // 2. Create channel to receive WebSocket response
+        responseChan := make(chan PermissionResponse, 1)
+        s.pendingSDKPermissions[requestID] = responseChan
+
+        // 3. Broadcast control_request to WebSocket clients (frontend shows modal)
+        controlRequest := map[string]interface{}{
+            "type":       "control_request",
+            "request_id": requestID,
+            "request": map[string]interface{}{
+                "subtype":   "can_use_tool",
+                "tool_name": toolName,
+                "input":     input,
+            },
+        }
+        s.BroadcastUIMessage(json.Marshal(controlRequest))
+
+        // 4. Block until user responds via WebSocket
+        select {
+        case resp := <-responseChan:
+            if resp.Behavior == "allow" {
+                return sdk.PermissionResultAllow{Behavior: sdk.PermissionAllow}, nil
+            }
+            return sdk.PermissionResultDeny{Behavior: sdk.PermissionDeny, Message: resp.Message}, nil
+        case <-time.After(5 * time.Minute):
+            return sdk.PermissionResultDeny{Message: "Permission request timed out"}, nil
+        }
+    }
+}
+```
+
+#### Control Request/Response Format
+
+**Control Request (from CLI):**
+```json
+{
+  "type": "control_request",
+  "request_id": "44fea74b-d2ad-4c51-804d-5588b01af756",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "WebFetch",
+    "input": {"url": "https://example.com", "prompt": "..."},
+    "tool_use_id": "toolu_01VJkFn7jEpDrMc62HpaWMCh",
+    "permission_suggestions": [...]
+  }
+}
+```
+
+**Control Response (to CLI):**
+```json
+{
+  "type": "control_response",
+  "response": {
+    "request_id": "44fea74b-d2ad-4c51-804d-5588b01af756",
+    "subtype": "success",
+    "response": {
+      "behavior": "allow",
+      "updatedInput": {...}
+    }
+  }
+}
+```
+
+#### Permission Result Types
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `PermissionResultAllow` | `Behavior`, `UpdatedInput`, `UpdatedPermissions` | Allow tool execution, optionally modify input |
+| `PermissionResultDeny` | `Behavior`, `Message`, `Interrupt` | Deny with reason, optionally interrupt session |
 
 ### Hook System
 
@@ -273,3 +395,57 @@ To integrate:
 1. Import `"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"`
 2. Use `sdk.NewClaudeSDKClient()` or `sdk.QueryOnce()`
 3. Handle messages via the typed `Messages()` channel
+
+## AllowedTools vs CanUseTool
+
+Understanding how these work together:
+
+| Tool Status | What Happens |
+|-------------|--------------|
+| In `AllowedTools` | Auto-approved, no permission callback invoked |
+| Not in `AllowedTools`, `CanUseTool` set | Permission callback invoked for approval |
+| Not in `AllowedTools`, no callback | CLI's default behavior (may prompt or deny) |
+| In `DisallowedTools` | Blocked entirely, tool not available to Claude |
+
+**Example Configuration:**
+
+```go
+options := sdk.ClaudeAgentOptions{
+    // These tools are auto-approved (no callback)
+    AllowedTools: []string{"Read", "Glob", "Grep", "TodoWrite"},
+
+    // These tools require user approval via callback
+    // (WebFetch, Write, Edit, Bash, etc. will trigger CanUseTool)
+    CanUseTool: myPermissionCallback,
+
+    // These are completely blocked
+    DisallowedTools: []string{"Bash(rm -rf:*)", "Bash(sudo:*)"},
+
+    PermissionMode: sdk.PermissionModeDefault,
+}
+```
+
+## Known Issues
+
+### Duplicate tool_use IDs Error (Claude CLI 2.1.19)
+
+When using `--output-format stream-json` with `--permission-prompt-tool stdio`, a bug in Claude CLI can cause:
+
+```
+API Error: 400 {"type":"error","error":{"type":"invalid_request_error",
+"message":"messages.1.content.1: `tool_use` ids must be unique"}}
+```
+
+**Symptoms:**
+- Tool executes successfully and returns results
+- Error occurs when CLI tries to continue the conversation
+- Happens with both client-side tools (WebFetch) and server-side tools (WebSearch)
+
+**Root Cause:**
+- Bug in Claude CLI's conversation state management in streaming JSON mode
+- CLI creates duplicate tool_use IDs when constructing the next API request
+- This is NOT a bug in this SDK - the SDK doesn't construct API messages
+
+**Status:** Reported to Anthropic. Affects Claude CLI version 2.1.19.
+
+**Workaround:** None currently. The permission approval flow works correctly; the error is downstream in the CLI.
