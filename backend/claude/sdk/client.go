@@ -80,11 +80,10 @@ func (c *ClaudeSDKClient) Connect(ctx context.Context, prompt string) error {
 		return fmt.Errorf("can_use_tool callback cannot be used with permission_prompt_tool_name: please use one or the other")
 	}
 
-	// If canUseTool is provided, automatically set permission_prompt_tool_name to stdio
+	// NOTE: --permission-prompt-tool-name is only available in the bundled CLI from Python SDK
+	// The standalone Claude CLI doesn't support this flag, so we skip setting it
+	// Permissions will be handled via control_request messages forwarded to WebSocket
 	options := c.options
-	if options.CanUseTool != nil {
-		options.PermissionPromptToolName = "stdio"
-	}
 
 	// Create transport if not provided
 	var t transport.Transport

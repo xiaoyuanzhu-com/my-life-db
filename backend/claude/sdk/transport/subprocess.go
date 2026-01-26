@@ -206,10 +206,9 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--permission-mode", opts.PermissionMode)
 	}
 
-	// Permission prompt tool name (enables control protocol)
-	if opts.PermissionPromptToolName != "" {
-		cmd = append(cmd, "--permission-prompt-tool-name", opts.PermissionPromptToolName)
-	}
+	// NOTE: --permission-prompt-tool-name is only available in the bundled CLI from Python SDK
+	// The standalone Claude CLI (installed via curl) doesn't support this flag
+	// Skipping this flag - control protocol may work differently with standalone CLI
 
 	// Max turns
 	if opts.MaxTurns != nil {
@@ -478,7 +477,16 @@ func (t *SubprocessCLITransport) monitorProcess() {
 	t.connected = false
 	t.mu.Unlock()
 
+	// Log exit status
+	if t.cmd.ProcessState != nil {
+		log.Info().
+			Int("exitCode", t.cmd.ProcessState.ExitCode()).
+			Str("state", t.cmd.ProcessState.String()).
+			Msg("Claude CLI process exited")
+	}
+
 	if err != nil {
+		log.Error().Err(err).Msg("Claude CLI process error")
 		// Only report error if we didn't cancel
 		select {
 		case <-t.ctx.Done():

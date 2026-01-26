@@ -895,11 +895,14 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	session.sdkCancel = cancel
 
 	// Build SDK options
+	// NOTE: CanUseTool callback requires --permission-prompt-tool-name which isn't available
+	// in standalone Claude CLI. Skip it for now and use --permission-mode default.
+	// Permissions will be handled via the existing control_request flow in UI mode.
 	options := sdk.ClaudeAgentOptions{
-		Cwd:            session.WorkingDir,
-		AllowedTools:   allowedTools,
-		PermissionMode: sdk.PermissionModeDefault,
-		CanUseTool:     session.CreatePermissionCallback(),
+		Cwd:                session.WorkingDir,
+		AllowedTools:       allowedTools,
+		PermissionMode:     sdk.PermissionModeDefault,
+		SkipInitialization: true, // Standalone CLI doesn't support initialize control request
 	}
 
 	// Session management: resume or new session
