@@ -131,9 +131,21 @@ export function ChatInterface({
           } else if (progressData?.type === 'hook_progress') {
             // Hook progress: show hook name
             msg = progressData.hookName || 'Running hook...'
+          } else if (progressData?.type === 'agent_progress') {
+            // Agent progress: show agent ID and truncated prompt
+            const agentId = progressData.agentId || 'unknown'
+            const prompt = progressData.prompt || ''
+            const truncatedPrompt = prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt
+            msg = `Agent ${agentId}: ${truncatedPrompt || 'Working...'}`
+          } else if (progressData?.type === 'query_update') {
+            // Web search: show query
+            msg = `Searching: ${progressData.query || '...'}`
+          } else if (progressData?.type === 'search_results_received') {
+            // Web search results
+            msg = `Found ${progressData.resultCount || 0} results for: ${progressData.query || '...'}`
           } else {
             // Fallback for unknown progress types
-            msg = data.message || progressData?.message || null
+            msg = data.message || progressData?.message || `Progress: ${progressData?.type || 'unknown'}`
           }
 
           setProgressMessage(msg)

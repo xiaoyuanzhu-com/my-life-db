@@ -803,27 +803,61 @@ Progress messages report real-time updates during long-running operations. The `
 | `totalLines` | number | Total lines of output produced |
 
 **6c. Agent Progress**
+
+> **Note**: This message type is not officially documented by Anthropic. The structure below is based on observed behavior and may change.
+
+Sent when a subagent (Task tool) is spawned and begins processing. This progress message indicates that a parallel or background agent is working on a subtask.
+
 ```json
 {
+  "parentUuid": "b75ba4d0-9184-4abc-b8a7-d92b54adbb3e",
+  "isSidechain": false,
+  "userType": "external",
+  "cwd": "/Users/iloahz/projects/my-life-db",
+  "sessionId": "67448f5f-b92e-4239-a1c3-1bd281859d12",
+  "version": "2.1.15",
+  "gitBranch": "main",
+  "slug": "splendid-cooking-gadget",
   "type": "progress",
   "data": {
-    "type": "agent_progress",
-    "prompt": "Explore the codebase to understand session management...",
-    "agentId": "a824cfd",
     "message": {
       "type": "user",
       "message": {
         "role": "user",
-        "content": [{"type": "text", "text": "Explore the codebase..."}]
+        "content": [
+          {
+            "type": "text",
+            "text": "Explore the current Claude Code integration in `backend/claude/`. I need to understand:\n1. How sessions are currently managed (manager.go, session.go)\n2. How messages are parsed and handled\n3. How WebSocket connections work\n4. The overall architecture and data flow\n\nFocus on understanding the current implementation so we can integrate the new SDK from `backend/claude/sdk/`."
+          }
+        ]
       },
-      "uuid": "cb9b2291-65f4-42cd-8c97-bbf7b025a685"
+      "uuid": "512c456c-246a-49d5-8278-d6c5d49b00c2",
+      "timestamp": "2026-01-26T04:21:49.090Z"
     },
-    "normalizedMessages": [...]
+    "normalizedMessages": [
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Explore the current Claude Code integration..."
+            }
+          ]
+        },
+        "uuid": "512c456c-246a-49d5-8278-d6c5d49b00c2",
+        "timestamp": "2026-01-26T04:21:49.090Z"
+      }
+    ],
+    "type": "agent_progress",
+    "prompt": "Explore the current Claude Code integration in `backend/claude/`...",
+    "agentId": "aa6fc0e"
   },
-  "toolUseID": "agent_msg_012eXrDKR9oFi6UJ4MFNkHE5",
-  "parentToolUseID": "toolu_01NBGiNA4gjTnW1ArN2VeFAB",
-  "uuid": "5914fa35-84b1-4d10-949a-43c4409815eb",
-  "timestamp": "2026-01-20T07:56:46.552Z"
+  "toolUseID": "agent_msg_01JCTLgNf4AAaCD5Y7CnKhd2",
+  "parentToolUseID": "toolu_01GaaK2vcqwEMe4c3s7BXNfX",
+  "uuid": "4788ffe3-ac9b-476a-9570-c660bfba06c8",
+  "timestamp": "2026-01-26T04:21:49.091Z"
 }
 ```
 
@@ -831,10 +865,15 @@ Progress messages report real-time updates during long-running operations. The `
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `data.type` | string | Always `"agent_progress"` |
 | `data.prompt` | string | The prompt sent to the subagent |
-| `data.agentId` | string | Unique identifier for the spawned agent |
-| `data.message` | object | The user message being processed |
+| `data.agentId` | string | Unique identifier for the spawned agent (7-char hex) |
+| `data.message` | object | The user message being processed by the agent |
 | `data.normalizedMessages` | array | Normalized message history for the agent |
+| `toolUseID` | string | ID linking to the Task tool_use (format: `agent_msg_{id}`) |
+| `parentToolUseID` | string | ID of the Task tool_use that spawned this agent |
+
+**UI Rendering**: Should display the agent ID, a truncated prompt preview, and indicate the agent is working. Can be shown as a collapsible item that expands to show the full prompt.
 
 **6d. Query Update (Web Search)**
 ```json
