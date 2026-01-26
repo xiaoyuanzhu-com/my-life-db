@@ -143,7 +143,7 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity"
+        className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
       >
         <MessageDot status={toolCall.status} />
         <div className="flex-1 min-w-0 flex items-center gap-2">

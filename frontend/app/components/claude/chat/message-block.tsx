@@ -358,7 +358,7 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="font-mono text-[13px] leading-[1.5] flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity"
+        className="font-mono text-[13px] leading-[1.5] flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
       >
         <MessageDot status="assistant" lineHeight="mono" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
