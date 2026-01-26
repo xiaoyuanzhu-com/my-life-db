@@ -337,31 +337,56 @@ function ThinkingBlocks({ thinking }: { thinking: ThinkingBlock[] }) {
 
 function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [html, setHtml] = useState('')
+
+  useEffect(() => {
+    if (!isExpanded || !block.thinking) return
+
+    let cancelled = false
+    parseMarkdown(block.thinking).then((parsed) => {
+      if (!cancelled) setHtml(parsed)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isExpanded, block.thinking])
 
   return (
     <div className="my-2">
-      {/* Collapsible header */}
+      {/* Collapsible header: dot + text + chevron */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="font-mono text-[13px] leading-[1.5] flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity italic"
-        style={{ color: 'var(--claude-text-secondary)' }}
+        className="font-mono text-[13px] leading-[1.5] flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity"
       >
-        <span className="select-none">{isExpanded ? '▼' : '▶'}</span>
-        <span>Extended thinking</span>
+        <MessageDot status="assistant" lineHeight="mono" />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span
+            className="font-semibold italic"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            Extended Thinking
+          </span>
+          <span
+            className="select-none text-[11px]"
+            style={{ color: 'var(--claude-text-tertiary)' }}
+          >
+            {isExpanded ? '▾' : '▸'}
+          </span>
+        </div>
       </button>
 
-      {/* Expanded content */}
+      {/* Expanded content - rendered as markdown */}
       {isExpanded && (
         <div
-          className="mt-2 ml-6 p-3 rounded-lg font-mono text-[13px] leading-[1.5] whitespace-pre-wrap"
+          className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
           style={{
             backgroundColor: 'var(--claude-bg-code-block)',
-            color: 'var(--claude-text-secondary)',
+            maxHeight: '60vh',
           }}
-        >
-          {block.thinking}
-        </div>
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       )}
     </div>
   )
