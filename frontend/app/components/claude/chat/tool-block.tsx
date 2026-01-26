@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ToolCall, ToolName } from '~/types/claude'
+import { MessageDot } from './message-dot'
 
 // Tool-specific visualizations
 import { ReadToolView } from './tools/read-tool'
@@ -81,41 +82,206 @@ function ToolContent({ toolCall }: { toolCall: ToolCall }) {
   }
 }
 
+// Convert PascalCase/camelCase to Title Case with spaces
+function formatToolName(name: string): string {
+  // Handle common tool names
+  const overrides: Record<string, string> = {
+    'ExitPlanMode': 'Exit Plan Mode',
+    'EnterPlanMode': 'Enter Plan Mode',
+    'AskUserQuestion': 'Ask User Question',
+    'WebFetch': 'Web Fetch',
+    'WebSearch': 'Web Search',
+    'TodoWrite': 'Todo Write',
+    'TaskCreate': 'Task Create',
+    'TaskUpdate': 'Task Update',
+    'TaskList': 'Task List',
+    'TaskGet': 'Task Get',
+  }
+
+  if (overrides[name]) return overrides[name]
+
+  // Generic PascalCase to Title Case
+  return name.replace(/([A-Z])/g, ' $1').trim()
+}
+
+// Check if content looks like markdown (has headers, lists, code blocks, etc.)
+function isMarkdownContent(content: string): boolean {
+  if (!content || typeof content !== 'string') return false
+  // Check for markdown indicators
+  return /^#+ /m.test(content) || // Headers
+         /^\s*[-*] /m.test(content) || // Lists
+         /```[\s\S]*```/.test(content) || // Code blocks
+         /^\|.*\|$/m.test(content) // Tables
+}
+
+// Get the primary content from parameters (for markdown rendering)
+function getPrimaryContent(params: Record<string, unknown>): string | null {
+  // Common parameter names that might contain markdown
+  const contentKeys = ['plan', 'content', 'message', 'description', 'text', 'body']
+
+  for (const key of contentKeys) {
+    const value = params[key]
+    if (typeof value === 'string' && isMarkdownContent(value)) {
+      return value
+    }
+  }
+
+  return null
+}
+
 function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const params = toolCall.parameters as Record<string, unknown>
+  const displayName = formatToolName(toolCall.name)
+  const markdownContent = getPrimaryContent(params)
+  const hasMarkdownContent = markdownContent !== null
+
   return (
-    <div className="space-y-2">
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: Status-colored bullet + tool name + chevron */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity"
+      >
+        <MessageDot status={toolCall.status} />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+            {displayName}
+          </span>
+          <span
+            className="select-none text-[11px]"
+            style={{ color: 'var(--claude-text-tertiary)' }}
+          >
+            {expanded ? '▾' : '▸'}
+          </span>
+        </div>
+      </button>
+
+      {/* Error indicator (always visible) */}
+      {toolCall.error && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-status-alert)' }}>
+          <span className="select-none">└</span>
+          <span>{toolCall.error.slice(0, 100)}{toolCall.error.length > 100 ? '...' : ''}</span>
+        </div>
+      )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="mt-2 ml-5">
+          {hasMarkdownContent ? (
+            <MarkdownContentView content={markdownContent!} />
+          ) : (
+            <JsonParamsView params={params} result={toolCall.result} error={toolCall.error} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Markdown content renderer for plan-like tools
+function MarkdownContentView({ content }: { content: string }) {
+  const [html, setHtml] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    import('~/lib/shiki').then(({ parseMarkdown }) => {
+      parseMarkdown(content).then((parsed) => {
+        if (!cancelled) setHtml(parsed)
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [content])
+
+  return (
+    <div
+      className="prose-claude rounded-md p-4 overflow-y-auto"
+      style={{
+        backgroundColor: 'var(--claude-bg-code-block)',
+        maxHeight: '60vh',
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
+}
+
+// Fallback JSON view for generic parameters
+function JsonParamsView({
+  params,
+  result,
+  error,
+}: {
+  params: Record<string, unknown>
+  result?: unknown
+  error?: string
+}) {
+  const paramsJson = JSON.stringify(params, null, 2)
+  const resultStr = result !== undefined
+    ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
+    : null
+
+  return (
+    <div
+      className="rounded-md overflow-hidden"
+      style={{ border: '1px solid var(--claude-border-light)' }}
+    >
       {/* Parameters */}
-      <div>
-        <div className="text-xs text-muted-foreground mb-1">Parameters</div>
-        <pre
-          className="text-xs rounded p-2 overflow-x-auto"
-          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+      <div
+        className="p-3"
+        style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+      >
+        <div
+          className="text-[11px] font-semibold mb-1"
+          style={{ color: 'var(--claude-text-tertiary)' }}
         >
-          {JSON.stringify(toolCall.parameters, null, 2)}
+          Parameters
+        </div>
+        <pre className="text-[12px] whitespace-pre-wrap overflow-x-auto">
+          {paramsJson}
         </pre>
       </div>
 
       {/* Result */}
-      {toolCall.result !== undefined && (
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Result</div>
-          <pre
-            className="text-xs rounded p-2 overflow-x-auto max-h-48 overflow-y-auto"
-            style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+      {resultStr && (
+        <div
+          className="p-3"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            borderTop: '1px solid var(--claude-border-light)',
+          }}
+        >
+          <div
+            className="text-[11px] font-semibold mb-1"
+            style={{ color: 'var(--claude-text-tertiary)' }}
           >
-            {typeof toolCall.result === 'string'
-              ? toolCall.result
-              : JSON.stringify(toolCall.result, null, 2)}
+            Result
+          </div>
+          <pre className="text-[12px] whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
+            {resultStr}
           </pre>
         </div>
       )}
 
-      {/* Error */}
-      {toolCall.error && (
-        <div>
-          <div className="text-xs text-red-500 mb-1">Error</div>
-          <pre className="text-xs bg-red-500/10 text-red-500 rounded p-2">
-            {toolCall.error}
+      {/* Error details */}
+      {error && (
+        <div
+          className="p-3"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            borderTop: '1px solid var(--claude-border-light)',
+          }}
+        >
+          <div className="text-[11px] font-semibold mb-1 text-red-500">
+            Error
+          </div>
+          <pre className="text-[12px] whitespace-pre-wrap text-red-500">
+            {error}
           </pre>
         </div>
       )}
