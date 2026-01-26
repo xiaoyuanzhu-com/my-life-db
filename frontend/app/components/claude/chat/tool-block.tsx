@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolCall, ToolName } from '~/types/claude'
 import { MessageDot } from './message-dot'
+import type { AgentProgressMessage } from './session-messages'
 
 // Tool-specific visualizations
 import { ReadToolView } from './tools/read-tool'
@@ -16,6 +17,10 @@ import { TodoToolView } from './tools/todo-tool'
 
 interface ToolBlockProps {
   toolCall: ToolCall
+  /** Map from tool_use ID to agent progress messages (for Task tools) */
+  agentProgressMap?: Map<string, AgentProgressMessage[]>
+  /** Nesting depth for recursive rendering (0 = top-level) */
+  depth?: number
 }
 
 // Get tool summary for collapsed view
@@ -48,13 +53,21 @@ function getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} depth={depth} />
 }
 
-function ToolContent({ toolCall }: { toolCall: ToolCall }) {
+function ToolContent({
+  toolCall,
+  agentProgressMap,
+  depth,
+}: {
+  toolCall: ToolCall
+  agentProgressMap?: Map<string, AgentProgressMessage[]>
+  depth: number
+}) {
   // Render tool-specific view based on tool name
   switch (toolCall.name) {
     case 'Read':
@@ -74,7 +87,7 @@ function ToolContent({ toolCall }: { toolCall: ToolCall }) {
     case 'WebSearch':
       return <WebSearchToolView toolCall={toolCall} />
     case 'Task':
-      return <TaskToolView toolCall={toolCall} />
+      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} depth={depth} />
     case 'TodoWrite':
       return <TodoToolView toolCall={toolCall} />
     default:

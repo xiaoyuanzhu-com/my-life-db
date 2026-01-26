@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { MessageBlock } from './message-block'
+import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
 
@@ -10,6 +10,18 @@ interface MessageListProps {
   wipText?: string | null
 }
 
+/**
+ * MessageList - Top-level message container with scroll behavior
+ *
+ * This component handles:
+ * - Scroll container with stick-to-bottom behavior
+ * - Empty state when no messages
+ * - Optimistic user message display
+ * - Work-in-progress indicator
+ *
+ * For the actual message rendering, it delegates to SessionMessages,
+ * which can be used recursively for nested agent sessions.
+ */
 export function MessageList({ messages, toolResultMap, optimisticMessage, wipText }: MessageListProps) {
   const { scrollRef, contentRef } = useStickToBottom({
     initial: 'instant',
@@ -33,14 +45,13 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
           </div>
         ) : (
           <>
-            {/* Messages in chronological order */}
-            {messages.map((message) => (
-              <MessageBlock
-                key={message.uuid}
-                message={message}
-                toolResultMap={toolResultMap}
-              />
-            ))}
+            {/* Messages rendered via SessionMessages (supports recursive nesting) */}
+            <SessionMessages
+              messages={messages}
+              toolResultMap={toolResultMap}
+              depth={0}
+            />
+
             {/* Optimistic user message (shown before server confirms) */}
             {optimisticMessage && (
               <div className="mb-4">
@@ -57,6 +68,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
                 </div>
               </div>
             )}
+
             {/* Work-in-Progress indicator */}
             {wipText && <ClaudeWIP text={wipText} />}
           </>

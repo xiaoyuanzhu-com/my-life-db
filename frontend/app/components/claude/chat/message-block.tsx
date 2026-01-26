@@ -14,19 +14,23 @@ import {
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
+import type { AgentProgressMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
   message: SessionMessage
   toolResultMap: Map<string, ExtractedToolResult>
+  /** Map from tool_use ID to agent progress messages (for Task tools) */
+  agentProgressMap?: Map<string, AgentProgressMessage[]>
+  /** Nesting depth for recursive rendering (0 = top-level) */
+  depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
-  const isProgress = message.type === 'progress'
 
   // Extract content from message
   const content = message.message?.content
@@ -124,7 +128,8 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   const hasSystemInit = systemInitData !== null
   const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary
 
-  // Unknown message type - render as raw JSON (includes progress messages and any other unhandled types)
+  // Unknown message type - render as raw JSON
+  // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
   const isUnknownType = !isUser && !isAssistant && !isSystem
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
@@ -191,7 +196,7 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} depth={depth} />
         </div>
       )}
     </div>
@@ -200,7 +205,15 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
 
 
 // Group consecutive tool calls of the same type
-function ToolCallGroups({ toolCalls }: { toolCalls: ToolCall[] }) {
+function ToolCallGroups({
+  toolCalls,
+  agentProgressMap,
+  depth,
+}: {
+  toolCalls: ToolCall[]
+  agentProgressMap?: Map<string, import('./session-messages').AgentProgressMessage[]>
+  depth: number
+}) {
   // Group consecutive tool calls by name
   const groups: ToolCall[][] = []
   let currentGroup: ToolCall[] = []
@@ -230,18 +243,40 @@ function ToolCallGroups({ toolCalls }: { toolCalls: ToolCall[] }) {
       {groups.map((group, groupIndex) => {
         // Single tool call - render directly
         if (group.length === 1) {
-          return <ToolBlock key={group[0].id} toolCall={group[0]} />
+          return (
+            <ToolBlock
+              key={group[0].id}
+              toolCall={group[0]}
+              agentProgressMap={agentProgressMap}
+              depth={depth}
+            />
+          )
         }
 
         // Multiple tool calls of same type - render as collapsible group
-        return <ToolCallGroup key={`group-${groupIndex}`} toolCalls={group} />
+        return (
+          <ToolCallGroup
+            key={`group-${groupIndex}`}
+            toolCalls={group}
+            agentProgressMap={agentProgressMap}
+            depth={depth}
+          />
+        )
       })}
     </>
   )
 }
 
 // Collapsible group for multiple tool calls of the same type
-function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
+function ToolCallGroup({
+  toolCalls,
+  agentProgressMap,
+  depth,
+}: {
+  toolCalls: ToolCall[]
+  agentProgressMap?: Map<string, import('./session-messages').AgentProgressMessage[]>
+  depth: number
+}) {
   const [isExpanded, setIsExpanded] = useState(true)
   const toolName = toolCalls[0].name
 
@@ -264,7 +299,12 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
       {isExpanded && (
         <div className="ml-6 mt-2 space-y-2">
           {toolCalls.map((toolCall) => (
-            <ToolBlock key={toolCall.id} toolCall={toolCall} />
+            <ToolBlock
+              key={toolCall.id}
+              toolCall={toolCall}
+              agentProgressMap={agentProgressMap}
+              depth={depth}
+            />
           ))}
         </div>
       )}
