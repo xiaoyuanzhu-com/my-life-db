@@ -129,6 +129,16 @@ function getPrimaryContent(params: Record<string, unknown>): string | null {
   return null
 }
 
+// Extract a simple message from result if it has one
+function getResultMessage(result: unknown): string | null {
+  if (typeof result === 'string') return result
+  if (result && typeof result === 'object' && 'message' in result) {
+    const msg = (result as { message: unknown }).message
+    if (typeof msg === 'string') return msg
+  }
+  return null
+}
+
 function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -137,27 +147,50 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
   const markdownContent = getPrimaryContent(params)
   const hasMarkdownContent = markdownContent !== null
 
+  // Check if there's anything worth expanding
+  const hasParams = Object.keys(params).length > 0
+  const hasResult = toolCall.result !== undefined
+  const resultMessage = getResultMessage(toolCall.result)
+  const hasExpandableContent = hasMarkdownContent || hasParams || (hasResult && !resultMessage)
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: Status-colored bullet + tool name + chevron */}
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
-      >
-        <MessageDot status={toolCall.status} />
-        <div className="flex-1 min-w-0 flex items-center gap-2">
+      {/* Header: Status-colored bullet + tool name + chevron (if expandable) */}
+      {hasExpandableContent ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <MessageDot status={toolCall.status} />
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+              {displayName}
+            </span>
+            <span
+              className="select-none text-[11px]"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {expanded ? '▾' : '▸'}
+            </span>
+          </div>
+        </button>
+      ) : (
+        <div className="flex items-start gap-2">
+          <MessageDot status={toolCall.status} />
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             {displayName}
           </span>
-          <span
-            className="select-none text-[11px]"
-            style={{ color: 'var(--claude-text-tertiary)' }}
-          >
-            {expanded ? '▾' : '▸'}
-          </span>
         </div>
-      </button>
+      )}
+
+      {/* Simple result message (shown inline, not expandable) */}
+      {resultMessage && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>{resultMessage}</span>
+        </div>
+      )}
 
       {/* Error indicator (always visible) */}
       {toolCall.error && (
@@ -168,7 +201,7 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
       )}
 
       {/* Expanded content */}
-      {expanded && (
+      {expanded && hasExpandableContent && (
         <div className="mt-2 ml-5">
           {hasMarkdownContent ? (
             <MarkdownContentView content={markdownContent!} />
@@ -221,31 +254,39 @@ function JsonParamsView({
   result?: unknown
   error?: string
 }) {
-  const paramsJson = JSON.stringify(params, null, 2)
+  const hasParams = Object.keys(params).length > 0
+  const paramsJson = hasParams ? JSON.stringify(params, null, 2) : null
   const resultStr = result !== undefined
     ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
     : null
+
+  // Don't render anything if there's nothing to show
+  if (!hasParams && !resultStr && !error) {
+    return null
+  }
 
   return (
     <div
       className="rounded-md overflow-hidden"
       style={{ border: '1px solid var(--claude-border-light)' }}
     >
-      {/* Parameters */}
-      <div
-        className="p-3"
-        style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-      >
+      {/* Parameters - only show if non-empty */}
+      {hasParams && (
         <div
-          className="text-[11px] font-semibold mb-1"
-          style={{ color: 'var(--claude-text-tertiary)' }}
+          className="p-3"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
         >
-          Parameters
+          <div
+            className="text-[11px] font-semibold mb-1"
+            style={{ color: 'var(--claude-text-tertiary)' }}
+          >
+            Parameters
+          </div>
+          <pre className="text-[12px] whitespace-pre-wrap overflow-x-auto">
+            {paramsJson}
+          </pre>
         </div>
-        <pre className="text-[12px] whitespace-pre-wrap overflow-x-auto">
-          {paramsJson}
-        </pre>
-      </div>
+      )}
 
       {/* Result */}
       {resultStr && (
@@ -253,7 +294,7 @@ function JsonParamsView({
           className="p-3"
           style={{
             backgroundColor: 'var(--claude-bg-code-block)',
-            borderTop: '1px solid var(--claude-border-light)',
+            ...(hasParams && { borderTop: '1px solid var(--claude-border-light)' }),
           }}
         >
           <div
@@ -274,7 +315,7 @@ function JsonParamsView({
           className="p-3"
           style={{
             backgroundColor: 'var(--claude-bg-code-block)',
-            borderTop: '1px solid var(--claude-border-light)',
+            ...((hasParams || resultStr) && { borderTop: '1px solid var(--claude-border-light)' }),
           }}
         >
           <div className="text-[11px] font-semibold mb-1 text-red-500">
