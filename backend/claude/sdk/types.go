@@ -300,9 +300,10 @@ type ClaudeAgentOptions struct {
 	Sandbox *SandboxSettings `json:"sandbox,omitempty"`
 
 	// Advanced
-	MaxBufferSize         int  `json:"maxBufferSize,omitempty"`
-	MaxThinkingTokens     *int `json:"maxThinkingTokens,omitempty"`
+	MaxBufferSize           int  `json:"maxBufferSize,omitempty"`
+	MaxThinkingTokens       *int `json:"maxThinkingTokens,omitempty"`
 	EnableFileCheckpointing bool `json:"enableFileCheckpointing,omitempty"`
+	SkipInitialization      bool `json:"-"` // Skip the initialize control request handshake
 
 	// Output format for structured outputs
 	OutputFormat map[string]any `json:"outputFormat,omitempty"`

@@ -295,11 +295,11 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 	// Build command
 	cmdArgs := t.buildCommand()
 
-	log.Debug().
+	log.Info().
 		Str("cli", t.cliPath).
 		Strs("args", cmdArgs[1:]).
 		Str("cwd", t.cwd).
-		Msg("starting Claude CLI subprocess")
+		Msg("starting Claude CLI subprocess with args")
 
 	// Create command
 	t.cmd = exec.CommandContext(t.ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -365,6 +365,8 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 func (t *SubprocessCLITransport) readStdout() {
 	defer t.wg.Done()
 
+	log.Info().Msg("transport: starting stdout reader")
+
 	scanner := bufio.NewScanner(t.stdout)
 	// Set large buffer for potentially large JSON messages
 	buf := make([]byte, t.maxBufferSize)
@@ -373,11 +375,13 @@ func (t *SubprocessCLITransport) readStdout() {
 	for scanner.Scan() {
 		select {
 		case <-t.ctx.Done():
+			log.Info().Msg("transport: stdout reader cancelled")
 			return
 		default:
 		}
 
 		line := scanner.Bytes()
+		log.Info().Str("line", string(line)).Msg("transport: received line from stdout")
 		if len(line) == 0 {
 			continue
 		}
@@ -399,11 +403,14 @@ func (t *SubprocessCLITransport) readStdout() {
 	}
 
 	if err := scanner.Err(); err != nil {
+		log.Error().Err(err).Msg("transport: stdout scanner error")
 		select {
 		case t.errors <- &CLIConnectionError{Message: "stdout read error", Cause: err}:
 		case <-t.ctx.Done():
 		}
 	}
+
+	log.Info().Msg("transport: stdout reader finished")
 }
 
 // splitConcatenatedJSON splits a byte slice containing concatenated JSON objects
@@ -433,6 +440,8 @@ func splitConcatenatedJSON(data []byte) [][]byte {
 func (t *SubprocessCLITransport) readStderr() {
 	defer t.wg.Done()
 
+	log.Info().Msg("transport: starting stderr reader")
+
 	scanner := bufio.NewScanner(t.stderr)
 
 	for scanner.Scan() {
@@ -452,9 +461,11 @@ func (t *SubprocessCLITransport) readStderr() {
 			t.options.Stderr(line)
 		}
 
-		// Log stderr for debugging
-		log.Debug().Str("stderr", line).Msg("Claude CLI stderr")
+		// Log stderr for debugging - use Info level so we see it
+		log.Info().Str("stderr", line).Msg("Claude CLI stderr")
 	}
+
+	log.Info().Msg("transport: stderr reader finished")
 }
 
 // monitorProcess watches for process exit

@@ -141,10 +141,14 @@ func (q *Query) Initialize() (*ServerInfo, error) {
 		"hooks":   hooksConfig,
 	}
 
+	log.Info().Interface("request", request).Msg("sending initialize control request")
+
 	response, err := q.sendControlRequest(request, q.initializeTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("initialize failed: %w", err)
 	}
+
+	log.Info().Interface("response", response).Msg("received initialize response")
 
 	q.initialized = true
 
@@ -193,6 +197,8 @@ func (q *Query) readMessages() {
 			if !ok {
 				return
 			}
+
+			log.Info().Str("raw", string(data)).Msg("SDK received message from Claude CLI")
 
 			// Parse message type
 			var msgBase struct {
@@ -531,6 +537,8 @@ func (q *Query) sendControlRequest(request map[string]any, timeout time.Duration
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal control request: %w", err)
 	}
+
+	log.Info().Str("json", string(reqJSON)).Msg("SDK sending control request to Claude CLI")
 
 	// Send request
 	if err := q.transport.Write(string(reqJSON) + "\n"); err != nil {

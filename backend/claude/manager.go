@@ -13,6 +13,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/google/uuid"
+	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -175,7 +176,17 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		wg.Add(1)
 		go func(id string, s *Session) {
 			defer wg.Done()
-			// Close stdin/PTY first to signal EOF
+
+			// SDK mode cleanup
+			if s.sdkClient != nil {
+				if s.sdkCancel != nil {
+					s.sdkCancel()
+				}
+				s.sdkClient.Close()
+				return
+			}
+
+			// Legacy mode cleanup: Close stdin/PTY first to signal EOF
 			if s.Mode == ModeUI && s.Stdin != nil {
 				s.Stdin.Close()
 			} else if s.PTY != nil {
@@ -216,11 +227,12 @@ func (m *Manager) CreateSession(workingDir, title string, mode SessionMode) (*Se
 
 // CreateSessionWithID spawns a new Claude Code process with an optional session ID to resume
 func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string, mode SessionMode) (*Session, error) {
+	// Quick operations under lock: check limits, generate ID, create session object
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Check session limit
 	if len(m.sessions) >= MaxSessions {
+		m.mu.Unlock()
 		return nil, ErrTooManySessions
 	}
 
@@ -265,52 +277,33 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		activated:    true, // Sessions created via CreateSessionWithID are immediately activated
 	}
 
-	// Build args based on mode
-	args := buildClaudeArgs(sessionID, resumeSessionID != "", mode)
-	cmd := exec.Command("claude", args...)
-	cmd.Dir = workingDir
+	// Add to map early so other operations can see it (status will be "active")
+	m.sessions[session.ID] = session
+	m.mu.Unlock()
 
+	// Now perform blocking operations WITHOUT holding the lock
 	if mode == ModeUI {
-		// UI mode: use stdin/stdout pipes for JSON streaming
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stdin pipe")
-			return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+		// UI mode: use SDK client for subprocess management
+		if err := m.createSessionWithSDK(session, resumeSessionID != ""); err != nil {
+			// Remove session from map on failure
+			m.mu.Lock()
+			delete(m.sessions, session.ID)
+			m.mu.Unlock()
+			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create SDK session")
+			return nil, fmt.Errorf("failed to create SDK session: %w", err)
 		}
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stdout pipe")
-			return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
-		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create stderr pipe")
-			return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
-		}
-
-		if err := cmd.Start(); err != nil {
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
-			return nil, fmt.Errorf("failed to start claude: %w", err)
-		}
-
-		session.Stdin = stdin
-		session.Stdout = stdout
-		session.Stderr = stderr
-		session.Cmd = cmd
-		session.ProcessID = cmd.Process.Pid
-		session.pendingRequests = make(map[string]chan map[string]interface{})
-
-		// Start JSON reader that broadcasts to all clients
-		m.wg.Add(1)
-		go m.readJSON(session)
-
-		// Start stderr reader for debugging
-		m.wg.Add(1)
-		go m.readStderr(session)
 	} else {
-		// CLI mode: use PTY for raw terminal I/O
+		// CLI mode: use PTY for raw terminal I/O (legacy path)
+		args := buildClaudeArgs(sessionID, resumeSessionID != "", mode)
+		cmd := exec.Command("claude", args...)
+		cmd.Dir = workingDir
+
 		ptmx, err := pty.Start(cmd)
 		if err != nil {
+			// Remove session from map on failure
+			m.mu.Lock()
+			delete(m.sessions, session.ID)
+			m.mu.Unlock()
 			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
 			return nil, fmt.Errorf("failed to start claude: %w", err)
 		}
@@ -322,13 +315,11 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		// Start PTY reader that broadcasts to all clients
 		m.wg.Add(1)
 		go m.readPTY(session)
+
+		// Monitor process state in background (only for CLI mode, SDK handles its own monitoring)
+		m.wg.Add(1)
+		go m.monitorProcess(session)
 	}
-
-	// Monitor process state in background
-	m.wg.Add(1)
-	go m.monitorProcess(session)
-
-	m.sessions[session.ID] = session
 
 	log.Info().
 		Str("sessionId", sessionID).
@@ -440,53 +431,16 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 
 // activateSession spawns the actual Claude process for a shell session
 func (m *Manager) activateSession(session *Session) error {
-	// Build args based on mode (always resume for activation)
-	args := buildClaudeArgs(session.ID, true, session.Mode)
-	cmd := exec.Command("claude", args...)
-	cmd.Dir = session.WorkingDir
-
 	session.ready = make(chan struct{}) // Will be closed when ready
 
 	if session.Mode == ModeUI {
-		// UI mode: use stdin/stdout pipes for JSON streaming
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stdin pipe")
-			return fmt.Errorf("failed to create stdin pipe: %w", err)
-		}
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stdout pipe")
-			return fmt.Errorf("failed to create stdout pipe: %w", err)
-		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to create stderr pipe")
-			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		// UI mode: use SDK client for subprocess management (always resume for activation)
+		if err := m.createSessionWithSDK(session, true); err != nil {
+			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to activate SDK session")
+			return fmt.Errorf("failed to activate SDK session: %w", err)
 		}
 
-		if err := cmd.Start(); err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
-			return fmt.Errorf("failed to start claude: %w", err)
-		}
-
-		session.Stdin = stdin
-		session.Stdout = stdout
-		session.Stderr = stderr
-		session.Cmd = cmd
-		session.ProcessID = cmd.Process.Pid
-		session.Status = "active"
-		session.pendingRequests = make(map[string]chan map[string]interface{})
-
-		// Start JSON reader that broadcasts to all clients
-		m.wg.Add(1)
-		go m.readJSON(session)
-
-		// Start stderr reader for debugging
-		m.wg.Add(1)
-		go m.readStderr(session)
-
-		// UI mode: signal ready after brief delay (Claude waits for input before outputting)
+		// Signal ready after brief delay (SDK handles initialization internally)
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			if session.ready != nil {
@@ -494,7 +448,11 @@ func (m *Manager) activateSession(session *Session) error {
 			}
 		}()
 	} else {
-		// CLI mode: use PTY for raw terminal I/O
+		// CLI mode: use PTY for raw terminal I/O (legacy path)
+		args := buildClaudeArgs(session.ID, true, session.Mode)
+		cmd := exec.Command("claude", args...)
+		cmd.Dir = session.WorkingDir
+
 		ptmx, err := pty.Start(cmd)
 		if err != nil {
 			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
@@ -509,11 +467,11 @@ func (m *Manager) activateSession(session *Session) error {
 		// Start PTY reader that broadcasts to all clients
 		m.wg.Add(1)
 		go m.readPTY(session)
-	}
 
-	// Monitor process state in background
-	m.wg.Add(1)
-	go m.monitorProcess(session)
+		// Monitor process state in background (only for CLI mode, SDK handles its own monitoring)
+		m.wg.Add(1)
+		go m.monitorProcess(session)
+	}
 
 	return nil
 }
@@ -562,7 +520,18 @@ func (m *Manager) DeleteSession(id string) error {
 		return ErrSessionNotFound
 	}
 
-	// Close stdin/PTY first to signal EOF to Claude
+	// SDK mode cleanup
+	if session.sdkClient != nil {
+		if session.sdkCancel != nil {
+			session.sdkCancel()
+		}
+		session.sdkClient.Close()
+		delete(m.sessions, id)
+		log.Info().Str("sessionId", id).Msg("deleted SDK claude session")
+		return nil
+	}
+
+	// Legacy mode cleanup: Close stdin/PTY first to signal EOF to Claude
 	if session.Mode == ModeUI {
 		if session.Stdin != nil {
 			session.Stdin.Close()
@@ -604,7 +573,18 @@ func (m *Manager) DeactivateSession(id string) error {
 		return ErrSessionNotFound
 	}
 
-	// Close stdin/PTY first to signal EOF to Claude
+	// SDK mode cleanup
+	if session.sdkClient != nil {
+		if session.sdkCancel != nil {
+			session.sdkCancel()
+		}
+		session.sdkClient.Close()
+		delete(m.sessions, id)
+		log.Info().Str("sessionId", id).Msg("deactivated SDK claude session")
+		return nil
+	}
+
+	// Legacy mode cleanup: Close stdin/PTY first to signal EOF to Claude
 	if session.Mode == ModeUI {
 		if session.Stdin != nil {
 			session.Stdin.Close()
@@ -902,6 +882,103 @@ func (m *Manager) readStderr(session *Session) {
 				Str("sessionId", session.ID).
 				Str("stderr", line).
 				Msg("claude stderr")
+		}
+	}
+}
+
+// createSessionWithSDK creates a UI mode session using the SDK client.
+// The SDK handles subprocess lifecycle, message parsing, and control protocol.
+// We bridge it to the existing WebSocket infrastructure via message forwarding.
+func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
+	ctx, cancel := context.WithCancel(m.ctx)
+	session.sdkCtx = ctx
+	session.sdkCancel = cancel
+
+	// Build SDK options
+	options := sdk.ClaudeAgentOptions{
+		Cwd:            session.WorkingDir,
+		AllowedTools:   allowedTools,
+		PermissionMode: sdk.PermissionModeDefault,
+		CanUseTool:     session.CreatePermissionCallback(),
+	}
+
+	// Session management: resume or new session
+	if resume {
+		options.Resume = session.ID
+	} else {
+		// For new sessions, pass session ID via ExtraArgs
+		sessionIDValue := session.ID
+		options.ExtraArgs = map[string]*string{
+			"session-id": &sessionIDValue,
+		}
+	}
+
+	// Create and connect SDK client
+	client := sdk.NewClaudeSDKClient(options)
+	if err := client.Connect(ctx, ""); err != nil {
+		cancel()
+		return fmt.Errorf("failed to connect SDK client: %w", err)
+	}
+
+	session.sdkClient = client
+	session.Status = "active"
+	session.pendingSDKPermissions = make(map[string]chan PermissionResponse)
+
+	// Start message forwarding goroutine
+	m.wg.Add(1)
+	go m.forwardSDKMessages(session)
+
+	log.Info().
+		Str("sessionId", session.ID).
+		Bool("resume", resume).
+		Msg("created SDK-based session")
+
+	return nil
+}
+
+// forwardSDKMessages forwards raw JSON messages from SDK to WebSocket clients.
+// This runs as a goroutine for the lifetime of the SDK session.
+func (m *Manager) forwardSDKMessages(session *Session) {
+	defer m.wg.Done()
+
+	rawMsgs := session.sdkClient.RawMessages()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder stopping (manager shutdown)")
+			return
+
+		case <-session.sdkCtx.Done():
+			log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder stopping (session cancelled)")
+			return
+
+		case data, ok := <-rawMsgs:
+			if !ok {
+				// Channel closed, SDK client disconnected
+				log.Info().Str("sessionId", session.ID).Msg("SDK raw messages channel closed")
+
+				session.mu.Lock()
+				session.Status = "dead"
+				session.mu.Unlock()
+
+				// Remove from pool
+				m.mu.Lock()
+				delete(m.sessions, session.ID)
+				m.mu.Unlock()
+
+				log.Info().Str("sessionId", session.ID).Msg("removed dead SDK session from pool")
+				return
+			}
+
+			// Broadcast to WebSocket clients (BroadcastUIMessage handles caching and dedup)
+			session.BroadcastUIMessage(data)
+			session.LastActivity = time.Now()
+
+			log.Debug().
+				Str("sessionId", session.ID).
+				Int("bytes", len(data)).
+				Msg("forwarded SDK message to WebSocket clients")
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,8 +11,15 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
+
+// PermissionResponse represents a response to an SDK permission request
+type PermissionResponse struct {
+	Behavior string // "allow" or "deny"
+	Message  string // Optional denial message
+}
 
 // SessionMode defines how a session communicates with the Claude CLI
 type SessionMode string
@@ -72,6 +80,17 @@ type Session struct {
 	activated  bool          `json:"-"` // Whether the Claude process has been spawned
 	activateFn func() error  `json:"-"` // Function to activate this session
 	ready      chan struct{} `json:"-"` // Closed when Claude is ready to receive input
+
+	// SDK-based UI mode (replaces direct subprocess management)
+	sdkClient  *sdk.ClaudeSDKClient `json:"-"`
+	sdkCtx     context.Context      `json:"-"`
+	sdkCancel  context.CancelFunc   `json:"-"`
+
+	// Permission bridging for async WebSocket flow (SDK mode only)
+	// When SDK's CanUseTool callback is invoked, it blocks waiting for a response.
+	// We broadcast a control_request to WebSocket clients and wait for the response here.
+	pendingSDKPermissions   map[string]chan PermissionResponse `json:"-"`
+	pendingSDKPermissionsMu sync.RWMutex                       `json:"-"`
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -192,6 +211,7 @@ func (s *Session) ToJSON() map[string]interface{} {
 
 // SendInputUI sends a user message to Claude via JSON stdin (UI mode only).
 // Automatically activates the session if needed.
+// For SDK mode, uses the SDK client; for legacy mode, writes directly to stdin.
 func (s *Session) SendInputUI(content string) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendInputUI called on non-UI session")
@@ -202,6 +222,12 @@ func (s *Session) SendInputUI(content string) error {
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
+	// SDK mode: use SDK client
+	if s.sdkClient != nil {
+		return s.sdkClient.SendMessage(content)
+	}
+
+	// Legacy mode: write directly to stdin
 	if s.Stdin == nil {
 		return fmt.Errorf("session stdin not available")
 	}
@@ -212,11 +238,64 @@ func (s *Session) SendInputUI(content string) error {
 	return err
 }
 
+// Interrupt sends an interrupt signal to stop the current operation (UI mode only).
+// For SDK mode, uses the SDK client's interrupt mechanism.
+func (s *Session) Interrupt() error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("Interrupt called on non-UI session")
+	}
+
+	if s.sdkClient == nil {
+		return fmt.Errorf("Interrupt only supported in SDK mode")
+	}
+
+	return s.sdkClient.Interrupt()
+}
+
+// SetModel changes the AI model during conversation (UI mode only).
+// For SDK mode, uses the SDK client's SetModel mechanism.
+func (s *Session) SetModel(model string) error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("SetModel called on non-UI session")
+	}
+
+	if s.sdkClient == nil {
+		return fmt.Errorf("SetModel only supported in SDK mode")
+	}
+
+	return s.sdkClient.SetModel(model)
+}
+
 // SendControlResponse sends a response to a control request (UI mode only)
+// For SDK mode, routes to pendingSDKPermissions channel.
+// For legacy mode, writes directly to stdin.
 func (s *Session) SendControlResponse(requestID string, subtype string, behavior string) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendControlResponse called on non-UI session")
 	}
+
+	// Check if this is an SDK permission request first
+	s.pendingSDKPermissionsMu.RLock()
+	ch, isSDKRequest := s.pendingSDKPermissions[requestID]
+	s.pendingSDKPermissionsMu.RUnlock()
+
+	if isSDKRequest && ch != nil {
+		// Route to SDK permission callback
+		log.Info().
+			Str("sessionId", s.ID).
+			Str("requestId", requestID).
+			Str("behavior", behavior).
+			Msg("routing control response to SDK permission channel")
+
+		select {
+		case ch <- PermissionResponse{Behavior: behavior}:
+			return nil
+		default:
+			return fmt.Errorf("permission channel full or closed")
+		}
+	}
+
+	// Legacy mode: write directly to stdin
 	if s.Stdin == nil {
 		return fmt.Errorf("session stdin not available")
 	}
@@ -366,5 +445,105 @@ func (s *Session) ResolveControlRequest(requestID string, response map[string]in
 		default:
 		}
 		close(ch)
+	}
+}
+
+// CreatePermissionCallback creates a CanUseTool callback for SDK mode.
+// This bridges the SDK's synchronous permission callback with the async WebSocket flow:
+// 1. SDK calls CanUseTool callback (blocks until we return)
+// 2. We broadcast a control_request message to all WebSocket clients
+// 3. Frontend shows permission modal
+// 4. User allows/denies via WebSocket control_response
+// 5. SendControlResponse routes to pendingSDKPermissions channel
+// 6. This callback receives the response and returns to SDK
+func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
+	return func(toolName string, input map[string]any, ctx sdk.ToolPermissionContext) (sdk.PermissionResult, error) {
+		// Generate a unique request ID
+		requestID := fmt.Sprintf("sdk-perm-%d", time.Now().UnixNano())
+
+		// Create response channel and register it
+		responseChan := make(chan PermissionResponse, 1)
+		s.pendingSDKPermissionsMu.Lock()
+		if s.pendingSDKPermissions == nil {
+			s.pendingSDKPermissions = make(map[string]chan PermissionResponse)
+		}
+		s.pendingSDKPermissions[requestID] = responseChan
+		s.pendingSDKPermissionsMu.Unlock()
+
+		// Clean up on exit
+		defer func() {
+			s.pendingSDKPermissionsMu.Lock()
+			delete(s.pendingSDKPermissions, requestID)
+			s.pendingSDKPermissionsMu.Unlock()
+		}()
+
+		// Build control_request message matching Claude's format
+		controlRequest := map[string]interface{}{
+			"type":       "control_request",
+			"request_id": requestID,
+			"request": map[string]interface{}{
+				"subtype":   "can_use_tool",
+				"tool_name": toolName,
+				"input":     input,
+			},
+		}
+
+		// Broadcast to WebSocket clients
+		data, err := json.Marshal(controlRequest)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to marshal control_request")
+			return sdk.PermissionResultDeny{
+				Behavior: sdk.PermissionDeny,
+				Message:  "Internal error marshaling permission request",
+			}, nil
+		}
+
+		s.BroadcastUIMessage(data)
+
+		log.Info().
+			Str("sessionId", s.ID).
+			Str("requestId", requestID).
+			Str("toolName", toolName).
+			Msg("permission callback waiting for response")
+
+		// Wait for response with timeout
+		select {
+		case resp := <-responseChan:
+			log.Info().
+				Str("sessionId", s.ID).
+				Str("requestId", requestID).
+				Str("behavior", resp.Behavior).
+				Msg("permission callback received response")
+
+			if resp.Behavior == "allow" {
+				return sdk.PermissionResultAllow{
+					Behavior: sdk.PermissionAllow,
+				}, nil
+			}
+			return sdk.PermissionResultDeny{
+				Behavior: sdk.PermissionDeny,
+				Message:  resp.Message,
+			}, nil
+
+		case <-time.After(5 * time.Minute):
+			log.Warn().
+				Str("sessionId", s.ID).
+				Str("requestId", requestID).
+				Msg("permission callback timed out")
+			return sdk.PermissionResultDeny{
+				Behavior: sdk.PermissionDeny,
+				Message:  "Permission request timed out",
+			}, nil
+
+		case <-s.sdkCtx.Done():
+			log.Debug().
+				Str("sessionId", s.ID).
+				Str("requestId", requestID).
+				Msg("permission callback cancelled (session closed)")
+			return sdk.PermissionResultDeny{
+				Behavior: sdk.PermissionDeny,
+				Message:  "Session closed",
+			}, nil
+		}
 	}
 }

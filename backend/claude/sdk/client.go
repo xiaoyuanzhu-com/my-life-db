@@ -111,7 +111,7 @@ func (c *ClaudeSDKClient) Connect(ctx context.Context, prompt string) error {
 		IsStreamingMode:   true,
 		CanUseTool:        options.CanUseTool,
 		Hooks:             options.Hooks,
-		InitializeTimeout: 60, // seconds
+		InitializeTimeout: 5, // seconds (reduced for debugging)
 	})
 
 	// Start query message processing
@@ -120,10 +120,14 @@ func (c *ClaudeSDKClient) Connect(ctx context.Context, prompt string) error {
 		return fmt.Errorf("failed to start query: %w", err)
 	}
 
-	// Perform initialization handshake
-	if _, err := c.query.Initialize(); err != nil {
-		t.Close()
-		return fmt.Errorf("failed to initialize: %w", err)
+	// Perform initialization handshake (unless skipped)
+	if !options.SkipInitialization {
+		if _, err := c.query.Initialize(); err != nil {
+			t.Close()
+			return fmt.Errorf("failed to initialize: %w", err)
+		}
+	} else {
+		log.Debug().Msg("skipping SDK initialization handshake")
 	}
 
 	// Send initial prompt if provided
