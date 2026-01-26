@@ -14,7 +14,7 @@ import {
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
-import { parseMarkdown, onMermaidThemeChange } from '~/lib/shiki'
+import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
 
 interface MessageBlockProps {
@@ -166,33 +166,9 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
         <CompactSummaryBlock content={userTextContent} />
       )}
 
-      {/* Unknown message types: render raw JSON for debugging */}
+      {/* Unknown message types: render as syntax-highlighted JSON with show more/less */}
       {hasUnknownMessage && (
-        <div className="flex gap-2">
-          <MessageDot status="assistant" lineHeight="prose" />
-          <div className="flex-1 min-w-0">
-            <div
-              className="text-sm font-medium mb-1"
-              style={{ color: 'var(--claude-text-secondary)' }}
-            >
-              {message.type}
-              {(message as { data?: { type?: string } }).data?.type && (
-                <span className="ml-1 opacity-70">
-                  ({(message as { data?: { type?: string } }).data?.type})
-                </span>
-              )}
-            </div>
-            <pre
-              className="text-xs font-mono px-3 py-2 rounded overflow-x-auto"
-              style={{
-                color: 'var(--claude-text-secondary)',
-                backgroundColor: 'var(--claude-bg-code-block)',
-              }}
-            >
-              <code>{JSON.stringify(message, null, 2)}</code>
-            </pre>
-          </div>
-        </div>
+        <UnknownMessageBlock message={message} />
       )}
 
       {/* Assistant messages: bullet + markdown content */}
@@ -497,6 +473,98 @@ function UserMessageBlock({ content }: { content: string }) {
           {message}
         </div>
       )}
+    </div>
+  )
+}
+
+// Unknown message type - render as syntax-highlighted JSON with truncation
+const UNKNOWN_MSG_MAX_LINES = 5
+
+function UnknownMessageBlock({ message }: { message: SessionMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const [html, setHtml] = useState('')
+
+  const jsonText = JSON.stringify(message, null, 2)
+  const lines = jsonText.split('\n')
+  const isTruncated = lines.length > UNKNOWN_MSG_MAX_LINES
+  const displayText = expanded ? jsonText : lines.slice(0, UNKNOWN_MSG_MAX_LINES).join('\n')
+
+  // Get subtype for display
+  const subtype = (message as { data?: { type?: string } }).data?.type
+
+  // Highlight JSON with Shiki
+  useEffect(() => {
+    let cancelled = false
+
+    getHighlighter().then((hl) => {
+      if (cancelled) return
+      try {
+        const highlighted = hl.codeToHtml(displayText, {
+          lang: 'json',
+          themes: {
+            light: 'github-light',
+            dark: 'github-dark',
+          },
+          defaultColor: false,
+        })
+        setHtml(highlighted)
+      } catch {
+        // Fallback to plain text
+        setHtml(`<pre><code>${displayText}</code></pre>`)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [displayText])
+
+  return (
+    <div className="flex gap-2">
+      <MessageDot status="assistant" lineHeight="mono" />
+      <div className="flex-1 min-w-0 font-mono text-[13px] leading-[1.5]">
+        {/* Header: message type + subtype */}
+        <div className="font-semibold mb-1" style={{ color: 'var(--claude-text-primary)' }}>
+          {message.type}
+          {subtype && (
+            <span className="ml-1 font-normal" style={{ color: 'var(--claude-text-secondary)' }}>
+              ({subtype})
+            </span>
+          )}
+        </div>
+
+        {/* JSON content with Shiki highlighting */}
+        <div
+          className="rounded-md overflow-hidden"
+          style={{ border: '1px solid var(--claude-border-light)' }}
+        >
+          <div
+            className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+            style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+          >
+            <div
+              className="p-3 text-[12px] [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent"
+              style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+
+          {/* Show more/less button */}
+          {isTruncated && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{
+                backgroundColor: 'var(--claude-bg-secondary)',
+                color: 'var(--claude-text-secondary)',
+                borderTop: '1px solid var(--claude-border-light)',
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
