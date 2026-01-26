@@ -26,7 +26,7 @@ interface ChatInterfaceProps {
 }
 
 // Types that should not be rendered as messages
-const SKIP_TYPES = ['queue-operation', 'summary', 'custom-title', 'tag', 'agent-name', 'file-history-snapshot', 'progress']
+const SKIP_TYPES = ['file-history-snapshot']
 
 export function ChatInterface({
   sessionId,
@@ -118,7 +118,7 @@ export function ChatInterface({
           return
         }
 
-        // Handle progress updates - show WIP indicator
+        // Handle progress updates - show WIP indicator AND store for rendering
         if (data.type === 'progress') {
           const progressData = data.data
           let msg: string | null = null
@@ -150,7 +150,7 @@ export function ChatInterface({
 
           setProgressMessage(msg)
           console.log('[ChatInterface] Received progress:', progressData?.type, msg)
-          return
+          // Don't return - let progress messages be stored and rendered as raw JSON
         }
 
         // Handle result messages - Claude's turn is complete (session terminator)

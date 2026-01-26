@@ -26,6 +26,7 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
+  const isProgress = message.type === 'progress'
 
   // Extract content from message
   const content = message.message?.content
@@ -123,8 +124,12 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
   const hasSystemInit = systemInitData !== null
   const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary
 
+  // Unknown message type - render as raw JSON (includes progress messages and any other unhandled types)
+  const isUnknownType = !isUser && !isAssistant && !isSystem
+  const hasUnknownMessage = isUnknownType || hasUnknownSystem
+
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !hasUnknownSystem) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -161,8 +166,8 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
         <CompactSummaryBlock content={userTextContent} />
       )}
 
-      {/* Unknown system messages: render raw JSON for debugging */}
-      {hasUnknownSystem && (
+      {/* Unknown message types: render raw JSON for debugging */}
+      {hasUnknownMessage && (
         <div className="flex gap-2">
           <MessageDot status="assistant" lineHeight="prose" />
           <div className="flex-1 min-w-0">
@@ -171,6 +176,11 @@ export function MessageBlock({ message, toolResultMap }: MessageBlockProps) {
               style={{ color: 'var(--claude-text-secondary)' }}
             >
               {message.type}
+              {(message as { data?: { type?: string } }).data?.type && (
+                <span className="ml-1 opacity-70">
+                  ({(message as { data?: { type?: string } }).data?.type})
+                </span>
+              )}
             </div>
             <pre
               className="text-xs font-mono px-3 py-2 rounded overflow-x-auto"
