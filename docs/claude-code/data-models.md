@@ -532,15 +532,137 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
 }
 ```
 
-**4h. Task Tool Results**
+**4h. Task Tool Lifecycle** ⭐ SPECIAL PATTERN
+
+Unlike regular tools which have a simple 1:1 relationship (tool_use → tool_result), the **Task tool** spawns a subagent and can emit multiple progress messages before completing:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Assistant Message (uuid: A)                                     │
+│   └── tool_use: Task (id: toolu_xxx)                           │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         │ parentUuid: A
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Progress Message (type: progress, data.type: agent_progress)   │
+│   - Reports agent spawned and working                          │
+│   - Can have 0 or more of these                                │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         │ parentUuid: A (same parent)
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ User Message (tool_result)                                      │
+│   - Final result from subagent                                 │
+│   - Exactly 1 per Task tool_use                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Complete Task Tool Example:**
+
+**Step 1: Assistant requests Task tool**
 ```json
 {
-  "toolUseResult": {
-    "status": "completed",
-    "prompt": "Task description..."
+  "parentUuid": "71cf0fa9-350c-4ddd-aeb2-ce58eb84671f",
+  "type": "assistant",
+  "uuid": "b75ba4d0-9184-4abc-b8a7-d92b54adbb3e",
+  "message": {
+    "model": "claude-opus-4-5-20251101",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_013cuVCL8EJKDmdHWL4p7yhi",
+        "name": "Task",
+        "input": {
+          "description": "Explore frontend Claude integration",
+          "prompt": "Explore the frontend Claude integration...",
+          "subagent_type": "Explore"
+        }
+      }
+    ]
   }
 }
 ```
+
+**Step 2: Progress message(s) (0 or more)**
+```json
+{
+  "parentUuid": "b75ba4d0-9184-4abc-b8a7-d92b54adbb3e",
+  "type": "progress",
+  "uuid": "4788ffe3-ac9b-476a-9570-c660bfba06c8",
+  "data": {
+    "type": "agent_progress",
+    "agentId": "aa6fc0e",
+    "prompt": "Explore the current Claude Code integration...",
+    "message": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Explore the current..."}]
+      },
+      "uuid": "512c456c-246a-49d5-8278-d6c5d49b00c2"
+    },
+    "normalizedMessages": [...]
+  },
+  "toolUseID": "agent_msg_01JCTLgNf4AAaCD5Y7CnKhd2",
+  "parentToolUseID": "toolu_013cuVCL8EJKDmdHWL4p7yhi"
+}
+```
+
+**Step 3: Final tool result (exactly 1)**
+```json
+{
+  "parentUuid": "b75ba4d0-9184-4abc-b8a7-d92b54adbb3e",
+  "type": "user",
+  "uuid": "c56557b3-fe3c-4710-8318-d46f9ecf1c07",
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "tool_use_id": "toolu_013cuVCL8EJKDmdHWL4p7yhi",
+        "type": "tool_result",
+        "content": [{"type": "text", "text": "## Analysis Results\n..."}]
+      }
+    ]
+  },
+  "toolUseResult": {
+    "status": "completed",
+    "prompt": "Explore the frontend Claude integration...",
+    "agentId": "aa3dc99",
+    "content": [{"type": "text", "text": "## Analysis Results\n..."}],
+    "totalDurationMs": 51400,
+    "totalTokens": 67558,
+    "totalToolUseCount": 24,
+    "usage": {...}
+  },
+  "sourceToolAssistantUUID": "b75ba4d0-9184-4abc-b8a7-d92b54adbb3e"
+}
+```
+
+**Key Relationships:**
+
+| Field | In Message | Points To |
+|-------|------------|-----------|
+| `parentUuid` | progress, tool_result | Assistant message UUID containing Task tool_use |
+| `parentToolUseID` | progress | The Task tool_use block ID |
+| `toolUseID` | progress | Unique ID for this progress event |
+| `tool_use_id` | tool_result content | The Task tool_use block ID |
+| `sourceToolAssistantUUID` | tool_result | Assistant message UUID (same as parentUuid) |
+
+**Task toolUseResult Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `"completed"` or `"error"` |
+| `prompt` | string | The prompt sent to the subagent |
+| `agentId` | string | Unique identifier for the agent (7-char hex) |
+| `content` | array | Content blocks from agent response |
+| `totalDurationMs` | number | Total execution time in milliseconds |
+| `totalTokens` | number | Total tokens used by subagent |
+| `totalToolUseCount` | number | Number of tool calls made by subagent |
+| `usage` | object | Detailed token usage breakdown |
 
 **toolUseResult Schema Summary**:
 
@@ -806,7 +928,7 @@ Progress messages report real-time updates during long-running operations. The `
 
 > **Note**: This message type is not officially documented by Anthropic. The structure below is based on observed behavior and may change.
 
-Sent when a subagent (Task tool) is spawned and begins processing. This progress message indicates that a parallel or background agent is working on a subtask.
+Sent when a subagent (Task tool) is spawned and begins processing. Unlike regular tool calls which have exactly 1 result, a Task can emit **0 or more** `agent_progress` messages before completing. See **Section 4h (Task Tool Lifecycle)** for the complete pattern.
 
 ```json
 {
@@ -865,13 +987,23 @@ Sent when a subagent (Task tool) is spawned and begins processing. This progress
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `parentUuid` | string | UUID of the **assistant message** containing the Task tool_use |
 | `data.type` | string | Always `"agent_progress"` |
 | `data.prompt` | string | The prompt sent to the subagent |
 | `data.agentId` | string | Unique identifier for the spawned agent (7-char hex) |
 | `data.message` | object | The user message being processed by the agent |
 | `data.normalizedMessages` | array | Normalized message history for the agent |
-| `toolUseID` | string | ID linking to the Task tool_use (format: `agent_msg_{id}`) |
-| `parentToolUseID` | string | ID of the Task tool_use that spawned this agent |
+| `toolUseID` | string | Unique ID for this progress event (format: `agent_msg_{id}`) |
+| `parentToolUseID` | string | ID of the Task tool_use block that spawned this agent |
+
+**Comparison with Tool Results:**
+
+| Aspect | Regular Tool (Bash, Read, etc.) | Task Tool |
+|--------|--------------------------------|-----------|
+| Progress messages | 0 or more (`bash_progress`, etc.) | 0 or more (`agent_progress`) |
+| Result messages | Exactly 1 `tool_result` | Exactly 1 `tool_result` |
+| `parentUuid` points to | Assistant message with tool_use | Assistant message with Task tool_use |
+| Progress `parentToolUseID` | Points to tool_use block | Points to Task tool_use block |
 
 **UI Rendering**: Should display the agent ID, a truncated prompt preview, and indicate the agent is working. Can be shown as a collapsible item that expands to show the full prompt.
 

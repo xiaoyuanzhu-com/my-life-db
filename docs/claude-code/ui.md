@@ -695,6 +695,68 @@ Or for modifications:
 
 </details>
 
+<details>
+<summary><strong>Task Tool - Detailed Spec</strong></summary>
+
+The Task tool spawns a subagent and has a **special lifecycle** with progress messages. See [data-models.md Section 4h](./data-models.md#4h-task-tool-lifecycle) for the complete message flow.
+
+**Lifecycle:**
+```
+1. Assistant message with Task tool_use
+2. 0 or more agent_progress messages (progress type)
+3. Exactly 1 tool_result (user message)
+```
+
+**Tool Use (Pending):**
+```
+○ Task Explore frontend Claude integration
+└ Spawning agent...
+```
+
+**With Progress (Running):**
+```
+● Task Explore frontend Claude integration
+└ Agent aa6fc0e working...
+  └ Explore the current Claude Code integration in `backend/claude/`...
+```
+
+**Completed:**
+```
+● Task Explore frontend Claude integration
+└ Agent aa6fc0e completed (51.4s, 67558 tokens, 24 tool calls)
+```
+
+**Layout:**
+```tsx
+<div className="font-mono text-[13px] leading-[1.5]">
+  <div className="flex items-start gap-2">
+    <span className="text-[#22C55E]">●</span>
+    <span className="font-semibold text-primary">Task</span>
+    <span className="text-secondary">{description}</span>
+  </div>
+  {/* Agent progress indicator */}
+  <div className="mt-1 flex gap-2 text-secondary">
+    <span>└</span>
+    <span>Agent {agentId} {status}...</span>
+  </div>
+  {/* Nested agent prompt (collapsible) */}
+  {expanded && (
+    <div className="ml-4 mt-1 flex gap-2 text-tertiary">
+      <span>└</span>
+      <span className="whitespace-pre-wrap">{prompt}</span>
+    </div>
+  )}
+</div>
+```
+
+**Key Differences from Other Tools:**
+- Can have **multiple progress messages** before result
+- Progress uses `parentUuid` to link back to Task tool_use message
+- Result includes agent stats (duration, tokens, tool calls)
+- `agentId` is a 7-character hex identifier
+
+</details>
+
 **Anti-Patterns (DO NOT DO):**
 
 ❌ Dark terminal backgrounds for Bash output
