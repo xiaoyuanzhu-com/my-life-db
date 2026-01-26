@@ -281,7 +281,7 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 
 	if isSDKRequest && ch != nil {
 		// Route to SDK permission callback
-		log.Info().
+		log.Debug().
 			Str("sessionId", s.ID).
 			Str("requestId", requestID).
 			Str("behavior", behavior).
@@ -500,7 +500,7 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 
 		s.BroadcastUIMessage(data)
 
-		log.Info().
+		log.Debug().
 			Str("sessionId", s.ID).
 			Str("requestId", requestID).
 			Str("toolName", toolName).
@@ -509,7 +509,7 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 		// Wait for response with timeout
 		select {
 		case resp := <-responseChan:
-			log.Info().
+			log.Debug().
 				Str("sessionId", s.ID).
 				Str("requestId", requestID).
 				Str("behavior", resp.Behavior).

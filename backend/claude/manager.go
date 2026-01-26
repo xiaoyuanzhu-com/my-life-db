@@ -809,7 +809,7 @@ func (m *Manager) readJSON(session *Session) {
 			continue
 		}
 
-		log.Info().
+		log.Debug().
 			Str("sessionId", session.ID).
 			Str("stdout", string(line)).
 			Msg("claude stdout raw")
