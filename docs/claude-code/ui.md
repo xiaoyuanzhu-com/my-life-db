@@ -704,7 +704,49 @@ Or for modifications:
 ❌ Missing green bullet indicators
 ❌ Using `>` or `▶` instead of `●` for tool headers
 
-### 6.2 Data Model
+### 6.2 Skipped Message Types
+
+Some message types are intentionally **not rendered** in the chat interface. These are internal/metadata messages that provide no user-facing value.
+
+**Skipped Types:**
+
+| Type | Reason |
+|------|--------|
+| `file-history-snapshot` | Internal file versioning metadata for undo/redo |
+
+> **Design Principle:** All other message types should be rendered. Unknown types are displayed as raw JSON to aid debugging and ensure no messages are silently lost.
+
+**file-history-snapshot Example:**
+
+> **Note**: This message type is not officially documented by Anthropic. The structure below is based on observed behavior.
+
+```json
+{
+  "type": "file-history-snapshot",
+  "messageId": "624209ac-a14f-4345-8515-32cd8b826a2c",
+  "snapshot": {
+    "messageId": "624209ac-a14f-4345-8515-32cd8b826a2c",
+    "trackedFileBackups": {},
+    "timestamp": "2026-01-26T04:21:28.776Z"
+  },
+  "isSnapshotUpdate": false
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"file-history-snapshot"` |
+| `messageId` | string | UUID of the associated message |
+| `snapshot.messageId` | string | Same as parent messageId |
+| `snapshot.trackedFileBackups` | object | Map of file paths to backup info (empty if no files tracked) |
+| `snapshot.timestamp` | string | ISO 8601 timestamp of the snapshot |
+| `isSnapshotUpdate` | boolean | Whether this updates an existing snapshot |
+
+**Why Skip:** These messages are emitted after file-modifying operations (Edit, Write) to enable undo functionality. They contain no content relevant to the conversation flow and would clutter the UI.
+
+### 6.3 Data Model
 
 To replicate this effectively, structure the React/Vue components with these TypeScript interfaces:
 
@@ -780,7 +822,7 @@ interface ClaudeSession {
 }
 ```
 
-### 6.3 Tailwind CSS Utility Classes
+### 6.4 Tailwind CSS Utility Classes
 
 Quick reference for styling with Tailwind:
 
@@ -803,7 +845,7 @@ Quick reference for styling with Tailwind:
 "bg-[#ffebe9] text-[#cb2431] font-mono whitespace-pre" // Deleted line
 ```
 
-### 6.4 Critical Rendering Logic
+### 6.5 Critical Rendering Logic
 
 #### Markdown Parsing
 You cannot use a standard Markdown renderer out of the box. Use a custom renderer (e.g., `react-markdown` with custom components) to handle:
@@ -852,7 +894,7 @@ const { scrollRef, contentRef } = useStickToBottom({
 - `contentRef` → attached to the inner content div that holds all messages
 - The hook also exposes `isAtBottom` and `scrollToBottom()` for future use (e.g., a "scroll to bottom" button when the user has scrolled up)
 
-### 6.5 Component Structure & Directory Organization
+### 6.6 Component Structure & Directory Organization
 
 **Recommended Directory Structure:**
 
@@ -935,7 +977,7 @@ function BlockRenderer({ block }: { block: Block }) {
 }
 ```
 
-### 6.6 Backend Integration & Communication Protocol
+### 6.7 Backend Integration & Communication Protocol
 
 **API Endpoints Required:**
 
@@ -1015,7 +1057,7 @@ The backend should stream messages using SSE or WebSocket with JSON payloads:
 }
 ```
 
-### 6.7 Accessibility Considerations
+### 6.8 Accessibility Considerations
 
 *   **Keyboard Navigation:** Ensure collapsible sections are keyboard-accessible (Enter/Space to toggle)
 *   **Screen Readers:** Use semantic HTML (`<details>`, `<summary>` for collapsible content)
@@ -1024,7 +1066,7 @@ The backend should stream messages using SSE or WebSocket with JSON payloads:
 *   **ARIA Labels:** Proper labeling for tool blocks, status indicators, and interactive elements
 *   **Keyboard Shortcuts:** Document and support keyboard shortcuts (see section below)
 
-### 6.8 Keyboard Shortcuts
+### 6.9 Keyboard Shortcuts
 
 Essential keyboard shortcuts for power users:
 
