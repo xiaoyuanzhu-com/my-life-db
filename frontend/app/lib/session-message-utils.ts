@@ -173,8 +173,51 @@ export interface WebFetchToolResult {
   url?: string
 }
 
+/**
+ * Individual link result from WebSearch
+ */
+export interface WebSearchLinkResult {
+  title: string
+  url: string
+}
+
+/**
+ * Container for WebSearch link results (first element of results array)
+ */
+export interface WebSearchResultsContainer {
+  tool_use_id: string
+  content: WebSearchLinkResult[]
+}
+
+/**
+ * WebSearch tool result structure.
+ *
+ * The `results` field is a heterogeneous array:
+ * - First element: Object with tool_use_id and content (array of link results)
+ * - Second element: String with formatted/summarized search results
+ *
+ * Example:
+ * ```json
+ * {
+ *   "query": "gold price January 2026",
+ *   "results": [
+ *     {
+ *       "tool_use_id": "srvtoolu_...",
+ *       "content": [
+ *         {"title": "Gold Prices Today", "url": "https://example.com/..."},
+ *         ...
+ *       ]
+ *     },
+ *     "Based on the search results, here is the data..."
+ *   ],
+ *   "durationSeconds": 17.87
+ * }
+ * ```
+ */
 export interface WebSearchToolResult {
   query?: string
+  results?: [WebSearchResultsContainer, string] | WebSearchLinkResult[]
+  durationSeconds?: number
 }
 
 export interface TaskToolResult {

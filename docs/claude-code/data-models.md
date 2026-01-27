@@ -583,13 +583,57 @@ The `toolUseResult` field contains tool-specific metadata in **different formats
 ```
 
 **4g. WebSearch Tool Results**
+
+The WebSearch tool result has a unique structure where the `results` array is heterogeneous:
+- First element: Object containing link results with `tool_use_id` and `content` array
+- Second element: String with the formatted/summarized search results
+
 ```json
 {
-  "toolUseResult": {
-    "query": "search query here"
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": [{
+      "tool_use_id": "toolu_01STsH54h9VBFEWh7dDj8kfn",
+      "type": "tool_result",
+      "content": "Web search results for query: \"gold price January 2026\"..."
+    }]
+  },
+  "tool_use_result": {
+    "query": "gold price daily January 2026 last 30 days historical data",
+    "results": [
+      {
+        "tool_use_id": "srvtoolu_01MB1Jir75A1cofHFBnQZByp",
+        "content": [
+          {"title": "Today's Gold Prices: January 26, 2026 | Money", "url": "https://money.com/gold-prices-today-january-26-2026/"},
+          {"title": "Current price of gold as of January 26, 2026", "url": "https://fortune.com/article/current-price-of-gold-01-26-2026/"},
+          {"title": "Gold - Price - Chart - Historical Data - News", "url": "https://tradingeconomics.com/commodity/gold"}
+        ]
+      },
+      "Based on the search results, here is the historical gold price data for January 2026:\n\n## Gold Price Historical Data - January 2026\n\nGold rose to $5,079.39 USD per troy ounce..."
+    ],
+    "durationSeconds": 17.877044415999997
   }
 }
 ```
+
+**WebSearch toolUseResult Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | The search query that was executed |
+| `results` | array | Heterogeneous array: `[LinksContainer, FormattedString]` |
+| `results[0].tool_use_id` | string | Server-side tool use ID for the search request |
+| `results[0].content` | array | Array of link objects with `title` and `url` |
+| `results[1]` | string | Formatted search results with summaries and data |
+| `durationSeconds` | number | Search duration in seconds |
+
+**Link Result Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Page title from search result |
+| `url` | string | URL of the search result |
 
 **4h. Task Tool Lifecycle** ⭐ SPECIAL PATTERN
 
@@ -733,7 +777,7 @@ Unlike regular tools which have a simple 1:1 relationship (tool_use → tool_res
 | Edit | object | `filePath`, `oldString`, `newString`, `structuredPatch` |
 | Grep/Glob | object | `mode`, `filenames` |
 | WebFetch | object | `bytes`, `code`, `result`, `durationMs`, `url` |
-| WebSearch | object | `query` |
+| WebSearch | object | `query`, `results`, `durationSeconds` |
 | Task | object | `status`, `prompt` |
 
 **Important**: The `toolUseResult` field type varies:
