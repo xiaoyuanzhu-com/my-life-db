@@ -329,6 +329,22 @@ export function isApiErrorMessage(msg: SessionMessage): boolean {
 }
 
 /**
+ * Summary message interface (automatic conversation summarization)
+ */
+export interface SummaryMessage extends SessionMessage {
+  type: 'summary'
+  summary: string
+  leafUuid: string
+}
+
+/**
+ * Type guard to check if a message is a summary message
+ */
+export function isSummaryMessage(msg: SessionMessage): msg is SummaryMessage {
+  return msg.type === 'summary' && 'summary' in msg
+}
+
+/**
  * Type guard to check if toolUseResult is a string (error format)
  */
 export function isToolResultError(result: ToolUseResult | undefined): result is string {

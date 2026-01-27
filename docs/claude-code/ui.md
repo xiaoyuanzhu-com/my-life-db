@@ -1065,7 +1065,27 @@ The Task tool spawns a subagent and has a **special lifecycle** with progress me
 ❌ Missing green bullet indicators
 ❌ Using `>` or `▶` instead of `●` for tool headers
 
-### 6.2 Skipped Message Types
+### 6.2 Session-Level Messages
+
+These are top-level session events that are rendered as simple status indicators (not as chat bubbles or tool calls).
+
+| Message Type | Display | Description |
+|--------------|---------|-------------|
+| `system.subtype: compact_boundary` | "Session compacted" | Marks where conversation was compacted to reduce context |
+| `system.subtype: init` | System init block | Shows session initialization with tools, model, MCP servers |
+| `user.isCompactSummary: true` | "Session continued" + collapsible summary | User message containing the compacted conversation summary |
+| `type: summary` | "Session summary" + summary text | Auto-generated session summary (created when session index is rebuilt) |
+
+**Summary Message Rendering:**
+
+```
+● Session summary
+  Claude SDK UI Mode Integration Complete
+```
+
+The `summary` message displays the auto-generated session title. This is different from `compact_boundary` (which marks compaction events) - `summary` is the Claude-generated title stored in the JSONL file.
+
+### 6.3 Skipped Message Types
 
 Some message types are intentionally **not rendered** in the chat interface as standalone messages. These are internal/metadata messages that provide no user-facing value when displayed directly.
 
@@ -1221,7 +1241,7 @@ User messages that consist entirely of skipped XML tags are not rendered. This c
 
 **Why Skip:** These messages echo local slash commands (like `/clear`) that the user ran. The command execution is already shown via other means, and displaying raw XML would clutter the UI.
 
-### 6.3 Data Model
+### 6.4 Data Model
 
 To replicate this effectively, structure the React/Vue components with these TypeScript interfaces:
 
@@ -1297,7 +1317,7 @@ interface ClaudeSession {
 }
 ```
 
-### 6.4 Tailwind CSS Utility Classes
+### 6.5 Tailwind CSS Utility Classes
 
 Quick reference for styling with Tailwind:
 
@@ -1320,7 +1340,7 @@ Quick reference for styling with Tailwind:
 "bg-[#ffebe9] text-[#cb2431] font-mono whitespace-pre" // Deleted line
 ```
 
-### 6.5 Critical Rendering Logic
+### 6.6 Critical Rendering Logic
 
 #### Markdown Parsing
 You cannot use a standard Markdown renderer out of the box. Use a custom renderer (e.g., `react-markdown` with custom components) to handle:
@@ -1369,7 +1389,7 @@ const { scrollRef, contentRef } = useStickToBottom({
 - `contentRef` → attached to the inner content div that holds all messages
 - The hook also exposes `isAtBottom` and `scrollToBottom()` for future use (e.g., a "scroll to bottom" button when the user has scrolled up)
 
-### 6.6 Component Structure & Directory Organization
+### 6.7 Component Structure & Directory Organization
 
 **Recommended Directory Structure:**
 
@@ -1452,7 +1472,7 @@ function BlockRenderer({ block }: { block: Block }) {
 }
 ```
 
-### 6.7 Backend Integration & Communication Protocol
+### 6.8 Backend Integration & Communication Protocol
 
 **API Endpoints Required:**
 
@@ -1532,7 +1552,7 @@ The backend should stream messages using SSE or WebSocket with JSON payloads:
 }
 ```
 
-### 6.8 Accessibility Considerations
+### 6.9 Accessibility Considerations
 
 *   **Keyboard Navigation:** Ensure collapsible sections are keyboard-accessible (Enter/Space to toggle)
 *   **Screen Readers:** Use semantic HTML (`<details>`, `<summary>` for collapsible content)
@@ -1541,7 +1561,7 @@ The backend should stream messages using SSE or WebSocket with JSON payloads:
 *   **ARIA Labels:** Proper labeling for tool blocks, status indicators, and interactive elements
 *   **Keyboard Shortcuts:** Document and support keyboard shortcuts (see section below)
 
-### 6.9 Keyboard Shortcuts
+### 6.10 Keyboard Shortcuts
 
 Essential keyboard shortcuts for power users:
 

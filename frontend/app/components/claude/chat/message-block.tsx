@@ -11,8 +11,10 @@ import {
   isBashToolResult,
   isCompactBoundaryMessage,
   isCompactSummaryMessage,
+  isSummaryMessage,
   type SessionMessage,
   type ExtractedToolResult,
+  type SummaryMessage,
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
@@ -118,9 +120,10 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     return null
   }, [isSystem, message])
 
-  // Check for compact boundary and compact summary
+  // Check for compact boundary, compact summary, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
   const isCompactSummary = isCompactSummaryMessage(message)
+  const isSummary = isSummaryMessage(message)
 
   // Determine what to render
   const hasUserContent = isUser && userTextContent && !isCompactSummary
@@ -132,11 +135,12 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
-  const isUnknownType = !isUser && !isAssistant && !isSystem
+  // Note: summary messages have dedicated rendering
+  const isUnknownType = !isUser && !isAssistant && !isSystem && !isSummary
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -165,6 +169,27 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
           >
             Session compacted
           </span>
+        </div>
+      )}
+
+      {/* Summary message: automatic conversation summarization */}
+      {isSummary && (
+        <div className="flex items-start gap-2">
+          <MessageDot status="completed" lineHeight="mono" />
+          <div className="flex-1 min-w-0">
+            <span
+              className="font-mono text-[13px] leading-[1.5] font-semibold"
+              style={{ color: 'var(--claude-text-primary)' }}
+            >
+              Session summary
+            </span>
+            <div
+              className="mt-1 font-mono text-[13px] leading-[1.5]"
+              style={{ color: 'var(--claude-text-secondary)' }}
+            >
+              {(message as SummaryMessage).summary}
+            </div>
+          </div>
         </div>
       )}
 
