@@ -163,12 +163,17 @@ User input that initiates the conversation or task.
     *   **Background:** `$bg-subtle` (#F5F4EE in light mode - warm off-white/beige)
     *   **Padding:** `12px 16px` (vertical, horizontal)
     *   **Border-radius:** `12px`
-    *   **Max-width:** Content-based (fits to text, not full width)
+    *   **Max-width:** 85% of container width
     *   **Display:** Inline-block (wraps to content width)
 *   **Alignment:** Right-aligned (using flex justify-end on container)
 *   **Typography:** Sans-serif, 15px, $text-primary, line-height 1.6
 *   **No bullet indicator** - plain text only
 *   **Spacing:** `16px` margin-bottom for separation from next message
+
+**Truncation:** Uses [`gradient-fade`](#pattern-gradient-fade) pattern
+- Limit: **10 lines** OR **500 characters** (whichever hits first)
+- Shows gradient fade overlay with "Show more" button when truncated
+- "Show less" button (no gradient) when expanded
 
 ### B. The "Status Item" / Issue List
 Used to display categorized issues (e.g., Security, Performance, Memory).
@@ -605,15 +610,127 @@ function ExpandableContent({ content }) {
 
 ---
 
+#### Pattern: `gradient-fade`
+
+**Slug:** `gradient-fade`
+
+**Use when:** Content is in a solid-background container (like user message bubbles) where a border separator would look harsh.
+
+**Used by:** User message blocks
+
+**Behavior:**
+- **Shows truncated preview** by default (e.g., 10 lines or 500 chars)
+- **Gradient overlay** fades content at bottom when truncated
+- Click **"Show more"** button floating on gradient to expand
+- Click **"Show less"** button (no gradient) to collapse
+
+**Visual Pattern:**
+```
+┌─────────────────────────────┐
+│ Line 1                      │
+│ Line 2                      │
+│ Line 3 (fading out...)      │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  [gradient overlay]
+│        Show more            │  [button on gradient]
+└─────────────────────────────┘
+
+┌─────────────────────────────┐
+│ Line 1                      │
+│ Line 2                      │
+│ Line 3                      │
+│ Line 4                      │
+│ ... (all content)           │
+│ maxHeight: 60vh, scrollable │
+│        Show less            │  [button, no gradient]
+└─────────────────────────────┘
+```
+
+**Implementation:**
+```tsx
+const MAX_LINES = 10
+const MAX_CHARS = 500
+
+function GradientFadeContent({ content, bgColor }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const lines = content.split('\n')
+  const exceedsLines = lines.length > MAX_LINES
+  const exceedsChars = content.length > MAX_CHARS
+  const isTruncated = exceedsLines || exceedsChars
+
+  let displayContent = content
+  if (!expanded && isTruncated) {
+    let truncated = lines.slice(0, MAX_LINES).join('\n')
+    if (truncated.length > MAX_CHARS) {
+      truncated = truncated.slice(0, MAX_CHARS) + '...'
+    }
+    displayContent = truncated
+  }
+
+  return (
+    <div className="relative">
+      <div
+        className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+        style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+      >
+        {displayContent}
+      </div>
+
+      {/* Gradient fade + Show more button when truncated */}
+      {isTruncated && !expanded && (
+        <div
+          className="absolute bottom-0 left-0 right-0 flex items-end justify-center pb-2 pt-8"
+          style={{
+            background: `linear-gradient(to bottom, transparent, ${bgColor} 60%)`,
+          }}
+        >
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-[12px] hover:opacity-80"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            Show more
+          </button>
+        </div>
+      )}
+
+      {/* Show less button when expanded */}
+      {isTruncated && expanded && (
+        <div className="flex justify-center pb-2">
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-[12px] hover:opacity-80"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            Show less
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+**Key specs:**
+- Default truncation: 10 lines OR 500 chars (whichever hits first)
+- Gradient: `linear-gradient(to bottom, transparent, ${bgColor} 60%)`
+- Gradient padding: `pb-2 pt-8` (short bottom, tall top for fade effect)
+- Button: Centered, `text-[12px]`, `var(--claude-text-secondary)`
+- No border or background on button (floats on gradient)
+- Expanded max height: `60vh` with `overflow-y-auto`
+
+---
+
 #### Pattern Comparison
 
-| Aspect | `collapsible-header` | `expandable-content` |
-|--------|---------------------|---------------------|
-| Default state | Hidden | Shows preview |
-| Toggle mechanism | Click header | Click banner button |
-| Chevron | Yes (`▸`/`▾`) | No |
-| Banner button | No | Yes ("Show more/less") |
-| Use case | Secondary content | Important but long content |
+| Aspect | `collapsible-header` | `expandable-content` | `gradient-fade` |
+|--------|---------------------|---------------------|-----------------|
+| Default state | Hidden | Shows preview | Shows preview |
+| Toggle mechanism | Click header | Click banner button | Click floating button |
+| Chevron | Yes (`▸`/`▾`) | No | No |
+| Banner button | No | Yes (bordered) | Yes (on gradient) |
+| Visual separator | None | Border line | Gradient overlay |
+| Use case | Secondary content | Bordered containers | Solid-bg containers |
 
 ### Iconography
 *   **Style:** Line/Stroke icons with `1.5px` stroke width (thin, clean aesthetic)

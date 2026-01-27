@@ -493,8 +493,27 @@ function CompactSummaryBlock({ content }: { content: string }) {
 }
 
 // User message with file context extraction
+const USER_MSG_MAX_LINES = 10
+const USER_MSG_MAX_CHARS = 500
+
 function UserMessageBlock({ content }: { content: string }) {
   const { context, message } = splitMessageContent(content)
+  const [expanded, setExpanded] = useState(false)
+
+  const lines = message?.split('\n') ?? []
+  const exceedsLines = lines.length > USER_MSG_MAX_LINES
+  const exceedsChars = (message?.length ?? 0) > USER_MSG_MAX_CHARS
+  const isTruncated = exceedsLines || exceedsChars
+
+  let displayMessage = message
+  if (!expanded && isTruncated) {
+    // Truncate by lines first, then by chars
+    let truncated = lines.slice(0, USER_MSG_MAX_LINES).join('\n')
+    if (truncated.length > USER_MSG_MAX_CHARS) {
+      truncated = truncated.slice(0, USER_MSG_MAX_CHARS) + '...'
+    }
+    displayMessage = truncated
+  }
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -504,13 +523,49 @@ function UserMessageBlock({ content }: { content: string }) {
       {/* Message bubble - only show if there's actual message content */}
       {message && (
         <div
-          className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+          className="relative inline-block max-w-[85%] rounded-xl overflow-hidden"
           style={{
             backgroundColor: 'var(--claude-bg-subtle)',
             color: 'var(--claude-text-primary)',
           }}
         >
-          {message}
+          <div
+            className={`px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${expanded && isTruncated ? 'overflow-y-auto' : ''}`}
+            style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+          >
+            {displayMessage}
+          </div>
+
+          {/* Gradient fade + Show more button when truncated */}
+          {isTruncated && !expanded && (
+            <div
+              className="absolute bottom-0 left-0 right-0 flex items-end justify-center pb-2 pt-8"
+              style={{
+                background: 'linear-gradient(to bottom, transparent, var(--claude-bg-subtle) 60%)',
+              }}
+            >
+              <button
+                onClick={() => setExpanded(true)}
+                className="text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: 'var(--claude-text-secondary)' }}
+              >
+                Show more
+              </button>
+            </div>
+          )}
+
+          {/* Show less button when expanded */}
+          {isTruncated && expanded && (
+            <div className="flex justify-center pb-2">
+              <button
+                onClick={() => setExpanded(false)}
+                className="text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: 'var(--claude-text-secondary)' }}
+              >
+                Show less
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
