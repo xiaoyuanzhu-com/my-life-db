@@ -1,4 +1,4 @@
-import { useState, useRef, KeyboardEvent, useEffect, useCallback } from 'react'
+import { useState, useRef, KeyboardEvent, useEffect, useCallback, useTransition } from 'react'
 import { ArrowUp, Image } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
@@ -54,32 +54,6 @@ export function ChatInput({
     }
     // Shift+Enter: allow default behavior (add newline)
   }
-
-  // Handle permission keyboard shortcuts
-  const handlePermissionKeyDown = useCallback(
-    (e: globalThis.KeyboardEvent) => {
-      if (!hasPermission || !onPermissionDecision) return
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onPermissionDecision('deny')
-      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        onPermissionDecision('allowSession')
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        onPermissionDecision('allow')
-      }
-    },
-    [hasPermission, onPermissionDecision]
-  )
-
-  useEffect(() => {
-    if (hasPermission) {
-      window.addEventListener('keydown', handlePermissionKeyDown)
-      return () => window.removeEventListener('keydown', handlePermissionKeyDown)
-    }
-  }, [hasPermission, handlePermissionKeyDown])
 
   const handleAttachClick = () => {
     // TODO: Implement file attachment
@@ -176,6 +150,44 @@ interface PermissionSectionProps {
 }
 
 function PermissionSection({ request, onDecision }: PermissionSectionProps) {
+  const [isDismissing, setIsDismissing] = useState(false)
+  const [pendingDecision, setPendingDecision] = useState<PermissionDecision | null>(null)
+
+  // Handle button click - start exit animation
+  const handleDecision = useCallback((decision: PermissionDecision) => {
+    if (isDismissing) return // Prevent double-click
+    setIsDismissing(true)
+    setPendingDecision(decision)
+  }, [isDismissing])
+
+  // After animation ends, call the actual decision handler
+  const handleAnimationEnd = () => {
+    if (isDismissing && pendingDecision) {
+      onDecision(pendingDecision)
+    }
+  }
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isDismissing) return
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleDecision('deny')
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        handleDecision('allowSession')
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        handleDecision('allow')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isDismissing, handleDecision])
+
   // Get the action verb based on tool name
   const getActionVerb = (toolName: string): string => {
     switch (toolName) {
@@ -224,7 +236,10 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
   const description = getDescription(request.input)
 
   return (
-    <div className="p-3">
+    <div
+      className={`p-3 ${isDismissing ? 'animate-slide-down-fade' : 'animate-slide-up-fade'}`}
+      onAnimationEnd={handleAnimationEnd}
+    >
       {/* Header: Allow Claude to {Action}? */}
       <div className="text-[14px] leading-relaxed text-foreground mb-2">
         Allow Claude to <span className="font-semibold">{actionVerb}</span>?
@@ -247,8 +262,9 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
       <div className="flex items-center justify-end gap-2">
         {/* Deny */}
         <button
-          onClick={() => onDecision('deny')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer"
+          onClick={() => handleDecision('deny')}
+          disabled={isDismissing}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
         >
           Deny
           <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
@@ -258,8 +274,9 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
 
         {/* Always allow for session */}
         <button
-          onClick={() => onDecision('allowSession')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer"
+          onClick={() => handleDecision('allowSession')}
+          disabled={isDismissing}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
         >
           Always allow for session
           <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
@@ -270,8 +287,9 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
 
         {/* Allow once */}
         <button
-          onClick={() => onDecision('allow')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+          onClick={() => handleDecision('allow')}
+          disabled={isDismissing}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
         >
           Allow once
           <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">

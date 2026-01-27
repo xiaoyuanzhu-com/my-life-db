@@ -215,6 +215,22 @@
   animation: slide-up-fade 0.35s ease-out forwards;
 }
 
+/* Slide down and fade out animation for dismissing elements */
+@keyframes slide-down-fade {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+.animate-slide-down-fade {
+  animation: slide-down-fade 0.25s ease-in forwards;
+}
+
 /* Initial hidden state for new items before animation starts */
 .animate-new-item-initial {
   opacity: 0;
