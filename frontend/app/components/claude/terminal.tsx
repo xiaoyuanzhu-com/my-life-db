@@ -244,8 +244,9 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       }
     }
 
-    if (isMobile && terminalRef.current) {
-      const terminalElement = terminalRef.current
+    // Capture ref value for cleanup function
+    const terminalElement = terminalRef.current
+    if (isMobile && terminalElement) {
       terminalElement.addEventListener('touchstart', handleTouchStart, { passive: true })
       terminalElement.addEventListener('touchmove', handleTouchMove, { passive: false })
     }
@@ -274,7 +275,7 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
 
           terminal.options.fontSize = newFontSize
           terminal.resize(80, newRows)
-        } catch (e) {
+        } catch {
           // Silent - resize failures are not critical
         }
       }, 150)
@@ -325,11 +326,13 @@ export function ClaudeTerminal({ sessionId }: ClaudeTerminalProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
 
       // Cleanup touch listeners
-      if (isMobile && terminalRef.current) {
-        terminalRef.current.removeEventListener('touchstart', handleTouchStart)
-        terminalRef.current.removeEventListener('touchmove', handleTouchMove)
+      if (isMobile && terminalElement) {
+        terminalElement.removeEventListener('touchstart', handleTouchStart)
+        terminalElement.removeEventListener('touchmove', handleTouchMove)
       }
     }
+    // Note: connectWebSocket intentionally excluded - it captures sessionId in closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isMobile])
 
   return (

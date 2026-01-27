@@ -27,7 +27,7 @@ export function RecordingReviewModal({
   const [activeTab, setActiveTab] = useState<TabType>('raw');
   const [editedRawTranscript, setEditedRawTranscript] = useState('');
   const [editedCleanedTranscript, setEditedCleanedTranscript] = useState('');
-  const [cleanedTranscript, setCleanedTranscript] = useState('');
+  const [_cleanedTranscript, setCleanedTranscript] = useState('');
   const [summary, setSummary] = useState('');
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -51,6 +51,8 @@ export function RecordingReviewModal({
     if (activeTab === 'summary' && !summary && !isGeneratingSummary && duration >= 30) {
       generateSummary();
     }
+    // Note: generateSummary is intentionally excluded to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, summary, isGeneratingSummary, duration]);
 
   const generateSummary = useCallback(async () => {

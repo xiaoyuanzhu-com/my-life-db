@@ -141,6 +141,8 @@ function TreeNode({
     } finally {
       setIsLoading(false);
     }
+    // Note: isLoading intentionally excluded to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.path]);
 
   useEffect(() => {
@@ -747,7 +749,7 @@ export function FileTree({
       for (const { file, relativePath } of allFiles) {
         // Extract the directory path from the relative path (e.g., "folder/subfolder/file.txt" -> "folder/subfolder")
         const pathParts = relativePath.split('/');
-        const fileName = pathParts.pop() || file.name;
+        pathParts.pop(); // Remove filename from path
         const relativeDir = pathParts.join('/');
 
         // Combine base destination with relative directory
@@ -761,7 +763,7 @@ export function FileTree({
       }
 
       // Subscribe to upload completion to refresh the tree
-      const unsubscribe = uploadManager.onUploadComplete((item, serverPath) => {
+      const unsubscribe = uploadManager.onUploadComplete((_item, _serverPath) => {
         loadRoot();
       });
 

@@ -5,6 +5,15 @@ import reactHooksPlugin from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default [
+  {
+    ignores: [
+      "node_modules/**",
+      "build/**",
+      "dist/**",
+      ".react-router/**",
+      ".next/**",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -46,8 +55,5 @@ export default [
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
     },
-  },
-  {
-    ignores: ["node_modules/**", "build/**", ".react-router/**", ".next/**"],
   },
 ];

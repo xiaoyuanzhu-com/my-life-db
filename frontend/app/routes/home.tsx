@@ -139,7 +139,7 @@ function HomePageContent() {
   });
 
   usePreviewNotifications({
-    onPreviewUpdated: (filePath, previewType) => {
+    onPreviewUpdated: (_filePath, _previewType) => {
       // Refresh feed when any preview is ready (text, image, screenshot)
       handleInboxChange();
     },

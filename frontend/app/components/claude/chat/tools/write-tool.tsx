@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { MessageDot } from '../message-dot'
 import type { ToolCall, WriteToolParams } from '~/types/claude'
 
@@ -8,7 +7,6 @@ interface WriteToolViewProps {
 
 export function WriteToolView({ toolCall }: WriteToolViewProps) {
   const params = toolCall.parameters as WriteToolParams
-  const [showContent, setShowContent] = useState(false)
 
   const lines = params.content.split('\n')
 

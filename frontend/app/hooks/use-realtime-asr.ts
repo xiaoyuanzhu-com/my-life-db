@@ -103,7 +103,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
               console.log('✅ ASR ready');
               break;
 
-            case 'transcript':
+            case 'transcript': {
               // Extract transcription from our format
               const text = payload?.text || '';
               const isFinal = payload?.is_final || false;
@@ -132,6 +132,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
                 onTranscript?.(text, isFinal);
               }
               break;
+            }
 
             case 'done':
               console.log('🏁 ASR finished');
@@ -149,11 +150,12 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
               }
               break;
 
-            case 'error':
+            case 'error': {
               const errorMsg = payload?.message || 'ASR error';
               console.error('❌ ASR error:', errorMsg, payload);
               onError?.(errorMsg);
               break;
+            }
 
             default:
               console.log('❓ Unknown message type:', msgType, msg);
@@ -216,7 +218,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
       updateAudioLevel();
 
       // Store animation frame ID for cleanup
-      const currentAnimationFrame = animationFrameRef;
+      const _currentAnimationFrame = animationFrameRef;
 
       let audioChunkCount = 0;
       processor.onaudioprocess = (e) => {

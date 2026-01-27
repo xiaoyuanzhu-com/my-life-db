@@ -54,14 +54,14 @@ export function SessionList({
   sessions,
   activeSessionId,
   onSelect,
-  onDelete,
+  onDelete: _onDelete,
   onRename,
   onArchive,
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
 
-  const startEdit = (session: Session) => {
+  const _startEdit = (session: Session) => {
     setEditingId(session.id)
     setEditTitle(getSessionDisplayTitle(session))
   }

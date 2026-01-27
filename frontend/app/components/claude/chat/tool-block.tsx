@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToolCall, ToolName } from '~/types/claude'
+import type { ToolCall } from '~/types/claude'
 import { MessageDot } from './message-dot'
 import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 
@@ -26,7 +26,7 @@ interface ToolBlockProps {
 }
 
 // Get tool summary for collapsed view
-function getToolSummary(toolCall: ToolCall): string {
+function _getToolSummary(toolCall: ToolCall): string {
   const params = toolCall.parameters
 
   switch (toolCall.name) {

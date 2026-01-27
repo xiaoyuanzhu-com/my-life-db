@@ -9,7 +9,6 @@ import type {
   PermissionRequest,
   UserQuestion,
   PermissionDecision,
-  ControlRequest,
   ControlResponse,
 } from '~/types/claude'
 import {
@@ -38,7 +37,7 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
-  const [wsConnected, setWsConnected] = useState(false)
+  const [_wsConnected, setWsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Optimistic user message (shown immediately before server confirms)
@@ -328,6 +327,8 @@ export function ChatInterface({
       ws.close()
       wsRef.current = null
     }
+    // Note: refreshSessions intentionally excluded - it's called conditionally via ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
   // Send message to server via WebSocket
@@ -357,7 +358,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 5000)
       }
     },
-    [sessionId]
+    []
   )
 
   // Handle permission decision - send control_response via WebSocket

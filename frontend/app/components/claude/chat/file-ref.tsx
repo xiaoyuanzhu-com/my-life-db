@@ -1,4 +1,4 @@
-import { FileText, ExternalLink } from 'lucide-react'
+import { FileText } from 'lucide-react'
 
 interface FileRefProps {
   path: string

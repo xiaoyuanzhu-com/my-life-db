@@ -1,4 +1,4 @@
-import { useState, useRef, KeyboardEvent, useEffect, useCallback, useTransition } from 'react'
+import { useState, useRef, KeyboardEvent, useEffect, useCallback } from 'react'
 import { ArrowUp, Image, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
