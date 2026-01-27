@@ -124,17 +124,17 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
           className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
         >
           <MessageDot status={toolCall.status} />
-          <div className="flex-1 min-w-0 flex items-center gap-2">
+          <div className="flex-1 min-w-0">
             <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
               Task
             </span>
-            <span style={{ color: 'var(--claude-text-secondary)' }}>
+            <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
               {params.description} ({params.subagent_type})
               {params.model && <span className="opacity-70 ml-1">[{params.model}]</span>}
               {params.run_in_background && <span className="opacity-70 ml-1">[background]</span>}
             </span>
             <span
-              className="select-none text-[11px]"
+              className="ml-2 select-none text-[11px]"
               style={{ color: 'var(--claude-text-tertiary)' }}
             >
               {expanded ? '▾' : '▸'}

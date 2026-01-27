@@ -46,17 +46,17 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
         className={`flex items-start gap-2 w-full text-left ${content ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
       >
         <MessageDot status={toolCall.status} />
-        <div className="flex-1 min-w-0 flex items-center">
-          <span className="font-semibold shrink-0" style={{ color: 'var(--claude-text-primary)' }}>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             WebFetch
           </span>
-          <span className="ml-2 truncate" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {effectiveUrl}
           </span>
           {/* Chevron indicator for expandable content */}
           {content && (
             <span
-              className="ml-2 shrink-0 select-none text-[11px]"
+              className="ml-2 select-none text-[11px]"
               style={{ color: 'var(--claude-text-tertiary)' }}
             >
               {isExpanded ? '▾' : '▸'}
