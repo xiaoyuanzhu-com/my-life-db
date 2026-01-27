@@ -94,11 +94,6 @@ type Session struct {
 	pendingSDKPermissions   map[string]chan PermissionResponse `json:"-"`
 	pendingSDKPermissionsMu sync.RWMutex                       `json:"-"`
 
-	// Pending control_request data (for sending to new clients that connect while waiting)
-	// Maps request_id to the serialized control_request JSON
-	pendingControlRequests   map[string][]byte `json:"-"`
-	pendingControlRequestsMu sync.RWMutex      `json:"-"`
-
 	// Always-allowed tools for this session (SDK mode only)
 	// When user clicks "Always allow", the tool name is added here.
 	// Future permission requests for the same tool auto-allow without prompting.
@@ -352,10 +347,8 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 // The SessionMessageI interface's MarshalJSON() returns raw bytes from the JSONL file,
 // ensuring system message fields (subtype, compactMetadata, etc.) are not lost.
 //
-// NOTE: Historical control_request/control_response messages are loaded into cache
-// for display purposes, but we do NOT populate pendingControlRequests from them.
-// Pending permission requests are only tracked for the CURRENT running SDK session.
-// When a session is resumed, the SDK will re-request permissions as needed.
+// All messages including control_request/control_response are loaded into cache.
+// The frontend tracks them by request_id to determine which permissions are pending.
 func (s *Session) LoadMessageCache() error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
@@ -410,14 +403,16 @@ func (s *Session) GetCachedMessages() [][]byte {
 
 // BroadcastUIMessage handles a message from Claude stdout (UI mode)
 // - Deduplicates by UUID (skip if already seen from JSONL)
-// - Adds new messages to cache (except transient protocol messages)
+// - Adds new messages to cache
 // - Broadcasts new messages to all connected clients
 //
 // NOTE: We merge JSONL messages with stdout messages, deduplicating by UUID.
 // This handles the case where Claude's stdout may replay some messages that
 // are already in the JSONL file.
+//
+// control_request and control_response are cached and broadcast like other messages.
+// The frontend tracks them by request_id to determine which permissions are pending.
 func (s *Session) BroadcastUIMessage(data []byte) {
-	// Check message type - some messages are transient and shouldn't be cached
 	var msgType struct {
 		Type string `json:"type"`
 		UUID string `json:"uuid"`
@@ -426,14 +421,8 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		log.Warn().Err(err).Msg("failed to parse message type")
 	}
 
-	// control_request and control_response are transient protocol messages
-	// They should be broadcast to clients but NOT cached, because:
-	// - control_request is only relevant while waiting for user decision
-	// - control_response is sent from frontend to backend, not for display
-	isTransient := msgType.Type == "control_request" || msgType.Type == "control_response"
-
-	// Deduplicate by UUID (only for non-transient messages with UUIDs)
-	if !isTransient && msgType.UUID != "" {
+	// Deduplicate by UUID (only for messages with UUIDs)
+	if msgType.UUID != "" {
 		s.cacheMu.Lock()
 		if s.seenUUIDs == nil {
 			s.seenUUIDs = make(map[string]bool)
@@ -448,14 +437,12 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.cacheMu.Unlock()
 	}
 
-	// Add to cache (skip transient messages)
-	if !isTransient {
-		s.cacheMu.Lock()
-		msgCopy := make([]byte, len(data))
-		copy(msgCopy, data)
-		s.cachedMessages = append(s.cachedMessages, msgCopy)
-		s.cacheMu.Unlock()
-	}
+	// Add to cache
+	s.cacheMu.Lock()
+	msgCopy := make([]byte, len(data))
+	copy(msgCopy, data)
+	s.cachedMessages = append(s.cachedMessages, msgCopy)
+	s.cacheMu.Unlock()
 
 	// Broadcast to all connected clients
 	s.mu.RLock()
@@ -500,25 +487,6 @@ func (s *Session) ResolveControlRequest(requestID string, response map[string]in
 		}
 		close(ch)
 	}
-}
-
-// GetPendingControlRequests returns a copy of all pending control request data.
-// This is used to send pending permission requests to newly connected WebSocket clients.
-func (s *Session) GetPendingControlRequests() [][]byte {
-	s.pendingControlRequestsMu.RLock()
-	defer s.pendingControlRequestsMu.RUnlock()
-
-	if s.pendingControlRequests == nil {
-		return nil
-	}
-
-	result := make([][]byte, 0, len(s.pendingControlRequests))
-	for _, data := range s.pendingControlRequests {
-		dataCopy := make([]byte, len(data))
-		copy(dataCopy, data)
-		result = append(result, dataCopy)
-	}
-	return result
 }
 
 // CreatePermissionCallback creates a CanUseTool callback for SDK mode.
@@ -580,23 +548,11 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 			}, nil
 		}
 
-		// Store the pending request data (for new clients that connect while waiting)
-		s.pendingControlRequestsMu.Lock()
-		if s.pendingControlRequests == nil {
-			s.pendingControlRequests = make(map[string][]byte)
-		}
-		s.pendingControlRequests[requestID] = data
-		s.pendingControlRequestsMu.Unlock()
-
-		// Clean up on exit - remove from both pending maps
+		// Clean up SDK permission channel on exit
 		defer func() {
 			s.pendingSDKPermissionsMu.Lock()
 			delete(s.pendingSDKPermissions, requestID)
 			s.pendingSDKPermissionsMu.Unlock()
-
-			s.pendingControlRequestsMu.Lock()
-			delete(s.pendingControlRequests, requestID)
-			s.pendingControlRequestsMu.Unlock()
 		}()
 
 		// Broadcast to WebSocket clients

@@ -40,8 +40,12 @@ export function ChatInterface({
 
   // Tool state - kept for future implementation
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
-  const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
+
+  // Permission tracking - maps request_id to request/response data
+  // Pending permission = control_request without matching control_response
+  const [controlRequests, setControlRequests] = useState<Map<string, PermissionRequest>>(new Map())
+  const [controlResponses, setControlResponses] = useState<Set<string>>(new Set())
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
@@ -67,11 +71,24 @@ export function ChatInterface({
     })
   }, [rawMessages])
 
+  // Compute pending permission from control_request/control_response tracking
+  // Pending = control_request without matching control_response
+  const pendingPermission = useMemo(() => {
+    for (const [requestId, request] of controlRequests) {
+      if (!controlResponses.has(requestId)) {
+        return request
+      }
+    }
+    return null
+  }, [controlRequests, controlResponses])
+
   // Clear messages and reset state when sessionId changes
   useEffect(() => {
     setRawMessages([])
     setOptimisticMessage(null)
     setActiveTodos([])
+    setControlRequests(new Map())
+    setControlResponses(new Set())
     setError(null)
     setProgressMessage(null)
     setIsWorking(false)
@@ -161,25 +178,29 @@ export function ChatInterface({
         }
 
         // Handle control_request - permission needed for tool use
+        // Track in controlRequests map - pendingPermission is derived from requests without responses
         if (data.type === 'control_request' && data.request?.subtype === 'can_use_tool') {
           console.log('[ChatInterface] Received control_request:', data.request_id, data.request.tool_name)
-          setPendingPermission({
-            requestId: data.request_id,
-            toolName: data.request.tool_name,
-            input: data.request.input || {},
+          setControlRequests((prev) => {
+            const next = new Map(prev)
+            next.set(data.request_id, {
+              requestId: data.request_id,
+              toolName: data.request.tool_name,
+              input: data.request.input || {},
+            })
+            return next
           })
           return
         }
 
         // Handle control_response - permission was resolved (possibly by another tab)
-        // Clear pending permission if request_id matches
+        // Track in controlResponses set - this will cause pendingPermission to be recalculated
         if (data.type === 'control_response') {
           console.log('[ChatInterface] Received control_response:', data.request_id, data.behavior)
-          setPendingPermission((current) => {
-            if (current?.requestId === data.request_id) {
-              return null
-            }
-            return current
+          setControlResponses((prev) => {
+            const next = new Set(prev)
+            next.add(data.request_id)
+            return next
           })
           return
         }
@@ -296,7 +317,8 @@ export function ChatInterface({
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.error('[ChatInterface] WebSocket not connected, cannot send permission response')
-        setPendingPermission(null)
+        // Mark as responded locally to clear the UI
+        setControlResponses((prev) => new Set(prev).add(pendingPermission.requestId))
         return
       }
 
@@ -321,7 +343,10 @@ export function ChatInterface({
 
       console.log('[ChatInterface] Sending permission response:', response, 'decision:', decision)
       wsRef.current.send(JSON.stringify(response))
-      setPendingPermission(null)
+      // Note: We'll receive the control_response broadcast back from the server,
+      // which will add to controlResponses and clear pendingPermission automatically.
+      // But we add it locally too for immediate UI feedback.
+      setControlResponses((prev) => new Set(prev).add(pendingPermission.requestId))
     },
     [pendingPermission]
   )

@@ -619,48 +619,19 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
 		}
 
-		// Send all cached messages to this client (filtering out transient protocol messages)
+		// Send all cached messages to this client
+		// This includes control_request and control_response - the frontend tracks them
+		// by request_id to determine which permissions are pending vs resolved.
 		cachedMessages := session.GetCachedMessages()
 		if len(cachedMessages) > 0 {
-			sentCount := 0
-			for _, msgBytes := range cachedMessages {
-				// Filter out control_request and control_response - they're transient protocol messages
-				// and should not be replayed from history. Only currently-pending control_requests
-				// are sent via GetPendingControlRequests() below.
-				var msgType struct {
-					Type string `json:"type"`
-				}
-				if err := json.Unmarshal(msgBytes, &msgType); err == nil {
-					if msgType.Type == "control_request" || msgType.Type == "control_response" {
-						continue
-					}
-				}
+			log.Debug().
+				Str("sessionId", sessionID).
+				Int("messageCount", len(cachedMessages)).
+				Msg("sending cached messages to new client")
 
+			for _, msgBytes := range cachedMessages {
 				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
-					return
-				}
-				sentCount++
-			}
-
-			log.Debug().
-				Str("sessionId", sessionID).
-				Int("messageCount", sentCount).
-				Msg("sent cached messages to new client")
-		}
-
-		// Send any pending control_request messages (permission prompts waiting for response)
-		// This allows new clients to see and respond to permission requests that are in-flight
-		pendingRequests := session.GetPendingControlRequests()
-		if len(pendingRequests) > 0 {
-			log.Debug().
-				Str("sessionId", sessionID).
-				Int("count", len(pendingRequests)).
-				Msg("sending pending control_request to new client")
-
-			for _, reqBytes := range pendingRequests {
-				if err := conn.Write(ctx, websocket.MessageText, reqBytes); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send pending control_request")
 					return
 				}
 			}
