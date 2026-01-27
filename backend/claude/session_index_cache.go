@@ -35,17 +35,18 @@ type SessionIndexCache struct {
 
 // CachedSessionEntry holds session metadata in the cache
 type CachedSessionEntry struct {
-	SessionID   string    `json:"id"`
-	FullPath    string    `json:"fullPath"`
-	FirstPrompt string    `json:"firstPrompt"`
-	Summary     string    `json:"summary,omitempty"`
-	CustomTitle string    `json:"customTitle,omitempty"`
-	MessageCount int      `json:"messageCount"`
-	Created     time.Time `json:"created"`
-	Modified    time.Time `json:"modified"`
-	GitBranch   string    `json:"gitBranch,omitempty"`
-	ProjectPath string    `json:"projectPath"`
-	IsSidechain bool      `json:"isSidechain"`
+	SessionID    string    `json:"id"`
+	FullPath     string    `json:"fullPath"`
+	FirstPrompt  string    `json:"firstPrompt"`
+	Summary      string    `json:"summary,omitempty"`
+	CustomTitle  string    `json:"customTitle,omitempty"`
+	DisplayTitle string    `json:"displayTitle"` // Pre-computed display title to avoid disk reads
+	MessageCount int       `json:"messageCount"`
+	Created      time.Time `json:"created"`
+	Modified     time.Time `json:"modified"`
+	GitBranch    string    `json:"gitBranch,omitempty"`
+	ProjectPath  string    `json:"projectPath"`
+	IsSidechain  bool      `json:"isSidechain"`
 }
 
 // NewSessionIndexCache creates a new session index cache.
@@ -320,6 +321,9 @@ func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedS
 		}
 	}
 
+	// Pre-compute display title to avoid disk reads later
+	entry.DisplayTitle = entry.computeDisplayTitle()
+
 	return entry
 }
 
@@ -431,7 +435,7 @@ func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	created, _ := time.Parse(time.RFC3339, entry.Created)
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
 
-	return &CachedSessionEntry{
+	cached := &CachedSessionEntry{
 		SessionID:    entry.SessionID,
 		FullPath:     entry.FullPath,
 		FirstPrompt:  entry.FirstPrompt,
@@ -444,15 +448,14 @@ func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 		ProjectPath:  entry.ProjectPath,
 		IsSidechain:  entry.IsSidechain,
 	}
+	// Pre-compute display title to avoid disk reads later
+	cached.DisplayTitle = cached.computeDisplayTitle()
+	return cached
 }
 
-// GetDisplayTitle returns the display title for a cached entry with priority:
-// 1. CustomTitle (user-set)
-// 2. Summary (Claude-generated)
-// 3. FirstPrompt (if not system tags)
-// 4. First actual user prompt from JSONL (lazy fallback)
-// 5. "Untitled"
-func (e *CachedSessionEntry) GetDisplayTitle() string {
+// computeDisplayTitle computes the display title without disk I/O.
+// Priority: CustomTitle > Summary > FirstPrompt (if not system tags) > "Untitled"
+func (e *CachedSessionEntry) computeDisplayTitle() string {
 	if e.CustomTitle != "" {
 		return e.CustomTitle
 	}
@@ -464,9 +467,15 @@ func (e *CachedSessionEntry) GetDisplayTitle() string {
 		!strings.HasPrefix(e.FirstPrompt, "<system-reminder>") {
 		return e.FirstPrompt
 	}
-	// FirstPrompt is empty or only system tags - read JSONL to get real first user prompt
-	if userPrompt := GetFirstUserPrompt(e.SessionID, e.ProjectPath); userPrompt != "" {
-		return userPrompt
-	}
 	return "Untitled"
+}
+
+// GetDisplayTitle returns the pre-computed display title.
+// Falls back to computing it if not cached (for backwards compatibility).
+func (e *CachedSessionEntry) GetDisplayTitle() string {
+	if e.DisplayTitle != "" {
+		return e.DisplayTitle
+	}
+	// Fallback for entries loaded before DisplayTitle was cached
+	return e.computeDisplayTitle()
 }
