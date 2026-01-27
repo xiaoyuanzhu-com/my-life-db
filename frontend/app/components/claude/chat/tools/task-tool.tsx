@@ -5,8 +5,6 @@ import type { AgentProgressMessage } from '../session-messages'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
 import { parseMarkdown } from '~/lib/shiki'
 
-const MAX_RESULT_LINES = 5
-
 interface TaskToolViewProps {
   toolCall: ToolCall
   /** Map from tool_use ID to agent progress messages */
@@ -17,7 +15,6 @@ interface TaskToolViewProps {
 
 export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
-  const [resultFullyExpanded, setResultFullyExpanded] = useState(false)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [resultHtml, setResultHtml] = useState('')
 
@@ -69,17 +66,12 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
 
   const hasNestedSession = nestedMessages.length > 0
 
-  // Check if result needs truncation (for show more/less within expanded view)
-  const resultLines = result?.split('\n') || []
-  const isResultTruncated = resultLines.length > MAX_RESULT_LINES
-  const displayResult = resultFullyExpanded ? result : resultLines.slice(0, MAX_RESULT_LINES).join('\n')
-
   // Determine if header should be expandable
   const hasExpandableContent = result || hasNestedSession
 
-  // Parse result as markdown or highlight as JSON
+  // Parse result as markdown or highlight as JSON (only when expanded)
   useEffect(() => {
-    if (!displayResult) {
+    if (!expanded || !result) {
       setResultHtml('')
       return
     }
@@ -87,7 +79,7 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
     let cancelled = false
 
     if (resultIsMarkdown) {
-      parseMarkdown(displayResult).then((html) => {
+      parseMarkdown(result).then((html) => {
         if (!cancelled) setResultHtml(html)
       })
     } else {
@@ -96,14 +88,14 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
         getHighlighter().then((hl) => {
           if (cancelled) return
           try {
-            const highlighted = hl.codeToHtml(displayResult, {
+            const highlighted = hl.codeToHtml(result, {
               lang: 'json',
               themes: { light: 'github-light', dark: 'github-dark' },
               defaultColor: false,
             })
             setResultHtml(highlighted)
           } catch {
-            setResultHtml(`<pre><code>${displayResult}</code></pre>`)
+            setResultHtml(`<pre><code>${result}</code></pre>`)
           }
         })
       })
@@ -112,7 +104,7 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
     return () => {
       cancelled = true
     }
-  }, [displayResult, resultIsMarkdown])
+  }, [expanded, result, resultIsMarkdown])
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -168,37 +160,16 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
       {/* Expanded content: result + sub-agent session */}
       {expanded && (
         <>
-          {/* Result content (rendered as markdown or JSON with show more/less) */}
+          {/* Result content (rendered as markdown or JSON in 60vh scrolling div) */}
           {result && (
             <div
-              className="mt-2 ml-5 rounded-md overflow-hidden"
-              style={{ border: '1px solid var(--claude-border-light)' }}
-            >
-              <div
-                className={resultFullyExpanded && isResultTruncated ? 'overflow-y-auto' : ''}
-                style={resultFullyExpanded && isResultTruncated ? { maxHeight: '60vh' } : {}}
-              >
-                <div
-                  className={`p-3 text-[12px] ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent'}`}
-                  style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-                  dangerouslySetInnerHTML={{ __html: resultHtml }}
-                />
-              </div>
-
-              {isResultTruncated && (
-                <button
-                  onClick={() => setResultFullyExpanded(!resultFullyExpanded)}
-                  className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
-                  style={{
-                    backgroundColor: 'var(--claude-bg-secondary)',
-                    color: 'var(--claude-text-secondary)',
-                    borderTop: '1px solid var(--claude-border-light)',
-                  }}
-                >
-                  {resultFullyExpanded ? 'Show less' : 'Show more'}
-                </button>
-              )}
-            </div>
+              className={`mt-2 ml-5 p-4 rounded-md overflow-y-auto ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent text-[12px]'}`}
+              style={{
+                backgroundColor: 'var(--claude-bg-code-block)',
+                maxHeight: '60vh',
+              }}
+              dangerouslySetInnerHTML={{ __html: resultHtml }}
+            />
           )}
 
           {/* Sub-agent session (separate expandable section) */}
