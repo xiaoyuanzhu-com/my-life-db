@@ -386,9 +386,17 @@ func GetAllSessionIndexes() (*models.SessionIndex, error) {
 // (filtering out system-injected tags and compact summary messages).
 // Returns empty string if no user prompt found.
 func GetFirstUserPrompt(sessionID, projectPath string) string {
+	prompt, _ := GetFirstUserPromptAndUUID(sessionID, projectPath)
+	return prompt
+}
+
+// GetFirstUserPromptAndUUID reads the session JSONL and extracts the first user prompt
+// along with its UUID. The UUID can be used to detect related/continued sessions
+// (sessions that share the same first user message UUID are continuations of each other).
+func GetFirstUserPromptAndUUID(sessionID, projectPath string) (prompt string, uuid string) {
 	messages, err := ReadSessionHistoryRaw(sessionID, projectPath)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 
 	// Find first user message with actual user content
@@ -403,13 +411,13 @@ func GetFirstUserPrompt(sessionID, projectPath string) string {
 				}
 				userPrompt := userMsg.GetUserPrompt()
 				if userPrompt != "" {
-					return userPrompt
+					return userPrompt, userMsg.GetUUID()
 				}
 			}
 		}
 	}
 
-	return ""
+	return "", ""
 }
 
 // ReadSessionTodos reads the todo file for a session

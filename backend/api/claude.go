@@ -339,9 +339,10 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		activeSessionMap[s.ID] = s
 	}
 
-	// Get all sessions from the index cache
+	// Get all sessions from the index cache (deduplicated to show only the most complete
+	// version when sessions share the same first user message UUID - indicating continuations)
 	indexCache := claudeManager.GetIndexCache()
-	cachedEntries := indexCache.GetAll()
+	cachedEntries := indexCache.GetAllDeduplicated()
 
 	log.Debug().
 		Int("managerSessionCount", len(activeSessions)).

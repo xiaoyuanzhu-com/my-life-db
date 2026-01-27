@@ -35,18 +35,19 @@ type SessionIndexCache struct {
 
 // CachedSessionEntry holds session metadata in the cache
 type CachedSessionEntry struct {
-	SessionID    string    `json:"id"`
-	FullPath     string    `json:"fullPath"`
-	FirstPrompt  string    `json:"firstPrompt"`
-	Summary      string    `json:"summary,omitempty"`
-	CustomTitle  string    `json:"customTitle,omitempty"`
-	DisplayTitle string    `json:"displayTitle"` // Pre-computed display title to avoid disk reads
-	MessageCount int       `json:"messageCount"`
-	Created      time.Time `json:"created"`
-	Modified     time.Time `json:"modified"`
-	GitBranch    string    `json:"gitBranch,omitempty"`
-	ProjectPath  string    `json:"projectPath"`
-	IsSidechain  bool      `json:"isSidechain"`
+	SessionID            string    `json:"id"`
+	FullPath             string    `json:"fullPath"`
+	FirstPrompt          string    `json:"firstPrompt"`
+	FirstUserMessageUUID string    `json:"firstUserMessageUuid,omitempty"` // Used to detect related/continued sessions
+	Summary              string    `json:"summary,omitempty"`
+	CustomTitle          string    `json:"customTitle,omitempty"`
+	DisplayTitle         string    `json:"displayTitle"` // Pre-computed display title to avoid disk reads
+	MessageCount         int       `json:"messageCount"`
+	Created              time.Time `json:"created"`
+	Modified             time.Time `json:"modified"`
+	GitBranch            string    `json:"gitBranch,omitempty"`
+	ProjectPath          string    `json:"projectPath"`
+	IsSidechain          bool      `json:"isSidechain"`
 }
 
 // NewSessionIndexCache creates a new session index cache.
@@ -77,6 +78,48 @@ func (c *SessionIndexCache) GetAll() []*CachedSessionEntry {
 	for _, entry := range c.entries {
 		result = append(result, entry)
 	}
+	return result
+}
+
+// GetAllDeduplicated returns cached session entries with related sessions deduplicated.
+// When multiple sessions share the same FirstUserMessageUUID (indicating one is a
+// continuation of another), only the session with the most messages is returned.
+// Sessions without a FirstUserMessageUUID are always included.
+func (c *SessionIndexCache) GetAllDeduplicated() []*CachedSessionEntry {
+	c.ensureInitialized()
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Group sessions by FirstUserMessageUUID
+	// Key "" means no UUID (always include these)
+	groups := make(map[string][]*CachedSessionEntry)
+	for _, entry := range c.entries {
+		key := entry.FirstUserMessageUUID
+		groups[key] = append(groups[key], entry)
+	}
+
+	result := make([]*CachedSessionEntry, 0, len(c.entries))
+
+	for uuid, entries := range groups {
+		if uuid == "" {
+			// No UUID - include all
+			result = append(result, entries...)
+			continue
+		}
+
+		// Find the entry with the most messages (the most complete session)
+		var best *CachedSessionEntry
+		for _, e := range entries {
+			if best == nil || e.MessageCount > best.MessageCount {
+				best = e
+			}
+		}
+		if best != nil {
+			result = append(result, best)
+		}
+	}
+
 	return result
 }
 
@@ -291,9 +334,10 @@ func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedS
 					entry.IsSidechain = *userMsg.IsSidechain
 				}
 			}
-			// Get first user prompt (skip compact summary messages)
+			// Get first user prompt and UUID (skip compact summary messages)
 			if entry.FirstPrompt == "" && !userMsg.IsCompactSummary {
 				entry.FirstPrompt = userMsg.GetUserPrompt()
+				entry.FirstUserMessageUUID = userMsg.GetUUID()
 			}
 		}
 
@@ -431,24 +475,28 @@ func (c *SessionIndexCache) handleFSEvent(event fsnotify.Event) {
 }
 
 // convertIndexEntry converts a SessionIndexEntry to a CachedSessionEntry.
-// Note: FirstPrompt is computed via GetFirstUserPrompt() to handle compacted sessions correctly.
-// The index's firstPrompt is unreliable after context compaction.
+// Note: FirstPrompt and FirstUserMessageUUID are computed via GetFirstUserPromptAndUUID()
+// to handle compacted sessions correctly. The index's firstPrompt is unreliable after context compaction.
 func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	created, _ := time.Parse(time.RFC3339, entry.Created)
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
 
+	// Parse JSONL for accurate first prompt and UUID (used for session deduplication)
+	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(entry.SessionID, entry.ProjectPath)
+
 	cached := &CachedSessionEntry{
-		SessionID:    entry.SessionID,
-		FullPath:     entry.FullPath,
-		FirstPrompt:  GetFirstUserPrompt(entry.SessionID, entry.ProjectPath), // Parse JSONL for accurate first prompt
-		Summary:      entry.Summary,
-		CustomTitle:  entry.CustomTitle,
-		MessageCount: entry.MessageCount,
-		Created:      created,
-		Modified:     modified,
-		GitBranch:    entry.GitBranch,
-		ProjectPath:  entry.ProjectPath,
-		IsSidechain:  entry.IsSidechain,
+		SessionID:            entry.SessionID,
+		FullPath:             entry.FullPath,
+		FirstPrompt:          firstPrompt,
+		FirstUserMessageUUID: firstUUID,
+		Summary:              entry.Summary,
+		CustomTitle:          entry.CustomTitle,
+		MessageCount:         entry.MessageCount,
+		Created:              created,
+		Modified:             modified,
+		GitBranch:            entry.GitBranch,
+		ProjectPath:          entry.ProjectPath,
+		IsSidechain:          entry.IsSidechain,
 	}
 	// Pre-compute display title to avoid disk reads later
 	cached.DisplayTitle = cached.computeDisplayTitle()
