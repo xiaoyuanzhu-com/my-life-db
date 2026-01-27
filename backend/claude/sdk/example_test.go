@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
+	claudesdk "github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 )
 
 // ExampleClaudeSDKClient_simple demonstrates a simple interactive conversation
