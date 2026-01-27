@@ -151,14 +151,15 @@ export function ChatInput({
               </button>
 
               {/* Submit / Stop button - right */}
-              {isWorking && !hasPermission ? (
+              {/* Send button takes priority when there's text input */}
+              {isWorking && !hasPermission && !content.trim() ? (
                 <button
                   type="button"
                   onClick={onInterrupt}
                   disabled={disabled}
                   className={cn(
                     'h-9 w-9 rounded-lg',
-                    'bg-muted hover:bg-muted/80',
+                    'bg-muted hover:bg-muted/80 border border-border',
                     'flex items-center justify-center',
                     'transition-all',
                     'disabled:cursor-not-allowed disabled:opacity-50'
@@ -174,7 +175,7 @@ export function ChatInput({
                   disabled={disabled || hasPermission || !content.trim()}
                   className={cn(
                     'h-9 w-9 rounded-lg',
-                    'bg-primary hover:bg-primary/80',
+                    'bg-primary hover:bg-primary/80 border border-primary',
                     'flex items-center justify-center',
                     'transition-all',
                     'disabled:cursor-not-allowed',
