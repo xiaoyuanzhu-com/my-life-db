@@ -157,19 +157,15 @@ export function ChatInput({
                   onClick={onInterrupt}
                   disabled={disabled}
                   className={cn(
-                    'h-9 px-3 rounded-lg',
-                    'bg-destructive/10 hover:bg-destructive/20 border border-destructive/30',
-                    'flex items-center justify-center gap-1.5',
+                    'h-9 w-9 rounded-lg',
+                    'bg-muted hover:bg-muted/80',
+                    'flex items-center justify-center',
                     'transition-all',
                     'disabled:cursor-not-allowed disabled:opacity-50'
                   )}
-                  aria-label="Stop generation"
+                  aria-label="Stop generation (Esc)"
                 >
-                  <Square className="h-3 w-3 text-destructive" fill="currentColor" />
-                  <span className="text-[12px] text-destructive font-medium">Stop</span>
-                  <kbd className="px-1 py-0.5 rounded bg-destructive/10 text-destructive text-[10px] font-mono ml-0.5">
-                    Esc
-                  </kbd>
+                  <Square className="h-3.5 w-3.5 text-muted-foreground" fill="currentColor" />
                 </button>
               ) : (
                 <button
