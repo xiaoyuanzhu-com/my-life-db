@@ -190,10 +190,11 @@ export interface TaskToolResult {
  * See docs/claude-code/ui.md "Skipped Message Types" for documentation.
  */
 const SKIPPED_XML_TAGS = new Set([
-  'command-name',      // Local command name (e.g., /clear, /doctor)
-  'command-message',   // Local command message
-  'command-args',      // Local command arguments
+  'command-name',         // Local command name (e.g., /clear, /doctor)
+  'command-message',      // Local command message
+  'command-args',         // Local command arguments
   'local-command-caveat', // Caveat about local commands (usually with isMeta)
+  'local-command-stdout', // Stdout from local command execution
 ])
 
 /**

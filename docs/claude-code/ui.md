@@ -1087,6 +1087,7 @@ User messages are skipped if their content consists **entirely** of these XML ta
 | `<command-message>` | Local command message text |
 | `<command-args>` | Local command arguments |
 | `<local-command-caveat>` | Caveat about local commands |
+| `<local-command-stdout>` | Stdout from local command execution |
 
 > **Design Principle:** All other message types should be rendered. Unknown types are displayed as raw JSON to aid debugging and ensure no messages are silently lost. The XML tag check is **strict**: if ANY tag is not in the skip list, or if there's any non-whitespace content outside the tags, the message is rendered.
 
