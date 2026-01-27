@@ -25,11 +25,13 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
         </div>
       </div>
 
-      {/* Summary: Created file */}
-      <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
-        <span className="select-none">└</span>
-        <span>Created file ({lines.length} lines)</span>
-      </div>
+      {/* Summary: Created file (only show if no error) */}
+      {!toolCall.error && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Created file ({lines.length} lines)</span>
+        </div>
+      )}
 
       {/* Error */}
       {toolCall.error && (
