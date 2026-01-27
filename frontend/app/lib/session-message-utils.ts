@@ -535,6 +535,11 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
       return false
     }
 
+    // 'system' message with subtype 'turn_duration' indicates turn completed
+    if (msg.type === 'system' && msg.subtype === 'turn_duration') {
+      return false
+    }
+
     // API error message indicates turn ended with error
     if (msg.type === 'assistant' && msg.isApiErrorMessage) {
       return false
