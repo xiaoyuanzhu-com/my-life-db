@@ -594,6 +594,15 @@ func (t *SubprocessCLITransport) Close() error {
 		}
 	}
 
+	// Close stdout/stderr to unblock readers
+	// This forces scanner.Scan() to return immediately with EOF
+	if t.stdout != nil {
+		t.stdout.Close()
+	}
+	if t.stderr != nil {
+		t.stderr.Close()
+	}
+
 	// Wait for all goroutines to finish with timeout
 	// Readers may be blocked on I/O even after process termination
 	wgDone := make(chan struct{})
