@@ -716,9 +716,9 @@ func (q *Query) Close() error {
 
 	select {
 	case <-done:
-		// Goroutines finished cleanly
+		log.Debug().Msg("query goroutines finished cleanly")
 	case <-time.After(2 * time.Second):
-		log.Warn().Msg("query goroutines did not finish in time, continuing with transport close")
+		log.Warn().Msg("query goroutines did not finish in time")
 	}
 
 	return q.transport.Close()

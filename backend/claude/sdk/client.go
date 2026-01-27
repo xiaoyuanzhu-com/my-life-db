@@ -283,21 +283,28 @@ func (c *ClaudeSDKClient) Disconnect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.query != nil {
-		if err := c.query.Close(); err != nil {
-			log.Debug().Err(err).Msg("error closing query")
-		}
-		c.query = nil
-	}
-
+	// IMPORTANT: Close transport FIRST to kill the process.
+	// This unblocks any I/O operations (scanner.Scan) in transport goroutines,
+	// which in turn unblocks the query's readMessages goroutine that reads
+	// from the transport's channel. If we close query first, it waits for
+	// readMessages which waits on transport - deadlock.
 	if c.transport != nil {
+		log.Debug().Msg("closing transport first to kill process")
 		if err := c.transport.Close(); err != nil {
 			log.Debug().Err(err).Msg("error closing transport")
 		}
 		c.transport = nil
 	}
 
-	log.Debug().Msg("Claude SDK client disconnected")
+	if c.query != nil {
+		log.Debug().Msg("closing query after transport")
+		if err := c.query.Close(); err != nil {
+			log.Debug().Err(err).Msg("error closing query")
+		}
+		c.query = nil
+	}
+
+	log.Info().Msg("Claude SDK client disconnected")
 
 	return nil
 }
