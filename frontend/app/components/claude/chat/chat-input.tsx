@@ -1,5 +1,5 @@
 import { useState, useRef, KeyboardEvent, useEffect, useCallback, useTransition } from 'react'
-import { ArrowUp, Image } from 'lucide-react'
+import { ArrowUp, Image, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
@@ -13,6 +13,10 @@ interface ChatInputProps {
   onPermissionDecision?: (requestId: string, decision: PermissionDecision) => void
   /** Whether to hide the input on mobile (for scroll-based hiding) */
   hiddenOnMobile?: boolean
+  /** Whether Claude is currently working (processing a request) */
+  isWorking?: boolean
+  /** Callback to interrupt the current operation */
+  onInterrupt?: () => void
 }
 
 export function ChatInput({
@@ -22,11 +26,28 @@ export function ChatInput({
   pendingPermissions = [],
   onPermissionDecision,
   hiddenOnMobile = false,
+  isWorking = false,
+  onInterrupt,
 }: ChatInputProps) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const hasPermission = pendingPermissions.length > 0
+
+  // Handle Esc key for interrupt (when working and no permission pending)
+  useEffect(() => {
+    if (!isWorking || hasPermission || !onInterrupt) return
+
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onInterrupt()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isWorking, hasPermission, onInterrupt])
 
   // Auto-resize textarea as content grows
   useEffect(() => {
@@ -129,23 +150,45 @@ export function ChatInput({
                 <Image className="h-5 w-5" />
               </button>
 
-              {/* Submit button - right */}
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={disabled || hasPermission || !content.trim()}
-                className={cn(
-                  'h-9 w-9 rounded-lg',
-                  'bg-primary hover:bg-primary/80',
-                  'flex items-center justify-center',
-                  'transition-all',
-                  'disabled:cursor-not-allowed',
-                  !content.trim() || hasPermission ? 'opacity-40' : 'opacity-100'
-                )}
-                aria-label="Send message"
-              >
-                <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-              </button>
+              {/* Submit / Stop button - right */}
+              {isWorking && !hasPermission ? (
+                <button
+                  type="button"
+                  onClick={onInterrupt}
+                  disabled={disabled}
+                  className={cn(
+                    'h-9 px-3 rounded-lg',
+                    'bg-destructive/10 hover:bg-destructive/20 border border-destructive/30',
+                    'flex items-center justify-center gap-1.5',
+                    'transition-all',
+                    'disabled:cursor-not-allowed disabled:opacity-50'
+                  )}
+                  aria-label="Stop generation"
+                >
+                  <Square className="h-3 w-3 text-destructive" fill="currentColor" />
+                  <span className="text-[12px] text-destructive font-medium">Stop</span>
+                  <kbd className="px-1 py-0.5 rounded bg-destructive/10 text-destructive text-[10px] font-mono ml-0.5">
+                    Esc
+                  </kbd>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={disabled || hasPermission || !content.trim()}
+                  className={cn(
+                    'h-9 w-9 rounded-lg',
+                    'bg-primary hover:bg-primary/80',
+                    'flex items-center justify-center',
+                    'transition-all',
+                    'disabled:cursor-not-allowed',
+                    !content.trim() || hasPermission ? 'opacity-40' : 'opacity-100'
+                  )}
+                  aria-label="Send message"
+                >
+                  <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+                </button>
+              )}
             </div>
           </div>
         </div>

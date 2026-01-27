@@ -1858,6 +1858,127 @@ async function handlePermissionDecision(decision: 'allow' | 'deny') {
 }
 ```
 
+#### Interrupt (control_request / control_response) ⭐⭐⭐ CRITICAL
+
+To stop Claude mid-execution (equivalent to pressing Esc in CLI), send an **interrupt control request** via stdin. This is part of the same bidirectional control protocol used for permissions.
+
+**Flow:**
+```
+Web UI                              Claude CLI
+    │                                  │
+    │──── control_request ────────────▶│  (stdin)
+    │     subtype: "interrupt"         │
+    │                                  │  [Claude stops current work]
+    │◀─── control_response ────────────│  (stdout)
+    │     request_id matches           │
+    │                                  │
+    │◀─── result ─────────────────────│  (turn ends)
+```
+
+**1. Interrupt Request (UI → CLI via stdin)**
+
+Send this JSON to Claude's stdin to interrupt the current operation:
+
+```json
+{
+  "type": "control_request",
+  "request_id": "req_1_a1b2c3d4",
+  "request": {
+    "subtype": "interrupt"
+  }
+}
+```
+
+**Interrupt Request Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"control_request"` |
+| `request_id` | string | Unique ID for correlation (format: `req_{counter}_{random_hex}`) |
+| `request.subtype` | string | Must be `"interrupt"` |
+
+**2. Interrupt Response (CLI → UI via stdout)**
+
+Claude responds with a control_response confirming the interrupt:
+
+```json
+{
+  "type": "control_response",
+  "response": {
+    "subtype": "success",
+    "request_id": "req_1_a1b2c3d4",
+    "response": {}
+  }
+}
+```
+
+**3. What Happens After Interrupt**
+
+- Claude gracefully stops the current operation
+- A `result` message is sent with the turn summary
+- The session remains active and can continue with new prompts
+- Any in-progress tool calls are cancelled
+
+**4. Web UI Implementation**
+
+```typescript
+// Generate unique request ID
+function generateRequestId(): string {
+  const counter = requestCounter++;
+  const randomHex = Math.random().toString(16).slice(2, 10);
+  return `req_${counter}_${randomHex}`;
+}
+
+// Send interrupt via API
+async function interruptSession(sessionId: string) {
+  await fetch(`/api/claude/sessions/${sessionId}/interrupt`, {
+    method: 'POST',
+  });
+}
+
+// Keyboard shortcut (Esc key)
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && isWorking) {
+      e.preventDefault();
+      interruptSession(sessionId);
+    }
+  };
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [isWorking, sessionId]);
+```
+
+**5. Available Control Request Subtypes**
+
+The control protocol supports multiple subtypes beyond permissions:
+
+| Subtype | Direction | Description |
+|---------|-----------|-------------|
+| `can_use_tool` | CLI → UI | Permission request for tool usage |
+| `interrupt` | UI → CLI | Stop current operation |
+| `initialize` | UI → CLI | Initialize streaming session with hooks |
+| `set_permission_mode` | UI → CLI | Change permission mode mid-session |
+| `set_model` | UI → CLI | Change AI model mid-session |
+| `rewind_files` | UI → CLI | Revert files to checkpoint |
+| `hook_callback` | CLI → UI | Hook callback invocation |
+
+**6. Comparison with Unix Signals**
+
+| Method | When to Use | Notes |
+|--------|-------------|-------|
+| `control_request` interrupt | **Recommended** | Graceful, protocol-based, works via stdin |
+| `SIGINT` to process | Fallback only | Harsher, may not allow cleanup |
+| `SIGTERM` / process kill | Last resort | Forces termination, loses state |
+
+The control protocol is preferred because it:
+- Allows Claude to finish cleanup operations
+- Preserves session state properly
+- Works consistently across platforms
+- Integrates with the JSON streaming protocol
+
+---
+
 #### Progress Tracking
 
 **No streaming deltas** - Claude sends complete messages, not character-by-character streaming.

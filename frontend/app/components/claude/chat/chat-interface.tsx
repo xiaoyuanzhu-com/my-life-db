@@ -373,6 +373,33 @@ export function ChatInterface({
     []
   )
 
+  // Handle interrupt - stop Claude's current operation
+  const handleInterrupt = useCallback(async () => {
+    if (!isWorking) return
+
+    try {
+      console.log('[ChatInterface] Interrupting session:', sessionId)
+      const response = await fetch(`/api/claude/sessions/${sessionId}/interrupt`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        console.error('[ChatInterface] Interrupt failed:', data.error)
+        setError(data.error || 'Failed to interrupt session')
+        setTimeout(() => setError(null), 5000)
+        return
+      }
+
+      console.log('[ChatInterface] Session interrupted successfully')
+      // Note: isWorking will be set to false when we receive the result message
+    } catch (error) {
+      console.error('[ChatInterface] Interrupt error:', error)
+      setError('Failed to interrupt session')
+      setTimeout(() => setError(null), 5000)
+    }
+  }, [sessionId, isWorking])
+
   return (
     <div className="flex h-full flex-col claude-bg">
       {/* Error Banner */}
@@ -405,6 +432,8 @@ export function ChatInterface({
             pendingPermissions={pendingPermissions}
             onPermissionDecision={handlePermissionDecision}
             hiddenOnMobile={shouldHideInput}
+            isWorking={isWorking}
+            onInterrupt={handleInterrupt}
           />
         </div>
 
