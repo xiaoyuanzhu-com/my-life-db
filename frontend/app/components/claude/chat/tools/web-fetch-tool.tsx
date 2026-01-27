@@ -7,6 +7,23 @@ interface WebFetchToolViewProps {
   toolCall: ToolCall
 }
 
+/**
+ * Format bytes to human-readable string (KB, MB, etc.)
+ */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+/**
+ * Format duration in milliseconds to human-readable string
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
   const params = toolCall.parameters as WebFetchToolParams
   const result = toolCall.result as WebFetchToolResult | string | undefined
@@ -19,6 +36,12 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
   // Parse result - can be object (WebFetchToolResult) or string (error/simple case)
   const isObjectResult = typeof result === 'object' && result !== null
   const content = isObjectResult ? result.result : (typeof result === 'string' ? result : undefined)
+
+  // Extract metadata for summary line
+  const statusCode = isObjectResult ? result.code : undefined
+  const statusText = isObjectResult ? result.codeText : undefined
+  const bytes = isObjectResult ? result.bytes : undefined
+  const durationMs = isObjectResult ? result.durationMs : undefined
 
   // Parse markdown content only when expanded
   useEffect(() => {
@@ -64,6 +87,24 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
           )}
         </div>
       </button>
+
+      {/* Summary line: HTTP status, size, duration */}
+      {isObjectResult && statusCode !== undefined && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>
+            {statusCode} {statusText}
+            {(bytes !== undefined || durationMs !== undefined) && (
+              <span style={{ color: 'var(--claude-text-tertiary)' }}>
+                {' '}({[
+                  bytes !== undefined && formatBytes(bytes),
+                  durationMs !== undefined && formatDuration(durationMs),
+                ].filter(Boolean).join(', ')})
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Expanded markdown content (like thinking block) */}
       {isExpanded && content && (

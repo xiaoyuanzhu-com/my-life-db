@@ -1009,8 +1009,10 @@ Or for modifications:
 **Visual:**
 ```
 ● WebFetch https://example.com/very/long/path/to/page... ▸   [collapsed]
+└ 200 OK (12.5KB, 234ms)
 
 ● WebFetch https://example.com/very/long/path/to/page... ▾   [expanded]
+└ 200 OK (12.5KB, 234ms)
   ┌─────────────────────────────────────────┐
   │ # Page Title                            │
   │ Content rendered as markdown...         │
@@ -1020,6 +1022,7 @@ Or for modifications:
 **Key Features:**
 - Uses `collapsible-header` pattern (collapsed by default, click header to expand)
 - URL displayed in **single line** with `truncate` (ellipsis if too long)
+- Summary line shows HTTP status code, response size, and duration
 - Content rendered as **markdown** when expanded
 
 **toolUseResult Fields:**
