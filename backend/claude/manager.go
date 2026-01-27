@@ -138,6 +138,18 @@ type Manager struct {
 	wg     sync.WaitGroup
 }
 
+// countActivatedSessions returns the number of sessions with running Claude processes.
+// Must be called with m.mu held (read or write lock).
+func (m *Manager) countActivatedSessions() int {
+	count := 0
+	for _, s := range m.sessions {
+		if s.IsActivated() {
+			count++
+		}
+	}
+	return count
+}
+
 // NewManager creates a new session manager
 func NewManager() (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -230,8 +242,8 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 	// Quick operations under lock: check limits, generate ID, create session object
 	m.mu.Lock()
 
-	// Check session limit
-	if len(m.sessions) >= MaxSessions {
+	// Check session limit (only count activated sessions with running processes)
+	if m.countActivatedSessions() >= MaxSessions {
 		m.mu.Unlock()
 		return nil, ErrTooManySessions
 	}
@@ -385,6 +397,8 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 }
 
 // createShellSession creates a non-activated session (just metadata, no process)
+// Shell sessions are lightweight and don't count against MaxSessions limit.
+// The limit is only enforced when activating a session (spawning a Claude process).
 func (m *Manager) createShellSession(id, workingDir, title string, mode SessionMode) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -394,10 +408,8 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 		return existing, nil
 	}
 
-	// Check session limit
-	if len(m.sessions) >= MaxSessions {
-		return nil, ErrTooManySessions
-	}
+	// No session limit check here - shell sessions are just metadata for viewing history.
+	// The limit is enforced in activateSession when spawning the actual Claude process.
 
 	// Default mode to UI if not specified
 	if mode == "" {
@@ -431,6 +443,14 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 
 // activateSession spawns the actual Claude process for a shell session
 func (m *Manager) activateSession(session *Session) error {
+	// Check session limit before spawning a Claude process
+	m.mu.RLock()
+	activeCount := m.countActivatedSessions()
+	m.mu.RUnlock()
+	if activeCount >= MaxSessions {
+		return ErrTooManySessions
+	}
+
 	session.ready = make(chan struct{}) // Will be closed when ready
 
 	if session.Mode == ModeUI {
