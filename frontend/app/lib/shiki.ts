@@ -84,33 +84,13 @@ export function onMermaidThemeChange(callback: ThemeChangeCallback): () => void 
 const LIGHT_THEME = 'github-light'
 const DARK_THEME = 'github-dark'
 
-const PRELOADED_LANGS = [
-  'javascript',
-  'typescript',
-  'tsx',
-  'jsx',
-  'python',
-  'bash',
-  'shell',
-  'json',
-  'go',
-  'html',
-  'css',
-  'markdown',
-  'yaml',
-  'sql',
-  'rust',
-  'c',
-  'cpp',
-]
-
 export async function getHighlighter(): Promise<Highlighter> {
   if (highlighter) return highlighter
 
   if (!loading) {
     loading = createHighlighter({
       themes: [LIGHT_THEME, DARK_THEME],
-      langs: PRELOADED_LANGS,
+      langs: [], // Load languages on demand
     }).then((h) => {
       highlighter = h
       configureMarked(h)
@@ -136,6 +116,9 @@ let mermaidBlocks: string[] = []
 // Store HTML preview blocks during parsing
 let htmlPreviewBlocks: string[] = []
 
+// Track loaded languages to avoid redundant checks
+const loadedLanguages = new Set<string>()
+
 function configureMarked(hl: Highlighter) {
   marked.use({
     breaks: true, // Convert \n to <br>
@@ -157,6 +140,13 @@ function configureMarked(hl: Highlighter) {
         }
 
         const language = lang || 'text'
+
+        // Check if language is loaded
+        if (!loadedLanguages.has(language) && language !== 'text') {
+          // Language not loaded yet - fall back to plain
+          return `<pre class="shiki"><code>${escapeHtml(text)}</code></pre>`
+        }
+
         try {
           return hl.codeToHtml(text, {
             lang: language,
@@ -173,6 +163,38 @@ function configureMarked(hl: Highlighter) {
       },
     },
   })
+}
+
+// Extract all language identifiers from markdown code blocks
+function extractLanguages(content: string): string[] {
+  const langs = new Set<string>()
+  const codeBlockRegex = /```(\w+)/g
+  let match
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    const lang = match[1]
+    if (lang && lang !== 'mermaid' && lang !== 'html' && lang !== 'text') {
+      langs.add(lang)
+    }
+  }
+  return Array.from(langs)
+}
+
+// Load languages that aren't already loaded
+async function loadLanguages(hl: Highlighter, langs: string[]): Promise<void> {
+  const toLoad = langs.filter(lang => !loadedLanguages.has(lang))
+  if (toLoad.length === 0) return
+
+  await Promise.all(
+    toLoad.map(async (lang) => {
+      try {
+        await hl.loadLanguage(lang as Parameters<typeof hl.loadLanguage>[0])
+        loadedLanguages.add(lang)
+      } catch {
+        // Language not supported - mark as loaded to avoid retrying
+        loadedLanguages.add(lang)
+      }
+    })
+  )
 }
 
 let mermaidIdCounter = 0
@@ -198,7 +220,11 @@ function renderHtmlPreviewBlock(code: string): string {
 }
 
 export async function parseMarkdown(content: string): Promise<string> {
-  await getHighlighter()
+  const hl = await getHighlighter()
+
+  // Extract and load languages before parsing
+  const langs = extractLanguages(content)
+  await loadLanguages(hl, langs)
 
   // Reset blocks for this parse
   mermaidBlocks = []
