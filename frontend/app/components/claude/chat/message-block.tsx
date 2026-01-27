@@ -389,10 +389,10 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
         <MessageDot status="assistant" lineHeight="mono" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span
-            className="font-semibold italic"
+            className="italic"
             style={{ color: 'var(--claude-text-secondary)' }}
           >
-            Extended Thinking
+            Thinking
           </span>
           <span
             className="select-none text-[11px]"
