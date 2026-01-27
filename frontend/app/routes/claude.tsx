@@ -193,6 +193,14 @@ export default function ClaudePage() {
     }
   }
 
+  const markSessionActive = (sessionId: string) => {
+    setSessions(
+      sessions.map((s) =>
+        s.id === sessionId ? { ...s, isActive: true, status: 'active' as const } : s
+      )
+    )
+  }
+
   const archiveSession = async (sessionId: string) => {
     try {
       const response = await api.post(`/api/claude/sessions/${sessionId}/deactivate`)
@@ -337,6 +345,7 @@ export default function ClaudePage() {
               workingDir={activeSession.workingDir}
               isActive={activeSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+              onSessionActivated={() => markSessionActive(activeSessionId)}
             />
           ) : (
             <ClaudeTerminal sessionId={activeSessionId} />

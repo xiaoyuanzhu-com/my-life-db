@@ -25,6 +25,7 @@ interface ChatInterfaceProps {
   workingDir?: string
   isActive?: boolean // Whether session has a running CLI process
   onSessionNameChange?: (name: string) => void
+  onSessionActivated?: () => void // Called when session becomes active (first message sent)
 }
 
 // Types that should not be rendered as messages
@@ -33,6 +34,7 @@ const SKIP_TYPES = ['file-history-snapshot', 'result']
 export function ChatInterface({
   sessionId,
   isActive,
+  onSessionActivated,
 }: ChatInterfaceProps) {
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
@@ -329,6 +331,11 @@ export function ChatInterface({
         }))
 
         console.log('[ChatInterface] Sent message via WebSocket:', content)
+
+        // Notify parent that session is now active (if it wasn't before)
+        if (!isActive && onSessionActivated) {
+          onSessionActivated()
+        }
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
@@ -337,7 +344,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 5000)
       }
     },
-    [sessionId]
+    [sessionId, isActive, onSessionActivated]
   )
 
   // Handle permission decision - send control_response via WebSocket
