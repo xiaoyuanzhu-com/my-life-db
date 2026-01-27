@@ -148,6 +148,7 @@ export function SessionMessages({
   // - isMeta messages (system-injected context, not user-visible)
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   // - control_request/control_response (permission protocol messages, handled via modal)
+  // - internal events (queue-operation, file-history-snapshot)
   const filteredMessages = useMemo(() => {
     return messages.filter((msg) => {
       // Skip all progress messages - they're rendered inside their parent tools:
@@ -161,6 +162,12 @@ export function SessionMessages({
       // - control_request: Claude asks for permission to use a tool
       // - control_response: UI responds with allow/deny (sent via stdin, not displayed)
       if (msg.type === 'control_request' || msg.type === 'control_response') return false
+
+      // Skip internal events - these are metadata messages that provide no user-facing value.
+      // See data-models.md "Internal Events" section.
+      // - queue-operation: Internal session queue management (enqueue/dequeue)
+      // - file-history-snapshot: Internal file versioning for undo/redo
+      if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot') return false
 
       // Skip meta messages (system-injected context)
       if (msg.isMeta) return false

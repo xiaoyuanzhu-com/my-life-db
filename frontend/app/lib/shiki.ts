@@ -14,6 +14,14 @@ const MERMAID_PLACEHOLDER_REGEX = new RegExp(
   'g'
 )
 
+// Placeholder pattern for HTML preview blocks
+const HTML_PREVIEW_PLACEHOLDER_PREFIX = '___HTML_PREVIEW_BLOCK_'
+const HTML_PREVIEW_PLACEHOLDER_SUFFIX = '___'
+const HTML_PREVIEW_PLACEHOLDER_REGEX = new RegExp(
+  `${HTML_PREVIEW_PLACEHOLDER_PREFIX}(\\d+)${HTML_PREVIEW_PLACEHOLDER_SUFFIX}`,
+  'g'
+)
+
 function isDarkMode(): boolean {
   if (typeof document === 'undefined') return false
   // Check for explicit .dark class on html element
@@ -125,6 +133,9 @@ function escapeHtml(text: string): string {
 // Store mermaid blocks during parsing, render after
 let mermaidBlocks: string[] = []
 
+// Store HTML preview blocks during parsing
+let htmlPreviewBlocks: string[] = []
+
 function configureMarked(hl: Highlighter) {
   marked.use({
     breaks: true, // Convert \n to <br>
@@ -136,6 +147,13 @@ function configureMarked(hl: Highlighter) {
           const index = mermaidBlocks.length
           mermaidBlocks.push(text)
           return `${MERMAID_PLACEHOLDER_PREFIX}${index}${MERMAID_PLACEHOLDER_SUFFIX}`
+        }
+
+        // Handle HTML blocks - render as live preview
+        if (lang === 'html') {
+          const index = htmlPreviewBlocks.length
+          htmlPreviewBlocks.push(text)
+          return `${HTML_PREVIEW_PLACEHOLDER_PREFIX}${index}${HTML_PREVIEW_PLACEHOLDER_SUFFIX}`
         }
 
         const language = lang || 'text'
@@ -172,14 +190,29 @@ async function renderMermaidBlock(code: string): Promise<string> {
   }
 }
 
+function renderHtmlPreviewBlock(code: string): string {
+  const escapedHtml = code
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+  return `<div class="html-preview-container"><iframe srcdoc="${escapedHtml}" sandbox="allow-scripts" class="html-preview-iframe"></iframe></div>`
+}
+
 export async function parseMarkdown(content: string): Promise<string> {
   await getHighlighter()
 
-  // Reset mermaid blocks for this parse
+  // Reset blocks for this parse
   mermaidBlocks = []
+  htmlPreviewBlocks = []
 
-  // Parse markdown (mermaid blocks become placeholders)
+  // Parse markdown (mermaid/html-preview blocks become placeholders)
   let html = marked.parse(content) as string
+
+  // Replace HTML preview placeholders (sync, no async needed)
+  if (htmlPreviewBlocks.length > 0) {
+    html = html.replace(HTML_PREVIEW_PLACEHOLDER_REGEX, (_, index) => {
+      return renderHtmlPreviewBlock(htmlPreviewBlocks[parseInt(index, 10)] || '')
+    })
+  }
 
   // If no mermaid blocks, return as-is
   if (mermaidBlocks.length === 0) {

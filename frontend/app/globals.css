@@ -532,3 +532,19 @@
 .mermaid-error pre {
   margin-bottom: 0.5rem;
 }
+
+/* HTML preview iframe styling */
+.html-preview-container {
+  margin: 1rem 0;
+  border: 1px solid var(--claude-border-light);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: white;
+}
+
+.html-preview-iframe {
+  width: 100%;
+  min-height: 200px;
+  border: none;
+  display: block;
+}

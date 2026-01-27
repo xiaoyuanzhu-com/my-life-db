@@ -1136,6 +1136,7 @@ Some message types are intentionally **not rendered** in the chat interface as s
 | Type / Field | Reason |
 |--------------|--------|
 | `file-history-snapshot` | Internal file versioning metadata for undo/redo |
+| `queue-operation` | Internal session queue management (enqueue/dequeue events at session start) |
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 | `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |
@@ -1199,6 +1200,30 @@ User messages are skipped if their content consists **entirely** of these XML ta
 | `isSnapshotUpdate` | boolean | Whether this updates an existing snapshot |
 
 **Why Skip:** These messages are emitted after file-modifying operations (Edit, Write) to enable undo functionality. They contain no content relevant to the conversation flow and would clutter the UI.
+
+---
+
+**queue-operation Example:**
+
+```json
+{
+  "type": "queue-operation",
+  "operation": "dequeue",
+  "timestamp": "2026-01-27T05:45:37.707Z",
+  "sessionId": "53c3b596-1080-4f03-bf16-e710760b0131"
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"queue-operation"` |
+| `operation` | string | Queue operation type: `"enqueue"` or `"dequeue"` |
+| `timestamp` | string | ISO 8601 timestamp of the operation |
+| `sessionId` | string | Session UUID being queued/dequeued |
+
+**Why Skip:** These messages are internal session queue management events emitted at session start. They indicate when the session is queued for processing and when it's dequeued for execution. This is infrastructure-level metadata that provides no user-facing value.
 
 ---
 
