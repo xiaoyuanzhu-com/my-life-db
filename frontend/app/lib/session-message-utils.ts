@@ -491,81 +491,73 @@ export function buildToolResultMap(messages: SessionMessage[]): Map<string, Extr
 }
 
 /**
+ * Message types that are metadata/system, not part of the conversation flow.
+ * These are skipped when finding the last conversation message.
+ */
+const SKIP_MESSAGE_TYPES = new Set([
+  'system',
+  'progress',
+  'result',
+  'summary',
+  'queue-operation',
+  'file-history-snapshot',
+])
+
+/**
  * Derive whether Claude is currently working from message history.
  *
  * This is used instead of local state tracking so that:
  * 1. A second tab opening the same session can determine working state from history
  * 2. State is derived from the source of truth (messages), not tracked separately
  *
- * Algorithm:
- * 1. Find the last user message that's NOT a tool result (i.e., actual user input)
- * 2. Check if there's a turn terminator after it:
- *    - 'result' message (normal completion)
- *    - Assistant message with isApiErrorMessage (API error ended the turn)
- *    - Assistant message with stop_reason set (turn completed)
- * 3. Check if the last message is an assistant with text (waiting for user input)
- * 4. If no terminator after user message = Claude is working
+ * Algorithm (reverse logic - detect when NOT working):
+ * - Find the last "conversation" message (user input or assistant response)
+ * - Skip metadata types (system, progress, result, summary, etc.)
+ * - Skip tool result messages (they're automatic responses, not user turns)
+ * - If last conversation message is assistant ending with text → NOT working
+ * - Otherwise (user input pending, tool executing, etc.) → working
  *
  * Note: This may have false negatives (e.g., second tab opens before messages load).
  * Use optimisticMessage as additional signal for immediate feedback.
  */
 export function deriveIsWorking(messages: SessionMessage[]): boolean {
-  // Find last user message that's NOT a tool result
-  // (Tool results have toolUseResult/tool_use_result field)
-  let lastUserMsgIndex = -1
+  // Find last conversation turn (user input or assistant response)
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg.type === 'user' && !hasToolUseResult(msg)) {
-      lastUserMsgIndex = i
-      break
-    }
-  }
 
-  // No user message found = not working
-  if (lastUserMsgIndex === -1) {
-    return false
-  }
-
-  // Check if there's a turn terminator after the last user message
-  for (let i = lastUserMsgIndex + 1; i < messages.length; i++) {
-    const msg = messages[i]
-
-    // 'result' message indicates normal turn completion
-    if (msg.type === 'result') {
-      return false
+    // Skip metadata/system types
+    if (SKIP_MESSAGE_TYPES.has(msg.type)) {
+      continue
     }
 
-    // 'system' message with subtype 'turn_duration' indicates turn completed
-    if (msg.type === 'system' && msg.subtype === 'turn_duration') {
-      return false
+    // Skip tool result messages (automatic, not conversation turns)
+    if (msg.type === 'user' && hasToolUseResult(msg)) {
+      continue
     }
 
-    // API error message indicates turn ended with error
-    if (msg.type === 'assistant' && msg.isApiErrorMessage) {
-      return false
-    }
+    // Found the last conversation turn
 
-    // Assistant message with stop_reason indicates turn completed
-    if (msg.type === 'assistant' && msg.message?.stop_reason) {
-      return false
-    }
-  }
-
-  // Check if the last message is an assistant message with text content
-  // (not ending with tool_use). This indicates Claude finished and is waiting for user.
-  // This handles cases where stop_reason wasn't recorded properly.
-  const lastMsg = messages[messages.length - 1]
-  if (lastMsg?.type === 'assistant' && lastMsg.message?.content) {
-    const content = lastMsg.message.content
-    if (Array.isArray(content) && content.length > 0) {
-      const lastBlock = content[content.length - 1]
-      // If last block is text (not tool_use), Claude is done
-      if (lastBlock.type === 'text') {
-        return false
+    // Assistant message ending with text = Claude finished, waiting for user
+    if (msg.type === 'assistant' && msg.message?.content) {
+      const content = msg.message.content
+      if (Array.isArray(content) && content.length > 0) {
+        const lastBlock = content[content.length - 1]
+        if (lastBlock.type === 'text') {
+          return false // Not working
+        }
       }
+      // Assistant with tool_use or thinking only = tool executing = working
+      return true
     }
+
+    // User message (real input, not tool result) = Claude processing
+    if (msg.type === 'user') {
+      return true
+    }
+
+    // Unknown type, keep looking
   }
 
-  // No terminator after last user message = Claude is working
-  return true
+  // No conversation messages found
+  return false
 }
