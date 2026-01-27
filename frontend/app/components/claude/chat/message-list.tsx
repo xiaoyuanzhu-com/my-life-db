@@ -1,4 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
+import { useCallback } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
@@ -8,6 +9,8 @@ interface MessageListProps {
   toolResultMap: Map<string, ExtractedToolResult>
   optimisticMessage?: string | null
   wipText?: string | null
+  /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
+  onScrollElementReady?: (element: HTMLDivElement | null) => void
 }
 
 /**
@@ -22,18 +25,33 @@ interface MessageListProps {
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, wipText }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, wipText, onScrollElementReady }: MessageListProps) {
   const { scrollRef, contentRef } = useStickToBottom({
     initial: 'instant',
     resize: 'instant',
   })
 
+  // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
+  const mergedScrollRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      // Assign to useStickToBottom's ref
+      if (typeof scrollRef === 'function') {
+        scrollRef(element)
+      } else if (scrollRef) {
+        ;(scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = element
+      }
+      // Notify parent for hide-on-scroll
+      onScrollElementReady?.(element)
+    },
+    [scrollRef, onScrollElementReady]
+  )
+
   return (
     <div
-      ref={scrollRef}
+      ref={mergedScrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 claude-interface claude-bg"
     >
-      <div ref={contentRef} className="w-full max-w-3xl mx-auto px-4 md:px-6 py-8">
+      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8">
         {messages.length === 0 && !optimisticMessage ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center" style={{ color: 'var(--claude-text-secondary)' }}>
