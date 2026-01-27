@@ -21,7 +21,7 @@ export function GrepToolView({ toolCall }: GrepToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Grep
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             /{params.pattern}/
             {params.glob && <span className="opacity-70 ml-2">in {params.glob}</span>}
             {params.type && <span className="opacity-70 ml-2">type:{params.type}</span>}

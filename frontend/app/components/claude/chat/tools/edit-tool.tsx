@@ -35,7 +35,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Edit
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {params.file_path}
             {params.replace_all && (
               <span className="ml-2 opacity-70">(replace all)</span>

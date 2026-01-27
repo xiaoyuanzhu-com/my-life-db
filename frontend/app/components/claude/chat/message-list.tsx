@@ -33,7 +33,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
       ref={scrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 claude-interface claude-bg"
     >
-      <div ref={contentRef} className="w-full max-w-3xl mx-auto px-6 py-8">
+      <div ref={contentRef} className="w-full max-w-3xl mx-auto px-3 md:px-6 py-8">
         {messages.length === 0 && !optimisticMessage ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center" style={{ color: 'var(--claude-text-secondary)' }}>

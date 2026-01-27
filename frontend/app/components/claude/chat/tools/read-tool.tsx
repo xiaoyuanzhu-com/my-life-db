@@ -24,7 +24,7 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Read
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {params.file_path}
           </span>
         </div>

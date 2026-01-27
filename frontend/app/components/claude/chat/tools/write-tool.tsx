@@ -21,7 +21,7 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Write
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {params.file_path}
           </span>
         </div>

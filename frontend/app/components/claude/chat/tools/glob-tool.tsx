@@ -20,7 +20,7 @@ export function GlobToolView({ toolCall }: GlobToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Glob
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {params.pattern}
             {params.path && <span className="opacity-70 ml-2">in {params.path}</span>}
           </span>

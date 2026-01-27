@@ -81,10 +81,6 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	// Create session (will resume if resumeSessionId is provided)
 	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode)
 	if err != nil {
-		if err == claude.ErrTooManySessions {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many sessions"})
-			return
-		}
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
