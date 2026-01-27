@@ -57,7 +57,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
               <div className="mb-4">
                 <div className="flex flex-col items-end">
                   <div
-                    className="inline-block px-4 py-3 rounded-xl text-[15px] leading-relaxed opacity-70"
+                    className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words opacity-70"
                     style={{
                       backgroundColor: 'var(--claude-bg-subtle)',
                       color: 'var(--claude-text-primary)',

@@ -504,7 +504,7 @@ function UserMessageBlock({ content }: { content: string }) {
       {/* Message bubble - only show if there's actual message content */}
       {message && (
         <div
-          className="inline-block px-4 py-3 rounded-xl text-[15px] leading-relaxed"
+          className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words"
           style={{
             backgroundColor: 'var(--claude-bg-subtle)',
             color: 'var(--claude-text-primary)',
