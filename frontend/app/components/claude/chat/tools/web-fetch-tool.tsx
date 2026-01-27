@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { MessageDot } from '../message-dot'
-import type { ToolCall, WebFetchToolParams } from '~/types/claude'
+import { parseMarkdown } from '~/lib/shiki'
+import type { ToolCall, WebFetchToolParams, WebFetchToolResult } from '~/types/claude'
 
 interface WebFetchToolViewProps {
   toolCall: ToolCall
@@ -7,37 +9,72 @@ interface WebFetchToolViewProps {
 
 export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
   const params = toolCall.parameters as WebFetchToolParams
-  const result = toolCall.result as string | undefined
+  const result = toolCall.result as WebFetchToolResult | string | undefined
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [html, setHtml] = useState('')
 
-  // Extract domain from URL
-  let domain = ''
-  try {
-    domain = new URL(params.url).hostname
-  } catch {
-    domain = params.url
-  }
+  // Use result URL if available (for redirects), otherwise use params URL
+  const effectiveUrl = (typeof result === 'object' && result?.url) ? result.url : params.url
+
+  // Parse result - can be object (WebFetchToolResult) or string (error/simple case)
+  const isObjectResult = typeof result === 'object' && result !== null
+  const content = isObjectResult ? result.result : (typeof result === 'string' ? result : undefined)
+
+  // Parse markdown content only when expanded
+  useEffect(() => {
+    if (!isExpanded || !content) {
+      setHtml('')
+      return
+    }
+
+    let cancelled = false
+    parseMarkdown(content).then((parsed) => {
+      if (!cancelled) setHtml(parsed)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isExpanded, content])
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: Status-colored bullet + "WebFetch" + URL */}
-      <div className="flex items-start gap-2">
+      {/* Clickable header: Status-colored bullet + "WebFetch" + URL (truncated) + chevron */}
+      <button
+        type="button"
+        onClick={() => content && setIsExpanded(!isExpanded)}
+        className={`flex items-start gap-2 w-full text-left ${content ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
+      >
         <MessageDot status={toolCall.status} />
-        <div className="flex-1 min-w-0">
-          <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
+        <div className="flex-1 min-w-0 flex items-center">
+          <span className="font-semibold shrink-0" style={{ color: 'var(--claude-text-primary)' }}>
             WebFetch
           </span>
-          <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
-            {domain}
+          <span className="ml-2 truncate" style={{ color: 'var(--claude-text-secondary)' }}>
+            {effectiveUrl}
           </span>
+          {/* Chevron indicator for expandable content */}
+          {content && (
+            <span
+              className="ml-2 shrink-0 select-none text-[11px]"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </span>
+          )}
         </div>
-      </div>
+      </button>
 
-      {/* Summary: Fetched content */}
-      {result && (
-        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
-          <span className="select-none">└</span>
-          <span>Fetched {result.length} characters</span>
-        </div>
+      {/* Expanded markdown content (like thinking block) */}
+      {isExpanded && content && (
+        <div
+          className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            maxHeight: '60vh',
+          }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       )}
 
       {/* Error */}

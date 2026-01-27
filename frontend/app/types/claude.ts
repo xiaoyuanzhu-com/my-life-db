@@ -163,6 +163,15 @@ export interface BashToolResult {
   duration?: number
 }
 
+export interface WebFetchToolResult {
+  bytes: number
+  code: number
+  codeText: string
+  result: string
+  durationMs: number
+  url: string
+}
+
 export interface WebSearchResult {
   title: string
   url: string

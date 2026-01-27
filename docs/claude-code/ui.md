@@ -489,7 +489,7 @@ Each tool type has a specific visualization pattern in the official UI:
 | **Bash** | Terminal-style output: command line + streaming output in monospace, dark-on-light |
 | **Glob** | File list with file type icons, grouped by directory, monospace paths |
 | **Grep** | Matched files list OR content with line numbers and search term highlighted |
-| **WebFetch** | URL header + extracted/summarized content as markdown |
+| **WebFetch** | URL (truncated) + collapsible markdown content (click to expand) |
 | **WebSearch** | Search query + results as clickable links with descriptions |
 | **Task** | Agent name + type badge + status indicator + collapsible output |
 | **AskUserQuestion** | Inline question card (see component G) |
@@ -692,6 +692,75 @@ Or for modifications:
   frontend/app/routes/inbox.tsx:22
   ...
 ```
+
+</details>
+
+<details>
+<summary><strong>WebFetch Tool - Detailed Spec</strong></summary>
+
+**Pattern (Collapsed - Default):**
+```
+● WebFetch https://example.com/very/long/path/to/page... ▸
+```
+
+**Pattern (Expanded - Click to toggle):**
+```
+● WebFetch https://example.com/very/long/path/to/page... ▾
+  ┌─────────────────────────────────────────┐
+  │ # Page Title                            │
+  │                                         │
+  │ Content rendered as markdown...         │
+  │ (scrollable, max 60vh)                  │
+  └─────────────────────────────────────────┘
+```
+
+**Layout:**
+```tsx
+<div className="font-mono text-[13px] leading-[1.5]">
+  {/* Clickable header: bullet + "WebFetch" + URL (truncated) + chevron */}
+  <button
+    onClick={() => setIsExpanded(!isExpanded)}
+    className="flex items-start gap-2 w-full text-left hover:opacity-80"
+  >
+    <MessageDot status={toolCall.status} />
+    <div className="flex-1 min-w-0 flex items-center">
+      <span className="font-semibold shrink-0 text-primary">WebFetch</span>
+      <span className="ml-2 truncate text-secondary">{url}</span>
+      <span className="ml-2 shrink-0 text-[11px] text-tertiary">
+        {isExpanded ? '▾' : '▸'}
+      </span>
+    </div>
+  </button>
+  {/* Expanded markdown content (like thinking block) */}
+  {isExpanded && (
+    <div
+      className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
+      style={{ backgroundColor: 'var(--claude-bg-code-block)', maxHeight: '60vh' }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )}
+</div>
+```
+
+**Key Features:**
+- **Collapsed by default** - click header to expand (like thinking block)
+- URL displayed in **single line** with `truncate` (ellipsis if too long)
+- Chevron indicator: `▸` (collapsed) / `▾` (expanded)
+- **No status line** (HTTP code, bytes, duration removed for cleaner UI)
+- Content rendered as **markdown** when expanded
+- Expanded view: `maxHeight: 60vh` with scroll, `ml-5` indent
+- No "Show more/less" banner - toggle via header click
+
+**toolUseResult Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bytes` | number | Response size in bytes |
+| `code` | number | HTTP status code |
+| `codeText` | string | HTTP status text (e.g., "OK") |
+| `result` | string | Extracted/summarized content (markdown) |
+| `durationMs` | number | Request duration in milliseconds |
+| `url` | string | Final URL (may differ from request URL after redirects) |
 
 </details>
 
