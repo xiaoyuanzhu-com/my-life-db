@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
-import { PermissionPopup } from './permission-popup'
 import { AskUserQuestion } from './ask-user-question'
 import type {
   TodoItem,
@@ -351,15 +350,11 @@ export function ChatInterface({
             }
           />
 
-          {/* Permission popup - appears above input */}
-          {pendingPermission && (
-            <PermissionPopup
-              request={pendingPermission}
-              onDecision={handlePermissionDecision}
-            />
-          )}
-
-          <ChatInput onSend={sendMessage} disabled={!!pendingPermission} />
+          <ChatInput
+            onSend={sendMessage}
+            pendingPermission={pendingPermission}
+            onPermissionDecision={handlePermissionDecision}
+          />
         </div>
 
         {/* Todo Panel (collapsible) */}

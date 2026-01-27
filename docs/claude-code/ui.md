@@ -403,66 +403,75 @@ Minimal, clean input field for user messages. Designed to be unobtrusive and con
 *   Maximum simplicity and focus
 *   Clean 2-row layout with clear visual hierarchy
 
-#### Permission Request Popup
-Inline popup that appears above the chat input when Claude needs permission to use a tool.
+#### Permission Request (Integrated into Chat Input)
+When Claude needs permission to use a tool, the input card "grows upward" to include an approval section.
 
-**Position:**
-*   Appears directly above the chat input (not a modal overlay)
-*   Matches the max-width of the message container (`max-w-3xl`)
-*   Part of the normal document flow, pushing content up
+**Design Philosophy:**
+*   Permission UI is integrated directly into the chat input card
+*   Input card expands to accommodate the permission content
+*   A subtle border separates permission section from input section
+*   Creates a cohesive, unified experience rather than a disruptive modal
 
-**Container:**
-*   Background: `$bg-subtle`
-*   Border: `1px solid $border-light`
-*   Border-radius: `12px`
-*   Overflow: hidden
+**Layout:**
+```
+┌──────────────────────────────────────────┐
+│ Permission Section                       │
+│   Allow Claude to Run {preview}?         │
+│   [description if available]             │
+│   ┌────────────────────────────────────┐ │
+│   │ command preview (code block)       │ │
+│   └────────────────────────────────────┘ │
+│   [Deny Esc] [Always allow ⌘⏎] [Allow ⏎]│
+├──────────────────────────────────────────┤
+│ Input Section (dimmed/disabled)          │
+│   Waiting for permission...              │
+│   [📎]                            [↑]    │
+└──────────────────────────────────────────┘
+```
+
+**Permission Section:**
+*   Padding: `12px`
+*   Border-bottom: `1px solid $border-light` (separates from input)
 
 **Header Text:**
 *   Format: "Allow Claude to **{Action}** {preview}?"
 *   Action is bolded (Run, Read, Write, Edit, Fetch, Search, Use)
-*   Preview is in monospace, truncated if too long
-*   Font: Sans, 15px, $text-primary
+*   Preview: monospace, 12px, $text-secondary, truncated to 80 chars
+*   Font: Sans, 14px, $text-primary
 
 **Description:**
 *   Shows tool description if available (from `input.description`)
-*   Font: Sans, 13px, $text-secondary
-*   Margin-top: `4px`
+*   Font: Sans, 12px, $text-secondary
 
 **Command Preview:**
 *   Background: `$bg-code-block`
 *   Border: `1px solid $border-light`
 *   Border-radius: `8px`
-*   Padding: `12px`
-*   Font: Monospace, 13px
-*   Whitespace: pre-wrap, break-all for long commands
-
-**Actions:**
-*   Background: `$bg-canvas`
-*   Border-top: `1px solid $border-light`
-*   Padding: `12px 16px`
-*   Button group: Right-aligned, flex row, `8px` gap
-*   Each button shows keyboard shortcut as `<kbd>` badge
+*   Padding: `8px`
+*   Font: Monospace, 12px
+*   Max-height: `128px` with overflow-y auto
+*   Margin-bottom: `12px`
 
 **Buttons:**
-1. **Deny** (secondary, outlined)
+*   Compact sizing: `px-2.5 py-1`, font 12px
+*   Right-aligned, `8px` gap
+1. **Deny** (outlined)
    *   Keyboard: `Esc`
-   *   Border: `1px solid $border-light`
-2. **Always allow for session** (secondary, filled)
-   *   Keyboard: `⌘⏎` (Cmd+Enter)
-   *   Background: `$bg-muted`
-3. **Allow once** (primary, filled)
-   *   Keyboard: `⏎` (Enter)
-   *   Background: `$primary`
+2. **Always allow** (muted background)
+   *   Keyboard: `⌘⏎`
+3. **Allow once** (primary)
+   *   Keyboard: `⏎`
+
+**Input Section When Permission Pending:**
+*   Placeholder: "Waiting for permission..."
+*   Input and buttons: disabled with `opacity-50`
+*   Cursor: `not-allowed`
 
 **Keyboard Shortcuts:**
 *   `Escape` → Deny
 *   `Enter` → Allow once
 *   `Cmd/Ctrl+Enter` → Always allow for session
-
-**Interaction:**
-*   Chat input is disabled while permission popup is visible
-*   Popup auto-focuses and captures keyboard events
-*   After decision, popup disappears and input re-enables
+*   Shortcuts are handled at window level when permission is pending
 
 ---
 
