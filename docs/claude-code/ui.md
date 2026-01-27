@@ -1067,7 +1067,7 @@ The Task tool spawns a subagent and has a **special lifecycle** with progress me
 
 ### 6.2 Skipped Message Types
 
-Some message types are intentionally **not rendered** in the chat interface. These are internal/metadata messages that provide no user-facing value.
+Some message types are intentionally **not rendered** in the chat interface as standalone messages. These are internal/metadata messages that provide no user-facing value when displayed directly.
 
 **Skipped Types:**
 
@@ -1076,6 +1076,21 @@ Some message types are intentionally **not rendered** in the chat interface. The
 | `file-history-snapshot` | Internal file versioning metadata for undo/redo |
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
+| `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |
+
+**Progress Messages:**
+
+Progress messages (`type: "progress"`) are filtered from the main message list but are rendered **inside their parent tool components**:
+
+| `data.type` | Rendered Inside | Description |
+|-------------|----------------|-------------|
+| `agent_progress` | Task tool | Subagent spawning and execution progress |
+| `bash_progress` | Bash tool | Long-running command elapsed time and output |
+| `hook_progress` | (future) | Hook execution progress |
+| `query_update` | (future) | Web search query being executed |
+| `search_results_received` | (future) | Web search results received |
+
+Progress messages are linked to their parent tool via `parentToolUseID`, which maps to the `tool_use` block's `id` field.
 
 **Skipped XML Tags:**
 

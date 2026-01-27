@@ -14,7 +14,7 @@ import {
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
-import type { AgentProgressMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
 
@@ -23,11 +23,13 @@ interface MessageBlockProps {
   toolResultMap: Map<string, ExtractedToolResult>
   /** Map from tool_use ID to agent progress messages (for Task tools) */
   agentProgressMap?: Map<string, AgentProgressMessage[]>
+  /** Map from tool_use ID to bash progress messages (for Bash tools) */
+  bashProgressMap?: Map<string, BashProgressMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -196,7 +198,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, depth =
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} depth={depth} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} depth={depth} />
         </div>
       )}
     </div>
@@ -208,10 +210,12 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, depth =
 function ToolCallGroups({
   toolCalls,
   agentProgressMap,
+  bashProgressMap,
   depth,
 }: {
   toolCalls: ToolCall[]
-  agentProgressMap?: Map<string, import('./session-messages').AgentProgressMessage[]>
+  agentProgressMap?: Map<string, AgentProgressMessage[]>
+  bashProgressMap?: Map<string, BashProgressMessage[]>
   depth: number
 }) {
   // Group consecutive tool calls by name
@@ -248,6 +252,7 @@ function ToolCallGroups({
               key={group[0].id}
               toolCall={group[0]}
               agentProgressMap={agentProgressMap}
+              bashProgressMap={bashProgressMap}
               depth={depth}
             />
           )
@@ -259,6 +264,7 @@ function ToolCallGroups({
             key={`group-${groupIndex}`}
             toolCalls={group}
             agentProgressMap={agentProgressMap}
+            bashProgressMap={bashProgressMap}
             depth={depth}
           />
         )
@@ -271,10 +277,12 @@ function ToolCallGroups({
 function ToolCallGroup({
   toolCalls,
   agentProgressMap,
+  bashProgressMap,
   depth,
 }: {
   toolCalls: ToolCall[]
-  agentProgressMap?: Map<string, import('./session-messages').AgentProgressMessage[]>
+  agentProgressMap?: Map<string, AgentProgressMessage[]>
+  bashProgressMap?: Map<string, BashProgressMessage[]>
   depth: number
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
@@ -303,6 +311,7 @@ function ToolCallGroup({
               key={toolCall.id}
               toolCall={toolCall}
               agentProgressMap={agentProgressMap}
+              bashProgressMap={bashProgressMap}
               depth={depth}
             />
           ))}

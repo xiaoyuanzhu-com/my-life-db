@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { MessageDot } from '../message-dot'
 import type { ToolCall, BashToolParams, BashToolResult } from '~/types/claude'
+import type { BashProgressMessage } from '../session-messages'
 
 interface BashToolViewProps {
   toolCall: ToolCall
+  /** Map from tool_use ID to bash progress messages */
+  bashProgressMap?: Map<string, BashProgressMessage[]>
 }
 
 const MAX_LINES = 5
@@ -25,10 +28,14 @@ function truncateText(text: string): { display: string; truncated: boolean } {
   return { display, truncated }
 }
 
-export function BashToolView({ toolCall }: BashToolViewProps) {
+export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
   const params = (toolCall.parameters || {}) as BashToolParams
   const result = toolCall.result as BashToolResult | string | undefined
   const [expanded, setExpanded] = useState(false)
+
+  // Get progress messages for this tool call
+  const progressMessages = bashProgressMap?.get(toolCall.id) || []
+  const latestProgress = progressMessages.length > 0 ? progressMessages[progressMessages.length - 1] : null
 
   // Parse result
   const output = typeof result === 'string' ? result : result?.output
@@ -47,9 +54,11 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
   const isTruncated = command.truncated || outputResult.truncated || errorResult.truncated
 
   // Determine status for dot - bash has special logic for exit codes
+  // If we have progress but no result, it's running
   const dotStatus = (() => {
     if (toolCall.error || toolCall.status === 'failed') return 'failed' as const
     if (exitCode !== undefined && exitCode !== 0) return 'failed' as const
+    if (latestProgress && !result) return 'running' as const
     return toolCall.status
   })()
 
@@ -91,6 +100,23 @@ export function BashToolView({ toolCall }: BashToolViewProps) {
               {expanded ? commandText : command.display}
             </pre>
           </div>
+
+          {/* Progress indicator (shown when running) */}
+          {latestProgress && !result && (
+            <div
+              className="px-3 py-2 flex items-center gap-2"
+              style={{
+                borderTop: '1px solid var(--claude-border-light)',
+                color: 'var(--claude-text-secondary)',
+              }}
+            >
+              <span className="animate-pulse">⏳</span>
+              <span>Running... {latestProgress.data?.elapsedTimeSeconds}s</span>
+              {latestProgress.data?.totalLines !== undefined && latestProgress.data.totalLines > 0 && (
+                <span className="text-[12px]">({latestProgress.data.totalLines} lines)</span>
+              )}
+            </div>
+          )}
 
           {/* Output */}
           {output && (

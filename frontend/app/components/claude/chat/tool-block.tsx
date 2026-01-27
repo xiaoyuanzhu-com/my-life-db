@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolCall, ToolName } from '~/types/claude'
 import { MessageDot } from './message-dot'
-import type { AgentProgressMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 
 // Tool-specific visualizations
 import { ReadToolView } from './tools/read-tool'
@@ -19,6 +19,8 @@ interface ToolBlockProps {
   toolCall: ToolCall
   /** Map from tool_use ID to agent progress messages (for Task tools) */
   agentProgressMap?: Map<string, AgentProgressMessage[]>
+  /** Map from tool_use ID to bash progress messages (for Bash tools) */
+  bashProgressMap?: Map<string, BashProgressMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
@@ -53,19 +55,21 @@ function getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} depth={depth} />
 }
 
 function ToolContent({
   toolCall,
   agentProgressMap,
+  bashProgressMap,
   depth,
 }: {
   toolCall: ToolCall
   agentProgressMap?: Map<string, AgentProgressMessage[]>
+  bashProgressMap?: Map<string, BashProgressMessage[]>
   depth: number
 }) {
   // Render tool-specific view based on tool name
@@ -77,7 +81,7 @@ function ToolContent({
     case 'Edit':
       return <EditToolView toolCall={toolCall} />
     case 'Bash':
-      return <BashToolView toolCall={toolCall} />
+      return <BashToolView toolCall={toolCall} bashProgressMap={bashProgressMap} />
     case 'Glob':
       return <GlobToolView toolCall={toolCall} />
     case 'Grep':

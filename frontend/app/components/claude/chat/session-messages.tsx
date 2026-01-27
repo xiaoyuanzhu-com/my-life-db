@@ -19,12 +19,33 @@ interface AgentProgressMessage extends SessionMessage {
   }
 }
 
+// Bash progress message structure
+interface BashProgressMessage extends SessionMessage {
+  type: 'progress'
+  parentToolUseID?: string
+  data?: {
+    type: 'bash_progress'
+    output: string
+    fullOutput: string
+    elapsedTimeSeconds: number
+    totalLines: number
+  }
+}
+
 /**
  * Check if a message is an agent_progress message
  */
 function isAgentProgressMessage(msg: SessionMessage): msg is AgentProgressMessage {
   return msg.type === 'progress' &&
     (msg as AgentProgressMessage).data?.type === 'agent_progress'
+}
+
+/**
+ * Check if a message is a bash_progress message
+ */
+function isBashProgressMessage(msg: SessionMessage): msg is BashProgressMessage {
+  return msg.type === 'progress' &&
+    (msg as BashProgressMessage).data?.type === 'bash_progress'
 }
 
 /**
@@ -36,6 +57,24 @@ export function buildAgentProgressMap(messages: SessionMessage[]): Map<string, A
 
   for (const msg of messages) {
     if (isAgentProgressMessage(msg) && msg.parentToolUseID) {
+      const existing = map.get(msg.parentToolUseID) || []
+      existing.push(msg)
+      map.set(msg.parentToolUseID, existing)
+    }
+  }
+
+  return map
+}
+
+/**
+ * Build a map from parentToolUseID to bash_progress messages
+ * This allows Bash tools to find their associated progress updates
+ */
+export function buildBashProgressMap(messages: SessionMessage[]): Map<string, BashProgressMessage[]> {
+  const map = new Map<string, BashProgressMessage[]>()
+
+  for (const msg of messages) {
+    if (isBashProgressMessage(msg) && msg.parentToolUseID) {
       const existing = map.get(msg.parentToolUseID) || []
       existing.push(msg)
       map.set(msg.parentToolUseID, existing)
@@ -58,6 +97,10 @@ interface SessionMessagesProps {
    */
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   /**
+   * Pre-built bash progress map. If not provided, will be built from messages.
+   */
+  bashProgressMap?: Map<string, BashProgressMessage[]>
+  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -79,6 +122,7 @@ export function SessionMessages({
   messages,
   toolResultMap: providedToolResultMap,
   agentProgressMap: providedAgentProgressMap,
+  bashProgressMap: providedBashProgressMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -93,16 +137,32 @@ export function SessionMessages({
     return buildAgentProgressMap(messages)
   }, [messages, providedAgentProgressMap])
 
+  // Build bash progress map if not provided
+  const bashProgressMap = useMemo(() => {
+    if (providedBashProgressMap) return providedBashProgressMap
+    return buildBashProgressMap(messages)
+  }, [messages, providedBashProgressMap])
+
   // Filter out:
-  // - agent_progress messages (they're rendered inside Task tools)
+  // - progress messages (rendered inside their parent tools, not as standalone messages)
   // - isMeta messages (system-injected context, not user-visible)
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   const filteredMessages = useMemo(() => {
-    return messages.filter((msg) =>
-      !isAgentProgressMessage(msg) &&
-      !msg.isMeta &&
-      !isSkippedUserMessage(msg)
-    )
+    return messages.filter((msg) => {
+      // Skip all progress messages - they're rendered inside their parent tools:
+      // - agent_progress → rendered inside Task tool via agentProgressMap
+      // - bash_progress → rendered inside Bash tool via bashProgressMap
+      // - hook_progress, query_update, search_results_received → future support
+      if (msg.type === 'progress') return false
+
+      // Skip meta messages (system-injected context)
+      if (msg.isMeta) return false
+
+      // Skip user messages with only skipped XML tags
+      if (isSkippedUserMessage(msg)) return false
+
+      return true
+    })
   }, [messages])
 
   if (filteredMessages.length === 0) {
@@ -117,6 +177,7 @@ export function SessionMessages({
           message={message}
           toolResultMap={toolResultMap}
           agentProgressMap={agentProgressMap}
+          bashProgressMap={bashProgressMap}
           depth={depth}
         />
       ))}
@@ -124,4 +185,4 @@ export function SessionMessages({
   )
 }
 
-export type { AgentProgressMessage }
+export type { AgentProgressMessage, BashProgressMessage }
