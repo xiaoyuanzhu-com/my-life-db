@@ -25,7 +25,7 @@ interface ChatInterfaceProps {
   workingDir?: string
   isActive?: boolean // Whether session has a running CLI process
   onSessionNameChange?: (name: string) => void
-  onSessionActivated?: () => void // Called when session becomes active (first message sent)
+  refreshSessions?: () => void // Called to refresh session list from backend
 }
 
 // Types that should not be rendered as messages
@@ -34,7 +34,7 @@ const SKIP_TYPES = ['file-history-snapshot', 'result']
 export function ChatInterface({
   sessionId,
   isActive,
-  onSessionActivated,
+  refreshSessions,
 }: ChatInterfaceProps) {
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
@@ -58,6 +58,11 @@ export function ChatInterface({
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Track if we've refreshed sessions for this inactive session (to avoid multiple refreshes)
+  const hasRefreshedRef = useRef(false)
+  // Keep isActive in a ref so WebSocket handler can access latest value
+  const isActiveRef = useRef(isActive)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -106,6 +111,11 @@ export function ChatInterface({
     return pending
   }, [controlRequests, controlResponses])
 
+  // Keep isActiveRef in sync
+  useEffect(() => {
+    isActiveRef.current = isActive
+  }, [isActive])
+
   // Clear messages and reset state when sessionId changes
   useEffect(() => {
     setRawMessages([])
@@ -115,6 +125,7 @@ export function ChatInterface({
     setControlResponses(new Set())
     setError(null)
     setProgressMessage(null)
+    hasRefreshedRef.current = false // Reset refresh tracking for new session
     // Note: isWorking is derived from rawMessages + optimisticMessage, so it resets automatically
   }, [sessionId])
 
@@ -278,6 +289,13 @@ export function ChatInterface({
           setProgressMessage(null)
         }
 
+        // If we receive a message while session was marked inactive, refresh session list
+        // This indicates the session has been activated by the backend
+        if (isActiveRef.current === false && !hasRefreshedRef.current && refreshSessions) {
+          hasRefreshedRef.current = true
+          refreshSessions()
+        }
+
         // Accumulate raw messages
         setRawMessages((prev) => {
           // Check if message already exists
@@ -331,11 +349,6 @@ export function ChatInterface({
         }))
 
         console.log('[ChatInterface] Sent message via WebSocket:', content)
-
-        // Notify parent that session is now active (if it wasn't before)
-        if (!isActive && onSessionActivated) {
-          onSessionActivated()
-        }
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
@@ -344,7 +357,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 5000)
       }
     },
-    [sessionId, isActive, onSessionActivated]
+    [sessionId]
   )
 
   // Handle permission decision - send control_response via WebSocket

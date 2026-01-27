@@ -337,7 +337,7 @@ export default function ClaudePage() {
               workingDir={activeSession.workingDir}
               isActive={activeSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-              onSessionActivated={loadSessions}
+              refreshSessions={loadSessions}
             />
           ) : (
             <ClaudeTerminal sessionId={activeSessionId} />
