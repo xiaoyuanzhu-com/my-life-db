@@ -9,25 +9,6 @@ interface BashToolViewProps {
   bashProgressMap?: Map<string, BashProgressMessage[]>
 }
 
-const MAX_LINES = 5
-const MAX_CHARS = 500
-
-// Truncate text to max lines OR max chars, whichever is shorter
-function truncateText(text: string): { display: string; truncated: boolean } {
-  const lines = text.split('\n')
-  let display = lines.slice(0, MAX_LINES).join('\n')
-  let truncated = lines.length > MAX_LINES
-
-  if (display.length > MAX_CHARS) {
-    display = [...display].slice(0, MAX_CHARS).join('')
-    truncated = true
-  } else if (text.length > display.length) {
-    truncated = true
-  }
-
-  return { display, truncated }
-}
-
 export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
   const params = (toolCall.parameters || {}) as BashToolParams
   const result = toolCall.result as BashToolResult | string | undefined
@@ -35,26 +16,19 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
 
   // Get progress messages for this tool call
   const progressMessages = bashProgressMap?.get(toolCall.id) || []
-  const latestProgress = progressMessages.length > 0 ? progressMessages[progressMessages.length - 1] : null
+  const latestProgress =
+    progressMessages.length > 0 ? progressMessages[progressMessages.length - 1] : null
 
   // Parse result
   const output = typeof result === 'string' ? result : result?.output
   const exitCode = typeof result === 'object' ? result?.exitCode : undefined
 
-  // Get full text content
   const commandText = params?.command || 'No command'
   const outputText = output || ''
   const errorText = toolCall.error || ''
+  const hasOutput = outputText || errorText
 
-  // Truncate each section
-  const command = truncateText(commandText)
-  const outputResult = truncateText(outputText)
-  const errorResult = truncateText(errorText)
-
-  const isTruncated = command.truncated || outputResult.truncated || errorResult.truncated
-
-  // Determine status for dot - bash has special logic for exit codes
-  // If we have progress but no result, it's running
+  // Determine status for dot
   const dotStatus = (() => {
     if (toolCall.error || toolCall.status === 'failed') return 'failed' as const
     if (exitCode !== undefined && exitCode !== 0) return 'failed' as const
@@ -62,106 +36,81 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
     return toolCall.status
   })()
 
+  // Build summary line - show output preview or running status
+  const getSummaryLine = () => {
+    if (latestProgress && !result) {
+      const elapsed = latestProgress.data?.elapsedTimeSeconds
+      const lines = latestProgress.data?.totalLines
+      return `Running${elapsed ? ` ${elapsed}s` : ''}${lines ? `, ${lines} lines` : ''}`
+    }
+    if (errorText) {
+      // Show first line of error
+      const firstLine = errorText.split('\n')[0].trim()
+      return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine
+    }
+    if (outputText) {
+      // Show first line of output
+      const firstLine = outputText.split('\n')[0].trim()
+      return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine
+    }
+    return null
+  }
+
+  const summaryLine = getSummaryLine()
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Line 1: Status-colored bullet + "Bash" + description */}
-      <div className="flex items-start gap-2">
+      {/* Header: ● Bash command ▸/▾ */}
+      <button
+        onClick={() => hasOutput && setExpanded(!expanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasOutput ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+      >
         <MessageDot status={dotStatus} />
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-center gap-2">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Bash
           </span>
-          {params?.description && (
-            <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
-              {params.description}
+          <span
+            className="truncate"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            {commandText}
+          </span>
+          {hasOutput && (
+            <span
+              className="text-[11px] flex-shrink-0"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {expanded ? '▾' : '▸'}
             </span>
           )}
         </div>
-      </div>
+      </button>
 
-      {/* Command and Output container */}
-      <div
-        className="rounded-md overflow-hidden"
-        style={{ border: '1px solid var(--claude-border-light)' }}
-      >
+      {/* Summary line: └ output preview */}
+      {summaryLine && (
         <div
-          className={expanded && isTruncated ? 'overflow-y-auto' : ''}
-          style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+          className="flex gap-2 ml-5"
+          style={{ color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)' }}
         >
-          {/* Command */}
-          <div
-            className="p-2"
-            style={{ backgroundColor: 'var(--claude-bg-secondary)' }}
-          >
-            <pre
-              className="p-2 whitespace-pre-wrap break-all"
-              style={{ color: 'var(--claude-text-primary)' }}
-            >
-              {expanded ? commandText : command.display}
-            </pre>
-          </div>
-
-          {/* Progress indicator (shown when running) */}
-          {latestProgress && !result && (
-            <div
-              className="px-3 py-2 flex items-center gap-2"
-              style={{
-                borderTop: '1px solid var(--claude-border-light)',
-                color: 'var(--claude-text-secondary)',
-              }}
-            >
-              <span className="animate-pulse">⏳</span>
-              <span>Running... {latestProgress.data?.elapsedTimeSeconds}s</span>
-              {latestProgress.data?.totalLines !== undefined && latestProgress.data.totalLines > 0 && (
-                <span className="text-[12px]">({latestProgress.data.totalLines} lines)</span>
-              )}
-            </div>
-          )}
-
-          {/* Output */}
-          {output && (
-            <div
-              className="px-3 py-2"
-              style={{
-                borderTop: '1px solid var(--claude-border-light)',
-                color: 'var(--claude-text-secondary)',
-              }}
-            >
-              <div className="whitespace-pre-wrap break-all">
-                {expanded ? outputText : outputResult.display}
-              </div>
-            </div>
-          )}
-
-          {/* Error */}
-          {toolCall.error && (
-            <div
-              className="px-3 py-2 whitespace-pre-wrap break-all"
-              style={{
-                borderTop: '1px solid var(--claude-border-light)',
-                color: 'var(--claude-status-alert)',
-              }}
-            >
-              {expanded ? errorText : errorResult.display}
-            </div>
-          )}
+          <span>└</span>
+          <span className="truncate">{summaryLine}</span>
         </div>
+      )}
 
-        {/* Expand/Collapse button */}
-        {isTruncated && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
-            style={{
-              backgroundColor: 'var(--claude-bg-secondary)',
-              color: 'var(--claude-text-secondary)',
-              borderTop: '1px solid var(--claude-border-light)',
-            }}
-          >
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
-      </div>
+      {/* Expanded output */}
+      {expanded && hasOutput && (
+        <div
+          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            maxHeight: '60vh',
+            color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)',
+          }}
+        >
+          {errorText || outputText}
+        </div>
+      )}
     </div>
   )
 }
