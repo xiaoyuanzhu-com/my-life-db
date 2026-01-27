@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
-import { PermissionModal } from './permission-modal'
+import { PermissionPopup } from './permission-popup'
 import { AskUserQuestion } from './ask-user-question'
 import type {
   TodoItem,
@@ -288,6 +288,14 @@ export function ChatInterface({
         return
       }
 
+      // Map our decision to Claude's behavior format
+      // 'allow' → 'allow' (allow this once)
+      // 'allowSession' → 'allow' with allowAll flag (Claude Code CLI uses this for "always allow")
+      // 'deny' → 'deny'
+      // Note: Claude Code CLI currently only supports 'allow' and 'deny' behaviors
+      // The 'allowSession' is handled differently in the CLI (via permission rules)
+      const behavior = decision === 'deny' ? 'deny' : 'allow'
+
       // Build control_response
       const response: ControlResponse = {
         type: 'control_response',
@@ -295,12 +303,12 @@ export function ChatInterface({
         response: {
           subtype: 'success',
           response: {
-            behavior: decision,
+            behavior,
           },
         },
       }
 
-      console.log('[ChatInterface] Sending permission response:', response)
+      console.log('[ChatInterface] Sending permission response:', response, 'original decision:', decision)
       wsRef.current.send(JSON.stringify(response))
       setPendingPermission(null)
     },
@@ -343,7 +351,15 @@ export function ChatInterface({
             }
           />
 
-          <ChatInput onSend={sendMessage} />
+          {/* Permission popup - appears above input */}
+          {pendingPermission && (
+            <PermissionPopup
+              request={pendingPermission}
+              onDecision={handlePermissionDecision}
+            />
+          )}
+
+          <ChatInput onSend={sendMessage} disabled={!!pendingPermission} />
         </div>
 
         {/* Todo Panel (collapsible) */}
@@ -351,14 +367,6 @@ export function ChatInterface({
           <TodoPanel todos={activeTodos} />
         )}
       </div>
-
-      {/* Permission Modal */}
-      {pendingPermission && (
-        <PermissionModal
-          request={pendingPermission}
-          onDecision={handlePermissionDecision}
-        />
-      )}
 
       {/* User Question Modal */}
       {pendingQuestion && (

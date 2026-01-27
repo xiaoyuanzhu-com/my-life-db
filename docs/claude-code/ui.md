@@ -403,41 +403,66 @@ Minimal, clean input field for user messages. Designed to be unobtrusive and con
 *   Maximum simplicity and focus
 *   Clean 2-row layout with clear visual hierarchy
 
-#### Permission Request Modal
-Modal overlay for tool execution approval.
+#### Permission Request Popup
+Inline popup that appears above the chat input when Claude needs permission to use a tool.
 
-**Overlay:**
-*   Background: `rgba(0, 0, 0, 0.4)` (semi-transparent black)
-*   Backdrop-blur: `4px` (optional, for modern browsers)
+**Position:**
+*   Appears directly above the chat input (not a modal overlay)
+*   Matches the max-width of the message container (`max-w-3xl`)
+*   Part of the normal document flow, pushing content up
 
-**Modal Card:**
-*   Width: `480px` max
-*   Background: `$bg-canvas`
+**Container:**
+*   Background: `$bg-subtle`
+*   Border: `1px solid $border-light`
 *   Border-radius: `12px`
-*   Box-shadow: `0 20px 25px -5px rgba(0, 0, 0, 0.1)`
-*   Padding: `24px`
+*   Overflow: hidden
 
-**Header:**
-*   Icon: `🔐` or lock icon
-*   Text: "Permission Required" (Sans, Bold, 16px, $text-primary)
+**Header Text:**
+*   Format: "Allow Claude to **{Action}** {preview}?"
+*   Action is bolded (Run, Read, Write, Edit, Fetch, Search, Use)
+*   Preview is in monospace, truncated if too long
+*   Font: Sans, 15px, $text-primary
 
 **Description:**
-*   Text: "Claude wants to execute a bash command:" (Body text)
-*   Margin: `12px 0`
+*   Shows tool description if available (from `input.description`)
+*   Font: Sans, 13px, $text-secondary
+*   Margin-top: `4px`
 
 **Command Preview:**
 *   Background: `$bg-code-block`
 *   Border: `1px solid $border-light`
-*   Border-radius: `6px`
+*   Border-radius: `8px`
 *   Padding: `12px`
 *   Font: Monospace, 13px
-*   Color: $text-primary
+*   Whitespace: pre-wrap, break-all for long commands
 
 **Actions:**
+*   Background: `$bg-canvas`
+*   Border-top: `1px solid $border-light`
+*   Padding: `12px 16px`
 *   Button group: Right-aligned, flex row, `8px` gap
-*   "Deny" button (secondary, gray)
-*   "Allow Once" button (primary, default)
-*   "Always Allow" button (primary, success color)
+*   Each button shows keyboard shortcut as `<kbd>` badge
+
+**Buttons:**
+1. **Deny** (secondary, outlined)
+   *   Keyboard: `Esc`
+   *   Border: `1px solid $border-light`
+2. **Always allow for session** (secondary, filled)
+   *   Keyboard: `⌘⏎` (Cmd+Enter)
+   *   Background: `$bg-muted`
+3. **Allow once** (primary, filled)
+   *   Keyboard: `⏎` (Enter)
+   *   Background: `$primary`
+
+**Keyboard Shortcuts:**
+*   `Escape` → Deny
+*   `Enter` → Allow once
+*   `Cmd/Ctrl+Enter` → Always allow for session
+
+**Interaction:**
+*   Chat input is disabled while permission popup is visible
+*   Popup auto-focuses and captures keyboard events
+*   After decision, popup disappears and input re-enables
 
 ---
 
@@ -1098,6 +1123,8 @@ Some message types are intentionally **not rendered** in the chat interface as s
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 | `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |
+| `type: "control_request"` | Permission protocol message - triggers permission modal, not a chat message |
+| `type: "control_response"` | Permission protocol message - sent from UI to CLI via stdin, not displayed |
 
 **Progress Messages:**
 

@@ -249,7 +249,7 @@ export interface PermissionRequest {
   input: Record<string, unknown>  // from control_request.request.input
 }
 
-export type PermissionDecision = 'allow' | 'deny'
+export type PermissionDecision = 'allow' | 'deny' | 'allowSession'
 
 // ============================================================================
 // User question (from AskUserQuestion tool)

@@ -147,6 +147,7 @@ export function SessionMessages({
   // - progress messages (rendered inside their parent tools, not as standalone messages)
   // - isMeta messages (system-injected context, not user-visible)
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
+  // - control_request/control_response (permission protocol messages, handled via modal)
   const filteredMessages = useMemo(() => {
     return messages.filter((msg) => {
       // Skip all progress messages - they're rendered inside their parent tools:
@@ -154,6 +155,12 @@ export function SessionMessages({
       // - bash_progress → rendered inside Bash tool via bashProgressMap
       // - hook_progress, query_update, search_results_received → future support
       if (msg.type === 'progress') return false
+
+      // Skip permission protocol messages - these trigger the permission modal,
+      // not standalone chat messages. See data-models.md "Permission Handling" section.
+      // - control_request: Claude asks for permission to use a tool
+      // - control_response: UI responds with allow/deny (sent via stdin, not displayed)
+      if (msg.type === 'control_request' || msg.type === 'control_response') return false
 
       // Skip meta messages (system-injected context)
       if (msg.isMeta) return false
