@@ -213,10 +213,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
               Session summary
             </span>
             <div
-              className="mt-1 font-mono text-[13px] leading-[1.5]"
+              className="mt-1 flex gap-2 font-mono text-[13px] leading-[1.5]"
               style={{ color: 'var(--claude-text-secondary)' }}
             >
-              {(message as SummaryMessage).summary}
+              <span className="select-none">└</span>
+              <span>{(message as SummaryMessage).summary}</span>
             </div>
           </div>
         </div>
