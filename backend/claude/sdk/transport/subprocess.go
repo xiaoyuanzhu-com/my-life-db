@@ -575,17 +575,18 @@ func (t *SubprocessCLITransport) Close() error {
 		// Send SIGTERM first
 		if err := t.cmd.Process.Signal(syscall.SIGTERM); err == nil {
 			// Wait briefly for graceful exit
-			done := make(chan struct{})
+			processDone := make(chan struct{})
 			go func() {
 				t.cmd.Wait()
-				close(done)
+				close(processDone)
 			}()
 
 			select {
-			case <-done:
+			case <-processDone:
 				// Process exited gracefully
 			case <-time.After(3 * time.Second):
 				// Force kill after timeout
+				log.Warn().Int("pid", t.cmd.Process.Pid).Msg("process didn't exit gracefully, sending SIGKILL")
 				t.cmd.Process.Kill()
 			}
 		} else {
@@ -593,8 +594,20 @@ func (t *SubprocessCLITransport) Close() error {
 		}
 	}
 
-	// Wait for all goroutines to finish
-	t.wg.Wait()
+	// Wait for all goroutines to finish with timeout
+	// Readers may be blocked on I/O even after process termination
+	wgDone := make(chan struct{})
+	go func() {
+		t.wg.Wait()
+		close(wgDone)
+	}()
+
+	select {
+	case <-wgDone:
+		// All goroutines finished cleanly
+	case <-time.After(2 * time.Second):
+		log.Warn().Msg("transport goroutines did not finish in time, proceeding with close")
+	}
 
 	t.mu.Lock()
 	t.connected = false

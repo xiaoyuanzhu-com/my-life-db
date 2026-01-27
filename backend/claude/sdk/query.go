@@ -707,8 +707,19 @@ func (q *Query) Close() error {
 		q.cancel()
 	}
 
-	// Wait for goroutines
-	q.wg.Wait()
+	// Wait for goroutines with timeout (readers may be blocked on I/O)
+	done := make(chan struct{})
+	go func() {
+		q.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Goroutines finished cleanly
+	case <-time.After(2 * time.Second):
+		log.Warn().Msg("query goroutines did not finish in time, continuing with transport close")
+	}
 
 	return q.transport.Close()
 }

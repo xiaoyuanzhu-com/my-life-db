@@ -165,14 +165,14 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	// Signal all goroutines to stop
 	m.cancel()
 
-	// Gracefully terminate all sessions
+	// Gracefully terminate all sessions with timeout
 	m.mu.Lock()
-	var wg sync.WaitGroup
+	var sessionWg sync.WaitGroup
 	for id, session := range m.sessions {
 		log.Info().Str("sessionId", id).Msg("gracefully terminating session during shutdown")
-		wg.Add(1)
+		sessionWg.Add(1)
 		go func(id string, s *Session) {
-			defer wg.Done()
+			defer sessionWg.Done()
 
 			// SDK mode cleanup
 			if s.sdkClient != nil {
@@ -196,10 +196,21 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.sessions = make(map[string]*Session)
 	m.mu.Unlock()
 
-	// Wait for all terminations
-	wg.Wait()
+	// Wait for all session terminations with timeout
+	sessionsDone := make(chan struct{})
+	go func() {
+		sessionWg.Wait()
+		close(sessionsDone)
+	}()
 
-	// Wait for goroutines with timeout
+	select {
+	case <-sessionsDone:
+		log.Debug().Msg("all sessions terminated")
+	case <-ctx.Done():
+		log.Warn().Msg("session termination timed out, continuing shutdown")
+	}
+
+	// Wait for internal goroutines with timeout
 	done := make(chan struct{})
 	go func() {
 		m.wg.Wait()
