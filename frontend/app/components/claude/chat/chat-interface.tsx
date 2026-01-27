@@ -375,7 +375,7 @@ export function ChatInterface({
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col min-w-0">
           <MessageList
             messages={renderableMessages}
             toolResultMap={toolResultMap}
