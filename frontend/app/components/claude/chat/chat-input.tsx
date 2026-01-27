@@ -257,7 +257,7 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
         {/* Deny */}
         <button
           onClick={() => onDecision('deny')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer"
         >
           Deny
           <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
@@ -268,10 +268,10 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
         {/* Always allow for session */}
         <button
           onClick={() => onDecision('allowSession')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-[12px] text-foreground hover:bg-muted/80 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer"
         >
-          Always allow
-          <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-background text-muted-foreground text-[10px] font-mono">
+          Always allow for session
+          <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
             <span>⌘</span>
             <span>⏎</span>
           </kbd>
@@ -280,7 +280,7 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
         {/* Allow once */}
         <button
           onClick={() => onDecision('allow')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
         >
           Allow once
           <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
