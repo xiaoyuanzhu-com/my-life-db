@@ -23,6 +23,7 @@ interface ChatInterfaceProps {
   sessionId: string
   sessionName?: string
   workingDir?: string
+  isActive?: boolean // Whether session has a running CLI process
   onSessionNameChange?: (name: string) => void
 }
 
@@ -31,6 +32,7 @@ const SKIP_TYPES = ['file-history-snapshot', 'result']
 
 export function ChatInterface({
   sessionId,
+  isActive,
 }: ChatInterfaceProps) {
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
@@ -79,14 +81,16 @@ export function ChatInterface({
     })
   }, [rawMessages])
 
-  // Derive working state from message history
+  // Derive working state from message history and session active state
   // Uses optimisticMessage for immediate feedback, then derives from messages
   const isWorking = useMemo(() => {
+    // If session is not active (no CLI process), Claude can't be working
+    if (isActive === false) return false
     // Optimistic message = user just sent something, Claude is working
     if (optimisticMessage) return true
     // Derive from message history (handles second tab case)
     return deriveIsWorking(rawMessages)
-  }, [rawMessages, optimisticMessage])
+  }, [rawMessages, optimisticMessage, isActive])
 
   // Compute pending permissions from control_request/control_response tracking
   // Pending = control_requests without matching control_response

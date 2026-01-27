@@ -335,6 +335,7 @@ export default function ClaudePage() {
               sessionId={activeSessionId}
               sessionName={activeSession.title || 'Session'}
               workingDir={activeSession.workingDir}
+              isActive={activeSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
             />
           ) : (
