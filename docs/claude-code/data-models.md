@@ -302,6 +302,17 @@ stdout (stream-json):
 | `thinkingMetadata` | object | Metadata about thinking blocks |
 | `isMeta` | boolean | Whether this is a meta message (system-injected context like `<local-command-caveat>`). **UI should skip rendering these messages.** |
 
+**Skipped XML Tags in User Messages:**
+
+User messages may also be skipped if their `content` consists **entirely** of specific XML tags (with only whitespace between). See [ui.md Section 6.2](./ui.md#62-skipped-message-types) for the complete list and detection logic.
+
+Example of skipped content:
+```
+<command-name>/clear</command-name>
+<command-message>clear</command-message>
+<command-args></command-args>
+```
+
 **2. Assistant Messages (Text)**
 ```json
 {

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { MessageBlock } from './message-block'
 import {
   buildToolResultMap,
+  isSkippedUserMessage,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
@@ -95,8 +96,13 @@ export function SessionMessages({
   // Filter out:
   // - agent_progress messages (they're rendered inside Task tools)
   // - isMeta messages (system-injected context, not user-visible)
+  // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   const filteredMessages = useMemo(() => {
-    return messages.filter((msg) => !isAgentProgressMessage(msg) && !msg.isMeta)
+    return messages.filter((msg) =>
+      !isAgentProgressMessage(msg) &&
+      !msg.isMeta &&
+      !isSkippedUserMessage(msg)
+    )
   }, [messages])
 
   if (filteredMessages.length === 0) {

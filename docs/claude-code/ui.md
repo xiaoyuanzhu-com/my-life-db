@@ -1075,8 +1075,20 @@ Some message types are intentionally **not rendered** in the chat interface. The
 |--------------|--------|
 | `file-history-snapshot` | Internal file versioning metadata for undo/redo |
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
+| Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 
-> **Design Principle:** All other message types should be rendered. Unknown types are displayed as raw JSON to aid debugging and ensure no messages are silently lost.
+**Skipped XML Tags:**
+
+User messages are skipped if their content consists **entirely** of these XML tags (whitespace allowed between tags, but no other content):
+
+| Tag | Description |
+|-----|-------------|
+| `<command-name>` | Local slash command name (e.g., `/clear`, `/doctor`) |
+| `<command-message>` | Local command message text |
+| `<command-args>` | Local command arguments |
+| `<local-command-caveat>` | Caveat about local commands |
+
+> **Design Principle:** All other message types should be rendered. Unknown types are displayed as raw JSON to aid debugging and ensure no messages are silently lost. The XML tag check is **strict**: if ANY tag is not in the skip list, or if there's any non-whitespace content outside the tags, the message is rendered.
 
 **file-history-snapshot Example:**
 
@@ -1145,6 +1157,53 @@ Messages with `isMeta: true` are system-injected context that should not be disp
 | `message.content` | string | Contains system XML tags (e.g., `<local-command-caveat>`) |
 
 **Why Skip:** These messages inject context for Claude's benefit (e.g., warnings about local commands) but have no value for the user viewing the conversation. Displaying them would show confusing XML content in the chat.
+
+---
+
+**Skipped XML Tags Messages:**
+
+User messages that consist entirely of skipped XML tags are not rendered. This catches local command echoes that don't have `isMeta: true`.
+
+**Skipped XML Tags Example:**
+
+```json
+{
+  "parentUuid": "998fb947-5f37-4d6c-8eb9-6e0504653ef0",
+  "isSidechain": false,
+  "userType": "external",
+  "cwd": "/Users/iloahz/projects/my-life-db",
+  "sessionId": "5462bb18-d8af-42df-b41b-f6eb13fbda61",
+  "version": "2.1.15",
+  "gitBranch": "main",
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>"
+  },
+  "uuid": "83786475-b2c8-46f6-80b4-e747998484bb",
+  "timestamp": "2026-01-26T06:42:52.828Z"
+}
+```
+
+**Detection Logic:**
+
+1. Must be a `user` type message
+2. `message.content` must be a string
+3. Content must contain at least one XML tag
+4. ALL tags must be in the skip list (`command-name`, `command-message`, `command-args`, `local-command-caveat`)
+5. Content outside tags must be whitespace only
+
+**Examples:**
+
+| Content | Skipped? | Reason |
+|---------|----------|--------|
+| `<command-name>/clear</command-name>` | ✅ Yes | All tags in skip list |
+| `<command-name>/clear</command-name><command-args></command-args>` | ✅ Yes | All tags in skip list |
+| `<command-name>/clear</command-name> hello` | ❌ No | Has non-tag content ("hello") |
+| `<unknown-tag>foo</unknown-tag>` | ❌ No | Tag not in skip list |
+| `hello world` | ❌ No | No XML tags |
+
+**Why Skip:** These messages echo local slash commands (like `/clear`) that the user ran. The command execution is already shown via other means, and displaying raw XML would clutter the UI.
 
 ### 6.3 Data Model
 

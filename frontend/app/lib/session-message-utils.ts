@@ -179,6 +179,91 @@ export interface TaskToolResult {
   prompt?: string
 }
 
+// ============================================================================
+// Skipped Content Detection
+// ============================================================================
+
+/**
+ * XML tags that indicate system-injected content which should not be rendered.
+ * If a user message consists ENTIRELY of these tags (no other content), skip it.
+ *
+ * See docs/claude-code/ui.md "Skipped Message Types" for documentation.
+ */
+const SKIPPED_XML_TAGS = new Set([
+  'command-name',      // Local command name (e.g., /clear, /doctor)
+  'command-message',   // Local command message
+  'command-args',      // Local command arguments
+  'local-command-caveat', // Caveat about local commands (usually with isMeta)
+])
+
+/**
+ * Check if a string content consists entirely of skipped XML tags.
+ *
+ * Returns true ONLY if:
+ * 1. The content contains at least one XML tag
+ * 2. ALL XML tags in the content are in the SKIPPED_XML_TAGS set
+ * 3. There is no other content outside the tags (only whitespace allowed)
+ *
+ * This is strict to avoid accidentally skipping real user messages.
+ */
+export function isSkippedXmlContent(content: string): boolean {
+  // Fast path: if content doesn't start with '<', it can't be all XML tags
+  if (!content.trimStart().startsWith('<')) {
+    return false
+  }
+
+  // Match XML tags: <tag-name>content</tag-name> or self-closing <tag-name/>
+  // Also handles tags with attributes: <tag attr="value">content</tag>
+  const tagPattern = /<([a-zA-Z][a-zA-Z0-9-]*)[^>]*>[\s\S]*?<\/\1>|<([a-zA-Z][a-zA-Z0-9-]*)[^>]*\/>/g
+
+  const foundTags: string[] = []
+  let contentWithoutTags = content
+
+  // Find all tags and collect their names
+  let match
+  while ((match = tagPattern.exec(content)) !== null) {
+    const tagName = match[1] || match[2] // match[1] for normal tags, match[2] for self-closing
+    foundTags.push(tagName)
+    // Remove this tag from the content
+    contentWithoutTags = contentWithoutTags.replace(match[0], '')
+  }
+
+  // Must have at least one tag
+  if (foundTags.length === 0) {
+    return false
+  }
+
+  // All tags must be in the skip list
+  const allTagsSkipped = foundTags.every(tag => SKIPPED_XML_TAGS.has(tag))
+  if (!allTagsSkipped) {
+    return false
+  }
+
+  // Remaining content (after removing tags) must be only whitespace
+  const hasOtherContent = contentWithoutTags.trim().length > 0
+  if (hasOtherContent) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Check if a user message should be skipped because it contains only system XML tags.
+ */
+export function isSkippedUserMessage(msg: SessionMessage): boolean {
+  if (msg.type !== 'user') return false
+
+  const content = msg.message?.content
+  if (typeof content !== 'string') return false
+
+  return isSkippedXmlContent(content)
+}
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
 /**
  * Type guard to check if a content block is a text block
  */
