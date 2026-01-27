@@ -63,7 +63,7 @@ export function ChatInput({
   return (
     <div className="pb-4 claude-bg">
       {/* Container matches message width */}
-      <div className="w-full max-w-3xl mx-auto px-3 md:px-6">
+      <div className="w-full max-w-3xl mx-auto px-4 md:px-6">
         {/* Input card - grows to include permission UI when needed */}
         <div
           className="border border-border rounded-xl overflow-hidden"
