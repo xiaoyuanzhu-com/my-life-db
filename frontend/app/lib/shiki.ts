@@ -101,6 +101,39 @@ export async function getHighlighter(): Promise<Highlighter> {
   return loading
 }
 
+/**
+ * Highlight code with Shiki, loading the language if needed.
+ * Returns HTML string with syntax highlighting.
+ */
+export async function highlightCode(code: string, lang: string): Promise<string> {
+  const hl = await getHighlighter()
+
+  // Load language if not already loaded
+  if (!loadedLanguages.has(lang) && lang !== 'text') {
+    try {
+      await hl.loadLanguage(lang as Parameters<typeof hl.loadLanguage>[0])
+      loadedLanguages.add(lang)
+    } catch {
+      // Language not supported - mark as loaded to avoid retrying
+      loadedLanguages.add(lang)
+    }
+  }
+
+  try {
+    return hl.codeToHtml(code, {
+      lang,
+      themes: {
+        light: LIGHT_THEME,
+        dark: DARK_THEME,
+      },
+      defaultColor: false,
+    })
+  } catch {
+    // Fallback to escaped plain text
+    return `<pre class="shiki"><code>${escapeHtml(code)}</code></pre>`
+  }
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
