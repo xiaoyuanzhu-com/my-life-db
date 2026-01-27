@@ -63,13 +63,15 @@ export function ChatInput({
     console.log('Attach file clicked')
   }
 
+  // Whether to actually hide (respects permission override)
+  const shouldHide = hiddenOnMobile && !hasPermission
+
   return (
     <div
       className={cn(
-        'pb-4 claude-bg transition-transform duration-200 ease-out',
-        // On mobile, hide by sliding down when hiddenOnMobile is true
-        // Permission pending always shows input (override hide)
-        hiddenOnMobile && !hasPermission && 'max-md:translate-y-full max-md:opacity-0'
+        'claude-bg overflow-hidden transition-all duration-200 ease-out',
+        // On mobile, collapse height when hidden
+        shouldHide ? 'max-md:max-h-0 max-md:pb-0' : 'pb-4'
       )}
     >
       {/* Container matches message width */}
