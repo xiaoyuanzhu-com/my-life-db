@@ -11,6 +11,8 @@ interface ChatInputProps {
   pendingPermissions?: PermissionRequest[]
   /** Callback when user makes a permission decision */
   onPermissionDecision?: (requestId: string, decision: PermissionDecision) => void
+  /** Whether to hide the input on mobile (for scroll-based hiding) */
+  hiddenOnMobile?: boolean
 }
 
 export function ChatInput({
@@ -19,6 +21,7 @@ export function ChatInput({
   placeholder = 'Reply...',
   pendingPermissions = [],
   onPermissionDecision,
+  hiddenOnMobile = false,
 }: ChatInputProps) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -61,9 +64,16 @@ export function ChatInput({
   }
 
   return (
-    <div className="pb-4 claude-bg">
+    <div
+      className={cn(
+        'pb-4 claude-bg transition-transform duration-200 ease-out',
+        // On mobile, hide by sliding down when hiddenOnMobile is true
+        // Permission pending always shows input (override hide)
+        hiddenOnMobile && !hasPermission && 'max-md:translate-y-full max-md:opacity-0'
+      )}
+    >
       {/* Container matches message width */}
-      <div className="w-full max-w-3xl mx-auto px-4 md:px-6">
+      <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
         {/* Input card - grows to include permission UI when needed */}
         <div
           className="border border-border rounded-xl overflow-hidden"

@@ -3,6 +3,7 @@ import { MessageList } from './message-list'
 import { ChatInput } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { AskUserQuestion } from './ask-user-question'
+import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
 import type {
   TodoItem,
   PermissionRequest,
@@ -55,6 +56,15 @@ export function ChatInterface({
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Scroll container element for hide-on-scroll behavior
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
+
+  // Hide input on mobile when scrolling up (show when scrolling down or at bottom)
+  const { shouldHide: shouldHideInput } = useHideOnScroll(scrollElement, {
+    threshold: 50,
+    bottomThreshold: 100,
+  })
 
   // Build tool result map from raw messages (derived state)
   const toolResultMap = useMemo(() => buildToolResultMap(rawMessages), [rawMessages])
@@ -387,12 +397,14 @@ export function ChatInterface({
                   'Working...'
                 : null
             }
+            onScrollElementReady={setScrollElement}
           />
 
           <ChatInput
             onSend={sendMessage}
             pendingPermissions={pendingPermissions}
             onPermissionDecision={handlePermissionDecision}
+            hiddenOnMobile={shouldHideInput}
           />
         </div>
 
