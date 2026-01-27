@@ -19,7 +19,7 @@ import {
   type SummaryMessage,
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookResponseMessage } from './session-messages'
-import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
+import { parseMarkdown, onMermaidThemeChange, highlightCode } from '~/lib/shiki'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")
@@ -680,22 +680,8 @@ function UnknownMessageBlock({ message }: { message: SessionMessage }) {
   useEffect(() => {
     let cancelled = false
 
-    getHighlighter().then((hl) => {
-      if (cancelled) return
-      try {
-        const highlighted = hl.codeToHtml(displayText, {
-          lang: 'json',
-          themes: {
-            light: 'github-light',
-            dark: 'github-dark',
-          },
-          defaultColor: false,
-        })
-        setHtml(highlighted)
-      } catch {
-        // Fallback to plain text
-        setHtml(`<pre><code>${displayText}</code></pre>`)
-      }
+    highlightCode(displayText, 'json').then((highlighted) => {
+      if (!cancelled) setHtml(highlighted)
     })
 
     return () => {

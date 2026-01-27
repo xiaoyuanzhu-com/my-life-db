@@ -84,19 +84,9 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
       })
     } else {
       // JSON - use Shiki highlighting
-      import('~/lib/shiki').then(({ getHighlighter }) => {
-        getHighlighter().then((hl) => {
-          if (cancelled) return
-          try {
-            const highlighted = hl.codeToHtml(result, {
-              lang: 'json',
-              themes: { light: 'github-light', dark: 'github-dark' },
-              defaultColor: false,
-            })
-            setResultHtml(highlighted)
-          } catch {
-            setResultHtml(`<pre><code>${result}</code></pre>`)
-          }
+      import('~/lib/shiki').then(({ highlightCode }) => {
+        highlightCode(result, 'json').then((highlighted) => {
+          if (!cancelled) setResultHtml(highlighted)
         })
       })
     }
