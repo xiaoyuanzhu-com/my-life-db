@@ -223,20 +223,11 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
   const previewText = getPreviewText(request.toolName, request.input)
   const description = getDescription(request.input)
 
-  // Truncate for header display
-  const truncatedPreview =
-    previewText.length > 80 ? previewText.slice(0, 80) + '...' : previewText
-
   return (
     <div className="p-3">
-      {/* Header: Allow Claude to {Action} {preview}? */}
+      {/* Header: Allow Claude to {Action}? */}
       <div className="text-[14px] leading-relaxed text-foreground mb-2">
-        Allow Claude to{' '}
-        <span className="font-semibold">{actionVerb}</span>{' '}
-        <span className="font-mono text-[12px] text-muted-foreground">
-          {truncatedPreview}
-        </span>
-        ?
+        Allow Claude to <span className="font-semibold">{actionVerb}</span>?
       </div>
 
       {/* Description (if available) */}
@@ -244,7 +235,7 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
         <div className="text-[12px] text-muted-foreground mb-2">{description}</div>
       )}
 
-      {/* Command preview block */}
+      {/* Command/query preview block */}
       <div
         className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-32 overflow-y-auto"
         style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
