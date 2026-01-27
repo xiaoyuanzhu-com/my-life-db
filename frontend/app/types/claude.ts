@@ -240,6 +240,9 @@ export interface ControlResponse {
       behavior: 'allow' | 'deny'
     }
   }
+  // Extended fields for "always allow" support
+  always_allow?: boolean  // If true, remember this tool as always allowed
+  tool_name?: string      // Tool name for always-allow tracking
 }
 
 // UI-friendly permission request (derived from ControlRequest)

@@ -914,6 +914,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 						Behavior string `json:"behavior"`
 					} `json:"response"`
 				} `json:"response"`
+				// Extended fields for "always allow" support
+				AlwaysAllow bool   `json:"always_allow"`
+				ToolName    string `json:"tool_name"`
 			}
 			if err := json.Unmarshal(msg, &controlResp); err != nil {
 				log.Debug().Err(err).Msg("Failed to parse control_response")
@@ -921,13 +924,21 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 			// Send the response to Claude
-			if err := session.SendControlResponse(controlResp.RequestID, controlResp.Response.Subtype, controlResp.Response.Response.Behavior); err != nil {
+			if err := session.SendControlResponse(
+				controlResp.RequestID,
+				controlResp.Response.Subtype,
+				controlResp.Response.Response.Behavior,
+				controlResp.ToolName,
+				controlResp.AlwaysAllow,
+			); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send control response")
 			} else {
 				log.Info().
 					Str("sessionId", sessionID).
 					Str("requestId", controlResp.RequestID).
 					Str("behavior", controlResp.Response.Response.Behavior).
+					Bool("alwaysAllow", controlResp.AlwaysAllow).
+					Str("toolName", controlResp.ToolName).
 					Msg("sent control response to Claude")
 			}
 

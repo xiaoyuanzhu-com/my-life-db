@@ -17,8 +17,10 @@ import (
 
 // PermissionResponse represents a response to an SDK permission request
 type PermissionResponse struct {
-	Behavior string // "allow" or "deny"
-	Message  string // Optional denial message
+	Behavior    string // "allow" or "deny"
+	Message     string // Optional denial message
+	AlwaysAllow bool   // If true, remember this tool as always allowed for the session
+	ToolName    string // Tool name (needed for always-allow tracking)
 }
 
 // SessionMode defines how a session communicates with the Claude CLI
@@ -91,6 +93,12 @@ type Session struct {
 	// We broadcast a control_request to WebSocket clients and wait for the response here.
 	pendingSDKPermissions   map[string]chan PermissionResponse `json:"-"`
 	pendingSDKPermissionsMu sync.RWMutex                       `json:"-"`
+
+	// Always-allowed tools for this session (SDK mode only)
+	// When user clicks "Always allow", the tool name is added here.
+	// Future permission requests for the same tool auto-allow without prompting.
+	alwaysAllowedTools   map[string]bool `json:"-"`
+	alwaysAllowedToolsMu sync.RWMutex    `json:"-"`
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -269,9 +277,25 @@ func (s *Session) SetModel(model string) error {
 // SendControlResponse sends a response to a control request (UI mode only)
 // For SDK mode, routes to pendingSDKPermissions channel.
 // For legacy mode, writes directly to stdin.
-func (s *Session) SendControlResponse(requestID string, subtype string, behavior string) error {
+// If alwaysAllow is true and behavior is "allow", the tool is remembered for auto-approval.
+func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, toolName string, alwaysAllow bool) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendControlResponse called on non-UI session")
+	}
+
+	// If "always allow" is requested and we're allowing, remember this tool
+	if alwaysAllow && behavior == "allow" && toolName != "" {
+		s.alwaysAllowedToolsMu.Lock()
+		if s.alwaysAllowedTools == nil {
+			s.alwaysAllowedTools = make(map[string]bool)
+		}
+		s.alwaysAllowedTools[toolName] = true
+		s.alwaysAllowedToolsMu.Unlock()
+
+		log.Info().
+			Str("sessionId", s.ID).
+			Str("toolName", toolName).
+			Msg("tool added to always-allowed list")
 	}
 
 	// Check if this is an SDK permission request first
@@ -285,10 +309,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 			Str("sessionId", s.ID).
 			Str("requestId", requestID).
 			Str("behavior", behavior).
+			Bool("alwaysAllow", alwaysAllow).
 			Msg("routing control response to SDK permission channel")
 
 		select {
-		case ch <- PermissionResponse{Behavior: behavior}:
+		case ch <- PermissionResponse{Behavior: behavior, ToolName: toolName, AlwaysAllow: alwaysAllow}:
 			return nil
 		default:
 			return fmt.Errorf("permission channel full or closed")
@@ -451,13 +476,29 @@ func (s *Session) ResolveControlRequest(requestID string, response map[string]in
 // CreatePermissionCallback creates a CanUseTool callback for SDK mode.
 // This bridges the SDK's synchronous permission callback with the async WebSocket flow:
 // 1. SDK calls CanUseTool callback (blocks until we return)
-// 2. We broadcast a control_request message to all WebSocket clients
-// 3. Frontend shows permission modal
-// 4. User allows/denies via WebSocket control_response
-// 5. SendControlResponse routes to pendingSDKPermissions channel
-// 6. This callback receives the response and returns to SDK
+// 2. Check if tool is in always-allowed list - if so, auto-allow
+// 3. Otherwise broadcast a control_request message to all WebSocket clients
+// 4. Frontend shows permission UI
+// 5. User allows/denies via WebSocket control_response
+// 6. SendControlResponse routes to pendingSDKPermissions channel
+// 7. This callback receives the response and returns to SDK
 func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 	return func(toolName string, input map[string]any, ctx sdk.ToolPermissionContext) (sdk.PermissionResult, error) {
+		// Check if this tool is always allowed for this session
+		s.alwaysAllowedToolsMu.RLock()
+		isAlwaysAllowed := s.alwaysAllowedTools != nil && s.alwaysAllowedTools[toolName]
+		s.alwaysAllowedToolsMu.RUnlock()
+
+		if isAlwaysAllowed {
+			log.Debug().
+				Str("sessionId", s.ID).
+				Str("toolName", toolName).
+				Msg("tool is always-allowed, auto-approving")
+			return sdk.PermissionResultAllow{
+				Behavior: sdk.PermissionAllow,
+			}, nil
+		}
+
 		// Generate a unique request ID
 		requestID := fmt.Sprintf("sdk-perm-%d", time.Now().UnixNano())
 

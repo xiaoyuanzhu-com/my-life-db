@@ -473,6 +473,13 @@ When Claude needs permission to use a tool, the input card "grows upward" to inc
 *   `Cmd/Ctrl+Enter` → Always allow for session
 *   Shortcuts are handled at window level when permission is pending
 
+**"Always Allow" Implementation:**
+When user clicks "Always allow", the backend remembers the tool name for the session:
+1. Frontend sends `control_response` with `always_allow: true` and `tool_name`
+2. Backend adds tool to `Session.alwaysAllowedTools` map
+3. Future permission requests for that tool auto-allow without prompting
+4. Map clears when session ends (not persisted)
+
 ---
 
 ## 5. Interaction Patterns & "Feel" Guidelines

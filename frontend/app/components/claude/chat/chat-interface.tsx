@@ -288,14 +288,10 @@ export function ChatInterface({
       }
 
       // Map our decision to Claude's behavior format
-      // 'allow' → 'allow' (allow this once)
-      // 'allowSession' → 'allow' with allowAll flag (Claude Code CLI uses this for "always allow")
-      // 'deny' → 'deny'
-      // Note: Claude Code CLI currently only supports 'allow' and 'deny' behaviors
-      // The 'allowSession' is handled differently in the CLI (via permission rules)
       const behavior = decision === 'deny' ? 'deny' : 'allow'
+      const alwaysAllow = decision === 'allowSession'
 
-      // Build control_response
+      // Build control_response with always_allow and tool_name for backend tracking
       const response: ControlResponse = {
         type: 'control_response',
         request_id: pendingPermission.requestId,
@@ -305,9 +301,12 @@ export function ChatInterface({
             behavior,
           },
         },
+        // Send tool_name and always_allow for "always allow for session" feature
+        tool_name: pendingPermission.toolName,
+        always_allow: alwaysAllow,
       }
 
-      console.log('[ChatInterface] Sending permission response:', response, 'original decision:', decision)
+      console.log('[ChatInterface] Sending permission response:', response, 'decision:', decision)
       wsRef.current.send(JSON.stringify(response))
       setPendingPermission(null)
     },
