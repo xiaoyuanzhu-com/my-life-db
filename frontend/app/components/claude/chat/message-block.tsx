@@ -19,7 +19,7 @@ import {
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")
 function formatDuration(ms: number): string {
@@ -377,9 +377,12 @@ function ToolCallGroup({
 }
 
 // Markdown content renderer using marked + shiki
-function MessageContent({ content }: { content: string }) {
+// Memoized to prevent re-renders on parent scroll
+const MessageContent = memo(function MessageContent({ content }: { content: string }) {
   const [html, setHtml] = useState('')
   const [themeKey, setThemeKey] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const lastHtmlRef = useRef<string>('')
 
   // Re-render when theme changes (for mermaid diagrams)
   useEffect(() => {
@@ -398,13 +401,23 @@ function MessageContent({ content }: { content: string }) {
     }
   }, [content, themeKey])
 
+  // Use a ref-based approach to avoid re-rendering iframes
+  // Only update innerHTML when html actually changes
+  useEffect(() => {
+    if (containerRef.current && html !== lastHtmlRef.current) {
+      lastHtmlRef.current = html
+      containerRef.current.innerHTML = html
+    }
+  }, [html])
+
+  // Initial render with empty div, innerHTML set via effect
   return (
     <div
+      ref={containerRef}
       className="prose-claude"
-      dangerouslySetInnerHTML={{ __html: html }}
     />
   )
-}
+})
 
 // Thinking blocks renderer - collapsible extended thinking
 interface ThinkingBlock {
