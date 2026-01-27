@@ -102,13 +102,25 @@ export interface SessionMessage {
   maxRetries?: number  // For api_error: maximum retries
   durationMs?: number  // For turn_duration: turn duration in ms
 
+  // Hook started/response fields (when subtype === 'hook_started' or 'hook_response')
+  hook_id?: string  // Unique identifier for this hook execution
+  hook_name?: string  // Hook name (e.g., "SessionStart:startup")
+  hook_event?: string  // Hook event type (e.g., "SessionStart")
+
+  // Hook response fields (when subtype === 'hook_response')
+  output?: string  // Parsed JSON output from hook
+  stdout?: string  // Raw stdout from hook execution
+  stderr?: string  // Raw stderr from hook execution
+  exit_code?: number  // Exit code (0 = success)
+  outcome?: 'success' | 'error' | string  // Hook execution outcome
+
   // API error indicator (for assistant messages that represent API errors)
   isApiErrorMessage?: boolean
 }
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
@@ -417,6 +429,20 @@ export function isApiErrorMessage(msg: SessionMessage): boolean {
  */
 export function isTurnDurationMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'turn_duration'
+}
+
+/**
+ * Type guard to check if a message is a hook started message
+ */
+export function isHookStartedMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'hook_started'
+}
+
+/**
+ * Type guard to check if a message is a hook response message
+ */
+export function isHookResponseMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'hook_response'
 }
 
 /**

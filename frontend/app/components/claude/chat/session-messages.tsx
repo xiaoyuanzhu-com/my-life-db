@@ -3,6 +3,7 @@ import { MessageBlock } from './message-block'
 import {
   buildToolResultMap,
   isSkippedUserMessage,
+  isHookResponseMessage,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
@@ -84,6 +85,36 @@ export function buildBashProgressMap(messages: SessionMessage[]): Map<string, Ba
   return map
 }
 
+// Hook response message structure (pairs with hook_started)
+export interface HookResponseMessage extends SessionMessage {
+  type: 'system'
+  subtype: 'hook_response'
+  hook_id: string
+  hook_name: string
+  hook_event: string
+  output?: string
+  stdout?: string
+  stderr?: string
+  exit_code?: number
+  outcome?: 'success' | 'error' | string
+}
+
+/**
+ * Build a map from hook_id to hook_response message
+ * This allows hook_started messages to find their paired response
+ */
+export function buildHookResponseMap(messages: SessionMessage[]): Map<string, HookResponseMessage> {
+  const map = new Map<string, HookResponseMessage>()
+
+  for (const msg of messages) {
+    if (isHookResponseMessage(msg) && msg.hook_id) {
+      map.set(msg.hook_id, msg as HookResponseMessage)
+    }
+  }
+
+  return map
+}
+
 interface SessionMessagesProps {
   /** Messages to render */
   messages: SessionMessage[]
@@ -100,6 +131,10 @@ interface SessionMessagesProps {
    * Pre-built bash progress map. If not provided, will be built from messages.
    */
   bashProgressMap?: Map<string, BashProgressMessage[]>
+  /**
+   * Pre-built hook response map. If not provided, will be built from messages.
+   */
+  hookResponseMap?: Map<string, HookResponseMessage>
   /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
@@ -123,6 +158,7 @@ export function SessionMessages({
   toolResultMap: providedToolResultMap,
   agentProgressMap: providedAgentProgressMap,
   bashProgressMap: providedBashProgressMap,
+  hookResponseMap: providedHookResponseMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -143,8 +179,15 @@ export function SessionMessages({
     return buildBashProgressMap(messages)
   }, [messages, providedBashProgressMap])
 
+  // Build hook response map if not provided
+  const hookResponseMap = useMemo(() => {
+    if (providedHookResponseMap) return providedHookResponseMap
+    return buildHookResponseMap(messages)
+  }, [messages, providedHookResponseMap])
+
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
+  // - hook_response messages (rendered inside hook_started via hookResponseMap)
   // - isMeta messages (system-injected context, not user-visible)
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   // - control_request/control_response (permission protocol messages, handled via modal)
@@ -156,6 +199,9 @@ export function SessionMessages({
       // - bash_progress → rendered inside Bash tool via bashProgressMap
       // - hook_progress, query_update, search_results_received → future support
       if (msg.type === 'progress') return false
+
+      // Skip hook_response messages - they're rendered inside hook_started via hookResponseMap
+      if (isHookResponseMessage(msg)) return false
 
       // Skip permission protocol messages - these trigger the permission modal,
       // not standalone chat messages. See data-models.md "Permission Handling" section.
@@ -192,6 +238,7 @@ export function SessionMessages({
           toolResultMap={toolResultMap}
           agentProgressMap={agentProgressMap}
           bashProgressMap={bashProgressMap}
+          hookResponseMap={hookResponseMap}
           depth={depth}
         />
       ))}
@@ -199,4 +246,4 @@ export function SessionMessages({
   )
 }
 
-export type { AgentProgressMessage, BashProgressMessage }
+export type { AgentProgressMessage, BashProgressMessage, HookResponseMessage }

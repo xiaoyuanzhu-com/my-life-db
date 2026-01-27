@@ -1162,6 +1162,7 @@ These are top-level session events that are rendered as simple status indicators
 | `system.subtype: compact_boundary` | "Session compacted" | Marks where conversation was compacted to reduce context |
 | `system.subtype: init` | System init block | Shows session initialization with tools, model, MCP servers |
 | `system.subtype: turn_duration` | "Turn completed in Xm Ys" | Turn duration telemetry showing how long a turn took |
+| `system.subtype: hook_started` | "Hook {status}: {hook_name}" + collapsible output | Hook execution (paired with hook_response via hookResponseMap) |
 | `user.isCompactSummary: true` | "Session continued" + collapsible summary | User message containing the compacted conversation summary |
 | `type: summary` | "Session summary" + summary text | Auto-generated session summary (created when session index is rebuilt) |
 
@@ -1187,6 +1188,7 @@ Some message types are intentionally **not rendered** in the chat interface as s
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 | `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |
+| `system.subtype: hook_response` | Rendered inside hook_started via hookResponseMap, not as standalone message |
 | `type: "control_request"` | Permission protocol message - triggers permission modal, not a chat message |
 | `type: "control_response"` | Permission protocol message - sent from UI to CLI via stdin, not displayed |
 

@@ -284,7 +284,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 
 | Type | Subtypes |
 |------|----------|
-| `system` | `init`, `compact_boundary`, `turn_duration`, `api_error`, `local_command` |
+| `system` | `init`, `compact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started` |
 | `progress` | `hook_progress`, `bash_progress`, `agent_progress`, `query_update`, `search_results_received` |
 | `result` | `success`, `error` |
 
@@ -814,6 +814,8 @@ System messages report internal events. The `subtype` field determines the speci
 | `turn_duration` | Duration metrics for a turn | ✅ Yes |
 | `api_error` | API call failed, will retry | ✅ Yes |
 | `local_command` | Local slash command executed (e.g., `/doctor`) | ✅ Yes |
+| `hook_started` | Hook execution started | ✅ Yes |
+| `hook_response` | Hook execution completed with output | ✅ Yes |
 
 **5a. Init (Session Initialization)**
 
@@ -968,6 +970,85 @@ Marks where the conversation was compacted to reduce context. The next message (
 | `content` | string | XML-formatted command details (name, message, args) |
 | `level` | string | Log level ("info") |
 | `isMeta` | boolean | Whether this is a meta command |
+
+**5e. Hook Started**
+
+Emitted when a hook begins execution. Hooks are user-defined scripts that run in response to Claude Code events (like session start, tool calls, etc.).
+
+```json
+{
+  "type": "system",
+  "subtype": "hook_started",
+  "hook_id": "ce4cf132-6057-4e2f-b35f-eda9a822a284",
+  "hook_name": "SessionStart:startup",
+  "hook_event": "SessionStart",
+  "uuid": "71019375-d366-4796-bc32-d665d0f66822",
+  "session_id": "c00d1aed-53df-4f0d-8f5d-b989e200ec9d"
+}
+```
+
+**Hook Started Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subtype` | string | Always `"hook_started"` |
+| `hook_id` | string | Unique identifier for this hook execution instance |
+| `hook_name` | string | Hook name in format `{Event}:{name}` (e.g., "SessionStart:startup") |
+| `hook_event` | string | The event that triggered the hook (e.g., "SessionStart", "PreToolUse") |
+| `session_id` | string | Session UUID where the hook is executing |
+
+**Related Messages:**
+- `hook_response` (system subtype) - Hook execution completed with output
+- `hook_progress` (progress type) - Reports hook execution progress during long-running hooks
+
+**5f. Hook Response**
+
+Emitted when a hook completes execution. Contains the hook's output, exit code, and outcome.
+
+```json
+{
+  "type": "system",
+  "subtype": "hook_response",
+  "hook_id": "ce4cf132-6057-4e2f-b35f-eda9a822a284",
+  "hook_name": "SessionStart:startup",
+  "hook_event": "SessionStart",
+  "output": "{\"hookSpecificOutput\": {...}}",
+  "stdout": "{\"hookSpecificOutput\": {...}}",
+  "stderr": "",
+  "exit_code": 0,
+  "outcome": "success",
+  "uuid": "00a45812-4f21-42d8-bd8f-ce1767e01bc4",
+  "session_id": "c00d1aed-53df-4f0d-8f5d-b989e200ec9d"
+}
+```
+
+**Hook Response Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subtype` | string | Always `"hook_response"` |
+| `hook_id` | string | Unique identifier matching the corresponding `hook_started` message |
+| `hook_name` | string | Hook name in format `{Event}:{name}` (e.g., "SessionStart:startup") |
+| `hook_event` | string | The event that triggered the hook (e.g., "SessionStart", "PreToolUse") |
+| `output` | string | Parsed JSON output from the hook (may be same as stdout) |
+| `stdout` | string | Raw stdout from hook execution |
+| `stderr` | string | Raw stderr from hook execution (empty on success) |
+| `exit_code` | number | Exit code (0 = success) |
+| `outcome` | string | Execution outcome: `"success"` or `"error"` |
+| `session_id` | string | Session UUID where the hook executed |
+
+**Lifecycle:**
+```
+hook_started (hook_id: X) → hook_response (hook_id: X)
+```
+
+The `hook_id` field links `hook_started` and `hook_response` messages as a pair.
+
+**Rendering:** `hook_response` is NOT rendered as a standalone message. It is paired with `hook_started` via `hookResponseMap` and rendered together as a single entry (similar to how tool_use and tool_result are paired). The combined rendering shows:
+- Running state (orange): When only `hook_started` exists
+- Completed state (green): When `hook_response` with `outcome: "success"` is paired
+- Failed state (red): When `hook_response` with `outcome: "error"` is paired
+- Collapsible output: When `hook_response` contains stdout/output
 
 **6. Progress Messages**
 

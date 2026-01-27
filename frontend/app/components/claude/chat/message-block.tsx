@@ -13,11 +13,12 @@ import {
   isCompactSummaryMessage,
   isSummaryMessage,
   isTurnDurationMessage,
+  isHookStartedMessage,
   type SessionMessage,
   type ExtractedToolResult,
   type SummaryMessage,
 } from '~/lib/session-message-utils'
-import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookResponseMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
@@ -42,11 +43,13 @@ interface MessageBlockProps {
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   /** Map from tool_use ID to bash progress messages (for Bash tools) */
   bashProgressMap?: Map<string, BashProgressMessage[]>
+  /** Map from hook_id to hook_response messages (for pairing hook_started with hook_response) */
+  hookResponseMap?: Map<string, HookResponseMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookResponseMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -135,10 +138,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     return null
   }, [isSystem, message])
 
-  // Check for compact boundary, compact summary, turn duration, and summary messages
+  // Check for compact boundary, compact summary, turn duration, hook started, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
   const isCompactSummary = isCompactSummaryMessage(message)
   const isTurnDuration = isTurnDurationMessage(message)
+  const isHookStarted = isHookStartedMessage(message)
   const isSummary = isSummaryMessage(message)
 
   // Determine what to render
@@ -147,7 +151,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isTurnDuration
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isTurnDuration && !isHookStarted
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -156,7 +160,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isTurnDuration && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -199,6 +203,14 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
             Turn completed in {formatDuration(message.durationMs ?? 0)}
           </span>
         </div>
+      )}
+
+      {/* Hook started: paired with hook_response via hookResponseMap */}
+      {isHookStarted && (
+        <HookBlock
+          hookStarted={message}
+          hookResponse={message.hook_id ? hookResponseMap?.get(message.hook_id) : undefined}
+        />
       )}
 
       {/* Summary message: automatic conversation summarization */}
@@ -737,6 +749,93 @@ function UnknownMessageBlock({ message }: { message: SessionMessage }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// Hook block - renders hook_started paired with optional hook_response
+function HookBlock({
+  hookStarted,
+  hookResponse,
+}: {
+  hookStarted: SessionMessage
+  hookResponse?: HookResponseMessage
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  // Determine status based on whether we have a response and its outcome
+  const isComplete = !!hookResponse
+  const isSuccess = hookResponse?.outcome === 'success'
+  const status = isComplete ? (isSuccess ? 'completed' : 'failed') : 'running'
+
+  // Determine what output to show (prefer stdout, fall back to output field)
+  const outputContent = hookResponse?.stdout || hookResponse?.output || ''
+  const hasOutput = outputContent.trim().length > 0
+
+  // Format the status text
+  const statusText = isComplete
+    ? (isSuccess ? 'completed' : 'failed')
+    : 'running'
+
+  return (
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header line - clickable to expand/collapse when there's output */}
+      <button
+        type="button"
+        onClick={() => hasOutput && setIsExpanded(!isExpanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasOutput ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
+        disabled={!hasOutput}
+      >
+        <MessageDot status={status} lineHeight="mono" />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span style={{ color: 'var(--claude-text-secondary)' }}>
+            Hook {statusText}: {hookStarted.hook_name ?? 'unknown'}
+          </span>
+          {hookResponse?.exit_code !== undefined && hookResponse.exit_code !== 0 && (
+            <span style={{ color: 'var(--claude-status-alert)' }}>
+              (exit {hookResponse.exit_code})
+            </span>
+          )}
+          {hasOutput && (
+            <span
+              className="select-none text-[11px]"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded output content */}
+      {isExpanded && hasOutput && (
+        <div
+          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            maxHeight: '40vh',
+            color: 'var(--claude-text-secondary)',
+          }}
+        >
+          {outputContent}
+        </div>
+      )}
+
+      {/* Show stderr if present and different from stdout */}
+      {isExpanded && hookResponse?.stderr && hookResponse.stderr.trim() && hookResponse.stderr !== hookResponse.stdout && (
+        <div
+          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            maxHeight: '20vh',
+            color: 'var(--claude-status-alert)',
+            border: '1px solid var(--claude-status-alert)',
+          }}
+        >
+          <div className="font-semibold mb-1">stderr:</div>
+          {hookResponse.stderr}
+        </div>
+      )}
     </div>
   )
 }
