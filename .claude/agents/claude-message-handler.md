@@ -167,33 +167,89 @@ Always update relevant docs:
 
 ## Output Format
 
+**IMPORTANT:** Always provide a comprehensive final report after completing the work. This report should be detailed enough for review.
+
 ```
-## Analysis
+## Final Report
 
-- Message type: [type field value]
-- Data type: [data.type if progress message]
-- Category: [render standalone | render inside parent | skip | already handled | unknown]
-- Key fields: [relevant fields]
-- Parent link: [parentToolUseID if applicable]
+### 1. Message Overview
 
-## Decision
+**Raw JSON:**
+```json
+{paste the original message JSON here}
+```
 
-[Render this message by...] OR [Skip this message because... (with strict justification)]
+**Key Fields:**
+| Field | Value | Description |
+|-------|-------|-------------|
+| type | [value] | Message type |
+| subtype | [value] | Subtype (if system message) |
+| data.type | [value] | Progress type (if progress message) |
+| isMeta | [value] | Whether system-injected context |
+| [other key fields] | [value] | [description] |
 
-## Changes
+### 2. Documentation Status
 
-1. [File] - [Change description]
-2. [File] - [Change description]
-...
+**data-models.md:**
+- [ ] Message type documented in "Message Types" table
+- [ ] Subtype documented in "Subtype Reference" table (if applicable)
+- [ ] Detailed section with fields table and JSON example
+- Location: [section name and line numbers, or "Not documented"]
 
-## Verification
+**ui.md:**
+- [ ] Listed in "Session-Level Messages" table (Section 6.2)
+- [ ] Rendering spec documented
+- [ ] Skipped types section updated (if skipped)
+- Location: [section name and line numbers, or "Not documented"]
 
-- [ ] Frontend types updated
-- [ ] Frontend rendering updated
+### 3. Type Definition Status
+
+**session-message-utils.ts:**
+- [ ] Fields defined in `SessionMessage` interface
+- [ ] Type/subtype in union type (e.g., `SystemSubtype`)
+- [ ] Type guard function exists (e.g., `isTurnDurationMessage`)
+- Location: [line numbers, or "Not defined"]
+
+### 4. Rendering Status
+
+**message-block.tsx:**
+- [ ] Detection logic (e.g., `const isTurnDuration = ...`)
+- [ ] Excluded from `hasUnknownSystem` check
+- [ ] Added to render condition check
+- [ ] Dedicated rendering component/JSX
+- Location: [line numbers, or "Falls through to UnknownMessageBlock"]
+
+**For progress messages (rendered inside parent tool):**
+- [ ] Progress map builder function
+- [ ] Map passed through props chain
+- [ ] Rendered in tool component
+- Location: [files and line numbers]
+
+### 5. Category & Decision
+
+**Category:** [render standalone | render inside parent | skip | already handled | unknown]
+
+**Decision:** [Render this message by...] OR [Skip this message because... (strict justification)]
+
+**Rationale:** [Why this decision was made, referencing core principles]
+
+### 6. Changes Made
+
+| File | Change |
+|------|--------|
+| [file path] | [description of change] |
+| [file path] | [description of change] |
+
+### 7. Verification Checklist
+
+- [ ] Frontend types updated (session-message-utils.ts)
+- [ ] Frontend rendering updated (message-block.tsx)
 - [ ] Progress map added (if progress message)
-- [ ] data-models.md updated
+- [ ] data-models.md updated (if not already documented)
 - [ ] ui.md updated
 - [ ] Build passes (`npm run build`)
 
-## Done
+### 8. Notes
+
+[Any additional observations, edge cases, or future considerations]
 ```
