@@ -13,6 +13,7 @@ type UserSessionMessage struct {
 	Message                 *ClaudeMessage  `json:"message,omitempty"`
 	ToolUseResult           json.RawMessage `json:"toolUseResult,omitempty"`
 	SourceToolAssistantUUID string          `json:"sourceToolAssistantUUID,omitempty"`
+	IsCompactSummary        bool            `json:"isCompactSummary,omitempty"`
 }
 
 func (m UserSessionMessage) MarshalJSON() ([]byte, error) {

@@ -291,8 +291,8 @@ func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedS
 					entry.IsSidechain = *userMsg.IsSidechain
 				}
 			}
-			// Get first user prompt
-			if entry.FirstPrompt == "" {
+			// Get first user prompt (skip compact summary messages)
+			if entry.FirstPrompt == "" && !userMsg.IsCompactSummary {
 				entry.FirstPrompt = userMsg.GetUserPrompt()
 			}
 		}
@@ -431,6 +431,8 @@ func (c *SessionIndexCache) handleFSEvent(event fsnotify.Event) {
 }
 
 // convertIndexEntry converts a SessionIndexEntry to a CachedSessionEntry.
+// Note: FirstPrompt is computed via GetFirstUserPrompt() to handle compacted sessions correctly.
+// The index's firstPrompt is unreliable after context compaction.
 func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	created, _ := time.Parse(time.RFC3339, entry.Created)
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
@@ -438,7 +440,7 @@ func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	cached := &CachedSessionEntry{
 		SessionID:    entry.SessionID,
 		FullPath:     entry.FullPath,
-		FirstPrompt:  entry.FirstPrompt,
+		FirstPrompt:  GetFirstUserPrompt(entry.SessionID, entry.ProjectPath), // Parse JSONL for accurate first prompt
 		Summary:      entry.Summary,
 		CustomTitle:  entry.CustomTitle,
 		MessageCount: entry.MessageCount,
@@ -453,8 +455,10 @@ func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	return cached
 }
 
-// computeDisplayTitle computes the display title without disk I/O.
-// Priority: CustomTitle > Summary > FirstPrompt (if not system tags) > "Untitled"
+// computeDisplayTitle computes the display title.
+// Priority: CustomTitle > Summary > FirstPrompt > "Untitled"
+// Note: FirstPrompt is pre-computed via GetFirstUserPrompt() which already filters
+// out system tags and compact summary messages.
 func (e *CachedSessionEntry) computeDisplayTitle() string {
 	if e.CustomTitle != "" {
 		return e.CustomTitle
@@ -462,9 +466,7 @@ func (e *CachedSessionEntry) computeDisplayTitle() string {
 	if e.Summary != "" {
 		return e.Summary
 	}
-	if e.FirstPrompt != "" &&
-		!strings.HasPrefix(e.FirstPrompt, "<ide_") &&
-		!strings.HasPrefix(e.FirstPrompt, "<system-reminder>") {
+	if e.FirstPrompt != "" {
 		return e.FirstPrompt
 	}
 	return "Untitled"

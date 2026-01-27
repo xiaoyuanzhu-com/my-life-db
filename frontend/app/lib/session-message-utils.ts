@@ -182,19 +182,57 @@ export interface TaskToolResult {
 // ============================================================================
 // Skipped Content Detection
 // ============================================================================
+//
+// This module filters out system-injected XML tags from user messages.
+// Used for both:
+// 1. Rendering: Skip messages that are only system content
+// 2. Title derivation: Backend uses same logic for first prompt extraction
+//
+// FILTERING LOGIC (must match backend's filterSystemTags in session_message.go):
+//
+// There are two types of filters:
+//
+// 1. PREFIX-BASED FILTERS (handled elsewhere, e.g., by isMeta flag):
+//    - <ide_*>           - IDE-injected context
+//    - <system-reminder> - System reminders
+//    These are typically marked with isMeta=true by Claude Code.
+//
+// 2. TAG-BASED FILTERS (handled here):
+//    - <command-name>         - Local slash command name (e.g., /clear)
+//    - <command-message>      - Local command message text
+//    - <command-args>         - Local command arguments
+//    - <local-command-caveat> - Caveat about local commands
+//    - <local-command-stdout> - Stdout from local command execution
+//
+//    For tag-based filters, we check:
+//    a) Content contains at least one XML tag
+//    b) ALL XML tags in content are in the skip list
+//    c) No other content outside tags (only whitespace allowed)
+//
+//    This prevents accidentally filtering real user messages that might
+//    contain these tags as part of legitimate content.
+//
+// EXAMPLES:
+//   "<command-name>/clear</command-name>"                    → SKIP (only skipped tags)
+//   "<command-name>/clear</command-name>\n<command-args>"    → SKIP (only skipped tags)
+//   "Hello <command-name>/clear</command-name>"              → KEEP (has "Hello")
+//   "<unknown-tag>foo</unknown-tag>"                         → KEEP (unknown tag)
+//   "pls debug below logs"                                   → KEEP (no tags)
+//
+// ============================================================================
 
 /**
  * XML tags that indicate system-injected content which should not be rendered.
  * If a user message consists ENTIRELY of these tags (no other content), skip it.
  *
- * See docs/claude-code/ui.md "Skipped Message Types" for documentation.
+ * See docs/claude-code/ui.md Section 6.3 "Skipped Message Types".
  */
 const SKIPPED_XML_TAGS = new Set([
-  'command-name',         // Local command name (e.g., /clear, /doctor)
-  'command-message',      // Local command message
-  'command-args',         // Local command arguments
-  'local-command-caveat', // Caveat about local commands (usually with isMeta)
-  'local-command-stdout', // Stdout from local command execution
+  'command-name',
+  'command-message',
+  'command-args',
+  'local-command-caveat',
+  'local-command-stdout',
 ])
 
 /**

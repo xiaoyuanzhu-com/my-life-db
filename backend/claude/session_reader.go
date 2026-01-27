@@ -383,7 +383,8 @@ func GetAllSessionIndexes() (*models.SessionIndex, error) {
 }
 
 // GetFirstUserPrompt reads the session JSONL and extracts the actual first user prompt
-// (filtering out system-injected tags). Returns empty string if no user prompt found.
+// (filtering out system-injected tags and compact summary messages).
+// Returns empty string if no user prompt found.
 func GetFirstUserPrompt(sessionID, projectPath string) string {
 	messages, err := ReadSessionHistoryRaw(sessionID, projectPath)
 	if err != nil {
@@ -391,10 +392,15 @@ func GetFirstUserPrompt(sessionID, projectPath string) string {
 	}
 
 	// Find first user message with actual user content
+	// Skip compact summary messages (context compaction auto-generated messages)
 	for _, msg := range messages {
 		if msg.GetType() == "user" {
 			// Type assert to UserSessionMessage to access GetUserPrompt()
 			if userMsg, ok := msg.(*models.UserSessionMessage); ok {
+				// Skip compact summary messages
+				if userMsg.IsCompactSummary {
+					continue
+				}
 				userPrompt := userMsg.GetUserPrompt()
 				if userPrompt != "" {
 					return userPrompt
