@@ -171,6 +171,19 @@ export function ChatInterface({
           return
         }
 
+        // Handle control_response - permission was resolved (possibly by another tab)
+        // Clear pending permission if request_id matches
+        if (data.type === 'control_response') {
+          console.log('[ChatInterface] Received control_response:', data.request_id, data.behavior)
+          setPendingPermission((current) => {
+            if (current?.requestId === data.request_id) {
+              return null
+            }
+            return current
+          })
+          return
+        }
+
         // Handle system init message (sent at session start with tools, model, etc.)
         // Store as a regular SessionMessage
         if (data.type === 'system' && data.subtype === 'init') {

@@ -319,6 +319,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 
 		select {
 		case ch <- PermissionResponse{Behavior: behavior, ToolName: toolName, AlwaysAllow: alwaysAllow}:
+			// Broadcast control_response to ALL clients so they can clear their permission UI
+			// This handles the case where multiple tabs have the same session open
+			responseMsg := fmt.Sprintf(`{"type":"control_response","request_id":%q,"behavior":%q}`,
+				requestID, behavior)
+			s.BroadcastUIMessage([]byte(responseMsg))
 			return nil
 		default:
 			return fmt.Errorf("permission channel full or closed")
