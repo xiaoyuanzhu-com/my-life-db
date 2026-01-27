@@ -256,13 +256,9 @@ This is the most visually distinct element, representing suggested changes to a 
 *   Full language-specific syntax highlighting must be applied *on top* of the diff background colors
 *   Use a theme compatible with light backgrounds (avoid dark themes)
 
-**Smart Collapsing (Truncation):**
-*   Limit display to **5 deleted lines + 5 added lines** by default
-*   If either old or new content exceeds 5 lines, show expand button
-*   Button text: `Show more` (collapsed) / `Show less` (expanded)
-*   When expanded:
-    *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
-*   Full-width button at bottom of diff container with `borderTop` separator
+**Truncation:** Uses [`expandable-content`](#pattern-expandable-content) pattern
+- Limit: **5 deleted lines + 5 added lines** by default
+- Shows "Show more/less" banner button when truncated
 
 </details>
 
@@ -456,12 +452,168 @@ The UI is not static and must handle real-time content generation.
 4.  **Inline Code Margin:** `4px` vertical margin for inline code snippets.
 5.  **Section Spacing:** `12px` margin-top for major section transitions (e.g., before diff containers).
 
-### Smart Collapsing & Expansion
-Large content blocks should not dominate the screen.
+### Collapsible Content Patterns
 
-*   **Rule:** If content exceeds display limits (5 lines default), show truncated view with an expansion control.
-*   **Button Text:** `Show more` (collapsed) / `Show less` (expanded) - unified across all tool types
-*   **Interaction:** Click to expand inline, smooth animation preferred
+Large content blocks should not dominate the screen. We use two standard patterns for collapsible content:
+
+---
+
+#### Pattern: `collapsible-header`
+
+**Slug:** `collapsible-header`
+
+**Use when:** Content is secondary/optional and should be hidden by default. User clicks header to reveal.
+
+**Used by:** Thinking blocks, WebFetch tool, compact summaries
+
+**Behavior:**
+- **Collapsed by default** (`useState(false)`)
+- Click **entire header row** to toggle
+- Chevron indicator: `▸` (collapsed) / `▾` (expanded)
+- No banner or button - toggle is via header click
+
+**Visual Pattern:**
+```
+● Header text ▸                    [collapsed]
+
+● Header text ▾                    [expanded]
+  ┌─────────────────────────────┐
+  │ Content (markdown/text)     │
+  │ maxHeight: 60vh, scrollable │
+  └─────────────────────────────┘
+```
+
+**Implementation:**
+```tsx
+function CollapsibleHeader({ title, children }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 w-full text-left hover:opacity-80"
+      >
+        <MessageDot status="..." />
+        <span>{title}</span>
+        <span className="text-[11px] text-tertiary">
+          {isExpanded ? '▾' : '▸'}
+        </span>
+      </button>
+
+      {isExpanded && (
+        <div
+          className="mt-2 ml-5 p-4 rounded-md overflow-y-auto"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)', maxHeight: '60vh' }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+**Key specs:**
+- Chevron: `text-[11px]`, `text-tertiary`
+- Expanded content: `mt-2 ml-5 p-4 rounded-md`
+- Max height: `60vh` with `overflow-y-auto`
+- Background: `var(--claude-bg-code-block)`
+
+---
+
+#### Pattern: `expandable-content`
+
+**Slug:** `expandable-content`
+
+**Use when:** Content is important but may be long. Shows preview with option to expand.
+
+**Used by:** Edit tool (diffs), Bash tool (output), compact summaries with preview
+
+**Behavior:**
+- **Shows truncated preview** by default (e.g., 5 lines)
+- Click **"Show more" / "Show less" button** at bottom to toggle
+- Button spans full width of container
+
+**Visual Pattern:**
+```
+┌─────────────────────────────┐
+│ Line 1                      │
+│ Line 2                      │
+│ Line 3 (truncated)          │
+├─────────────────────────────┤
+│        Show more            │  [button]
+└─────────────────────────────┘
+
+┌─────────────────────────────┐
+│ Line 1                      │
+│ Line 2                      │
+│ Line 3                      │
+│ Line 4                      │
+│ ... (all content)           │
+│ maxHeight: 60vh, scrollable │
+├─────────────────────────────┤
+│        Show less            │  [button]
+└─────────────────────────────┘
+```
+
+**Implementation:**
+```tsx
+const MAX_LINES = 5
+
+function ExpandableContent({ content }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const lines = content.split('\n')
+  const isTruncated = lines.length > MAX_LINES
+  const displayLines = expanded ? lines : lines.slice(0, MAX_LINES)
+
+  return (
+    <div className="rounded-md overflow-hidden border border-light">
+      <div
+        className={expanded && isTruncated ? 'overflow-y-auto' : ''}
+        style={expanded && isTruncated ? { maxHeight: '60vh' } : {}}
+      >
+        {/* Content here */}
+      </div>
+
+      {isTruncated && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full py-1.5 text-[12px] hover:opacity-80"
+          style={{
+            backgroundColor: 'var(--claude-bg-secondary)',
+            color: 'var(--claude-text-secondary)',
+            borderTop: '1px solid var(--claude-border-light)',
+          }}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  )
+}
+```
+
+**Key specs:**
+- Default truncation: 5 lines (configurable per component)
+- Button: `w-full py-1.5 text-[12px]`
+- Button background: `var(--claude-bg-secondary)`
+- Button text: `var(--claude-text-secondary)`
+- Button border: `borderTop: 1px solid var(--claude-border-light)`
+- Expanded max height: `60vh` with `overflow-y-auto`
+
+---
+
+#### Pattern Comparison
+
+| Aspect | `collapsible-header` | `expandable-content` |
+|--------|---------------------|---------------------|
+| Default state | Hidden | Shows preview |
+| Toggle mechanism | Click header | Click banner button |
+| Chevron | Yes (`▸`/`▾`) | No |
+| Banner button | No | Yes ("Show more/less") |
+| Use case | Secondary content | Important but long content |
 
 ### Iconography
 *   **Style:** Line/Stroke icons with `1.5px` stroke width (thin, clean aesthetic)
@@ -640,13 +792,9 @@ When multiple tool calls of the same type occur consecutively, they are grouped 
 - Output section separated by `borderTop`
 - Success = green exit code, failure = red
 
-**Smart Collapsing (Truncation):**
-*   Limit display to **5 lines + 500 characters** (whichever is shorter) for command and output
-*   If either command or output exceeds limits, show expand button
-*   Button text: `Show more` (collapsed) / `Show less` (expanded)
-*   When expanded:
-    *   Container gets `maxHeight: 60vh` with `overflow-y: auto` for scrolling
-*   Full-width button at bottom of container with `borderTop` separator
+**Truncation:** Uses [`expandable-content`](#pattern-expandable-content) pattern
+- Limit: **5 lines** for output
+- Shows "Show more/less" banner button when truncated
 
 </details>
 
@@ -698,58 +846,23 @@ Or for modifications:
 <details>
 <summary><strong>WebFetch Tool - Detailed Spec</strong></summary>
 
-**Pattern (Collapsed - Default):**
-```
-● WebFetch https://example.com/very/long/path/to/page... ▸
-```
+**UX Pattern:** [`collapsible-header`](#pattern-collapsible-header)
 
-**Pattern (Expanded - Click to toggle):**
+**Visual:**
 ```
-● WebFetch https://example.com/very/long/path/to/page... ▾
+● WebFetch https://example.com/very/long/path/to/page... ▸   [collapsed]
+
+● WebFetch https://example.com/very/long/path/to/page... ▾   [expanded]
   ┌─────────────────────────────────────────┐
   │ # Page Title                            │
-  │                                         │
   │ Content rendered as markdown...         │
-  │ (scrollable, max 60vh)                  │
   └─────────────────────────────────────────┘
 ```
 
-**Layout:**
-```tsx
-<div className="font-mono text-[13px] leading-[1.5]">
-  {/* Clickable header: bullet + "WebFetch" + URL (truncated) + chevron */}
-  <button
-    onClick={() => setIsExpanded(!isExpanded)}
-    className="flex items-start gap-2 w-full text-left hover:opacity-80"
-  >
-    <MessageDot status={toolCall.status} />
-    <div className="flex-1 min-w-0 flex items-center">
-      <span className="font-semibold shrink-0 text-primary">WebFetch</span>
-      <span className="ml-2 truncate text-secondary">{url}</span>
-      <span className="ml-2 shrink-0 text-[11px] text-tertiary">
-        {isExpanded ? '▾' : '▸'}
-      </span>
-    </div>
-  </button>
-  {/* Expanded markdown content (like thinking block) */}
-  {isExpanded && (
-    <div
-      className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
-      style={{ backgroundColor: 'var(--claude-bg-code-block)', maxHeight: '60vh' }}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  )}
-</div>
-```
-
 **Key Features:**
-- **Collapsed by default** - click header to expand (like thinking block)
+- Uses `collapsible-header` pattern (collapsed by default, click header to expand)
 - URL displayed in **single line** with `truncate` (ellipsis if too long)
-- Chevron indicator: `▸` (collapsed) / `▾` (expanded)
-- **No status line** (HTTP code, bytes, duration removed for cleaner UI)
 - Content rendered as **markdown** when expanded
-- Expanded view: `maxHeight: 60vh` with scroll, `ml-5` indent
-- No "Show more/less" banner - toggle via header click
 
 **toolUseResult Fields:**
 
