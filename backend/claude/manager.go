@@ -31,7 +31,7 @@ var (
 		"Glob",
 		"Grep",
 		"WebFetch",
-		// "WebSearch",
+		"WebSearch",
 		"TodoWrite",
 		"Task",
 	}
