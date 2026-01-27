@@ -92,9 +92,11 @@ export function SessionMessages({
     return buildAgentProgressMap(messages)
   }, [messages, providedAgentProgressMap])
 
-  // Filter out agent_progress messages (they're rendered inside Task tools)
+  // Filter out:
+  // - agent_progress messages (they're rendered inside Task tools)
+  // - isMeta messages (system-injected context, not user-visible)
   const filteredMessages = useMemo(() => {
-    return messages.filter((msg) => !isAgentProgressMessage(msg))
+    return messages.filter((msg) => !isAgentProgressMessage(msg) && !msg.isMeta)
   }, [messages])
 
   if (filteredMessages.length === 0) {

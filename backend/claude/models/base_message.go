@@ -20,6 +20,7 @@ func (m BaseMessage) GetTimestamp() string { return m.Timestamp }
 // EnvelopeFields contains optional fields that may appear on any message.
 type EnvelopeFields struct {
 	IsSidechain *bool  `json:"isSidechain,omitempty"`
+	IsMeta      *bool  `json:"isMeta,omitempty"`
 	UserType    string `json:"userType,omitempty"`
 	CWD         string `json:"cwd,omitempty"`
 	SessionID   string `json:"sessionId,omitempty"`

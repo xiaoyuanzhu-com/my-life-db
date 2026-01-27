@@ -254,6 +254,7 @@ stdout (stream-json):
 | `version` | string | Claude Code version (e.g., "2.1.11") |
 | `gitBranch` | string | Current git branch |
 | `isSidechain` | bool | Whether in a branch/fork |
+| `isMeta` | bool? | Whether this is a meta message (system-injected context). **UI should skip rendering.** |
 | `userType` | string | User type ("external") |
 | `agentId` | string? | Subagent ID (e.g., "a081313") |
 | `slug` | string? | Human-readable session slug |
@@ -299,7 +300,7 @@ stdout (stream-json):
 | `isVisibleInTranscriptOnly` | boolean | Whether message is only for transcript display |
 | `isCompactSummary` | boolean | Whether this is a compaction summary |
 | `thinkingMetadata` | object | Metadata about thinking blocks |
-| `isMeta` | boolean | Whether this is a meta message |
+| `isMeta` | boolean | Whether this is a meta message (system-injected context like `<local-command-caveat>`). **UI should skip rendering these messages.** |
 
 **2. Assistant Messages (Text)**
 ```json
@@ -699,7 +700,7 @@ System messages report internal events. The `subtype` field determines the speci
 | `timestamp` | string | ISO 8601 timestamp |
 | `content` | string? | Human-readable message (not present on all subtypes) |
 | `level` | string? | Log level (`"info"`, `"error"`) |
-| `isMeta` | boolean? | Whether this is a meta message |
+| `isMeta` | boolean? | Whether this is a meta message. **UI should skip rendering these.** |
 | `logicalParentUuid` | string? | Logical parent for compaction (different from `parentUuid`) |
 
 **System Subtypes**:

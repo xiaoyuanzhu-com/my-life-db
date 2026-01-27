@@ -66,6 +66,7 @@ export interface SessionMessage {
 
   // Additional fields
   isSidechain?: boolean
+  isMeta?: boolean  // Meta messages (system-injected context) - should not be rendered
   isCompactSummary?: boolean  // True for compact summary user messages
   isVisibleInTranscriptOnly?: boolean
   userType?: string
@@ -93,7 +94,6 @@ export interface SessionMessage {
   subtype?: SystemSubtype
   content?: string  // Human-readable message for system events
   level?: 'info' | 'error'
-  isMeta?: boolean
   logicalParentUuid?: string  // For compact_boundary: logical parent (different from parentUuid)
   compactMetadata?: CompactMetadata
   error?: ApiErrorDetails  // For api_error subtype
