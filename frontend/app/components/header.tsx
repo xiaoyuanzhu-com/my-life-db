@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router';
 import { Settings, Home, Library, CircleUserRound, Terminal } from 'lucide-react';
 import { getGravatarUrlSync } from '~/lib/gravatar';
 import { useAuth } from '~/contexts/auth-context';
+import { api } from '~/lib/api';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,9 +33,7 @@ export function Header() {
       return;
     }
 
-    fetch('/api/settings', {
-      credentials: 'same-origin',
-    })
+    api.get('/api/settings')
       .then((res) => {
         if (!res.ok) return;
         return res.json();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileCard } from './FileCard';
 import type { SearchResponse, SearchResultItem } from '~/types/api';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
+import { api } from '~/lib/api';
 
 interface SearchResultsProps {
   keywordResults: SearchResponse | null;
@@ -212,7 +213,7 @@ export function SearchResults({
         offset: String(keywordOffset),
       });
 
-      fetch(`/api/search?${params.toString()}`, { signal: keywordController.signal })
+      api.get(`/api/search?${params.toString()}`, { signal: keywordController.signal })
         .then(async (response) => {
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -255,7 +256,7 @@ export function SearchResults({
         offset: String(semanticOffset),
       });
 
-      fetch(`/api/search?${params.toString()}`, { signal: semanticController.signal })
+      api.get(`/api/search?${params.toString()}`, { signal: semanticController.signal })
         .then(async (response) => {
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));

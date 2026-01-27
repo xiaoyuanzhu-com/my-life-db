@@ -4,6 +4,7 @@ import { Card, CardContent } from "~/components/ui/card";
 import { User, Volume2, Camera } from "lucide-react";
 import { useAuth } from "~/contexts/auth-context";
 import type { PeopleWithCounts } from "~/types/models";
+import { api } from "~/lib/api";
 
 interface PeopleResponse {
   people: PeopleWithCounts[];
@@ -18,7 +19,7 @@ export default function PeoplePage() {
   useEffect(() => {
     async function loadPeople() {
       try {
-        const response = await fetch("/api/people");
+        const response = await api.get("/api/people");
         const data: PeopleResponse = await response.json();
         setPeople(data.people);
       } catch (error) {

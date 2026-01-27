@@ -1,5 +1,6 @@
 import type { FileWithDigests } from '~/types/file-card';
 import type { FileContentType } from './types';
+import { api } from '~/lib/api';
 
 // =============================================================================
 // Content Type Detection
@@ -249,11 +250,7 @@ export async function shareText(title: string, text: string): Promise<void> {
  */
 export async function togglePin(path: string): Promise<boolean> {
   try {
-    const response = await fetch('/api/library/pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
-    });
+    const response = await api.post('/api/library/pin', { path });
     return response.ok;
   } catch (error) {
     console.error('Failed to toggle pin:', error);
@@ -267,9 +264,7 @@ export async function togglePin(path: string): Promise<boolean> {
  */
 export async function deleteFile(path: string): Promise<boolean> {
   try {
-    const response = await fetch(`/api/library/file?path=${encodeURIComponent(path)}`, {
-      method: 'DELETE',
-    });
+    const response = await api.delete(`/api/library/file?path=${encodeURIComponent(path)}`);
     return response.ok;
   } catch (error) {
     console.error('Failed to delete file:', error);
@@ -282,7 +277,7 @@ export async function deleteFile(path: string): Promise<boolean> {
  */
 export async function fetchFullContent(path: string): Promise<string | null> {
   try {
-    const response = await fetch(`/raw/${path}`);
+    const response = await api.get(`/raw/${path}`);
     if (response.ok) {
       return await response.text();
     }
@@ -298,7 +293,8 @@ export async function fetchFullContent(path: string): Promise<string | null> {
  */
 export async function saveFileContent(path: string, content: string): Promise<boolean> {
   try {
-    const response = await fetch(`/raw/${path}`, {
+    // Use api.fetch for raw text body (not JSON)
+    const response = await api.fetch(`/raw/${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'text/plain' },
       body: content,

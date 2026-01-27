@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { FileRecord, Digest } from "~/types";
 import { TranscriptViewer } from "~/components/transcript-viewer";
+import { api } from "~/lib/api";
 
 interface FileInfoData {
   file: FileRecord;
@@ -288,7 +289,7 @@ export default function FileInfoPage() {
       }
 
       try {
-        const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
+        const response = await api.get(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
 
         if (!response.ok) {
           throw new Error("Failed to load file information");
@@ -325,7 +326,7 @@ export default function FileInfoPage() {
         .map((segment) => encodeURIComponent(segment))
         .join("/");
       const rawUrl = `/raw/${encodedPath}`;
-      const response = await fetch(rawUrl);
+      const response = await api.get(rawUrl);
 
       if (!response.ok) {
         throw new Error("Failed to load file content");
@@ -420,9 +421,7 @@ export default function FileInfoPage() {
     setDigestMessage(null);
 
     try {
-      const response = await fetch(`/api/digest/file/${filePath}`, {
-        method: "POST",
-      });
+      const response = await api.post(`/api/digest/file/${filePath}`);
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -446,9 +445,7 @@ export default function FileInfoPage() {
     setDigestMessage(null);
 
     try {
-      const response = await fetch(`/api/digest/file/${filePath}?digester=${encodeURIComponent(digester)}`, {
-        method: "POST",
-      });
+      const response = await api.post(`/api/digest/file/${filePath}?digester=${encodeURIComponent(digester)}`);
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '~/lib/api';
 
 export function SummaryButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
@@ -9,9 +10,7 @@ export function SummaryButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=summary`, {
-        method: 'POST',
-      });
+      const res = await api.post(`/api/digest/file/inbox/${itemId}?step=summary`);
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

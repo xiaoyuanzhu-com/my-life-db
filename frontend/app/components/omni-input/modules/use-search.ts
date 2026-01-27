@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { SearchResponse } from '~/types/api';
+import { api } from '~/lib/api';
 
 const SEARCH_BATCH_SIZE = 30;
 
@@ -83,9 +84,8 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
     const fetchKeyword = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
-        const response = await fetch(`/api/search?${params}`, {
+        const response = await api.get(`/api/search?${params}`, {
           signal: keywordController.signal,
-          credentials: 'same-origin',
         });
 
         if (!response.ok) {

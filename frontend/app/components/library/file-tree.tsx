@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy, Loader2 } from 'lucide-react';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
+import { api } from '~/lib/api';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -132,7 +133,7 @@ function TreeNode({
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/library/tree?path=${encodeURIComponent(node.path)}`);
+      const response = await api.get(`/api/library/tree?path=${encodeURIComponent(node.path)}`);
       const data = await response.json();
       setChildren(data.nodes || []);
     } catch (error) {
@@ -188,11 +189,7 @@ function TreeNode({
     }
 
     try {
-      const response = await fetch('/api/library/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: node.path, newName: renameValue.trim() }),
-      });
+      const response = await api.post('/api/library/rename', { path: node.path, newName: renameValue.trim() });
 
       if (!response.ok) {
         const error = await response.json();
@@ -223,9 +220,7 @@ function TreeNode({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/library/file?path=${encodeURIComponent(node.path)}`, {
-        method: 'DELETE',
-      });
+      const response = await api.delete(`/api/library/file?path=${encodeURIComponent(node.path)}`);
 
       if (!response.ok) {
         const error = await response.json();
@@ -334,11 +329,7 @@ function TreeNode({
     }
 
     try {
-      const response = await fetch('/api/library/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: draggedItem.path, targetPath: node.path }),
-      });
+      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: node.path });
 
       if (!response.ok) {
         const error = await response.json();
@@ -524,7 +515,7 @@ export function FileTree({
 
   const loadRoot = useCallback(async () => {
     try {
-      const response = await fetch('/api/library/tree');
+      const response = await api.get('/api/library/tree');
       const data = await response.json();
       setRootNodes(data.nodes || []);
     } catch (error) {
@@ -572,11 +563,7 @@ export function FileTree({
     }
 
     try {
-      const response = await fetch('/api/library/folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: '', name: newFolderName.trim() }),
-      });
+      const response = await api.post('/api/library/folder', { path: '', name: newFolderName.trim() });
 
       if (!response.ok) {
         const error = await response.json();
@@ -659,11 +646,7 @@ export function FileTree({
     }
 
     try {
-      const response = await fetch('/api/library/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: draggedItem.path, targetPath: '' }),
-      });
+      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: '' });
 
       if (!response.ok) {
         const error = await response.json();

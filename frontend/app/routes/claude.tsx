@@ -7,6 +7,7 @@ import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useAuth } from '~/contexts/auth-context'
+import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
 
 interface Session {
@@ -116,7 +117,7 @@ export default function ClaudePage() {
   const loadSessions = async () => {
     try {
       // Fetch all sessions (both active and historical)
-      const response = await fetch('/api/claude/sessions/all')
+      const response = await api.get('/api/claude/sessions/all')
       const data = await response.json()
       const allSessions = data.sessions || []
 
@@ -142,13 +143,9 @@ export default function ClaudePage() {
 
   const createSession = async () => {
     try {
-      const response = await fetch('/api/claude/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `Session ${sessions.length + 1}`,
-          workingDir: '', // Use default
-        }),
+      const response = await api.post('/api/claude/sessions', {
+        title: `Session ${sessions.length + 1}`,
+        workingDir: '', // Use default
       })
 
       if (response.ok) {
@@ -168,9 +165,7 @@ export default function ClaudePage() {
 
   const deleteSession = async (sessionId: string) => {
     try {
-      const response = await fetch(`/api/claude/sessions/${sessionId}`, {
-        method: 'DELETE',
-      })
+      const response = await api.delete(`/api/claude/sessions/${sessionId}`)
 
       if (response.ok) {
         setSessions(sessions.filter((s) => s.id !== sessionId))
@@ -188,11 +183,7 @@ export default function ClaudePage() {
 
   const updateSessionTitle = async (sessionId: string, title: string) => {
     try {
-      await fetch(`/api/claude/sessions/${sessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
-      })
+      await api.patch(`/api/claude/sessions/${sessionId}`, { title })
 
       setSessions(
         sessions.map((s) => (s.id === sessionId ? { ...s, title } : s))
@@ -204,9 +195,7 @@ export default function ClaudePage() {
 
   const archiveSession = async (sessionId: string) => {
     try {
-      const response = await fetch(`/api/claude/sessions/${sessionId}/deactivate`, {
-        method: 'POST',
-      })
+      const response = await api.post(`/api/claude/sessions/${sessionId}/deactivate`)
 
       if (response.ok) {
         // Mark session as archived in the UI

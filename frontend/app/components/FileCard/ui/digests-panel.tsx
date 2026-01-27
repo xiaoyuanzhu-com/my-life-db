@@ -12,6 +12,7 @@ import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 import { getDigestRenderer } from './digest-renderers';
 import type { HighlightRegion } from './digest-renderers/image-objects';
+import { api } from '~/lib/api';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
 
@@ -107,7 +108,7 @@ export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: D
 
   const fetchDigests = useCallback(async () => {
     try {
-      const response = await fetch(`/api/library/file-info?path=${encodeURIComponent(file.path)}`);
+      const response = await api.get(`/api/library/file-info?path=${encodeURIComponent(file.path)}`);
       if (!response.ok) throw new Error('Failed to fetch digests');
 
       const data = await response.json();
@@ -167,9 +168,7 @@ export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: D
     setResettingDigester(digester);
 
     try {
-      const response = await fetch(`/api/digest/file/${file.path}?digester=${encodeURIComponent(digester)}`, {
-        method: 'POST',
-      });
+      const response = await api.post(`/api/digest/file/${file.path}?digester=${encodeURIComponent(digester)}`);
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));

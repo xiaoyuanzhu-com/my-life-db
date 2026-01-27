@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '~/lib/api';
 
 export function TaggingButton({ itemId }: { itemId: string }) {
   const [loading, setLoading] = useState(false);
@@ -9,9 +10,7 @@ export function TaggingButton({ itemId }: { itemId: string }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=tags`, {
-        method: 'POST',
-      });
+      const res = await api.post(`/api/digest/file/inbox/${itemId}?step=tags`);
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

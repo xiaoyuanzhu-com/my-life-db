@@ -6,6 +6,7 @@ import { TaggingButton } from "~/components/inbox/tagging-button";
 import { DigestCoordinator } from "~/components/inbox/digest-coordinator";
 import { IndexButton } from "~/components/inbox/index-button";
 import type { InboxDigestScreenshot, DigestStatusSummary as DigestStatusView } from "~/types";
+import { api } from "~/lib/api";
 
 interface InboxDetail {
   path: string;
@@ -31,7 +32,7 @@ export default function InboxDetailPage() {
       if (!id) return;
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/inbox/${encodeURIComponent(id)}`);
+        const response = await api.get(`/api/inbox/${encodeURIComponent(id)}`);
         if (!response.ok) {
           if (response.status === 404) {
             setError("Item not found");

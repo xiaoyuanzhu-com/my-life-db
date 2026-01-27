@@ -8,6 +8,7 @@ import { SettingsProvider, useSettingsContext } from "~/components/settings/sett
 import { LanguageSelector } from "~/components/settings/language-selector";
 import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
+import { api } from "~/lib/api";
 
 interface ModelOption {
   id: string;
@@ -79,7 +80,7 @@ function SettingsContent() {
     setIsModelLoading(true);
 
     try {
-      const response = await fetch("/api/vendors/openai/models");
+      const response = await api.get("/api/vendors/openai/models");
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         const message = payload?.error || "Failed to fetch models";
@@ -124,7 +125,7 @@ function SettingsContent() {
       setIsLoadingGeneralStats(true);
     }
     try {
-      const response = await fetch("/api/stats");
+      const response = await api.get("/api/stats");
       if (response.ok) {
         const data = await response.json();
         setStats(data);
@@ -141,7 +142,7 @@ function SettingsContent() {
   const fetchDigesters = useCallback(async () => {
     setIsLoadingDigesters(true);
     try {
-      const response = await fetch("/api/digest/digesters");
+      const response = await api.get("/api/digest/digesters");
       if (response.ok) {
         const data = await response.json();
         setDigesters(data.digesters || []);
@@ -156,9 +157,7 @@ function SettingsContent() {
   const handleResetDigester = useCallback(async (digester: string) => {
     setResetingDigester(digester);
     try {
-      const response = await fetch(`/api/digest/reset/${digester}`, {
-        method: "DELETE",
-      });
+      const response = await api.delete(`/api/digest/reset/${digester}`);
 
       if (response.ok) {
         const data = await response.json();

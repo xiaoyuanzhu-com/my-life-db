@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Pin, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PinnedItem } from '~/types/pin';
+import { api } from '~/lib/api';
 
 interface PinnedTagsProps {
   onTagClick: (cursor: string) => void;
@@ -13,9 +14,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
 
   const loadPinnedItems = useCallback(async () => {
     try {
-      const response = await fetch('/api/inbox/pinned', {
-        credentials: 'same-origin',
-      });
+      const response = await api.get('/api/inbox/pinned');
       if (response.ok) {
         const data = await response.json();
         setPinnedItems(data.items);
@@ -33,12 +32,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
     e.stopPropagation();
 
     try {
-      const response = await fetch('/api/library/pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-        credentials: 'same-origin',
-      });
+      const response = await api.post('/api/library/pin', { path });
 
       if (response.ok) {
         setPinnedItems(prev => prev.filter(item => item.path !== path));

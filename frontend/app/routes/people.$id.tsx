@@ -23,6 +23,7 @@ import {
 import { ArrowLeft, User, Volume2, Camera, Trash2, GitMerge, MoreHorizontal, X, Check } from "lucide-react";
 import type { PeopleRecord, PeopleCluster, VoiceSourceOffset } from "~/types/models";
 import { VoiceClipList } from "~/components/voice-clip-list";
+import { api } from "~/lib/api";
 
 interface VoiceSegmentWithText {
   start: number;
@@ -81,7 +82,7 @@ export default function PeopleDetailPage() {
 
   const loadPeople = useCallback(async () => {
     try {
-      const response = await fetch(`/api/people/${id}`);
+      const response = await api.get(`/api/people/${id}`);
       if (response.ok) {
         const data = await response.json();
         setPeople(data);
@@ -103,7 +104,7 @@ export default function PeopleDetailPage() {
   // Load existing people when entering edit mode
   useEffect(() => {
     if (isEditing) {
-      fetch("/api/people?limit=1000")
+      api.get("/api/people?limit=1000")
         .then((res) => res.json())
         .then((data) => {
           const peopleList =
@@ -137,11 +138,7 @@ export default function PeopleDetailPage() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/people/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: editName.trim() }),
-      });
+      const response = await api.put(`/api/people/${id}`, { displayName: editName.trim() });
 
       if (response.ok) {
         const updated = await response.json();
@@ -162,11 +159,7 @@ export default function PeopleDetailPage() {
     setIsSaving(true);
     try {
       // Merge current person into the target (existing person with that name)
-      const response = await fetch(`/api/people/${mergeTargetId}/merge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceId: id }),
-      });
+      const response = await api.post(`/api/people/${mergeTargetId}/merge`, { sourceId: id });
 
       if (response.ok) {
         // Redirect to the merged person's page
@@ -189,9 +182,7 @@ export default function PeopleDetailPage() {
 
   const handleDelete = async () => {
     try {
-      const response = await fetch(`/api/people/${id}`, {
-        method: "DELETE",
-      });
+      const response = await api.delete(`/api/people/${id}`);
 
       if (response.ok) {
         navigate("/people");
@@ -203,9 +194,7 @@ export default function PeopleDetailPage() {
 
   const handleUnassignEmbedding = async (embeddingId: string) => {
     try {
-      const response = await fetch(`/api/people/embeddings/${embeddingId}/unassign`, {
-        method: "POST",
-      });
+      const response = await api.post(`/api/people/embeddings/${embeddingId}/unassign`);
 
       if (response.ok) {
         // Reload people data

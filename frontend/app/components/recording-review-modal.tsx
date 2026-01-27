@@ -3,6 +3,7 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { X, Loader2 } from 'lucide-react';
 import { cleanupTranscript, formatDuration } from '~/lib/transcript-utils';
+import { api } from '~/lib/api';
 
 interface RecordingReviewModalProps {
   isOpen: boolean;
@@ -62,13 +63,9 @@ export function RecordingReviewModal({
     setSummaryError(null);
 
     try {
-      const response = await fetch('/api/ai/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: rawTranscript,
-          max_tokens: 300
-        })
+      const response = await api.post('/api/ai/summarize', {
+        text: rawTranscript,
+        max_tokens: 300
       });
 
       if (!response.ok) {

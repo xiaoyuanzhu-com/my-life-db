@@ -6,6 +6,7 @@ import type { PageData } from '~/types/inbox-feed';
 import { FEED_CONSTANTS } from '~/types/inbox-feed';
 import { useSendQueue } from '~/lib/send-queue';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
+import { api } from '~/lib/api';
 
 interface InboxFeedProps {
   onRefresh?: number;
@@ -311,9 +312,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     setError(null);
 
     try {
-      const response = await fetch(`/api/inbox?limit=${BATCH_SIZE}`, {
-        credentials: 'same-origin',
-      });
+      const response = await api.get(`/api/inbox?limit=${BATCH_SIZE}`);
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -373,7 +372,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     setLoadingPages(prev => new Set(prev).add(newPageIndex));
 
     try {
-      const response = await fetch(
+      const response = await api.get(
         `/api/inbox?limit=${BATCH_SIZE}&before=${encodeURIComponent(fromPage.cursors.last)}`
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -416,7 +415,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     setLoadingPages(prev => new Set(prev).add(newPageIndex));
 
     try {
-      const response = await fetch(
+      const response = await api.get(
         `/api/inbox?limit=${BATCH_SIZE}&after=${encodeURIComponent(fromPage.cursors.first)}`
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -457,7 +456,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     setLoadingPages(prev => new Set(prev).add(tempPageIndex));
 
     try {
-      const response = await fetch(
+      const response = await api.get(
         `/api/inbox?limit=${BATCH_SIZE}&around=${encodeURIComponent(cursor)}`
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

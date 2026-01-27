@@ -27,6 +27,7 @@ import {
   requestPersistentStorage,
 } from './db';
 import { generateTextFilename, deduplicateFilename } from './filename';
+import { api } from '~/lib/api';
 
 const {
   MAX_CONCURRENT_UPLOADS,
@@ -334,7 +335,7 @@ export class UploadQueueManager {
       // Extract path from URL to avoid Mixed Content issues (http vs https)
       try {
         const url = new URL(item.tusUploadUrl);
-        await fetch(url.pathname, { method: 'DELETE' });
+        await api.delete(url.pathname);
       } catch {
         // Ignore errors - server cleanup is best-effort
       }
@@ -514,11 +515,7 @@ export class UploadQueueManager {
               requestBody.destination = item.destination;
             }
 
-            const response = await fetch('/api/upload/finalize', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(requestBody),
-            });
+            const response = await api.post('/api/upload/finalize', requestBody);
 
             if (!response.ok) {
               const data = await response.json().catch(() => ({}));

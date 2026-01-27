@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import type { InboxDigestScreenshot, DigestStatusSummary as DigestStatusView, DigestStageStatusSummary as DigestStageStatus } from '~/types';
 import { cn } from '~/lib/utils';
 import { DigestProgress } from './digest-progress';
+import { api } from '~/lib/api';
 
 type StageStatusName = DigestStageStatus['status'];
 
@@ -80,7 +81,7 @@ export function DigestCoordinator({
   useEffect(() => {
     async function loadDigesters() {
       try {
-        const res = await fetch('/api/digest/digesters', { cache: 'no-store' });
+        const res = await api.get('/api/digest/digesters');
         if (res.ok) {
           const data = (await res.json()) as DigestersResponse;
           setDigesters(data.digesters);
@@ -95,7 +96,7 @@ export function DigestCoordinator({
   const fetchContent = useCallback(async () => {
     const currentId = itemIdRef.current;
     log('fetchContent start', { itemId: currentId });
-    const res = await fetch(`/api/inbox/${currentId}`, { cache: 'no-store' });
+    const res = await api.get(`/api/inbox/${currentId}`);
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
       throw new Error((fallback as { error?: string }).error || res.statusText);
@@ -108,7 +109,7 @@ export function DigestCoordinator({
   const fetchStatus = useCallback(async () => {
     const currentId = itemIdRef.current;
     log('fetchStatus start', { itemId: currentId });
-    const res = await fetch(`/api/digest/file/inbox/${currentId}`, { cache: 'no-store' });
+    const res = await api.get(`/api/digest/file/inbox/${currentId}`);
     if (!res.ok) {
       const fallback = await res.json().catch(() => ({}));
       throw new Error((fallback as { error?: string }).error || res.statusText);
@@ -215,7 +216,7 @@ export function DigestCoordinator({
     setScreenshot(null);
     log('handleDigestClick triggered');
     try {
-      const res = await fetch(`/api/digest/file/inbox/${itemIdRef.current}`, { method: 'POST' });
+      const res = await api.post(`/api/digest/file/inbox/${itemIdRef.current}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || res.statusText);

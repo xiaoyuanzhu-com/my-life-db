@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '~/lib/api';
 
 interface IndexButtonProps {
   itemId: string;
@@ -12,9 +13,7 @@ export function IndexButton({ itemId }: IndexButtonProps) {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/digest/file/inbox/${itemId}?step=index`, {
-        method: 'POST',
-      });
+      const res = await api.post(`/api/digest/file/inbox/${itemId}?step=index`);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error((body as { error?: string }).error || res.statusText);

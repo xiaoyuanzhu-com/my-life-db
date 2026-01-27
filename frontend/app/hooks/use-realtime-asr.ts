@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { api } from '~/lib/api';
 
 interface UseRealtimeASROptions {
   onTranscript?: (text: string, isFinal: boolean) => void;
@@ -336,7 +337,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
           formData.append('audio', file);
 
           // Call ASR endpoint with multipart upload
-          const asrRes = await fetch('/api/asr', {
+          const asrRes = await api.fetch('/api/asr', {
             method: 'POST',
             body: formData
           });
