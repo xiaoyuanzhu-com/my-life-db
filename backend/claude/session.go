@@ -278,7 +278,8 @@ func (s *Session) SetModel(model string) error {
 // For SDK mode, routes to pendingSDKPermissions channel.
 // For legacy mode, writes directly to stdin.
 // If alwaysAllow is true and behavior is "allow", the tool is remembered for auto-approval.
-func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, toolName string, alwaysAllow bool) error {
+// The message parameter is required for "deny" behavior - it will be included in the tool_result error.
+func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, message string, toolName string, alwaysAllow bool) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendControlResponse called on non-UI session")
 	}
@@ -313,7 +314,7 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 			Msg("routing control response to SDK permission channel")
 
 		select {
-		case ch <- PermissionResponse{Behavior: behavior, ToolName: toolName, AlwaysAllow: alwaysAllow}:
+		case ch <- PermissionResponse{Behavior: behavior, Message: message, ToolName: toolName, AlwaysAllow: alwaysAllow}:
 			// Broadcast control_response to ALL clients so they can clear their permission UI
 			// This handles the case where multiple tabs have the same session open
 			responseMsg := fmt.Sprintf(`{"type":"control_response","request_id":%q,"behavior":%q}`,
@@ -578,9 +579,14 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 					Behavior: sdk.PermissionAllow,
 				}, nil
 			}
+			// Ensure deny message is not empty (required by Anthropic API)
+			denyMessage := resp.Message
+			if denyMessage == "" {
+				denyMessage = fmt.Sprintf("Permission denied by user for tool: %s", toolName)
+			}
 			return sdk.PermissionResultDeny{
 				Behavior: sdk.PermissionDeny,
-				Message:  resp.Message,
+				Message:  denyMessage,
 			}, nil
 
 		case <-time.After(5 * time.Minute):

@@ -946,6 +946,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Subtype  string `json:"subtype"`
 					Response struct {
 						Behavior string `json:"behavior"`
+						Message  string `json:"message"` // Denial reason (required for deny)
 					} `json:"response"`
 				} `json:"response"`
 				// Extended fields for "always allow" support
@@ -962,6 +963,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				controlResp.RequestID,
 				controlResp.Response.Subtype,
 				controlResp.Response.Response.Behavior,
+				controlResp.Response.Response.Message,
 				controlResp.ToolName,
 				controlResp.AlwaysAllow,
 			); err != nil {

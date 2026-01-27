@@ -274,6 +274,7 @@ export interface ControlResponse {
     subtype: 'success'
     response: {
       behavior: 'allow' | 'deny'
+      message?: string  // Denial reason (required for deny - API requires non-empty content)
     }
   }
   // Extended fields for "always allow" support

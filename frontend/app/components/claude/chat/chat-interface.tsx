@@ -389,6 +389,8 @@ export function ChatInterface({
           subtype: 'success',
           response: {
             behavior,
+            // Include message for deny (required by Anthropic API - content can't be empty when is_error=true)
+            ...(behavior === 'deny' && { message: `Permission denied by user for tool: ${request.toolName}` }),
           },
         },
         // Send tool_name and always_allow for "always allow for session" feature
