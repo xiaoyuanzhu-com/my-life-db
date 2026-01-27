@@ -486,3 +486,47 @@ export function buildToolResultMap(messages: SessionMessage[]): Map<string, Extr
 
   return resultMap
 }
+
+/**
+ * Derive whether Claude is currently working from message history.
+ *
+ * This is used instead of local state tracking so that:
+ * 1. A second tab opening the same session can determine working state from history
+ * 2. State is derived from the source of truth (messages), not tracked separately
+ *
+ * Algorithm:
+ * 1. Find the last user message that's NOT a tool result (i.e., actual user input)
+ * 2. Check if there's a 'result' message after it (indicates turn completed)
+ * 3. If no result after user message = Claude is working
+ *
+ * Note: This may have false negatives (e.g., second tab opens before messages load).
+ * Use optimisticMessage as additional signal for immediate feedback.
+ */
+export function deriveIsWorking(messages: SessionMessage[]): boolean {
+  // Find last user message that's NOT a tool result
+  // (Tool results have toolUseResult/tool_use_result field)
+  let lastUserMsgIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.type === 'user' && !hasToolUseResult(msg)) {
+      lastUserMsgIndex = i
+      break
+    }
+  }
+
+  // No user message found = not working
+  if (lastUserMsgIndex === -1) {
+    return false
+  }
+
+  // Check if there's a 'result' message after the last user message
+  // 'result' indicates Claude's turn is complete
+  for (let i = lastUserMsgIndex + 1; i < messages.length; i++) {
+    if (messages[i].type === 'result') {
+      return false
+    }
+  }
+
+  // No result after last user message = Claude is working
+  return true
+}

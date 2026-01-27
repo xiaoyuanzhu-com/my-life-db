@@ -14,6 +14,7 @@ import type {
 } from '~/types/claude'
 import {
   buildToolResultMap,
+  deriveIsWorking,
   hasToolUseResult,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -26,7 +27,7 @@ interface ChatInterfaceProps {
 }
 
 // Types that should not be rendered as messages
-const SKIP_TYPES = ['file-history-snapshot']
+const SKIP_TYPES = ['file-history-snapshot', 'result']
 
 export function ChatInterface({
   sessionId,
@@ -50,9 +51,6 @@ export function ChatInterface({
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
-
-  // Working state - tracks whether Claude is actively processing (between user message and result)
-  const [isWorking, setIsWorking] = useState(false)
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
@@ -81,6 +79,15 @@ export function ChatInterface({
     })
   }, [rawMessages])
 
+  // Derive working state from message history
+  // Uses optimisticMessage for immediate feedback, then derives from messages
+  const isWorking = useMemo(() => {
+    // Optimistic message = user just sent something, Claude is working
+    if (optimisticMessage) return true
+    // Derive from message history (handles second tab case)
+    return deriveIsWorking(rawMessages)
+  }, [rawMessages, optimisticMessage])
+
   // Compute pending permissions from control_request/control_response tracking
   // Pending = control_requests without matching control_response
   const pendingPermissions = useMemo(() => {
@@ -102,7 +109,7 @@ export function ChatInterface({
     setControlResponses(new Set())
     setError(null)
     setProgressMessage(null)
-    setIsWorking(false)
+    // Note: isWorking is derived from rawMessages + optimisticMessage, so it resets automatically
   }, [sessionId])
 
   // WebSocket connection for real-time updates
@@ -181,10 +188,24 @@ export function ChatInterface({
         }
 
         // Handle result messages - Claude's turn is complete (session terminator)
+        // Note: isWorking is derived from messages, so it will update automatically
+        // when the result message is added to rawMessages
         if (data.type === 'result') {
           console.log('[ChatInterface] Received result (turn complete):', data.subtype, 'duration:', data.duration_ms)
-          setIsWorking(false)
           setProgressMessage(null)
+          // Store result message so deriveIsWorking can see it
+          setRawMessages((prev) => {
+            const resultMsg: SessionMessage = {
+              type: 'result',
+              uuid: data.uuid || crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+              ...data,
+            }
+            // Check if already exists
+            const exists = prev.some((m) => m.uuid === resultMsg.uuid)
+            if (exists) return prev
+            return [...prev, resultMsg]
+          })
           return
         }
 
@@ -293,10 +314,7 @@ export function ChatInterface({
         return
       }
 
-      // Mark as working - Claude is now processing
-      setIsWorking(true)
-
-      // Show optimistic message immediately
+      // Show optimistic message immediately (also triggers isWorking via useMemo)
       setOptimisticMessage(content)
 
       try {
