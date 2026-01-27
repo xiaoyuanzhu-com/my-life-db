@@ -101,6 +101,9 @@ export interface SessionMessage {
   retryAttempt?: number  // For api_error: current retry attempt
   maxRetries?: number  // For api_error: maximum retries
   durationMs?: number  // For turn_duration: turn duration in ms
+
+  // API error indicator (for assistant messages that represent API errors)
+  isApiErrorMessage?: boolean
 }
 
 // System message subtypes
@@ -496,8 +499,11 @@ export function buildToolResultMap(messages: SessionMessage[]): Map<string, Extr
  *
  * Algorithm:
  * 1. Find the last user message that's NOT a tool result (i.e., actual user input)
- * 2. Check if there's a 'result' message after it (indicates turn completed)
- * 3. If no result after user message = Claude is working
+ * 2. Check if there's a turn terminator after it:
+ *    - 'result' message (normal completion)
+ *    - Assistant message with isApiErrorMessage (API error ended the turn)
+ *    - Assistant message with stop_reason set (turn completed)
+ * 3. If no terminator after user message = Claude is working
  *
  * Note: This may have false negatives (e.g., second tab opens before messages load).
  * Use optimisticMessage as additional signal for immediate feedback.
@@ -519,14 +525,26 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
     return false
   }
 
-  // Check if there's a 'result' message after the last user message
-  // 'result' indicates Claude's turn is complete
+  // Check if there's a turn terminator after the last user message
   for (let i = lastUserMsgIndex + 1; i < messages.length; i++) {
-    if (messages[i].type === 'result') {
+    const msg = messages[i]
+
+    // 'result' message indicates normal turn completion
+    if (msg.type === 'result') {
+      return false
+    }
+
+    // API error message indicates turn ended with error
+    if (msg.type === 'assistant' && msg.isApiErrorMessage) {
+      return false
+    }
+
+    // Assistant message with stop_reason indicates turn completed
+    if (msg.type === 'assistant' && msg.message?.stop_reason) {
       return false
     }
   }
 
-  // No result after last user message = Claude is working
+  // No terminator after last user message = Claude is working
   return true
 }
