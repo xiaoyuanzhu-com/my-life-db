@@ -7,23 +7,23 @@ interface ChatInputProps {
   onSend: (content: string) => void
   disabled?: boolean
   placeholder?: string
-  /** Pending permission request - renders approval UI integrated into the input */
-  pendingPermission?: PermissionRequest | null
+  /** Pending permission requests - renders approval UI integrated into the input */
+  pendingPermissions?: PermissionRequest[]
   /** Callback when user makes a permission decision */
-  onPermissionDecision?: (decision: PermissionDecision) => void
+  onPermissionDecision?: (requestId: string, decision: PermissionDecision) => void
 }
 
 export function ChatInput({
   onSend,
   disabled = false,
   placeholder = 'Reply...',
-  pendingPermission,
+  pendingPermissions = [],
   onPermissionDecision,
 }: ChatInputProps) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const hasPermission = !!pendingPermission
+  const hasPermission = pendingPermissions.length > 0
 
   // Auto-resize textarea as content grows
   useEffect(() => {
@@ -69,13 +69,15 @@ export function ChatInput({
           className="border border-border rounded-xl overflow-hidden"
           style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
         >
-          {/* Permission approval section (when pending) */}
-          {hasPermission && pendingPermission && (
+          {/* Permission approval section (when pending) - stacked for multiple */}
+          {pendingPermissions.map((request, index) => (
             <PermissionSection
-              request={pendingPermission}
-              onDecision={onPermissionDecision!}
+              key={request.requestId}
+              request={request}
+              onDecision={(decision) => onPermissionDecision!(request.requestId, decision)}
+              isFirst={index === 0}
             />
-          )}
+          ))}
 
           {/* Input section */}
           <div className={cn('px-3 py-2', hasPermission && 'border-t border-border')}>
@@ -147,9 +149,11 @@ export function ChatInput({
 interface PermissionSectionProps {
   request: PermissionRequest
   onDecision: (decision: PermissionDecision) => void
+  /** Whether this is the first (topmost) permission - receives keyboard shortcuts */
+  isFirst?: boolean
 }
 
-function PermissionSection({ request, onDecision }: PermissionSectionProps) {
+function PermissionSection({ request, onDecision, isFirst = true }: PermissionSectionProps) {
   const [isDismissing, setIsDismissing] = useState(false)
   const [pendingDecision, setPendingDecision] = useState<PermissionDecision | null>(null)
 
@@ -167,9 +171,11 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
     }
   }
 
-  // Handle keyboard shortcuts
+  // Handle keyboard shortcuts - only for the first (topmost) permission
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (!isFirst) return
+
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
       if (isDismissing) return
 
       if (e.key === 'Escape') {
@@ -186,7 +192,7 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isDismissing, handleDecision])
+  }, [isFirst, isDismissing, handleDecision])
 
   // Get the action verb based on tool name
   const getActionVerb = (toolName: string): string => {
@@ -237,7 +243,11 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
 
   return (
     <div
-      className={`p-3 ${isDismissing ? 'animate-slide-down-fade' : 'animate-slide-up-fade'}`}
+      className={cn(
+        'p-3',
+        isDismissing ? 'animate-slide-down-fade' : 'animate-slide-up-fade',
+        !isFirst && 'border-t border-border'
+      )}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* Header: Allow Claude to {Action}? */}
@@ -267,9 +277,11 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
         >
           Deny
-          <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
-            Esc
-          </kbd>
+          {isFirst && (
+            <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
+              Esc
+            </kbd>
+          )}
         </button>
 
         {/* Always allow for session */}
@@ -279,10 +291,12 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
         >
           Always allow for session
-          <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
-            <span>⌘</span>
-            <span>⏎</span>
-          </kbd>
+          {isFirst && (
+            <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
+              <span>⌘</span>
+              <span>⏎</span>
+            </kbd>
+          )}
         </button>
 
         {/* Allow once */}
@@ -292,9 +306,11 @@ function PermissionSection({ request, onDecision }: PermissionSectionProps) {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
         >
           Allow once
-          <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
-            ⏎
-          </kbd>
+          {isFirst && (
+            <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
+              ⏎
+            </kbd>
+          )}
         </button>
       </div>
     </div>

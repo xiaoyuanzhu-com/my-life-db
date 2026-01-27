@@ -71,15 +71,16 @@ export function ChatInterface({
     })
   }, [rawMessages])
 
-  // Compute pending permission from control_request/control_response tracking
-  // Pending = control_request without matching control_response
-  const pendingPermission = useMemo(() => {
+  // Compute pending permissions from control_request/control_response tracking
+  // Pending = control_requests without matching control_response
+  const pendingPermissions = useMemo(() => {
+    const pending: PermissionRequest[] = []
     for (const [requestId, request] of controlRequests) {
       if (!controlResponses.has(requestId)) {
-        return request
+        pending.push(request)
       }
     }
-    return null
+    return pending
   }, [controlRequests, controlResponses])
 
   // Clear messages and reset state when sessionId changes
@@ -309,16 +310,17 @@ export function ChatInterface({
 
   // Handle permission decision - send control_response via WebSocket
   const handlePermissionDecision = useCallback(
-    (decision: PermissionDecision) => {
-      if (!pendingPermission) {
-        console.warn('[ChatInterface] No pending permission to respond to')
+    (requestId: string, decision: PermissionDecision) => {
+      const request = controlRequests.get(requestId)
+      if (!request) {
+        console.warn('[ChatInterface] No permission request found for id:', requestId)
         return
       }
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.error('[ChatInterface] WebSocket not connected, cannot send permission response')
         // Mark as responded locally to clear the UI
-        setControlResponses((prev) => new Set(prev).add(pendingPermission.requestId))
+        setControlResponses((prev) => new Set(prev).add(requestId))
         return
       }
 
@@ -329,7 +331,7 @@ export function ChatInterface({
       // Build control_response with always_allow and tool_name for backend tracking
       const response: ControlResponse = {
         type: 'control_response',
-        request_id: pendingPermission.requestId,
+        request_id: requestId,
         response: {
           subtype: 'success',
           response: {
@@ -337,7 +339,7 @@ export function ChatInterface({
           },
         },
         // Send tool_name and always_allow for "always allow for session" feature
-        tool_name: pendingPermission.toolName,
+        tool_name: request.toolName,
         always_allow: alwaysAllow,
       }
 
@@ -346,9 +348,9 @@ export function ChatInterface({
       // Note: We'll receive the control_response broadcast back from the server,
       // which will add to controlResponses and clear pendingPermission automatically.
       // But we add it locally too for immediate UI feedback.
-      setControlResponses((prev) => new Set(prev).add(pendingPermission.requestId))
+      setControlResponses((prev) => new Set(prev).add(requestId))
     },
-    [pendingPermission]
+    [controlRequests]
   )
 
   // Handle question answer (placeholder for future implementation)
@@ -389,7 +391,7 @@ export function ChatInterface({
 
           <ChatInput
             onSend={sendMessage}
-            pendingPermission={pendingPermission}
+            pendingPermissions={pendingPermissions}
             onPermissionDecision={handlePermissionDecision}
           />
         </div>
