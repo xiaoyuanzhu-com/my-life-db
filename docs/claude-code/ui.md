@@ -1073,6 +1073,7 @@ These are top-level session events that are rendered as simple status indicators
 |--------------|---------|-------------|
 | `system.subtype: compact_boundary` | "Session compacted" | Marks where conversation was compacted to reduce context |
 | `system.subtype: init` | System init block | Shows session initialization with tools, model, MCP servers |
+| `system.subtype: turn_duration` | "Turn completed in Xm Ys" | Turn duration telemetry showing how long a turn took |
 | `user.isCompactSummary: true` | "Session continued" + collapsible summary | User message containing the compacted conversation summary |
 | `type: summary` | "Session summary" + summary text | Auto-generated session summary (created when session index is rebuilt) |
 

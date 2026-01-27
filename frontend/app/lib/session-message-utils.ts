@@ -329,6 +329,13 @@ export function isApiErrorMessage(msg: SessionMessage): boolean {
 }
 
 /**
+ * Type guard to check if a message is a turn duration message
+ */
+export function isTurnDurationMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'turn_duration'
+}
+
+/**
  * Summary message interface (automatic conversation summarization)
  */
 export interface SummaryMessage extends SessionMessage {

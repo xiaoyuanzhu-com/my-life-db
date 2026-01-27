@@ -12,6 +12,7 @@ import {
   isCompactBoundaryMessage,
   isCompactSummaryMessage,
   isSummaryMessage,
+  isTurnDurationMessage,
   type SessionMessage,
   type ExtractedToolResult,
   type SummaryMessage,
@@ -19,6 +20,20 @@ import {
 import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, getHighlighter } from '~/lib/shiki'
 import { useEffect, useState, useMemo } from 'react'
+
+// Format duration in milliseconds to human-readable string (e.g., "2m 54s")
+function formatDuration(ms: number): string {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (remainingSeconds === 0) {
+    return `${minutes}m`
+  }
+  return `${minutes}m ${remainingSeconds}s`
+}
 
 interface MessageBlockProps {
   message: SessionMessage
@@ -120,9 +135,10 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     return null
   }, [isSystem, message])
 
-  // Check for compact boundary, compact summary, and summary messages
+  // Check for compact boundary, compact summary, turn duration, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
   const isCompactSummary = isCompactSummaryMessage(message)
+  const isTurnDuration = isTurnDurationMessage(message)
   const isSummary = isSummaryMessage(message)
 
   // Determine what to render
@@ -131,7 +147,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isTurnDuration
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -140,7 +156,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isTurnDuration && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -168,6 +184,19 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
             style={{ color: 'var(--claude-text-primary)' }}
           >
             Session compacted
+          </span>
+        </div>
+      )}
+
+      {/* Turn duration: system telemetry showing how long a turn took */}
+      {isTurnDuration && (
+        <div className="flex items-start gap-2">
+          <MessageDot status="completed" lineHeight="mono" />
+          <span
+            className="font-mono text-[13px] leading-[1.5]"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            Turn completed in {formatDuration(message.durationMs ?? 0)}
           </span>
         </div>
       )}
