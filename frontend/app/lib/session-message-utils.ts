@@ -503,7 +503,8 @@ export function buildToolResultMap(messages: SessionMessage[]): Map<string, Extr
  *    - 'result' message (normal completion)
  *    - Assistant message with isApiErrorMessage (API error ended the turn)
  *    - Assistant message with stop_reason set (turn completed)
- * 3. If no terminator after user message = Claude is working
+ * 3. Check if the last message is an assistant with text (waiting for user input)
+ * 4. If no terminator after user message = Claude is working
  *
  * Note: This may have false negatives (e.g., second tab opens before messages load).
  * Use optimisticMessage as additional signal for immediate feedback.
@@ -542,6 +543,21 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
     // Assistant message with stop_reason indicates turn completed
     if (msg.type === 'assistant' && msg.message?.stop_reason) {
       return false
+    }
+  }
+
+  // Check if the last message is an assistant message with text content
+  // (not ending with tool_use). This indicates Claude finished and is waiting for user.
+  // This handles cases where stop_reason wasn't recorded properly.
+  const lastMsg = messages[messages.length - 1]
+  if (lastMsg?.type === 'assistant' && lastMsg.message?.content) {
+    const content = lastMsg.message.content
+    if (Array.isArray(content) && content.length > 0) {
+      const lastBlock = content[content.length - 1]
+      // If last block is text (not tool_use), Claude is done
+      if (lastBlock.type === 'text') {
+        return false
+      }
     }
   }
 
