@@ -42,3 +42,8 @@ func (m SystemInitMessage) MarshalJSON() ([]byte, error) {
 	type Alias SystemInitMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - init messages are metadata.
+func (m *SystemInitMessage) HasUsefulContent() bool {
+	return false
+}

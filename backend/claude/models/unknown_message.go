@@ -15,3 +15,8 @@ func (m UnknownSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias UnknownSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - unknown messages are not considered useful.
+func (m *UnknownSessionMessage) HasUsefulContent() bool {
+	return false
+}

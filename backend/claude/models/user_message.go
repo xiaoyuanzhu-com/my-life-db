@@ -57,3 +57,14 @@ func (m *UserSessionMessage) GetUserPrompt() string {
 	return strings.Join(userTexts, "\n")
 }
 
+// HasUsefulContent returns true if this user message contains actual user input
+// (not just system-injected tags) or a tool use result.
+func (m *UserSessionMessage) HasUsefulContent() bool {
+	// Tool use results are meaningful content
+	if len(m.ToolUseResult) > 0 {
+		return true
+	}
+	// Check if there's actual user-typed content after filtering system tags
+	return m.GetUserPrompt() != ""
+}
+

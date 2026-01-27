@@ -18,3 +18,8 @@ func (m FileHistorySnapshotSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias FileHistorySnapshotSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - file history snapshots are metadata.
+func (m *FileHistorySnapshotSessionMessage) HasUsefulContent() bool {
+	return false
+}

@@ -23,3 +23,8 @@ func (m SystemSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias SystemSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - system events are metadata.
+func (m *SystemSessionMessage) HasUsefulContent() bool {
+	return false
+}

@@ -17,3 +17,8 @@ func (m AgentNameSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias AgentNameSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - agent name messages are metadata.
+func (m *AgentNameSessionMessage) HasUsefulContent() bool {
+	return false
+}

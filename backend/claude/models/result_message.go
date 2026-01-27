@@ -24,3 +24,8 @@ func (m ResultSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias ResultSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - result messages are metadata.
+func (m *ResultSessionMessage) HasUsefulContent() bool {
+	return false
+}

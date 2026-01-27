@@ -16,3 +16,8 @@ func (m QueueOperationSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias QueueOperationSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - queue operation messages are metadata.
+func (m *QueueOperationSessionMessage) HasUsefulContent() bool {
+	return false
+}

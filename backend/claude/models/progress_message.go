@@ -90,3 +90,8 @@ func (m ProgressSessionMessage) GetHookProgressData() (*HookProgressData, error)
 	}
 	return &data, nil
 }
+
+// HasUsefulContent returns false - progress messages are metadata.
+func (m *ProgressSessionMessage) HasUsefulContent() bool {
+	return false
+}

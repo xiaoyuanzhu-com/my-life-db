@@ -8,6 +8,9 @@ type SessionMessageI interface {
 	GetType() string
 	GetUUID() string
 	GetTimestamp() string
+	// HasUsefulContent returns true if the message represents meaningful session content.
+	// Used to filter out sessions that contain only system-injected or metadata messages.
+	HasUsefulContent() bool
 }
 
 // Ensure all types implement SessionMessageI

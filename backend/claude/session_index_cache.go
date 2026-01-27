@@ -261,16 +261,11 @@ func (c *SessionIndexCache) scanForMissingJSONL() {
 	}
 }
 
-// uselessMessageTypes defines message types that don't constitute meaningful session content.
-// A session with ONLY these message types will be ignored.
-var uselessMessageTypes = map[string]bool{
-	"file-history-snapshot": true,
-}
-
 // hasUsefulMessages checks if the session has at least one useful message.
+// Uses each message's HasUsefulContent() method for unified filtering logic.
 func hasUsefulMessages(messages []models.SessionMessageI) bool {
 	for _, msg := range messages {
-		if !uselessMessageTypes[msg.GetType()] {
+		if msg.HasUsefulContent() {
 			return true
 		}
 	}

@@ -17,3 +17,8 @@ func (m AssistantSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias AssistantSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns true - assistant messages indicate real conversation.
+func (m *AssistantSessionMessage) HasUsefulContent() bool {
+	return true
+}

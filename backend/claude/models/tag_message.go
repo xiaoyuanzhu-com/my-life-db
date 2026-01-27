@@ -16,3 +16,8 @@ func (m TagSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias TagSessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - tag messages are metadata.
+func (m *TagSessionMessage) HasUsefulContent() bool {
+	return false
+}

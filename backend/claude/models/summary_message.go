@@ -17,3 +17,8 @@ func (m SummarySessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias SummarySessionMessage
 	return json.Marshal(Alias(m))
 }
+
+// HasUsefulContent returns false - summary messages are metadata.
+func (m *SummarySessionMessage) HasUsefulContent() bool {
+	return false
+}
