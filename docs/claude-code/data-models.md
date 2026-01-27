@@ -215,6 +215,53 @@ stdout (stream-json):
 - When **watching live sessions** (WebSocket/stdout): Receive `init` first, `result` last
 - **Must handle both** `toolUseResult` and `tool_use_result` field names
 
+#### Backend Raw JSON Passthrough ⭐⭐⭐ CRITICAL
+
+The Go backend **always returns the full raw JSON** from Claude, regardless of whether the typed struct covers all fields. This is implemented via a raw JSON passthrough pattern:
+
+**How it works:**
+
+1. **RawJSON embedding**: Every message type embeds `RawJSON` which holds `json.RawMessage`:
+   ```go
+   type RawJSON struct {
+       Raw json.RawMessage `json:"-"`
+   }
+   ```
+
+2. **Raw preservation during parsing**: When reading JSONL, raw bytes are copied before unmarshaling:
+   ```go
+   rawCopy := make([]byte, len(line))
+   copy(rawCopy, []byte(line))
+   // ... unmarshal into typed struct ...
+   msg.Raw = rawCopy
+   ```
+
+3. **Raw passthrough during serialization**: Every message type's `MarshalJSON` returns raw bytes first:
+   ```go
+   func (m SummarySessionMessage) MarshalJSON() ([]byte, error) {
+       if len(m.Raw) > 0 {
+           return m.Raw, nil  // Return original JSON as-is
+       }
+       // Fallback to struct fields only if Raw is empty
+       type Alias SummarySessionMessage
+       return json.Marshal(Alias(m))
+   }
+   ```
+
+4. **Unknown types preserved**: Unknown message types use `UnknownSessionMessage` which also preserves raw JSON.
+
+**Why this matters:**
+- **Future-proof**: New fields added by Claude are automatically passed through
+- **No data loss**: Backend never filters or transforms Claude's output
+- **Debugging**: Raw JSON matches exactly what Claude produced
+- **Frontend responsibility**: Handle any fields Claude outputs, not just what backend structs define
+
+**Example**: A `summary` message from Claude:
+```json
+{"type": "summary", "summary": "Session Title", "leafUuid": "abc-123"}
+```
+This is returned **exactly as-is** from the API, even though the `SummarySessionMessage` struct only has `Summary` and `LeafUUID` fields. If Claude adds new fields, they pass through automatically.
+
 ---
 
 **Message Types** (`type` field):
