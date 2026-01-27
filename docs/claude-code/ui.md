@@ -800,7 +800,7 @@ Each tool type has a specific visualization pattern in the official UI:
 | **Glob** | File list with file type icons, grouped by directory, monospace paths |
 | **Grep** | Matched files list OR content with line numbers and search term highlighted |
 | **WebFetch** | URL (truncated) + collapsible markdown content (click to expand) |
-| **WebSearch** | Search query + results as clickable links with descriptions |
+| **WebSearch** | Search query + collapsible link list (click header to expand, shows clickable links) |
 | **Task** | Agent name + type badge + status indicator + collapsible output |
 | **AskUserQuestion** | Inline question card (see component G) |
 | **TodoWrite** | Task list panel update (see component G) |
@@ -1032,6 +1032,50 @@ Or for modifications:
 | `result` | string | Extracted/summarized content (markdown) |
 | `durationMs` | number | Request duration in milliseconds |
 | `url` | string | Final URL (may differ from request URL after redirects) |
+
+</details>
+
+<details>
+<summary><strong>WebSearch Tool - Detailed Spec</strong></summary>
+
+**UX Pattern:** [`collapsible-header`](#pattern-collapsible-header)
+
+**Visual:**
+```
+● WebSearch "gold price January 2026" ▸                    [collapsed]
+└ Found 10 results (17.9s)
+
+● WebSearch "gold price January 2026" ▾                    [expanded]
+└ Found 10 results (17.9s)
+  ┌─────────────────────────────────────────┐
+  │ Today's Gold Prices: January 26, 2026   │
+  │ https://money.com/gold-prices-today...  │
+  │                                         │
+  │ Current price of gold as of January 26  │
+  │ https://fortune.com/article/current...  │
+  │                                         │
+  │ Gold - Price - Chart - Historical Data  │
+  │ https://tradingeconomics.com/commodity. │
+  └─────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Uses `collapsible-header` pattern (collapsed by default, click header to expand)
+- Query displayed after tool name
+- Summary shows result count and duration
+- When expanded, shows clickable links with titles and URLs
+- Links open in new tab (`target="_blank"`)
+
+**toolUseResult Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | The search query that was executed |
+| `results` | array | Heterogeneous array: `[LinksContainer, FormattedString]` |
+| `results[0].tool_use_id` | string | Server-side tool use ID |
+| `results[0].content` | array | Array of link objects with `title` and `url` |
+| `results[1]` | string | Formatted search results with summaries |
+| `durationSeconds` | number | Search duration in seconds |
 
 </details>
 
