@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { Upload, FolderPlus } from "lucide-react";
 import { FileTree } from "~/components/library/file-tree";
 import { FileViewer } from "~/components/library/file-viewer";
 import { FileTabs } from "~/components/library/file-tabs";
 import { FileFooterBar } from "~/components/library/file-footer-bar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "~/components/ui/resizable";
+import { Button } from "~/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +36,8 @@ function LibraryContent() {
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
+  const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeTab = tabs.find((tab) => tab.isActive);
   const activeFilePath = activeTab?.path ?? null;
@@ -231,6 +235,31 @@ function LibraryContent() {
     setTabs((prev) => prev.map((t) => (t.path === filePath ? { ...t, content, isDirty } : t)));
   }, []);
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      for (const file of Array.from(files)) {
+        await uploadManager.enqueueFile(file, undefined, "");
+      }
+    } catch (error) {
+      console.error("Failed to upload files:", error);
+      alert(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+
+    // Reset input so the same file can be selected again
+    e.target.value = "";
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "w" && activeFilePath) {
@@ -262,6 +291,21 @@ function LibraryContent() {
         <div className="h-full min-h-0 min-w-0 flex flex-col w-full px-[10%]">
           <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 w-full">
             <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden min-w-0">
+              <div className="flex items-center gap-1 p-2 border-b">
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleUploadClick}>
+                  <Upload className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCreateFolderTrigger((n) => n + 1)}>
+                  <FolderPlus className="w-4 h-4" />
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileInputChange}
+                />
+              </div>
               <div className="flex-1 overflow-y-auto">
                 <FileTree
                   onFileOpen={handleFileOpen}
@@ -271,6 +315,7 @@ function LibraryContent() {
                   onFileDeleted={handleFileDeleted}
                   onFileRenamed={handleFileRenamed}
                   onFileMoved={handleFileMoved}
+                  createFolderTrigger={createFolderTrigger}
                 />
               </div>
             </ResizablePanel>

@@ -38,6 +38,7 @@ interface FileTreeProps {
   onFileDeleted?: (path: string) => void;
   onFileRenamed?: (oldPath: string, newPath: string) => void;
   onFileMoved?: (oldPath: string, newPath: string) => void;
+  createFolderTrigger?: number;
 }
 
 interface TreeNodeProps {
@@ -505,6 +506,7 @@ export function FileTree({
   onFileDeleted,
   onFileRenamed,
   onFileMoved,
+  createFolderTrigger,
 }: FileTreeProps) {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -557,6 +559,13 @@ export function FileTree({
       newFolderInputRef.current.focus();
     }
   }, [isCreatingFolder]);
+
+  // External trigger for folder creation
+  useEffect(() => {
+    if (createFolderTrigger && createFolderTrigger > 0) {
+      setIsCreatingFolder(true);
+    }
+  }, [createFolderTrigger]);
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
