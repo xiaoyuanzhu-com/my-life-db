@@ -19,7 +19,7 @@ import {
   type ExtractedToolResult,
   type SummaryMessage,
 } from '~/lib/session-message-utils'
-import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage, ToolUseInfo } from './session-messages'
 import { parseMarkdown, onMermaidThemeChange, highlightCode } from '~/lib/shiki'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
@@ -48,11 +48,13 @@ interface MessageBlockProps {
   hookProgressMap?: Map<string, HookProgressMessage[]>
   /** Map from hook_id to hook_response messages (for pairing hook_started with hook_response) */
   hookResponseMap?: Map<string, HookResponseMessage>
+  /** Map from tool_use ID to tool info (for microcompact_boundary) */
+  toolUseMap?: Map<string, ToolUseInfo>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -196,17 +198,9 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
         </div>
       )}
 
-      {/* Microcompact boundary: similar to compact boundary but for targeted tool compaction */}
+      {/* Microcompact boundary: collapsible showing which tools were compacted */}
       {isMicrocompactBoundary && (
-        <div className="flex items-start gap-2">
-          <MessageDot status="completed" lineHeight="mono" />
-          <span
-            className="font-mono text-[13px] leading-[1.5] font-semibold"
-            style={{ color: 'var(--claude-text-primary)' }}
-          >
-            Context microcompacted
-          </span>
-        </div>
+        <MicrocompactBlock message={message} toolUseMap={toolUseMap} />
       )}
 
       {/* Turn duration: system telemetry showing how long a turn took */}
@@ -844,6 +838,85 @@ function HookBlock({
         >
           <div className="font-semibold mb-1">stderr:</div>
           {hookResponse.stderr}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Microcompact block - collapsible showing which tools were compacted
+function MicrocompactBlock({
+  message,
+  toolUseMap,
+}: {
+  message: SessionMessage
+  toolUseMap?: Map<string, ToolUseInfo>
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  // Extract microcompact metadata
+  const metadata = message.microcompactMetadata
+  const compactedToolIds = metadata?.compactedToolIds ?? []
+  const tokensSaved = metadata?.tokensSaved ?? 0
+
+  // Map tool IDs to tool info (name + title)
+  const compactedTools = compactedToolIds.map((id) => {
+    const info = toolUseMap?.get(id)
+    return {
+      id,
+      name: info?.name ?? 'Unknown',
+      title: info?.title ?? info?.name ?? 'Unknown',
+    }
+  })
+
+  const hasDetails = compactedTools.length > 0
+
+  return (
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header line - clickable to expand/collapse */}
+      <button
+        type="button"
+        onClick={() => hasDetails && setIsExpanded(!isExpanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasDetails ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
+        disabled={!hasDetails}
+      >
+        <MessageDot status="completed" lineHeight="mono" />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span
+            className="font-semibold"
+            style={{ color: 'var(--claude-text-primary)' }}
+          >
+            Context microcompacted
+          </span>
+          <span style={{ color: 'var(--claude-text-tertiary)' }}>
+            ({compactedTools.length} tool{compactedTools.length !== 1 ? 's' : ''}, {tokensSaved.toLocaleString()} tokens saved)
+          </span>
+          {hasDetails && (
+            <span
+              className="select-none text-[11px]"
+              style={{ color: 'var(--claude-text-tertiary)' }}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded content - list of compacted tools */}
+      {isExpanded && hasDetails && (
+        <div
+          className="mt-2 ml-5 flex flex-col gap-1"
+          style={{ color: 'var(--claude-text-secondary)' }}
+        >
+          {compactedTools.map((tool) => (
+            <div key={tool.id} className="flex items-center gap-2">
+              <span className="select-none">└</span>
+              <span>{tool.name}</span>
+              <span style={{ color: 'var(--claude-text-tertiary)' }}>
+                {tool.title !== tool.name && tool.title}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

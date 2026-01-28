@@ -4,9 +4,17 @@ import {
   buildToolResultMap,
   isSkippedUserMessage,
   isHookResponseMessage,
+  isToolUseBlock,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
+
+// Tool use info for mapping tool IDs to their names and titles
+export interface ToolUseInfo {
+  id: string
+  name: string
+  title: string  // Human-readable title derived from tool parameters
+}
 
 // Agent progress message structure
 interface AgentProgressMessage extends SessionMessage {
@@ -155,6 +163,86 @@ export function buildHookResponseMap(messages: SessionMessage[]): Map<string, Ho
   return map
 }
 
+/**
+ * Extract a human-readable title from tool parameters
+ */
+function getToolTitle(name: string, input: Record<string, unknown>): string {
+  // Extract primary parameter based on tool type
+  switch (name) {
+    case 'Read':
+    case 'Write':
+    case 'Edit':
+    case 'NotebookEdit':
+      return extractFilename(input.file_path as string | undefined) || name
+
+    case 'Bash':
+      return truncate(input.command as string | undefined, 40) || name
+
+    case 'Grep':
+      return truncate(input.pattern as string | undefined, 30) || name
+
+    case 'Glob':
+      return truncate(input.pattern as string | undefined, 30) || name
+
+    case 'WebFetch':
+      return truncate(input.url as string | undefined, 40) || name
+
+    case 'WebSearch':
+      return truncate(input.query as string | undefined, 40) || name
+
+    case 'Task':
+      return truncate(input.description as string | undefined, 40) || name
+
+    case 'TodoWrite':
+      return 'update todos'
+
+    default:
+      return name
+  }
+}
+
+/** Extract filename from a path */
+function extractFilename(path: string | undefined): string | undefined {
+  if (!path) return undefined
+  const parts = path.split('/')
+  return parts[parts.length - 1]
+}
+
+/** Truncate string to max length */
+function truncate(str: string | undefined, maxLen: number): string | undefined {
+  if (!str) return undefined
+  if (str.length <= maxLen) return str
+  return str.slice(0, maxLen - 3) + '...'
+}
+
+/**
+ * Build a map from tool_use ID to tool info (name + title)
+ * This allows microcompact_boundary messages to show which tools were compacted
+ */
+export function buildToolUseMap(messages: SessionMessage[]): Map<string, ToolUseInfo> {
+  const map = new Map<string, ToolUseInfo>()
+
+  for (const msg of messages) {
+    // Tool uses are in assistant messages
+    if (msg.type !== 'assistant') continue
+
+    const content = msg.message?.content
+    if (!Array.isArray(content)) continue
+
+    for (const block of content) {
+      if (isToolUseBlock(block)) {
+        map.set(block.id, {
+          id: block.id,
+          name: block.name,
+          title: getToolTitle(block.name, block.input),
+        })
+      }
+    }
+  }
+
+  return map
+}
+
 interface SessionMessagesProps {
   /** Messages to render */
   messages: SessionMessage[]
@@ -180,6 +268,10 @@ interface SessionMessagesProps {
    */
   hookResponseMap?: Map<string, HookResponseMessage>
   /**
+   * Pre-built tool use map. If not provided, will be built from messages.
+   */
+  toolUseMap?: Map<string, ToolUseInfo>
+  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -204,6 +296,7 @@ export function SessionMessages({
   bashProgressMap: providedBashProgressMap,
   hookProgressMap: providedHookProgressMap,
   hookResponseMap: providedHookResponseMap,
+  toolUseMap: providedToolUseMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -235,6 +328,12 @@ export function SessionMessages({
     if (providedHookResponseMap) return providedHookResponseMap
     return buildHookResponseMap(messages)
   }, [messages, providedHookResponseMap])
+
+  // Build tool use map if not provided
+  const toolUseMap = useMemo(() => {
+    if (providedToolUseMap) return providedToolUseMap
+    return buildToolUseMap(messages)
+  }, [messages, providedToolUseMap])
 
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
@@ -291,6 +390,7 @@ export function SessionMessages({
           bashProgressMap={bashProgressMap}
           hookProgressMap={hookProgressMap}
           hookResponseMap={hookResponseMap}
+          toolUseMap={toolUseMap}
           depth={depth}
         />
       ))}
