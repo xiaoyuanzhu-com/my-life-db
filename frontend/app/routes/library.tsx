@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Upload, FolderPlus } from "lucide-react";
+import { Upload, FolderUp, FolderPlus } from "lucide-react";
 import { FileTree } from "~/components/library/file-tree";
 import { FileViewer } from "~/components/library/file-viewer";
 import { FileTabs } from "~/components/library/file-tabs";
@@ -38,6 +38,7 @@ function LibraryContent() {
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const activeTab = tabs.find((tab) => tab.isActive);
   const activeFilePath = activeTab?.path ?? null;
@@ -239,6 +240,10 @@ function LibraryContent() {
     fileInputRef.current?.click();
   };
 
+  const handleFolderUploadClick = () => {
+    folderInputRef.current?.click();
+  };
+
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -257,6 +262,33 @@ function LibraryContent() {
     }
 
     // Reset input so the same file can be selected again
+    e.target.value = "";
+  };
+
+  const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      for (const file of Array.from(files)) {
+        // webkitRelativePath contains the folder structure (e.g., "folder/subfolder/file.txt")
+        const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        const pathParts = relativePath.split("/");
+        pathParts.pop(); // Remove filename
+        const destination = pathParts.join("/");
+
+        await uploadManager.enqueueFile(file, undefined, destination);
+      }
+    } catch (error) {
+      console.error("Failed to upload folder:", error);
+      alert(`Failed to upload folder: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+
+    // Reset input so the same folder can be selected again
     e.target.value = "";
   };
 
@@ -292,11 +324,17 @@ function LibraryContent() {
           <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 w-full">
             <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden min-w-0">
               <div className="flex items-center gap-1 p-2 border-b">
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleUploadClick}>
-                  <Upload className="w-4 h-4" />
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleUploadClick}>
+                  <Upload className="w-3.5 h-3.5" />
+                  File
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCreateFolderTrigger((n) => n + 1)}>
-                  <FolderPlus className="w-4 h-4" />
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleFolderUploadClick}>
+                  <FolderUp className="w-3.5 h-3.5" />
+                  Folder
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCreateFolderTrigger((n) => n + 1)}>
+                  <FolderPlus className="w-3.5 h-3.5" />
+                  New Folder
                 </Button>
                 <input
                   ref={fileInputRef}
@@ -304,6 +342,14 @@ function LibraryContent() {
                   multiple
                   className="hidden"
                   onChange={handleFileInputChange}
+                />
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFolderInputChange}
+                  {...{ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
                 />
               </div>
               <div className="flex-1 overflow-y-auto">
