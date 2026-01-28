@@ -60,6 +60,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Track pending send state - when true, don't sync empty content to localStorage
+  // This allows optimistic UI clear while preserving localStorage for recovery
+  const pendingSendRef = useRef(false)
+
   // Restore draft from localStorage on mount or sessionId change
   useEffect(() => {
     try {
@@ -72,8 +76,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     }
   }, [sessionId])
 
-  // Save to localStorage on content change
+  // Save to localStorage on content change (but not during optimistic send)
   useEffect(() => {
+    // During optimistic send, don't sync empty content to localStorage
+    if (pendingSendRef.current && !content) {
+      return
+    }
     try {
       const key = getStorageKey(sessionId)
       if (content) {
@@ -90,6 +98,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   useImperativeHandle(ref, () => ({
     clearDraft: () => {
       try {
+        pendingSendRef.current = false
         localStorage.removeItem(getStorageKey(sessionId))
       } catch (error) {
         console.error('[ChatInput] Failed to clear draft:', error)
@@ -97,6 +106,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     },
     restoreDraft: () => {
       try {
+        pendingSendRef.current = false
         const saved = localStorage.getItem(getStorageKey(sessionId))
         if (saved) {
           setContent(saved)
@@ -143,6 +153,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const handleSend = () => {
     const trimmed = content.trim()
     if (trimmed && !disabled && !hasPermission) {
+      // Mark as pending send - localStorage won't be cleared when content becomes empty
+      pendingSendRef.current = true
       onSend(trimmed)
       setContent('')
       // Reset height after sending
