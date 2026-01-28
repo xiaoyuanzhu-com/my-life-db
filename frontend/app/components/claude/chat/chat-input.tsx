@@ -7,7 +7,7 @@ import {
   useImperativeHandle,
   forwardRef,
 } from 'react'
-import { ArrowUp, Image, Square } from 'lucide-react'
+import { ArrowUp, Image, Square, Loader2, WifiOff } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
@@ -20,6 +20,9 @@ export interface ChatInputHandle {
   /** Get current draft content from localStorage */
   getDraft: () => string | null
 }
+
+/** WebSocket connection status */
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'
 
 interface ChatInputProps {
   /** Session ID for localStorage key namespacing */
@@ -37,6 +40,8 @@ interface ChatInputProps {
   isWorking?: boolean
   /** Callback to interrupt the current operation */
   onInterrupt?: () => void
+  /** WebSocket connection status */
+  connectionStatus?: ConnectionStatus
 }
 
 function getStorageKey(sessionId: string): string {
@@ -54,6 +59,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     hiddenOnMobile = false,
     isWorking = false,
     onInterrupt,
+    connectionStatus = 'connected',
   },
   ref
 ) {
@@ -196,6 +202,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           className="border border-border rounded-xl overflow-hidden"
           style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
         >
+          {/* Connection status banner */}
+          {connectionStatus !== 'connected' && (
+            <ConnectionStatusBanner status={connectionStatus} />
+          )}
+
           {/* Permission approval section (when pending) - stacked for multiple */}
           {pendingPermissions.map((request, index) => (
             <PermissionSection
@@ -287,6 +298,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     </div>
   )
 })
+
+// ============================================================================
+// Connection Status Banner
+// ============================================================================
+
+interface ConnectionStatusBannerProps {
+  status: ConnectionStatus
+}
+
+function ConnectionStatusBanner({ status }: ConnectionStatusBannerProps) {
+  if (status === 'connecting') {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span>Reconnecting...</span>
+      </div>
+    )
+  }
+
+  // disconnected
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
+      <WifiOff className="h-3.5 w-3.5" />
+      <span>Disconnected. Your input is saved and will send when reconnected.</span>
+    </div>
+  )
+}
 
 // ============================================================================
 // Permission Section (integrated into input card)

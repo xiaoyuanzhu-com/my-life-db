@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
-import { ChatInput, type ChatInputHandle } from './chat-input'
+import { ChatInput, type ChatInputHandle, type ConnectionStatus } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { AskUserQuestion } from './ask-user-question'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
@@ -46,7 +46,7 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
-  const [_wsConnected, setWsConnected] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
   const [error, setError] = useState<string | null>(null)
 
   // Optimistic user message (shown immediately before server confirms)
@@ -138,6 +138,7 @@ export function ChatInterface({
     setControlResponses(new Set())
     setError(null)
     setProgressMessage(null)
+    setConnectionStatus('connecting') // Reset to connecting for new session
     hasRefreshedRef.current = false // Reset refresh tracking for new session
     // Note: isWorking is derived from rawMessages + optimisticMessage, so it resets automatically
   }, [sessionId])
@@ -329,7 +330,7 @@ export function ChatInterface({
 
         ws.onopen = () => {
           console.log('[ChatInterface] WebSocket connected')
-          setWsConnected(true)
+          setConnectionStatus('connected')
           wasConnected = true
           connectPromiseRef.current = null
           resolve(ws)
@@ -343,7 +344,6 @@ export function ChatInterface({
 
         ws.onclose = () => {
           console.log('[ChatInterface] WebSocket disconnected')
-          setWsConnected(false)
           wsRef.current = null
 
           if (!isComponentActiveRef.current) return
@@ -351,11 +351,13 @@ export function ChatInterface({
           if (wasConnected) {
             // Was connected, now disconnected - start background reconnection
             console.log('[ChatInterface] Connection lost, starting background reconnection...')
+            setConnectionStatus('connecting')
             connectPromiseRef.current = null
             // Trigger new connection attempt (will have its own 3 retries)
             ensureConnected().catch(() => {
               // Failed after retries - error already shown by the reject handler
               console.log('[ChatInterface] Background reconnection failed, waiting for user action')
+              setConnectionStatus('disconnected')
             })
           } else if (connectPromiseRef.current) {
             // Still in connection phase, retry
@@ -366,6 +368,7 @@ export function ChatInterface({
             } else {
               console.error('[ChatInterface] Connection failed after retries')
               connectPromiseRef.current = null
+              setConnectionStatus('disconnected')
               setError('Connection failed. Please try again.')
               setTimeout(() => setError(null), 5000)
               reject(new Error('Connection failed after retries'))
@@ -548,6 +551,7 @@ export function ChatInterface({
             hiddenOnMobile={shouldHideInput}
             isWorking={isWorking}
             onInterrupt={handleInterrupt}
+            connectionStatus={connectionStatus}
           />
         </div>
 
