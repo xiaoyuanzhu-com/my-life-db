@@ -51,9 +51,6 @@ export function useSessionWebSocket(
       // Ignore messages if we've switched to a different session
       // This prevents stale messages from contaminating the new session's state
       if (forSessionId !== currentSessionIdRef.current) {
-        console.log(
-          `[useSessionWebSocket] Ignoring stale message for session ${forSessionId}, current session is ${currentSessionIdRef.current}`
-        )
         return
       }
       try {
@@ -94,7 +91,6 @@ export function useSessionWebSocket(
         }
 
         attempts++
-        console.log(`[useSessionWebSocket] Connecting WebSocket (attempt ${attempts})`)
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
@@ -103,7 +99,6 @@ export function useSessionWebSocket(
         wsRef.current = ws
 
         ws.onopen = () => {
-          console.log('[useSessionWebSocket] WebSocket connected')
           setConnectionStatus('connected')
           setHasConnected(true)
           wasConnected = true
@@ -119,7 +114,6 @@ export function useSessionWebSocket(
         }
 
         ws.onclose = () => {
-          console.log('[useSessionWebSocket] WebSocket disconnected')
           wsRef.current = null
 
           if (!isComponentActiveRef.current) return
@@ -129,7 +123,6 @@ export function useSessionWebSocket(
 
           if (wasConnected) {
             // Was connected, now disconnected - start background reconnection
-            console.log(`[useSessionWebSocket] Connection lost, reconnecting in ${delay}ms...`)
             setConnectionStatus('connecting')
             connectPromiseRef.current = null
             setTimeout(() => {
@@ -137,7 +130,6 @@ export function useSessionWebSocket(
             }, delay)
           } else if (connectPromiseRef.current) {
             // Still in initial connection phase, keep retrying
-            console.log(`[useSessionWebSocket] Connection failed, retrying in ${delay}ms...`)
             setConnectionStatus('connecting')
             setTimeout(tryConnect, delay)
           }
@@ -160,7 +152,6 @@ export function useSessionWebSocket(
     ensureConnected()
 
     return () => {
-      console.log('[useSessionWebSocket] Cleaning up WebSocket')
       isComponentActiveRef.current = false
       connectPromiseRef.current = null
       if (wsRef.current) {

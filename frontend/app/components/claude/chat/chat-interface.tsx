@@ -117,7 +117,6 @@ export function ChatInterface({
         const msgData = msg.data as { todos?: TodoItem[] } | undefined
         const todos: TodoItem[] = msgData?.todos || []
         setActiveTodos(todos)
-        console.log('[ChatInterface] Received todo update:', todos)
         return
       }
 
@@ -149,13 +148,11 @@ export function ChatInterface({
         }
 
         setProgressMessage(progressMsg)
-        console.log('[ChatInterface] Received progress:', progressData?.type, progressMsg)
         return
       }
 
       // Handle result messages
       if (msg.type === 'result') {
-        console.log('[ChatInterface] Received result (turn complete):', msg.subtype, 'duration:', msg.duration_ms)
         setProgressMessage(null)
         setRawMessages((prev) => {
           const resultMsg: SessionMessage = {
@@ -196,7 +193,6 @@ export function ChatInterface({
 
       // Handle system init message
       if (msg.type === 'system' && msg.subtype === 'init') {
-        console.log('[ChatInterface] Received system init:', msg.session_id, msg.model)
         const initMsg: SessionMessage = {
           type: 'system',
           uuid: (msg.uuid as string) || crypto.randomUUID(),
@@ -213,7 +209,6 @@ export function ChatInterface({
 
       // Handle SessionMessage format
       const sessionMsg = msg as unknown as SessionMessage
-      console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
       if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
         // Synthetic user message received - check if it matches our draft
@@ -342,7 +337,6 @@ export function ChatInterface({
           type: 'user_message',
           content,
         })
-        console.log('[ChatInterface] Sent message via WebSocket:', content)
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
@@ -362,7 +356,6 @@ export function ChatInterface({
 
       try {
         await ws.sendMessage(response)
-        console.log('[ChatInterface] Sent permission response:', response, 'decision:', decision)
         // Add to responses locally for immediate UI feedback
         permissions.handleControlResponse({ request_id: requestId })
       } catch (error) {
@@ -375,8 +368,7 @@ export function ChatInterface({
   )
 
   // Handle question answer (placeholder for future implementation)
-  const handleQuestionAnswer = useCallback((answers: Record<string, string | string[]>) => {
-    console.log('Question answers:', answers)
+  const handleQuestionAnswer = useCallback((_answers: Record<string, string | string[]>) => {
     setPendingQuestion(null)
   }, [])
 
@@ -385,7 +377,6 @@ export function ChatInterface({
     if (!isWorking) return
 
     try {
-      console.log('[ChatInterface] Interrupting session:', sessionId)
       const response = await fetch(`/api/claude/sessions/${sessionId}/interrupt`, {
         method: 'POST',
       })
@@ -397,8 +388,6 @@ export function ChatInterface({
         setTimeout(() => setError(null), 5000)
         return
       }
-
-      console.log('[ChatInterface] Session interrupted successfully')
     } catch (error) {
       console.error('[ChatInterface] Interrupt error:', error)
       setError('Failed to interrupt session')
