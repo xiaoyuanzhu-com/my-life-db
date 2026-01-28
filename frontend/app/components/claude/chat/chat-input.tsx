@@ -1,15 +1,13 @@
-import {
-  useState,
-  useRef,
-  KeyboardEvent,
-  useEffect,
-  useCallback,
-  useImperativeHandle,
-  forwardRef,
-} from 'react'
-import { ArrowUp, Image, Square, Loader2, WifiOff, Check } from 'lucide-react'
+import { useImperativeHandle, forwardRef, useCallback } from 'react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
+import { useDraftPersistence, useReconnectionFeedback, type ConnectionStatus } from './hooks'
+import { ConnectionStatusBanner } from './connection-status-banner'
+import { PermissionCard } from './permission-card'
+import { ChatInputField } from './chat-input-field'
+
+// Re-export ConnectionStatus for backwards compatibility
+export type { ConnectionStatus }
 
 /** Imperative handle for ChatInput - allows parent to manage draft lifecycle */
 export interface ChatInputHandle {
@@ -20,9 +18,6 @@ export interface ChatInputHandle {
   /** Get current draft content from localStorage */
   getDraft: () => string | null
 }
-
-/** WebSocket connection status */
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'
 
 interface ChatInputProps {
   /** Session ID for localStorage key namespacing */
@@ -44,10 +39,6 @@ interface ChatInputProps {
   connectionStatus?: ConnectionStatus
 }
 
-function getStorageKey(sessionId: string): string {
-  return `claude-input:${sessionId}`
-}
-
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
   {
     sessionId,
@@ -63,152 +54,38 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   },
   ref
 ) {
-  const [content, setContent] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Draft persistence hook
+  const draft = useDraftPersistence(sessionId)
 
-  // Track pending send state - when true, don't sync empty content to localStorage
-  // This allows optimistic UI clear while preserving localStorage for recovery
-  const pendingSendRef = useRef(false)
-
-  // Track reconnection for success feedback animation
-  const prevConnectionStatusRef = useRef(connectionStatus)
-  const [showReconnected, setShowReconnected] = useState(false)
-  const [isDismissing, setIsDismissing] = useState(false)
-
-  // Detect reconnection: transition from non-connected → connected
-  useEffect(() => {
-    const prev = prevConnectionStatusRef.current
-    prevConnectionStatusRef.current = connectionStatus
-
-    if (prev !== 'connected' && connectionStatus === 'connected') {
-      // Just reconnected - show success feedback
-      setShowReconnected(true)
-      setIsDismissing(false)
-      // After 1.5s, start dismissal animation
-      const timer = setTimeout(() => {
-        setIsDismissing(true)
-      }, 1500)
-      return () => clearTimeout(timer)
-    } else if (connectionStatus !== 'connected') {
-      // Connection lost - reset reconnection feedback state
-      setShowReconnected(false)
-      setIsDismissing(false)
-    }
-  }, [connectionStatus])
-
-  // Restore draft from localStorage on mount or sessionId change
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(getStorageKey(sessionId))
-      if (saved) {
-        setContent(saved)
-      }
-    } catch (error) {
-      console.error('[ChatInput] Failed to restore draft from localStorage:', error)
-    }
-  }, [sessionId])
-
-  // Save to localStorage on content change (but not during optimistic send)
-  useEffect(() => {
-    // During optimistic send, don't sync empty content to localStorage
-    if (pendingSendRef.current && !content) {
-      return
-    }
-    try {
-      const key = getStorageKey(sessionId)
-      if (content) {
-        localStorage.setItem(key, content)
-      } else {
-        localStorage.removeItem(key)
-      }
-    } catch (error) {
-      console.error('[ChatInput] Failed to save draft to localStorage:', error)
-    }
-  }, [content, sessionId])
+  // Reconnection feedback hook
+  const reconnection = useReconnectionFeedback(connectionStatus)
 
   // Expose imperative handle for parent to manage draft lifecycle
-  useImperativeHandle(ref, () => ({
-    clearDraft: () => {
-      try {
-        pendingSendRef.current = false
-        localStorage.removeItem(getStorageKey(sessionId))
-      } catch (error) {
-        console.error('[ChatInput] Failed to clear draft:', error)
-      }
-    },
-    restoreDraft: () => {
-      try {
-        pendingSendRef.current = false
-        const saved = localStorage.getItem(getStorageKey(sessionId))
-        if (saved) {
-          setContent(saved)
-        }
-      } catch (error) {
-        console.error('[ChatInput] Failed to restore draft:', error)
-      }
-    },
-    getDraft: () => {
-      try {
-        return localStorage.getItem(getStorageKey(sessionId))
-      } catch {
-        return null
-      }
-    },
-  }), [sessionId])
+  useImperativeHandle(
+    ref,
+    () => ({
+      clearDraft: draft.clearDraft,
+      restoreDraft: draft.restoreDraft,
+      getDraft: draft.getDraft,
+    }),
+    [draft.clearDraft, draft.restoreDraft, draft.getDraft]
+  )
 
   const hasPermission = pendingPermissions.length > 0
 
-  // Handle Esc key for interrupt (when working and no permission pending)
-  useEffect(() => {
-    if (!isWorking || hasPermission || !onInterrupt) return
-
-    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onInterrupt()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isWorking, hasPermission, onInterrupt])
-
-  // Auto-resize textarea as content grows
-  useEffect(() => {
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
-    }
-  }, [content])
-
-  const handleSend = () => {
-    const trimmed = content.trim()
+  // Handle send - mark pending, call parent, clear content
+  const handleSend = useCallback(() => {
+    const trimmed = draft.content.trim()
     if (trimmed && !disabled && !hasPermission) {
-      // Mark as pending send - localStorage won't be cleared when content becomes empty
-      pendingSendRef.current = true
+      draft.markPendingSend()
       onSend(trimmed)
-      setContent('')
-      // Reset height after sending
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
-      }
+      draft.setContent('')
     }
-  }
+  }, [draft, disabled, hasPermission, onSend])
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Send on Enter (without Shift) - only if no permission pending
-    if (e.key === 'Enter' && !e.shiftKey && !hasPermission) {
-      e.preventDefault()
-      handleSend()
-    }
-    // Shift+Enter: allow default behavior (add newline)
-  }
-
-  const handleAttachClick = () => {
-    // TODO: Implement file attachment
-    console.log('Attach file clicked')
-  }
+  // Whether to show connection status banner
+  const showConnectionBanner =
+    connectionStatus !== 'connected' || (reconnection.showReconnected && connectionStatus === 'connected')
 
   // Whether to actually hide (respects permission override)
   const shouldHide = hiddenOnMobile && !hasPermission
@@ -229,18 +106,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
         >
           {/* Connection status banner */}
-          {(connectionStatus !== 'connected' || showReconnected) && (
+          {showConnectionBanner && (
             <ConnectionStatusBanner
               status={connectionStatus}
-              isReconnected={showReconnected && connectionStatus === 'connected'}
-              isDismissing={isDismissing}
-              onDismissed={() => setShowReconnected(false)}
+              isReconnected={reconnection.showReconnected && connectionStatus === 'connected'}
+              isDismissing={reconnection.isDismissing}
+              onDismissed={reconnection.onDismissed}
             />
           )}
 
           {/* Permission approval section (when pending) - stacked for multiple */}
           {pendingPermissions.map((request, index) => (
-            <PermissionSection
+            <PermissionCard
               key={request.requestId}
               request={request}
               onDecision={(decision) => onPermissionDecision!(request.requestId, decision)}
@@ -249,313 +126,20 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           ))}
 
           {/* Input section */}
-          <div className={cn('px-3 py-2', hasPermission && 'border-t border-border')}>
-            {/* Text input */}
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={hasPermission ? 'Waiting for permission...' : placeholder}
-              disabled={disabled || hasPermission}
-              rows={1}
-              className={cn(
-                'w-full resize-none',
-                'text-[15px] text-foreground',
-                'placeholder:text-muted-foreground',
-                'bg-transparent border-none outline-none',
-                'disabled:cursor-not-allowed disabled:opacity-50',
-                'min-h-[24px]'
-              )}
+          <div className={cn(hasPermission && 'border-t border-border')}>
+            <ChatInputField
+              content={draft.content}
+              onChange={draft.setContent}
+              onSend={handleSend}
+              onInterrupt={onInterrupt}
+              isWorking={isWorking}
+              disabled={disabled}
+              placeholder={placeholder}
+              hasPermission={hasPermission}
             />
-
-            {/* Actions row */}
-            <div className="flex items-center justify-between mt-2">
-              {/* Attachment icon - left */}
-              <button
-                type="button"
-                onClick={handleAttachClick}
-                disabled={disabled || hasPermission}
-                className={cn(
-                  'text-muted-foreground hover:text-foreground',
-                  'transition-colors',
-                  'disabled:opacity-50 disabled:cursor-not-allowed'
-                )}
-                aria-label="Attach file"
-              >
-                <Image className="h-5 w-5" />
-              </button>
-
-              {/* Submit / Stop button - right */}
-              {/* Send button takes priority when there's text input */}
-              {isWorking && !hasPermission && !content.trim() ? (
-                <button
-                  type="button"
-                  onClick={onInterrupt}
-                  disabled={disabled}
-                  className={cn(
-                    'h-9 w-9 rounded-lg',
-                    'bg-muted hover:bg-muted/80 border border-border',
-                    'flex items-center justify-center',
-                    'transition-all',
-                    'disabled:cursor-not-allowed disabled:opacity-50'
-                  )}
-                  aria-label="Stop generation (Esc)"
-                >
-                  <Square className="h-3.5 w-3.5 text-muted-foreground" fill="currentColor" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={disabled || hasPermission || !content.trim()}
-                  className={cn(
-                    'h-9 w-9 rounded-lg',
-                    'bg-primary hover:bg-primary/80 border border-primary',
-                    'flex items-center justify-center',
-                    'transition-all',
-                    'disabled:cursor-not-allowed',
-                    !content.trim() || hasPermission ? 'opacity-40' : 'opacity-100'
-                  )}
-                  aria-label="Send message"
-                >
-                  <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-                </button>
-              )}
-            </div>
           </div>
         </div>
       </div>
     </div>
   )
 })
-
-// ============================================================================
-// Connection Status Banner
-// ============================================================================
-
-interface ConnectionStatusBannerProps {
-  status: ConnectionStatus
-  /** Whether we just reconnected (show success state) */
-  isReconnected?: boolean
-  /** Whether to animate out */
-  isDismissing?: boolean
-  /** Called when dismissal animation completes */
-  onDismissed?: () => void
-}
-
-function ConnectionStatusBanner({
-  status,
-  isReconnected = false,
-  isDismissing = false,
-  onDismissed,
-}: ConnectionStatusBannerProps) {
-  const handleAnimationEnd = () => {
-    if (isDismissing && onDismissed) {
-      onDismissed()
-    }
-  }
-
-  // Determine which icon and text to show
-  let icon: React.ReactNode
-  let text: string
-
-  if (isReconnected) {
-    icon = <Check className="h-3.5 w-3.5 shrink-0" />
-    text = 'Connected.'
-  } else if (status === 'connecting') {
-    icon = <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-    text = 'Reconnecting. Your input is saved locally.'
-  } else {
-    icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />
-    text = 'Disconnected. Your input is saved locally.'
-  }
-
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border',
-        isDismissing ? 'animate-slide-down-fade-slow' : 'animate-slide-up-fade'
-      )}
-      onAnimationEnd={handleAnimationEnd}
-    >
-      {icon}
-      <span>{text}</span>
-    </div>
-  )
-}
-
-// ============================================================================
-// Permission Section (integrated into input card)
-// ============================================================================
-
-interface PermissionSectionProps {
-  request: PermissionRequest
-  onDecision: (decision: PermissionDecision) => void
-  /** Whether this is the first (topmost) permission - receives keyboard shortcuts */
-  isFirst?: boolean
-}
-
-function PermissionSection({ request, onDecision, isFirst = true }: PermissionSectionProps) {
-  const [isDismissing, setIsDismissing] = useState(false)
-  const [pendingDecision, setPendingDecision] = useState<PermissionDecision | null>(null)
-
-  // Handle button click - start exit animation
-  const handleDecision = useCallback((decision: PermissionDecision) => {
-    if (isDismissing) return // Prevent double-click
-    setIsDismissing(true)
-    setPendingDecision(decision)
-  }, [isDismissing])
-
-  // After animation ends, call the actual decision handler
-  const handleAnimationEnd = () => {
-    if (isDismissing && pendingDecision) {
-      onDecision(pendingDecision)
-    }
-  }
-
-  // Handle keyboard shortcuts - only for the first (topmost) permission
-  useEffect(() => {
-    if (!isFirst) return
-
-    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (isDismissing) return
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        handleDecision('deny')
-      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        handleDecision('allowSession')
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        handleDecision('allow')
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isFirst, isDismissing, handleDecision])
-
-  // Get the action verb based on tool name
-  const getActionVerb = (toolName: string): string => {
-    switch (toolName) {
-      case 'Bash':
-        return 'Run'
-      case 'Read':
-        return 'Read'
-      case 'Write':
-        return 'Write'
-      case 'Edit':
-        return 'Edit'
-      case 'WebFetch':
-        return 'Fetch'
-      case 'WebSearch':
-        return 'Search'
-      default:
-        return 'Use'
-    }
-  }
-
-  // Get the preview text based on tool and input
-  const getPreviewText = (toolName: string, input: Record<string, unknown>): string => {
-    switch (toolName) {
-      case 'Bash':
-        return (input.command as string) || ''
-      case 'Read':
-      case 'Write':
-      case 'Edit':
-        return (input.file_path as string) || ''
-      case 'WebFetch':
-        return (input.url as string) || ''
-      case 'WebSearch':
-        return (input.query as string) || ''
-      default:
-        return JSON.stringify(input, null, 2)
-    }
-  }
-
-  // Get the description if available
-  const getDescription = (input: Record<string, unknown>): string | null => {
-    return (input.description as string) || null
-  }
-
-  const actionVerb = getActionVerb(request.toolName)
-  const previewText = getPreviewText(request.toolName, request.input)
-  const description = getDescription(request.input)
-
-  return (
-    <div
-      className={cn(
-        'p-3',
-        isDismissing ? 'animate-slide-down-fade' : 'animate-slide-up-fade',
-        !isFirst && 'border-t border-border'
-      )}
-      onAnimationEnd={handleAnimationEnd}
-    >
-      {/* Header: Allow Claude to {Action}? */}
-      <div className="text-[14px] leading-relaxed text-foreground mb-2">
-        Allow Claude to <span className="font-semibold">{actionVerb}</span>?
-      </div>
-
-      {/* Description (if available) */}
-      {description && (
-        <div className="text-[12px] text-muted-foreground mb-2">{description}</div>
-      )}
-
-      {/* Command/query preview block */}
-      <div
-        className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-32 overflow-y-auto"
-        style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-      >
-        <pre className="whitespace-pre-wrap break-all">{previewText}</pre>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center justify-end gap-2">
-        {/* Deny */}
-        <button
-          onClick={() => handleDecision('deny')}
-          disabled={isDismissing}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
-        >
-          Deny
-          {isFirst && (
-            <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
-              Esc
-            </kbd>
-          )}
-        </button>
-
-        {/* Always allow for session */}
-        <button
-          onClick={() => handleDecision('allowSession')}
-          disabled={isDismissing}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
-        >
-          Always allow for session
-          {isFirst && (
-            <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
-              <span>⌘</span>
-              <span>⏎</span>
-            </kbd>
-          )}
-        </button>
-
-        {/* Allow once */}
-        <button
-          onClick={() => handleDecision('allow')}
-          disabled={isDismissing}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-[12px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          Allow once
-          {isFirst && (
-            <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
-              ⏎
-            </kbd>
-          )}
-        </button>
-      </div>
-    </div>
-  )
-}
