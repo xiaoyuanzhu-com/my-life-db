@@ -89,6 +89,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         setIsDismissing(true)
       }, 1500)
       return () => clearTimeout(timer)
+    } else if (connectionStatus !== 'connected') {
+      // Connection lost - reset reconnection feedback state
+      setShowReconnected(false)
+      setIsDismissing(false)
     }
   }, [connectionStatus])
 
