@@ -140,10 +140,23 @@ export type ToolParams =
 // Tool results
 // ============================================================================
 
+/**
+ * Read tool result structure from Claude Code.
+ *
+ * Note: The actual structure from Claude Code is:
+ * { type: "text", file: { filePath: string, content: string } }
+ *
+ * See docs/claude-code/data-models.md Section 4c "Read Tool Results"
+ */
 export interface ReadToolResult {
-  content: string
-  lineCount: number
-  truncated?: boolean
+  type: 'text'
+  file: {
+    filePath: string
+    content?: string
+    numLines?: number
+    startLine?: number
+    totalLines?: number
+  }
 }
 
 export interface GlobToolResult {
