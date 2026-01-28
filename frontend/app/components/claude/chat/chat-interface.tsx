@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
-import { ChatInput } from './chat-input'
+import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { AskUserQuestion } from './ask-user-question'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
@@ -30,6 +30,15 @@ interface ChatInterfaceProps {
 // Types that should not be rendered as messages
 const SKIP_TYPES = ['file-history-snapshot', 'result']
 
+/** Extract text content from a user message (for draft comparison) */
+function extractUserMessageText(msg: SessionMessage): string | null {
+  if (msg.type !== 'user') return null
+  const message = msg.message as { content?: Array<{ type: string; text?: string }> } | undefined
+  if (!message?.content) return null
+  const textBlock = message.content.find((b) => b.type === 'text')
+  return textBlock?.text ?? null
+}
+
 export function ChatInterface({
   sessionId,
   isActive,
@@ -58,6 +67,9 @@ export function ChatInterface({
   // WebSocket ref and connection state
   const wsRef = useRef<WebSocket | null>(null)
   const connectPromiseRef = useRef<Promise<WebSocket> | null>(null)
+
+  // ChatInput ref for draft lifecycle management
+  const chatInputRef = useRef<ChatInputHandle>(null)
   const isComponentActiveRef = useRef(true)
 
   // Track if we've refreshed sessions for this inactive session (to avoid multiple refreshes)
@@ -245,6 +257,13 @@ export function ChatInterface({
       console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
 
       if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
+        // Synthetic user message received - check if it matches our draft
+        const msgText = extractUserMessageText(sessionMsg)
+        const draft = chatInputRef.current?.getDraft()
+        if (draft && msgText && draft.trim() === msgText.trim()) {
+          // Message confirmed sent - clear the draft from localStorage
+          chatInputRef.current?.clearDraft()
+        }
         setOptimisticMessage(null)
       }
 
@@ -401,6 +420,8 @@ export function ChatInterface({
         console.error('Failed to send message:', error)
         setError('Failed to connect. Please try again.')
         setOptimisticMessage(null)
+        // Restore draft so user doesn't lose their input
+        chatInputRef.current?.restoreDraft()
         setTimeout(() => setError(null), 3000)
       }
     },
@@ -519,6 +540,8 @@ export function ChatInterface({
           />
 
           <ChatInput
+            ref={chatInputRef}
+            sessionId={sessionId}
             onSend={sendMessage}
             pendingPermissions={pendingPermissions}
             onPermissionDecision={handlePermissionDecision}

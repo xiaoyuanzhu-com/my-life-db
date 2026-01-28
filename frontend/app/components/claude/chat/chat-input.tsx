@@ -1,9 +1,29 @@
-import { useState, useRef, KeyboardEvent, useEffect, useCallback } from 'react'
+import {
+  useState,
+  useRef,
+  KeyboardEvent,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+} from 'react'
 import { ArrowUp, Image, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
+/** Imperative handle for ChatInput - allows parent to manage draft lifecycle */
+export interface ChatInputHandle {
+  /** Clear the draft from localStorage (call when message confirmed sent) */
+  clearDraft: () => void
+  /** Restore content from localStorage (call on send failure) */
+  restoreDraft: () => void
+  /** Get current draft content from localStorage */
+  getDraft: () => string | null
+}
+
 interface ChatInputProps {
+  /** Session ID for localStorage key namespacing */
+  sessionId: string
   onSend: (content: string) => void
   disabled?: boolean
   placeholder?: string
@@ -19,18 +39,80 @@ interface ChatInputProps {
   onInterrupt?: () => void
 }
 
-export function ChatInput({
-  onSend,
-  disabled = false,
-  placeholder = 'Reply...',
-  pendingPermissions = [],
-  onPermissionDecision,
-  hiddenOnMobile = false,
-  isWorking = false,
-  onInterrupt,
-}: ChatInputProps) {
+function getStorageKey(sessionId: string): string {
+  return `claude-input:${sessionId}`
+}
+
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
+  {
+    sessionId,
+    onSend,
+    disabled = false,
+    placeholder = 'Reply...',
+    pendingPermissions = [],
+    onPermissionDecision,
+    hiddenOnMobile = false,
+    isWorking = false,
+    onInterrupt,
+  },
+  ref
+) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Restore draft from localStorage on mount or sessionId change
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(getStorageKey(sessionId))
+      if (saved) {
+        setContent(saved)
+      }
+    } catch (error) {
+      console.error('[ChatInput] Failed to restore draft from localStorage:', error)
+    }
+  }, [sessionId])
+
+  // Save to localStorage on content change
+  useEffect(() => {
+    try {
+      const key = getStorageKey(sessionId)
+      if (content) {
+        localStorage.setItem(key, content)
+      } else {
+        localStorage.removeItem(key)
+      }
+    } catch (error) {
+      console.error('[ChatInput] Failed to save draft to localStorage:', error)
+    }
+  }, [content, sessionId])
+
+  // Expose imperative handle for parent to manage draft lifecycle
+  useImperativeHandle(ref, () => ({
+    clearDraft: () => {
+      try {
+        localStorage.removeItem(getStorageKey(sessionId))
+      } catch (error) {
+        console.error('[ChatInput] Failed to clear draft:', error)
+      }
+    },
+    restoreDraft: () => {
+      try {
+        const saved = localStorage.getItem(getStorageKey(sessionId))
+        if (saved) {
+          setContent(saved)
+        }
+      } catch (error) {
+        console.error('[ChatInput] Failed to restore draft:', error)
+      }
+    },
+    getDraft: () => {
+      try {
+        return localStorage.getItem(getStorageKey(sessionId))
+      } catch {
+        return null
+      }
+    },
+  }), [sessionId])
 
   const hasPermission = pendingPermissions.length > 0
 
@@ -192,7 +274,7 @@ export function ChatInput({
       </div>
     </div>
   )
-}
+})
 
 // ============================================================================
 // Permission Section (integrated into input card)
