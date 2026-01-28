@@ -43,7 +43,7 @@ export function ConnectionStatusBanner({
     <div
       className={cn(
         'flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border',
-        isDismissing ? 'animate-slide-down-fade-slow' : 'animate-slide-up-fade'
+        isDismissing ? 'animate-banner-conceal' : 'animate-banner-reveal'
       )}
       onAnimationEnd={handleAnimationEnd}
     >

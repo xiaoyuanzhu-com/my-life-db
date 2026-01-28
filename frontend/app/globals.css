@@ -235,6 +235,27 @@
   animation: slide-down-fade 0.4s ease-in forwards;
 }
 
+/* Banner reveal/conceal - simple height animation */
+@keyframes banner-reveal {
+  from { max-height: 0; }
+  to { max-height: 50px; }
+}
+
+@keyframes banner-conceal {
+  from { max-height: 50px; }
+  to { max-height: 0; }
+}
+
+.animate-banner-reveal {
+  animation: banner-reveal 0.25s ease-out forwards;
+  overflow: hidden;
+}
+
+.animate-banner-conceal {
+  animation: banner-conceal 0.25s ease-in forwards;
+  overflow: hidden;
+}
+
 /* Initial hidden state for new items before animation starts */
 .animate-new-item-initial {
   opacity: 0;
