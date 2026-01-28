@@ -489,11 +489,14 @@ func (t *SubprocessCLITransport) monitorProcess() {
 	}
 
 	if err != nil {
-		log.Error().Err(err).Msg("Claude CLI process error")
-		// Only report error if we didn't cancel
+		// Only report error if we didn't cancel (graceful shutdown)
 		select {
 		case <-t.ctx.Done():
+			// Context was cancelled - this is expected during graceful shutdown
+			log.Debug().Err(err).Msg("Claude CLI process terminated during shutdown")
 		default:
+			// Unexpected error - process died on its own
+			log.Error().Err(err).Msg("Claude CLI process error")
 			select {
 			case t.errors <- &CLIConnectionError{Message: "process exited", Cause: err}:
 			default:
