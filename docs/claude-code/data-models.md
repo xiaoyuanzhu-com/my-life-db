@@ -284,7 +284,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 
 | Type | Subtypes |
 |------|----------|
-| `system` | `init`, `compact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started` |
+| `system` | `init`, `compact_boundary`, `microcompact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started` |
 | `progress` | `hook_progress`, `bash_progress`, `agent_progress`, `query_update`, `search_results_received` |
 | `result` | `success`, `error` |
 
@@ -811,6 +811,7 @@ System messages report internal events. The `subtype` field determines the speci
 |---------|-------------|---------------------|
 | `init` | Session initialization with tools, model, and configuration | ❌ No (stdout only) |
 | `compact_boundary` | Conversation was compacted to reduce context | ✅ Yes |
+| `microcompact_boundary` | Targeted tool outputs were compacted to reduce context | ✅ Yes |
 | `turn_duration` | Duration metrics for a turn | ✅ Yes |
 | `api_error` | API call failed, will retry | ✅ Yes |
 | `local_command` | Local slash command executed (e.g., `/doctor`) | ✅ Yes |
@@ -912,6 +913,53 @@ Marks where the conversation was compacted to reduce context. The next message (
 | `logicalParentUuid` | string | UUID of the last message before compaction (for logical threading) |
 | `compactMetadata.trigger` | string | What triggered compaction (`"auto"` or `"manual"`) |
 | `compactMetadata.preTokens` | number | Token count before compaction |
+
+**5b2. Microcompact Boundary**
+
+> **Note**: This message type is not officially documented by Anthropic. The structure below is based on observed behavior and may change.
+
+Marks where specific tool outputs were compacted to reduce context. Unlike `compact_boundary` which compacts the entire conversation, `microcompact_boundary` targets specific tool call outputs that are large and can be safely summarized.
+
+```json
+{
+  "parentUuid": "2c2ac028-05a8-4d1c-9cc5-1b578655fa75",
+  "isSidechain": false,
+  "userType": "external",
+  "cwd": "/Users/iloahz/projects/my-life-db/frontend",
+  "sessionId": "2ddb63fa-7eec-48fc-a81c-fc1b74c17e01",
+  "version": "2.1.20",
+  "gitBranch": "main",
+  "slug": "clever-growing-mist",
+  "type": "system",
+  "subtype": "microcompact_boundary",
+  "content": "Context microcompacted",
+  "isMeta": false,
+  "timestamp": "2026-01-27T16:35:39.996Z",
+  "uuid": "80ed17ac-16af-4a3d-b537-8461a4400e5d",
+  "level": "info",
+  "microcompactMetadata": {
+    "trigger": "auto",
+    "preTokens": 57986,
+    "tokensSaved": 34199,
+    "compactedToolIds": ["toolu_01KqNYvWahojZCtDEHuS7u3U", "toolu_0143Rc42dtysZbLEGMdV3XFN", "toolu_01PY3TzpuDEAvHb8A7wGk3na"],
+    "clearedAttachmentUUIDs": []
+  }
+}
+```
+
+**Microcompact Boundary Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subtype` | string | Always `"microcompact_boundary"` |
+| `content` | string | Always `"Context microcompacted"` |
+| `level` | string | Always `"info"` |
+| `isMeta` | boolean | Always `false` |
+| `microcompactMetadata.trigger` | string | What triggered compaction (`"auto"` or `"manual"`) |
+| `microcompactMetadata.preTokens` | number | Token count before microcompaction |
+| `microcompactMetadata.tokensSaved` | number | Number of tokens saved by microcompaction |
+| `microcompactMetadata.compactedToolIds` | string[] | Array of tool_use IDs whose outputs were compacted |
+| `microcompactMetadata.clearedAttachmentUUIDs` | string[] | Array of attachment UUIDs that were cleared |
 
 **5c. API Error (Retry)**
 ```json

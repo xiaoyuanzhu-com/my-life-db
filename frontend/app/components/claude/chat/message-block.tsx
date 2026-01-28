@@ -10,6 +10,7 @@ import {
   isToolResultError,
   isBashToolResult,
   isCompactBoundaryMessage,
+  isMicrocompactBoundaryMessage,
   isCompactSummaryMessage,
   isSummaryMessage,
   isTurnDurationMessage,
@@ -140,8 +141,9 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     return null
   }, [isSystem, message])
 
-  // Check for compact boundary, compact summary, turn duration, hook started, and summary messages
+  // Check for compact boundary, microcompact boundary, compact summary, turn duration, hook started, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
+  const isMicrocompactBoundary = isMicrocompactBoundaryMessage(message)
   const isCompactSummary = isCompactSummaryMessage(message)
   const isTurnDuration = isTurnDurationMessage(message)
   const isHookStarted = isHookStartedMessage(message)
@@ -153,7 +155,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isTurnDuration && !isHookStarted
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -162,7 +164,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -190,6 +192,19 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
             style={{ color: 'var(--claude-text-primary)' }}
           >
             Session compacted
+          </span>
+        </div>
+      )}
+
+      {/* Microcompact boundary: similar to compact boundary but for targeted tool compaction */}
+      {isMicrocompactBoundary && (
+        <div className="flex items-start gap-2">
+          <MessageDot status="completed" lineHeight="mono" />
+          <span
+            className="font-mono text-[13px] leading-[1.5] font-semibold"
+            style={{ color: 'var(--claude-text-primary)' }}
+          >
+            Context microcompacted
           </span>
         </div>
       )}

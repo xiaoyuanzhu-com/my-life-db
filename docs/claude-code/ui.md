@@ -1160,6 +1160,7 @@ These are top-level session events that are rendered as simple status indicators
 | Message Type | Display | Description |
 |--------------|---------|-------------|
 | `system.subtype: compact_boundary` | "Session compacted" | Marks where conversation was compacted to reduce context |
+| `system.subtype: microcompact_boundary` | "Context microcompacted" | Marks where specific tool outputs were compacted to reduce context |
 | `system.subtype: init` | System init block | Shows session initialization with tools, model, MCP servers |
 | `system.subtype: turn_duration` | "Turn completed in Xm Ys" | Turn duration telemetry showing how long a turn took |
 | `system.subtype: hook_started` | "Hook {status}: {hook_name}" + collapsible output | Hook execution (paired with hook_response via hookResponseMap) |

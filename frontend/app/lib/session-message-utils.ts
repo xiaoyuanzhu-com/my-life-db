@@ -96,6 +96,7 @@ export interface SessionMessage {
   level?: 'info' | 'error'
   logicalParentUuid?: string  // For compact_boundary: logical parent (different from parentUuid)
   compactMetadata?: CompactMetadata
+  microcompactMetadata?: MicrocompactMetadata  // For microcompact_boundary subtype
   error?: ApiErrorDetails  // For api_error subtype
   retryInMs?: number  // For api_error: milliseconds until retry
   retryAttempt?: number  // For api_error: current retry attempt
@@ -120,12 +121,21 @@ export interface SessionMessage {
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
   trigger: 'auto' | 'manual' | string
   preTokens: number
+}
+
+// Microcompact metadata for microcompact_boundary messages
+export interface MicrocompactMetadata {
+  trigger: 'auto' | 'manual' | string
+  preTokens: number
+  tokensSaved: number
+  compactedToolIds: string[]
+  clearedAttachmentUUIDs: string[]
 }
 
 // API error details for api_error messages
@@ -408,6 +418,13 @@ export function isSystemInitMessage(msg: SessionMessage): boolean {
  */
 export function isCompactBoundaryMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'compact_boundary'
+}
+
+/**
+ * Type guard to check if a message is a microcompact boundary message
+ */
+export function isMicrocompactBoundaryMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'microcompact_boundary'
 }
 
 /**
