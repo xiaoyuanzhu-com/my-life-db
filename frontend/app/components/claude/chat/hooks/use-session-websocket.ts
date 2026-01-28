@@ -35,19 +35,36 @@ export function useSessionWebSocket(
   const connectPromiseRef = useRef<Promise<WebSocket> | null>(null)
   const isComponentActiveRef = useRef(true)
 
+  // Track the current session ID to ignore stale messages after session switch
+  // This is updated synchronously before WebSocket cleanup to prevent race conditions
+  const currentSessionIdRef = useRef(sessionId)
+  currentSessionIdRef.current = sessionId
+
   // Keep onMessage in a ref so we don't need it as a dependency
   const onMessageRef = useRef(onMessage)
   onMessageRef.current = onMessage
 
-  // WebSocket message handler
-  const handleWsMessage = useCallback((event: MessageEvent) => {
-    try {
-      const data = JSON.parse(event.data)
-      onMessageRef.current(data)
-    } catch (error) {
-      console.error('[useSessionWebSocket] Failed to parse WebSocket message:', error)
-    }
-  }, [])
+  // WebSocket message handler - created fresh for each session to capture sessionId
+  // This ensures messages from old WebSockets are ignored after session switch
+  const createMessageHandler = useCallback(
+    (forSessionId: string) => (event: MessageEvent) => {
+      // Ignore messages if we've switched to a different session
+      // This prevents stale messages from contaminating the new session's state
+      if (forSessionId !== currentSessionIdRef.current) {
+        console.log(
+          `[useSessionWebSocket] Ignoring stale message for session ${forSessionId}, current session is ${currentSessionIdRef.current}`
+        )
+        return
+      }
+      try {
+        const data = JSON.parse(event.data)
+        onMessageRef.current(data)
+      } catch (error) {
+        console.error('[useSessionWebSocket] Failed to parse WebSocket message:', error)
+      }
+    },
+    []
+  )
 
   // Lazy WebSocket connection - connects on demand with infinite retry
   // Uses exponential backoff with max delay of 60 seconds
@@ -95,7 +112,7 @@ export function useSessionWebSocket(
           resolve(ws)
         }
 
-        ws.onmessage = handleWsMessage
+        ws.onmessage = createMessageHandler(sessionId)
 
         ws.onerror = (error) => {
           console.error('[useSessionWebSocket] WebSocket error:', error)
@@ -131,7 +148,7 @@ export function useSessionWebSocket(
     })
 
     return connectPromiseRef.current
-  }, [sessionId, handleWsMessage])
+  }, [sessionId, createMessageHandler])
 
   // Connect on mount, cleanup on unmount or sessionId change
   useEffect(() => {
