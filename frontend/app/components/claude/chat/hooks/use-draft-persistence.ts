@@ -30,6 +30,11 @@ export function useDraftPersistence(sessionId: string): DraftPersistence {
   // This allows optimistic UI clear while preserving localStorage for recovery
   const pendingSendRef = useRef(false)
 
+  // Track which sessionId the current content state belongs to.
+  // This prevents saving stale content from session A to session B's key
+  // when switching sessions (content state updates asynchronously).
+  const contentSessionIdRef = useRef<string | null>(null)
+
   // Restore draft from localStorage on mount or sessionId change
   useEffect(() => {
     try {
@@ -39,14 +44,22 @@ export function useDraftPersistence(sessionId: string): DraftPersistence {
       } else {
         setContentState('')
       }
+      // Mark that content now belongs to this sessionId
+      contentSessionIdRef.current = sessionId
     } catch (error) {
       console.error('[useDraftPersistence] Failed to restore draft from localStorage:', error)
       setContentState('')
+      contentSessionIdRef.current = sessionId
     }
   }, [sessionId])
 
-  // Save to localStorage on content change (but not during optimistic send)
+  // Save to localStorage on content change
   useEffect(() => {
+    // Skip saving if content doesn't belong to the current session yet
+    // (happens during session switch before restore effect completes)
+    if (contentSessionIdRef.current !== sessionId) {
+      return
+    }
     // During optimistic send, don't sync empty content to localStorage
     if (pendingSendRef.current && !content) {
       return
@@ -63,9 +76,14 @@ export function useDraftPersistence(sessionId: string): DraftPersistence {
     }
   }, [content, sessionId])
 
-  const setContent = useCallback((newContent: string) => {
-    setContentState(newContent)
-  }, [])
+  const setContent = useCallback(
+    (newContent: string) => {
+      // Mark content as belonging to current session when user types
+      contentSessionIdRef.current = sessionId
+      setContentState(newContent)
+    },
+    [sessionId]
+  )
 
   const clearDraft = useCallback(() => {
     try {
