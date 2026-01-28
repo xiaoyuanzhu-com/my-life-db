@@ -37,9 +37,9 @@ export function useReconnectionFeedback(connectionStatus: ConnectionStatus): Rec
     setIsDismissing(false)
   }
 
-  // Handle disconnection - reset state
+  // Handle disconnection - reset all state
   if (currentPrev === 'connected' && connectionStatus !== 'connected') {
-    if (showReconnected) {
+    if (showReconnected || isDismissing) {
       setShowReconnected(false)
       setIsDismissing(false)
     }
@@ -55,7 +55,10 @@ export function useReconnectionFeedback(connectionStatus: ConnectionStatus): Rec
     }
   }, [showReconnected, isDismissing])
 
-  const onDismissed = useCallback(() => setShowReconnected(false), [])
+  const onDismissed = useCallback(() => {
+    setShowReconnected(false)
+    setIsDismissing(false)
+  }, [])
 
   return { showReconnected, isDismissing, onDismissed }
 }
