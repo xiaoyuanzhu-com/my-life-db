@@ -59,8 +59,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
       const { scrollTop, scrollHeight, clientHeight } = element
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight
 
-      // Re-engage sticky when within 50px of bottom
-      if (distanceFromBottom > 0 && distanceFromBottom < 50) {
+      // Re-engage sticky when within 10px of bottom
+      if (distanceFromBottom > 0 && distanceFromBottom < 10) {
         scrollToBottom({ animation: 'instant' })
       }
     }
