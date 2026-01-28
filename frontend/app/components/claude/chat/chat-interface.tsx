@@ -68,6 +68,10 @@ export function ChatInterface({
   const hasRefreshedRef = useRef(false)
   // Keep isActive in a ref so message handler can access latest value
   const isActiveRef = useRef(isActive)
+  // Track if initial history load is complete (avoid refresh during history replay)
+  // Uses debounce: marked complete when no messages received for 500ms
+  const initialLoadCompleteRef = useRef(false)
+  const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -83,6 +87,18 @@ export function ChatInterface({
   const handleMessage = useCallback(
     (data: unknown) => {
       const msg = data as Record<string, unknown>
+
+      // Debounce initial load detection: reset timer on each message
+      // After 500ms of no messages, mark initial load as complete
+      if (!initialLoadCompleteRef.current) {
+        if (initialLoadTimerRef.current) {
+          clearTimeout(initialLoadTimerRef.current)
+        }
+        initialLoadTimerRef.current = setTimeout(() => {
+          initialLoadCompleteRef.current = true
+          initialLoadTimerRef.current = null
+        }, 500)
+      }
 
       // Handle error messages
       if (msg.type === 'error') {
@@ -210,7 +226,14 @@ export function ChatInterface({
         setProgressMessage(null)
       }
 
-      if (isActiveRef.current === false && !hasRefreshedRef.current && refreshSessions) {
+      // Only refresh if: inactive session, haven't refreshed yet, AND initial load is complete
+      // This avoids refreshing during history replay when clicking on a historical session
+      if (
+        isActiveRef.current === false &&
+        !hasRefreshedRef.current &&
+        initialLoadCompleteRef.current &&
+        refreshSessions
+      ) {
         hasRefreshedRef.current = true
         refreshSessions()
       }
@@ -284,8 +307,22 @@ export function ChatInterface({
     setProgressMessage(null)
     permissions.reset()
     hasRefreshedRef.current = false
+    initialLoadCompleteRef.current = false
+    if (initialLoadTimerRef.current) {
+      clearTimeout(initialLoadTimerRef.current)
+      initialLoadTimerRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
   }, [sessionId])
+
+  // Cleanup initial load timer on unmount
+  useEffect(() => {
+    return () => {
+      if (initialLoadTimerRef.current) {
+        clearTimeout(initialLoadTimerRef.current)
+      }
+    }
+  }, [])
 
   // ============================================================================
   // Handlers
