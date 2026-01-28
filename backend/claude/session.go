@@ -348,8 +348,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 // The SessionMessageI interface's MarshalJSON() returns raw bytes from the JSONL file,
 // ensuring system message fields (subtype, compactMetadata, etc.) are not lost.
 //
-// All messages including control_request/control_response are loaded into cache.
-// The frontend tracks them by request_id to determine which permissions are pending.
+// NOTE: control_request and control_response messages are filtered out during load.
+// These are ephemeral permission protocol messages that only matter during live sessions.
+// control_request comes from Claude CLI stdout but control_response is only broadcast
+// live (not stored in JSONL). Loading stale control_requests would show phantom
+// permission dialogs for already-completed tool calls.
 func (s *Session) LoadMessageCache() error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
@@ -373,6 +376,15 @@ func (s *Session) LoadMessageCache() error {
 
 	// Convert to [][]byte and track UUIDs for deduplication
 	for _, msg := range messages {
+		// Skip control_request/control_response - these are ephemeral permission protocol
+		// messages that only matter during live sessions. control_response is never stored
+		// in JSONL (only broadcast live), so loading stale control_requests would show
+		// phantom permission dialogs for already-completed tool calls.
+		msgType := msg.GetType()
+		if msgType == "control_request" || msgType == "control_response" {
+			continue
+		}
+
 		if data, err := json.Marshal(msg); err == nil {
 			s.cachedMessages = append(s.cachedMessages, data)
 
@@ -404,15 +416,17 @@ func (s *Session) GetCachedMessages() [][]byte {
 
 // BroadcastUIMessage handles a message from Claude stdout (UI mode)
 // - Deduplicates by UUID (skip if already seen from JSONL)
-// - Adds new messages to cache
+// - Adds new messages to cache (except control messages)
 // - Broadcasts new messages to all connected clients
 //
 // NOTE: We merge JSONL messages with stdout messages, deduplicating by UUID.
 // This handles the case where Claude's stdout may replay some messages that
 // are already in the JSONL file.
 //
-// control_request and control_response are cached and broadcast like other messages.
-// The frontend tracks them by request_id to determine which permissions are pending.
+// control_request and control_response are broadcast live but NOT cached.
+// These are ephemeral permission protocol messages - the frontend tracks them
+// by request_id to determine pending permissions. Caching them would cause
+// stale permission dialogs to appear when new clients connect or reconnect.
 func (s *Session) BroadcastUIMessage(data []byte) {
 	var msgType struct {
 		Type string `json:"type"`
@@ -421,6 +435,12 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	if err := json.Unmarshal(data, &msgType); err != nil {
 		log.Warn().Err(err).Msg("failed to parse message type")
 	}
+
+	// Skip caching control_request/control_response - these are ephemeral permission protocol
+	// messages that should only be seen by currently connected clients, not replayed to new
+	// clients or persisted. They're handled in real-time via WebSocket and the frontend tracks
+	// them by request_id to determine pending permissions.
+	isControlMessage := msgType.Type == "control_request" || msgType.Type == "control_response"
 
 	// Deduplicate by UUID (only for messages with UUIDs)
 	if msgType.UUID != "" {
@@ -438,12 +458,14 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.cacheMu.Unlock()
 	}
 
-	// Add to cache
-	s.cacheMu.Lock()
-	msgCopy := make([]byte, len(data))
-	copy(msgCopy, data)
-	s.cachedMessages = append(s.cachedMessages, msgCopy)
-	s.cacheMu.Unlock()
+	// Add to cache (skip control messages - they're ephemeral)
+	if !isControlMessage {
+		s.cacheMu.Lock()
+		msgCopy := make([]byte, len(data))
+		copy(msgCopy, data)
+		s.cachedMessages = append(s.cachedMessages, msgCopy)
+		s.cacheMu.Unlock()
+	}
 
 	// Broadcast to all connected clients
 	s.mu.RLock()
