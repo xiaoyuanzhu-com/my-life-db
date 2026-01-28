@@ -55,13 +55,10 @@ export function ChatInterface({
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
-  // WebSocket ref
+  // WebSocket ref and connection state
   const wsRef = useRef<WebSocket | null>(null)
-  // Reconnection state
-  const reconnectAttemptRef = useRef(0)
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const maxReconnectAttempts = 10
-  const baseReconnectDelay = 1000 // 1 second
+  const connectPromiseRef = useRef<Promise<WebSocket> | null>(null)
+  const isComponentActiveRef = useRef(true)
 
   // Track if we've refreshed sessions for this inactive session (to avoid multiple refreshes)
   const hasRefreshedRef = useRef(false)
@@ -133,277 +130,281 @@ export function ChatInterface({
     // Note: isWorking is derived from rawMessages + optimisticMessage, so it resets automatically
   }, [sessionId])
 
-  // WebSocket connection for real-time updates
-  // Backend sends cached messages on connect, then real-time updates
-  // Always connect - backend will activate session lazily on first message
-  useEffect(() => {
-    // Track if this effect is still active (for cleanup)
-    let isActive = true
+  // WebSocket message handler - extracted so it can be reused across connections
+  const handleWsMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
 
-    const connectWebSocket = () => {
-      if (!isActive) return
-
-      console.log('[ChatInterface] Connecting WebSocket for session:', sessionId)
-
-      // Connect to subscribe endpoint
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
-
-      console.log('[ChatInterface] WebSocket URL:', wsUrl)
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        console.log('[ChatInterface] WebSocket connected')
-        setWsConnected(true)
-        // Reset reconnection state on successful connection
-        reconnectAttemptRef.current = 0
+      // Handle error messages
+      if (data.type === 'error') {
+        console.error('[ChatInterface] Error from server:', data.error)
+        setError(data.error || 'An error occurred')
+        setTimeout(() => setError(null), 5000)
+        return
       }
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
+      // Handle todo updates
+      if (data.type === 'todo_update') {
+        const todos: TodoItem[] = data.data?.todos || []
+        setActiveTodos(todos)
+        console.log('[ChatInterface] Received todo update:', todos)
+        return
+      }
 
-          // Handle error messages
-          if (data.type === 'error') {
-            console.error('[ChatInterface] Error from server:', data.error)
-            setError(data.error || 'An error occurred')
-            // Clear error after 5 seconds
-            setTimeout(() => setError(null), 5000)
-            return
+      // Handle progress updates
+      if (data.type === 'progress') {
+        const progressData = data.data
+        let msg: string | null = null
+
+        if (progressData?.type === 'bash_progress') {
+          const elapsed = progressData.elapsedTimeSeconds || 0
+          const lines = progressData.totalLines || 0
+          msg = `Running command... (${elapsed}s${lines > 0 ? `, ${lines} lines` : ''})`
+        } else if (progressData?.type === 'hook_progress') {
+          msg = progressData.hookName || 'Running hook...'
+        } else if (progressData?.type === 'agent_progress') {
+          const agentId = progressData.agentId || 'unknown'
+          const prompt = progressData.prompt || ''
+          const truncatedPrompt = prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt
+          msg = `Agent ${agentId}: ${truncatedPrompt || 'Working...'}`
+        } else if (progressData?.type === 'query_update') {
+          msg = `Searching: ${progressData.query || '...'}`
+        } else if (progressData?.type === 'search_results_received') {
+          msg = `Found ${progressData.resultCount || 0} results for: ${progressData.query || '...'}`
+        } else {
+          msg = data.message || progressData?.message || `Progress: ${progressData?.type || 'unknown'}`
+        }
+
+        setProgressMessage(msg)
+        console.log('[ChatInterface] Received progress:', progressData?.type, msg)
+      }
+
+      // Handle result messages
+      if (data.type === 'result') {
+        console.log('[ChatInterface] Received result (turn complete):', data.subtype, 'duration:', data.duration_ms)
+        setProgressMessage(null)
+        setRawMessages((prev) => {
+          const resultMsg: SessionMessage = {
+            type: 'result',
+            uuid: data.uuid || crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            ...data,
           }
+          const exists = prev.some((m) => m.uuid === resultMsg.uuid)
+          if (exists) return prev
+          return [...prev, resultMsg]
+        })
+        return
+      }
 
-          // Handle todo updates
-          if (data.type === 'todo_update') {
-            const todos: TodoItem[] = data.data?.todos || []
-            setActiveTodos(todos)
-            console.log('[ChatInterface] Received todo update:', todos)
-            return
-          }
-
-          // Handle progress updates - show WIP indicator AND store for rendering
-          if (data.type === 'progress') {
-            const progressData = data.data
-            let msg: string | null = null
-
-            if (progressData?.type === 'bash_progress') {
-              // Bash progress: show elapsed time and line count
-              const elapsed = progressData.elapsedTimeSeconds || 0
-              const lines = progressData.totalLines || 0
-              msg = `Running command... (${elapsed}s${lines > 0 ? `, ${lines} lines` : ''})`
-            } else if (progressData?.type === 'hook_progress') {
-              // Hook progress: show hook name
-              msg = progressData.hookName || 'Running hook...'
-            } else if (progressData?.type === 'agent_progress') {
-              // Agent progress: show agent ID and truncated prompt
-              const agentId = progressData.agentId || 'unknown'
-              const prompt = progressData.prompt || ''
-              const truncatedPrompt = prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt
-              msg = `Agent ${agentId}: ${truncatedPrompt || 'Working...'}`
-            } else if (progressData?.type === 'query_update') {
-              // Web search: show query
-              msg = `Searching: ${progressData.query || '...'}`
-            } else if (progressData?.type === 'search_results_received') {
-              // Web search results
-              msg = `Found ${progressData.resultCount || 0} results for: ${progressData.query || '...'}`
-            } else {
-              // Fallback for unknown progress types
-              msg = data.message || progressData?.message || `Progress: ${progressData?.type || 'unknown'}`
-            }
-
-            setProgressMessage(msg)
-            console.log('[ChatInterface] Received progress:', progressData?.type, msg)
-            // Don't return - let progress messages be stored and rendered as raw JSON
-          }
-
-          // Handle result messages - Claude's turn is complete (session terminator)
-          // Note: isWorking is derived from messages, so it will update automatically
-          // when the result message is added to rawMessages
-          if (data.type === 'result') {
-            console.log('[ChatInterface] Received result (turn complete):', data.subtype, 'duration:', data.duration_ms)
-            setProgressMessage(null)
-            // Store result message so deriveIsWorking can see it
-            setRawMessages((prev) => {
-              const resultMsg: SessionMessage = {
-                type: 'result',
-                uuid: data.uuid || crypto.randomUUID(),
-                timestamp: new Date().toISOString(),
-                ...data,
-              }
-              // Check if already exists
-              const exists = prev.some((m) => m.uuid === resultMsg.uuid)
-              if (exists) return prev
-              return [...prev, resultMsg]
-            })
-            return
-          }
-
-          // Handle control_request - permission needed for tool use
-          // Track in controlRequests map - pendingPermission is derived from requests without responses
-          if (data.type === 'control_request' && data.request?.subtype === 'can_use_tool') {
-            console.log('[ChatInterface] Received control_request:', data.request_id, data.request.tool_name)
-            setControlRequests((prev) => {
-              const next = new Map(prev)
-              next.set(data.request_id, {
-                requestId: data.request_id,
-                toolName: data.request.tool_name,
-                input: data.request.input || {},
-              })
-              return next
-            })
-            return
-          }
-
-          // Handle control_response - permission was resolved (possibly by another tab)
-          // Track in controlResponses set - this will cause pendingPermission to be recalculated
-          if (data.type === 'control_response') {
-            console.log('[ChatInterface] Received control_response:', data.request_id, data.behavior)
-            setControlResponses((prev) => {
-              const next = new Set(prev)
-              next.add(data.request_id)
-              return next
-            })
-            return
-          }
-
-          // Handle system init message (sent at session start with tools, model, etc.)
-          // Store as a regular SessionMessage
-          if (data.type === 'system' && data.subtype === 'init') {
-            console.log('[ChatInterface] Received system init:', data.session_id, data.model)
-            const initMsg: SessionMessage = {
-              type: 'system',
-              uuid: data.uuid || crypto.randomUUID(),
-              timestamp: new Date().toISOString(),
-              // Store the full init data for rendering
-              ...data,
-            }
-            setRawMessages((prev) => {
-              // Check if init message already exists
-              const exists = prev.some((m) => m.uuid === initMsg.uuid)
-              if (exists) return prev
-              // Add init message at the beginning
-              return [initMsg, ...prev]
-            })
-            return
-          }
-
-          // Handle SessionMessage format - store raw
-          const sessionMsg: SessionMessage = data
-          console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
-
-          // Clear optimistic message when we receive the real user message (not tool results)
-          if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
-            setOptimisticMessage(null)
-          }
-
-          // If assistant message, clear progress
-          if (sessionMsg.type === 'assistant') {
-            setProgressMessage(null)
-          }
-
-          // If we receive a message while session was marked inactive, refresh session list
-          // This indicates the session has been activated by the backend
-          if (isActiveRef.current === false && !hasRefreshedRef.current && refreshSessions) {
-            hasRefreshedRef.current = true
-            refreshSessions()
-          }
-
-          // Accumulate raw messages
-          setRawMessages((prev) => {
-            // Check if message already exists
-            const existingIndex = prev.findIndex((m) => m.uuid === sessionMsg.uuid)
-            if (existingIndex >= 0) {
-              // Update existing message
-              const updated = [...prev]
-              updated[existingIndex] = sessionMsg
-              return updated
-            }
-            return [...prev, sessionMsg]
+      // Handle control_request
+      if (data.type === 'control_request' && data.request?.subtype === 'can_use_tool') {
+        console.log('[ChatInterface] Received control_request:', data.request_id, data.request.tool_name)
+        setControlRequests((prev) => {
+          const next = new Map(prev)
+          next.set(data.request_id, {
+            requestId: data.request_id,
+            toolName: data.request.tool_name,
+            input: data.request.input || {},
           })
-        } catch (error) {
-          console.error('[ChatInterface] Failed to parse WebSocket message:', error)
+          return next
+        })
+        return
+      }
+
+      // Handle control_response
+      if (data.type === 'control_response') {
+        console.log('[ChatInterface] Received control_response:', data.request_id, data.behavior)
+        setControlResponses((prev) => {
+          const next = new Set(prev)
+          next.add(data.request_id)
+          return next
+        })
+        return
+      }
+
+      // Handle system init message
+      if (data.type === 'system' && data.subtype === 'init') {
+        console.log('[ChatInterface] Received system init:', data.session_id, data.model)
+        const initMsg: SessionMessage = {
+          type: 'system',
+          uuid: data.uuid || crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          ...data,
         }
+        setRawMessages((prev) => {
+          const exists = prev.some((m) => m.uuid === initMsg.uuid)
+          if (exists) return prev
+          return [initMsg, ...prev]
+        })
+        return
       }
 
-      ws.onerror = (error) => {
-        console.error('[ChatInterface] WebSocket error:', error)
-        setWsConnected(false)
+      // Handle SessionMessage format
+      const sessionMsg: SessionMessage = data
+      console.log('[ChatInterface] Received message:', sessionMsg.type, sessionMsg.uuid)
+
+      if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
+        setOptimisticMessage(null)
       }
 
-      ws.onclose = () => {
-        console.log('[ChatInterface] WebSocket disconnected')
-        setWsConnected(false)
-        wsRef.current = null
+      if (sessionMsg.type === 'assistant') {
+        setProgressMessage(null)
+      }
 
-        // Attempt reconnection with exponential backoff
-        if (isActive && reconnectAttemptRef.current < maxReconnectAttempts) {
-          const delay = baseReconnectDelay * Math.pow(2, reconnectAttemptRef.current)
-          console.log(`[ChatInterface] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current + 1}/${maxReconnectAttempts})`)
-          reconnectAttemptRef.current += 1
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay)
-        } else if (reconnectAttemptRef.current >= maxReconnectAttempts) {
-          console.error('[ChatInterface] Max reconnection attempts reached')
-          setError('Connection lost. Please refresh the page.')
+      if (isActiveRef.current === false && !hasRefreshedRef.current && refreshSessions) {
+        hasRefreshedRef.current = true
+        refreshSessions()
+      }
+
+      setRawMessages((prev) => {
+        const existingIndex = prev.findIndex((m) => m.uuid === sessionMsg.uuid)
+        if (existingIndex >= 0) {
+          const updated = [...prev]
+          updated[existingIndex] = sessionMsg
+          return updated
         }
-      }
+        return [...prev, sessionMsg]
+      })
+    } catch (error) {
+      console.error('[ChatInterface] Failed to parse WebSocket message:', error)
+    }
+  }, [refreshSessions])
+
+  // Lazy WebSocket connection - connects on demand with retry
+  // Also handles automatic background reconnection when connection drops
+  const ensureConnected = useCallback((): Promise<WebSocket> => {
+    // If already connected, return immediately
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return Promise.resolve(wsRef.current)
     }
 
-    // Initial connection
-    connectWebSocket()
+    // If connection in progress, return existing promise
+    if (connectPromiseRef.current) {
+      return connectPromiseRef.current
+    }
+
+    // Start new connection with retry
+    const maxAttempts = 3
+    const baseDelay = 1000
+
+    connectPromiseRef.current = new Promise((resolve, reject) => {
+      let attempts = 0
+      let wasConnected = false
+
+      const tryConnect = () => {
+        if (!isComponentActiveRef.current) {
+          connectPromiseRef.current = null
+          reject(new Error('Component unmounted'))
+          return
+        }
+
+        attempts++
+        console.log(`[ChatInterface] Connecting WebSocket (attempt ${attempts}/${maxAttempts})`)
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
+
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          console.log('[ChatInterface] WebSocket connected')
+          setWsConnected(true)
+          wasConnected = true
+          connectPromiseRef.current = null
+          resolve(ws)
+        }
+
+        ws.onmessage = handleWsMessage
+
+        ws.onerror = (error) => {
+          console.error('[ChatInterface] WebSocket error:', error)
+        }
+
+        ws.onclose = () => {
+          console.log('[ChatInterface] WebSocket disconnected')
+          setWsConnected(false)
+          wsRef.current = null
+
+          if (!isComponentActiveRef.current) return
+
+          if (wasConnected) {
+            // Was connected, now disconnected - start background reconnection
+            console.log('[ChatInterface] Connection lost, starting background reconnection...')
+            connectPromiseRef.current = null
+            // Trigger new connection attempt (will have its own 3 retries)
+            ensureConnected().catch(() => {
+              // Failed after retries - error already shown by the reject handler
+              console.log('[ChatInterface] Background reconnection failed, waiting for user action')
+            })
+          } else if (connectPromiseRef.current) {
+            // Still in connection phase, retry
+            if (attempts < maxAttempts) {
+              const delay = baseDelay * Math.pow(2, attempts - 1)
+              console.log(`[ChatInterface] Retrying in ${delay}ms...`)
+              setTimeout(tryConnect, delay)
+            } else {
+              console.error('[ChatInterface] Connection failed after retries')
+              connectPromiseRef.current = null
+              setError('Connection failed. Please try again.')
+              setTimeout(() => setError(null), 5000)
+              reject(new Error('Connection failed after retries'))
+            }
+          }
+        }
+      }
+
+      tryConnect()
+    })
+
+    return connectPromiseRef.current
+  }, [sessionId, handleWsMessage])
+
+  // Connect on mount, cleanup on unmount or sessionId change
+  useEffect(() => {
+    isComponentActiveRef.current = true
+
+    // Connect immediately
+    ensureConnected().catch(() => {
+      // Failed after retries - error already shown
+      console.log('[ChatInterface] Initial connection failed, waiting for user action')
+    })
 
     return () => {
       console.log('[ChatInterface] Cleaning up WebSocket')
-      isActive = false
-      // Clear any pending reconnection timeout
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-        reconnectTimeoutRef.current = null
-      }
-      // Close WebSocket if open
+      isComponentActiveRef.current = false
+      connectPromiseRef.current = null
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
     }
-    // Note: refreshSessions intentionally excluded - it's called conditionally via ref
+    // ensureConnected is stable for a given sessionId, so only sessionId needed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
-  // Send message to server via WebSocket
+  // Send message - connects lazily if needed
   const sendMessage = useCallback(
     async (content: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket not connected')
-        // Provide feedback to user if reconnecting
-        if (reconnectAttemptRef.current > 0 && reconnectAttemptRef.current < maxReconnectAttempts) {
-          setError('Reconnecting... Please try again in a moment.')
-        } else {
-          setError('Connection lost. Please refresh the page.')
-        }
-        setTimeout(() => setError(null), 3000)
-        return
-      }
-
-      // Show optimistic message immediately (also triggers isWorking via useMemo)
+      // Show optimistic message immediately
       setOptimisticMessage(content)
 
       try {
-        // Send message via WebSocket
-        wsRef.current.send(JSON.stringify({
+        const ws = await ensureConnected()
+        ws.send(JSON.stringify({
           type: 'user_message',
           content,
         }))
-
         console.log('[ChatInterface] Sent message via WebSocket:', content)
       } catch (error) {
         console.error('Failed to send message:', error)
-        setError('Failed to send message. Please try again.')
+        setError('Failed to connect. Please try again.')
         setOptimisticMessage(null)
-        // Clear error after 5 seconds
-        setTimeout(() => setError(null), 5000)
+        setTimeout(() => setError(null), 3000)
       }
     },
-    []
+    [ensureConnected]
   )
 
   // Handle permission decision - send control_response via WebSocket
