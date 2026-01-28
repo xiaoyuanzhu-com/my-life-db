@@ -1565,6 +1565,83 @@ const { scrollRef, contentRef } = useStickToBottom({
 - `contentRef` → attached to the inner content div that holds all messages
 - The hook also exposes `isAtBottom` and `scrollToBottom()` for future use (e.g., a "scroll to bottom" button when the user has scrolled up)
 
+#### Working State Detection (`isWorking`)
+
+The UI needs to determine whether Claude is currently working (processing a request) to show appropriate indicators (spinner, "Working..." text, interrupt button). This state is derived from message history rather than tracked separately, enabling second tabs to correctly detect state.
+
+**Option A: Result Message Detection (Current Implementation)**
+
+```typescript
+const isWorking = useMemo(() => {
+  if (isActive === false) return false      // CLI not running
+  if (optimisticMessage) return true         // User just sent message
+  const lastMsg = rawMessages[rawMessages.length - 1]
+  if (!lastMsg) return false                 // Empty session
+  return lastMsg.type !== 'result'           // Turn not terminated
+}, [rawMessages, optimisticMessage, isActive])
+```
+
+**Rationale:** Claude Code emits a `result` message at the end of every turn. This is an explicit turn terminator signal - if present, the turn is complete; if absent, Claude is still working.
+
+**Reliability:**
+- ✅ Live sessions: 100% reliable - `result` always emitted when turn completes
+- ⚠️ Historical sessions: `result` is stdout-only (not persisted to JSONL), so loading a session from disk won't have it → defaults to "working"
+- ✅ No false negatives during active work (won't incorrectly show "idle" while Claude is working)
+
+**Option B: Content Heuristics (Previous Implementation)**
+
+```typescript
+export function deriveIsWorking(messages: SessionMessage[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+
+    // Skip metadata types (system, progress, result, summary, etc.)
+    if (SKIP_MESSAGE_TYPES.has(msg.type)) continue
+
+    // Skip tool result messages (automatic responses)
+    if (msg.type === 'user' && hasToolUseResult(msg)) continue
+
+    // Assistant ending with text = finished
+    if (msg.type === 'assistant' && msg.message?.content) {
+      const lastBlock = msg.message.content[msg.message.content.length - 1]
+      if (lastBlock?.type === 'text') return false
+      return true  // tool_use or thinking = working
+    }
+
+    // User message pending = working
+    if (msg.type === 'user') return true
+  }
+  return false
+}
+```
+
+**Rationale:** Infers state by inspecting conversation structure - if last assistant message ends with text, Claude is done; if it ends with tool_use, Claude is still executing.
+
+**Reliability:**
+- ✅ Historical sessions: Works correctly since it only needs persisted message content
+- ⚠️ Heuristic-based: Assumes "text at end = done" which may not hold for all Claude Code behaviors
+- ⚠️ Content block inspection: Fragile if message structure changes
+
+**Comparison Table:**
+
+| Scenario | Option A (result) | Option B (heuristics) |
+|----------|-------------------|----------------------|
+| Live session, turn complete | ✅ correct | ✅ correct |
+| Live session, mid-turn | ✅ correct | ✅ correct |
+| Historical session loaded | ⚠️ shows "working" | ✅ correct |
+| Assistant ends with text, no result yet | ⚠️ shows "working" | ✅ shows "idle" |
+| New/unknown message types | ✅ safe default | ⚠️ may misdetect |
+
+**Current Decision:** Using Option A. The key tradeoff:
+- Option A has **false positives** (showing "working" when idle) for historical sessions
+- Option B risks **false negatives** (showing "idle" when actually working) if heuristics miss edge cases
+
+False positives (brief spinner on historical session load) are less harmful than false negatives (user thinks Claude is idle but it's actually working).
+
+**Open Questions:**
+- Should `result` messages be persisted to JSONL for reliability?
+- Is a hybrid approach worth the complexity? (Option A for live, Option B for historical)
+
 ### 6.7 Component Structure & Directory Organization
 
 **Recommended Directory Structure:**

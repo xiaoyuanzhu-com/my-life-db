@@ -428,7 +428,7 @@ export function SessionMessages({
 
       // Skip result messages - these are turn terminators sent via stdout (not persisted to JSONL).
       // They signal the end of Claude's turn and contain summary statistics (duration, cost, tokens).
-      // Used by deriveIsWorking() for state management, but not displayed as chat messages.
+      // Used by isWorking detection (last message type !== 'result'), but not displayed as chat messages.
       // See data-models.md "The result Message (Session Terminator)" section.
       if (msg.type === 'result') return false
 

@@ -8,7 +8,6 @@ import { useSessionWebSocket, usePermissions, type ConnectionStatus } from './ho
 import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
 import {
   buildToolResultMap,
-  deriveIsWorking,
   hasToolUseResult,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -278,10 +277,13 @@ export function ChatInterface({
   }, [rawMessages])
 
   // Derive working state from message history and session active state
+  // Simple rule: if last message is 'result', turn is complete; otherwise still working
   const isWorking = useMemo(() => {
     if (isActive === false) return false
     if (optimisticMessage) return true
-    return deriveIsWorking(rawMessages)
+    const lastMsg = rawMessages[rawMessages.length - 1]
+    if (!lastMsg) return false
+    return lastMsg.type !== 'result'
   }, [rawMessages, optimisticMessage, isActive])
 
   // Only show connection status banner after we've connected at least once
