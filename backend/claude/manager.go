@@ -990,41 +990,31 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 
 // forwardSDKMessages forwards raw JSON messages from SDK to WebSocket clients.
 // This runs as a goroutine for the lifetime of the SDK session.
+// IMPORTANT: trackProcessExit() is only called when rawMsgs channel closes (actual process exit),
+// NOT when ctx is cancelled. This ensures accurate process lifecycle tracking.
 func (m *Manager) forwardSDKMessages(session *Session) {
 	defer m.wg.Done()
-	defer m.trackProcessExit() // Always track process exit
 
 	rawMsgs := session.sdkClient.RawMessages()
 
+	// Normal operation loop - forward messages until shutdown signal
 	for {
 		select {
 		case <-m.ctx.Done():
-			log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder stopping (manager shutdown)")
-			return
+			// Manager shutting down - wait for process to actually exit
+			goto waitForProcessExit
 
 		case <-session.sdkCtx.Done():
-			log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder stopping (session cancelled)")
-			return
+			// Session cancelled - wait for process to actually exit
+			goto waitForProcessExit
 
 		case data, ok := <-rawMsgs:
 			if !ok {
-				// Channel closed, SDK client disconnected
-				log.Info().Str("sessionId", session.ID).Msg("SDK raw messages channel closed")
-
-				session.mu.Lock()
-				session.Status = "dead"
-				session.mu.Unlock()
-
-				// Remove from pool
-				m.mu.Lock()
-				delete(m.sessions, session.ID)
-				m.mu.Unlock()
-
-				log.Info().Str("sessionId", session.ID).Msg("removed dead SDK session from pool")
-				return
+				// Channel closed = subprocess actually exited
+				goto processExited
 			}
 
-			// Broadcast to WebSocket clients (BroadcastUIMessage handles caching and dedup)
+			// Broadcast to WebSocket clients
 			session.BroadcastUIMessage(data)
 			session.LastActivity = time.Now()
 
@@ -1034,4 +1024,30 @@ func (m *Manager) forwardSDKMessages(session *Session) {
 				Msg("forwarded SDK message to WebSocket clients")
 		}
 	}
+
+waitForProcessExit:
+	// Shutdown requested - wait for subprocess to actually exit (rawMsgs to close)
+	// The subprocess will receive SIGINT from the process group and should exit quickly
+	log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder waiting for process exit")
+	for data := range rawMsgs {
+		// Drain remaining messages
+		session.BroadcastUIMessage(data)
+	}
+
+processExited:
+	// Subprocess actually exited - track it
+	m.trackProcessExit()
+
+	log.Info().Str("sessionId", session.ID).Msg("SDK process exited")
+
+	session.mu.Lock()
+	session.Status = "dead"
+	session.mu.Unlock()
+
+	// Remove from pool
+	m.mu.Lock()
+	delete(m.sessions, session.ID)
+	m.mu.Unlock()
+
+	log.Info().Str("sessionId", session.ID).Msg("removed dead SDK session from pool")
 }
