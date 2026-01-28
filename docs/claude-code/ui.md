@@ -804,6 +804,7 @@ Each tool type has a specific visualization pattern in the official UI:
 | **Task** | Agent name + type badge + status indicator + collapsible output |
 | **AskUserQuestion** | Inline question card (see component G) |
 | **TodoWrite** | Task list panel update (see component G) |
+| **Skill** | Skill name + `collapsible-header` pattern showing skill prompt content |
 
 **Common Tool Block Structure:**
 
@@ -1141,6 +1142,61 @@ The Task tool spawns a subagent and has a **special lifecycle** with progress me
 - Progress uses `parentUuid` to link back to Task tool_use message
 - Result includes agent stats (duration, tokens, tool calls)
 - `agentId` is a 7-character hex identifier
+
+</details>
+
+<details>
+<summary><strong>Skill Tool - Detailed Spec</strong></summary>
+
+**UX Pattern:** [`collapsible-header`](#pattern-collapsible-header)
+
+**Visual:**
+```
+● Skill superpowers:systematic-debugging ▸   [collapsed]
+└ Loaded skill
+
+● Skill superpowers:systematic-debugging ▾   [expanded]
+└ Loaded skill
+  ┌─────────────────────────────────────────┐
+  │ # Systematic Debugging                  │
+  │                                         │
+  │ ## Overview                             │
+  │ Random fixes waste time...              │
+  └─────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Uses `collapsible-header` pattern (collapsed by default, click header to expand)
+- Skill name displayed after "Skill" in header
+- Summary line shows "Loaded skill"
+- Content is fetched from associated `isMeta` message via `sourceToolUseID`
+- Content rendered as **markdown** when expanded
+
+**Message Flow:**
+
+The Skill tool has a unique message pattern:
+1. **tool_use** - Assistant calls Skill tool with `skill` parameter
+2. **tool_result** - User message with success confirmation
+3. **isMeta message** - User message with `isMeta: true` and `sourceToolUseID` containing the full skill prompt
+
+The skill content is mapped via `skillContentMap` which links `sourceToolUseID` to the skill prompt text from the `isMeta` message.
+
+**Layout:**
+```tsx
+<div className="font-mono text-[13px] leading-[1.5]">
+  <div className="flex items-start gap-2">
+    <span className="text-[#22C55E]">●</span>
+    <span className="font-semibold text-primary">Skill</span>
+    <span className="text-secondary">{skillName}</span>
+    <span className="text-tertiary text-[11px]">▸</span>
+  </div>
+  <div className="mt-1 flex gap-2 text-secondary">
+    <span>└</span>
+    <span>Loaded skill</span>
+  </div>
+  {/* Expanded: markdown-rendered skill content */}
+</div>
+```
 
 </details>
 

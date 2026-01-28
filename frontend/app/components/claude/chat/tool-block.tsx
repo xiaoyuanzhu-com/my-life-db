@@ -14,6 +14,7 @@ import { WebFetchToolView } from './tools/web-fetch-tool'
 import { WebSearchToolView } from './tools/web-search-tool'
 import { TaskToolView } from './tools/task-tool'
 import { TodoToolView } from './tools/todo-tool'
+import { SkillToolView } from './tools/skill-tool'
 
 interface ToolBlockProps {
   toolCall: ToolCall
@@ -23,6 +24,8 @@ interface ToolBlockProps {
   bashProgressMap?: Map<string, BashProgressMessage[]>
   /** Map from tool_use ID to hook progress messages (for tools with post-hooks) */
   hookProgressMap?: Map<string, HookProgressMessage[]>
+  /** Map from tool_use ID to skill content (for Skill tools) */
+  skillContentMap?: Map<string, string>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
@@ -52,15 +55,17 @@ function _getToolSummary(toolCall: ToolCall): string {
       return params.description || 'task'
     case 'TodoWrite':
       return `${params.todos?.length || 0} items`
+    case 'Skill':
+      return params.skill || 'skill'
     default:
       return ''
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} depth={depth} />
 }
 
 function ToolContent({
@@ -68,12 +73,14 @@ function ToolContent({
   agentProgressMap,
   bashProgressMap,
   hookProgressMap,
+  skillContentMap,
   depth,
 }: {
   toolCall: ToolCall
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   bashProgressMap?: Map<string, BashProgressMessage[]>
   hookProgressMap?: Map<string, HookProgressMessage[]>
+  skillContentMap?: Map<string, string>
   depth: number
 }) {
   // Render tool-specific view based on tool name
@@ -98,6 +105,8 @@ function ToolContent({
       return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} depth={depth} />
     case 'TodoWrite':
       return <TodoToolView toolCall={toolCall} />
+    case 'Skill':
+      return <SkillToolView toolCall={toolCall} skillContentMap={skillContentMap} />
     default:
       return <GenericToolView toolCall={toolCall} />
   }

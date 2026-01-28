@@ -163,6 +163,55 @@ export function buildHookResponseMap(messages: SessionMessage[]): Map<string, Ho
   return map
 }
 
+// Skill content message structure (isMeta messages linked to Skill tool via sourceToolUseID)
+export interface SkillContentMessage extends SessionMessage {
+  type: 'user'
+  isMeta: true
+  sourceToolUseID: string
+  message: {
+    role: 'user'
+    content: Array<{ type: 'text'; text: string }> | string
+  }
+}
+
+/**
+ * Check if a message is a skill content message (isMeta message linked to a Skill tool)
+ */
+function isSkillContentMessage(msg: SessionMessage): msg is SkillContentMessage {
+  return msg.type === 'user' &&
+    msg.isMeta === true &&
+    typeof (msg as SkillContentMessage).sourceToolUseID === 'string'
+}
+
+/**
+ * Build a map from sourceToolUseID to skill content
+ * This allows Skill tools to find their associated skill prompt content
+ */
+export function buildSkillContentMap(messages: SessionMessage[]): Map<string, string> {
+  const map = new Map<string, string>()
+
+  for (const msg of messages) {
+    if (isSkillContentMessage(msg) && msg.sourceToolUseID) {
+      // Extract text content from the message
+      const content = msg.message?.content
+      let text = ''
+      if (typeof content === 'string') {
+        text = content
+      } else if (Array.isArray(content)) {
+        text = content
+          .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+          .map(block => block.text)
+          .join('\n')
+      }
+      if (text) {
+        map.set(msg.sourceToolUseID, text)
+      }
+    }
+  }
+
+  return map
+}
+
 /**
  * Extract a human-readable title from tool parameters
  */
@@ -272,6 +321,11 @@ interface SessionMessagesProps {
    */
   toolUseMap?: Map<string, ToolUseInfo>
   /**
+   * Pre-built skill content map. If not provided, will be built from messages.
+   * Maps sourceToolUseID to skill prompt content (from isMeta messages).
+   */
+  skillContentMap?: Map<string, string>
+  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -297,6 +351,7 @@ export function SessionMessages({
   hookProgressMap: providedHookProgressMap,
   hookResponseMap: providedHookResponseMap,
   toolUseMap: providedToolUseMap,
+  skillContentMap: providedSkillContentMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -334,6 +389,12 @@ export function SessionMessages({
     if (providedToolUseMap) return providedToolUseMap
     return buildToolUseMap(messages)
   }, [messages, providedToolUseMap])
+
+  // Build skill content map if not provided
+  const skillContentMap = useMemo(() => {
+    if (providedSkillContentMap) return providedSkillContentMap
+    return buildSkillContentMap(messages)
+  }, [messages, providedSkillContentMap])
 
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
@@ -391,6 +452,7 @@ export function SessionMessages({
           hookProgressMap={hookProgressMap}
           hookResponseMap={hookResponseMap}
           toolUseMap={toolUseMap}
+          skillContentMap={skillContentMap}
           depth={depth}
         />
       ))}
@@ -398,4 +460,4 @@ export function SessionMessages({
   )
 }
 
-export type { AgentProgressMessage, BashProgressMessage, HookResponseMessage }
+export type { AgentProgressMessage, BashProgressMessage }

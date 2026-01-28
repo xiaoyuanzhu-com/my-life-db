@@ -347,7 +347,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 | `isVisibleInTranscriptOnly` | boolean | Whether message is only for transcript display |
 | `isCompactSummary` | boolean | Whether this is a compaction summary |
 | `thinkingMetadata` | object | Metadata about thinking blocks |
-| `isMeta` | boolean | Whether this is a meta message (system-injected context like `<local-command-caveat>`). **UI should skip rendering these messages.** |
+| `isMeta` | boolean | Whether this is a meta message (system-injected context like `<local-command-caveat>`). **UI should skip rendering these messages.** May have `sourceToolUseID` linking to a tool (e.g., Skill tool prompts). |
 
 **Skipped XML Tags in User Messages:**
 
