@@ -7,7 +7,7 @@ import {
   useImperativeHandle,
   forwardRef,
 } from 'react'
-import { ArrowUp, Image, Square, Loader2, WifiOff } from 'lucide-react'
+import { ArrowUp, Image, Square, Loader2, WifiOff, Check } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
@@ -69,6 +69,28 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   // Track pending send state - when true, don't sync empty content to localStorage
   // This allows optimistic UI clear while preserving localStorage for recovery
   const pendingSendRef = useRef(false)
+
+  // Track reconnection for success feedback animation
+  const prevConnectionStatusRef = useRef(connectionStatus)
+  const [showReconnected, setShowReconnected] = useState(false)
+  const [isDismissing, setIsDismissing] = useState(false)
+
+  // Detect reconnection: transition from non-connected → connected
+  useEffect(() => {
+    const prev = prevConnectionStatusRef.current
+    prevConnectionStatusRef.current = connectionStatus
+
+    if (prev !== 'connected' && connectionStatus === 'connected') {
+      // Just reconnected - show success feedback
+      setShowReconnected(true)
+      setIsDismissing(false)
+      // After 1.5s, start dismissal animation
+      const timer = setTimeout(() => {
+        setIsDismissing(true)
+      }, 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [connectionStatus])
 
   // Restore draft from localStorage on mount or sessionId change
   useEffect(() => {
@@ -203,8 +225,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
         >
           {/* Connection status banner */}
-          {connectionStatus !== 'connected' && (
-            <ConnectionStatusBanner status={connectionStatus} />
+          {(connectionStatus !== 'connected' || showReconnected) && (
+            <ConnectionStatusBanner
+              status={connectionStatus}
+              isReconnected={showReconnected && connectionStatus === 'connected'}
+              isDismissing={isDismissing}
+              onDismissed={() => setShowReconnected(false)}
+            />
           )}
 
           {/* Permission approval section (when pending) - stacked for multiple */}
@@ -305,19 +332,51 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
 interface ConnectionStatusBannerProps {
   status: ConnectionStatus
+  /** Whether we just reconnected (show success state) */
+  isReconnected?: boolean
+  /** Whether to animate out */
+  isDismissing?: boolean
+  /** Called when dismissal animation completes */
+  onDismissed?: () => void
 }
 
-function ConnectionStatusBanner({ status }: ConnectionStatusBannerProps) {
+function ConnectionStatusBanner({
+  status,
+  isReconnected = false,
+  isDismissing = false,
+  onDismissed,
+}: ConnectionStatusBannerProps) {
+  const handleAnimationEnd = () => {
+    if (isDismissing && onDismissed) {
+      onDismissed()
+    }
+  }
+
+  // Determine which icon and text to show
+  let icon: React.ReactNode
+  let text: string
+
+  if (isReconnected) {
+    icon = <Check className="h-3.5 w-3.5 shrink-0" />
+    text = 'Connected.'
+  } else if (status === 'connecting') {
+    icon = <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+    text = 'Reconnecting. Your input is saved locally.'
+  } else {
+    icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />
+    text = 'Disconnected. Your input is saved locally.'
+  }
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border animate-slide-up-fade">
-      {status === 'connecting' ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-      ) : (
-        <WifiOff className="h-3.5 w-3.5 shrink-0" />
+    <div
+      className={cn(
+        'flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border',
+        isDismissing ? 'animate-slide-down-fade-slow' : 'animate-slide-up-fade'
       )}
-      <span>
-        {status === 'connecting' ? 'Reconnecting.' : 'Disconnected.'} Your input is saved locally.
-      </span>
+      onAnimationEnd={handleAnimationEnd}
+    >
+      {icon}
+      <span>{text}</span>
     </div>
   )
 }
