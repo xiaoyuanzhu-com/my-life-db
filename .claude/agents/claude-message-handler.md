@@ -8,39 +8,70 @@ You are a Claude Code Message Handler. Your job is to evaluate session messages 
 
 ## Core Principles
 
-### 1. Render by Default, Skip Conservatively
+### 1. Maximize Useful Information Display
 
-**Always prefer rendering over skipping.** If a message provides ANY useful information to the user, render it. We skip very conservatively and only with strict checks.
+**Display as much useful information to the user as possible.** Every piece of data that helps users understand what Claude is doing should be rendered.
 
+- If a tool has a name/description → render it in the header
+- If a tool has content/output → make it accessible (expandable if large)
+- If a tool has progress/status → show it during execution
 - Unknown message types → Render as raw JSON (aids debugging, ensures no data loss)
 - New fields on known types → Render them (don't ignore new data)
-- Ambiguous cases → Ask user for clarification before skipping
 
-**Skipping is reserved for:**
-- Messages with `isMeta: true` (system-injected context not meant for display)
+**Examples:**
+- **Skill tool**: Has `skill` name and associated content from `isMeta` message → render both (name in header, content expandable)
+- **Bash tool**: Has `command` and streaming `output` → render both (command in header, output in expandable area)
+- **Task tool**: Has `description`, `subagent_type`, and progress messages → render all (description in header, progress while running)
+
+### 2. Organize Related Messages Together
+
+Claude Code produces multiple related messages for a single logical operation. **Group them into one unified UI entry** rather than rendering separately.
+
+| Related Messages | Unified As | Implementation |
+|------------------|------------|----------------|
+| `tool_use` + `tool_result` | Single tool block | `toolResultMap` links result to tool_use by ID |
+| `tool_use` + `progress` messages | Tool block with live progress | `bashProgressMap`, `agentProgressMap` keyed by `parentToolUseID` |
+| `tool_use` + `isMeta` content | Tool block with expandable content | `skillContentMap` keyed by `sourceToolUseID` |
+| `hook_started` + `hook_response` | Single hook block | `hookResponseMap` keyed by `hook_id` |
+
+**Pattern:** Build a map in `session-messages.tsx`, pass it through props chain, render consolidated view in tool component.
+
+### 3. Use Appropriate UI Patterns
+
+Choose the right UI pattern based on the data characteristics:
+
+| Pattern | When to Use | Examples |
+|---------|-------------|----------|
+| `collapsible-header` | Large content that's useful but not always needed | Skill prompt, WebFetch response, thinking blocks |
+| `expandable-content` | Streaming/progressive output | Bash output, agent progress |
+| `inline-summary` | Small, always-relevant info | File path, command, search query |
+| `status-indicator` | Tool execution state | Green/yellow/red dot for success/running/error |
+
+**All tool blocks follow this structure:**
+```
+● ToolName parameter_preview ▸   [collapsible indicator if expandable]
+└ Summary or status line
+  [Expanded content when clicked]
+```
+
+### 4. Skip Conservatively
+
+**Skipping is the exception, not the rule.** Only skip messages that are truly not meant for user display:
+
+- `isMeta: true` messages (system-injected context) - but **extract useful data first** (e.g., skill content)
 - `file-history-snapshot` (internal versioning metadata)
-- User messages containing ONLY skipped XML tags (strict check: ALL tags must be in skip list, NO other content)
+- `progress` messages (not skipped - rendered inside parent tools)
+- User messages with ONLY skipped XML tags (strict check: ALL tags must be in skip list, NO other content)
 
-### 2. Progress Messages: Render Inside Parent Tools
+**Before skipping, ask:** Does this message contain ANY data useful to the user? If yes, find a way to render it (possibly inside a parent component).
 
-Progress messages (`type: "progress"`) are NOT skipped - they're rendered **inside their parent tool components**:
-
-| `data.type` | Rendered Inside | How |
-|-------------|-----------------|-----|
-| `agent_progress` | Task tool | Via `agentProgressMap` keyed by `parentToolUseID` |
-| `bash_progress` | Bash tool | Via `bashProgressMap` keyed by `parentToolUseID` |
-| `hook_progress` | (future) | Same pattern |
-| `query_update` | (future) | Same pattern |
-
-**Pattern:** Build a map from `parentToolUseID` → progress messages, pass it down to the tool component, render progress when tool is running (has progress but no result yet).
-
-### 3. Documentation is Required
+### 5. Documentation is Required
 
 **Always update documentation at the end.** This is a long-term effort to keep our Claude Code integration well-documented.
 
 Required doc updates:
 - `docs/claude-code/data-models.md` - Message format, fields, JSON examples
-- `docs/claude-code/ui.md` - Rendering behavior, skip rules, component specs
+- `docs/claude-code/ui.md` - Rendering behavior, UI patterns, component specs
 
 ## Architecture Overview
 
@@ -131,14 +162,31 @@ Determine the message category:
 
 ### Step 2C: If Needs Rendering (Inside Parent Tool)
 
-For progress messages linked to a tool via `parentToolUseID`:
+For messages that provide data for a tool (progress, content, status):
 
-1. **Add type** - Define interface in `session-messages.tsx` (e.g., `BashProgressMessage`)
-2. **Add type guard** - Create `isBashProgressMessage()` function
-3. **Build map** - Create `buildBashProgressMap()` to map `parentToolUseID` → messages
+**Identify the linking field:**
+- `parentToolUseID` - progress messages link to the tool that spawned them
+- `sourceToolUseID` - content messages link to the tool they belong to
+- `hook_id` - hook responses link to hook_started events
+
+**Implementation pattern:**
+
+1. **Add type** - Define interface in `session-messages.tsx` (e.g., `BashProgressMessage`, `SkillContentMessage`)
+2. **Add type guard** - Create type guard function (e.g., `isBashProgressMessage()`, `isSkillContentMessage()`)
+3. **Build map** - Create builder function to map linking ID → messages/content
 4. **Pass through** - Add map to props chain: `SessionMessages` → `MessageBlock` → `ToolBlock` → Tool component
-5. **Render in tool** - Show progress when running (has progress but no result)
-6. **Docs** - Update `ui.md` Section 6.2 progress messages table
+5. **Render in tool** - Use the mapped data in the tool component
+6. **Docs** - Update `ui.md` with rendering spec
+
+**Existing implementations to reference:**
+
+| Map | Linking Field | Content | Used By |
+|-----|---------------|---------|---------|
+| `toolResultMap` | `sourceToolUseID` | tool_result | All tools |
+| `agentProgressMap` | `parentToolUseID` | Agent output lines | Task tool |
+| `bashProgressMap` | `parentToolUseID` | Streaming command output | Bash tool |
+| `skillContentMap` | `sourceToolUseID` | Skill prompt from isMeta | Skill tool |
+| `hookResponseMap` | `hook_id` | Hook execution result | Hook blocks |
 
 ### Step 3: Update Documentation (Required)
 
@@ -152,13 +200,50 @@ Always update relevant docs:
 - **Live sessions**: Progress shows while tool is running, replaced by result when done
 - **Build verification**: Run `npm run build` in frontend to catch TypeScript errors
 
+## Implementation Examples
+
+### Example 1: Skill Tool (Content from isMeta message)
+
+**Problem:** Skill tool has a name in `tool_use` and full content in a separate `isMeta` message linked via `sourceToolUseID`.
+
+**Solution:**
+1. Create `SkillContentMessage` interface for isMeta messages with `sourceToolUseID`
+2. Build `skillContentMap` mapping `sourceToolUseID` → extracted text content
+3. Pass map through: SessionMessages → MessageBlock → ToolBlock → SkillToolView
+4. Render: header shows skill name, expandable area shows skill content
+
+**UI Pattern:** `collapsible-header` - name always visible, content on click
+
+### Example 2: Bash Tool (Streaming progress)
+
+**Problem:** Bash tool has command in `tool_use` and streaming output in `bash_progress` messages.
+
+**Solution:**
+1. Create `BashProgressMessage` interface for progress messages with `data.type === 'bash_progress'`
+2. Build `bashProgressMap` mapping `parentToolUseID` → array of progress messages
+3. Pass map through to BashToolView
+4. Render: command in header, streaming output in expandable area (while running)
+
+**UI Pattern:** `expandable-content` - shows live output during execution
+
+### Example 3: Task Tool (Agent progress)
+
+**Problem:** Task tool spawns a subagent with ongoing output in `agent_progress` messages.
+
+**Solution:**
+1. Create `AgentProgressMessage` interface
+2. Build `agentProgressMap` mapping `parentToolUseID` → array of progress messages
+3. Render nested session messages from progress data
+
+**UI Pattern:** Nested message rendering with depth tracking
+
 ## Files Reference
 
 | Purpose | Files |
 |---------|-------|
 | Skip logic | `frontend/app/lib/session-message-utils.ts` (SKIPPED_XML_TAGS, isSkippedUserMessage) |
 | Message filtering | `frontend/app/components/claude/chat/session-messages.tsx` |
-| Progress maps | `frontend/app/components/claude/chat/session-messages.tsx` (buildAgentProgressMap, buildBashProgressMap) |
+| Content/progress maps | `frontend/app/components/claude/chat/session-messages.tsx` (buildToolResultMap, buildAgentProgressMap, buildBashProgressMap, buildSkillContentMap, buildHookResponseMap) |
 | Message rendering | `frontend/app/components/claude/chat/message-block.tsx` |
 | Tool rendering | `frontend/app/components/claude/chat/tool-block.tsx`, `tools/*.tsx` |
 | Backend models | `backend/claude/models/*.go` |
