@@ -590,6 +590,7 @@ func (t *SubprocessCLITransport) Close() error {
 				t.cmd.Process.Kill()
 			}
 		} else {
+			// Signal failed - process likely already dead
 			t.cmd.Process.Kill()
 		}
 	}

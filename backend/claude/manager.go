@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -45,6 +46,7 @@ var (
 
 // buildClaudeArgs constructs the command-line arguments for launching Claude
 // with appropriate permission settings for web UI usage
+
 // gracefulTerminate attempts to gracefully terminate a process by sending SIGTERM first,
 // waiting for a short period, then forcefully killing with SIGKILL if it doesn't exit.
 // This allows the process (Claude) to finish writing any pending data (like JSONL files).
@@ -133,6 +135,10 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Live process tracking
+	liveProcessCount int32         // atomic counter of running Claude CLI processes
+	processExited    chan struct{} // signaled when any process exits
 }
 
 // NewManager creates a new session manager
@@ -140,10 +146,11 @@ func NewManager() (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &Manager{
-		sessions:   make(map[string]*Session),
-		indexCache: NewSessionIndexCache(),
-		ctx:        ctx,
-		cancel:     cancel,
+		sessions:      make(map[string]*Session),
+		indexCache:   NewSessionIndexCache(),
+		ctx:          ctx,
+		cancel:       cancel,
+		processExited: make(chan struct{}, 100), // buffered to avoid blocking
 	}
 
 	// Start background cleanup worker
@@ -151,6 +158,28 @@ func NewManager() (*Manager, error) {
 	go m.cleanupWorker()
 
 	return m, nil
+}
+
+// trackProcessStart increments the live process counter
+func (m *Manager) trackProcessStart() {
+	atomic.AddInt32(&m.liveProcessCount, 1)
+	log.Debug().Int32("count", atomic.LoadInt32(&m.liveProcessCount)).Msg("process started, live count increased")
+}
+
+// trackProcessExit decrements the live process counter and signals
+func (m *Manager) trackProcessExit() {
+	count := atomic.AddInt32(&m.liveProcessCount, -1)
+	log.Debug().Int32("count", count).Msg("process exited, live count decreased")
+	// Non-blocking send to signal a process exited
+	select {
+	case m.processExited <- struct{}{}:
+	default:
+	}
+}
+
+// LiveProcessCount returns the current number of live Claude CLI processes
+func (m *Manager) LiveProcessCount() int32 {
+	return atomic.LoadInt32(&m.liveProcessCount)
 }
 
 // Shutdown gracefully stops all sessions and goroutines
@@ -165,50 +194,41 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	// Signal all goroutines to stop
 	m.cancel()
 
-	// Gracefully terminate all sessions with timeout
-	m.mu.Lock()
-	var sessionWg sync.WaitGroup
-	for id, session := range m.sessions {
-		log.Info().Str("sessionId", id).Msg("gracefully terminating session during shutdown")
-		sessionWg.Add(1)
-		go func(id string, s *Session) {
-			defer sessionWg.Done()
+	// Wait for live processes to exit naturally (they likely received SIGINT from process group)
+	// This should be nearly instant since processes die from SIGINT before we get here
+	liveCount := atomic.LoadInt32(&m.liveProcessCount)
+	if liveCount > 0 {
+		log.Info().Int32("liveProcesses", liveCount).Msg("waiting for Claude processes to exit")
 
-			// SDK mode cleanup
-			if s.sdkClient != nil {
-				if s.sdkCancel != nil {
-					s.sdkCancel()
+		// Wait for all processes to exit with a short timeout
+		// Processes should exit quickly since they got SIGINT from the process group
+		waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer waitCancel()
+
+	waitLoop:
+		for atomic.LoadInt32(&m.liveProcessCount) > 0 {
+			select {
+			case <-m.processExited:
+				// A process exited, check if all done
+				continue
+			case <-waitCtx.Done():
+				// Timeout - force kill remaining processes
+				remaining := atomic.LoadInt32(&m.liveProcessCount)
+				if remaining > 0 {
+					log.Warn().Int32("remaining", remaining).Msg("timeout waiting for processes, force killing")
+					m.forceKillAllSessions()
 				}
-				s.sdkClient.Close()
-				return
+				break waitLoop
 			}
-
-			// Legacy mode cleanup: Close stdin/PTY first to signal EOF
-			if s.Mode == ModeUI && s.Stdin != nil {
-				s.Stdin.Close()
-			} else if s.PTY != nil {
-				s.PTY.Close()
-			}
-			// Gracefully terminate with 3 second timeout per session
-			gracefulTerminate(s.Cmd, 3*time.Second)
-		}(id, session)
+		}
 	}
+
+	log.Debug().Msg("all Claude processes exited")
+
+	// Clean up session map
+	m.mu.Lock()
 	m.sessions = make(map[string]*Session)
 	m.mu.Unlock()
-
-	// Wait for all session terminations with timeout
-	sessionsDone := make(chan struct{})
-	go func() {
-		sessionWg.Wait()
-		close(sessionsDone)
-	}()
-
-	select {
-	case <-sessionsDone:
-		log.Debug().Msg("all sessions terminated")
-	case <-ctx.Done():
-		log.Warn().Msg("session termination timed out, continuing shutdown")
-	}
 
 	// Wait for internal goroutines with timeout
 	done := make(chan struct{})
@@ -224,6 +244,30 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		log.Warn().Msg("Claude manager shutdown timed out")
 		return ctx.Err()
+	}
+}
+
+// forceKillAllSessions forcefully kills all remaining session processes
+func (m *Manager) forceKillAllSessions() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for id, session := range m.sessions {
+		log.Warn().Str("sessionId", id).Msg("force killing session")
+
+		// SDK mode
+		if session.sdkClient != nil {
+			if session.sdkCancel != nil {
+				session.sdkCancel()
+			}
+			session.sdkClient.Close()
+			continue
+		}
+
+		// Legacy mode
+		if session.Cmd != nil && session.Cmd.Process != nil {
+			session.Cmd.Process.Kill()
+		}
 	}
 }
 
@@ -313,6 +357,9 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		session.PTY = ptmx
 		session.Cmd = cmd
 		session.ProcessID = cmd.Process.Pid
+
+		// Track live process
+		m.trackProcessStart()
 
 		// Start PTY reader that broadcasts to all clients
 		m.wg.Add(1)
@@ -461,6 +508,9 @@ func (m *Manager) activateSession(session *Session) error {
 		session.Cmd = cmd
 		session.ProcessID = cmd.Process.Pid
 		session.Status = "active"
+
+		// Track live process
+		m.trackProcessStart()
 
 		// Start PTY reader that broadcasts to all clients
 		m.wg.Add(1)
@@ -654,16 +704,11 @@ func (m *Manager) monitorProcess(session *Session) {
 		return
 	}
 
+	// Track process exit (only after confirming we have a valid process)
+	defer m.trackProcessExit()
+
 	// Wait for process to exit
 	err := session.Cmd.Wait()
-
-	// Check if we're shutting down - if so, don't log as error
-	select {
-	case <-m.ctx.Done():
-		log.Debug().Str("sessionId", session.ID).Msg("process monitor stopping (shutdown)")
-		return
-	default:
-	}
 
 	session.mu.Lock()
 	session.Status = "dead"
@@ -928,6 +973,9 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	session.sdkClient = client
 	session.Status = "active"
 
+	// Track live process
+	m.trackProcessStart()
+
 	// Start message forwarding goroutine
 	m.wg.Add(1)
 	go m.forwardSDKMessages(session)
@@ -944,6 +992,7 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 // This runs as a goroutine for the lifetime of the SDK session.
 func (m *Manager) forwardSDKMessages(session *Session) {
 	defer m.wg.Done()
+	defer m.trackProcessExit() // Always track process exit
 
 	rawMsgs := session.sdkClient.RawMessages()
 
