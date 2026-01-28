@@ -35,7 +35,7 @@ WORKDIR /home/xiaoyuanzhu/my-life-db
 
 # Install runtime dependencies + Claude CLI dependencies
 # libstdc++ and libgcc are required for Claude CLI (C++ runtime)
-RUN apk add --no-cache ca-certificates tzdata curl bash libstdc++ libgcc
+RUN apk add --no-cache ca-certificates tzdata curl bash libstdc++ libgcc git
 
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN addgroup -g 1000 xiaoyuanzhu && adduser -u 1000 -G xiaoyuanzhu -S xiaoyuanzhu
