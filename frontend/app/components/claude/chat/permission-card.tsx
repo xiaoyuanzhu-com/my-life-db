@@ -137,7 +137,7 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
         >
           Deny
           {isFirst && (
-            <kbd className="px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
+            <kbd className="hidden md:inline px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
               Esc
             </kbd>
           )}
@@ -151,7 +151,7 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
         >
           Always allow for session
           {isFirst && (
-            <kbd className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
+            <kbd className="hidden md:flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono">
               <span>⌘</span>
               <span>⏎</span>
             </kbd>
@@ -166,7 +166,7 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
         >
           Allow once
           {isFirst && (
-            <kbd className="px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
+            <kbd className="hidden md:inline px-1 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground text-[10px] font-mono">
               ⏎
             </kbd>
           )}
