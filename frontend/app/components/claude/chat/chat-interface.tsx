@@ -28,8 +28,12 @@ const SKIP_TYPES = ['file-history-snapshot', 'result']
 /** Extract text content from a user message (for draft comparison) */
 function extractUserMessageText(msg: SessionMessage): string | null {
   if (msg.type !== 'user') return null
-  const message = msg.message as { content?: Array<{ type: string; text?: string }> } | undefined
+  const message = msg.message as { content?: string | Array<{ type: string; text?: string }> } | undefined
   if (!message?.content) return null
+  // User messages can have string content or array of content blocks
+  if (typeof message.content === 'string') {
+    return message.content
+  }
   const textBlock = message.content.find((b) => b.type === 'text')
   return textBlock?.text ?? null
 }
