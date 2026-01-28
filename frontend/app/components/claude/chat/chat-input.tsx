@@ -308,20 +308,17 @@ interface ConnectionStatusBannerProps {
 }
 
 function ConnectionStatusBanner({ status }: ConnectionStatusBannerProps) {
-  if (status === 'connecting') {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Reconnecting...</span>
-      </div>
-    )
-  }
-
-  // disconnected
   return (
-    <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
-      <WifiOff className="h-3.5 w-3.5" />
-      <span>Disconnected. Your input is saved and will send when reconnected.</span>
+    <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border animate-slide-up-fade">
+      {status === 'connecting' ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+      ) : (
+        <WifiOff className="h-3.5 w-3.5 shrink-0" />
+      )}
+      <span>
+        Your input is saved locally, feel free to continue typing.{' '}
+        {status === 'connecting' ? 'Reconnecting...' : 'Waiting for connection...'}
+      </span>
     </div>
   )
 }

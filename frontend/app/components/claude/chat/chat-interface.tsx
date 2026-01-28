@@ -76,6 +76,8 @@ export function ChatInterface({
   const hasRefreshedRef = useRef(false)
   // Keep isActive in a ref so WebSocket handler can access latest value
   const isActiveRef = useRef(isActive)
+  // Track if we've ever successfully connected (to avoid showing banner on initial load)
+  const hasConnectedRef = useRef(false)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -124,6 +126,13 @@ export function ChatInterface({
     return pending
   }, [controlRequests, controlResponses])
 
+  // Only show connection status banner after we've connected at least once
+  // This avoids showing "Reconnecting..." on initial page load
+  const effectiveConnectionStatus: ConnectionStatus =
+    hasConnectedRef.current && connectionStatus !== 'connected'
+      ? connectionStatus
+      : 'connected'
+
   // Keep isActiveRef in sync
   useEffect(() => {
     isActiveRef.current = isActive
@@ -140,6 +149,7 @@ export function ChatInterface({
     setProgressMessage(null)
     setConnectionStatus('connecting') // Reset to connecting for new session
     hasRefreshedRef.current = false // Reset refresh tracking for new session
+    hasConnectedRef.current = false // Reset connection tracking for new session
     // Note: isWorking is derived from rawMessages + optimisticMessage, so it resets automatically
   }, [sessionId])
 
@@ -291,8 +301,8 @@ export function ChatInterface({
     }
   }, [refreshSessions])
 
-  // Lazy WebSocket connection - connects on demand with retry
-  // Also handles automatic background reconnection when connection drops
+  // Lazy WebSocket connection - connects on demand with infinite retry
+  // Uses exponential backoff with max delay of 60 seconds
   const ensureConnected = useCallback((): Promise<WebSocket> => {
     // If already connected, return immediately
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -304,23 +314,22 @@ export function ChatInterface({
       return connectPromiseRef.current
     }
 
-    // Start new connection with retry
-    const maxAttempts = 3
+    // Start new connection with infinite retry and exponential backoff
     const baseDelay = 1000
+    const maxDelay = 60000 // 1 minute max
 
-    connectPromiseRef.current = new Promise((resolve, reject) => {
+    connectPromiseRef.current = new Promise((resolve) => {
       let attempts = 0
       let wasConnected = false
 
       const tryConnect = () => {
         if (!isComponentActiveRef.current) {
           connectPromiseRef.current = null
-          reject(new Error('Component unmounted'))
           return
         }
 
         attempts++
-        console.log(`[ChatInterface] Connecting WebSocket (attempt ${attempts}/${maxAttempts})`)
+        console.log(`[ChatInterface] Connecting WebSocket (attempt ${attempts})`)
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
@@ -331,7 +340,9 @@ export function ChatInterface({
         ws.onopen = () => {
           console.log('[ChatInterface] WebSocket connected')
           setConnectionStatus('connected')
+          hasConnectedRef.current = true
           wasConnected = true
+          attempts = 0 // Reset attempts on successful connection
           connectPromiseRef.current = null
           resolve(ws)
         }
@@ -348,31 +359,22 @@ export function ChatInterface({
 
           if (!isComponentActiveRef.current) return
 
+          // Calculate delay with exponential backoff, capped at maxDelay
+          const delay = Math.min(baseDelay * Math.pow(2, attempts - 1), maxDelay)
+
           if (wasConnected) {
             // Was connected, now disconnected - start background reconnection
-            console.log('[ChatInterface] Connection lost, starting background reconnection...')
+            console.log(`[ChatInterface] Connection lost, reconnecting in ${delay}ms...`)
             setConnectionStatus('connecting')
             connectPromiseRef.current = null
-            // Trigger new connection attempt (will have its own 3 retries)
-            ensureConnected().catch(() => {
-              // Failed after retries - error already shown by the reject handler
-              console.log('[ChatInterface] Background reconnection failed, waiting for user action')
-              setConnectionStatus('disconnected')
-            })
+            setTimeout(() => {
+              ensureConnected()
+            }, delay)
           } else if (connectPromiseRef.current) {
-            // Still in connection phase, retry
-            if (attempts < maxAttempts) {
-              const delay = baseDelay * Math.pow(2, attempts - 1)
-              console.log(`[ChatInterface] Retrying in ${delay}ms...`)
-              setTimeout(tryConnect, delay)
-            } else {
-              console.error('[ChatInterface] Connection failed after retries')
-              connectPromiseRef.current = null
-              setConnectionStatus('disconnected')
-              setError('Connection failed. Please try again.')
-              setTimeout(() => setError(null), 5000)
-              reject(new Error('Connection failed after retries'))
-            }
+            // Still in initial connection phase, keep retrying
+            console.log(`[ChatInterface] Connection failed, retrying in ${delay}ms...`)
+            setConnectionStatus('connecting')
+            setTimeout(tryConnect, delay)
           }
         }
       }
@@ -387,11 +389,8 @@ export function ChatInterface({
   useEffect(() => {
     isComponentActiveRef.current = true
 
-    // Connect immediately
-    ensureConnected().catch(() => {
-      // Failed after retries - error already shown
-      console.log('[ChatInterface] Initial connection failed, waiting for user action')
-    })
+    // Connect immediately (infinite retry, never rejects)
+    ensureConnected()
 
     return () => {
       console.log('[ChatInterface] Cleaning up WebSocket')
@@ -421,7 +420,7 @@ export function ChatInterface({
         console.log('[ChatInterface] Sent message via WebSocket:', content)
       } catch (error) {
         console.error('Failed to send message:', error)
-        setError('Failed to connect. Please try again.')
+        setError('Failed to send message. Please try again.')
         setOptimisticMessage(null)
         // Restore draft so user doesn't lose their input
         chatInputRef.current?.restoreDraft()
@@ -551,7 +550,7 @@ export function ChatInterface({
             hiddenOnMobile={shouldHideInput}
             isWorking={isWorking}
             onInterrupt={handleInterrupt}
-            connectionStatus={connectionStatus}
+            connectionStatus={effectiveConnectionStatus}
           />
         </div>
 
