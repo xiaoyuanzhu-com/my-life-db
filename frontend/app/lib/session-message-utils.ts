@@ -545,20 +545,23 @@ export function hasToolUseResult(msg: SessionMessage): boolean {
 
 /**
  * Build a mapping from tool_use_id to tool result
- * Tool results are stored in 'user' type messages that have toolUseResult/tool_use_result field
+ * Tool results are stored in 'user' type messages with tool_result blocks in message.content
+ *
+ * Some messages also have a root-level toolUseResult/tool_use_result field with rich metadata
+ * (stdout/stderr for Bash, filePath for Read, etc.), but this is optional.
  */
 export function buildToolResultMap(messages: SessionMessage[]): Map<string, ExtractedToolResult> {
   const resultMap = new Map<string, ExtractedToolResult>()
 
   for (const msg of messages) {
-    // Tool results are in 'user' type messages with toolUseResult or tool_use_result field
-    // (Claude uses different naming in JSONL vs stdout - see getToolUseResult comments)
-    if (msg.type !== 'user' || !hasToolUseResult(msg)) continue
+    // Tool results are in 'user' type messages
+    if (msg.type !== 'user') continue
 
     // Extract tool_use_id from message.content
     const content = msg.message?.content
     if (!Array.isArray(content)) continue
 
+    // Rich metadata is optional - some messages only have tool_result blocks without it
     const toolUseResult = getToolUseResult(msg)
 
     for (const block of content) {
