@@ -426,6 +426,12 @@ export function SessionMessages({
       // - file-history-snapshot: Internal file versioning for undo/redo
       if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot') return false
 
+      // Skip result messages - these are turn terminators sent via stdout (not persisted to JSONL).
+      // They signal the end of Claude's turn and contain summary statistics (duration, cost, tokens).
+      // Used by deriveIsWorking() for state management, but not displayed as chat messages.
+      // See data-models.md "The result Message (Session Terminator)" section.
+      if (msg.type === 'result') return false
+
       // Skip meta messages (system-injected context)
       if (msg.isMeta) return false
 

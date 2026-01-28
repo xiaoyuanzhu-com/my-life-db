@@ -1242,6 +1242,7 @@ Some message types are intentionally **not rendered** in the chat interface as s
 |--------------|--------|
 | `file-history-snapshot` | Internal file versioning metadata for undo/redo |
 | `queue-operation` | Internal session queue management (enqueue/dequeue events at session start) |
+| `type: "result"` | Turn terminator (stdout only, not persisted). Contains summary stats. Used for state derivation, not display. |
 | `isMeta: true` | System-injected context messages (e.g., `<local-command-caveat>`) not meant for display |
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 | `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |

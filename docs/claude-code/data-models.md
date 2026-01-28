@@ -1823,6 +1823,8 @@ Claude's stream-json output has **two levels of types**:
 
 The `result` message marks the **end of Claude's turn**. Before receiving `result`, Claude is still working.
 
+**Important:** This message is **stdout-only** - it is NOT persisted to JSONL files. Historical sessions won't have `result` messages. The UI **skips rendering** this message as a standalone chat entry; it's used for state derivation (`isWorking`) and statistics.
+
 **Structure:**
 ```json
 {
@@ -1848,9 +1850,41 @@ The `result` message marks the **end of Claude's turn**. Before receiving `resul
       "outputTokens": 11327,
       "costUSD": 1.09
     }
-  }
+  },
+  "permission_denials": []
 }
 ```
+
+**Result Message Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"result"` |
+| `subtype` | string | `"success"` or `"error"` |
+| `is_error` | boolean | Whether the turn ended with an error |
+| `duration_ms` | number | Total wall-clock time in milliseconds |
+| `duration_api_ms` | number | API processing time in milliseconds |
+| `num_turns` | number | Number of tool call rounds in this turn |
+| `result` | string | Final text summary of the turn |
+| `session_id` | string | Session UUID |
+| `total_cost_usd` | number | Total cost for this turn in USD |
+| `usage` | object | Aggregated token usage statistics |
+| `usage.input_tokens` | number | Total input tokens |
+| `usage.cache_creation_input_tokens` | number | Tokens used to create cache |
+| `usage.cache_read_input_tokens` | number | Tokens read from cache |
+| `usage.output_tokens` | number | Total output tokens |
+| `usage.server_tool_use` | object? | Server-side tool usage (web_search_requests, web_fetch_requests) |
+| `usage.service_tier` | string | Service tier ("standard") |
+| `modelUsage` | object | Per-model token usage breakdown |
+| `modelUsage.{model}.inputTokens` | number | Input tokens for this model |
+| `modelUsage.{model}.outputTokens` | number | Output tokens for this model |
+| `modelUsage.{model}.cacheReadInputTokens` | number | Cache read tokens for this model |
+| `modelUsage.{model}.cacheCreationInputTokens` | number | Cache creation tokens for this model |
+| `modelUsage.{model}.costUSD` | number | Cost for this model in USD |
+| `modelUsage.{model}.contextWindow` | number | Context window size |
+| `modelUsage.{model}.maxOutputTokens` | number | Maximum output tokens |
+| `permission_denials` | array | List of permission denials during this turn |
+| `uuid` | string | Unique message identifier |
 
 **UI State Machine:**
 ```
