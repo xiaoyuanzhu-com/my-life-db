@@ -235,24 +235,18 @@
   animation: slide-down-fade 0.4s ease-in forwards;
 }
 
-/* Banner reveal/conceal - simple height animation */
-@keyframes banner-reveal {
-  from { max-height: 0; }
-  to { max-height: 50px; }
+/* Banner reveal/conceal - CSS grid animation (GPU-accelerated) */
+.banner-grid {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s ease-out;
 }
 
-@keyframes banner-conceal {
-  from { max-height: 50px; }
-  to { max-height: 0; }
+.banner-grid.concealing {
+  grid-template-rows: 0fr;
 }
 
-.animate-banner-reveal {
-  animation: banner-reveal 0.25s ease-out forwards;
-  overflow: hidden;
-}
-
-.animate-banner-conceal {
-  animation: banner-conceal 0.25s ease-in forwards;
+.banner-grid-content {
   overflow: hidden;
 }
 

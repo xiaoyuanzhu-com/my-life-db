@@ -18,8 +18,9 @@ export function ConnectionStatusBanner({
   isDismissing = false,
   onDismissed,
 }: ConnectionStatusBannerProps) {
-  const handleAnimationEnd = () => {
-    if (isDismissing && onDismissed) {
+  const handleTransitionEnd = (e: React.TransitionEvent) => {
+    // Only handle grid-template-rows transition, not other properties
+    if (e.propertyName === 'grid-template-rows' && isDismissing && onDismissed) {
       onDismissed()
     }
   }
@@ -41,14 +42,15 @@ export function ConnectionStatusBanner({
 
   return (
     <div
-      className={cn(
-        'flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border',
-        isDismissing ? 'animate-banner-conceal' : 'animate-banner-reveal'
-      )}
-      onAnimationEnd={handleAnimationEnd}
+      className={cn('banner-grid', isDismissing && 'concealing')}
+      onTransitionEnd={handleTransitionEnd}
     >
-      {icon}
-      <span>{text}</span>
+      <div className="banner-grid-content">
+        <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
+          {icon}
+          <span>{text}</span>
+        </div>
+      </div>
     </div>
   )
 }

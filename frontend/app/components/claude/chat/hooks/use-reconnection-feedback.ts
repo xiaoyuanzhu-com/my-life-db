@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 /** WebSocket connection status */
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'
@@ -17,31 +17,45 @@ interface ReconnectionFeedback {
  * Shows "Connected." for 1.5s after transitioning from non-connected → connected.
  */
 export function useReconnectionFeedback(connectionStatus: ConnectionStatus): ReconnectionFeedback {
-  const prevConnectionStatusRef = useRef(connectionStatus)
+  const prevStatusRef = useRef<ConnectionStatus | null>(null)
   const [showReconnected, setShowReconnected] = useState(false)
   const [isDismissing, setIsDismissing] = useState(false)
 
-  useEffect(() => {
-    const prev = prevConnectionStatusRef.current
-    prevConnectionStatusRef.current = connectionStatus
+  // Detect reconnection synchronously during render to avoid flash
+  // This runs before effects, so the banner stays visible during transition
+  const wasDisconnected = prevStatusRef.current !== null && prevStatusRef.current !== 'connected'
+  const justReconnected = wasDisconnected && connectionStatus === 'connected'
 
-    if (prev !== 'connected' && connectionStatus === 'connected') {
-      // Just reconnected - show success feedback
-      setShowReconnected(true)
+  // Update ref synchronously (before effects run)
+  // We update it here so the next render sees the current value as "previous"
+  const currentPrev = prevStatusRef.current
+  prevStatusRef.current = connectionStatus
+
+  // Handle reconnection - set state synchronously if we just reconnected
+  if (justReconnected && !showReconnected) {
+    setShowReconnected(true)
+    setIsDismissing(false)
+  }
+
+  // Handle disconnection - reset state
+  if (currentPrev === 'connected' && connectionStatus !== 'connected') {
+    if (showReconnected) {
+      setShowReconnected(false)
       setIsDismissing(false)
-      // After 1.5s, start dismissal animation
+    }
+  }
+
+  // Start dismissal timer when showing reconnected message
+  useEffect(() => {
+    if (showReconnected && !isDismissing) {
       const timer = setTimeout(() => {
         setIsDismissing(true)
       }, 1500)
       return () => clearTimeout(timer)
-    } else if (connectionStatus !== 'connected') {
-      // Connection lost - reset reconnection feedback state
-      setShowReconnected(false)
-      setIsDismissing(false)
     }
-  }, [connectionStatus])
+  }, [showReconnected, isDismissing])
 
-  const onDismissed = () => setShowReconnected(false)
+  const onDismissed = useCallback(() => setShowReconnected(false), [])
 
   return { showReconnected, isDismissing, onDismissed }
 }
