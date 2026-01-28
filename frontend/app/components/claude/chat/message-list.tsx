@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useCallback } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
@@ -26,25 +26,48 @@ interface MessageListProps {
  * which can be used recursively for nested agent sessions.
  */
 export function MessageList({ messages, toolResultMap, optimisticMessage, wipText, onScrollElementReady }: MessageListProps) {
-  const { scrollRef, contentRef } = useStickToBottom({
+  const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
     initial: 'instant',
     resize: 'instant',
   })
 
+  // Track scroll element for re-engage logic
+  const scrollElementRef = useRef<HTMLDivElement | null>(null)
+
   // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
   const mergedScrollRef = useCallback(
     (element: HTMLDivElement | null) => {
+      scrollElementRef.current = element
       // Assign to useStickToBottom's ref
       if (typeof scrollRef === 'function') {
         scrollRef(element)
       } else if (scrollRef) {
-        ;(scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = element
+        ;(scrollRef as React.RefObject<HTMLDivElement | null>).current = element
       }
       // Notify parent for hide-on-scroll
       onScrollElementReady?.(element)
     },
     [scrollRef, onScrollElementReady]
   )
+
+  // Re-engage sticky when user scrolls near bottom (helps with mobile touch momentum)
+  useEffect(() => {
+    const element = scrollElementRef.current
+    if (!element) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = element
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // Re-engage sticky when within 50px of bottom
+      if (distanceFromBottom > 0 && distanceFromBottom < 50) {
+        scrollToBottom({ animation: 'instant' })
+      }
+    }
+
+    element.addEventListener('scroll', handleScroll, { passive: true })
+    return () => element.removeEventListener('scroll', handleScroll)
+  }, [scrollToBottom])
 
   return (
     <div
