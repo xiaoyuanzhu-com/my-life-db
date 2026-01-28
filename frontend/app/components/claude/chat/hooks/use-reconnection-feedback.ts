@@ -16,10 +16,25 @@ interface ReconnectionFeedback {
  * Tracks reconnection state to show success feedback after reconnecting.
  * Shows "Connected." for 1.5s after transitioning from non-connected → connected.
  */
-export function useReconnectionFeedback(connectionStatus: ConnectionStatus): ReconnectionFeedback {
+export function useReconnectionFeedback(
+  connectionStatus: ConnectionStatus,
+  sessionId: string
+): ReconnectionFeedback {
   const prevStatusRef = useRef<ConnectionStatus | null>(null)
+  const prevSessionIdRef = useRef<string | null>(null)
   const [showReconnected, setShowReconnected] = useState(false)
   const [isDismissing, setIsDismissing] = useState(false)
+
+  // Reset state when session changes to avoid false "reconnected" banners
+  const sessionChanged = prevSessionIdRef.current !== null && prevSessionIdRef.current !== sessionId
+  if (sessionChanged) {
+    prevStatusRef.current = null
+    if (showReconnected || isDismissing) {
+      setShowReconnected(false)
+      setIsDismissing(false)
+    }
+  }
+  prevSessionIdRef.current = sessionId
 
   // Detect reconnection synchronously during render to avoid flash
   // This runs before effects, so the banner stays visible during transition

@@ -57,8 +57,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   // Draft persistence hook
   const draft = useDraftPersistence(sessionId)
 
-  // Reconnection feedback hook
-  const reconnection = useReconnectionFeedback(connectionStatus)
+  // Reconnection feedback hook (needs sessionId to reset on session switch)
+  const reconnection = useReconnectionFeedback(connectionStatus, sessionId)
 
   // Expose imperative handle for parent to manage draft lifecycle
   useImperativeHandle(
