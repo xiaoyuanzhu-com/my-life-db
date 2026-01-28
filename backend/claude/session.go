@@ -601,8 +601,9 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 				denyMessage = fmt.Sprintf("Permission denied by user for tool: %s", toolName)
 			}
 			return sdk.PermissionResultDeny{
-				Behavior: sdk.PermissionDeny,
-				Message:  denyMessage,
+				Behavior:  sdk.PermissionDeny,
+				Message:   denyMessage,
+				Interrupt: true,
 			}, nil
 
 		case <-time.After(5 * time.Minute):

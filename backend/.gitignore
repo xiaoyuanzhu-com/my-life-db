@@ -6,3 +6,5 @@ vendor/
 
 # Test coverage
 coverage.out
+
+claude/claude-agent-sdk-python
