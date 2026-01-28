@@ -316,8 +316,7 @@ function ConnectionStatusBanner({ status }: ConnectionStatusBannerProps) {
         <WifiOff className="h-3.5 w-3.5 shrink-0" />
       )}
       <span>
-        Your input is saved locally, feel free to continue typing.{' '}
-        {status === 'connecting' ? 'Reconnecting...' : 'Waiting for connection...'}
+        {status === 'connecting' ? 'Reconnecting.' : 'Disconnected.'} Your input is saved locally.
       </span>
     </div>
   )
