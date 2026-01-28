@@ -236,10 +236,16 @@
 }
 
 /* Banner reveal/conceal - CSS grid animation (GPU-accelerated) */
+@keyframes banner-reveal {
+  from { grid-template-rows: 0fr; }
+  to { grid-template-rows: 1fr; }
+}
+
 .banner-grid {
   display: grid;
   grid-template-rows: 1fr;
   transition: grid-template-rows 0.25s ease-out;
+  animation: banner-reveal 0.25s ease-out;
 }
 
 .banner-grid.concealing {
