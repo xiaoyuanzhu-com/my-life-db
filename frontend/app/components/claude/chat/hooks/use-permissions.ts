@@ -114,11 +114,15 @@ export function usePermissions(): UsePermissionsResult {
     setControlResponses(new Set())
   }, [])
 
-  return {
-    pendingPermissions,
-    handleControlRequest,
-    handleControlResponse,
-    buildPermissionResponse,
-    reset,
-  }
+  // Return stable object reference to avoid re-renders
+  return useMemo(
+    () => ({
+      pendingPermissions,
+      handleControlRequest,
+      handleControlResponse,
+      buildPermissionResponse,
+      reset,
+    }),
+    [pendingPermissions, handleControlRequest, handleControlResponse, buildPermissionResponse, reset]
+  )
 }

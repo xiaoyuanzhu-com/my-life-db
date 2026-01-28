@@ -225,7 +225,9 @@ export function ChatInterface({
         return [...prev, sessionMsg]
       })
     },
-    [permissions, refreshSessions]
+    // Use specific stable functions, not the whole permissions object
+    // handleControlRequest and handleControlResponse have empty deps, so they're stable
+    [permissions.handleControlRequest, permissions.handleControlResponse, refreshSessions]
   )
 
   // WebSocket connection hook
@@ -282,7 +284,8 @@ export function ChatInterface({
     setProgressMessage(null)
     permissions.reset()
     hasRefreshedRef.current = false
-  }, [sessionId, permissions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
+  }, [sessionId])
 
   // ============================================================================
   // Handlers
@@ -327,7 +330,7 @@ export function ChatInterface({
         permissions.handleControlResponse({ request_id: requestId })
       }
     },
-    [permissions, ws]
+    [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
   )
 
   // Handle question answer (placeholder for future implementation)
