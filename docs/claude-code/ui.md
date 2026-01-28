@@ -1200,7 +1200,7 @@ Progress messages (`type: "progress"`) are filtered from the main message list b
 |-------------|----------------|-------------|
 | `agent_progress` | Task tool | Subagent spawning and execution progress |
 | `bash_progress` | Bash tool | Long-running command elapsed time and output |
-| `hook_progress` | (future) | Hook execution progress |
+| `hook_progress` | Tool with hook | Hook execution progress (PostToolUse hooks running after tool completes) |
 | `query_update` | (future) | Web search query being executed |
 | `search_results_received` | (future) | Web search results received |
 

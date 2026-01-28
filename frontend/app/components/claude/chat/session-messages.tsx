@@ -33,6 +33,19 @@ interface BashProgressMessage extends SessionMessage {
   }
 }
 
+// Hook progress message structure
+export interface HookProgressMessage extends SessionMessage {
+  type: 'progress'
+  parentToolUseID?: string
+  toolUseID?: string
+  data?: {
+    type: 'hook_progress'
+    hookEvent: string
+    hookName: string
+    command: string
+  }
+}
+
 /**
  * Check if a message is an agent_progress message
  */
@@ -47,6 +60,14 @@ function isAgentProgressMessage(msg: SessionMessage): msg is AgentProgressMessag
 function isBashProgressMessage(msg: SessionMessage): msg is BashProgressMessage {
   return msg.type === 'progress' &&
     (msg as BashProgressMessage).data?.type === 'bash_progress'
+}
+
+/**
+ * Check if a message is a hook_progress message
+ */
+function isHookProgressMessage(msg: SessionMessage): msg is HookProgressMessage {
+  return msg.type === 'progress' &&
+    (msg as HookProgressMessage).data?.type === 'hook_progress'
 }
 
 /**
@@ -76,6 +97,25 @@ export function buildBashProgressMap(messages: SessionMessage[]): Map<string, Ba
 
   for (const msg of messages) {
     if (isBashProgressMessage(msg) && msg.parentToolUseID) {
+      const existing = map.get(msg.parentToolUseID) || []
+      existing.push(msg)
+      map.set(msg.parentToolUseID, existing)
+    }
+  }
+
+  return map
+}
+
+/**
+ * Build a map from parentToolUseID to hook_progress messages
+ * This allows tools to find their associated hook progress updates
+ * (e.g., PostToolUse hooks that run after a Read tool)
+ */
+export function buildHookProgressMap(messages: SessionMessage[]): Map<string, HookProgressMessage[]> {
+  const map = new Map<string, HookProgressMessage[]>()
+
+  for (const msg of messages) {
+    if (isHookProgressMessage(msg) && msg.parentToolUseID) {
       const existing = map.get(msg.parentToolUseID) || []
       existing.push(msg)
       map.set(msg.parentToolUseID, existing)
@@ -132,6 +172,10 @@ interface SessionMessagesProps {
    */
   bashProgressMap?: Map<string, BashProgressMessage[]>
   /**
+   * Pre-built hook progress map. If not provided, will be built from messages.
+   */
+  hookProgressMap?: Map<string, HookProgressMessage[]>
+  /**
    * Pre-built hook response map. If not provided, will be built from messages.
    */
   hookResponseMap?: Map<string, HookResponseMessage>
@@ -158,6 +202,7 @@ export function SessionMessages({
   toolResultMap: providedToolResultMap,
   agentProgressMap: providedAgentProgressMap,
   bashProgressMap: providedBashProgressMap,
+  hookProgressMap: providedHookProgressMap,
   hookResponseMap: providedHookResponseMap,
   depth = 0,
 }: SessionMessagesProps) {
@@ -178,6 +223,12 @@ export function SessionMessages({
     if (providedBashProgressMap) return providedBashProgressMap
     return buildBashProgressMap(messages)
   }, [messages, providedBashProgressMap])
+
+  // Build hook progress map if not provided
+  const hookProgressMap = useMemo(() => {
+    if (providedHookProgressMap) return providedHookProgressMap
+    return buildHookProgressMap(messages)
+  }, [messages, providedHookProgressMap])
 
   // Build hook response map if not provided
   const hookResponseMap = useMemo(() => {
@@ -238,6 +289,7 @@ export function SessionMessages({
           toolResultMap={toolResultMap}
           agentProgressMap={agentProgressMap}
           bashProgressMap={bashProgressMap}
+          hookProgressMap={hookProgressMap}
           hookResponseMap={hookResponseMap}
           depth={depth}
         />

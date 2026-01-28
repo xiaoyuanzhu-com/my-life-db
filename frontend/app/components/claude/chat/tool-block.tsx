@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolCall } from '~/types/claude'
 import { MessageDot } from './message-dot'
-import type { AgentProgressMessage, BashProgressMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage } from './session-messages'
 
 // Tool-specific visualizations
 import { ReadToolView } from './tools/read-tool'
@@ -21,6 +21,8 @@ interface ToolBlockProps {
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   /** Map from tool_use ID to bash progress messages (for Bash tools) */
   bashProgressMap?: Map<string, BashProgressMessage[]>
+  /** Map from tool_use ID to hook progress messages (for tools with post-hooks) */
+  hookProgressMap?: Map<string, HookProgressMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
@@ -55,21 +57,23 @@ function _getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} depth={depth} />
 }
 
 function ToolContent({
   toolCall,
   agentProgressMap,
   bashProgressMap,
+  hookProgressMap,
   depth,
 }: {
   toolCall: ToolCall
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   bashProgressMap?: Map<string, BashProgressMessage[]>
+  hookProgressMap?: Map<string, HookProgressMessage[]>
   depth: number
 }) {
   // Render tool-specific view based on tool name
