@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -326,31 +327,50 @@ type ChatMessage struct {
 }
 
 // ListAllClaudeSessions handles GET /api/claude/sessions/all
-// Returns both active and historical sessions using the in-memory cache
+// Returns both active and historical sessions using the in-memory cache.
+// Supports pagination via query parameters:
+//   - limit: number of sessions to return (default 20, max 100)
+//   - cursor: pagination cursor from previous response
+//   - status: filter by status ("all", "active", "archived", default "all")
 func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
-	// Get all sessions from our manager's pool (includes newly created sessions)
+	// Parse pagination parameters
+	limit := 20
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	cursor := c.Query("cursor")
+	statusFilter := c.DefaultQuery("status", "all")
+
+	// Get all active sessions from our manager's pool
 	activeSessions := claudeManager.ListSessions()
+	activeSessionIDs := make(map[string]bool)
 	activeSessionMap := make(map[string]*claude.Session)
 	for _, s := range activeSessions {
+		activeSessionIDs[s.ID] = s.IsActivated()
 		activeSessionMap[s.ID] = s
 	}
 
-	// Get all sessions from the index cache (deduplicated to show only the most complete
-	// version when sessions share the same first user message UUID - indicating continuations)
+	// Get paginated sessions from the index cache
 	indexCache := claudeManager.GetIndexCache()
-	cachedEntries := indexCache.GetAllDeduplicated()
+	paginationResult := indexCache.GetPaginated(cursor, limit, activeSessionIDs, statusFilter)
 
 	log.Debug().
 		Int("managerSessionCount", len(activeSessions)).
-		Int("cacheEntryCount", len(cachedEntries)).
-		Msg("ListAllClaudeSessions: fetching sessions")
+		Int("returnedCount", len(paginationResult.Entries)).
+		Int("totalCount", paginationResult.TotalCount).
+		Bool("hasMore", paginationResult.HasMore).
+		Str("cursor", cursor).
+		Str("statusFilter", statusFilter).
+		Msg("ListAllClaudeSessions: fetching sessions with pagination")
 
 	// Track which sessions we've already added (to avoid duplicates)
 	addedSessions := make(map[string]bool)
-	result := make([]map[string]interface{}, 0, len(cachedEntries))
+	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
 
 	// Convert cached entries to response format
-	for _, entry := range cachedEntries {
+	for _, entry := range paginationResult.Entries {
 		addedSessions[entry.SessionID] = true
 
 		sessionData := map[string]interface{}{
@@ -378,26 +398,49 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		result = append(result, sessionData)
 	}
 
-	// Add any sessions from manager that aren't in the cache yet (just created)
-	addedFromManager := 0
-	for _, s := range activeSessions {
-		if addedSessions[s.ID] {
-			continue // Already added from cache
+	// For first page only: Add any sessions from manager that aren't in the cache yet (just created)
+	// These are prepended to the result since they're the newest
+	if cursor == "" {
+		newSessions := make([]map[string]interface{}, 0)
+		for _, s := range activeSessions {
+			if addedSessions[s.ID] {
+				continue // Already added from cache
+			}
+
+			// Apply status filter
+			isActive := s.IsActivated()
+			if statusFilter == "active" && !isActive {
+				continue
+			}
+			if statusFilter == "archived" && isActive {
+				continue
+			}
+
+			sessionData := s.ToJSON()
+			sessionData["isActive"] = isActive
+			newSessions = append(newSessions, sessionData)
+			log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in cache)")
 		}
-		sessionData := s.ToJSON()
-		sessionData["isActive"] = s.IsActivated()
-		result = append(result, sessionData)
-		addedFromManager++
-		log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in cache)")
+		// Prepend new sessions (they're the most recent)
+		if len(newSessions) > 0 {
+			result = append(newSessions, result...)
+		}
 	}
 
 	log.Debug().
-		Int("totalSessions", len(result)).
-		Int("fromCache", len(cachedEntries)).
-		Int("fromManager", addedFromManager).
-		Msg("ListAllClaudeSessions: returning sessions")
+		Int("totalReturned", len(result)).
+		Int("fromCache", len(paginationResult.Entries)).
+		Bool("hasMore", paginationResult.HasMore).
+		Msg("ListAllClaudeSessions: returning paginated sessions")
 
-	c.JSON(http.StatusOK, gin.H{"sessions": result})
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": result,
+		"pagination": gin.H{
+			"hasMore":    paginationResult.HasMore,
+			"nextCursor": paginationResult.NextCursor,
+			"totalCount": paginationResult.TotalCount,
+		},
+	})
 }
 
 // SendClaudeMessage handles POST /api/claude/sessions/:id/messages

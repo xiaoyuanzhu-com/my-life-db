@@ -2,8 +2,10 @@ package claude
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -523,4 +525,153 @@ func (e *CachedSessionEntry) GetDisplayTitle() string {
 	}
 	// Fallback for entries loaded before DisplayTitle was cached
 	return e.computeDisplayTitle()
+}
+
+// PaginationResult holds the result of a paginated query
+type PaginationResult struct {
+	Entries    []*CachedSessionEntry
+	HasMore    bool
+	NextCursor string
+	TotalCount int
+}
+
+// GetPaginated returns paginated session entries with cursor-based pagination.
+// Parameters:
+//   - cursor: format "timestamp_sessionId", empty for first page
+//   - limit: max entries to return (1-100)
+//   - activeSessionIDs: set of currently active session IDs (for status filtering)
+//   - statusFilter: "all", "active", or "archived"
+//
+// Returns entries sorted by Modified time (descending).
+func (c *SessionIndexCache) GetPaginated(cursor string, limit int, activeSessionIDs map[string]bool, statusFilter string) *PaginationResult {
+	c.ensureInitialized()
+
+	// Validate limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Get deduplicated entries
+	allEntries := c.GetAllDeduplicated()
+
+	// Sort by Modified time (descending - most recent first)
+	sort.Slice(allEntries, func(i, j int) bool {
+		if allEntries[i].Modified.Equal(allEntries[j].Modified) {
+			// Secondary sort by SessionID for stable ordering
+			return allEntries[i].SessionID > allEntries[j].SessionID
+		}
+		return allEntries[i].Modified.After(allEntries[j].Modified)
+	})
+
+	// Find cursor position
+	startIdx := 0
+	if cursor != "" {
+		startIdx = c.findCursorIndex(allEntries, cursor)
+	}
+
+	// Filter and collect results
+	result := make([]*CachedSessionEntry, 0, limit)
+	totalFiltered := 0
+
+	for i := 0; i < len(allEntries); i++ {
+		entry := allEntries[i]
+
+		// Apply status filter
+		isActive := activeSessionIDs[entry.SessionID]
+		if statusFilter == "active" && !isActive {
+			continue
+		}
+		if statusFilter == "archived" && isActive {
+			continue
+		}
+
+		totalFiltered++
+
+		// Skip entries before cursor
+		if i < startIdx {
+			continue
+		}
+
+		// Collect up to limit entries
+		if len(result) < limit {
+			result = append(result, entry)
+		}
+	}
+
+	// Build pagination info
+	hasMore := len(result) == limit && (startIdx+limit) < totalFiltered
+	var nextCursor string
+	if hasMore && len(result) > 0 {
+		last := result[len(result)-1]
+		nextCursor = fmt.Sprintf("%s_%s", last.Modified.Format(time.RFC3339Nano), last.SessionID)
+	}
+
+	return &PaginationResult{
+		Entries:    result,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+		TotalCount: totalFiltered,
+	}
+}
+
+// findCursorIndex finds the index of the first entry after the cursor position.
+// Cursor format: "timestamp_sessionId"
+func (c *SessionIndexCache) findCursorIndex(entries []*CachedSessionEntry, cursor string) int {
+	// Parse cursor: "timestamp_sessionId"
+	parts := strings.SplitN(cursor, "_", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+
+	cursorTime, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		// Try RFC3339 format as fallback
+		cursorTime, err = time.Parse(time.RFC3339, parts[0])
+		if err != nil {
+			return 0
+		}
+	}
+	cursorSessionID := parts[1]
+
+	// Find the first entry that comes after the cursor
+	for i, entry := range entries {
+		// Skip entries that are newer than or equal to cursor
+		if entry.Modified.After(cursorTime) {
+			continue
+		}
+		if entry.Modified.Equal(cursorTime) {
+			// Same timestamp - use session ID for ordering
+			if entry.SessionID >= cursorSessionID {
+				continue
+			}
+		}
+		return i
+	}
+
+	return len(entries)
+}
+
+// GetTotalCount returns the total count of sessions (optionally filtered by status).
+func (c *SessionIndexCache) GetTotalCount(activeSessionIDs map[string]bool, statusFilter string) int {
+	c.ensureInitialized()
+
+	allEntries := c.GetAllDeduplicated()
+
+	if statusFilter == "all" {
+		return len(allEntries)
+	}
+
+	count := 0
+	for _, entry := range allEntries {
+		isActive := activeSessionIDs[entry.SessionID]
+		if statusFilter == "active" && isActive {
+			count++
+		} else if statusFilter == "archived" && !isActive {
+			count++
+		}
+	}
+	return count
 }

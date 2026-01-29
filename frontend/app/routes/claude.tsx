@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface } from '~/components/claude/chat'
@@ -24,6 +24,14 @@ interface Session {
   gitBranch?: string
 }
 
+interface Pagination {
+  hasMore: boolean
+  nextCursor: string | null
+  totalCount: number
+}
+
+type StatusFilter = 'all' | 'active' | 'archived'
+
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
@@ -36,13 +44,22 @@ export default function ClaudePage() {
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
+  // Pagination state
+  const [pagination, setPagination] = useState<Pagination>({
+    hasMore: false,
+    nextCursor: null,
+    totalCount: 0,
+  })
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  // Load sessions on mount
+  // Load sessions on mount or when filter changes
   useEffect(() => {
     loadSessions()
-  }, [])
+  }, [statusFilter])
 
   // Sync URL with active session
   useEffect(() => {
@@ -114,32 +131,78 @@ export default function ClaudePage() {
     }
   }, [navigate])
 
+  // Sort sessions: active first, then by last activity
+  const sortSessions = (sessionList: Session[]): Session[] => {
+    return [...sessionList].sort((a: Session, b: Session) => {
+      // Active sessions come first
+      if (a.isActive && !b.isActive) return -1
+      if (!a.isActive && b.isActive) return 1
+
+      // Within same type, sort by lastActivity
+      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+    })
+  }
+
   const loadSessions = async () => {
     try {
-      // Fetch all sessions (both active and historical)
-      const response = await api.get('/api/claude/sessions/all')
-      const data = await response.json()
-      const allSessions = data.sessions || []
-
-      // Sort: active sessions first, then by last activity (most recent first)
-      const sortedSessions = allSessions.sort((a: Session, b: Session) => {
-        // Active sessions come first
-        if (a.isActive && !b.isActive) return -1
-        if (!a.isActive && b.isActive) return 1
-
-        // Within same type, sort by lastActivity
-        return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+      setLoading(true)
+      // Fetch first page of sessions with pagination
+      const params = new URLSearchParams({
+        limit: '20',
+        status: statusFilter,
       })
 
-      setSessions(sortedSessions)
+      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const data = await response.json()
+      const sessionList = data.sessions || []
 
-      // Session selection is now URL-driven, no auto-selection needed
+      setSessions(sortSessions(sessionList))
+      setPagination({
+        hasMore: data.pagination?.hasMore ?? false,
+        nextCursor: data.pagination?.nextCursor ?? null,
+        totalCount: data.pagination?.totalCount ?? sessionList.length,
+      })
     } catch (error) {
       console.error('Failed to load sessions:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Load more sessions (infinite scroll)
+  const loadMoreSessions = useCallback(async () => {
+    if (!pagination.hasMore || isLoadingMore || !pagination.nextCursor) return
+
+    try {
+      setIsLoadingMore(true)
+      const params = new URLSearchParams({
+        limit: '20',
+        status: statusFilter,
+        cursor: pagination.nextCursor,
+      })
+
+      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const data = await response.json()
+      const newSessions = data.sessions || []
+
+      // Append new sessions, avoiding duplicates
+      setSessions((prev) => {
+        const existingIds = new Set(prev.map((s) => s.id))
+        const uniqueNewSessions = newSessions.filter((s: Session) => !existingIds.has(s.id))
+        return sortSessions([...prev, ...uniqueNewSessions])
+      })
+
+      setPagination({
+        hasMore: data.pagination?.hasMore ?? false,
+        nextCursor: data.pagination?.nextCursor ?? null,
+        totalCount: data.pagination?.totalCount ?? pagination.totalCount,
+      })
+    } catch (error) {
+      console.error('Failed to load more sessions:', error)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [pagination.hasMore, pagination.nextCursor, isLoadingMore, statusFilter])
 
   const createSession = async () => {
     try {
@@ -254,6 +317,11 @@ export default function ClaudePage() {
             title="Clear selection"
           >
             Sessions
+            {pagination.totalCount > 0 && (
+              <span className="ml-1 text-xs text-muted-foreground font-normal">
+                ({pagination.totalCount})
+              </span>
+            )}
           </h2>
           <div className="flex items-center gap-2">
             <Button
@@ -274,6 +342,34 @@ export default function ClaudePage() {
           </div>
         </div>
 
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-1 px-2 py-2 border-b border-border bg-muted/20">
+          <Button
+            variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setStatusFilter('all')}
+          >
+            All
+          </Button>
+          <Button
+            variant={statusFilter === 'active' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setStatusFilter('active')}
+          >
+            Active
+          </Button>
+          <Button
+            variant={statusFilter === 'archived' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setStatusFilter('archived')}
+          >
+            Archived
+          </Button>
+        </div>
+
         {/* Sessions List */}
         <div className="flex-1 overflow-hidden">
           <SessionList
@@ -283,27 +379,69 @@ export default function ClaudePage() {
             onDelete={deleteSession}
             onRename={updateSessionTitle}
             onArchive={archiveSession}
+            hasMore={pagination.hasMore}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMoreSessions}
           />
         </div>
       </div>
 
       {/* Mobile Sidebar Sheet */}
       <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
-        <SheetContent side="left" className="w-[280px] p-0 md:hidden">
+        <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle>Sessions</SheetTitle>
+            <SheetTitle>
+              Sessions
+              {pagination.totalCount > 0 && (
+                <span className="ml-1 text-xs text-muted-foreground font-normal">
+                  ({pagination.totalCount})
+                </span>
+              )}
+            </SheetTitle>
           </SheetHeader>
-          <SessionList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelect={(id) => {
-              setActiveSessionId(id)
-              setShowMobileSidebar(false)
-            }}
-            onDelete={deleteSession}
-            onRename={updateSessionTitle}
-            onArchive={archiveSession}
-          />
+          {/* Status Filter Tabs - Mobile */}
+          <div className="flex items-center gap-1 px-2 py-2 border-b border-border bg-muted/20">
+            <Button
+              variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter('all')}
+            >
+              All
+            </Button>
+            <Button
+              variant={statusFilter === 'active' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter('active')}
+            >
+              Active
+            </Button>
+            <Button
+              variant={statusFilter === 'archived' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter('archived')}
+            >
+              Archived
+            </Button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <SessionList
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelect={(id) => {
+                setActiveSessionId(id)
+                setShowMobileSidebar(false)
+              }}
+              onDelete={deleteSession}
+              onRename={updateSessionTitle}
+              onArchive={archiveSession}
+              hasMore={pagination.hasMore}
+              isLoadingMore={isLoadingMore}
+              onLoadMore={loadMoreSessions}
+            />
+          </div>
         </SheetContent>
       </Sheet>
 

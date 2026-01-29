@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Check, X, Archive } from 'lucide-react'
+import { Check, X, Archive, Loader2 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface Session {
@@ -25,6 +25,10 @@ interface SessionListProps {
   onDelete: (sessionId: string) => void
   onRename: (sessionId: string, title: string) => void
   onArchive: (sessionId: string) => void
+  // Pagination props
+  hasMore?: boolean
+  isLoadingMore?: boolean
+  onLoadMore?: () => void
 }
 
 // Get the display title for a session
@@ -57,9 +61,14 @@ export function SessionList({
   onDelete: _onDelete,
   onRename,
   onArchive,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const listRef = useRef<HTMLDivElement>(null)
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null)
 
   const _startEdit = (session: Session) => {
     setEditingId(session.id)
@@ -78,14 +87,46 @@ export function SessionList({
     setEditTitle('')
   }
 
+  // Infinite scroll using Intersection Observer
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !isLoadingMore && onLoadMore) {
+      onLoadMore()
+    }
+  }, [hasMore, isLoadingMore, onLoadMore])
+
+  useEffect(() => {
+    const trigger = loadMoreTriggerRef.current
+    if (!trigger || !onLoadMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore()
+        }
+      },
+      {
+        root: listRef.current,
+        rootMargin: '100px', // Trigger 100px before reaching the bottom
+        threshold: 0,
+      }
+    )
+
+    observer.observe(trigger)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [handleLoadMore, onLoadMore])
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={listRef} className="h-full overflow-y-auto">
       {sessions.length === 0 ? (
         <div className="p-4 text-center text-sm text-muted-foreground">
           No sessions
         </div>
       ) : (
-        sessions.map((session) => (
+        <>
+          {sessions.map((session) => (
             <div
               key={session.id}
               className={cn(
@@ -176,8 +217,27 @@ export function SessionList({
                 </>
               )}
             </div>
-          ))
-        )}
+          ))}
+
+          {/* Load more trigger element - invisible sentinel for Intersection Observer */}
+          <div ref={loadMoreTriggerRef} className="h-1" />
+
+          {/* Loading indicator */}
+          {isLoadingMore && (
+            <div className="flex items-center justify-center p-4 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="text-sm">Loading more...</span>
+            </div>
+          )}
+
+          {/* End of list indicator */}
+          {!hasMore && sessions.length > 0 && (
+            <div className="p-3 text-center text-xs text-muted-foreground">
+              — End of sessions —
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
