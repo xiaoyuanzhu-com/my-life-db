@@ -383,28 +383,18 @@ export function ChatInterface({
     setPendingQuestion(null)
   }, [])
 
-  // Handle interrupt - stop Claude's current operation
+  // Handle interrupt - stop Claude's current operation via WebSocket
   const handleInterrupt = useCallback(async () => {
     if (!isWorking) return
 
     try {
-      const response = await fetch(`/api/claude/sessions/${sessionId}/interrupt`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        console.error('[ChatInterface] Interrupt failed:', data.error)
-        setError(data.error || 'Failed to interrupt session')
-        setTimeout(() => setError(null), 5000)
-        return
-      }
+      await ws.sendMessage({ type: 'interrupt' })
     } catch (error) {
       console.error('[ChatInterface] Interrupt error:', error)
       setError('Failed to interrupt session')
       setTimeout(() => setError(null), 5000)
     }
-  }, [sessionId, isWorking])
+  }, [isWorking, ws.sendMessage])
 
   // ============================================================================
   // Render

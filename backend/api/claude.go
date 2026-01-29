@@ -931,6 +931,26 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				Str("mode", string(session.Mode)).
 				Msg("message sent to claude session via WebSocket")
 
+		case "interrupt":
+			// UI mode only: Interrupt current operation
+			if session.Mode != claude.ModeUI {
+				log.Debug().Str("sessionId", sessionID).Msg("interrupt received for non-UI session, ignoring")
+				break
+			}
+
+			if err := session.Interrupt(); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to interrupt session via WebSocket")
+				errMsg := map[string]interface{}{
+					"type":  "error",
+					"error": "Failed to interrupt session: " + err.Error(),
+				}
+				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+					conn.Write(ctx, websocket.MessageText, msgBytes)
+				}
+			} else {
+				log.Info().Str("sessionId", sessionID).Msg("session interrupted via WebSocket")
+			}
+
 		case "control_response":
 			// UI mode only: Handle permission responses from the frontend
 			if session.Mode != claude.ModeUI {
