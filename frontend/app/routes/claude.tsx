@@ -418,7 +418,13 @@ export default function ClaudePage() {
         <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
           <SheetHeader className="px-4 py-3 border-b">
             <div className="flex items-center gap-1">
-              <SheetTitle>
+              <SheetTitle
+                className="cursor-pointer hover:text-primary transition-colors"
+                onClick={() => {
+                  setActiveSessionId(null)
+                  setShowMobileSidebar(false)
+                }}
+              >
                 Sessions
                 {pagination.totalCount > 0 && (
                   <span className="ml-1 text-xs text-muted-foreground font-normal">
