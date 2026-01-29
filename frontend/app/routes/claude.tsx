@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface } from '~/components/claude/chat'
 import { ClaudeTerminal } from '~/components/claude/terminal'
+import { ChatInputField } from '~/components/claude/chat/chat-input-field'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
@@ -59,6 +60,11 @@ export default function ClaudePage() {
   })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+
+  // New session input state (for empty state)
+  const [newSessionInput, setNewSessionInput] = useState('')
+  const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
 
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
@@ -230,6 +236,36 @@ export default function ClaudePage() {
       }
     } catch (error) {
       console.error('Failed to create session:', error)
+    }
+  }
+
+  // Create session and send initial message (for empty state flow)
+  const createSessionWithMessage = async () => {
+    const message = newSessionInput.trim()
+    if (!message || isCreatingSession) return
+
+    setIsCreatingSession(true)
+    try {
+      const response = await api.post('/api/claude/sessions', {
+        title: `Session ${sessions.length + 1}`,
+        workingDir: '', // Use default
+      })
+
+      if (response.ok) {
+        const newSession = await response.json()
+        setSessions((prevSessions) => [
+          { ...newSession, isActive: true },
+          ...prevSessions,
+        ])
+        // Set the pending message before switching to the session
+        setPendingInitialMessage(message)
+        setNewSessionInput('')
+        setActiveSessionId(newSession.id)
+      }
+    } catch (error) {
+      console.error('Failed to create session:', error)
+    } finally {
+      setIsCreatingSession(false)
     }
   }
 
@@ -443,7 +479,7 @@ export default function ClaudePage() {
 
       {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-        {sessions.length > 0 && activeSessionId && activeSession ? (
+        {activeSessionId && activeSession ? (
           uiMode === 'chat' ? (
             <ChatInterface
               sessionId={activeSessionId}
@@ -452,18 +488,32 @@ export default function ClaudePage() {
               isActive={activeSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
               refreshSessions={loadSessions}
+              initialMessage={pendingInitialMessage ?? undefined}
+              onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           ) : (
             <ClaudeTerminal sessionId={activeSessionId} />
           )
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">No sessions</p>
-              <Button onClick={createSession}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create First Session
-              </Button>
+          <div className="flex h-full flex-col claude-bg">
+            {/* Empty message area */}
+            <div className="flex-1" />
+            {/* Input at bottom */}
+            <div className="pb-4">
+              <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
+                <div
+                  className="border border-border rounded-xl overflow-hidden"
+                  style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
+                >
+                  <ChatInputField
+                    content={newSessionInput}
+                    onChange={setNewSessionInput}
+                    onSend={createSessionWithMessage}
+                    disabled={isCreatingSession}
+                    placeholder="Start a new conversation..."
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}

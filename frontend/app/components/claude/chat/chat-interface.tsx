@@ -19,6 +19,8 @@ interface ChatInterfaceProps {
   isActive?: boolean // Whether session has a running CLI process
   onSessionNameChange?: (name: string) => void
   refreshSessions?: () => void // Called to refresh session list from backend
+  initialMessage?: string // Message to send immediately on mount (for new session flow)
+  onInitialMessageSent?: () => void // Called after initial message is sent
 }
 
 // Types that should not be rendered as messages
@@ -41,6 +43,8 @@ export function ChatInterface({
   sessionId,
   isActive,
   refreshSessions,
+  initialMessage,
+  onInitialMessageSent,
 }: ChatInterfaceProps) {
   // ============================================================================
   // State
@@ -69,6 +73,8 @@ export function ChatInterface({
 
   // Track if we've refreshed sessions for this inactive session
   const hasRefreshedRef = useRef(false)
+  // Track if initial message has been sent (to avoid sending twice)
+  const initialMessageSentRef = useRef(false)
   // Keep isActive in a ref so message handler can access latest value
   const isActiveRef = useRef(isActive)
   // Track if initial history load is complete (avoid refresh during history replay)
@@ -318,6 +324,7 @@ export function ChatInterface({
     permissions.reset()
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
+    initialMessageSentRef.current = false
     if (initialLoadTimerRef.current) {
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null
@@ -402,6 +409,19 @@ export function ChatInterface({
       setTimeout(() => setError(null), 5000)
     }
   }, [isWorking, ws.sendMessage])
+
+  // Send initial message once connected (for new session flow)
+  useEffect(() => {
+    if (
+      initialMessage &&
+      !initialMessageSentRef.current &&
+      ws.connectionStatus === 'connected'
+    ) {
+      initialMessageSentRef.current = true
+      sendMessage(initialMessage)
+      onInitialMessageSent?.()
+    }
+  }, [initialMessage, ws.connectionStatus, sendMessage, onInitialMessageSent])
 
   // ============================================================================
   // Render
