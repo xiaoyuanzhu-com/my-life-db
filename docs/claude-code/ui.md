@@ -1569,24 +1569,34 @@ const { scrollRef, contentRef } = useStickToBottom({
 
 The UI needs to determine whether Claude is currently working (processing a request) to show appropriate indicators (spinner, "Working..." text, interrupt button). This state is derived from message history rather than tracked separately, enabling second tabs to correctly detect state.
 
-**Option A: Result Message Detection (Current Implementation)**
+**Option A: Turn-Based Detection (Current Implementation)**
 
 ```typescript
 const isWorking = useMemo(() => {
   if (isActive === false) return false      // CLI not running
   if (optimisticMessage) return true         // User just sent message
+
+  // Has a turn started? (real user message exists, not tool_result)
+  const hasStartedTurn = rawMessages.some(
+    (m) => m.type === 'user' && !hasToolUseResult(m)
+  )
+  if (!hasStartedTurn) return false          // No turn started = not working
+
+  // Turn started, check if complete
   const lastMsg = rawMessages[rawMessages.length - 1]
-  if (!lastMsg) return false                 // Empty session
-  return lastMsg.type !== 'result'           // Turn not terminated
+  return lastMsg?.type !== 'result'          // Turn not terminated
 }, [rawMessages, optimisticMessage, isActive])
 ```
 
-**Rationale:** Claude Code emits a `result` message at the end of every turn. This is an explicit turn terminator signal - if present, the turn is complete; if absent, Claude is still working.
+**Rationale:** Working = a turn is in progress (started but not completed).
+- A turn **starts** when user sends a real message (not `tool_result`)
+- A turn **ends** when `result` message received
 
 **Reliability:**
 - ✅ Live sessions: 100% reliable - `result` always emitted when turn completes
-- ✅ Historical sessions: `isActive === false` check returns `false` immediately (no CLI process running)
-- ✅ No false negatives during active work (won't incorrectly show "idle" while Claude is working)
+- ✅ Historical sessions: `isActive === false` check returns `false` immediately
+- ✅ New session with only hooks: `hasStartedTurn` is `false` → not working
+- ✅ Interrupted sessions: Claude emits `result` with `subtype: "error_during_execution"`
 
 The key insight: `result` messages are stdout-only (not persisted to JSONL), but this doesn't matter because historical sessions have `isActive === false`, so we never reach the `result` check.
 
@@ -1627,8 +1637,9 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 
 **Comparison Table:**
 
-| Scenario | Option A (result) | Option B (heuristics) |
-|----------|-------------------|----------------------|
+| Scenario | Option A (turn-based) | Option B (heuristics) |
+|----------|----------------------|----------------------|
+| New session, only hooks | ✅ correct (`hasStartedTurn` guard) | ✅ correct |
 | Live session, turn complete | ✅ correct | ✅ correct |
 | Live session, mid-turn | ✅ correct | ✅ correct |
 | Live session, interrupted | ✅ correct (`result` with `subtype: "error_during_execution"`) | ✅ correct |
@@ -1639,7 +1650,8 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 **Current Decision:** Using Option A.
 
 - Both options are reliable for the common cases
-- Option A uses an explicit signal (`result` message) rather than inferring from content structure
+- Option A uses explicit signals (`result` message, turn start detection) rather than inferring from content structure
+- New sessions with only hook messages correctly show "not working"
 - Interrupted sessions work correctly - Claude emits `result` with `subtype: "error_during_execution"` (verified)
 - The "streaming text, no result yet" case is transient (milliseconds) and not user-visible
 - Option A is more robust to future changes in message structure

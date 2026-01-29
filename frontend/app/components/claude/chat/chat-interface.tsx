@@ -277,13 +277,22 @@ export function ChatInterface({
   }, [rawMessages])
 
   // Derive working state from message history and session active state
-  // Simple rule: if last message is 'result', turn is complete; otherwise still working
+  // Rule: working = a turn is in progress (started but not completed)
+  // - Turn starts when user sends a real message (not tool_result)
+  // - Turn ends when 'result' message received
   const isWorking = useMemo(() => {
     if (isActive === false) return false
     if (optimisticMessage) return true
+
+    // Has a turn started? (real user message exists, not tool_result)
+    const hasStartedTurn = rawMessages.some(
+      (m) => m.type === 'user' && !hasToolUseResult(m)
+    )
+    if (!hasStartedTurn) return false // No turn started = not working
+
+    // Turn started, check if complete
     const lastMsg = rawMessages[rawMessages.length - 1]
-    if (!lastMsg) return false
-    return lastMsg.type !== 'result'
+    return lastMsg?.type !== 'result'
   }, [rawMessages, optimisticMessage, isActive])
 
   // Only show connection status banner after we've connected at least once
