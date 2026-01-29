@@ -83,7 +83,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
   return (
     <div
       ref={mergedScrollRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 claude-interface claude-bg"
+      className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
     >
       <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
         {messages.length === 0 && !optimisticMessage ? (

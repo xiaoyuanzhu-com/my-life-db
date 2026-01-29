@@ -428,7 +428,7 @@ export function ChatInterface({
   // ============================================================================
 
   return (
-    <div className="flex flex-1 flex-col claude-bg">
+    <div className="flex flex-1 flex-col min-h-0 claude-bg">
       {/* Error Banner */}
       {error && (
         <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-sm text-destructive">
@@ -439,7 +439,7 @@ export function ChatInterface({
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
-        <div className="flex flex-1 flex-col min-w-0">
+        <div className="flex flex-1 flex-col min-h-0 min-w-0">
           <MessageList
             messages={renderableMessages}
             toolResultMap={toolResultMap}
