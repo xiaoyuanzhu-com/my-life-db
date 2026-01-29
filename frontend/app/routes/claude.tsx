@@ -6,6 +6,13 @@ import { ClaudeTerminal } from '~/components/claude/terminal'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
 import { useAuth } from '~/contexts/auth-context'
 import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
@@ -311,18 +318,30 @@ export default function ClaudePage() {
       <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
         {/* Sessions Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2
-            className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-            onClick={() => setActiveSessionId(null)}
-            title="Clear selection"
-          >
-            Sessions
-            {pagination.totalCount > 0 && (
-              <span className="ml-1 text-xs text-muted-foreground font-normal">
-                ({pagination.totalCount})
-              </span>
-            )}
-          </h2>
+          <div className="flex items-center gap-1">
+            <h2
+              className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
+              onClick={() => setActiveSessionId(null)}
+              title="Clear selection"
+            >
+              Sessions
+              {pagination.totalCount > 0 && (
+                <span className="ml-1 text-xs text-muted-foreground font-normal">
+                  ({pagination.totalCount})
+                </span>
+              )}
+            </h2>
+            <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
+              <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All</SelectItem>
+                <SelectItem value="active" className="text-xs">Active</SelectItem>
+                <SelectItem value="archived" className="text-xs">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -340,34 +359,6 @@ export default function ClaudePage() {
               New
             </Button>
           </div>
-        </div>
-
-        {/* Status Filter Tabs */}
-        <div className="flex items-center gap-1 px-2 py-2 border-b border-border bg-muted/20">
-          <Button
-            variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setStatusFilter('all')}
-          >
-            All
-          </Button>
-          <Button
-            variant={statusFilter === 'active' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setStatusFilter('active')}
-          >
-            Active
-          </Button>
-          <Button
-            variant={statusFilter === 'archived' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setStatusFilter('archived')}
-          >
-            Archived
-          </Button>
         </div>
 
         {/* Sessions List */}
@@ -390,42 +381,27 @@ export default function ClaudePage() {
       <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
         <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle>
-              Sessions
-              {pagination.totalCount > 0 && (
-                <span className="ml-1 text-xs text-muted-foreground font-normal">
-                  ({pagination.totalCount})
-                </span>
-              )}
-            </SheetTitle>
+            <div className="flex items-center gap-1">
+              <SheetTitle>
+                Sessions
+                {pagination.totalCount > 0 && (
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">
+                    ({pagination.totalCount})
+                  </span>
+                )}
+              </SheetTitle>
+              <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
+                <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All</SelectItem>
+                  <SelectItem value="active" className="text-xs">Active</SelectItem>
+                  <SelectItem value="archived" className="text-xs">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </SheetHeader>
-          {/* Status Filter Tabs - Mobile */}
-          <div className="flex items-center gap-1 px-2 py-2 border-b border-border bg-muted/20">
-            <Button
-              variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setStatusFilter('all')}
-            >
-              All
-            </Button>
-            <Button
-              variant={statusFilter === 'active' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setStatusFilter('active')}
-            >
-              Active
-            </Button>
-            <Button
-              variant={statusFilter === 'archived' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setStatusFilter('archived')}
-            >
-              Archived
-            </Button>
-          </div>
           <div className="flex-1 overflow-hidden">
             <SessionList
               sessions={sessions}
