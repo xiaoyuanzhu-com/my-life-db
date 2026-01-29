@@ -1,5 +1,5 @@
 import { useRef, useEffect, KeyboardEvent } from 'react'
-import { ArrowUp, Image, Square } from 'lucide-react'
+import { ArrowUp, Image, Square, FolderOpen } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface ChatInputFieldProps {
@@ -19,6 +19,8 @@ interface ChatInputFieldProps {
   placeholder?: string
   /** Whether there's a pending permission (blocks sending) */
   hasPermission?: boolean
+  /** Working directory to display */
+  workingDir?: string
 }
 
 export function ChatInputField({
@@ -30,6 +32,7 @@ export function ChatInputField({
   disabled = false,
   placeholder = 'Reply...',
   hasPermission = false,
+  workingDir,
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -96,20 +99,29 @@ export function ChatInputField({
 
       {/* Actions row */}
       <div className="flex items-center justify-between mt-2">
-        {/* Attachment icon - left */}
-        <button
-          type="button"
-          onClick={handleAttachClick}
-          disabled={disabled || hasPermission}
-          className={cn(
-            'text-muted-foreground hover:text-foreground',
-            'transition-colors',
-            'disabled:opacity-50 disabled:cursor-not-allowed'
+        {/* Left side - attachment icon and working dir */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleAttachClick}
+            disabled={disabled || hasPermission}
+            className={cn(
+              'text-muted-foreground hover:text-foreground',
+              'transition-colors',
+              'disabled:opacity-50 disabled:cursor-not-allowed'
+            )}
+            aria-label="Attach file"
+          >
+            <Image className="h-5 w-5" />
+          </button>
+
+          {workingDir && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="truncate max-w-[200px]">{workingDir}</span>
+            </div>
           )}
-          aria-label="Attach file"
-        >
-          <Image className="h-5 w-5" />
-        </button>
+        </div>
 
         {/* Submit / Stop button - right */}
         {/* Send button takes priority when there's text input */}

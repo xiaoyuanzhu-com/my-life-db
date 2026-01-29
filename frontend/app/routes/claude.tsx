@@ -226,7 +226,7 @@ export default function ClaudePage() {
     try {
       const response = await api.post('/api/claude/sessions', {
         title: `Session ${sessions.length + 1}`,
-        workingDir: '', // Use default
+        workingDir: '/Users/iloahz/projects/my-life-db/data',
       })
 
       if (response.ok) {
@@ -495,6 +495,7 @@ export default function ClaudePage() {
                     onSend={createSessionWithMessage}
                     disabled={isCreatingSession}
                     placeholder="Start a new conversation..."
+                    workingDir="/Users/iloahz/projects/my-life-db/data"
                   />
                 </div>
               </div>
