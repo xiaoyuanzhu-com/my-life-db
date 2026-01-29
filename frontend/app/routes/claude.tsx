@@ -217,28 +217,6 @@ export default function ClaudePage() {
     }
   }, [pagination.hasMore, pagination.nextCursor, isLoadingMore, statusFilter])
 
-  const createSession = async () => {
-    try {
-      const response = await api.post('/api/claude/sessions', {
-        title: `Session ${sessions.length + 1}`,
-        workingDir: '', // Use default
-      })
-
-      if (response.ok) {
-        const newSession = await response.json()
-        // Add new session at the beginning (most recent first)
-        // Mark as active since it was just created
-        setSessions((prevSessions) => [
-          { ...newSession, isActive: true },
-          ...prevSessions,
-        ])
-        setActiveSessionId(newSession.id)
-      }
-    } catch (error) {
-      console.error('Failed to create session:', error)
-    }
-  }
-
   // Create session and send initial message (for empty state flow)
   const createSessionWithMessage = async () => {
     const message = newSessionInput.trim()
@@ -391,7 +369,7 @@ export default function ClaudePage() {
                 <MessageSquare className="h-4 w-4" />
               )}
             </Button>
-            <Button onClick={createSession} size="sm">
+            <Button onClick={() => setActiveSessionId(null)} size="sm">
               New
             </Button>
           </div>
@@ -477,7 +455,7 @@ export default function ClaudePage() {
           size="icon"
           variant="ghost"
           className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
-          onClick={createSession}
+          onClick={() => setActiveSessionId(null)}
         >
           <Plus className="h-4 w-4" />
         </Button>
