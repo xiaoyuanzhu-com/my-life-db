@@ -17,10 +17,10 @@ import (
 // Query handles the bidirectional control protocol on top of Transport.
 // It manages control request/response routing, hook callbacks, and message streaming.
 type Query struct {
-	transport       transport.Transport
-	isStreamingMode bool
-	canUseTool      CanUseToolFunc
-	hooks           map[HookEvent][]HookMatcher
+	transport         transport.Transport
+	isStreamingMode   bool
+	canUseTool        CanUseToolFunc
+	hooks             map[HookEvent][]HookMatcher
 	initializeTimeout time.Duration
 
 	// Control protocol state
@@ -33,14 +33,13 @@ type Query struct {
 	nextCallbackID  atomic.Int64
 	hookCallbacksMu sync.RWMutex
 
-	// Message streaming
-	messages   chan Message
-	rawMessages chan []byte // For raw passthrough
+	// Message streaming (like Python SDK's dict[str, Any])
+	messages chan map[string]any
 
 	// Initialization
-	initialized       bool
+	initialized          bool
 	initializationResult *ServerInfo
-	firstResultEvent  chan struct{}
+	firstResultEvent     chan struct{}
 
 	// Request counter for unique IDs
 	requestCounter atomic.Int64
@@ -79,8 +78,7 @@ func NewQuery(opts QueryOptions) *Query {
 		pendingResponses:  make(map[string]chan map[string]any),
 		pendingResults:    make(map[string]any),
 		hookCallbacks:     make(map[string]HookCallback),
-		messages:          make(chan Message, 100),
-		rawMessages:       make(chan []byte, 100),
+		messages:          make(chan map[string]any, 100),
 		firstResultEvent:  make(chan struct{}),
 	}
 }
@@ -186,7 +184,6 @@ func (q *Query) Initialize() (*ServerInfo, error) {
 func (q *Query) readMessages() {
 	defer q.wg.Done()
 	defer close(q.messages)
-	defer close(q.rawMessages)
 
 	for {
 		select {
@@ -239,32 +236,17 @@ func (q *Query) readMessages() {
 	}
 }
 
-// forwardMessage sends a message to the output channels
-// CRITICAL: The messages channel send must be non-blocking, otherwise the readMessages
-// loop stops and we can't receive control_response for interrupt/other control requests.
+// forwardMessage unmarshals and sends a message to the output channel.
+// Like Python SDK's query.receive_messages() yielding dict[str, Any].
 func (q *Query) forwardMessage(data []byte) {
-	// Send raw message - this CAN block if consumer is slow, but consumer
-	// (forwardSDKMessages) should always be running and non-blocking
-	select {
-	case q.rawMessages <- data:
-	case <-q.ctx.Done():
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		log.Debug().Err(err).Msg("failed to unmarshal message")
 		return
 	}
-
-	// Parse and send typed message
-	msg, err := ParseMessage(data)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed to parse message")
-		return
-	}
-
 	select {
 	case q.messages <- msg:
 	case <-q.ctx.Done():
-	default:
-		// Channel full and no consumer - don't block
-		// This can happen when only RawMessages() is used (our production case)
-		log.Debug().Msg("messages channel full, skipping parsed message")
 	}
 }
 
@@ -673,14 +655,10 @@ func (q *Query) SendUserMessage(content string, sessionID string) error {
 	return q.transport.Write(string(msgJSON) + "\n")
 }
 
-// Messages returns the channel for receiving parsed messages
-func (q *Query) Messages() <-chan Message {
+// Messages returns a channel for receiving messages as map[string]any.
+// This matches Python SDK's query.receive_messages() -> dict[str, Any].
+func (q *Query) Messages() <-chan map[string]any {
 	return q.messages
-}
-
-// RawMessages returns the channel for receiving raw JSON messages
-func (q *Query) RawMessages() <-chan []byte {
-	return q.rawMessages
 }
 
 // GetServerInfo returns the initialization result

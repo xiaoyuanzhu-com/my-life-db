@@ -995,7 +995,7 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 func (m *Manager) forwardSDKMessages(session *Session) {
 	defer m.wg.Done()
 
-	rawMsgs := session.sdkClient.RawMessages()
+	msgs := session.sdkClient.RawMessages()
 
 	// Normal operation loop - forward messages until shutdown signal
 	for {
@@ -1008,10 +1008,17 @@ func (m *Manager) forwardSDKMessages(session *Session) {
 			// Session cancelled - wait for process to actually exit
 			goto waitForProcessExit
 
-		case data, ok := <-rawMsgs:
+		case msg, ok := <-msgs:
 			if !ok {
 				// Channel closed = subprocess actually exited
 				goto processExited
+			}
+
+			// Re-marshal to JSON for WebSocket broadcast
+			data, err := json.Marshal(msg)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to marshal message for broadcast")
+				continue
 			}
 
 			// Broadcast to WebSocket clients
@@ -1026,11 +1033,15 @@ func (m *Manager) forwardSDKMessages(session *Session) {
 	}
 
 waitForProcessExit:
-	// Shutdown requested - wait for subprocess to actually exit (rawMsgs to close)
+	// Shutdown requested - wait for subprocess to actually exit (msgs to close)
 	// The subprocess will receive SIGINT from the process group and should exit quickly
 	log.Debug().Str("sessionId", session.ID).Msg("SDK message forwarder waiting for process exit")
-	for data := range rawMsgs {
+	for msg := range msgs {
 		// Drain remaining messages
+		data, err := json.Marshal(msg)
+		if err != nil {
+			continue
+		}
 		session.BroadcastUIMessage(data)
 	}
 

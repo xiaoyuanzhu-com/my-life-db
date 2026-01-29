@@ -168,33 +168,46 @@ func (c *ClaudeSDKClient) SendMessageWithSession(content string, sessionID strin
 	return c.query.SendUserMessage(content, sessionID)
 }
 
-// Messages returns a channel for receiving parsed messages from Claude
+// Messages returns a channel for receiving typed messages from Claude.
+// Like Python SDK's client.receive_messages() -> Message.
 func (c *ClaudeSDKClient) Messages() <-chan Message {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.query == nil {
-		// Return closed channel
 		ch := make(chan Message)
 		close(ch)
 		return ch
 	}
 
-	return c.query.Messages()
+	// Parse map[string]any into typed Message (like Python SDK)
+	ch := make(chan Message, 100)
+	go func() {
+		defer close(ch)
+		for msg := range c.query.Messages() {
+			parsed, err := ParseMessageFromMap(msg)
+			if err != nil {
+				continue
+			}
+			ch <- parsed
+		}
+	}()
+	return ch
 }
 
-// RawMessages returns a channel for receiving raw JSON messages
-func (c *ClaudeSDKClient) RawMessages() <-chan []byte {
+// RawMessages returns a channel for receiving messages as map[string]any.
+// Like Python SDK's query.receive_messages() -> dict[str, Any].
+func (c *ClaudeSDKClient) RawMessages() <-chan map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.query == nil {
-		ch := make(chan []byte)
+		ch := make(chan map[string]any)
 		close(ch)
 		return ch
 	}
 
-	return c.query.RawMessages()
+	return c.query.Messages()
 }
 
 // Interrupt sends an interrupt signal to stop the current operation

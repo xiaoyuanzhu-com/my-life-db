@@ -6,6 +6,18 @@ import (
 	"time"
 )
 
+// ParseMessageFromMap parses a map[string]any into a typed Message object.
+// This is used when messages come from channels as maps (like Python SDK).
+func ParseMessageFromMap(msg map[string]any) (Message, error) {
+	// Re-marshal to JSON and use existing parser
+	// This keeps parsing logic DRY and is efficient enough for our use case
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, &MessageParseError{Message: "failed to marshal message map", Cause: err}
+	}
+	return ParseMessage(data)
+}
+
 // ParseMessage parses raw JSON data into a typed Message object
 func ParseMessage(data []byte) (Message, error) {
 	if len(data) == 0 {
