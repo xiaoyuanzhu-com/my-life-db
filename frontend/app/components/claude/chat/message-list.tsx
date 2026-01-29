@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
@@ -17,21 +17,26 @@ interface MessageListProps {
  * MessageList - Top-level message container with scroll behavior
  *
  * This component handles:
- * - Scroll container with stick-to-bottom behavior
+ * - Scroll container with stick-to-bottom behavior (via use-stick-to-bottom library)
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
+ *
+ * The use-stick-to-bottom library automatically handles:
+ * - Sticking to bottom when new content is added
+ * - Allowing user to scroll up to break sticky behavior
+ * - Re-engaging sticky when user scrolls back to bottom
  *
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
 export function MessageList({ messages, toolResultMap, optimisticMessage, wipText, onScrollElementReady }: MessageListProps) {
-  const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
+  const { scrollRef, contentRef } = useStickToBottom({
     initial: 'instant',
     resize: 'instant',
   })
 
-  // Track scroll element for re-engage logic
+  // Track scroll element for parent callback
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
 
   // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
@@ -49,36 +54,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
     },
     [scrollRef, onScrollElementReady]
   )
-
-  // Re-engage sticky when user scrolls near bottom (helps with mobile touch momentum)
-  useEffect(() => {
-    const element = scrollElementRef.current
-    if (!element) return
-
-    // Use larger threshold on mobile for touch momentum scrolling
-    const isMobile = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window
-    const threshold = isMobile ? 100 : 20
-
-    const checkAndReengage = () => {
-      const { scrollTop, scrollHeight, clientHeight } = element
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-
-      // Re-engage sticky when within threshold of bottom
-      if (distanceFromBottom >= 0 && distanceFromBottom < threshold) {
-        scrollToBottom({ animation: 'instant' })
-      }
-    }
-
-    // Check during scroll (for immediate feedback)
-    element.addEventListener('scroll', checkAndReengage, { passive: true })
-    // Also check when scroll momentum ends (important for mobile)
-    element.addEventListener('scrollend', checkAndReengage, { passive: true })
-
-    return () => {
-      element.removeEventListener('scroll', checkAndReengage)
-      element.removeEventListener('scrollend', checkAndReengage)
-    }
-  }, [scrollToBottom])
 
   return (
     <div
