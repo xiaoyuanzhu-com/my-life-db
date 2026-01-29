@@ -1585,8 +1585,10 @@ const isWorking = useMemo(() => {
 
 **Reliability:**
 - ✅ Live sessions: 100% reliable - `result` always emitted when turn completes
-- ⚠️ Historical sessions: `result` is stdout-only (not persisted to JSONL), so loading a session from disk won't have it → defaults to "working"
+- ✅ Historical sessions: `isActive === false` check returns `false` immediately (no CLI process running)
 - ✅ No false negatives during active work (won't incorrectly show "idle" while Claude is working)
+
+The key insight: `result` messages are stdout-only (not persisted to JSONL), but this doesn't matter because historical sessions have `isActive === false`, so we never reach the `result` check.
 
 **Option B: Content Heuristics (Previous Implementation)**
 
@@ -1621,6 +1623,7 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 - ✅ Historical sessions: Works correctly since it only needs persisted message content
 - ⚠️ Heuristic-based: Assumes "text at end = done" which may not hold for all Claude Code behaviors
 - ⚠️ Content block inspection: Fragile if message structure changes
+- ⚠️ Requires `isActive` check externally (function doesn't know about session state)
 
 **Comparison Table:**
 
@@ -1628,19 +1631,16 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 |----------|-------------------|----------------------|
 | Live session, turn complete | ✅ correct | ✅ correct |
 | Live session, mid-turn | ✅ correct | ✅ correct |
-| Historical session loaded | ⚠️ shows "working" | ✅ correct |
-| Assistant ends with text, no result yet | ⚠️ shows "working" | ✅ shows "idle" |
+| Historical session loaded | ✅ correct (`isActive` guard) | ✅ correct |
+| Streaming: text arrived, no result yet | shows "working" (transient) | shows "idle" |
 | New/unknown message types | ✅ safe default | ⚠️ may misdetect |
 
-**Current Decision:** Using Option A. The key tradeoff:
-- Option A has **false positives** (showing "working" when idle) for historical sessions
-- Option B risks **false negatives** (showing "idle" when actually working) if heuristics miss edge cases
+**Current Decision:** Using Option A.
 
-False positives (brief spinner on historical session load) are less harmful than false negatives (user thinks Claude is idle but it's actually working).
-
-**Open Questions:**
-- Should `result` messages be persisted to JSONL for reliability?
-- Is a hybrid approach worth the complexity? (Option A for live, Option B for historical)
+- Both options are reliable for the common cases
+- Option A uses an explicit signal (`result` message) rather than inferring from content structure
+- The "streaming text, no result yet" case is transient (milliseconds) and not user-visible
+- Option A is more robust to future changes in message structure
 
 ### 6.7 Component Structure & Directory Organization
 
