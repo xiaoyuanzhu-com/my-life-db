@@ -895,24 +895,42 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				Str("mode", string(session.Mode)).
 				Msg("message sent to claude session via WebSocket")
 
-		case "interrupt":
-			// UI mode only: Interrupt current operation
+		case "control_request":
+			// UI mode only: Handle control requests (interrupt, etc.)
 			if session.Mode != claude.ModeUI {
-				log.Debug().Str("sessionId", sessionID).Msg("interrupt received for non-UI session, ignoring")
+				log.Debug().Str("sessionId", sessionID).Msg("control_request received for non-UI session, ignoring")
 				break
 			}
 
-			if err := session.Interrupt(); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to interrupt session via WebSocket")
-				errMsg := map[string]interface{}{
-					"type":  "error",
-					"error": "Failed to interrupt session: " + err.Error(),
+			// Parse the control request
+			var controlReq struct {
+				Type      string `json:"type"`
+				RequestID string `json:"request_id"`
+				Request   struct {
+					Subtype string `json:"subtype"`
+				} `json:"request"`
+			}
+			if err := json.Unmarshal(msg, &controlReq); err != nil {
+				log.Debug().Err(err).Msg("Failed to parse control_request")
+				break
+			}
+
+			switch controlReq.Request.Subtype {
+			case "interrupt":
+				if err := session.Interrupt(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to interrupt session via WebSocket")
+					errMsg := map[string]any{
+						"type":  "error",
+						"error": "Failed to interrupt session: " + err.Error(),
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+				} else {
+					log.Info().Str("sessionId", sessionID).Msg("session interrupted via WebSocket")
 				}
-				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-					conn.Write(ctx, websocket.MessageText, msgBytes)
-				}
-			} else {
-				log.Info().Str("sessionId", sessionID).Msg("session interrupted via WebSocket")
+			default:
+				log.Debug().Str("subtype", controlReq.Request.Subtype).Msg("Unknown control_request subtype")
 			}
 
 		case "control_response":

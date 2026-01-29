@@ -384,11 +384,18 @@ export function ChatInterface({
   }, [])
 
   // Handle interrupt - stop Claude's current operation via WebSocket
+  // Uses standard control_request format per docs/claude-code/data-models.md
   const handleInterrupt = useCallback(async () => {
     if (!isWorking) return
 
     try {
-      await ws.sendMessage({ type: 'interrupt' })
+      await ws.sendMessage({
+        type: 'control_request',
+        request_id: `interrupt_${Date.now()}`,
+        request: {
+          subtype: 'interrupt',
+        },
+      })
     } catch (error) {
       console.error('[ChatInterface] Interrupt error:', error)
       setError('Failed to interrupt session')
