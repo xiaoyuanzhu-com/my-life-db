@@ -495,7 +495,7 @@ export default function ClaudePage() {
             <ClaudeTerminal sessionId={activeSessionId} />
           )
         ) : (
-          <div className="flex h-full flex-col claude-bg">
+          <div className="flex flex-1 flex-col claude-bg">
             {/* Empty message area */}
             <div className="flex-1" />
             {/* Input at bottom */}

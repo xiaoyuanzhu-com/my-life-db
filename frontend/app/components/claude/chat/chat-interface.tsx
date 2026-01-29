@@ -428,7 +428,7 @@ export function ChatInterface({
   // ============================================================================
 
   return (
-    <div className="flex h-full flex-col claude-bg">
+    <div className="flex flex-1 flex-col claude-bg">
       {/* Error Banner */}
       {error && (
         <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-sm text-destructive">

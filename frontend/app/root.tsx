@@ -37,7 +37,7 @@ export default function Root() {
     <div className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
       <AuthProvider>
         <ConditionalHeader />
-        <main className="min-h-0 flex flex-col w-full min-w-0">
+        <main className="min-h-0 h-full flex flex-col w-full min-w-0 row-start-2">
           <Outlet />
         </main>
       </AuthProvider>
