@@ -240,8 +240,11 @@ func (q *Query) readMessages() {
 }
 
 // forwardMessage sends a message to the output channels
+// CRITICAL: The messages channel send must be non-blocking, otherwise the readMessages
+// loop stops and we can't receive control_response for interrupt/other control requests.
 func (q *Query) forwardMessage(data []byte) {
-	// Send raw message
+	// Send raw message - this CAN block if consumer is slow, but consumer
+	// (forwardSDKMessages) should always be running and non-blocking
 	select {
 	case q.rawMessages <- data:
 	case <-q.ctx.Done():
@@ -258,6 +261,10 @@ func (q *Query) forwardMessage(data []byte) {
 	select {
 	case q.messages <- msg:
 	case <-q.ctx.Done():
+	default:
+		// Channel full and no consumer - don't block
+		// This can happen when only RawMessages() is used (our production case)
+		log.Debug().Msg("messages channel full, skipping parsed message")
 	}
 }
 
