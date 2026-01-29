@@ -85,16 +85,9 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
       ref={mergedScrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 claude-interface claude-bg"
     >
-      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8">
+      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
         {messages.length === 0 && !optimisticMessage ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center" style={{ color: 'var(--claude-text-secondary)' }}>
-              <p className="text-lg font-medium">Start a conversation</p>
-              <p className="text-sm mt-1">
-                Type a message below to begin working with Claude
-              </p>
-            </div>
-          </div>
+          <div className="flex-1" />
         ) : (
           <>
             {/* Messages rendered via SessionMessages (supports recursive nesting) */}
