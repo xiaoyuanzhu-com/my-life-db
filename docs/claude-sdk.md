@@ -62,6 +62,7 @@ if err := client.Connect(ctx, "What files are here?"); err != nil {
 }
 defer client.Close()
 
+// Option 1: Typed messages (parsed lazily at client level)
 for msg := range client.Messages() {
     switch m := msg.(type) {
     case sdk.AssistantMessage:
@@ -70,6 +71,68 @@ for msg := range client.Messages() {
         fmt.Printf("Cost: %s\n", sdk.FormatCost(m.TotalCostUSD))
         return
     }
+}
+
+// Option 2: Raw messages (for passthrough or custom parsing)
+for msg := range client.RawMessages() {
+    msgType, _ := msg["type"].(string)
+    fmt.Printf("Raw message type: %s\n", msgType)
+}
+```
+
+## Message Streaming
+
+The SDK provides two levels of message access, aligned with the Python SDK architecture:
+
+### Query Level (Raw)
+
+```go
+// Query.Messages() returns raw maps - like Python's dict[str, Any]
+func (q *Query) Messages() <-chan map[string]any
+```
+
+This is the internal level used by Query. Messages are unmarshaled from JSON into `map[string]any` for efficient passthrough without forcing consumers to use specific types.
+
+### Client Level (Typed + Raw)
+
+```go
+// Client.Messages() returns typed Message interface (lazily parsed)
+func (c *ClaudeSDKClient) Messages() <-chan Message
+
+// Client.RawMessages() returns raw maps (passthrough to Query)
+func (c *ClaudeSDKClient) RawMessages() <-chan map[string]any
+```
+
+**When to use each:**
+
+| Method | Returns | Use When |
+|--------|---------|----------|
+| `client.Messages()` | `<-chan Message` | You want typed access (`AssistantMessage`, `ResultMessage`, etc.) |
+| `client.RawMessages()` | `<-chan map[string]any` | You need raw data for WebSocket passthrough or custom parsing |
+
+### Design Rationale
+
+This design mirrors the Python SDK:
+- Python: `query.receive_messages() -> dict[str, Any]`, `client.receive_messages() -> Message`
+- Go: `query.Messages() -> <-chan map[string]any`, `client.Messages() -> <-chan Message`
+
+**Benefits:**
+1. **Lazy parsing** - Types are parsed only when `client.Messages()` is consumed
+2. **Efficient passthrough** - Raw messages can be re-marshaled for WebSocket broadcast without double-parsing
+3. **App-agnostic SDK** - Applications can choose typed or raw access based on their needs
+
+### Example: WebSocket Passthrough
+
+```go
+// In manager.go - forward raw messages to WebSocket clients
+msgs := session.sdkClient.RawMessages()
+for msg := range msgs {
+    // Re-marshal to JSON for WebSocket broadcast
+    data, err := json.Marshal(msg)
+    if err != nil {
+        continue
+    }
+    session.BroadcastUIMessage(data)
 }
 ```
 
@@ -316,6 +379,12 @@ if sdk.IsResultMessage(msg) { ... }
 
 // Format cost
 cost := sdk.FormatCost(resultMsg.TotalCostUSD) // "$0.0234"
+
+// Parse raw map to typed Message (used internally by client.Messages())
+msg, err := sdk.ParseMessageFromMap(rawMap)
+
+// Parse JSON bytes to typed Message
+msg, err := sdk.ParseMessage(jsonBytes)
 ```
 
 ## Configuration Options
@@ -359,11 +428,11 @@ sdk.ClaudeAgentOptions{
 
 ```
 backend/claude/sdk/
-├── client.go           # ClaudeSDKClient, QueryOnce, helpers
-├── query.go            # Query (control protocol handler)
+├── client.go           # ClaudeSDKClient, QueryOnce, Messages(), RawMessages()
+├── query.go            # Query (control protocol, Messages() -> map[string]any)
 ├── types.go            # All type definitions
 ├── errors.go           # Error types
-├── message_parser.go   # Message parsing
+├── message_parser.go   # ParseMessage(), ParseMessageFromMap()
 ├── hooks.go            # Hook system
 ├── doc.go              # Package documentation
 ├── example_test.go     # Usage examples
@@ -377,15 +446,18 @@ backend/claude/sdk/
 
 This Go SDK mirrors the Python SDK's design:
 
-| Python | Go |
-|--------|-----|
-| `ClaudeSDKClient` | `ClaudeSDKClient` |
-| `query()` | `QueryOnce()` |
-| `SubprocessCLITransport` | `SubprocessCLITransport` |
-| `Query` | `Query` |
-| `parse_message()` | `ParseMessage()` |
-| `HookMatcher` | `HookMatcher` |
-| `CanUseTool` callback | `CanUseToolFunc` |
+| Python | Go | Description |
+|--------|-----|-------------|
+| `ClaudeSDKClient` | `ClaudeSDKClient` | High-level client |
+| `query()` | `QueryOnce()` | One-shot query function |
+| `SubprocessCLITransport` | `SubprocessCLITransport` | Process management |
+| `Query` | `Query` | Control protocol handler |
+| `parse_message()` | `ParseMessage()` | JSON to typed Message |
+| `HookMatcher` | `HookMatcher` | Hook pattern matching |
+| `CanUseTool` callback | `CanUseToolFunc` | Permission callback |
+| `query.receive_messages() -> dict[str, Any]` | `query.Messages() -> <-chan map[string]any` | Raw messages at query level |
+| `client.receive_messages() -> Message` | `client.Messages() -> <-chan Message` | Typed messages at client level |
+| N/A | `client.RawMessages() -> <-chan map[string]any` | Raw passthrough at client level |
 
 ## Integration Notes
 
@@ -394,7 +466,24 @@ This SDK is independent of the existing `backend/claude/` code (manager.go, sess
 To integrate:
 1. Import `"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"`
 2. Use `sdk.NewClaudeSDKClient()` or `sdk.QueryOnce()`
-3. Handle messages via the typed `Messages()` channel
+3. Choose your message consumption pattern:
+   - `client.Messages()` for typed access with auto-parsing
+   - `client.RawMessages()` for raw `map[string]any` (useful for WebSocket passthrough)
+
+### WebSocket Integration Pattern
+
+For applications that forward messages to WebSocket clients (like this project's manager.go):
+
+```go
+// Use RawMessages() for efficient passthrough
+msgs := session.sdkClient.RawMessages()
+for msg := range msgs {
+    data, _ := json.Marshal(msg)
+    session.BroadcastUIMessage(data)
+}
+```
+
+This avoids the overhead of parsing to typed `Message` and then back to JSON.
 
 ## AllowedTools vs CanUseTool
 
