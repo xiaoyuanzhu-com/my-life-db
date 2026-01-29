@@ -151,9 +151,24 @@ export function useSessionWebSocket(
     // Connect immediately (infinite retry, never rejects)
     ensureConnected()
 
+    // Handle visibility change (e.g., after laptop sleep/wake)
+    // When page becomes visible, check if WebSocket is dead and reconnect immediately
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isComponentActiveRef.current) {
+        // After sleep/wake, the WebSocket might be dead even if readyState looks OK
+        // Force a reconnection check by calling ensureConnected
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          ensureConnected()
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
       isComponentActiveRef.current = false
       connectPromiseRef.current = null
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
