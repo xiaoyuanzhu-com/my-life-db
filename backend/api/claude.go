@@ -160,42 +160,6 @@ func (h *Handlers) DeactivateClaudeSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// InterruptClaudeSession handles POST /api/claude/sessions/:id/interrupt
-// Sends an interrupt signal to stop the current operation (UI mode only).
-// This is equivalent to pressing Esc in the Claude CLI.
-//
-// The interrupt is sent via the control protocol (control_request with subtype "interrupt"),
-// NOT via Unix signals. This allows Claude to gracefully stop and clean up.
-func (h *Handlers) InterruptClaudeSession(c *gin.Context) {
-	sessionID := c.Param("id")
-
-	session, err := claudeManager.GetSession(sessionID)
-	if err != nil {
-		if err == claude.ErrSessionNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
-		return
-	}
-
-	// Check if session is activated (has a running process)
-	if !session.IsActivated() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Session is not active"})
-		return
-	}
-
-	// Send interrupt via SDK
-	if err := session.Interrupt(); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to interrupt session")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to interrupt session: " + err.Error()})
-		return
-	}
-
-	log.Info().Str("sessionId", sessionID).Msg("session interrupted")
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
 // ClaudeWebSocket handles WebSocket connection for terminal I/O
 func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
