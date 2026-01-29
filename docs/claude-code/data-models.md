@@ -1825,11 +1825,19 @@ The `result` message marks the **end of Claude's turn**. Before receiving `resul
 
 **Important:** This message is **stdout-only** - it is NOT persisted to JSONL files. Historical sessions won't have `result` messages. The UI **skips rendering** this message as a standalone chat entry; it's used for state derivation (`isWorking`) and statistics.
 
+**Subtypes:**
+
+| Subtype | Description |
+|---------|-------------|
+| `success` | Turn completed normally |
+| `error` | Turn ended with an error |
+| `error_during_execution` | Turn was interrupted by user (Esc or interrupt button) |
+
 **Structure:**
 ```json
 {
   "type": "result",
-  "subtype": "success",           // or "error"
+  "subtype": "success",           // or "error" or "error_during_execution"
   "is_error": false,
   "duration_ms": 43606,           // Total wall-clock time
   "duration_api_ms": 237870,      // API processing time
@@ -1860,7 +1868,7 @@ The `result` message marks the **end of Claude's turn**. Before receiving `resul
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | string | Always `"result"` |
-| `subtype` | string | `"success"` or `"error"` |
+| `subtype` | string | `"success"`, `"error"`, or `"error_during_execution"` (see subtypes table above) |
 | `is_error` | boolean | Whether the turn ended with an error |
 | `duration_ms` | number | Total wall-clock time in milliseconds |
 | `duration_api_ms` | number | API processing time in milliseconds |
@@ -1884,6 +1892,7 @@ The `result` message marks the **end of Claude's turn**. Before receiving `resul
 | `modelUsage.{model}.contextWindow` | number | Context window size |
 | `modelUsage.{model}.maxOutputTokens` | number | Maximum output tokens |
 | `permission_denials` | array | List of permission denials during this turn |
+| `errors` | array? | List of error messages (present when `subtype` is `"error"` or `"error_during_execution"`) |
 | `uuid` | string | Unique message identifier |
 
 **UI State Machine:**
@@ -2122,7 +2131,8 @@ Claude responds with a control_response confirming the interrupt:
 **3. What Happens After Interrupt**
 
 - Claude gracefully stops the current operation
-- A `result` message is sent with the turn summary
+- A user message is injected with content: `"[Request interrupted by user for tool use]"`
+- A `result` message is sent with `subtype: "error_during_execution"` (not `"success"`)
 - The session remains active and can continue with new prompts
 - Any in-progress tool calls are cancelled
 

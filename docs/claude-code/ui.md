@@ -1631,6 +1631,7 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 |----------|-------------------|----------------------|
 | Live session, turn complete | ✅ correct | ✅ correct |
 | Live session, mid-turn | ✅ correct | ✅ correct |
+| Live session, interrupted | ✅ correct (`result` with `subtype: "error_during_execution"`) | ✅ correct |
 | Historical session loaded | ✅ correct (`isActive` guard) | ✅ correct |
 | Streaming: text arrived, no result yet | shows "working" (transient) | shows "idle" |
 | New/unknown message types | ✅ safe default | ⚠️ may misdetect |
@@ -1639,6 +1640,7 @@ export function deriveIsWorking(messages: SessionMessage[]): boolean {
 
 - Both options are reliable for the common cases
 - Option A uses an explicit signal (`result` message) rather than inferring from content structure
+- Interrupted sessions work correctly - Claude emits `result` with `subtype: "error_during_execution"` (verified)
 - The "streaming text, no result yet" case is transient (milliseconds) and not user-visible
 - Option A is more robust to future changes in message structure
 
