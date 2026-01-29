@@ -55,18 +55,29 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
     const element = scrollElementRef.current
     if (!element) return
 
-    const handleScroll = () => {
+    // Use larger threshold on mobile for touch momentum scrolling
+    const isMobile = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window
+    const threshold = isMobile ? 100 : 20
+
+    const checkAndReengage = () => {
       const { scrollTop, scrollHeight, clientHeight } = element
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight
 
-      // Re-engage sticky when within 10px of bottom
-      if (distanceFromBottom > 0 && distanceFromBottom < 10) {
+      // Re-engage sticky when within threshold of bottom
+      if (distanceFromBottom >= 0 && distanceFromBottom < threshold) {
         scrollToBottom({ animation: 'instant' })
       }
     }
 
-    element.addEventListener('scroll', handleScroll, { passive: true })
-    return () => element.removeEventListener('scroll', handleScroll)
+    // Check during scroll (for immediate feedback)
+    element.addEventListener('scroll', checkAndReengage, { passive: true })
+    // Also check when scroll momentum ends (important for mobile)
+    element.addEventListener('scrollend', checkAndReengage, { passive: true })
+
+    return () => {
+      element.removeEventListener('scroll', checkAndReengage)
+      element.removeEventListener('scrollend', checkAndReengage)
+    }
   }, [scrollToBottom])
 
   return (
