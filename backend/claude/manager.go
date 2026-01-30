@@ -396,16 +396,17 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 	}
 
 	session := &Session{
-		ID:           sessionID,
-		WorkingDir:   workingDir,
-		Title:        title,
-		Mode:         mode,
-		CreatedAt:    time.Now(),
-		LastActivity: time.Now(),
-		Status:       "active",
-		Clients:      make(map[*Client]bool),
-		broadcast:    make(chan []byte, 256),
-		activated:    true, // Sessions created via CreateSessionWithID are immediately activated
+		ID:                    sessionID,
+		WorkingDir:            workingDir,
+		Title:                 title,
+		Mode:                  mode,
+		CreatedAt:             time.Now(),
+		LastActivity:          time.Now(),
+		Status:                "active",
+		Clients:               make(map[*Client]bool),
+		broadcast:             make(chan []byte, 256),
+		activated:             true, // Sessions created via CreateSessionWithID are immediately activated
+		pendingSDKPermissions: make(map[string]*pendingPermission),
 	}
 
 	// Add to map early so other operations can see it (status will be "active")
@@ -535,16 +536,17 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 	}
 
 	session := &Session{
-		ID:           id,
-		WorkingDir:   workingDir,
-		Title:        title,
-		Mode:         mode,
-		CreatedAt:    time.Now(),
-		LastActivity: time.Now(),
-		Status:       "archived",
-		Clients:      make(map[*Client]bool),
-		broadcast:    make(chan []byte, 256),
-		activated:    false,
+		ID:                    id,
+		WorkingDir:            workingDir,
+		Title:                 title,
+		Mode:                  mode,
+		CreatedAt:             time.Now(),
+		LastActivity:          time.Now(),
+		Status:                "archived",
+		Clients:               make(map[*Client]bool),
+		broadcast:             make(chan []byte, 256),
+		activated:             false,
+		pendingSDKPermissions: make(map[string]*pendingPermission),
 	}
 
 	// Set up activation function
@@ -1022,10 +1024,8 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	session.sdkCtx = ctx
 	session.sdkCancel = cancel
 
-	// Initialize pendingSDKPermissions map before creating the callback
-	session.pendingSDKPermissions = make(map[string]*pendingPermission)
-
 	// Build SDK options with CanUseTool callback for permission handling
+	// Note: pendingSDKPermissions is lazily initialized in CreatePermissionCallback
 	// When CanUseTool is set, the SDK automatically enables --permission-prompt-tool stdio
 	// which makes the CLI send control_request messages for tool permissions instead of
 	// prompting interactively. The callback bridges to WebSocket clients for approval.

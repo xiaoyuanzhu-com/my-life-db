@@ -591,9 +591,6 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 		// (tool name is needed so "always allow" can auto-approve other pending requests)
 		responseChan := make(chan PermissionResponse, 1)
 		s.pendingSDKPermissionsMu.Lock()
-		if s.pendingSDKPermissions == nil {
-			s.pendingSDKPermissions = make(map[string]*pendingPermission)
-		}
 		s.pendingSDKPermissions[requestID] = &pendingPermission{
 			toolName:  toolName,
 			requestID: requestID,
