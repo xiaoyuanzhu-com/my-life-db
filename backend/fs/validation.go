@@ -2,40 +2,24 @@ package fs
 
 import (
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
-// Default exclusion patterns for filesystem operations
-var defaultExclusionPatterns = []string{
-	`^\..+`,                  // Any path starting with a dot + more chars (e.g., .git, .venv, .next) - excludes "." itself
-	`/\.[^/]+`,               // Any path component starting with a dot in subdirectories (e.g., inbox/.hidden)
-	`(^|/)~.*$`,              // Backup files starting with ~
-	`(^|/)node_modules($|/)`, // Node.js dependencies
-	`(^|/)__pycache__($|/)`,  // Python cache
-	`(^|/)venv($|/)`,         // Python virtual environment (non-hidden)
-}
-
 // validator handles path validation and exclusion checks
 type validator struct {
-	exclusionPatterns []*regexp.Regexp
+	pathFilter *PathFilter
 }
 
-// newValidator creates a new validator with compiled exclusion patterns
+// newValidator creates a new validator with default exclusion patterns
 func newValidator() *validator {
-	exclusionPatterns := make([]*regexp.Regexp, 0, len(defaultExclusionPatterns))
-	for _, pattern := range defaultExclusionPatterns {
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			// Log warning but continue (skip invalid patterns)
-			continue
-		}
-		exclusionPatterns = append(exclusionPatterns, re)
-	}
-
 	return &validator{
-		exclusionPatterns: exclusionPatterns,
+		pathFilter: DefaultPathFilter(),
 	}
+}
+
+// IsExcluded checks if a path matches any exclusion pattern
+func (v *validator) IsExcluded(path string) bool {
+	return v.pathFilter.IsExcluded(path)
 }
 
 // ValidatePath checks if a path is valid and not malicious
@@ -56,19 +40,9 @@ func (v *validator) ValidatePath(path string) error {
 	}
 
 	// Check against exclusion patterns
-	if v.isExcluded(path) {
+	if v.pathFilter.IsExcluded(path) {
 		return ErrExcludedPath
 	}
 
 	return nil
-}
-
-// isExcluded checks if a path matches any exclusion pattern
-func (v *validator) isExcluded(path string) bool {
-	for _, pattern := range v.exclusionPatterns {
-		if pattern.MatchString(path) {
-			return true
-		}
-	}
-	return false
 }

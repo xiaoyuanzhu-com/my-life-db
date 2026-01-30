@@ -67,7 +67,7 @@ func (w *watcher) watchRecursive(root string) error {
 		relPath, _ := filepath.Rel(w.service.cfg.DataRoot, path)
 
 		// Skip excluded paths
-		if w.service.validator.isExcluded(relPath) {
+		if w.service.validator.IsExcluded(relPath) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -117,7 +117,7 @@ func (w *watcher) handleEvent(event fsnotify.Event) {
 	}
 
 	// Skip excluded paths
-	if w.service.validator.isExcluded(relPath) {
+	if w.service.validator.IsExcluded(relPath) {
 		return
 	}
 

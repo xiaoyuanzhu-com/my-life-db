@@ -97,7 +97,7 @@ func (s *scanner) scan() {
 		}
 
 		// Skip excluded paths (skip entire directory if excluded)
-		if s.service.validator.isExcluded(relPath) {
+		if s.service.validator.IsExcluded(relPath) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}

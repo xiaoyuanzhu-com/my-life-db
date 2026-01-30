@@ -391,7 +391,8 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 	// Track count for limit
 	count := 0
-	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
+	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
+	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly, pathFilter)
 
 	c.JSON(http.StatusOK, gin.H{
 		"basePath": baseDir,
@@ -401,7 +402,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 }
 
 // readDirRecursive reads directory contents recursively up to specified depth
-func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int, foldersOnly bool) []FileNode {
+func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int, foldersOnly bool, pathFilter *fs.PathFilter) []FileNode {
 	fullPath := filepath.Join(baseDir, relativePath)
 
 	entries, err := os.ReadDir(fullPath)
@@ -410,6 +411,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	}
 
 	var nodes []FileNode
+	atRoot := relativePath == ""
 	for _, entry := range entries {
 		// Check limit
 		if limit > 0 && *count >= limit {
@@ -418,15 +420,8 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 
 		name := entry.Name()
 
-		// Skip hidden files and reserved directories
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		if name == "node_modules" {
-			continue
-		}
-		// Skip app and inbox at root level
-		if relativePath == "" && (name == "app" || name == "inbox") {
+		// Skip excluded files/directories
+		if pathFilter.IsExcludedEntry(name, atRoot) {
 			continue
 		}
 
@@ -471,7 +466,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if isDir {
 			// maxDepth: 0 = unlimited, otherwise check current depth
 			if maxDepth == 0 || currentDepth < maxDepth {
-				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly)
+				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly, pathFilter)
 			} else {
 				node.Children = []FileNode{} // Empty array for unexpanded folders
 			}

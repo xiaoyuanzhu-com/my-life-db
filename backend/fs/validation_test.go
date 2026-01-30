@@ -36,7 +36,7 @@ func TestExclusionPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			result := v.isExcluded(tt.path)
+			result := v.IsExcluded(tt.path)
 			if result != tt.excluded {
 				t.Errorf("path %q: expected excluded=%v, got %v", tt.path, tt.excluded, result)
 			}
