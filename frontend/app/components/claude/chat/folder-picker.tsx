@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
@@ -21,6 +21,23 @@ interface FolderPickerProps {
 export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
   const [folders, setFolders] = useState<string[]>([])
+  const [search, setSearch] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Reset search to current value when popover opens, cursor at end
+  useEffect(() => {
+    if (open) {
+      setSearch(value)
+      // Move cursor to end after React updates the input
+      requestAnimationFrame(() => {
+        const input = inputRef.current
+        if (input) {
+          const len = value.length
+          input.setSelectionRange(len, len)
+        }
+      })
+    }
+  }, [open, value])
 
   // Fetch tree on mount to initialize value and get folder list
   useEffect(() => {
@@ -79,22 +96,31 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
           <span className="truncate max-w-[200px]">{displayValue}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-60 p-0" align="start" side="top">
-        <Command>
-          <CommandInput placeholder="Search folders..." />
+      <PopoverContent className="w-80 p-0" align="start" side="top">
+        <Command shouldFilter={false}>
+          <CommandInput
+            ref={inputRef}
+            placeholder="Search folders..."
+            value={search}
+            onValueChange={setSearch}
+          />
           <CommandList>
             <CommandEmpty>No folders found</CommandEmpty>
             <CommandGroup>
-              {folders.map((folder) => (
-                <CommandItem
-                  key={folder}
-                  value={folder}
-                  onSelect={() => handleSelect(folder)}
-                  className={cn(folder === value && 'bg-accent')}
-                >
-                  {getLastSegment(folder)}
-                </CommandItem>
-              ))}
+              {folders
+                .filter((folder) =>
+                  folder.toLowerCase().includes(search.toLowerCase())
+                )
+                .map((folder) => (
+                  <CommandItem
+                    key={folder}
+                    value={folder}
+                    onSelect={() => handleSelect(folder)}
+                    className={cn(folder === value && 'bg-accent')}
+                  >
+                    {folder}
+                  </CommandItem>
+                ))}
             </CommandGroup>
           </CommandList>
         </Command>
