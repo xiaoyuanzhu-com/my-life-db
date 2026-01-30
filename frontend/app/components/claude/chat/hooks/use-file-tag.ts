@@ -101,10 +101,10 @@ export function useFileTag(workingDir: string | undefined) {
       setLoading(true)
       setError(null)
       try {
-        // Fetch all files recursively (depth=-1 means unlimited)
+        // Fetch all files recursively (depth=0 means unlimited)
         const params = new URLSearchParams({
           path: workingDir,
-          depth: '-1',
+          depth: '0',
         })
         const response = await fetch(`/api/library/tree?${params}`)
         if (!response.ok) {
