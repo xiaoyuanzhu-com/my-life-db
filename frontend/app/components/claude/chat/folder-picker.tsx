@@ -135,6 +135,12 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     return segments[segments.length - 1] || ''
   }
 
+  // Get last N segments for display (e.g., "data/bookmarks" instead of full path)
+  const getLastNSegments = (path: string, n: number) => {
+    const segments = path.split('/').filter(Boolean)
+    return segments.slice(-n).join('/')
+  }
+
   // Fuzzy match: characters must appear in order, not necessarily contiguous
   const fuzzyMatch = (text: string, pattern: string) => {
     const lowerText = text.toLowerCase()
@@ -197,16 +203,21 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
           <CommandList>
             <CommandEmpty>No subfolders</CommandEmpty>
             <CommandGroup>
-              {filteredOptions.map((folder) => (
-                <CommandItem
-                  key={folder}
-                  value={folder}
-                  onSelect={() => handleSelect(folder)}
-                  className={cn(folder === currentPath && 'bg-accent')}
-                >
-                  {folder}
-                </CommandItem>
-              ))}
+              {filteredOptions.map((folder) => {
+                // Display: ".." for parent, last 2 segments for others
+                const isParent = folder === parentPath
+                const displayName = isParent ? '..' : getLastNSegments(folder, 2)
+                return (
+                  <CommandItem
+                    key={folder}
+                    value={folder}
+                    onSelect={() => handleSelect(folder)}
+                    className={cn(folder === currentPath && 'bg-accent')}
+                  >
+                    {displayName}
+                  </CommandItem>
+                )
+              })}
             </CommandGroup>
           </CommandList>
         </Command>
