@@ -6,3 +6,4 @@ export {
   type UseSessionWebSocketOptions,
   type UseSessionWebSocketResult,
 } from './use-session-websocket'
+export { useSlashCommands, filterCommands, type InitData } from './use-slash-commands'

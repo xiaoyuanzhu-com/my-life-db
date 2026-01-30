@@ -3,7 +3,7 @@ import { MessageList } from './message-list'
 import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
-import { useSessionWebSocket, usePermissions, type ConnectionStatus } from './hooks'
+import { useSessionWebSocket, usePermissions, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
 import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
 import {
   buildToolResultMap,
@@ -278,6 +278,22 @@ export function ChatInterface({
 
   // Build tool result map from raw messages
   const toolResultMap = useMemo(() => buildToolResultMap(rawMessages), [rawMessages])
+
+  // Extract init data from system:init message for slash commands
+  const initData = useMemo<InitData | null>(() => {
+    const initMsg = rawMessages.find(
+      (m) => m.type === 'system' && (m as unknown as Record<string, unknown>).subtype === 'init'
+    )
+    if (!initMsg) return null
+    const data = initMsg as unknown as Record<string, unknown>
+    return {
+      slash_commands: data.slash_commands as string[] | undefined,
+      skills: data.skills as string[] | undefined,
+    }
+  }, [rawMessages])
+
+  // Get merged slash commands (built-in + dynamic from init)
+  const slashCommands = useSlashCommands(initData)
 
   // Filter messages for rendering
   const renderableMessages = useMemo(() => {
@@ -578,6 +594,7 @@ export function ChatInterface({
             onInterrupt={handleInterrupt}
             connectionStatus={effectiveConnectionStatus}
             workingDir={workingDir}
+            slashCommands={slashCommands}
           />
         </div>
 

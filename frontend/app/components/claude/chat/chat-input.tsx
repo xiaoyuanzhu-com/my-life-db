@@ -6,6 +6,7 @@ import { ConnectionStatusBanner } from './connection-status-banner'
 import { PermissionCard } from './permission-card'
 import { QuestionCard } from './question-card'
 import { ChatInputField } from './chat-input-field'
+import type { SlashCommand } from './slash-commands'
 
 // Re-export ConnectionStatus for backwards compatibility
 export type { ConnectionStatus }
@@ -48,6 +49,8 @@ interface ChatInputProps {
   workingDir?: string
   /** Callback when working directory changes */
   onWorkingDirChange?: (path: string) => void
+  /** Available slash commands */
+  slashCommands?: SlashCommand[]
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -67,6 +70,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     connectionStatus = 'connected',
     workingDir,
     onWorkingDirChange,
+    slashCommands = [],
   },
   ref
 ) {
@@ -186,6 +190,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               hasPermission={hasOverlay}
               workingDir={workingDir}
               onWorkingDirChange={onWorkingDirChange}
+              slashCommands={slashCommands}
             />
           </div>
         </div>

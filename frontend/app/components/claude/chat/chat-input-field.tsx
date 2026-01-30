@@ -1,7 +1,10 @@
-import { useRef, useEffect, KeyboardEvent } from 'react'
+import { useRef, useEffect, useState, KeyboardEvent } from 'react'
 import { ArrowUp, Image, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { FolderPicker } from './folder-picker'
+import { SlashCommandPopover } from './slash-command-popover'
+import { filterCommands } from './hooks'
+import type { SlashCommand } from './slash-commands'
 
 interface ChatInputFieldProps {
   /** Current input content */
@@ -24,6 +27,8 @@ interface ChatInputFieldProps {
   workingDir?: string
   /** Callback when working directory changes */
   onWorkingDirChange?: (path: string) => void
+  /** Available slash commands */
+  slashCommands?: SlashCommand[]
 }
 
 export function ChatInputField({
@@ -37,8 +42,41 @@ export function ChatInputField({
   hasPermission = false,
   workingDir,
   onWorkingDirChange,
+  slashCommands = [],
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
+
+  // Check if input starts with "/" (for slash command mode)
+  const isSlashMode = content.startsWith('/')
+  const slashQuery = isSlashMode ? content.slice(1) : ''
+  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : slashCommands
+
+  // Open popover when "/" is typed at start
+  useEffect(() => {
+    if (isSlashMode && !slashPopoverOpen) {
+      setSlashPopoverOpen(true)
+    } else if (!isSlashMode && slashPopoverOpen) {
+      setSlashPopoverOpen(false)
+    }
+  }, [isSlashMode, slashPopoverOpen])
+
+  // Handle slash command selection
+  const handleSlashSelect = (cmd: SlashCommand) => {
+    onChange(`/${cmd.name} `)
+    setSlashPopoverOpen(false)
+    textareaRef.current?.focus()
+  }
+
+  // Handle "/" button click
+  const handleSlashButtonClick = () => {
+    if (!content.startsWith('/')) {
+      onChange('/' + content)
+    }
+    setSlashPopoverOpen(true)
+    textareaRef.current?.focus()
+  }
 
   // Auto-resize textarea as content grows
   useEffect(() => {
@@ -65,6 +103,12 @@ export function ChatInputField({
   }, [isWorking, hasPermission, onInterrupt])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Close slash popover on Escape
+    if (e.key === 'Escape' && slashPopoverOpen) {
+      e.preventDefault()
+      setSlashPopoverOpen(false)
+      return
+    }
     // Send on Enter (without Shift) - only if no permission pending
     if (e.key === 'Enter' && !e.shiftKey && !hasPermission) {
       e.preventDefault()
@@ -81,7 +125,16 @@ export function ChatInputField({
   const canSend = content.trim() && !disabled && !hasPermission
 
   return (
-    <div className="px-3 py-2">
+    <div ref={containerRef} className="px-3 py-2 relative">
+      {/* Slash command popover */}
+      <SlashCommandPopover
+        open={slashPopoverOpen}
+        onOpenChange={setSlashPopoverOpen}
+        commands={filteredCommands}
+        onSelect={handleSlashSelect}
+        anchorRef={containerRef}
+      />
+
       {/* Text input */}
       <textarea
         ref={textareaRef}
@@ -129,42 +182,64 @@ export function ChatInputField({
           )}
         </div>
 
-        {/* Submit / Stop button - right */}
-        {/* Send button takes priority when there's text input */}
-        {isWorking && !hasPermission && !content.trim() ? (
+        {/* Right side - slash button and submit/stop */}
+        <div className="flex items-center gap-2">
+          {/* Slash command button */}
           <button
             type="button"
-            onClick={onInterrupt}
-            disabled={disabled}
+            onClick={handleSlashButtonClick}
+            disabled={disabled || hasPermission}
             className={cn(
               'h-9 w-9 rounded-lg',
               'bg-muted hover:bg-muted/80 border border-border',
               'flex items-center justify-center',
               'transition-all',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              'disabled:cursor-not-allowed disabled:opacity-50',
+              'text-base font-medium text-muted-foreground',
+              slashPopoverOpen && 'bg-accent text-foreground'
             )}
-            aria-label="Stop generation (Esc)"
+            aria-label="Slash commands"
           >
-            <Square className="h-3.5 w-3.5 text-muted-foreground" fill="currentColor" />
+            /
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={!canSend}
-            className={cn(
-              'h-9 w-9 rounded-lg',
-              'bg-primary hover:bg-primary/80 border border-primary',
-              'flex items-center justify-center',
-              'transition-all',
-              'disabled:cursor-not-allowed',
-              !canSend ? 'opacity-40' : 'opacity-100'
-            )}
-            aria-label="Send message"
-          >
-            <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-          </button>
-        )}
+
+          {/* Submit / Stop button */}
+          {/* Send button takes priority when there's text input */}
+          {isWorking && !hasPermission && !content.trim() ? (
+            <button
+              type="button"
+              onClick={onInterrupt}
+              disabled={disabled}
+              className={cn(
+                'h-9 w-9 rounded-lg',
+                'bg-muted hover:bg-muted/80 border border-border',
+                'flex items-center justify-center',
+                'transition-all',
+                'disabled:cursor-not-allowed disabled:opacity-50'
+              )}
+              aria-label="Stop generation (Esc)"
+            >
+              <Square className="h-3.5 w-3.5 text-muted-foreground" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={!canSend}
+              className={cn(
+                'h-9 w-9 rounded-lg',
+                'bg-primary hover:bg-primary/80 border border-primary',
+                'flex items-center justify-center',
+                'transition-all',
+                'disabled:cursor-not-allowed',
+                !canSend ? 'opacity-40' : 'opacity-100'
+              )}
+              aria-label="Send message"
+            >
+              <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
