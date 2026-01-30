@@ -159,16 +159,16 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     return path.slice(0, lastSlash)
   }
 
-  // Build full list: [parent?, current, ...children]
+  // Build full list: [parent?, current, ...filtered children]
   const parentPath = getParentPath(currentPath)
-  const allOptions = [
+  const filteredChildren = children.filter((path) => fuzzyMatch(path, search))
+  const filteredOptions = [
+    // Parent and current always shown (not filtered)
     ...(parentPath ? [parentPath] : []),
     ...(currentPath ? [currentPath] : []),
-    ...children,
+    // Only children are filtered
+    ...filteredChildren,
   ]
-
-  // Filter based on search
-  const filteredOptions = allOptions.filter((path) => fuzzyMatch(path, search))
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
