@@ -26,6 +26,48 @@ var (
 // Permission configuration for Claude CLI
 // These control which tools are auto-approved vs blocked
 // Reference: https://code.claude.com/docs/en/settings#tools-available-to-claude
+//
+// IMPORTANT: Bash pattern matching limitations
+// ============================================
+// Claude Code uses glob patterns for bash command matching, but these have significant limitations:
+//
+// 1. Pipes and shell metacharacters don't match reliably
+//    - "Bash(find *)" matches "find /path" but NOT "find /path | wc -l"
+//    - The entire command string (including pipes) must match the pattern
+//
+// 2. Pattern matching is fragile for security
+//    - "Bash(curl http://example.com/ *)" won't match "curl -X GET http://example.com/..."
+//    - Flag ordering, shell variables, and subshells can bypass restrictions
+//
+// 3. Industry guidance (from Claude Code docs):
+//    "Bash permission patterns that try to constrain command arguments are fragile
+//     and should not be relied upon as a security boundary."
+//
+// Alternative approaches:
+//
+// Option A: Allow all bash with Bash(*)
+//   - Since we already allow Edit/Write, bash restrictions provide little real security
+//   - Claude can write a script and execute it anyway
+//   - Simpler but loses visibility into what's being run
+//
+// Option B: Custom callback logic in CreatePermissionCallback()
+//   - Don't put Bash patterns in allowedTools
+//   - Implement isDangerousBashCommand(cmd) to check for rm, sudo, etc.
+//   - Auto-allow safe commands, prompt only for dangerous ones
+//   - More control but adds custom code complexity
+//
+// Option C: Sandboxing (recommended for high-security)
+//   - Use DevContainers or Claude's sandbox mode
+//   - True isolation regardless of what commands run
+//   - See: https://code.claude.com/docs/en/settings (sandbox section)
+//
+// Current approach: Enumerate common safe patterns, accept that complex commands
+// (pipes, etc.) will prompt for permission. This provides visibility into operations
+// without false security guarantees.
+//
+// References:
+// - https://code.claude.com/docs/en/settings
+// - https://www.joinformal.com/blog/allowlisting-some-bash-commands-is-often-the-same-as-allowlisting-all-with-claude-code/
 var (
 	// Tools that are always allowed without prompting
 	allowedTools = []string{
@@ -54,7 +96,9 @@ var (
 		"Write",        // Creates or overwrites files
 
 		// === Bash commands (selective patterns) ===
-		// Common bash commands
+		// NOTE: These patterns only match simple commands without pipes or complex shell syntax.
+		// Commands like "find /path | wc -l" will still prompt for permission.
+		// See the comment block above for why this is a known limitation.
 		"Bash(ls *)",
 		"Bash(cat *)",
 		"Bash(head *)",
@@ -75,9 +119,13 @@ var (
 	}
 
 	// Tools/commands that are never allowed (dangerous operations)
+	// NOTE: These use the deprecated ":*" syntax (equivalent to " *").
+	// However, like allowedTools, these patterns have the same limitations -
+	// they won't match if flags are reordered or pipes are used.
+	// Deny rules take precedence over allow rules.
 	disallowedTools = []string{
-		"Bash(rm -rf:*)",
-		"Bash(sudo:*)",
+		"Bash(rm -rf *)",
+		"Bash(sudo *)",
 	}
 )
 
@@ -975,7 +1023,7 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	session.sdkCancel = cancel
 
 	// Initialize pendingSDKPermissions map before creating the callback
-	session.pendingSDKPermissions = make(map[string]chan PermissionResponse)
+	session.pendingSDKPermissions = make(map[string]*pendingPermission)
 
 	// Build SDK options with CanUseTool callback for permission handling
 	// When CanUseTool is set, the SDK automatically enables --permission-prompt-tool stdio

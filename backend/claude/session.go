@@ -23,6 +23,13 @@ type PermissionResponse struct {
 	ToolName    string // Tool name (needed for always-allow tracking)
 }
 
+// pendingPermission stores a pending permission request with its metadata
+type pendingPermission struct {
+	toolName  string
+	requestID string
+	ch        chan PermissionResponse
+}
+
 // SessionMode defines how a session communicates with the Claude CLI
 type SessionMode string
 
@@ -91,8 +98,10 @@ type Session struct {
 	// Permission bridging for async WebSocket flow (SDK mode only)
 	// When SDK's CanUseTool callback is invoked, it blocks waiting for a response.
 	// We broadcast a control_request to WebSocket clients and wait for the response here.
-	pendingSDKPermissions   map[string]chan PermissionResponse `json:"-"`
-	pendingSDKPermissionsMu sync.RWMutex                       `json:"-"`
+	// The map stores tool name alongside the channel so "always allow" can auto-approve
+	// other pending requests for the same tool.
+	pendingSDKPermissions   map[string]*pendingPermission `json:"-"`
+	pendingSDKPermissionsMu sync.RWMutex                  `json:"-"`
 
 	// Always-allowed tools for this session (SDK mode only)
 	// When user clicks "Always allow", the tool name is added here.
@@ -301,10 +310,10 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 
 	// Check if this is an SDK permission request first
 	s.pendingSDKPermissionsMu.RLock()
-	ch, isSDKRequest := s.pendingSDKPermissions[requestID]
+	pending, isSDKRequest := s.pendingSDKPermissions[requestID]
 	s.pendingSDKPermissionsMu.RUnlock()
 
-	if isSDKRequest && ch != nil {
+	if isSDKRequest && pending != nil {
 		// Route to SDK permission callback
 		log.Debug().
 			Str("sessionId", s.ID).
@@ -314,12 +323,18 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 			Msg("routing control response to SDK permission channel")
 
 		select {
-		case ch <- PermissionResponse{Behavior: behavior, Message: message, ToolName: toolName, AlwaysAllow: alwaysAllow}:
+		case pending.ch <- PermissionResponse{Behavior: behavior, Message: message, ToolName: toolName, AlwaysAllow: alwaysAllow}:
 			// Broadcast control_response to ALL clients so they can clear their permission UI
 			// This handles the case where multiple tabs have the same session open
 			responseMsg := fmt.Sprintf(`{"type":"control_response","request_id":%q,"behavior":%q}`,
 				requestID, behavior)
 			s.BroadcastUIMessage([]byte(responseMsg))
+
+			// If "always allow" was selected, auto-approve other pending requests for the same tool
+			if alwaysAllow && behavior == "allow" && toolName != "" {
+				s.autoApprovePendingForTool(toolName, requestID)
+			}
+
 			return nil
 		default:
 			return fmt.Errorf("permission channel full or closed")
@@ -339,6 +354,43 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 	)
 	_, err := s.Stdin.Write([]byte(data + "\n"))
 	return err
+}
+
+// autoApprovePendingForTool auto-approves all other pending permission requests for the same tool.
+// Called when user clicks "Always allow" - this ensures already-pending requests for that tool
+// are also approved without requiring additional user interaction.
+func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID string) {
+	s.pendingSDKPermissionsMu.RLock()
+	// Collect matching requests (can't send while holding lock)
+	var toApprove []*pendingPermission
+	for reqID, pending := range s.pendingSDKPermissions {
+		if reqID != excludeRequestID && pending.toolName == toolName {
+			toApprove = append(toApprove, pending)
+		}
+	}
+	s.pendingSDKPermissionsMu.RUnlock()
+
+	// Auto-approve each matching request
+	for _, pending := range toApprove {
+		log.Info().
+			Str("sessionId", s.ID).
+			Str("requestId", pending.requestID).
+			Str("toolName", toolName).
+			Msg("auto-approving pending request due to 'always allow'")
+
+		select {
+		case pending.ch <- PermissionResponse{Behavior: "allow", ToolName: toolName, AlwaysAllow: true}:
+			// Broadcast control_response so frontend clears the permission UI
+			responseMsg := fmt.Sprintf(`{"type":"control_response","request_id":%q,"behavior":"allow"}`,
+				pending.requestID)
+			s.BroadcastUIMessage([]byte(responseMsg))
+		default:
+			log.Warn().
+				Str("sessionId", s.ID).
+				Str("requestId", pending.requestID).
+				Msg("failed to auto-approve pending request (channel full or closed)")
+		}
+	}
 }
 
 // LoadMessageCache loads messages from JSONL file into cache (UI mode)
@@ -535,13 +587,18 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 		// Generate a unique request ID
 		requestID := fmt.Sprintf("sdk-perm-%d", time.Now().UnixNano())
 
-		// Create response channel and register it
+		// Create response channel and register it with tool name
+		// (tool name is needed so "always allow" can auto-approve other pending requests)
 		responseChan := make(chan PermissionResponse, 1)
 		s.pendingSDKPermissionsMu.Lock()
 		if s.pendingSDKPermissions == nil {
-			s.pendingSDKPermissions = make(map[string]chan PermissionResponse)
+			s.pendingSDKPermissions = make(map[string]*pendingPermission)
 		}
-		s.pendingSDKPermissions[requestID] = responseChan
+		s.pendingSDKPermissions[requestID] = &pendingPermission{
+			toolName:  toolName,
+			requestID: requestID,
+			ch:        responseChan,
+		}
 		s.pendingSDKPermissionsMu.Unlock()
 
 		// Build control_request message matching Claude's format
