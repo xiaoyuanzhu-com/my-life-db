@@ -44,6 +44,10 @@ interface ChatInputProps {
   onInterrupt?: () => void
   /** WebSocket connection status */
   connectionStatus?: ConnectionStatus
+  /** Working directory path */
+  workingDir?: string
+  /** Callback when working directory changes */
+  onWorkingDirChange?: (path: string) => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -61,6 +65,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     isWorking = false,
     onInterrupt,
     connectionStatus = 'connected',
+    workingDir,
+    onWorkingDirChange,
   },
   ref
 ) {
@@ -178,6 +184,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               disabled={disabled}
               placeholder={hasOverlay ? 'Waiting for response...' : placeholder}
               hasPermission={hasOverlay}
+              workingDir={workingDir}
+              onWorkingDirChange={onWorkingDirChange}
             />
           </div>
         </div>

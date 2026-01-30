@@ -45,6 +45,7 @@ export function ChatInterface({
   refreshSessions,
   initialMessage,
   onInitialMessageSent,
+  workingDir: initialWorkingDir,
 }: ChatInterfaceProps) {
   // ============================================================================
   // State
@@ -63,6 +64,9 @@ export function ChatInterface({
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
+
+  // Working directory state (can be changed via folder picker)
+  const [workingDir, setWorkingDir] = useState<string | undefined>(initialWorkingDir)
 
   // ============================================================================
   // Refs
@@ -491,6 +495,13 @@ export function ChatInterface({
     }
   }, [isWorking, ws.sendMessage])
 
+  // Handle working directory change from folder picker
+  const handleWorkingDirChange = useCallback((path: string) => {
+    setWorkingDir(path)
+    // Note: This is a local state change only. The working directory
+    // affects new sessions but cannot change an active CLI process.
+  }, [])
+
   // Send initial message once connected (for new session flow)
   useEffect(() => {
     if (
@@ -548,6 +559,8 @@ export function ChatInterface({
             isWorking={isWorking}
             onInterrupt={handleInterrupt}
             connectionStatus={effectiveConnectionStatus}
+            workingDir={workingDir}
+            onWorkingDirChange={handleWorkingDirChange}
           />
         </div>
 

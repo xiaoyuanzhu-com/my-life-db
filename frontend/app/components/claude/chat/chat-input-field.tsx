@@ -1,6 +1,7 @@
 import { useRef, useEffect, KeyboardEvent } from 'react'
-import { ArrowUp, Image, Square, FolderOpen } from 'lucide-react'
+import { ArrowUp, Image, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
+import { FolderPicker } from './folder-picker'
 
 interface ChatInputFieldProps {
   /** Current input content */
@@ -21,6 +22,8 @@ interface ChatInputFieldProps {
   hasPermission?: boolean
   /** Working directory to display */
   workingDir?: string
+  /** Callback when working directory changes */
+  onWorkingDirChange?: (path: string) => void
 }
 
 export function ChatInputField({
@@ -33,6 +36,7 @@ export function ChatInputField({
   placeholder = 'Reply...',
   hasPermission = false,
   workingDir,
+  onWorkingDirChange,
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -115,11 +119,12 @@ export function ChatInputField({
             <Image className="h-5 w-5" />
           </button>
 
-          {workingDir && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span className="truncate max-w-[200px]">{workingDir}</span>
-            </div>
+          {workingDir && onWorkingDirChange && (
+            <FolderPicker
+              value={workingDir}
+              onChange={onWorkingDirChange}
+              disabled={disabled || hasPermission}
+            />
           )}
         </div>
 
