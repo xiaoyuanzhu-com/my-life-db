@@ -35,9 +35,9 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
         const response = await api.get(`/api/library/tree?${params}`)
         if (response.ok) {
           const data = await response.json()
-          const paths = (data.children || [])
-            .filter((node: { type: string }) => node.type === 'folder')
-            .map((node: { path: string }) => node.path)
+          const paths = (data.children || []).map(
+            (node: { path: string }) => node.path
+          )
           setFolders(['.', ...paths])
         }
       } catch {
