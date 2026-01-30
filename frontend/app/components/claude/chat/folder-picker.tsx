@@ -92,14 +92,15 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     if (open) {
       const pathToBrowse = value || basePath
       setCurrentPath(pathToBrowse)
-      setSearch(pathToBrowse)
+      const displayPath = getRelativeDisplay(pathToBrowse)
+      setSearch(displayPath)
       fetchChildren(pathToBrowse)
 
       // Move cursor to end
       requestAnimationFrame(() => {
         const input = inputRef.current
         if (input) {
-          const len = pathToBrowse.length
+          const len = displayPath.length
           input.setSelectionRange(len, len)
         }
       })
@@ -109,14 +110,15 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
   // When user selects a folder, navigate into it
   const handleSelect = (path: string) => {
     setCurrentPath(path)
-    setSearch(path)
+    const displayPath = getRelativeDisplay(path)
+    setSearch(displayPath)
     fetchChildren(path)
 
     // Move cursor to end
     requestAnimationFrame(() => {
       const input = inputRef.current
       if (input) {
-        const len = path.length
+        const len = displayPath.length
         input.setSelectionRange(len, len)
       }
     })
@@ -142,6 +144,17 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     const segments = path.split('/').filter(Boolean)
     if (segments.length === 0) return ''
     return segments.slice(-n).join('/')
+  }
+
+  // Get display path relative to basePath's parent (e.g., "data/bookmarks" instead of full path)
+  const getRelativeDisplay = (path: string) => {
+    if (!path || !basePath) return path
+    const baseLastSegment = getLastSegment(basePath)
+    if (path === basePath) return baseLastSegment
+    if (path.startsWith(basePath + '/')) {
+      return baseLastSegment + path.slice(basePath.length)
+    }
+    return path
   }
 
   // Fuzzy match: characters must appear in order, not necessarily contiguous
@@ -171,7 +184,10 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   // Build full list: [parent?, current, ...filtered children]
   const parentPath = getParentPath(currentPath)
-  const filteredChildren = children.filter((path) => fuzzyMatch(path, search))
+  // Filter children using relative display for fuzzy match
+  const filteredChildren = children.filter((path) =>
+    fuzzyMatch(getRelativeDisplay(path), search)
+  )
   const filteredOptions = [
     // Parent and current always shown (not filtered)
     ...(parentPath ? [parentPath] : []),
