@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Agent Documentation
+
+For detailed technical documentation when making code changes, see:
+
+- **[docs/agent/architecture.md](docs/agent/architecture.md)** - System overview, component relationships, common patterns
+- **[docs/agent/components/](docs/agent/components/)** - Deep dives into specific subsystems:
+  - `claude-code.md` - Claude Code integration (WebSocket, sessions, messages)
+  - `digest-system.md` - File processing and digesters
+  - `fs-service.md` - Filesystem watching and scanning
+  - `notifications.md` - SSE real-time updates
+  - `auth.md` - Authentication modes
+
+Read the architecture doc first, then the relevant component doc for your task.
+
 ## Project Overview
 
 MyLifeDB is a filesystem-based personal knowledge management system with:
