@@ -50,6 +50,11 @@ type CachedSessionEntry struct {
 	GitBranch            string    `json:"gitBranch,omitempty"`
 	ProjectPath          string    `json:"projectPath"`
 	IsSidechain          bool      `json:"isSidechain"`
+
+	// enriched indicates whether FirstPrompt/FirstUserMessageUUID have been
+	// computed from JSONL (true) or are from the index file (false).
+	// Index data may be stale after context compaction.
+	enriched bool
 }
 
 // NewSessionIndexCache creates a new session index cache.
@@ -365,6 +370,9 @@ func (c *SessionIndexCache) parseJSONLFile(sessionID, jsonlPath string) *CachedS
 	// Pre-compute display title to avoid disk reads later
 	entry.DisplayTitle = entry.computeDisplayTitle()
 
+	// Mark as enriched since we parsed the JSONL directly
+	entry.enriched = true
+
 	return entry
 }
 
@@ -472,30 +480,28 @@ func (c *SessionIndexCache) handleFSEvent(event fsnotify.Event) {
 }
 
 // convertIndexEntry converts a SessionIndexEntry to a CachedSessionEntry.
-// Note: FirstPrompt and FirstUserMessageUUID are computed via GetFirstUserPromptAndUUID()
-// to handle compacted sessions correctly. The index's firstPrompt is unreliable after context compaction.
+// Uses index data directly for fast loading. FirstPrompt/FirstUserMessageUUID
+// are enriched lazily on-demand when the entry is actually returned to clients.
 func convertIndexEntry(entry *models.SessionIndexEntry) *CachedSessionEntry {
 	created, _ := time.Parse(time.RFC3339, entry.Created)
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
 
-	// Parse JSONL for accurate first prompt and UUID (used for session deduplication)
-	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(entry.SessionID, entry.ProjectPath)
-
 	cached := &CachedSessionEntry{
-		SessionID:            entry.SessionID,
-		FullPath:             entry.FullPath,
-		FirstPrompt:          firstPrompt,
-		FirstUserMessageUUID: firstUUID,
-		Summary:              entry.Summary,
-		CustomTitle:          entry.CustomTitle,
-		MessageCount:         entry.MessageCount,
-		Created:              created,
-		Modified:             modified,
-		GitBranch:            entry.GitBranch,
-		ProjectPath:          entry.ProjectPath,
-		IsSidechain:          entry.IsSidechain,
+		SessionID:   entry.SessionID,
+		FullPath:    entry.FullPath,
+		FirstPrompt: entry.FirstPrompt, // Use index data, may be stale after compaction
+		// FirstUserMessageUUID left empty - computed on-demand during enrichment
+		Summary:      entry.Summary,
+		CustomTitle:  entry.CustomTitle,
+		MessageCount: entry.MessageCount,
+		Created:      created,
+		Modified:     modified,
+		GitBranch:    entry.GitBranch,
+		ProjectPath:  entry.ProjectPath,
+		IsSidechain:  entry.IsSidechain,
+		enriched:     false, // Not yet enriched from JSONL
 	}
-	// Pre-compute display title to avoid disk reads later
+	// Pre-compute display title from index data
 	cached.DisplayTitle = cached.computeDisplayTitle()
 	return cached
 }
@@ -525,6 +531,29 @@ func (e *CachedSessionEntry) GetDisplayTitle() string {
 	}
 	// Fallback for entries loaded before DisplayTitle was cached
 	return e.computeDisplayTitle()
+}
+
+// Enrich loads accurate FirstPrompt and FirstUserMessageUUID from the JSONL file.
+// This is called on-demand for entries that are actually returned to clients.
+// Returns true if enrichment was performed, false if already enriched.
+func (e *CachedSessionEntry) Enrich() bool {
+	if e.enriched {
+		return false
+	}
+
+	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(e.SessionID, e.ProjectPath)
+	if firstPrompt != "" {
+		e.FirstPrompt = firstPrompt
+		e.DisplayTitle = e.computeDisplayTitle() // Recompute with accurate data
+	}
+	e.FirstUserMessageUUID = firstUUID
+	e.enriched = true
+	return true
+}
+
+// IsEnriched returns whether this entry has been enriched from JSONL.
+func (e *CachedSessionEntry) IsEnriched() bool {
+	return e.enriched
 }
 
 // PaginationResult holds the result of a paginated query
@@ -599,6 +628,17 @@ func (c *SessionIndexCache) GetPaginated(cursor string, limit int, activeSession
 		if len(result) < limit {
 			result = append(result, entry)
 		}
+	}
+
+	// Enrich only the entries being returned (lazy loading)
+	enrichedCount := 0
+	for _, entry := range result {
+		if entry.Enrich() {
+			enrichedCount++
+		}
+	}
+	if enrichedCount > 0 {
+		log.Debug().Int("enriched", enrichedCount).Int("total", len(result)).Msg("enriched session entries on-demand")
 	}
 
 	// Build pagination info
