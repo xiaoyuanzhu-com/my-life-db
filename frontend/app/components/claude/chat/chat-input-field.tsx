@@ -119,11 +119,12 @@ export function ChatInputField({
             <Image className="h-5 w-5" />
           </button>
 
-          {onWorkingDirChange && (
+          {(workingDir || onWorkingDirChange) && (
             <FolderPicker
               value={workingDir || ''}
               onChange={onWorkingDirChange}
               disabled={disabled || hasPermission}
+              readOnly={!onWorkingDirChange}
             />
           )}
         </div>

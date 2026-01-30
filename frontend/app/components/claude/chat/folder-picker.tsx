@@ -14,11 +14,12 @@ import {
 
 interface FolderPickerProps {
   value: string // full path
-  onChange: (path: string) => void // receives full path
+  onChange?: (path: string) => void // receives full path (optional for readOnly)
   disabled?: boolean
+  readOnly?: boolean // if true, just display, not clickable
 }
 
-export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
+export function FolderPicker({ value, onChange, disabled = false, readOnly = false }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
@@ -79,7 +80,7 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
         const data = await response.json()
         const responseBasePath = data.basePath || ''
         setBasePath(responseBasePath)
-        if (!value && responseBasePath) {
+        if (!value && responseBasePath && onChange) {
           onChange(responseBasePath)
         }
       }
@@ -126,7 +127,7 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   // When popover closes, confirm selection
   const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen && currentPath && currentPath !== value) {
+    if (!newOpen && currentPath && currentPath !== value && onChange) {
       onChange(currentPath)
     }
     setOpen(newOpen)
@@ -171,6 +172,21 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
   }
 
   const displayValue = value ? getLastSegment(value) : '.'
+
+  // Read-only mode: just display, not clickable
+  if (readOnly) {
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-1.5 text-xs text-muted-foreground',
+          disabled && 'opacity-50'
+        )}
+      >
+        <FolderOpen className="h-3.5 w-3.5" />
+        <span className="truncate max-w-[200px]">{displayValue}</span>
+      </div>
+    )
+  }
 
   // Get parent path (stop at basePath - the data directory)
   const getParentPath = (path: string) => {
