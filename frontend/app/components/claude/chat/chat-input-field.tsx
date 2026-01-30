@@ -121,7 +121,7 @@ export function ChatInputField({
 
           {onWorkingDirChange && (
             <FolderPicker
-              value={workingDir || '/'}
+              value={workingDir || ''}
               onChange={onWorkingDirChange}
               disabled={disabled || hasPermission}
             />

@@ -13,20 +13,18 @@ import {
 } from '~/components/ui/command'
 
 interface FolderPickerProps {
-  value: string
-  onChange: (path: string) => void
+  value: string // full path
+  onChange: (path: string) => void // receives full path
   disabled?: boolean
 }
 
 export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
-  const [folders, setFolders] = useState<string[]>(['.'])
-  const [basePath, setBasePath] = useState<string>('')
+  const [folders, setFolders] = useState<string[]>([])
 
-  // Fetch folders when popover opens
+  // Fetch tree on mount to initialize value and get folder list
   useEffect(() => {
-    if (!open) return
-    const fetchFolders = async () => {
+    const fetchTree = async () => {
       try {
         const params = new URLSearchParams({
           depth: '1',
@@ -36,20 +34,22 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
         const response = await api.get(`/api/library/tree?${params}`)
         if (response.ok) {
           const data = await response.json()
-          const paths = (data.children || []).map(
-            (node: { path: string }) => node.path
+          const basePath = data.basePath || ''
+          const childPaths = (data.children || []).map(
+            (node: { path: string }) => `${basePath}/${node.path}`
           )
-          setFolders(['.', ...paths])
-          if (data.basePath) {
-            setBasePath(data.basePath)
+          setFolders([basePath, ...childPaths])
+          // Initialize value to basePath if empty
+          if (!value && basePath) {
+            onChange(basePath)
           }
         }
       } catch {
-        // keep default ['.']
+        // keep empty
       }
     }
-    fetchFolders()
-  }, [open])
+    fetchTree()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelect = (path: string) => {
     onChange(path)
@@ -58,12 +58,10 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   const getLastSegment = (path: string) => {
     const segments = path.split('/').filter(Boolean)
-    return segments[segments.length - 1] || path
+    return segments[segments.length - 1] || ''
   }
 
-  const displayValue = value && value !== '.'
-    ? getLastSegment(value)
-    : basePath ? getLastSegment(basePath) : '.'
+  const displayValue = value ? getLastSegment(value) : '.'
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -94,7 +92,7 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
                   onSelect={() => handleSelect(folder)}
                   className={cn(folder === value && 'bg-accent')}
                 >
-                  {folder}
+                  {getLastSegment(folder)}
                 </CommandItem>
               ))}
             </CommandGroup>

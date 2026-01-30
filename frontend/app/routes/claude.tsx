@@ -61,7 +61,7 @@ export default function ClaudePage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // New session state (for empty state)
-  const [newSessionWorkingDir, setNewSessionWorkingDir] = useState('/')
+  const [newSessionWorkingDir, setNewSessionWorkingDir] = useState('')
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
 
@@ -224,7 +224,7 @@ export default function ClaudePage() {
     try {
       const response = await api.post('/api/claude/sessions', {
         title: `Session ${sessions.length + 1}`,
-        workingDir: newSessionWorkingDir === '/' ? '' : newSessionWorkingDir,
+        workingDir: newSessionWorkingDir,
       })
 
       if (response.ok) {
