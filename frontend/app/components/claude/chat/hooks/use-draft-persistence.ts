@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-function getStorageKey(sessionId: string): string {
-  return `claude-input:${sessionId}`
+function getStorageKey(sessionId: string | undefined): string {
+  return `claude-input:${sessionId || 'new-session'}`
 }
 
 export interface DraftPersistence {
@@ -23,7 +23,7 @@ export interface DraftPersistence {
  * Manages draft message persistence to localStorage.
  * Handles optimistic UI clearing while preserving draft for recovery on send failure.
  */
-export function useDraftPersistence(sessionId: string): DraftPersistence {
+export function useDraftPersistence(sessionId: string | undefined): DraftPersistence {
   const [content, setContentState] = useState('')
 
   // Track pending send state - when true, don't sync empty content to localStorage
@@ -33,7 +33,7 @@ export function useDraftPersistence(sessionId: string): DraftPersistence {
   // Track which sessionId the current content state belongs to.
   // This prevents saving stale content from session A to session B's key
   // when switching sessions (content state updates asynchronously).
-  const contentSessionIdRef = useRef<string | null>(null)
+  const contentSessionIdRef = useRef<string | undefined>(undefined)
 
   // Restore draft from localStorage on mount or sessionId change
   useEffect(() => {

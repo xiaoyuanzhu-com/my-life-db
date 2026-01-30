@@ -18,10 +18,10 @@ interface ReconnectionFeedback {
  */
 export function useReconnectionFeedback(
   connectionStatus: ConnectionStatus,
-  sessionId: string
+  sessionId: string | undefined
 ): ReconnectionFeedback {
   const prevStatusRef = useRef<ConnectionStatus | null>(null)
-  const prevSessionIdRef = useRef<string | null>(null)
+  const prevSessionIdRef = useRef<string | undefined>(undefined)
   const [showReconnected, setShowReconnected] = useState(false)
   const [isDismissing, setIsDismissing] = useState(false)
 

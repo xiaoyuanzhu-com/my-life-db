@@ -21,8 +21,8 @@ export interface ChatInputHandle {
 }
 
 interface ChatInputProps {
-  /** Session ID for localStorage key namespacing */
-  sessionId: string
+  /** Session ID for localStorage key namespacing (optional for new session flow) */
+  sessionId?: string
   onSend: (content: string) => void
   disabled?: boolean
   placeholder?: string

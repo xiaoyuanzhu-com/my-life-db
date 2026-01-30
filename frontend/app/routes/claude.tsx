@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
-import { ChatInterface } from '~/components/claude/chat'
+import { ChatInterface, ChatInput } from '~/components/claude/chat'
 import { ClaudeTerminal } from '~/components/claude/terminal'
-import { ChatInputField } from '~/components/claude/chat/chat-input-field'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
@@ -61,8 +60,7 @@ export default function ClaudePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  // New session input state (for empty state)
-  const [newSessionInput, setNewSessionInput] = useState('')
+  // New session state (for empty state)
   const [newSessionWorkingDir, setNewSessionWorkingDir] = useState('/')
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
@@ -219,8 +217,7 @@ export default function ClaudePage() {
   }, [pagination.hasMore, pagination.nextCursor, isLoadingMore, statusFilter])
 
   // Create session and send initial message (for empty state flow)
-  const createSessionWithMessage = async () => {
-    const message = newSessionInput.trim()
+  const createSessionWithMessage = async (message: string) => {
     if (!message || isCreatingSession) return
 
     setIsCreatingSession(true)
@@ -238,7 +235,6 @@ export default function ClaudePage() {
         ])
         // Set the pending message before switching to the session
         setPendingInitialMessage(message)
-        setNewSessionInput('')
         setActiveSessionId(newSession.id)
       }
     } catch (error) {
@@ -484,24 +480,13 @@ export default function ClaudePage() {
             {/* Empty message area */}
             <div className="flex-1" />
             {/* Input at bottom */}
-            <div className="pb-4">
-              <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
-                <div
-                  className="border border-border rounded-xl overflow-hidden"
-                  style={{ backgroundColor: 'var(--claude-bg-subtle)' }}
-                >
-                  <ChatInputField
-                    content={newSessionInput}
-                    onChange={setNewSessionInput}
-                    onSend={createSessionWithMessage}
-                    disabled={isCreatingSession}
-                    placeholder="Start a new conversation..."
-                    workingDir={newSessionWorkingDir}
-                    onWorkingDirChange={setNewSessionWorkingDir}
-                  />
-                </div>
-              </div>
-            </div>
+            <ChatInput
+              onSend={createSessionWithMessage}
+              disabled={isCreatingSession}
+              placeholder="Start a new conversation..."
+              workingDir={newSessionWorkingDir}
+              onWorkingDirChange={setNewSessionWorkingDir}
+            />
           </div>
         )}
       </div>
