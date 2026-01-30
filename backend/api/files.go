@@ -325,7 +325,7 @@ func parseFields(fieldsParam string) fieldSet {
 
 // GetLibraryTree handles GET /api/library/tree
 // Parameters:
-//   - path: directory path to list (default: root)
+//   - path: directory path to list, absolute or relative to UserDataDir (default: root)
 //   - depth: recursion depth, 1=direct children, 0=unlimited (default: 1)
 //   - limit: max nodes to return (default: unlimited)
 //   - fields: comma-separated fields to include (default: all)
@@ -355,17 +355,28 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	// Parse fields
 	fields := parseFields(c.Query("fields"))
 
-	// Security: Normalize and validate path
+	// Normalize and validate path
+	var baseDir, fullPath string
+	cfg := config.Get()
+
 	if requestedPath != "" {
 		requestedPath = filepath.Clean(requestedPath)
-		if strings.HasPrefix(requestedPath, "..") || filepath.IsAbs(requestedPath) {
+		if strings.Contains(requestedPath, "..") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
 			return
 		}
 	}
 
-	cfg := config.Get()
-	fullPath := filepath.Join(cfg.UserDataDir, requestedPath)
+	if filepath.IsAbs(requestedPath) {
+		// Absolute path: use directly
+		baseDir = requestedPath
+		fullPath = requestedPath
+		requestedPath = "" // relative path within baseDir is empty
+	} else {
+		// Relative path: join with UserDataDir
+		baseDir = cfg.UserDataDir
+		fullPath = filepath.Join(cfg.UserDataDir, requestedPath)
+	}
 
 	// Check if path exists
 	info, err := os.Stat(fullPath)
@@ -380,10 +391,10 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 	// Track count for limit
 	count := 0
-	children := h.readDirRecursive(cfg.UserDataDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
+	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
 
 	c.JSON(http.StatusOK, gin.H{
-		"basePath": cfg.UserDataDir,
+		"basePath": baseDir,
 		"path":     requestedPath,
 		"children": children,
 	})
