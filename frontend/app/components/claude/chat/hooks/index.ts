@@ -7,3 +7,4 @@ export {
   type UseSessionWebSocketResult,
 } from './use-session-websocket'
 export { useSlashCommands, filterCommands, type InitData } from './use-slash-commands'
+export { useFileTag, useFilteredFiles, filterFiles, type FileItem } from './use-file-tag'

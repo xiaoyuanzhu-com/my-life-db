@@ -3,7 +3,9 @@ import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
+import { FileTagPopover } from './file-tag-popover'
 import { filterCommands } from './hooks'
+import { useFileTag, useFilteredFiles } from './hooks/use-file-tag'
 import type { SlashCommand } from './slash-commands'
 
 interface ChatInputFieldProps {
@@ -51,7 +53,11 @@ export function ChatInputField({
   const containerRef = useRef<HTMLDivElement>(null)
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
   const [buttonPopoverOpen, setButtonPopoverOpen] = useState(false)
+  const [fileTagPopoverOpen, setFileTagPopoverOpen] = useState(false)
   const [cursorPos, setCursorPos] = useState(0)
+
+  // File tagging state
+  const { files: allFiles, loading: filesLoading } = useFileTag(workingDir)
 
   // Find slash command at cursor position
   // Only active if cursor is within "/command" portion (no space after)
@@ -100,6 +106,49 @@ export function ChatInputField({
   const textBeforeSlash = slashCommand?.textBefore ?? ''
   const textAfterSlash = slashCommand?.textAfter ?? ''
 
+  // Find file tag at cursor position (@ followed by partial path)
+  const getFileTagAtCursor = () => {
+    // Look backwards from cursor to find "@"
+    let atIdx = -1
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      const char = content[i]
+      if (char === '@') {
+        atIdx = i
+        break
+      }
+      // Stop if we hit whitespace (tag ends at whitespace)
+      if (char === ' ' || char === '\n' || char === '\t') {
+        break
+      }
+    }
+    if (atIdx === -1) return null
+
+    // Find end of tag (next whitespace or end of string)
+    let endIdx = content.length
+    for (let i = cursorPos; i < content.length; i++) {
+      if (content[i] === ' ' || content[i] === '\n' || content[i] === '\t') {
+        endIdx = i
+        break
+      }
+    }
+
+    return {
+      atIndex: atIdx,
+      query: content.slice(atIdx + 1, endIdx),
+      textBefore: content.slice(0, atIdx),
+      textAfter: content.slice(endIdx),
+    }
+  }
+
+  const fileTag = getFileTagAtCursor()
+  const isFileTagMode = fileTag !== null && !isSlashMode // Slash mode takes priority
+  const fileTagQuery = fileTag?.query ?? ''
+  const textBeforeAt = fileTag?.textBefore ?? ''
+  const textAfterAt = fileTag?.textAfter ?? ''
+
+  // Filter files based on query
+  const filteredFiles = useFilteredFiles(allFiles, fileTagQuery)
+
   // Effective popover open state: either in slash mode OR opened via button
   const effectivePopoverOpen = (slashPopoverOpen && isSlashMode) || buttonPopoverOpen
 
@@ -127,6 +176,16 @@ export function ChatInputField({
     }
   }, [isSlashMode, slashPopoverOpen])
 
+  // Re-enable file tag popover when entering @ mode
+  useEffect(() => {
+    if (isFileTagMode && !fileTagPopoverOpen) {
+      setFileTagPopoverOpen(true)
+    }
+  }, [isFileTagMode, fileTagPopoverOpen])
+
+  // Effective file tag popover state
+  const effectiveFileTagPopoverOpen = fileTagPopoverOpen && isFileTagMode
+
   // Handle slash command selection - send command directly and keep surrounding text
   const handleSlashSelect = (cmd: SlashCommand) => {
     // Send the slash command
@@ -151,6 +210,21 @@ export function ChatInputField({
       setCursorPos(pos)
     })
     setSlashPopoverOpen(false)
+    textareaRef.current?.focus()
+  }
+
+  // Handle file tag selection - insert file path and keep surrounding text
+  const handleFileTagSelect = (file: { path: string }) => {
+    // Replace @query with the file path
+    const newContent = textBeforeAt + '@' + file.path + textAfterAt
+    onChange(newContent)
+    // Set cursor to end of inserted path
+    requestAnimationFrame(() => {
+      const pos = textBeforeAt.length + 1 + file.path.length
+      textareaRef.current?.setSelectionRange(pos, pos)
+      setCursorPos(pos)
+    })
+    setFileTagPopoverOpen(false)
     textareaRef.current?.focus()
   }
 
@@ -201,11 +275,12 @@ export function ChatInputField({
   }, [isWorking, hasPermission, onInterrupt])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Close slash popover on Escape
-    if (e.key === 'Escape' && effectivePopoverOpen) {
+    // Close popovers on Escape
+    if (e.key === 'Escape' && (effectivePopoverOpen || effectiveFileTagPopoverOpen)) {
       e.preventDefault()
       setSlashPopoverOpen(false)
       setButtonPopoverOpen(false)
+      setFileTagPopoverOpen(false)
       return
     }
     // Send on Enter (without Shift) - only if no permission pending
@@ -234,6 +309,16 @@ export function ChatInputField({
         }}
         commands={filteredCommands}
         onSelect={handleSlashSelect}
+        anchorRef={containerRef}
+      />
+
+      {/* File tag popover */}
+      <FileTagPopover
+        open={effectiveFileTagPopoverOpen}
+        onOpenChange={setFileTagPopoverOpen}
+        files={filteredFiles}
+        loading={filesLoading}
+        onSelect={handleFileTagSelect}
         anchorRef={containerRef}
       />
 
