@@ -85,6 +85,8 @@ export function ChatInterface({
   // Uses debounce: marked complete when no messages received for 500ms
   const initialLoadCompleteRef = useRef(false)
   const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track if we've connected at least once (to detect reconnections vs initial connection)
+  const wasConnectedRef = useRef(false)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -371,6 +373,7 @@ export function ChatInterface({
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
     initialMessageSentRef.current = false
+    wasConnectedRef.current = false // Reset so initial connection to new session isn't treated as reconnect
     if (initialLoadTimerRef.current) {
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null
@@ -386,6 +389,28 @@ export function ChatInterface({
       }
     }
   }, [])
+
+  // Clear rawMessages on WebSocket reconnection to avoid duplicates
+  // When the server restarts, the client reconnects and the server resends all cached messages.
+  // Without clearing, messages could duplicate (especially those without stable UUIDs).
+  useEffect(() => {
+    if (ws.connectionStatus === 'connected') {
+      if (wasConnectedRef.current) {
+        // This is a reconnection - clear state to receive fresh messages from server
+        setRawMessages([])
+        setActiveTodos([])
+        setProgressMessage(null)
+        permissions.reset()
+        initialLoadCompleteRef.current = false
+        if (initialLoadTimerRef.current) {
+          clearTimeout(initialLoadTimerRef.current)
+          initialLoadTimerRef.current = null
+        }
+      }
+      wasConnectedRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
+  }, [ws.connectionStatus])
 
   // ============================================================================
   // Handlers
