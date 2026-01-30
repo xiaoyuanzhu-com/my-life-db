@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, KeyboardEvent } from 'react'
-import { ArrowUp, Image, Square } from 'lucide-react'
+import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
@@ -236,8 +236,21 @@ export function ChatInputField({
 
       {/* Actions row */}
       <div className="flex items-center justify-between mt-2">
-        {/* Left side - attachment icon and working dir */}
+        {/* Left side - working dir */}
         <div className="flex items-center gap-3">
+          {(workingDir || onWorkingDirChange) && (
+            <FolderPicker
+              value={workingDir || ''}
+              onChange={onWorkingDirChange}
+              disabled={disabled || hasPermission}
+              readOnly={!onWorkingDirChange}
+            />
+          )}
+        </div>
+
+        {/* Right side - attach, slash button and submit/stop */}
+        <div className="flex items-center gap-2">
+          {/* Attach file button */}
           <button
             type="button"
             onClick={handleAttachClick}
@@ -249,21 +262,9 @@ export function ChatInputField({
             )}
             aria-label="Attach file"
           >
-            <Image className="h-5 w-5" />
+            <Paperclip className="h-5 w-5" />
           </button>
 
-          {(workingDir || onWorkingDirChange) && (
-            <FolderPicker
-              value={workingDir || ''}
-              onChange={onWorkingDirChange}
-              disabled={disabled || hasPermission}
-              readOnly={!onWorkingDirChange}
-            />
-          )}
-        </div>
-
-        {/* Right side - slash button and submit/stop */}
-        <div className="flex items-center gap-2">
           {/* Slash command button */}
           <button
             type="button"
