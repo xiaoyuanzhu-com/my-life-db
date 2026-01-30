@@ -383,6 +383,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	children := h.readDirRecursive(cfg.UserDataDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
 
 	c.JSON(http.StatusOK, gin.H{
+		"basePath": cfg.UserDataDir,
 		"path":     requestedPath,
 		"children": children,
 	})

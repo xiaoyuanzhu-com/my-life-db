@@ -383,6 +383,7 @@ Get directory tree for file browser with optional recursion.
 **Response:**
 ```json
 {
+  "basePath": "/Users/foo/data",
   "path": "notes",
   "children": [{
     "path": "notes/file.md",
@@ -396,6 +397,8 @@ Get directory tree for file browser with optional recursion.
   }]
 }
 ```
+
+Client 可通过 `basePath + "/" + node.path` 构建绝对路径。
 
 **Examples:**
 ```bash
