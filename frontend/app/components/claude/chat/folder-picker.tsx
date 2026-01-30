@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Check } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -237,9 +237,13 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
                     key={folder}
                     value={folder}
                     onSelect={() => handleSelect(folder)}
-                    className={cn(folder === currentPath && 'bg-accent')}
+                    className={cn(
+                      'flex items-center justify-between',
+                      folder === currentPath && 'bg-accent'
+                    )}
                   >
-                    {displayName}
+                    <span>{displayName}</span>
+                    {isCurrent && <Check className="h-4 w-4 text-muted-foreground" />}
                   </CommandItem>
                 )
               })}
