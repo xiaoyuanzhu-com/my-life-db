@@ -50,16 +50,63 @@ export function ChatInputField({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
+  const [cursorPos, setCursorPos] = useState(0)
 
-  // Find the last "/" in content to determine slash mode
-  // e.g., "hello /comp" -> slashIndex = 6, slashQuery = "comp"
-  const slashIndex = content.lastIndexOf('/')
-  const isSlashMode = slashIndex !== -1
-  const slashQuery = isSlashMode ? content.slice(slashIndex + 1) : ''
-  const textBeforeSlash = isSlashMode ? content.slice(0, slashIndex) : content
+  // Find slash command at cursor position
+  // Only active if cursor is within "/command" portion (no space after)
+  const getSlashCommandAtCursor = () => {
+    // Look backwards from cursor to find "/"
+    let slashIdx = -1
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      const char = content[i]
+      if (char === '/') {
+        slashIdx = i
+        break
+      }
+      // Stop if we hit a space (command ends at space)
+      if (char === ' ' || char === '\n') {
+        break
+      }
+    }
+    if (slashIdx === -1) return null
+
+    // Check if there's a space between slash and cursor
+    const textAfterSlash = content.slice(slashIdx + 1, cursorPos)
+    if (textAfterSlash.includes(' ') || textAfterSlash.includes('\n')) {
+      return null
+    }
+
+    // Find end of command (next space or end of string)
+    let endIdx = content.length
+    for (let i = cursorPos; i < content.length; i++) {
+      if (content[i] === ' ' || content[i] === '\n') {
+        endIdx = i
+        break
+      }
+    }
+
+    return {
+      slashIndex: slashIdx,
+      query: content.slice(slashIdx + 1, endIdx),
+      textBefore: content.slice(0, slashIdx),
+      textAfter: content.slice(endIdx),
+    }
+  }
+
+  const slashCommand = getSlashCommandAtCursor()
+  const isSlashMode = slashCommand !== null
+  const slashQuery = slashCommand?.query ?? ''
+  const textBeforeSlash = slashCommand?.textBefore ?? ''
+  const textAfterSlash = slashCommand?.textAfter ?? ''
   const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : slashCommands
 
-  // Open popover when "/" is typed at start
+  // Update cursor position on selection change
+  const handleSelect = () => {
+    const pos = textareaRef.current?.selectionStart ?? 0
+    setCursorPos(pos)
+  }
+
+  // Open/close popover based on slash mode
   useEffect(() => {
     if (isSlashMode && !slashPopoverOpen) {
       setSlashPopoverOpen(true)
@@ -68,14 +115,21 @@ export function ChatInputField({
     }
   }, [isSlashMode, slashPopoverOpen])
 
-  // Handle slash command selection - send command directly and keep text before "/"
+  // Handle slash command selection - send command directly and keep surrounding text
   const handleSlashSelect = (cmd: SlashCommand) => {
     // Send the slash command
     if (onSlashCommand) {
       onSlashCommand(`/${cmd.name}`)
     }
-    // Keep text before the "/" in the input
-    onChange(textBeforeSlash)
+    // Keep text before and after the slash command
+    const newContent = textBeforeSlash + textAfterSlash
+    onChange(newContent)
+    // Set cursor to end of textBeforeSlash
+    requestAnimationFrame(() => {
+      const pos = textBeforeSlash.length
+      textareaRef.current?.setSelectionRange(pos, pos)
+      setCursorPos(pos)
+    })
     setSlashPopoverOpen(false)
     textareaRef.current?.focus()
   }
@@ -83,9 +137,17 @@ export function ChatInputField({
   // Handle "/" button click - append "/" to trigger slash mode
   const handleSlashButtonClick = () => {
     // Append "/" at the end to trigger slash mode
-    onChange(content + '/')
+    const newContent = content + '/'
+    onChange(newContent)
+    setCursorPos(newContent.length)
     setSlashPopoverOpen(true)
     textareaRef.current?.focus()
+  }
+
+  // Handle content change and update cursor position
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value)
+    setCursorPos(e.target.selectionStart)
   }
 
   // Auto-resize textarea as content grows
@@ -149,7 +211,8 @@ export function ChatInputField({
       <textarea
         ref={textareaRef}
         value={content}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={handleChange}
+        onSelect={handleSelect}
         onKeyDown={handleKeyDown}
         placeholder={hasPermission ? 'Waiting for permission...' : placeholder}
         disabled={disabled || hasPermission}
