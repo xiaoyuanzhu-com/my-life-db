@@ -55,7 +55,7 @@ var (
 		"Write",        // Creates or overwrites files
 
 		// === Bash commands (selective patterns) ===
-		// Common bash commands (read-only / safe)
+		// Common bash commands
 		"Bash(ls *)",
 		"Bash(cat *)",
 		"Bash(head *)",
@@ -66,6 +66,7 @@ var (
 		"Bash(pwd)",
 		"Bash(which *)",
 		"Bash(echo *)",
+		"Bash(sed *)",
 		// Git commands (read-only)
 		"Bash(git status*)",
 		"Bash(git diff*)",
