@@ -98,10 +98,16 @@ export function ChatInputField({
   const slashQuery = slashCommand?.query ?? ''
   const textBeforeSlash = slashCommand?.textBefore ?? ''
   const textAfterSlash = slashCommand?.textAfter ?? ''
-  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : []
 
   // Effective popover open state: must be in slash mode AND not manually closed
   const effectivePopoverOpen = slashPopoverOpen && isSlashMode
+
+  // Keep last valid commands to avoid flash during close animation
+  const lastCommandsRef = useRef<SlashCommand[]>([])
+  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : lastCommandsRef.current
+  if (isSlashMode) {
+    lastCommandsRef.current = filteredCommands
+  }
 
   // Update cursor position on selection change
   const handleSelect = () => {
