@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react'
 import { File, Folder } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { Popover, PopoverContent, PopoverAnchor } from '~/components/ui/popover'
@@ -11,6 +12,8 @@ interface FileTagPopoverProps {
   onSelect: (file: FileItem) => void
   /** Anchor element ref for positioning */
   anchorRef: React.RefObject<HTMLElement | null>
+  /** Currently focused item index for keyboard navigation */
+  focusIndex?: number
 }
 
 export function FileTagPopover({
@@ -20,7 +23,9 @@ export function FileTagPopover({
   loading = false,
   onSelect,
   anchorRef,
+  focusIndex = 0,
 }: FileTagPopoverProps) {
+  const listRef = useRef<HTMLDivElement>(null)
   // Create a virtualRef that Radix expects
   const virtualRef = {
     current: anchorRef.current ?? {
@@ -29,6 +34,17 @@ export function FileTagPopover({
   }
 
   const anchorWidth = anchorRef.current?.offsetWidth ?? 320
+
+  // Scroll focused item into view
+  useEffect(() => {
+    if (!open || files.length === 0) return
+    const list = listRef.current
+    if (!list) return
+    const focusedItem = list.children[focusIndex] as HTMLElement | undefined
+    if (focusedItem) {
+      focusedItem.scrollIntoView({ block: 'nearest' })
+    }
+  }, [open, focusIndex, files.length])
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -52,8 +68,8 @@ export function FileTagPopover({
               No matching files
             </div>
           ) : (
-            <div className="py-1">
-              {files.map((file) => (
+            <div ref={listRef} className="py-1">
+              {files.map((file, index) => (
                 <button
                   key={file.path}
                   type="button"
@@ -61,7 +77,8 @@ export function FileTagPopover({
                   className={cn(
                     'w-full px-3 py-2 text-left',
                     'hover:bg-accent transition-colors',
-                    'focus:outline-none focus:bg-accent'
+                    'focus:outline-none focus:bg-accent',
+                    index === focusIndex && 'bg-accent'
                   )}
                 >
                   <div className="flex items-center gap-2">

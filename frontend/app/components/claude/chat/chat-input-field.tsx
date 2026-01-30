@@ -55,6 +55,7 @@ export function ChatInputField({
   const [buttonPopoverOpen, setButtonPopoverOpen] = useState(false)
   const [fileTagPopoverOpen, setFileTagPopoverOpen] = useState(false)
   const [cursorPos, setCursorPos] = useState(0)
+  const [fileTagFocusIndex, setFileTagFocusIndex] = useState(0)
 
   // File tagging state
   const { files: allFiles, loading: filesLoading } = useFileTag(workingDir)
@@ -183,6 +184,11 @@ export function ChatInputField({
     }
   }, [isFileTagMode, fileTagPopoverOpen])
 
+  // Reset focus index when filtered files change
+  useEffect(() => {
+    setFileTagFocusIndex(0)
+  }, [filteredFiles])
+
   // Effective file tag popover state
   const effectiveFileTagPopoverOpen = fileTagPopoverOpen && isFileTagMode
 
@@ -283,7 +289,27 @@ export function ChatInputField({
       setFileTagPopoverOpen(false)
       return
     }
-    // Send on Enter (without Shift) - only if no permission pending
+
+    // File tag popover keyboard navigation
+    if (effectiveFileTagPopoverOpen && filteredFiles.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setFileTagFocusIndex((prev) => (prev + 1) % filteredFiles.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setFileTagFocusIndex((prev) => (prev - 1 + filteredFiles.length) % filteredFiles.length)
+        return
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleFileTagSelect(filteredFiles[fileTagFocusIndex])
+        return
+      }
+    }
+
+    // Send on Enter (without Shift) - only if no permission pending and no popover open
     if (e.key === 'Enter' && !e.shiftKey && !hasPermission) {
       e.preventDefault()
       onSend()
@@ -320,6 +346,7 @@ export function ChatInputField({
         loading={filesLoading}
         onSelect={handleFileTagSelect}
         anchorRef={containerRef}
+        focusIndex={fileTagFocusIndex}
       />
 
       {/* Text input */}
