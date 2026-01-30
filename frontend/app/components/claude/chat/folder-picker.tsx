@@ -21,6 +21,7 @@ interface FolderPickerProps {
 export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
   const [folders, setFolders] = useState<string[]>(['.'])
+  const [basePath, setBasePath] = useState<string>('')
 
   // Fetch folders when popover opens
   useEffect(() => {
@@ -39,6 +40,9 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
             (node: { path: string }) => node.path
           )
           setFolders(['.', ...paths])
+          if (data.basePath) {
+            setBasePath(data.basePath)
+          }
         }
       } catch {
         // keep default ['.']
@@ -52,7 +56,14 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     setOpen(false)
   }
 
-  const displayValue = value && value !== '.' ? value : '.'
+  const getLastSegment = (path: string) => {
+    const segments = path.split('/').filter(Boolean)
+    return segments[segments.length - 1] || path
+  }
+
+  const displayValue = value && value !== '.'
+    ? getLastSegment(value)
+    : basePath ? getLastSegment(basePath) : '.'
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
