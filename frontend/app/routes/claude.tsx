@@ -61,12 +61,25 @@ export default function ClaudePage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // New session state (for empty state)
-  const [newSessionWorkingDir, setNewSessionWorkingDir] = useState('')
+  // Initialize from localStorage if available
+  const [newSessionWorkingDir, setNewSessionWorkingDir] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('claude-last-working-dir') || ''
+    }
+    return ''
+  })
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
 
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+
+  // Persist working directory to localStorage
+  useEffect(() => {
+    if (newSessionWorkingDir) {
+      localStorage.setItem('claude-last-working-dir', newSessionWorkingDir)
+    }
+  }, [newSessionWorkingDir])
 
   // Load sessions on mount or when filter changes
   useEffect(() => {
