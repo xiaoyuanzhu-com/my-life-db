@@ -221,12 +221,12 @@ export function ChatInputField({
 
   // Handle file tag selection - insert file path and keep surrounding text
   const handleFileTagSelect = (file: { path: string }) => {
-    // Replace @query with the file path
-    const newContent = textBeforeAt + '@' + file.path + textAfterAt
+    // Replace @query with the file path + space to exit tag mode
+    const newContent = textBeforeAt + '@' + file.path + ' ' + textAfterAt
     onChange(newContent)
-    // Set cursor to end of inserted path
+    // Set cursor to after the space
     requestAnimationFrame(() => {
-      const pos = textBeforeAt.length + 1 + file.path.length
+      const pos = textBeforeAt.length + 1 + file.path.length + 1
       textareaRef.current?.setSelectionRange(pos, pos)
       setCursorPos(pos)
     })
