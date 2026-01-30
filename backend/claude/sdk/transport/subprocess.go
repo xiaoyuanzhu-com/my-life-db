@@ -9,8 +9,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,7 +34,6 @@ var (
 	ErrNotConnected     = fmt.Errorf("not connected")
 	ErrAlreadyConnected = fmt.Errorf("already connected")
 	ErrConnectionClosed = fmt.Errorf("connection closed")
-	ErrCLINotFound      = fmt.Errorf("claude CLI not found")
 )
 
 // CLIConnectionError represents a connection error
@@ -54,14 +51,6 @@ func (e *CLIConnectionError) Error() string {
 
 func (e *CLIConnectionError) Unwrap() error {
 	return e.Cause
-}
-
-// cmdLengthLimit returns the maximum command line length for the current OS
-func cmdLengthLimit() int {
-	if runtime.GOOS == "windows" {
-		return 8000
-	}
-	return 100000
 }
 
 // SubprocessCLITransport implements Transport using a subprocess
@@ -99,11 +88,7 @@ type SubprocessCLITransport struct {
 func NewSubprocessCLITransport(options TransportOptions) (*SubprocessCLITransport, error) {
 	cliPath := options.CliPath
 	if cliPath == "" {
-		var err error
-		cliPath, err = findCLI()
-		if err != nil {
-			return nil, err
-		}
+		cliPath = "claude"
 	}
 
 	cwd := options.Cwd
@@ -140,37 +125,6 @@ func NewSubprocessCLITransportWithPrompt(prompt string, options TransportOptions
 	t.prompt = prompt
 	t.isStreaming = false
 	return t, nil
-}
-
-// findCLI locates the Claude CLI binary
-func findCLI() (string, error) {
-	// Check PATH first
-	if path, err := exec.LookPath("claude"); err == nil {
-		return path, nil
-	}
-
-	// Check common installation locations
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", &CLIConnectionError{Message: "cannot find home directory", Cause: err}
-	}
-
-	locations := []string{
-		filepath.Join(home, ".npm-global", "bin", "claude"),
-		"/usr/local/bin/claude",
-		filepath.Join(home, ".local", "bin", "claude"),
-		filepath.Join(home, "node_modules", ".bin", "claude"),
-		filepath.Join(home, ".yarn", "bin", "claude"),
-		filepath.Join(home, ".claude", "local", "claude"),
-	}
-
-	for _, path := range locations {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-
-	return "", ErrCLINotFound
 }
 
 // buildCommand constructs the CLI command with all arguments
