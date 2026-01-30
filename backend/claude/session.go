@@ -606,16 +606,6 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 				Interrupt: true,
 			}, nil
 
-		case <-time.After(5 * time.Minute):
-			log.Warn().
-				Str("sessionId", s.ID).
-				Str("requestId", requestID).
-				Msg("permission callback timed out")
-			return sdk.PermissionResultDeny{
-				Behavior: sdk.PermissionDeny,
-				Message:  "Permission request timed out",
-			}, nil
-
 		case <-s.sdkCtx.Done():
 			log.Debug().
 				Str("sessionId", s.ID).
