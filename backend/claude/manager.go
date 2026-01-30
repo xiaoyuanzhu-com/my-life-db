@@ -25,21 +25,36 @@ var (
 
 // Permission configuration for Claude CLI
 // These control which tools are auto-approved vs blocked
+// Reference: https://code.claude.com/docs/en/settings#tools-available-to-claude
 var (
 	// Tools that are always allowed without prompting
 	allowedTools = []string{
-		// Read-only tools
-		"Read",
-		"Glob",
-		"Grep",
-		"WebFetch",
-		"WebSearch",
-		"TodoWrite",
-		"Task",
-		// Edit tools
-		"Edit",
-		"Write",
-		"NotebookEdit",
+		// === No permission required by default ===
+		"AskUserQuestion", // Asks multiple-choice questions
+		"Glob",            // Finds files based on pattern matching
+		"Grep",            // Searches for patterns in file contents
+		"KillShell",       // Kills a running background bash shell
+		"LSP",             // Code intelligence via language servers
+		"MCPSearch",       // Searches for and loads MCP tools
+		"Read",            // Reads the contents of files
+		"Task",            // Runs a sub-agent for multi-step tasks
+		"TaskCreate",      // Creates a new task in the task list
+		"TaskGet",         // Retrieves full details for a specific task
+		"TaskList",        // Lists all tasks with their current status
+		"TaskOutput",      // Retrieves output from a background task
+		"TaskUpdate",      // Updates task status/dependencies/details
+		"TodoWrite",       // Tracks progress with todo list
+
+		// === Permission required by default, we allow ===
+		"Edit",         // Makes targeted edits to specific files
+		"ExitPlanMode", // Prompts the user to exit plan mode
+		"NotebookEdit", // Modifies Jupyter notebook cells
+		"Skill",        // Executes a skill within the conversation
+		"WebFetch",     // Fetches content from a specified URL
+		"WebSearch",    // Performs web searches
+		"Write",        // Creates or overwrites files
+
+		// === Bash commands (selective patterns) ===
 		// Common bash commands (read-only / safe)
 		"Bash(ls *)",
 		"Bash(cat *)",
@@ -169,9 +184,9 @@ func NewManager() (*Manager, error) {
 
 	m := &Manager{
 		sessions:      make(map[string]*Session),
-		indexCache:   NewSessionIndexCache(),
-		ctx:          ctx,
-		cancel:       cancel,
+		indexCache:    NewSessionIndexCache(),
+		ctx:           ctx,
+		cancel:        cancel,
 		processExited: make(chan struct{}, 100), // buffered to avoid blocking
 	}
 
