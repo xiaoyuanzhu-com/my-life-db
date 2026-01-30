@@ -256,13 +256,14 @@ export function ChatInputField({
             onClick={handleAttachClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'text-muted-foreground hover:text-foreground',
-              'transition-colors',
+              'p-2 rounded-lg',
+              'text-muted-foreground hover:text-foreground hover:bg-muted',
+              'cursor-pointer transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
             aria-label="Attach file"
           >
-            <Paperclip className="h-5 w-5" />
+            <Paperclip className="h-3.5 w-3.5" />
           </button>
 
           {/* Slash command button */}
@@ -271,12 +272,11 @@ export function ChatInputField({
             onClick={handleSlashButtonClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'h-9 w-9 rounded-lg',
-              'hover:bg-muted',
-              'flex items-center justify-center',
-              'transition-all',
+              'p-2 rounded-lg',
+              'text-muted-foreground hover:text-foreground hover:bg-muted',
+              'cursor-pointer transition-colors',
               'disabled:cursor-not-allowed disabled:opacity-50',
-              'text-base font-medium text-muted-foreground',
+              'text-sm font-medium leading-none',
               effectivePopoverOpen && 'bg-accent text-foreground'
             )}
             aria-label="Slash commands"

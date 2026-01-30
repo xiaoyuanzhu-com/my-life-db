@@ -219,8 +219,10 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
           type="button"
           disabled={disabled}
           className={cn(
-            'flex items-center gap-1.5 text-xs text-muted-foreground',
-            'hover:text-foreground transition-colors',
+            'flex items-center gap-1.5 px-2 py-1.5 rounded-lg',
+            'text-xs text-muted-foreground',
+            'hover:text-foreground hover:bg-muted',
+            'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed'
           )}
         >
