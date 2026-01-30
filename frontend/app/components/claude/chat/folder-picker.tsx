@@ -137,7 +137,10 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   // Get last N segments for display (e.g., "data/bookmarks" instead of full path)
   const getLastNSegments = (path: string, n: number) => {
+    if (!path) return ''
+    if (n <= 0) return ''
     const segments = path.split('/').filter(Boolean)
+    if (segments.length === 0) return ''
     return segments.slice(-n).join('/')
   }
 
@@ -204,9 +207,14 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
             <CommandEmpty>No subfolders</CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((folder) => {
-                // Display: ".." for parent, last 2 segments for others
+                // Display: ".." for parent, 1 segment for current, 2 segments for children
                 const isParent = folder === parentPath
-                const displayName = isParent ? '..' : getLastNSegments(folder, 2)
+                const isCurrent = folder === currentPath
+                const displayName = isParent
+                  ? '..'
+                  : isCurrent
+                    ? getLastSegment(folder)
+                    : getLastNSegments(folder, 2)
                 return (
                   <CommandItem
                     key={folder}
