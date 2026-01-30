@@ -78,6 +78,19 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
     return segments[segments.length - 1] || ''
   }
 
+  // Fuzzy match: characters must appear in order, not necessarily contiguous
+  const fuzzyMatch = (text: string, pattern: string) => {
+    const lowerText = text.toLowerCase()
+    const lowerPattern = pattern.toLowerCase()
+    let patternIdx = 0
+    for (let i = 0; i < lowerText.length && patternIdx < lowerPattern.length; i++) {
+      if (lowerText[i] === lowerPattern[patternIdx]) {
+        patternIdx++
+      }
+    }
+    return patternIdx === lowerPattern.length
+  }
+
   const displayValue = value ? getLastSegment(value) : '.'
 
   return (
@@ -108,9 +121,7 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
             <CommandEmpty>No folders found</CommandEmpty>
             <CommandGroup>
               {folders
-                .filter((folder) =>
-                  folder.toLowerCase().includes(search.toLowerCase())
-                )
+                .filter((folder) => fuzzyMatch(folder, search))
                 .map((folder) => (
                   <CommandItem
                     key={folder}
