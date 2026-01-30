@@ -330,7 +330,8 @@ func parseFields(fieldsParam string) fieldSet {
 //   - path: directory path to list (default: root)
 //   - depth: recursion depth, 1=direct children, 0=unlimited (default: 1)
 //   - limit: max nodes to return (default: unlimited)
-//   - fields: comma-separated fields to include (default: path,type)
+//   - fields: comma-separated fields to include (default: all)
+//   - folder_only: if true, return folders only (default: false)
 func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	requestedPath := c.Query("path")
 
@@ -349,6 +350,9 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 			limit = l
 		}
 	}
+
+	// Parse folder filter
+	foldersOnly := c.Query("folder_only") == "true"
 
 	// Parse fields
 	fields := parseFields(c.Query("fields"))
@@ -378,7 +382,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 	// Track count for limit
 	count := 0
-	children := h.readDirRecursive(cfg.UserDataDir, requestedPath, depth, 1, fields, &count, limit)
+	children := h.readDirRecursive(cfg.UserDataDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
 
 	c.JSON(http.StatusOK, gin.H{
 		"path":     requestedPath,
@@ -387,7 +391,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 }
 
 // readDirRecursive reads directory contents recursively up to specified depth
-func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int) []FileNode {
+func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int, foldersOnly bool) []FileNode {
 	fullPath := filepath.Join(baseDir, relativePath)
 
 	entries, err := os.ReadDir(fullPath)
@@ -413,6 +417,11 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		}
 		// Skip app and inbox at root level
 		if relativePath == "" && (name == "app" || name == "inbox") {
+			continue
+		}
+
+		// Skip files if foldersOnly is true
+		if foldersOnly && !entry.IsDir() {
 			continue
 		}
 
@@ -455,7 +464,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if isDir {
 			// maxDepth: 0 = unlimited, otherwise check current depth
 			if maxDepth == 0 || currentDepth < maxDepth {
-				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit)
+				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly)
 			} else {
 				node.Children = []FileNode{} // Empty array for unexpanded folders
 			}

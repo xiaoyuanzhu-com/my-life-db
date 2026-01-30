@@ -378,6 +378,7 @@ Get directory tree for file browser with optional recursion.
 | `depth` | integer | `1` | Recursion depth. `1`=direct children, `2`=two levels, `0`=unlimited |
 | `limit` | integer | unlimited | Maximum nodes to return |
 | `fields` | string | all | Comma-separated fields: `name`, `path`, `type`, `size`, `modifiedAt` |
+| `folder_only` | boolean | `false` | If `true`, return folders only |
 
 **Response:**
 ```json
