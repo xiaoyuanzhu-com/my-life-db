@@ -38,6 +38,7 @@ export function SlashCommandPopover({
         side="top"
         sideOffset={8}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <div className="overflow-y-auto max-h-80">
           {commands.length === 0 ? (
