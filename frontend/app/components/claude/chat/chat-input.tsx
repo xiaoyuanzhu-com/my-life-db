@@ -85,6 +85,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const hasQuestion = pendingQuestions.length > 0
   const hasOverlay = hasPermission || hasQuestion // Input is blocked when permission or question pending
 
+  // Combine permissions and questions into a unified list (arrival order preserved)
+  // and limit to 3 visible at a time
+  const MAX_POPUPS = 3
+  type PopupItem =
+    | { type: 'permission'; data: PermissionRequest }
+    | { type: 'question'; data: UserQuestion }
+  const allPopups: PopupItem[] = [
+    ...pendingPermissions.map((p) => ({ type: 'permission' as const, data: p })),
+    ...pendingQuestions.map((q) => ({ type: 'question' as const, data: q })),
+  ]
+  const visiblePopups = allPopups.slice(0, MAX_POPUPS)
+  const queuedCount = allPopups.length - visiblePopups.length
+
   // Handle send - mark pending, call parent, clear content
   const handleSend = useCallback(() => {
     const trimmed = draft.content.trim()
@@ -127,26 +140,32 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             />
           )}
 
-          {/* Permission approval section (when pending) - stacked for multiple */}
-          {pendingPermissions.map((request, index) => (
-            <PermissionCard
-              key={request.requestId}
-              request={request}
-              onDecision={(decision) => onPermissionDecision!(request.requestId, decision)}
-              isFirst={index === 0 && !hasQuestion}
-            />
-          ))}
+          {/* Popup cards (permissions and questions) - limited to MAX_POPUPS */}
+          {visiblePopups.map((item, index) =>
+            item.type === 'permission' ? (
+              <PermissionCard
+                key={item.data.requestId}
+                request={item.data}
+                onDecision={(decision) => onPermissionDecision!(item.data.requestId, decision)}
+                isFirst={index === 0}
+              />
+            ) : (
+              <QuestionCard
+                key={item.data.id}
+                question={item.data}
+                onAnswer={(answers) => onQuestionAnswer!(item.data.id, answers)}
+                onSkip={() => onQuestionSkip!(item.data.id)}
+                isFirst={index === 0}
+              />
+            )
+          )}
 
-          {/* User question section (when pending) - stacked for multiple */}
-          {pendingQuestions.map((question, index) => (
-            <QuestionCard
-              key={question.id}
-              question={question}
-              onAnswer={(answers) => onQuestionAnswer!(question.id, answers)}
-              onSkip={() => onQuestionSkip!(question.id)}
-              isFirst={index === 0}
-            />
-          ))}
+          {/* Queued indicator when more items are waiting */}
+          {queuedCount > 0 && (
+            <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border">
+              +{queuedCount} more {queuedCount === 1 ? 'request' : 'requests'} pending
+            </div>
+          )}
 
           {/* Input section */}
           <div className={cn(hasOverlay && 'border-t border-border')}>
