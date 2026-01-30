@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
@@ -20,57 +20,114 @@ interface FolderPickerProps {
 
 export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
-  const [folders, setFolders] = useState<string[]>([])
+  const [basePath, setBasePath] = useState('')
+  const [currentPath, setCurrentPath] = useState('') // path being browsed
+  const [children, setChildren] = useState<string[]>([]) // children of currentPath
   const [search, setSearch] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Reset search to current value when popover opens, cursor at end
+  // Fetch children of a given full path
+  const fetchChildren = useCallback(async (fullPath: string, knownBasePath?: string) => {
+    try {
+      const base = knownBasePath || basePath
+      // Convert full path to relative path for API
+      const relativePath = base && fullPath.startsWith(base)
+        ? fullPath.slice(base.length + 1) // +1 for the /
+        : ''
+
+      const params = new URLSearchParams({
+        path: relativePath,
+        depth: '1',
+        folder_only: 'true',
+        fields: 'path',
+      })
+
+      const response = await api.get(`/api/library/tree?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        const responseBasePath = data.basePath || ''
+
+        // Store basePath if not yet known
+        if (!basePath && responseBasePath) {
+          setBasePath(responseBasePath)
+        }
+
+        // Convert children to full paths
+        const childPaths = (data.children || []).map(
+          (node: { path: string }) => `${responseBasePath}/${node.path}`
+        )
+        setChildren(childPaths)
+
+        return responseBasePath
+      }
+    } catch {
+      // keep empty
+    }
+    return null
+  }, [basePath])
+
+  // Fetch basePath on mount to initialize value if empty
+  useEffect(() => {
+    const init = async () => {
+      const params = new URLSearchParams({
+        depth: '0',
+        folder_only: 'true',
+        fields: 'path',
+      })
+      const response = await api.get(`/api/library/tree?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        const responseBasePath = data.basePath || ''
+        setBasePath(responseBasePath)
+        if (!value && responseBasePath) {
+          onChange(responseBasePath)
+        }
+      }
+    }
+    init()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When popover opens, fetch children of current value
   useEffect(() => {
     if (open) {
-      setSearch(value)
-      // Move cursor to end after React updates the input
+      const pathToBrowse = value || basePath
+      setCurrentPath(pathToBrowse)
+      setSearch(pathToBrowse)
+      fetchChildren(pathToBrowse)
+
+      // Move cursor to end
       requestAnimationFrame(() => {
         const input = inputRef.current
         if (input) {
-          const len = value.length
+          const len = pathToBrowse.length
           input.setSelectionRange(len, len)
         }
       })
     }
-  }, [open, value])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch tree on mount to initialize value and get folder list
-  useEffect(() => {
-    const fetchTree = async () => {
-      try {
-        const params = new URLSearchParams({
-          depth: '1',
-          folder_only: 'true',
-          fields: 'path',
-        })
-        const response = await api.get(`/api/library/tree?${params}`)
-        if (response.ok) {
-          const data = await response.json()
-          const basePath = data.basePath || ''
-          const childPaths = (data.children || []).map(
-            (node: { path: string }) => `${basePath}/${node.path}`
-          )
-          setFolders([basePath, ...childPaths])
-          // Initialize value to basePath if empty
-          if (!value && basePath) {
-            onChange(basePath)
-          }
-        }
-      } catch {
-        // keep empty
-      }
-    }
-    fetchTree()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
+  // When user selects a folder, navigate into it
   const handleSelect = (path: string) => {
-    onChange(path)
-    setOpen(false)
+    setCurrentPath(path)
+    setSearch(path)
+    fetchChildren(path)
+
+    // Move cursor to end
+    requestAnimationFrame(() => {
+      const input = inputRef.current
+      if (input) {
+        const len = path.length
+        input.setSelectionRange(len, len)
+      }
+    })
+  }
+
+  // When popover closes, confirm selection
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && currentPath && currentPath !== value) {
+      onChange(currentPath)
+    }
+    setOpen(newOpen)
   }
 
   const getLastSegment = (path: string) => {
@@ -93,8 +150,28 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   const displayValue = value ? getLastSegment(value) : '.'
 
+  // Get parent path (allow navigating above basePath)
+  const getParentPath = (path: string) => {
+    if (!path) return null
+    const lastSlash = path.lastIndexOf('/')
+    // Stop at root "/"
+    if (lastSlash <= 0) return null
+    return path.slice(0, lastSlash)
+  }
+
+  // Build full list: [parent?, current, ...children]
+  const parentPath = getParentPath(currentPath)
+  const allOptions = [
+    ...(parentPath ? [parentPath] : []),
+    ...(currentPath ? [currentPath] : []),
+    ...children,
+  ]
+
+  // Filter based on search
+  const filteredOptions = allOptions.filter((path) => fuzzyMatch(path, search))
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -113,25 +190,23 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
         <Command shouldFilter={false}>
           <CommandInput
             ref={inputRef}
-            placeholder="Search folders..."
+            placeholder="Navigate folders..."
             value={search}
             onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>No folders found</CommandEmpty>
+            <CommandEmpty>No subfolders</CommandEmpty>
             <CommandGroup>
-              {folders
-                .filter((folder) => fuzzyMatch(folder, search))
-                .map((folder) => (
-                  <CommandItem
-                    key={folder}
-                    value={folder}
-                    onSelect={() => handleSelect(folder)}
-                    className={cn(folder === value && 'bg-accent')}
-                  >
-                    {folder}
-                  </CommandItem>
-                ))}
+              {filteredOptions.map((folder) => (
+                <CommandItem
+                  key={folder}
+                  value={folder}
+                  onSelect={() => handleSelect(folder)}
+                  className={cn(folder === currentPath && 'bg-accent')}
+                >
+                  {folder}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </CommandList>
         </Command>
