@@ -159,11 +159,12 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
 
   const displayValue = value ? getLastSegment(value) : '.'
 
-  // Get parent path (allow navigating above basePath)
+  // Get parent path (stop at basePath - the data directory)
   const getParentPath = (path: string) => {
     if (!path) return null
+    // Don't show ".." when at basePath (data directory is the root)
+    if (path === basePath) return null
     const lastSlash = path.lastIndexOf('/')
-    // Stop at root "/"
     if (lastSlash <= 0) return null
     return path.slice(0, lastSlash)
   }
