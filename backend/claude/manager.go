@@ -47,7 +47,6 @@ var (
 
 		// === Permission required by default, we allow ===
 		"Edit",         // Makes targeted edits to specific files
-		"ExitPlanMode", // Prompts the user to exit plan mode
 		"NotebookEdit", // Modifies Jupyter notebook cells
 		"Skill",        // Executes a skill within the conversation
 		"WebFetch",     // Fetches content from a specified URL
