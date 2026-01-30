@@ -236,6 +236,8 @@ export default function ClaudePage() {
         // Set the pending message before switching to the session
         setPendingInitialMessage(message)
         setActiveSessionId(newSession.id)
+        // Clear the new-session draft from localStorage since message is now queued
+        localStorage.removeItem('claude-input:new-session')
       }
     } catch (error) {
       console.error('Failed to create session:', error)
