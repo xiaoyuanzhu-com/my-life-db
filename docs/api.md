@@ -369,26 +369,48 @@ Search files using keyword and/or semantic search.
 
 ### GET /api/library/tree
 
-Get directory tree for file browser.
+Get directory tree for file browser with optional recursion.
 
 **Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `path` | string | Relative path (default: root) |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | `""` | Relative path to list |
+| `depth` | integer | `1` | Recursion depth. `1`=direct children, `2`=two levels, `0`=unlimited |
+| `limit` | integer | unlimited | Maximum nodes to return |
+| `fields` | string | all | Comma-separated fields: `name`, `path`, `type`, `size`, `modifiedAt` |
 
 **Response:**
 ```json
 {
   "path": "notes",
-  "nodes": [{
+  "children": [{
     "name": "file.md",
     "path": "notes/file.md",
-    "type": "file|folder",
+    "type": "file",
     "size": 1234,
-    "modifiedAt": "ISO timestamp",
+    "modifiedAt": "ISO timestamp"
+  }, {
+    "name": "subfolder",
+    "path": "notes/subfolder",
+    "type": "folder",
     "children": []
   }]
 }
+```
+
+**Examples:**
+```bash
+# Direct children only (default)
+GET /api/library/tree?path=notes
+
+# Two levels deep
+GET /api/library/tree?path=notes&depth=2
+
+# Unlimited depth, max 1000 nodes
+GET /api/library/tree?path=notes&depth=0&limit=1000
+
+# Only path and type fields
+GET /api/library/tree?path=notes&fields=path,type
 ```
 
 ---

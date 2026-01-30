@@ -136,7 +136,7 @@ function TreeNode({
     try {
       const response = await api.get(`/api/library/tree?path=${encodeURIComponent(node.path)}`);
       const data = await response.json();
-      setChildren(data.nodes || []);
+      setChildren(data.children || []);
     } catch (error) {
       console.error('Failed to load folder children:', error);
     } finally {
@@ -521,7 +521,7 @@ export function FileTree({
     try {
       const response = await api.get('/api/library/tree');
       const data = await response.json();
-      setRootNodes(data.nodes || []);
+      setRootNodes(data.children || []);
     } catch (error) {
       console.error('Failed to load library tree:', error);
     } finally {

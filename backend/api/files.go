@@ -311,9 +311,12 @@ type fieldSet map[string]bool
 func parseFields(fieldsParam string) fieldSet {
 	fields := make(fieldSet)
 	if fieldsParam == "" {
-		// Default fields
+		// Default: all fields for backward compatibility
+		fields["name"] = true
 		fields["path"] = true
 		fields["type"] = true
+		fields["size"] = true
+		fields["modifiedAt"] = true
 		return fields
 	}
 	for _, f := range strings.Split(fieldsParam, ",") {
