@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
-import { ChatInterface, ChatInput } from '~/components/claude/chat'
+import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import { ClaudeTerminal } from '~/components/claude/terminal'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
@@ -501,6 +501,7 @@ export default function ClaudePage() {
               placeholder="Start a new conversation..."
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
+              slashCommands={BUILTIN_COMMANDS}
             />
           </div>
         )}
