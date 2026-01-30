@@ -1,9 +1,10 @@
 import { useImperativeHandle, forwardRef, useCallback } from 'react'
 import { cn } from '~/lib/utils'
-import type { PermissionRequest, PermissionDecision } from '~/types/claude'
+import type { PermissionRequest, PermissionDecision, UserQuestion } from '~/types/claude'
 import { useDraftPersistence, useReconnectionFeedback, type ConnectionStatus } from './hooks'
 import { ConnectionStatusBanner } from './connection-status-banner'
 import { PermissionCard } from './permission-card'
+import { QuestionCard } from './question-card'
 import { ChatInputField } from './chat-input-field'
 
 // Re-export ConnectionStatus for backwards compatibility
@@ -29,6 +30,12 @@ interface ChatInputProps {
   pendingPermissions?: PermissionRequest[]
   /** Callback when user makes a permission decision */
   onPermissionDecision?: (requestId: string, decision: PermissionDecision) => void
+  /** Pending user questions (from AskUserQuestion tool) - renders question UI integrated into the input */
+  pendingQuestions?: UserQuestion[]
+  /** Callback when user answers a question */
+  onQuestionAnswer?: (questionId: string, answers: Record<string, string | string[]>) => void
+  /** Callback when user skips a question */
+  onQuestionSkip?: (questionId: string) => void
   /** Whether to hide the input on mobile (for scroll-based hiding) */
   hiddenOnMobile?: boolean
   /** Whether Claude is currently working (processing a request) */
@@ -47,6 +54,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     placeholder = 'Reply...',
     pendingPermissions = [],
     onPermissionDecision,
+    pendingQuestions = [],
+    onQuestionAnswer,
+    onQuestionSkip,
     hiddenOnMobile = false,
     isWorking = false,
     onInterrupt,
@@ -72,23 +82,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   )
 
   const hasPermission = pendingPermissions.length > 0
+  const hasQuestion = pendingQuestions.length > 0
+  const hasOverlay = hasPermission || hasQuestion // Input is blocked when permission or question pending
 
   // Handle send - mark pending, call parent, clear content
   const handleSend = useCallback(() => {
     const trimmed = draft.content.trim()
-    if (trimmed && !disabled && !hasPermission) {
+    if (trimmed && !disabled && !hasOverlay) {
       draft.markPendingSend()
       onSend(trimmed)
       draft.setContent('')
     }
-  }, [draft, disabled, hasPermission, onSend])
+  }, [draft, disabled, hasOverlay, onSend])
 
   // Whether to show connection status banner
   const showConnectionBanner =
     connectionStatus !== 'connected' || (reconnection.showReconnected && connectionStatus === 'connected')
 
-  // Whether to actually hide (respects permission override)
-  const shouldHide = hiddenOnMobile && !hasPermission
+  // Whether to actually hide (respects permission/question override)
+  const shouldHide = hiddenOnMobile && !hasOverlay
 
   return (
     <div
@@ -121,12 +133,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               key={request.requestId}
               request={request}
               onDecision={(decision) => onPermissionDecision!(request.requestId, decision)}
+              isFirst={index === 0 && !hasQuestion}
+            />
+          ))}
+
+          {/* User question section (when pending) - stacked for multiple */}
+          {pendingQuestions.map((question, index) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              onAnswer={(answers) => onQuestionAnswer!(question.id, answers)}
+              onSkip={() => onQuestionSkip!(question.id)}
               isFirst={index === 0}
             />
           ))}
 
           {/* Input section */}
-          <div className={cn(hasPermission && 'border-t border-border')}>
+          <div className={cn(hasOverlay && 'border-t border-border')}>
             <ChatInputField
               content={draft.content}
               onChange={draft.setContent}
@@ -134,8 +157,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               onInterrupt={onInterrupt}
               isWorking={isWorking}
               disabled={disabled}
-              placeholder={placeholder}
-              hasPermission={hasPermission}
+              placeholder={hasOverlay ? 'Waiting for response...' : placeholder}
+              hasPermission={hasOverlay}
             />
           </div>
         </div>

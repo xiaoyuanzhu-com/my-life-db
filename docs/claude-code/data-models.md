@@ -779,11 +779,96 @@ Unlike regular tools which have a simple 1:1 relationship (tool_use → tool_res
 | WebFetch | object | `bytes`, `code`, `result`, `durationMs`, `url` |
 | WebSearch | object | `query`, `results`, `durationSeconds` |
 | Task | object | `status`, `prompt` |
+| AskUserQuestion | object | `answers` (user selections) |
 
 **Important**: The `toolUseResult` field type varies:
 - Usually an **object** with tool-specific fields
 - For errors (especially Bash), can be a **string** containing the error message
 ```
+
+**4i. AskUserQuestion Tool** ⭐ INTERACTIVE
+
+The `AskUserQuestion` tool is used by Claude to ask the user questions during execution. Unlike other tools which execute automatically, this tool requires **user interaction** - the UI must display the question and collect the user's answer.
+
+**Tool Use Example:**
+```json
+{
+  "type": "assistant",
+  "uuid": "a65a3545-2f96-48e1-8d26-f6582c2b8110",
+  "message": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_013Q2wWh5YoGbUSBQFdbFAg5",
+        "name": "AskUserQuestion",
+        "input": {
+          "questions": [
+            {
+              "question": "Which database should we use for this project?",
+              "header": "Database",
+              "options": [
+                {
+                  "label": "PostgreSQL (Recommended)",
+                  "description": "Full-featured relational database with excellent JSON support"
+                },
+                {
+                  "label": "SQLite",
+                  "description": "Lightweight, file-based database for simpler use cases"
+                }
+              ],
+              "multiSelect": false
+            }
+          ]
+        }
+      }
+    ],
+    "stop_reason": null
+  }
+}
+```
+
+**AskUserQuestion Input Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `questions` | array | Array of question objects (1-4 questions) |
+| `questions[].question` | string | The question text to display |
+| `questions[].header` | string | Short label/chip (max 12 chars, e.g., "Database", "Auth method") |
+| `questions[].options` | array | 2-4 selectable options |
+| `questions[].options[].label` | string | Option display text (1-5 words) |
+| `questions[].options[].description` | string | Explanation of the option |
+| `questions[].multiSelect` | boolean | If true, allow multiple selections; if false, single selection |
+
+**Key Behavior:**
+- `stop_reason: null` indicates Claude is waiting for the tool result
+- UI should display question immediately and collect user input
+- User can select from options OR provide custom "Other" text
+- After user answers, frontend sends a `tool_result` message
+
+**Tool Result (User Answer):**
+```json
+{
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "tool_use_id": "toolu_013Q2wWh5YoGbUSBQFdbFAg5",
+        "type": "tool_result",
+        "content": "User selected: PostgreSQL (Recommended)"
+      }
+    ]
+  },
+  "toolUseResult": {
+    "answers": {
+      "q0": "PostgreSQL (Recommended)"
+    }
+  }
+}
+```
+
+**UI Rendering:** See [ui.md Section 4.G "AskUserQuestion"](./ui.md#askuserquestion-integrated-into-chat-input) - renders integrated into the chat input card, similar to permission requests.
 
 **5. System Messages**
 

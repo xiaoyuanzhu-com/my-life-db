@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
-import { AskUserQuestion } from './ask-user-question'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
 import { useSessionWebSocket, usePermissions, type ConnectionStatus } from './hooks'
 import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
 import {
   buildToolResultMap,
   hasToolUseResult,
+  isToolUseBlock,
   type SessionMessage,
 } from '~/lib/session-message-utils'
 
@@ -59,7 +59,7 @@ export function ChatInterface({
 
   // Tool state
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
-  const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null)
+  const [pendingQuestions, setPendingQuestions] = useState<UserQuestion[]>([])
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
@@ -305,6 +305,48 @@ export function ChatInterface({
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
 
+  // Detect AskUserQuestion tool_use blocks that need user response
+  // These are tool_use blocks from assistant messages where:
+  // 1. name === 'AskUserQuestion'
+  // 2. No corresponding tool_result exists yet
+  useEffect(() => {
+    const questions: UserQuestion[] = []
+
+    for (const msg of rawMessages) {
+      if (msg.type !== 'assistant') continue
+      const content = msg.message?.content
+      if (!Array.isArray(content)) continue
+
+      for (const block of content) {
+        if (!isToolUseBlock(block)) continue
+        if (block.name !== 'AskUserQuestion') continue
+
+        // Check if this tool_use already has a result
+        if (toolResultMap.has(block.id)) continue
+
+        // Extract question data from input
+        const input = block.input as {
+          questions?: Array<{
+            question: string
+            header: string
+            options: Array<{ label: string; description: string }>
+            multiSelect: boolean
+          }>
+        }
+
+        if (input.questions && input.questions.length > 0) {
+          questions.push({
+            id: block.id,
+            toolCallId: block.id,
+            questions: input.questions,
+          })
+        }
+      }
+    }
+
+    setPendingQuestions(questions)
+  }, [rawMessages, toolResultMap])
+
   // ============================================================================
   // Effects
   // ============================================================================
@@ -385,10 +427,49 @@ export function ChatInterface({
     [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
   )
 
-  // Handle question answer (placeholder for future implementation)
-  const handleQuestionAnswer = useCallback((_answers: Record<string, string | string[]>) => {
-    setPendingQuestion(null)
-  }, [])
+  // Handle question answer - send tool_result back to Claude
+  const handleQuestionAnswer = useCallback(
+    async (questionId: string, answers: Record<string, string | string[]>) => {
+      // Format the answer for Claude
+      const answerText = Object.entries(answers)
+        .map(([key, value]) => {
+          const answer = Array.isArray(value) ? value.join(', ') : value
+          return `${key}: ${answer}`
+        })
+        .join('\n')
+
+      try {
+        await ws.sendMessage({
+          type: 'tool_result',
+          tool_use_id: questionId,
+          content: `User selected: ${answerText}`,
+        })
+      } catch (error) {
+        console.error('[ChatInterface] Failed to send question answer:', error)
+        setError('Failed to send answer')
+        setTimeout(() => setError(null), 3000)
+      }
+    },
+    [ws.sendMessage]
+  )
+
+  // Handle question skip - send empty/skipped tool_result
+  const handleQuestionSkip = useCallback(
+    async (questionId: string) => {
+      try {
+        await ws.sendMessage({
+          type: 'tool_result',
+          tool_use_id: questionId,
+          content: 'User skipped this question',
+        })
+      } catch (error) {
+        console.error('[ChatInterface] Failed to send question skip:', error)
+        setError('Failed to skip question')
+        setTimeout(() => setError(null), 3000)
+      }
+    },
+    [ws.sendMessage]
+  )
 
   // Handle interrupt - stop Claude's current operation via WebSocket
   // Uses standard control_request format per docs/claude-code/data-models.md
@@ -460,6 +541,9 @@ export function ChatInterface({
             onSend={sendMessage}
             pendingPermissions={permissions.pendingPermissions}
             onPermissionDecision={handlePermissionDecision}
+            pendingQuestions={pendingQuestions}
+            onQuestionAnswer={handleQuestionAnswer}
+            onQuestionSkip={handleQuestionSkip}
             hiddenOnMobile={shouldHideInput}
             isWorking={isWorking}
             onInterrupt={handleInterrupt}
@@ -470,15 +554,6 @@ export function ChatInterface({
         {/* Todo Panel (collapsible) */}
         {activeTodos.length > 0 && <TodoPanel todos={activeTodos} />}
       </div>
-
-      {/* User Question Modal */}
-      {pendingQuestion && (
-        <AskUserQuestion
-          question={pendingQuestion}
-          onAnswer={handleQuestionAnswer}
-          onSkip={() => setPendingQuestion(null)}
-        />
-      )}
     </div>
   )
 }

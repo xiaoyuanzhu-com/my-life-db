@@ -283,36 +283,94 @@ Used for variables, paths, or short commands inside prose.
 
 ### G. Interactive Components
 
-#### AskUserQuestion Block
-When Claude needs user input, display an inline question component.
+#### AskUserQuestion (Integrated into Chat Input)
+When Claude needs user input via the `AskUserQuestion` tool, the input card "grows upward" to include a question section - **identical pattern to Permission Request**.
+
+**Design Philosophy:**
+*   Question UI is integrated directly into the chat input card (not a modal or inline block)
+*   Input card expands to accommodate the question content
+*   A subtle border separates question section from input section
+*   Creates a cohesive, unified experience rather than a disruptive modal
+*   Multiple questions stack above the input (if Claude asks multiple at once)
 
 **Layout:**
-*   Background: Subtle highlight or card background (`$bg-subtle`)
-*   Border-radius: `8px`
-*   Padding: `16px`
-*   Margin: `12px 0`
+```
+┌──────────────────────────────────────────┐
+│ Question Section                          │
+│   Claude needs your input                 │
+│   ┌────────────────────────────────────┐ │
+│   │ {header chip}                      │ │
+│   │ {question text}                    │ │
+│   └────────────────────────────────────┘ │
+│   ○ Option 1: description               │
+│   ○ Option 2: description               │
+│   Other: [text input                  ]  │
+│                     [Skip Esc] [Submit ⏎]│
+├──────────────────────────────────────────┤
+│ Input Section (dimmed/disabled)          │
+│   Waiting for answer...                  │
+│   [📎]                            [↑]    │
+└──────────────────────────────────────────┘
+```
 
-**Question Header:**
-*   Icon: `❓` or question icon
-*   Text: "Claude needs your input" (Sans, Semi-bold, $text-secondary)
+**Question Section:**
+*   Padding: `12px`
+*   Border-bottom: `1px solid $border-light` (separates from input)
+
+**Header:**
+*   Text: "Claude needs your input" (Sans, 14px, $text-primary)
+*   Margin-bottom: `8px`
+
+**Question Header Chip:**
+*   Background: `$bg-subtle`
+*   Border-radius: `4px`
+*   Padding: `2px 8px`
+*   Font: Sans, 12px, $text-secondary
+*   Content: `{question.header}` (e.g., "返回字段", "Auth method")
 
 **Question Text:**
-*   Typography: Body text style (15px, $text-primary)
+*   Font: Sans, 14px, $text-primary, font-medium
 *   Margin-bottom: `12px`
 
 **Options:**
-*   Radio buttons or checkboxes (if multiSelect)
-*   Each option:
-    *   Label: Bold, $text-primary
-    *   Description: Regular, $text-secondary, slightly smaller (14px)
-    *   Padding: `8px`
-    *   Hover state: Subtle background change
-*   "Other" option with text input field
+*   Radio buttons (single select) or checkboxes (if multiSelect)
+*   Each option as a clickable card:
+    *   Border: `1px solid $border-light`, rounded `8px`
+    *   Padding: `12px`
+    *   Hover: `border-muted-foreground/50`
+    *   Selected: `border-primary bg-primary/10`
+    *   Label: Sans, 14px, font-medium, $text-primary
+    *   Description: Sans, 12px, $text-secondary, margin-top 4px
 
-**Actions:**
-*   Button group: right-aligned
-*   "Skip" button (secondary)
-*   "Submit Answer" button (primary)
+**Other Input:**
+*   Label: "Other:" in $text-secondary
+*   Text input field: Standard input styling
+*   Margin-top: `8px`
+
+**Buttons:**
+*   Compact sizing: `px-2.5 py-1`, font 12px
+*   Right-aligned, `8px` gap
+1. **Skip** (outlined)
+   *   Keyboard: `Esc`
+2. **Submit** (primary, disabled until selection made)
+   *   Keyboard: `⏎`
+
+**Input Section When Question Pending:**
+*   Placeholder: "Waiting for answer..."
+*   Input and buttons: disabled with `opacity-50`
+*   Cursor: `not-allowed`
+
+**Keyboard Shortcuts:**
+*   `Escape` → Skip (dismiss without answering)
+*   `Enter` → Submit answer (when valid selection)
+*   Shortcuts are handled at window level when question is pending
+
+**Answer Flow:**
+1. User selects option(s) or types "Other" text
+2. User clicks "Submit" or presses Enter
+3. Frontend sends answer via WebSocket as tool_result response
+4. Question section animates out (slide-down-fade)
+5. Input section re-enables
 
 #### TodoList Panel
 Task tracking panel, can be inline or sidebar.
@@ -802,7 +860,7 @@ Each tool type has a specific visualization pattern in the official UI:
 | **WebFetch** | URL (truncated) + collapsible markdown content (click to expand) |
 | **WebSearch** | Search query + collapsible link list (click header to expand, shows clickable links) |
 | **Task** | Agent name + type badge + status indicator + collapsible output |
-| **AskUserQuestion** | Inline question card (see component G) |
+| **AskUserQuestion** | Input-integrated question card (see Section 4.G) - pops up above input like permissions |
 | **TodoWrite** | Task list panel update (see component G) |
 | **Skill** | Skill name + `collapsible-header` pattern showing skill prompt content |
 
