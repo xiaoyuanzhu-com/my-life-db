@@ -22,12 +22,16 @@ import {
 import { Input } from '~/components/ui/input';
 
 interface FileNode {
-  name: string;
   path: string;
   type: 'file' | 'folder';
   size?: number;
   modifiedAt?: string;
   children?: FileNode[];
+}
+
+// Derive name from path
+function getNodeName(node: FileNode): string {
+  return node.path.split('/').pop() || node.path;
 }
 
 interface FileTreeProps {
@@ -118,7 +122,7 @@ function TreeNode({
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(node.name);
+  const [renameValue, setRenameValue] = useState(getNodeName(node));
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -168,7 +172,7 @@ function TreeNode({
   const handleClick = () => {
     if (isRenaming) return;
     if (node.type === 'file') {
-      onFileOpen(node.path, node.name);
+      onFileOpen(node.path, getNodeName(node));
     } else {
       handleToggle();
     }
@@ -181,12 +185,12 @@ function TreeNode({
   };
 
   const startRename = () => {
-    setRenameValue(node.name);
+    setRenameValue(getNodeName(node));
     setIsRenaming(true);
   };
 
   const handleRenameSubmit = async () => {
-    if (!renameValue.trim() || renameValue === node.name) {
+    if (!renameValue.trim() || renameValue === getNodeName(node)) {
       setIsRenaming(false);
       return;
     }
@@ -365,7 +369,7 @@ function TreeNode({
     }
   };
 
-  const Icon = node.type === 'folder' ? Folder : getFileIcon(node.name);
+  const Icon = node.type === 'folder' ? Folder : getFileIcon(getNodeName(node));
   const paddingLeft = level * 12 + 8;
 
   return (
@@ -413,8 +417,8 @@ function TreeNode({
                 className="h-5 py-0 px-1 text-sm"
               />
             ) : (
-              <span className="text-sm truncate" title={node.name}>
-                {node.name}
+              <span className="text-sm truncate" title={getNodeName(node)}>
+                {getNodeName(node)}
               </span>
             )}
           </div>
@@ -442,7 +446,7 @@ function TreeNode({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {node.type === 'folder' ? 'folder' : 'file'}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{node.name}"?
+              Are you sure you want to delete "{getNodeName(node)}"?
               {node.type === 'folder' && ' This will delete all contents inside.'}
               This action cannot be undone.
             </AlertDialogDescription>

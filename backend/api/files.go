@@ -297,7 +297,6 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 
 // FileNode represents a file or folder in the tree (recursive structure)
 type FileNode struct {
-	Name       string     `json:"name,omitempty"`
 	Path       string     `json:"path,omitempty"`
 	Type       string     `json:"type,omitempty"` // "file" or "folder"
 	Size       *int64     `json:"size,omitempty"`
@@ -312,7 +311,6 @@ func parseFields(fieldsParam string) fieldSet {
 	fields := make(fieldSet)
 	if fieldsParam == "" {
 		// Default: all fields for backward compatibility
-		fields["name"] = true
 		fields["path"] = true
 		fields["type"] = true
 		fields["size"] = true
@@ -438,9 +436,6 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		// Build node with requested fields only
 		node := FileNode{}
 
-		if fields["name"] {
-			node.Name = name
-		}
 		if fields["path"] {
 			node.Path = nodePath
 		}
@@ -481,16 +476,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if iIsFolder != jIsFolder {
 			return iIsFolder
 		}
-		// Sort by path if available, otherwise by name
-		iName := nodes[i].Path
-		if iName == "" {
-			iName = nodes[i].Name
-		}
-		jName := nodes[j].Path
-		if jName == "" {
-			jName = nodes[j].Name
-		}
-		return strings.ToLower(iName) < strings.ToLower(jName)
+		return strings.ToLower(nodes[i].Path) < strings.ToLower(nodes[j].Path)
 	})
 
 	return nodes

@@ -377,7 +377,7 @@ Get directory tree for file browser with optional recursion.
 | `path` | string | `""` | Relative path to list |
 | `depth` | integer | `1` | Recursion depth. `1`=direct children, `2`=two levels, `0`=unlimited |
 | `limit` | integer | unlimited | Maximum nodes to return |
-| `fields` | string | all | Comma-separated fields: `name`, `path`, `type`, `size`, `modifiedAt` |
+| `fields` | string | all | Comma-separated fields: `path`, `type`, `size`, `modifiedAt` |
 | `folder_only` | boolean | `false` | If `true`, return folders only |
 
 **Response:**
@@ -385,13 +385,11 @@ Get directory tree for file browser with optional recursion.
 {
   "path": "notes",
   "children": [{
-    "name": "file.md",
     "path": "notes/file.md",
     "type": "file",
     "size": 1234,
     "modifiedAt": "ISO timestamp"
   }, {
-    "name": "subfolder",
     "path": "notes/subfolder",
     "type": "folder",
     "children": []
