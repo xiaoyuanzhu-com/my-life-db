@@ -98,7 +98,10 @@ export function ChatInputField({
   const slashQuery = slashCommand?.query ?? ''
   const textBeforeSlash = slashCommand?.textBefore ?? ''
   const textAfterSlash = slashCommand?.textAfter ?? ''
-  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : slashCommands
+  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : []
+
+  // Effective popover open state: must be in slash mode AND not manually closed
+  const effectivePopoverOpen = slashPopoverOpen && isSlashMode
 
   // Update cursor position on selection change
   const handleSelect = () => {
@@ -106,12 +109,10 @@ export function ChatInputField({
     setCursorPos(pos)
   }
 
-  // Open/close popover based on slash mode
+  // Re-enable popover when entering slash mode (after it was manually closed)
   useEffect(() => {
     if (isSlashMode && !slashPopoverOpen) {
       setSlashPopoverOpen(true)
-    } else if (!isSlashMode && slashPopoverOpen) {
-      setSlashPopoverOpen(false)
     }
   }, [isSlashMode, slashPopoverOpen])
 
@@ -176,7 +177,7 @@ export function ChatInputField({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Close slash popover on Escape
-    if (e.key === 'Escape' && slashPopoverOpen) {
+    if (e.key === 'Escape' && effectivePopoverOpen) {
       e.preventDefault()
       setSlashPopoverOpen(false)
       return
@@ -200,7 +201,7 @@ export function ChatInputField({
     <div ref={containerRef} className="px-3 py-2 relative">
       {/* Slash command popover */}
       <SlashCommandPopover
-        open={slashPopoverOpen}
+        open={effectivePopoverOpen}
         onOpenChange={setSlashPopoverOpen}
         commands={filteredCommands}
         onSelect={handleSlashSelect}
@@ -269,7 +270,7 @@ export function ChatInputField({
               'transition-all',
               'disabled:cursor-not-allowed disabled:opacity-50',
               'text-base font-medium text-muted-foreground',
-              slashPopoverOpen && 'bg-accent text-foreground'
+              effectivePopoverOpen && 'bg-accent text-foreground'
             )}
             aria-label="Slash commands"
           >
