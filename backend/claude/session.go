@@ -581,7 +581,7 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 			Str("toolName", toolName).
 			Msg("permission callback waiting for response")
 
-		// Wait for response with timeout
+		// Wait for response or session close
 		select {
 		case resp := <-responseChan:
 			log.Debug().

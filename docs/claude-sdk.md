@@ -234,15 +234,15 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
         }
         s.BroadcastUIMessage(json.Marshal(controlRequest))
 
-        // 4. Block until user responds via WebSocket
+        // 4. Block until user responds via WebSocket or session closes
         select {
         case resp := <-responseChan:
             if resp.Behavior == "allow" {
                 return sdk.PermissionResultAllow{Behavior: sdk.PermissionAllow}, nil
             }
             return sdk.PermissionResultDeny{Behavior: sdk.PermissionDeny, Message: resp.Message}, nil
-        case <-time.After(5 * time.Minute):
-            return sdk.PermissionResultDeny{Message: "Permission request timed out"}, nil
+        case <-s.sdkCtx.Done():
+            return sdk.PermissionResultDeny{Message: "Session closed"}, nil
         }
     }
 }
