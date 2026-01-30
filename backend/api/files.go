@@ -295,111 +295,193 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
-// FileNode represents a file or folder in the tree (matching Node.js schema)
+// FileNode represents a file or folder in the tree (recursive structure)
 type FileNode struct {
-	Name       string     `json:"name"`
-	Path       string     `json:"path"`
-	Type       string     `json:"type"` // "file" or "folder"
+	Name       string     `json:"name,omitempty"`
+	Path       string     `json:"path,omitempty"`
+	Type       string     `json:"type,omitempty"` // "file" or "folder"
 	Size       *int64     `json:"size,omitempty"`
 	ModifiedAt *string    `json:"modifiedAt,omitempty"`
 	Children   []FileNode `json:"children,omitempty"`
 }
 
+// fieldSet tracks which fields to include in the response
+type fieldSet map[string]bool
+
+func parseFields(fieldsParam string) fieldSet {
+	fields := make(fieldSet)
+	if fieldsParam == "" {
+		// Default fields
+		fields["path"] = true
+		fields["type"] = true
+		return fields
+	}
+	for _, f := range strings.Split(fieldsParam, ",") {
+		fields[strings.TrimSpace(f)] = true
+	}
+	return fields
+}
+
 // GetLibraryTree handles GET /api/library/tree
-// Matches Node.js schema: uses ?path= parameter and returns {path, nodes}
+// Parameters:
+//   - path: directory path to list (default: root)
+//   - depth: recursion depth, 1=direct children, 0=unlimited (default: 1)
+//   - limit: max nodes to return (default: unlimited)
+//   - fields: comma-separated fields to include (default: path,type)
 func (h *Handlers) GetLibraryTree(c *gin.Context) {
-	// Node.js uses "path" parameter, not "root"
 	requestedPath := c.Query("path")
-	if requestedPath == "" {
-		requestedPath = ""
+
+	// Parse depth (default: 1)
+	depth := 1
+	if depthStr := c.Query("depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil {
+			depth = d
+		}
 	}
 
+	// Parse limit (default: 0 = unlimited)
+	limit := 0
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Parse fields
+	fields := parseFields(c.Query("fields"))
+
 	// Security: Normalize and validate path
-	requestedPath = filepath.Clean(requestedPath)
-	if strings.HasPrefix(requestedPath, "..") || filepath.IsAbs(requestedPath) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
-		return
+	if requestedPath != "" {
+		requestedPath = filepath.Clean(requestedPath)
+		if strings.HasPrefix(requestedPath, "..") || filepath.IsAbs(requestedPath) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+			return
+		}
 	}
 
 	cfg := config.Get()
 	fullPath := filepath.Join(cfg.UserDataDir, requestedPath)
 
-	// Read directory
+	// Check if path exists
+	info, err := os.Stat(fullPath)
+	if os.IsNotExist(err) {
+		c.JSON(http.StatusOK, gin.H{"path": requestedPath, "children": []FileNode{}})
+		return
+	}
+	if err != nil || !info.IsDir() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is not a directory"})
+		return
+	}
+
+	// Track count for limit
+	count := 0
+	children := h.readDirRecursive(cfg.UserDataDir, requestedPath, depth, 1, fields, &count, limit)
+
+	c.JSON(http.StatusOK, gin.H{
+		"path":     requestedPath,
+		"children": children,
+	})
+}
+
+// readDirRecursive reads directory contents recursively up to specified depth
+func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int) []FileNode {
+	fullPath := filepath.Join(baseDir, relativePath)
+
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusOK, gin.H{"path": requestedPath, "nodes": []FileNode{}})
-			return
-		}
-		log.Error().Err(err).Str("path", fullPath).Msg("failed to read directory tree")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read directory tree"})
-		return
+		return []FileNode{}
 	}
 
 	var nodes []FileNode
 	for _, entry := range entries {
+		// Check limit
+		if limit > 0 && *count >= limit {
+			break
+		}
+
 		name := entry.Name()
 
 		// Skip hidden files and reserved directories
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		if name == "node_modules" || name == ".git" {
+		if name == "node_modules" {
 			continue
 		}
 		// Skip app and inbox at root level
-		if requestedPath == "" && (name == "app" || name == "inbox") {
+		if relativePath == "" && (name == "app" || name == "inbox") {
 			continue
 		}
 
 		var nodePath string
-		if requestedPath == "" {
+		if relativePath == "" {
 			nodePath = name
 		} else {
-			nodePath = requestedPath + "/" + name
+			nodePath = relativePath + "/" + name
 		}
 
 		info, _ := entry.Info()
+		isDir := entry.IsDir()
 
-		nodeType := "folder"
-		var size *int64
-		var modifiedAt *string
+		// Build node with requested fields only
+		node := FileNode{}
 
-		if !entry.IsDir() {
-			nodeType = "file"
-			if info != nil {
-				s := info.Size()
-				size = &s
-				modTime := info.ModTime().UTC().Format(time.RFC3339)
-				modifiedAt = &modTime
+		if fields["name"] {
+			node.Name = name
+		}
+		if fields["path"] {
+			node.Path = nodePath
+		}
+		if fields["type"] {
+			if isDir {
+				node.Type = "folder"
+			} else {
+				node.Type = "file"
+			}
+		}
+		if fields["size"] && !isDir && info != nil {
+			s := info.Size()
+			node.Size = &s
+		}
+		if fields["modifiedAt"] && info != nil {
+			modTime := info.ModTime().UTC().Format(time.RFC3339)
+			node.ModifiedAt = &modTime
+		}
+
+		// Recurse into directories if depth allows
+		if isDir {
+			// maxDepth: 0 = unlimited, otherwise check current depth
+			if maxDepth == 0 || currentDepth < maxDepth {
+				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit)
+			} else {
+				node.Children = []FileNode{} // Empty array for unexpanded folders
 			}
 		}
 
-		node := FileNode{
-			Name:       name,
-			Path:       nodePath,
-			Type:       nodeType,
-			Size:       size,
-			ModifiedAt: modifiedAt,
-			Children:   []FileNode{}, // Empty children array for folders
-		}
-
+		*count++
 		nodes = append(nodes, node)
 	}
 
 	// Sort: folders first, then files, alphabetically within each type
 	sort.Slice(nodes, func(i, j int) bool {
-		if nodes[i].Type != nodes[j].Type {
-			return nodes[i].Type == "folder"
+		iIsFolder := nodes[i].Type == "folder" || len(nodes[i].Children) > 0 || (nodes[i].Type == "" && nodes[i].Size == nil)
+		jIsFolder := nodes[j].Type == "folder" || len(nodes[j].Children) > 0 || (nodes[j].Type == "" && nodes[j].Size == nil)
+		if iIsFolder != jIsFolder {
+			return iIsFolder
 		}
-		return strings.ToLower(nodes[i].Name) < strings.ToLower(nodes[j].Name)
+		// Sort by path if available, otherwise by name
+		iName := nodes[i].Path
+		if iName == "" {
+			iName = nodes[i].Name
+		}
+		jName := nodes[j].Path
+		if jName == "" {
+			jName = nodes[j].Name
+		}
+		return strings.ToLower(iName) < strings.ToLower(jName)
 	})
 
-	// Return response matching Node.js schema
-	c.JSON(http.StatusOK, gin.H{
-		"path":  requestedPath,
-		"nodes": nodes,
-	})
+	return nodes
 }
 
 // GetDirectories handles GET /api/directories
