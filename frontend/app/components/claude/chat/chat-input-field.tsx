@@ -13,6 +13,8 @@ interface ChatInputFieldProps {
   onChange: (content: string) => void
   /** Called when user submits the message */
   onSend: () => void
+  /** Called when user wants to send a slash command directly */
+  onSlashCommand?: (command: string) => void
   /** Called when user wants to interrupt */
   onInterrupt?: () => void
   /** Whether Claude is currently working */
@@ -35,6 +37,7 @@ export function ChatInputField({
   content,
   onChange,
   onSend,
+  onSlashCommand,
   onInterrupt,
   isWorking = false,
   disabled = false,
@@ -48,9 +51,12 @@ export function ChatInputField({
   const containerRef = useRef<HTMLDivElement>(null)
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
 
-  // Check if input starts with "/" (for slash command mode)
-  const isSlashMode = content.startsWith('/')
-  const slashQuery = isSlashMode ? content.slice(1) : ''
+  // Find the last "/" in content to determine slash mode
+  // e.g., "hello /comp" -> slashIndex = 6, slashQuery = "comp"
+  const slashIndex = content.lastIndexOf('/')
+  const isSlashMode = slashIndex !== -1
+  const slashQuery = isSlashMode ? content.slice(slashIndex + 1) : ''
+  const textBeforeSlash = isSlashMode ? content.slice(0, slashIndex) : content
   const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : slashCommands
 
   // Open popover when "/" is typed at start
@@ -62,18 +68,22 @@ export function ChatInputField({
     }
   }, [isSlashMode, slashPopoverOpen])
 
-  // Handle slash command selection
+  // Handle slash command selection - send command directly and keep text before "/"
   const handleSlashSelect = (cmd: SlashCommand) => {
-    onChange(`/${cmd.name} `)
+    // Send the slash command
+    if (onSlashCommand) {
+      onSlashCommand(`/${cmd.name}`)
+    }
+    // Keep text before the "/" in the input
+    onChange(textBeforeSlash)
     setSlashPopoverOpen(false)
     textareaRef.current?.focus()
   }
 
-  // Handle "/" button click
+  // Handle "/" button click - append "/" to trigger slash mode
   const handleSlashButtonClick = () => {
-    if (!content.startsWith('/')) {
-      onChange('/' + content)
-    }
+    // Append "/" at the end to trigger slash mode
+    onChange(content + '/')
     setSlashPopoverOpen(true)
     textareaRef.current?.focus()
   }
@@ -191,7 +201,7 @@ export function ChatInputField({
             disabled={disabled || hasPermission}
             className={cn(
               'h-9 w-9 rounded-lg',
-              'bg-muted hover:bg-muted/80 border border-border',
+              'hover:bg-muted',
               'flex items-center justify-center',
               'transition-all',
               'disabled:cursor-not-allowed disabled:opacity-50',

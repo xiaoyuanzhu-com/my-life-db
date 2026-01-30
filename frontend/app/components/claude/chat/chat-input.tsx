@@ -118,6 +118,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     }
   }, [draft, disabled, hasOverlay, onSend])
 
+  // Handle slash command - send directly without checking content
+  const handleSlashCommand = useCallback(
+    (command: string) => {
+      if (!disabled && !hasOverlay) {
+        onSend(command)
+      }
+    },
+    [disabled, hasOverlay, onSend]
+  )
+
   // Whether to show connection status banner
   const showConnectionBanner =
     connectionStatus !== 'connected' || (reconnection.showReconnected && connectionStatus === 'connected')
@@ -183,6 +193,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               content={draft.content}
               onChange={draft.setContent}
               onSend={handleSend}
+              onSlashCommand={handleSlashCommand}
               onInterrupt={onInterrupt}
               isWorking={isWorking}
               disabled={disabled}
