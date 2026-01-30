@@ -55,6 +55,15 @@ export function ChatInterface({
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // Track session activation locally - starts from prop, updates when we send a message
+  // This handles the race condition where isActive prop is stale
+  const [localIsActive, setLocalIsActive] = useState(isActive)
+
+  // Sync localIsActive with prop when it changes (e.g., session list refresh)
+  useEffect(() => {
+    setLocalIsActive(isActive)
+  }, [isActive])
+
   // Optimistic user message (shown immediately before server confirms)
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null)
 
@@ -308,8 +317,9 @@ export function ChatInterface({
   // Rule: working = a turn is in progress (started but not completed)
   // - Turn starts when user sends a real message (not tool_result)
   // - Turn ends when 'result' message received
+  // Uses localIsActive instead of isActive to handle race conditions
   const isWorking = useMemo(() => {
-    if (isActive === false) return false
+    if (localIsActive === false) return false
     if (optimisticMessage) return true
 
     // Has a turn started? (real user message exists, not tool_result)
@@ -321,7 +331,7 @@ export function ChatInterface({
     // Turn started, check if complete
     const lastMsg = rawMessages[rawMessages.length - 1]
     return lastMsg?.type !== 'result'
-  }, [rawMessages, optimisticMessage, isActive])
+  }, [rawMessages, optimisticMessage, localIsActive])
 
   // Only show connection status banner after we've connected at least once
   const effectiveConnectionStatus: ConnectionStatus =
@@ -373,10 +383,10 @@ export function ChatInterface({
   // Effects
   // ============================================================================
 
-  // Keep isActiveRef in sync
+  // Keep isActiveRef in sync with localIsActive
   useEffect(() => {
-    isActiveRef.current = isActive
-  }, [isActive])
+    isActiveRef.current = localIsActive
+  }, [localIsActive])
 
   // Reset state when sessionId changes
   useEffect(() => {
@@ -442,6 +452,9 @@ export function ChatInterface({
           type: 'user_message',
           content,
         })
+        // Sending a message activates the session on the backend
+        // Update local state to reflect this (handles stale isActive prop)
+        setLocalIsActive(true)
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
