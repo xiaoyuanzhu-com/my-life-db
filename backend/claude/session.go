@@ -277,7 +277,7 @@ func (s *Session) SetModel(model string) error {
 	}
 
 	if s.sdkClient == nil {
-		return fmt.Errorf("SetModel only supported in SDK mode")
+		return fmt.Errorf("Cannot set model: session not active (no running process)")
 	}
 
 	return s.sdkClient.SetModel(model)
