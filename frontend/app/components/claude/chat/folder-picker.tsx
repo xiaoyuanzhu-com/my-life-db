@@ -1,7 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from '~/components/ui/command'
 
 interface FolderPickerProps {
   value: string
@@ -10,14 +19,12 @@ interface FolderPickerProps {
 }
 
 export function FolderPicker({ value, onChange, disabled = false }: FolderPickerProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [inputValue, setInputValue] = useState(value)
-  const [folders, setFolders] = useState<string[]>([])
-  const containerRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(false)
+  const [folders, setFolders] = useState<string[]>(['.'])
 
-  // Fetch top-level folders on mount
+  // Fetch folders when popover opens
   useEffect(() => {
+    if (!open) return
     const fetchFolders = async () => {
       try {
         const params = new URLSearchParams({
@@ -31,115 +38,58 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
           const paths = (data.children || [])
             .filter((node: { type: string }) => node.type === 'folder')
             .map((node: { path: string }) => node.path)
-          setFolders(['/', ...paths])
+          setFolders(['.', ...paths])
         }
       } catch {
-        setFolders(['/'])
+        // keep default ['.']
       }
     }
     fetchFolders()
-  }, [])
-
-  // Click outside to close
-  useEffect(() => {
-    if (!isEditing) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsEditing(false)
-        setInputValue(value)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isEditing, value])
-
-  // Focus input when entering edit mode
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [isEditing])
+  }, [open])
 
   const handleSelect = (path: string) => {
     onChange(path)
-    setInputValue(path)
-    setIsEditing(false)
+    setOpen(false)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      onChange(inputValue || '/')
-      setIsEditing(false)
-    } else if (e.key === 'Escape') {
-      setInputValue(value)
-      setIsEditing(false)
-    }
-  }
-
-  const displayValue = value && value !== '/' ? value : '/'
-
-  // Filter folders based on input
-  const filteredFolders = folders.filter((f) =>
-    f.toLowerCase().includes(inputValue.toLowerCase())
-  )
-
-  if (disabled) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground opacity-50">
-        <FolderOpen className="h-3.5 w-3.5" />
-        <span>{displayValue}</span>
-      </div>
-    )
-  }
+  const displayValue = value && value !== '.' ? value : '.'
 
   return (
-    <div ref={containerRef} className="relative">
-      {isEditing ? (
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1.5">
-            <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="text-xs bg-transparent border-b border-foreground/30 outline-none w-40"
-            />
-          </div>
-          {filteredFolders.length > 0 && (
-            <div className="absolute top-full left-0 mt-1 bg-popover border rounded shadow-md z-50 min-w-40 max-h-48 overflow-auto">
-              {filteredFolders.map((folder) => (
-                <button
-                  key={folder}
-                  type="button"
-                  onClick={() => handleSelect(folder)}
-                  className={cn(
-                    'block w-full text-left px-2 py-1 text-xs',
-                    'hover:bg-accent transition-colors',
-                    folder === value && 'bg-accent'
-                  )}
-                >
-                  {folder}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <button
           type="button"
-          onClick={() => {
-            setInputValue(value)
-            setIsEditing(true)
-          }}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          disabled={disabled}
+          className={cn(
+            'flex items-center gap-1.5 text-xs text-muted-foreground',
+            'hover:text-foreground transition-colors',
+            'disabled:opacity-50 disabled:cursor-not-allowed'
+          )}
         >
           <FolderOpen className="h-3.5 w-3.5" />
           <span className="truncate max-w-[200px]">{displayValue}</span>
         </button>
-      )}
-    </div>
+      </PopoverTrigger>
+      <PopoverContent className="w-60 p-0" align="start" side="top">
+        <Command>
+          <CommandInput placeholder="Search folders..." />
+          <CommandList>
+            <CommandEmpty>No folders found</CommandEmpty>
+            <CommandGroup>
+              {folders.map((folder) => (
+                <CommandItem
+                  key={folder}
+                  value={folder}
+                  onSelect={() => handleSelect(folder)}
+                  className={cn(folder === value && 'bg-accent')}
+                >
+                  {folder}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
