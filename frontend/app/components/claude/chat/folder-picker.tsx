@@ -173,12 +173,15 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
 
   const displayValue = value ? getLastSegment(value) : '.'
 
-  // Read-only mode: just display, not clickable
+  // Read-only mode: display only, same visual style but not interactive
   if (readOnly) {
     return (
       <div
         className={cn(
-          'flex items-center gap-1.5 text-xs text-muted-foreground',
+          'flex items-center gap-1.5 px-2 py-1.5 rounded-lg',
+          'text-xs text-muted-foreground',
+          'hover:text-foreground hover:bg-muted',
+          'cursor-pointer transition-colors',
           disabled && 'opacity-50'
         )}
       >

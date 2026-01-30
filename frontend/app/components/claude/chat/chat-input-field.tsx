@@ -50,6 +50,7 @@ export function ChatInputField({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
+  const [buttonPopoverOpen, setButtonPopoverOpen] = useState(false)
   const [cursorPos, setCursorPos] = useState(0)
 
   // Find slash command at cursor position
@@ -99,13 +100,17 @@ export function ChatInputField({
   const textBeforeSlash = slashCommand?.textBefore ?? ''
   const textAfterSlash = slashCommand?.textAfter ?? ''
 
-  // Effective popover open state: must be in slash mode AND not manually closed
-  const effectivePopoverOpen = slashPopoverOpen && isSlashMode
+  // Effective popover open state: either in slash mode OR opened via button
+  const effectivePopoverOpen = (slashPopoverOpen && isSlashMode) || buttonPopoverOpen
 
   // Keep last valid commands to avoid flash during close animation
   const lastCommandsRef = useRef<SlashCommand[]>([])
-  const filteredCommands = isSlashMode ? filterCommands(slashCommands, slashQuery) : lastCommandsRef.current
-  if (isSlashMode) {
+  const filteredCommands = buttonPopoverOpen
+    ? slashCommands // Show all commands when opened via button
+    : isSlashMode
+      ? filterCommands(slashCommands, slashQuery)
+      : lastCommandsRef.current
+  if (isSlashMode || buttonPopoverOpen) {
     lastCommandsRef.current = filteredCommands
   }
 
@@ -128,6 +133,14 @@ export function ChatInputField({
     if (onSlashCommand) {
       onSlashCommand(`/${cmd.name}`)
     }
+
+    // If opened via button, just close popover (no content modification needed)
+    if (buttonPopoverOpen) {
+      setButtonPopoverOpen(false)
+      textareaRef.current?.focus()
+      return
+    }
+
     // Keep text before and after the slash command
     const newContent = textBeforeSlash + textAfterSlash
     onChange(newContent)
@@ -141,20 +154,26 @@ export function ChatInputField({
     textareaRef.current?.focus()
   }
 
-  // Handle "/" button click - append "/" to trigger slash mode
+  // Handle "/" button click - toggle the command list
   const handleSlashButtonClick = () => {
-    // Append "/" at the end to trigger slash mode
-    const newContent = content + '/'
-    onChange(newContent)
-    setCursorPos(newContent.length)
-    setSlashPopoverOpen(true)
-    textareaRef.current?.focus()
+    setButtonPopoverOpen((prev) => !prev)
   }
 
   // Handle content change and update cursor position
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value)
     setCursorPos(e.target.selectionStart)
+    // Close button popover when user starts typing
+    if (buttonPopoverOpen) {
+      setButtonPopoverOpen(false)
+    }
+  }
+
+  // Handle textarea click - close button popover
+  const handleTextareaClick = () => {
+    if (buttonPopoverOpen) {
+      setButtonPopoverOpen(false)
+    }
   }
 
   // Auto-resize textarea as content grows
@@ -186,6 +205,7 @@ export function ChatInputField({
     if (e.key === 'Escape' && effectivePopoverOpen) {
       e.preventDefault()
       setSlashPopoverOpen(false)
+      setButtonPopoverOpen(false)
       return
     }
     // Send on Enter (without Shift) - only if no permission pending
@@ -208,7 +228,10 @@ export function ChatInputField({
       {/* Slash command popover */}
       <SlashCommandPopover
         open={effectivePopoverOpen}
-        onOpenChange={setSlashPopoverOpen}
+        onOpenChange={(open) => {
+          setSlashPopoverOpen(open)
+          if (!open) setButtonPopoverOpen(false)
+        }}
         commands={filteredCommands}
         onSelect={handleSlashSelect}
         anchorRef={containerRef}
@@ -219,6 +242,7 @@ export function ChatInputField({
         ref={textareaRef}
         value={content}
         onChange={handleChange}
+        onClick={handleTextareaClick}
         onSelect={handleSelect}
         onKeyDown={handleKeyDown}
         placeholder={hasPermission ? 'Waiting for permission...' : placeholder}
@@ -256,7 +280,8 @@ export function ChatInputField({
             onClick={handleAttachClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'p-2 rounded-lg',
+              'h-8 w-8 rounded-lg',
+              'flex items-center justify-center',
               'text-muted-foreground hover:text-foreground hover:bg-muted',
               'cursor-pointer transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed'
@@ -272,11 +297,12 @@ export function ChatInputField({
             onClick={handleSlashButtonClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'p-2 rounded-lg',
+              'h-8 w-8 rounded-lg',
+              'flex items-center justify-center',
               'text-muted-foreground hover:text-foreground hover:bg-muted',
               'cursor-pointer transition-colors',
               'disabled:cursor-not-allowed disabled:opacity-50',
-              'text-sm font-medium leading-none',
+              'text-sm font-medium',
               effectivePopoverOpen && 'bg-accent text-foreground'
             )}
             aria-label="Slash commands"
