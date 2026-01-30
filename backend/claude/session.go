@@ -263,7 +263,7 @@ func (s *Session) Interrupt() error {
 	}
 
 	if s.sdkClient == nil {
-		return fmt.Errorf("Interrupt only supported in SDK mode")
+		return fmt.Errorf("Cannot interrupt: session not active (no running process)")
 	}
 
 	return s.sdkClient.Interrupt()
