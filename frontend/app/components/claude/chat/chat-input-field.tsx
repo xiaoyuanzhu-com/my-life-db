@@ -119,9 +119,9 @@ export function ChatInputField({
             <Image className="h-5 w-5" />
           </button>
 
-          {workingDir && onWorkingDirChange && (
+          {onWorkingDirChange && (
             <FolderPicker
-              value={workingDir}
+              value={workingDir || '/'}
               onChange={onWorkingDirChange}
               disabled={disabled || hasPermission}
             />

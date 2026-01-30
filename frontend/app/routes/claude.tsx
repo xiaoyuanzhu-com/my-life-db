@@ -63,6 +63,7 @@ export default function ClaudePage() {
 
   // New session input state (for empty state)
   const [newSessionInput, setNewSessionInput] = useState('')
+  const [newSessionWorkingDir, setNewSessionWorkingDir] = useState('/')
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
 
@@ -226,7 +227,7 @@ export default function ClaudePage() {
     try {
       const response = await api.post('/api/claude/sessions', {
         title: `Session ${sessions.length + 1}`,
-        workingDir: '/Users/iloahz/projects/my-life-db/data',
+        workingDir: newSessionWorkingDir === '/' ? '' : newSessionWorkingDir,
       })
 
       if (response.ok) {
@@ -495,7 +496,8 @@ export default function ClaudePage() {
                     onSend={createSessionWithMessage}
                     disabled={isCreatingSession}
                     placeholder="Start a new conversation..."
-                    workingDir="/Users/iloahz/projects/my-life-db/data"
+                    workingDir={newSessionWorkingDir}
+                    onWorkingDirChange={setNewSessionWorkingDir}
                   />
                 </div>
               </div>

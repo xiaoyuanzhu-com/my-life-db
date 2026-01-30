@@ -111,7 +111,7 @@ export function FolderPicker({ value, onChange, disabled = false }: FolderPicker
   }
 
   // Display path for the trigger button
-  const displayPath = value || 'Select folder...'
+  const displayPath = value && value !== '/' ? value : 'Root'
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
