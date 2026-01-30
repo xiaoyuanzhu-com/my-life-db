@@ -26,8 +26,9 @@ var (
 // Permission configuration for Claude CLI
 // These control which tools are auto-approved vs blocked
 var (
-	// Tools that are always allowed without prompting (read-only, safe operations)
+	// Tools that are always allowed without prompting
 	allowedTools = []string{
+		// Read-only tools
 		"Read",
 		"Glob",
 		"Grep",
@@ -35,6 +36,27 @@ var (
 		"WebSearch",
 		"TodoWrite",
 		"Task",
+		// Edit tools
+		"Edit",
+		"Write",
+		"NotebookEdit",
+		// Common bash commands (read-only / safe)
+		"Bash(ls *)",
+		"Bash(cat *)",
+		"Bash(head *)",
+		"Bash(tail *)",
+		"Bash(wc *)",
+		"Bash(find *)",
+		"Bash(tree *)",
+		"Bash(pwd)",
+		"Bash(which *)",
+		"Bash(echo *)",
+		// Git commands (read-only)
+		"Bash(git status*)",
+		"Bash(git diff*)",
+		"Bash(git log*)",
+		"Bash(git show*)",
+		"Bash(git branch*)",
 	}
 
 	// Tools/commands that are never allowed (dangerous operations)
