@@ -292,8 +292,18 @@ export function ChatInputField({
   }
 
   const handleAttachClick = () => {
-    // TODO: Implement file attachment
-    console.log('Attach file clicked')
+    // Insert "@" at cursor position to trigger file tag popover
+    const before = content.slice(0, cursorPos)
+    const after = content.slice(cursorPos)
+    const newContent = before + '@' + after
+    onChange(newContent)
+    // Move cursor after the "@"
+    requestAnimationFrame(() => {
+      const pos = cursorPos + 1
+      textareaRef.current?.setSelectionRange(pos, pos)
+      setCursorPos(pos)
+      textareaRef.current?.focus()
+    })
   }
 
   const canSend = content.trim() && !disabled && !hasPermission
