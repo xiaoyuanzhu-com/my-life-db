@@ -9,8 +9,9 @@ let refreshPromise: Promise<boolean> | null = null;
 
 /**
  * Attempt to refresh the access token using the refresh token
+ * Exported for use by WebSocket reconnection logic
  */
-async function refreshAccessToken(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   // If already refreshing, wait for that to complete
   if (isRefreshing && refreshPromise) {
     return refreshPromise;

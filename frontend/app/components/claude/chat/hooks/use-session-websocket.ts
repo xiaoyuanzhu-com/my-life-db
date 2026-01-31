@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ConnectionStatus } from './use-reconnection-feedback'
+import { refreshAccessToken } from '~/lib/fetch-with-refresh'
 
 export { type ConnectionStatus }
 
@@ -130,10 +131,18 @@ export function useSessionWebSocket(
           const delay = Math.min(baseDelay * Math.pow(2, attempts - 1), maxDelay)
 
           if (wasConnected) {
-            // Was connected, now disconnected - start background reconnection
+            // Was connected, now disconnected - try token refresh then reconnect
+            // Token may have expired during idle period
             setConnectionStatus('connecting')
             connectPromiseRef.current = null
-            setTimeout(() => {
+            setTimeout(async () => {
+              // Try to refresh auth token before reconnecting
+              // This handles the case where token expired during long idle
+              try {
+                await refreshAccessToken()
+              } catch {
+                // Refresh failed, but still try to reconnect
+              }
               ensureConnected()
             }, delay)
           } else if (connectPromiseRef.current) {
@@ -160,9 +169,17 @@ export function useSessionWebSocket(
     ensureConnected()
 
     // Handle visibility change (e.g., after laptop sleep/wake)
-    // When page becomes visible, check if WebSocket is dead and reconnect immediately
-    const handleVisibilityChange = () => {
+    // When page becomes visible, refresh token then check if WebSocket needs reconnection
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && isComponentActiveRef.current) {
+        // After sleep/wake, token may have expired - try to refresh first
+        // refreshAccessToken handles deduplication internally
+        try {
+          await refreshAccessToken()
+        } catch {
+          // Refresh failed, but still try to reconnect
+        }
+
         // After sleep/wake, the WebSocket might be dead even if readyState looks OK
         // Force a reconnection check by calling ensureConnected
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
