@@ -110,12 +110,8 @@ var (
 		"Bash(which *)",
 		"Bash(echo *)",
 		"Bash(sed *)",
-		// Git commands (read-only)
-		"Bash(git status*)",
-		"Bash(git diff*)",
-		"Bash(git log*)",
-		"Bash(git show*)",
-		"Bash(git branch*)",
+		// Git commands
+		"Bash(git *)",
 	}
 
 	// Tools/commands that are never allowed (dangerous operations)
