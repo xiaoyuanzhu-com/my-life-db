@@ -279,6 +279,7 @@ export function ChatInterface({
     },
     // Use specific stable functions, not the whole permissions object
     // handleControlRequest and handleControlResponse have empty deps, so they're stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [permissions.handleControlRequest, permissions.handleControlResponse, refreshSessions]
   )
 
@@ -493,6 +494,8 @@ export function ChatInterface({
         permissions.handleControlResponse({ request_id: requestId })
       }
     },
+    // Using specific stable functions to avoid unnecessary re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
   )
 
@@ -519,6 +522,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 3000)
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ws.sendMessage]
   )
 
@@ -537,6 +541,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 3000)
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ws.sendMessage]
   )
 
@@ -558,6 +563,7 @@ export function ChatInterface({
       setError('Failed to interrupt session')
       setTimeout(() => setError(null), 5000)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWorking, ws.sendMessage])
 
   // Handle permission mode change - send control_request to backend via WebSocket
@@ -581,6 +587,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 3000)
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ws.sendMessage]
   )
 

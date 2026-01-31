@@ -72,7 +72,7 @@ function ToolContent({
   toolCall,
   agentProgressMap,
   bashProgressMap,
-  hookProgressMap,
+  _hookProgressMap,
   skillContentMap,
   depth,
 }: {

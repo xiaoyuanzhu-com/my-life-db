@@ -95,10 +95,48 @@ export default function ClaudePage() {
     localStorage.setItem('claude-session-filter', statusFilter)
   }, [statusFilter])
 
+  // Sort sessions: active first, then by last activity
+  const sortSessions = (sessionList: Session[]): Session[] => {
+    return [...sessionList].sort((a: Session, b: Session) => {
+      // Active sessions come first
+      if (a.isActive && !b.isActive) return -1
+      if (!a.isActive && b.isActive) return 1
+
+      // Within same type, sort by lastActivity
+      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+    })
+  }
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setLoading(true)
+      // Fetch first page of sessions with pagination
+      const params = new URLSearchParams({
+        limit: '20',
+        status: statusFilter,
+      })
+
+      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const data = await response.json()
+      const sessionList = data.sessions || []
+
+      setSessions(sortSessions(sessionList))
+      setPagination({
+        hasMore: data.pagination?.hasMore ?? false,
+        nextCursor: data.pagination?.nextCursor ?? null,
+        totalCount: data.pagination?.totalCount ?? sessionList.length,
+      })
+    } catch (error) {
+      console.error('Failed to load sessions:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter])
+
   // Load sessions on mount or when filter changes
   useEffect(() => {
     loadSessions()
-  }, [statusFilter])
+  }, [loadSessions])
 
   // Sync URL with active session
   useEffect(() => {
@@ -170,47 +208,9 @@ export default function ClaudePage() {
     }
   }, [navigate])
 
-  // Sort sessions: active first, then by last activity
-  const sortSessions = (sessionList: Session[]): Session[] => {
-    return [...sessionList].sort((a: Session, b: Session) => {
-      // Active sessions come first
-      if (a.isActive && !b.isActive) return -1
-      if (!a.isActive && b.isActive) return 1
-
-      // Within same type, sort by lastActivity
-      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
-    })
-  }
-
-  const loadSessions = async () => {
-    try {
-      setLoading(true)
-      // Fetch first page of sessions with pagination
-      const params = new URLSearchParams({
-        limit: '20',
-        status: statusFilter,
-      })
-
-      const response = await api.get(`/api/claude/sessions/all?${params}`)
-      const data = await response.json()
-      const sessionList = data.sessions || []
-
-      setSessions(sortSessions(sessionList))
-      setPagination({
-        hasMore: data.pagination?.hasMore ?? false,
-        nextCursor: data.pagination?.nextCursor ?? null,
-        totalCount: data.pagination?.totalCount ?? sessionList.length,
-      })
-    } catch (error) {
-      console.error('Failed to load sessions:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Refresh session list when titles change (SSE from backend)
   useClaudeSessionNotifications({
-    onSessionUpdated: useCallback(() => loadSessions(), [statusFilter]),
+    onSessionUpdated: loadSessions,
     enabled: isAuthenticated,
   })
 
@@ -247,7 +247,7 @@ export default function ClaudePage() {
     } finally {
       setIsLoadingMore(false)
     }
-  }, [pagination.hasMore, pagination.nextCursor, isLoadingMore, statusFilter])
+  }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, statusFilter])
 
   // Create session and send initial message (for empty state flow)
   const createSessionWithMessage = async (message: string) => {
