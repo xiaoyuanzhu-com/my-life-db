@@ -124,6 +124,14 @@ export function ChatInputField({
   // Filter files based on query
   const filteredFiles = useFilteredFiles(allFiles, fileTagQuery)
 
+  // Keep last valid files to avoid flash during close animation
+  const lastFilesRef = useRef<typeof filteredFiles>([])
+  if (isFileTagMode) {
+    lastFilesRef.current = filteredFiles
+  }
+  // Use frozen list when popover is closing (prevents flash)
+  const displayedFiles = isFileTagMode ? filteredFiles : lastFilesRef.current
+
   // Effective popover open state: either in slash mode OR opened via button
   const effectivePopoverOpen = (slashPopoverOpen && isSlashMode) || buttonPopoverOpen
 
@@ -265,20 +273,20 @@ export function ChatInputField({
     }
 
     // File tag popover keyboard navigation
-    if (effectiveFileTagPopoverOpen && filteredFiles.length > 0) {
+    if (effectiveFileTagPopoverOpen && displayedFiles.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setFileTagFocusIndex((prev) => (prev + 1) % filteredFiles.length)
+        setFileTagFocusIndex((prev) => (prev + 1) % displayedFiles.length)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setFileTagFocusIndex((prev) => (prev - 1 + filteredFiles.length) % filteredFiles.length)
+        setFileTagFocusIndex((prev) => (prev - 1 + displayedFiles.length) % displayedFiles.length)
         return
       }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        handleFileTagSelect(filteredFiles[fileTagFocusIndex])
+        handleFileTagSelect(displayedFiles[fileTagFocusIndex])
         return
       }
     }
@@ -326,7 +334,7 @@ export function ChatInputField({
       <FileTagPopover
         open={effectiveFileTagPopoverOpen}
         onOpenChange={setFileTagPopoverOpen}
-        files={filteredFiles}
+        files={displayedFiles}
         loading={filesLoading}
         onSelect={handleFileTagSelect}
         anchorRef={containerRef}
