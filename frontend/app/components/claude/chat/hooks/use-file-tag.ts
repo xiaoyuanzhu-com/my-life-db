@@ -34,8 +34,15 @@ function flattenTree(nodes: FileNode[], prefix = ''): FileItem[] {
 }
 
 /**
- * Simple fuzzy match: checks if all characters in pattern appear in order in str.
+ * Fuzzy match: checks if all characters in pattern appear in order in str.
  * Returns a score (higher is better match) or -1 if no match.
+ *
+ * Scoring:
+ * - +1 per matched char, +2 if consecutive
+ * - +3 for word boundary matches (after / or .)
+ * - +10 if pattern is an exact substring
+ * - +15 if pattern matches in filename (not just path)
+ * - -0.1 per path char (prefer shorter paths)
  */
 function fuzzyMatch(pattern: string, str: string): number {
   const lowerPattern = pattern.toLowerCase()
@@ -66,6 +73,22 @@ function fuzzyMatch(pattern: string, str: string): number {
   if (patternIdx < lowerPattern.length) {
     return -1
   }
+
+  // Bonus for exact substring match (contiguous characters)
+  if (lowerStr.includes(lowerPattern)) {
+    score += 10
+  }
+
+  // Bonus for matching in filename (after last /)
+  const lastSlash = lowerStr.lastIndexOf('/')
+  const filename = lastSlash >= 0 ? lowerStr.slice(lastSlash + 1) : lowerStr
+  if (filename.includes(lowerPattern)) {
+    score += 15
+  }
+
+  // Slight penalty for longer paths (normalize score)
+  // Subtract 0.1 per character to prefer shorter paths with same match quality
+  score -= str.length * 0.1
 
   return score
 }
