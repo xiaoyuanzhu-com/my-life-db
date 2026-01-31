@@ -5,7 +5,7 @@ This document is the entry point for agents working on the MyLifeDB codebase. It
 ## System Overview
 
 MyLifeDB is a filesystem-based personal knowledge management system:
-- **Backend**: Go HTTP server (Gin) with SQLite
+- **Backend**: Go 1.25 HTTP server (Gin) with SQLite
 - **Frontend**: React SPA (React Router 7 + Vite)
 
 The backend is the system's core - it provides APIs, runs background workers, manages real-time notifications, and serves the frontend.
@@ -26,7 +26,7 @@ Server
 
 ### Why This Matters
 
-- **No global singletons** (except logging) - all state lives in Server
+- **No global singletons** (except logging and config) - all state lives in Server
 - **Explicit dependencies** - components receive deps via constructors
 - **Clear lifecycle** - Server controls init order and shutdown
 - **Safe to modify** - you know where all state lives
@@ -68,11 +68,16 @@ When working on a specific area, read the corresponding component doc:
 
 | Area | Document | When to Read |
 |------|----------|--------------|
+| Server lifecycle | [components/server.md](components/server.md) | Component initialization, shutdown, middleware |
+| Configuration | [components/config.md](components/config.md) | Environment variables, settings |
 | Claude Code integration | [components/claude-code.md](components/claude-code.md) | WebSocket, sessions, message handling, permissions |
 | File processing | [components/digest-system.md](components/digest-system.md) | Digesters, file metadata extraction |
 | Filesystem watching | [components/fs-service.md](components/fs-service.md) | File watcher, scanner, change events |
 | Real-time updates | [components/notifications.md](components/notifications.md) | SSE, event broadcasting |
-| Authentication | [components/auth.md](components/auth.md) | OAuth, password auth, sessions |
+| Authentication | [components/auth.md](components/auth.md) | OAuth, password auth modes |
+| HTTP API | [components/api.md](components/api.md) | Endpoints, handlers, routes |
+| Database | [components/db.md](components/db.md) | SQLite, migrations, queries |
+| External services | [components/vendors.md](components/vendors.md) | OpenAI, Qdrant, Meilisearch, etc. |
 
 ## Event Flow Between Components
 
@@ -102,13 +107,45 @@ Event handlers are wired during server initialization:
 ```go
 // backend/server/server.go
 s.fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
-    s.digestWorker.OnFileChange(event.Path, event.Type)
-    s.notifService.NotifyInboxChanged()
+    if event.ContentChanged {
+        s.digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
+    }
+    if event.IsNew || event.ContentChanged {
+        s.notifService.NotifyInboxChanged()
+    }
 })
 ```
 
 **DO**: Wire handlers in server initialization
 **DON'T**: Directly access internal channels or queues of other components
+
+## Package Structure
+
+```
+backend/
+├── api/              # HTTP handlers (40+ endpoints)
+├── auth/             # Authentication modes (none, password, OAuth)
+├── claude/           # Claude Code integration (sessions, SDK, WebSocket)
+│   ├── models/       # Message type definitions
+│   └── sdk/          # Claude CLI wrapper
+├── config/           # Configuration management (singleton)
+├── db/               # SQLite database layer + migrations
+├── fs/               # Filesystem service (watcher, scanner, operations)
+├── log/              # Zerolog structured logging
+├── models/           # Domain models (settings)
+├── notifications/    # SSE real-time updates
+├── server/           # Server lifecycle & component coordination
+├── utils/            # Shared utilities
+├── vendors/          # External service clients
+│   ├── openai.go     # OpenAI API (completions, embeddings, vision)
+│   ├── qdrant.go     # Vector database
+│   ├── meilisearch.go # Full-text search
+│   ├── haid.go       # HAID embeddings + whisperx
+│   └── aliyun.go     # Aliyun real-time ASR
+└── workers/
+    └── digest/       # File processing worker
+        └── digesters/ # Individual digester implementations
+```
 
 ## Shutdown Coordination
 
@@ -127,7 +164,13 @@ case msg := <-messages:
 }
 ```
 
-Shutdown order is reverse of initialization - HTTP server stops first, then workers, then database.
+Shutdown order is reverse of initialization:
+1. Cancel shutdown context (signals handlers)
+2. Close notifications service
+3. Shutdown HTTP server
+4. Stop digest worker
+5. Stop FS service
+6. Close database
 
 ## Adding New API Endpoints
 
@@ -161,12 +204,14 @@ The frontend is a React SPA that calls backend APIs:
 - **No SSR** - all rendering in browser
 - **File-based routing** - routes in `frontend/app/routes/`
 - **TanStack Query** - for data fetching and caching
-- **WebSocket** - for real-time features (Claude chat, notifications)
+- **WebSocket** - for real-time features (Claude chat)
+- **SSE** - for notifications (file changes, previews)
 
 Key patterns:
 - Hooks for data fetching (`useQuery`, custom hooks)
 - Context for global state (auth, theme)
 - Components in `frontend/app/components/`
+- Shared EventSource connection for SSE (ref-counted singleton)
 
 ## Cross-Cutting Concerns
 
@@ -179,12 +224,18 @@ Use zerolog (`backend/log/`):
 
 **Important**: Use `log.Info()` for debugging - Debug level is often filtered.
 
+### Configuration
+
+Configuration is loaded once at startup via `config.Get()` (singleton).
+All settings come from environment variables. See [components/config.md](components/config.md).
+
 ### Database Migrations
 
 When changing schema:
-1. Update migration in `backend/db/migrations.go`
-2. Update queries to match
-3. Test on fresh database: `rm -rf .my-life-db/ && go run .`
+1. Create new migration file in `backend/db/` (e.g., `migration_004_new_feature.go`)
+2. Register in `migrations.go`
+3. Update queries to match
+4. Test on fresh database: `rm -rf .my-life-db/ && go run .`
 
 ### Error Handling
 

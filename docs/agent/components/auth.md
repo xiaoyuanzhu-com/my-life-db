@@ -14,51 +14,58 @@ The auth system supports three modes configured via `MLD_AUTH_MODE` environment 
 
 | Location | Purpose |
 |----------|---------|
-| `backend/auth/auth.go` | Auth middleware, mode detection |
-| `backend/auth/password.go` | Password authentication |
-| `backend/auth/oauth.go` | OAuth/OIDC implementation |
-| `backend/api/auth.go` | Auth HTTP handlers |
+| `backend/auth/oauth.go` | Auth mode detection, helper functions |
+| `backend/auth/oidc_provider.go` | OIDC provider initialization |
+| `backend/api/auth.go` | Password auth handlers |
+| `backend/api/oauth.go` | OAuth flow handlers |
 | `frontend/app/contexts/auth-context.tsx` | Frontend auth state |
+| `frontend/app/lib/fetch-with-refresh.ts` | Token refresh logic |
 
-## Middleware
+## Current Implementation Status
+
+> **Important**: This documents the **actual** implementation, not an ideal design.
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| OAuth flow | ✅ Complete | Full authorization code flow |
+| Token refresh | ✅ Complete | Frontend auto-refresh on 401 |
+| Password login | ⚠️ Partial | Handlers exist, but uses SHA256 (not secure) |
+| Password sessions | ❌ Incomplete | TODO in code - no database session storage |
+| Auth middleware | ❌ Not implemented | Routes are currently unprotected |
+
+## Auth Mode Detection
 
 ```go
-// backend/auth/auth.go
-func Middleware(mode string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        switch mode {
-        case "none":
-            c.Next()  // Allow all
-        case "password":
-            validatePasswordSession(c)
-        case "oauth":
-            validateOAuthToken(c)
-        }
+// backend/auth/oauth.go
+type AuthMode string
+
+const (
+    AuthModeNone     AuthMode = "none"
+    AuthModePassword AuthMode = "password"
+    AuthModeOAuth    AuthMode = "oauth"
+)
+
+func GetAuthMode() AuthMode {
+    mode := strings.ToLower(config.Get().AuthMode)
+    switch mode {
+    case "password":
+        return AuthModePassword
+    case "oauth":
+        return AuthModeOAuth
+    default:
+        return AuthModeNone
     }
 }
+
+// Helper functions
+func IsOAuthEnabled() bool { return GetAuthMode() == AuthModeOAuth }
+func IsPasswordAuthEnabled() bool { return GetAuthMode() == AuthModePassword }
+func IsAuthRequired() bool { return GetAuthMode() != AuthModeNone }
 ```
-
-The middleware is applied to protected routes in `api/routes.go`.
-
-## Password Auth
-
-Simple session-based authentication:
-
-```go
-// Login: POST /api/auth/login
-// - Validates password against MLD_PASSWORD env var
-// - Sets secure session cookie
-// - Returns success/failure
-
-// Logout: POST /api/auth/logout
-// - Clears session cookie
-```
-
-Session stored in secure HTTP-only cookie.
 
 ## OAuth/OIDC
 
-Standard OAuth 2.0 Authorization Code flow:
+### Flow Diagram
 
 ```
 Browser                    Backend                    OIDC Provider
@@ -71,7 +78,7 @@ Browser                    Backend                    OIDC Provider
    |                          |-- exchange code for token ->|
    |                          |<-- access + refresh token --|
    |                          |                            |
-   |<-- set session cookie ---|                            |
+   |<-- set cookies -----------|                            |
 ```
 
 ### Configuration
@@ -85,30 +92,124 @@ MLD_OAUTH_REDIRECT_URI=https://your-app.com/api/oauth/callback
 MLD_EXPECTED_USERNAME=optional-username-filter
 ```
 
-### Token Management
+### Token Storage
 
-- Access tokens stored in session
-- Refresh tokens used to get new access tokens
-- Automatic refresh before expiration
+Tokens are stored in HTTP-only cookies:
+
+```go
+// Access token cookie
+c.SetCookie(
+    "access_token",
+    accessToken,
+    int(expiresIn.Seconds()),
+    "/",              // Available to all paths
+    "",
+    !isDev,           // Secure in production
+    true,             // HttpOnly
+)
+
+// Refresh token cookie
+c.SetCookie(
+    "refresh_token",
+    refreshToken,
+    86400 * 30,       // 30 days
+    "/api/oauth",     // Only available to OAuth endpoints
+    "",
+    !isDev,
+    true,
+)
+```
+
+### Known Issues
+
+**State parameter validation**: The OAuth state parameter is currently hardcoded:
+```go
+state := "state-token"  // TODO: Generate random state and store in session
+```
+
+This is a security concern - should generate random state per request.
+
+## Password Auth
+
+### Current Implementation
+
+```go
+// backend/api/auth.go
+func (h *Handlers) Login(c *gin.Context) {
+    // Uses SHA256 hash (NOT secure for passwords)
+    // Should use bcrypt/argon2
+    hash := sha256.Sum256([]byte(password))
+    // ...
+
+    // TODO: Session storage not implemented
+    // Note: We'd need to add a CreateSession function to db package
+}
+```
+
+### Security Concerns
+
+1. **SHA256 for passwords** - Vulnerable to rainbow table attacks. Should use bcrypt/argon2/scrypt
+2. **No session storage** - Password sessions are not persisted to database
+3. **No CSRF protection** - No token validation
+
+## Route Protection
+
+> **Important**: There is currently **NO route protection middleware**.
+
+Routes in `backend/api/routes.go` are registered **without** any authentication middleware:
+
+```go
+// Current state - all routes are public
+api := router.Group("/api")
+api.GET("/inbox", h.GetInbox)  // No middleware
+api.POST("/files", h.UploadFile)  // No middleware
+```
+
+Authentication is only enforced by:
+1. Frontend AuthContext checking auth state
+2. `fetch-with-refresh.ts` handling 401 errors
 
 ## Frontend Integration
 
+### AuthContext
+
 ```typescript
 // frontend/app/contexts/auth-context.tsx
-const AuthContext = createContext<{
-    user: User | null
-    isAuthenticated: boolean
-    login: () => void
-    logout: () => void
-}>()
+// Note: Actual implementation is simpler than previously documented
 
-// Protected route wrapper
-const ProtectedRoute = ({ children }) => {
-    const { isAuthenticated } = useAuth()
-    if (!isAuthenticated) {
-        return <Navigate to="/login" />
+const AuthContext = createContext<{
+    isAuthenticated: boolean
+    isLoading: boolean
+    checkAuth: () => Promise<void>
+}>()
+```
+
+The context checks auth by calling `/api/settings` - if it succeeds, user is authenticated.
+
+### Token Refresh
+
+```typescript
+// frontend/app/lib/fetch-with-refresh.ts
+export async function fetchWithRefresh(url: string, options: RequestInit) {
+    const response = await fetch(url, options);
+
+    if (response.status === 401) {
+        // Try to refresh token
+        const refreshResponse = await fetch('/api/oauth/refresh', {
+            method: 'POST',
+            credentials: 'include',
+        });
+
+        if (refreshResponse.ok) {
+            // Retry original request
+            return fetch(url, options);
+        }
+
+        // Refresh failed, redirect to login
+        window.location.href = '/login';
     }
-    return children
+
+    return response;
 }
 ```
 
@@ -118,55 +219,79 @@ const ProtectedRoute = ({ children }) => {
 |-------|--------|---------|
 | `/api/auth/login` | POST | Password login |
 | `/api/auth/logout` | POST | Logout (all modes) |
-| `/api/auth/me` | GET | Get current user |
 | `/api/oauth/authorize` | GET | Start OAuth flow |
-| `/api/oauth/callback` | GET | OAuth callback |
-| `/api/oauth/token` | POST | Token exchange |
-| `/api/oauth/refresh` | POST | Refresh token |
+| `/api/oauth/callback` | GET | OAuth callback (receives code) |
+| `/api/oauth/refresh` | POST | Refresh access token |
+| `/api/oauth/logout` | POST | OAuth logout (clears cookies) |
 
 ## Common Modifications
 
-### Adding a new auth mode
+### Adding Route Protection
 
-1. Add mode constant in `backend/auth/auth.go`
-2. Add case in middleware switch
-3. Implement validation logic
-4. Add necessary handlers in `backend/api/auth.go`
-
-### Adding role-based access
+To actually protect routes, you would need to add middleware:
 
 ```go
-// Extend user struct
-type User struct {
-    ID    string
-    Email string
-    Roles []string  // Add roles
-}
-
-// Add role middleware
-func RequireRole(role string) gin.HandlerFunc {
+// backend/auth/middleware.go (to create)
+func RequireAuth() gin.HandlerFunc {
     return func(c *gin.Context) {
-        user := GetUser(c)
-        if !slices.Contains(user.Roles, role) {
-            c.AbortWithStatus(403)
+        mode := GetAuthMode()
+        if mode == AuthModeNone {
+            c.Next()
             return
         }
+
+        // Check token/session based on mode
+        if mode == AuthModeOAuth {
+            token, err := c.Cookie("access_token")
+            if err != nil || token == "" {
+                c.AbortWithStatus(401)
+                return
+            }
+            // Validate token...
+        }
+
         c.Next()
     }
 }
+
+// backend/api/routes.go
+protected := router.Group("/api")
+protected.Use(auth.RequireAuth())
+protected.GET("/inbox", h.GetInbox)
 ```
 
-### Customizing session duration
+### Fixing Password Auth Security
 
-- Password mode: modify cookie expiration in `password.go`
-- OAuth mode: tied to token expiration from provider
+```go
+// Use bcrypt instead of SHA256
+import "golang.org/x/crypto/bcrypt"
+
+hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+err := bcrypt.CompareHashAndPassword(hashedPassword, []byte(inputPassword))
+```
+
+### Adding Session Storage
+
+```go
+// backend/db/sessions.go (to create)
+type Session struct {
+    ID        string
+    UserID    string
+    ExpiresAt time.Time
+    CreatedAt time.Time
+}
+
+func CreateSession(userID string) (*Session, error)
+func GetSession(sessionID string) (*Session, error)
+func DeleteSession(sessionID string) error
+```
 
 ## Files to Modify
 
 | Task | Files |
 |------|-------|
-| Modify auth logic | `backend/auth/auth.go` |
-| Change password auth | `backend/auth/password.go` |
-| Change OAuth flow | `backend/auth/oauth.go` |
-| Add auth endpoints | `backend/api/auth.go` |
+| Add auth middleware | Create `backend/auth/middleware.go` |
+| Fix password hashing | `backend/api/auth.go` |
+| Add session storage | Create `backend/db/sessions.go` |
+| Change OAuth flow | `backend/api/oauth.go` |
 | Frontend auth state | `frontend/app/contexts/auth-context.tsx` |

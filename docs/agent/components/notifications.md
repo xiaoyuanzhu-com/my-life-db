@@ -9,7 +9,7 @@ Backend Components                Notifications Service              Browser
       |                                    |                            |
       |-- NotifyInboxChanged() ----------->|                            |
       |                                    |-- broadcast --------------->|
-      |-- NotifyDigestComplete() --------->|    (SSE)                   |
+      |-- NotifyPreviewUpdated() --------->|    (SSE)                   |
       |                                    |-- broadcast --------------->|
 ```
 
@@ -17,54 +17,85 @@ Backend Components                Notifications Service              Browser
 
 | Location | Purpose |
 |----------|---------|
-| `backend/notifications/service.go` | Pub/sub service |
-| `backend/api/notifications.go` | SSE HTTP handler |
+| `backend/notifications/service.go` | Pub/sub service, event broadcasting |
+| `backend/api/notifications.go` | SSE HTTP handler with heartbeat |
+| `frontend/app/hooks/use-notifications.ts` | Frontend hooks for consuming events |
 
-## Service Structure
+## Event Structure
 
 ```go
-type Service struct {
-    subscribers map[chan Event]struct{}  // Active SSE connections
-    mu          sync.RWMutex             // Protects subscribers map
-    done        chan struct{}            // Shutdown signal
-}
+// backend/notifications/service.go
+type EventType string
+
+const (
+    EventInboxChanged   EventType = "inbox-changed"
+    EventPinChanged     EventType = "pin-changed"
+    EventDigestUpdate   EventType = "digest-update"
+    EventPreviewUpdated EventType = "preview-updated"
+    EventConnected      EventType = "connected"
+)
 
 type Event struct {
-    Type string      `json:"type"`
-    Data interface{} `json:"data,omitempty"`
+    Type      EventType `json:"type"`
+    Timestamp string    `json:"timestamp"`      // RFC3339 format, auto-set
+    Path      string    `json:"path,omitempty"` // File path for file-specific events
+    Data      any       `json:"data,omitempty"` // Additional event data
 }
 ```
 
 ## Event Types
 
-| Type | Triggered By | Purpose |
-|------|--------------|---------|
-| `inbox-changed` | File added/modified in inbox | Refresh inbox UI |
-| `digest-update` | Digest processing complete | Update file metadata display |
-| `preview-updated` | Thumbnail/preview generated | Show preview in UI |
-| `pin-changed` | File pinned/unpinned | Update pin indicators |
-| `connected` | Client connects | Initial handshake |
+| Type | Triggered By | Data | Purpose |
+|------|--------------|------|---------|
+| `inbox-changed` | File added/modified in inbox | - | Refresh inbox UI |
+| `digest-update` | Digest processing complete | `{path}` | Update file metadata display |
+| `preview-updated` | Screenshot/preview generated | `{path, previewType}` | Show preview in UI |
+| `pin-changed` | File pinned/unpinned | `{path}` | Update pin indicators |
+| `connected` | Client connects | - | Initial handshake confirmation |
 
-## Usage Pattern
+### Preview Types
 
-### Publishing Events
+The `preview-updated` event includes a `previewType` field:
+- `"screenshot"` - URL crawl or document screenshot
+- `"image"` - Image preview (HEIC→JPEG conversion)
+
+## Service Implementation
 
 ```go
-// From anywhere with access to notifications service
-s.notifService.Notify(notifications.Event{
-    Type: "inbox-changed",
-    Data: map[string]string{"path": filePath},
-})
+type Service struct {
+    mu          sync.RWMutex
+    subscribers map[chan Event]struct{}  // Active SSE connections
+    done        chan struct{}            // Shutdown signal
+}
+
+// Subscribe creates a new subscription channel
+// Returns the event channel and an unsubscribe function
+func (s *Service) Subscribe() (<-chan Event, func()) {
+    ch := make(chan Event, 10)  // Buffer size: 10 events
+    // ...
+    return ch, unsubscribe
+}
 ```
 
-### Subscribing (Internal)
+### Buffer Size
+
+Subscriber channels are buffered with **10 events** (not 100). When slow clients fill the buffer, events are silently dropped:
 
 ```go
-eventChan, unsubscribe := svc.Subscribe()
-defer unsubscribe()
+func (s *Service) Notify(event Event) {
+    // Auto-set timestamp if not provided
+    if event.Timestamp == "" {
+        event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+    }
 
-for event := range eventChan {
-    // Handle event
+    for ch := range s.subscribers {
+        select {
+        case ch <- event:
+            // Sent successfully
+        default:
+            // Channel full, skip this subscriber (silent drop)
+        }
+    }
 }
 ```
 
@@ -77,119 +108,264 @@ func (h *Handlers) NotificationStream(c *gin.Context) {
     c.Header("Content-Type", "text/event-stream")
     c.Header("Cache-Control", "no-cache")
     c.Header("Connection", "keep-alive")
+    c.Header("X-Accel-Buffering", "no")  // Disable nginx buffering
 
-    eventChan, unsubscribe := h.server.Notifications().Subscribe()
+    events, unsubscribe := h.server.Notifications().Subscribe()
     defer unsubscribe()
 
     // Send initial connected event
-    sendEvent(c, Event{Type: "connected"})
+    sendSSEEventGin(c, notifications.Event{
+        Type:      notifications.EventConnected,
+        Timestamp: time.Now().UTC().Format(time.RFC3339),
+    })
+
+    // Heartbeat every 30 seconds (keeps connection alive behind proxies)
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
 
     for {
         select {
-        case event := <-eventChan:
-            sendEvent(c, event)
-        case <-c.Request.Context().Done():
-            return
         case <-h.server.ShutdownContext().Done():
+            return
+        case event, ok := <-events:
+            if !ok { return }
+            sendSSEEventGin(c, event)
+            c.Writer.Flush()
+        case <-ticker.C:
+            fmt.Fprintf(c.Writer, ": heartbeat\n\n")  // SSE comment
+            c.Writer.Flush()
+        case <-c.Request.Context().Done():
             return
         }
     }
 }
 ```
 
-## Frontend Usage
+### SSE Headers
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `Content-Type` | `text/event-stream` | SSE content type |
+| `Cache-Control` | `no-cache` | Prevent caching |
+| `Connection` | `keep-alive` | Keep connection open |
+| `X-Accel-Buffering` | `no` | Disable nginx buffering |
+
+## Frontend Integration
+
+### Shared EventSource Connection
+
+The frontend uses a singleton pattern with ref-counting to share one SSE connection across all hooks:
 
 ```typescript
 // frontend/app/hooks/use-notifications.ts
-const useNotifications = () => {
-    useEffect(() => {
-        const eventSource = new EventSource('/api/notifications/stream')
 
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data)
-            switch (data.type) {
-                case 'inbox-changed':
-                    queryClient.invalidateQueries(['inbox'])
-                    break
-                case 'digest-update':
-                    queryClient.invalidateQueries(['file', data.data.path])
-                    break
-            }
+// Singleton EventSource (shared across all hook instances)
+let sharedEventSource: EventSource | null = null;
+let connectionRefCount = 0;
+
+// Event listeners registry
+const listeners: Set<(event: MessageEvent) => void> = new Set();
+
+function subscribe(listener: (event: MessageEvent) => void) {
+    listeners.add(listener);
+    connectionRefCount++;
+
+    // Connect if first subscriber
+    if (connectionRefCount === 1) {
+        connectToNotifications();
+    }
+
+    return () => {
+        listeners.delete(listener);
+        connectionRefCount--;
+
+        // Disconnect if no more subscribers
+        if (connectionRefCount === 0) {
+            disconnectFromNotifications();
         }
-
-        return () => eventSource.close()
-    }, [])
+    };
 }
 ```
 
-## Buffered Channels
+### Authentication
 
-Subscriber channels are buffered to prevent slow clients from blocking:
+If OAuth is enabled, the access token is passed via query parameter:
 
-```go
-func (s *Service) Subscribe() (chan Event, func()) {
-    ch := make(chan Event, 100)  // Buffer 100 events
+```typescript
+const accessToken = localStorage.getItem('access_token');
+let url = '/api/notifications/stream';
+if (accessToken) {
+    url += `?token=${encodeURIComponent(accessToken)}`;
+}
+```
+
+### Frontend Hooks
+
+#### useInboxNotifications
+
+Triggers a debounced callback on any notification event (except `connected`):
+
+```typescript
+interface UseInboxNotificationsOptions {
+    onInboxChange: () => void;
+    enabled?: boolean;
+}
+
+export function useInboxNotifications(options: UseInboxNotificationsOptions) {
+    const { onInboxChange, enabled = true } = options;
+
+    // Debounce with 200ms delay to batch rapid notifications
+    const debouncedOnChange = useMemo(
+        () => debounce(onInboxChange, 200),
+        [onInboxChange]
+    );
+
+    useEffect(() => {
+        if (!enabled) return;
+
+        const listener = (event: MessageEvent) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'connected') return;
+            debouncedOnChange();  // Trigger on any event
+        };
+
+        return subscribe(listener);
+    }, [enabled, debouncedOnChange]);
+}
+```
+
+#### usePreviewNotifications
+
+Triggers callback when a preview is ready:
+
+```typescript
+interface UsePreviewNotificationsOptions {
+    onPreviewUpdated: (filePath: string, previewType: string) => void;
+    enabled?: boolean;
+}
+
+export function usePreviewNotifications(options: UsePreviewNotificationsOptions) {
+    const { onPreviewUpdated, enabled = true } = options;
+
+    useEffect(() => {
+        if (!enabled) return;
+
+        const listener = (event: MessageEvent) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'preview-updated' && data.path) {
+                const previewType = data.data?.previewType || 'unknown';
+                onPreviewUpdated(data.path, previewType);
+            }
+        };
+
+        return subscribe(listener);
+    }, [enabled, onPreviewUpdated]);
+}
+```
+
+### Usage Example
+
+```typescript
+// frontend/app/routes/home.tsx
+function HomePage() {
+    const queryClient = useQueryClient();
+
+    useInboxNotifications({
+        onInboxChange: () => {
+            queryClient.invalidateQueries({ queryKey: ['feed'] });
+        }
+    });
+
+    usePreviewNotifications({
+        onPreviewUpdated: (filePath, previewType) => {
+            queryClient.invalidateQueries({ queryKey: ['feed'] });
+        }
+    });
+
     // ...
 }
-
-func (s *Service) Notify(event Event) {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-
-    for ch := range s.subscribers {
-        select {
-        case ch <- event:
-            // Sent
-        default:
-            // Channel full, drop event for this subscriber
-            log.Warn().Msg("dropping event, subscriber too slow")
-        }
-    }
-}
 ```
 
-## Common Modifications
+## Publishing Events
 
-### Adding a new event type
-
-1. Define event type constant (optional, can use string directly)
-2. Add `Notify*` convenience method to service (optional)
-3. Broadcast from relevant backend code
-4. Handle in frontend `useNotifications` hook
+### Convenience Methods
 
 ```go
 // backend/notifications/service.go
-func (s *Service) NotifyFileRenamed(oldPath, newPath string) {
+
+// NotifyInboxChanged - file added/modified in inbox
+func (s *Service) NotifyInboxChanged() {
     s.Notify(Event{
-        Type: "file-renamed",
-        Data: map[string]string{
-            "oldPath": oldPath,
-            "newPath": newPath,
+        Type:      EventInboxChanged,
+        Timestamp: time.Now().UTC().Format(time.RFC3339),
+    })
+}
+
+// NotifyPinChanged - file pinned/unpinned
+func (s *Service) NotifyPinChanged(path string) {
+    s.Notify(Event{
+        Type:      EventPinChanged,
+        Timestamp: time.Now().UTC().Format(time.RFC3339),
+        Path:      path,
+    })
+}
+
+// NotifyPreviewUpdated - screenshot/preview ready
+func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
+    s.Notify(Event{
+        Type:      EventPreviewUpdated,
+        Timestamp: time.Now().UTC().Format(time.RFC3339),
+        Path:      path,
+        Data: map[string]interface{}{
+            "previewType": previewType,
         },
     })
 }
 ```
 
-### Adding event filtering
+### Where Events Are Triggered
 
-Clients could subscribe to specific event types:
+| Event | Location | Trigger |
+|-------|----------|---------|
+| `inbox-changed` | `server/server.go` | FS service file change callback |
+| `inbox-changed` | `api/inbox.go` | CreateInboxItem handler |
+| `pin-changed` | `api/library.go` | Pin/unpin handlers |
+| `preview-updated` | `workers/digest/worker.go` | Screenshot digester completion |
 
-```go
-func (s *Service) SubscribeFiltered(types []string) (chan Event, func()) {
-    // Filter events before sending to channel
-}
-```
+**Note**: `digest-update` is defined but currently not triggered anywhere in the codebase.
 
-### Adding event history/replay
+## Common Modifications
 
-For clients that reconnect and need missed events:
+### Adding a New Event Type
 
-```go
-type Service struct {
-    recentEvents []Event  // Ring buffer of recent events
-    // ...
-}
-```
+1. Add constant to `backend/notifications/service.go`:
+   ```go
+   const EventMyNewEvent EventType = "my-new-event"
+   ```
+
+2. Add convenience method (optional):
+   ```go
+   func (s *Service) NotifyMyNewEvent(data interface{}) {
+       s.Notify(Event{
+           Type: EventMyNewEvent,
+           Data: data,
+       })
+   }
+   ```
+
+3. Trigger from backend code:
+   ```go
+   h.server.Notifications().NotifyMyNewEvent(myData)
+   ```
+
+4. Handle in frontend hook or create a new hook
+
+### Connection Lifecycle Features
+
+The frontend handles:
+- **Auto-reconnect**: 5 second delay after connection error
+- **Visibility change**: Reconnects when tab becomes visible
+- **Ref counting**: Disconnects when no hooks are subscribed
 
 ## Files to Modify
 

@@ -20,47 +20,113 @@ The backend acts as a transparent relay between Claude CLI and the browser. When
 Browser (React)
     ↕ WebSocket
 Backend (Go)
-    ↕ PTY/Subprocess
+    ↕ SDK Client (subprocess wrapper)
 Claude CLI
 ```
 
-### Key Components
+### Two Operation Modes
+
+| Mode | Transport | Use Case |
+|------|-----------|----------|
+| **UI Mode** (default) | SDK (structured JSON) | Chat interface with structured messages |
+| **CLI Mode** | PTY (raw terminal) | Terminal emulator with xterm.js |
+
+**UI Mode uses the SDK** - it's no longer direct PTY-based stdin/stdout.
+
+## Key Components
 
 | Location | Purpose |
 |----------|---------|
-| `backend/claude/manager.go` | Session pool, lifecycle management |
+| `backend/claude/manager.go` | Session pool, lifecycle management, index cache |
 | `backend/claude/session.go` | Individual session state, client management |
 | `backend/claude/sdk/client.go` | SDK wrapper for subprocess communication |
-| `backend/claude/sdk/query.go` | Control protocol, permission handling |
+| `backend/claude/sdk/query.go` | Control protocol, permission callbacks |
 | `backend/claude/sdk/message_parser.go` | Message type parsing |
-| `backend/claude/session_reader.go` | Session history loading |
+| `backend/claude/session_reader.go` | Session history loading from JSONL |
+| `backend/claude/session_index_cache.go` | Session index with pagination, deduplication |
+| `backend/claude/session_watcher.go` | Filesystem watching for new sessions |
+| `backend/claude/models/` | 13+ message type definitions |
 | `frontend/app/components/claude/` | UI components |
-| `frontend/app/types/claude.ts` | TypeScript type definitions |
+
+## Session Structure
+
+```go
+type Session struct {
+    ID           string
+    ProcessID    int
+    WorkingDir   string
+    CreatedAt    time.Time
+    LastActivity time.Time
+    Status       string       // "archived", "active", "dead"
+    Title        string
+    Mode         SessionMode  // "cli" or "ui"
+
+    // SDK-based UI mode
+    sdkClient    *sdk.ClaudeSDKClient
+    sdkCtx       context.Context
+    sdkCancel    context.CancelFunc
+
+    // Message caching (UI mode)
+    cachedMessages [][]byte           // All messages for new clients
+    seenUUIDs      map[string]bool    // Deduplication by UUID
+
+    // Permission handling (SDK mode)
+    pendingSDKPermissions map[string]*pendingPermission
+    alwaysAllowedTools    map[string]bool
+
+    // CLI mode (PTY-based, legacy)
+    PTY       *os.File
+    broadcast chan []byte
+    backlog   []byte
+}
+```
 
 ## Session Lifecycle
 
 ### Creation
 
 ```go
-// Manager creates session with lazy activation
+// Manager creates session
 session := manager.CreateSessionWithID(workingDir, title, resumeID, mode)
-// Session exists but Claude CLI not started yet
+// Session struct exists but Claude CLI not started yet (lazy activation)
 ```
 
 ### Activation (Lazy)
 
+Sessions are activated when:
+1. First WebSocket client connects
+2. First message is sent
+
 ```go
-// First WebSocket client triggers activation
-session.EnsureActivated()
-// Now Claude CLI subprocess is running
+func (s *Session) EnsureActivated() error {
+    if s.activated {
+        return nil
+    }
+    // For UI mode, uses SDK
+    return s.activateFn()  // Calls createSessionWithSDK or createSessionWithLegacy
+}
 ```
 
-### Modes
+### SDK vs Legacy Activation
 
-- **CLI Mode** (`ModeCLI`): PTY-based, raw terminal output for xterm.js
-- **UI Mode** (`ModeUI`): JSON streaming, structured messages for chat interface
+```go
+// UI Mode (default) - uses SDK
+func (m *Manager) createSessionWithSDK(s *Session) error {
+    sdkClient, err := sdk.NewClaudeSDKClient(sdk.Options{
+        WorkingDir: s.WorkingDir,
+        // Permission callback bridges async WebSocket flow
+        CanUseTool: m.CreatePermissionCallback(s),
+    })
+    s.sdkClient = sdkClient
+    // ...
+}
 
-Most modifications should focus on UI mode.
+// CLI Mode - uses PTY
+func (m *Manager) createSessionWithLegacy(s *Session) error {
+    // Creates PTY, spawns claude CLI directly
+    // Raw terminal output to xterm.js
+}
+```
 
 ## Message Flow
 
@@ -73,7 +139,7 @@ WebSocket sends: { type: "text", content: "..." }
     ↓
 Backend Session.SendInputUI()
     ↓
-SDK client writes to Claude stdin
+SDK client writes to Claude stdin (formatted query)
     ↓
 Claude processes
 ```
@@ -86,6 +152,8 @@ Claude writes to stdout (JSONL)
 SDK client reads, parses message type
     ↓
 Message cached in session (for new clients)
+    ↓
+Deduplication by UUID (merge JSONL history with live)
     ↓
 Broadcast to all WebSocket clients
     ↓
@@ -100,52 +168,44 @@ Claude outputs JSONL (one JSON per line). Key types:
 |------|-------------|-------------------|
 | `user` | User's input | Show in chat |
 | `assistant` | Claude's response | Render text, thinking, tool calls |
-| `system` | System events | Handle subtypes (init, status, etc.) |
+| `system` | System events | Handle subtypes (init, status) |
 | `result` | Completion info | Show cost, duration |
 | `control_request` | Permission request | Show permission modal |
 
-### Parsing Pattern
+### Message Type Registry
 
-```go
-// backend/claude/sdk/message_parser.go
-func parseMessage(data []byte) (Message, error) {
-    var base struct{ Type string }
-    json.Unmarshal(data, &base)
+The `backend/claude/models/` package defines 13+ typed messages:
 
-    switch base.Type {
-    case "user":
-        return parseUserMessage(data)
-    case "assistant":
-        return parseAssistantMessage(data)
-    // ...
-    default:
-        // CRITICAL: Preserve unknown types
-        return RawMessage{Type: base.Type, Raw: data}, nil
-    }
-}
-```
+- `UserSessionMessage`
+- `AssistantSessionMessage`
+- `SystemInitMessage`
+- `SystemSessionMessage`
+- `ResultSessionMessage`
+- `ProgressSessionMessage`
+- `SummarySessionMessage`
+- `CustomTitleSessionMessage`
+- `TagSessionMessage`
+- `AgentNameSessionMessage`
+- `QueueOperationSessionMessage`
+- `FileHistorySnapshotSessionMessage`
+- `UnknownSessionMessage` (fallback)
 
-**The `default` case is critical** - unknown message types must be preserved as `RawMessage` for forward compatibility.
+Each implements `SessionMessageI` interface with `HasUsefulContent()` for filtering.
 
 ### Message Preservation
 
 When loading session history, we preserve raw JSON:
 
 ```go
-// backend/claude/session_reader.go
 type messageWithRaw struct {
-    // Parsed fields for querying
-    Type string
-    // Original JSON for serialization
-    RawJSON []byte
+    Type    string
+    RawJSON []byte  // Original JSON for serialization
 }
 
 func (m *messageWithRaw) MarshalJSON() ([]byte, error) {
     return m.RawJSON, nil  // Return original, not re-marshaled
 }
 ```
-
-This prevents data loss when messages have fields we don't explicitly model.
 
 ## Permission Handling
 
@@ -165,45 +225,124 @@ Claude CLI (sync)              Backend                    Browser (async)
       |   (unblocks)              |                            |
 ```
 
-### Backend Implementation
+### Permission Response Structure
 
 ```go
-// session.go
-type Session struct {
-    // Pending permission requests awaiting browser response
-    pendingSDKPermissions map[string]chan PermissionResponse
-
-    // Tools user has "always allowed" for this session
-    alwaysAllowedTools map[string]bool
+type PermissionResponse struct {
+    Behavior    string  // "allow" or "deny"
+    Message     string  // Optional denial message
+    AlwaysAllow bool    // Remember for this session
+    ToolName    string  // Tool name for always-allow tracking
 }
+```
 
-func (s *Session) SendControlResponse(requestID string, response PermissionResponse) {
-    if ch, ok := s.pendingSDKPermissions[requestID]; ok {
-        ch <- response
-        delete(s.pendingSDKPermissions, requestID)
+### SendControlResponse
+
+```go
+func (s *Session) SendControlResponse(
+    requestID string,
+    subtype string,
+    behavior string,   // "allow" or "deny"
+    message string,
+    toolName string,
+    alwaysAllow bool,
+) {
+    // Find pending permission
+    s.pendingSDKPermissionsMu.Lock()
+    pending, exists := s.pendingSDKPermissions[requestID]
+    if !exists {
+        s.pendingSDKPermissionsMu.Unlock()
+        return
+    }
+    delete(s.pendingSDKPermissions, requestID)
+    s.pendingSDKPermissionsMu.Unlock()
+
+    // Track "always allow"
+    if alwaysAllow && behavior == "allow" {
+        s.alwaysAllowedToolsMu.Lock()
+        s.alwaysAllowedTools[toolName] = true
+        s.alwaysAllowedToolsMu.Unlock()
+
+        // Auto-approve other pending requests for same tool
+        s.autoApprovePendingForTool(toolName)
     }
 
-    // Track "always allow" choices
-    if response.Decision == "allowSession" {
-        s.alwaysAllowedTools[response.ToolName] = true
+    // Send response to blocked callback
+    pending.ch <- PermissionResponse{
+        Behavior:    behavior,
+        Message:     message,
+        AlwaysAllow: alwaysAllow,
+        ToolName:    toolName,
     }
 }
 ```
 
-### Frontend Implementation
+### Permission Callback Pattern
 
-```typescript
-// Permission card shows tool name, input preview
-// User choices: Allow, Deny, Always Allow (this session)
+```go
+func (m *Manager) CreatePermissionCallback(s *Session) func(string, string) bool {
+    return func(toolName, toolInput string) bool {
+        // Check if already always-allowed
+        s.alwaysAllowedToolsMu.RLock()
+        if s.alwaysAllowedTools[toolName] {
+            s.alwaysAllowedToolsMu.RUnlock()
+            return true
+        }
+        s.alwaysAllowedToolsMu.RUnlock()
 
-const handlePermission = (decision: 'allow' | 'deny' | 'allowSession') => {
-    ws.send({
-        type: 'permission_response',
-        requestId: request.request_id,
-        decision
-    })
+        // Create pending permission request
+        requestID := generateRequestID()
+        responseChan := make(chan PermissionResponse, 1)
+
+        s.pendingSDKPermissionsMu.Lock()
+        s.pendingSDKPermissions[requestID] = &pendingPermission{
+            toolName:  toolName,
+            requestID: requestID,
+            ch:        responseChan,
+        }
+        s.pendingSDKPermissionsMu.Unlock()
+
+        // Broadcast control_request to all clients
+        s.broadcastControlRequest(requestID, toolName, toolInput)
+
+        // Block waiting for response
+        response := <-responseChan
+        return response.Behavior == "allow"
+    }
 }
 ```
+
+## Session Index Cache
+
+The `SessionIndexCache` provides efficient session listing:
+
+```go
+type SessionIndexCache struct {
+    sessions     []SessionIndexEntry
+    mu           sync.RWMutex
+    initialized  bool
+
+    // Deduplication by FirstUserMessageUUID
+    seenUUIDs    map[string]bool
+}
+
+type SessionIndexEntry struct {
+    SessionID          string
+    SessionFile        string
+    CreatedAt          time.Time
+    UpdatedAt          time.Time
+    FirstPrompt        string    // Lazily loaded
+    FirstUserMessageUUID string  // For deduplication
+}
+```
+
+### Features
+
+- **Lazy initialization**: Scans `~/.claude/projects/` on first access
+- **Deduplication**: Related sessions (same FirstUserMessageUUID) are collapsed
+- **Pagination**: Cursor-based seeking for large session lists
+- **Enrichment**: Lazily loads FirstPrompt from JSONL files
+- **File watching**: fsnotify updates cache on new sessions
 
 ## WebSocket Protocol
 
@@ -211,20 +350,32 @@ const handlePermission = (decision: 'allow' | 'deny' | 'allowSession') => {
 
 ```typescript
 { type: "text", content: string }              // User message
-{ type: "permission_response", requestId, decision }  // Permission decision
-{ type: "question_answer", questionId, answers }      // AskUserQuestion response
+{ type: "permission_response",
+  requestId: string,
+  subtype: string,
+  behavior: "allow" | "deny",
+  message?: string,
+  toolName: string,
+  alwaysAllow: boolean }                       // Permission decision
+{ type: "question_answer", questionId, answers }  // AskUserQuestion response
+{ type: "interrupt" }                          // Stop current operation
+{ type: "set_model", model: string }           // Change model
 ```
 
 ### Server → Client
 
 ```typescript
-{ type: "text_delta", data: { delta, messageId } }    // Streaming text
-{ type: "tool_use", data: { id, name, parameters } }  // Tool invocation
-{ type: "tool_result", data: { toolCallId, result } } // Tool completion
-{ type: "control_request", data: { request_id, request } }  // Permission request
-{ type: "todo_update", data: { todos } }              // Todo list update
-{ type: "connected" }                                  // Connection established
-{ type: "error", error: string }                       // Error message
+// Raw Claude messages (forwarded as-is)
+{ type: "user", ... }
+{ type: "assistant", ... }
+{ type: "system", ... }
+{ type: "result", ... }
+
+// Control messages
+{ type: "control_request", data: { request_id, tool_name, tool_input } }
+{ type: "todo_update", data: { todos } }
+{ type: "connected" }
+{ type: "error", error: string }
 ```
 
 ## Session History
@@ -234,22 +385,40 @@ Sessions are stored by Claude CLI in `~/.claude/projects/[project]/sessions.json
 ### Loading History
 
 ```go
-// backend/claude/session_reader.go
-func ReadSessionHistoryRaw(sessionID string) ([]Message, error) {
-    // Read JSONL file
-    // Parse each line, preserving raw JSON
-    // Return typed messages with RawJSON field
+func ReadSessionHistoryRaw(sessionID string) ([]SessionMessageI, error) {
+    // Find JSONL file
+    sessionFile := findSessionFile(sessionID)
+
+    // Read line by line
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        // Parse each line, preserving raw JSON
+        msg := parseTypedMessage(scanner.Bytes())
+        messages = append(messages, msg)
+    }
+
+    return messages, nil
 }
 ```
 
-### Index Cache
+### UUID Deduplication
 
-The Manager maintains a `SessionIndexCache` for listing sessions without parsing full history:
+When merging JSONL history with live stdout:
 
 ```go
-type SessionIndexCache struct {
-    // Lazily loads and caches session metadata
-    // Watches filesystem for new sessions
+func (s *Session) AddMessage(rawJSON []byte) {
+    // Extract UUID from message
+    uuid := extractUUID(rawJSON)
+
+    s.cacheMu.Lock()
+    defer s.cacheMu.Unlock()
+
+    // Skip if already seen
+    if s.seenUUIDs[uuid] {
+        return
+    }
+    s.seenUUIDs[uuid] = true
+    s.cachedMessages = append(s.cachedMessages, rawJSON)
 }
 ```
 
@@ -274,7 +443,7 @@ type SessionIndexCache struct {
 
 1. Permission logic lives in `session.go` (`SendControlResponse`)
 2. Frontend UI in `permission-card.tsx`
-3. SDK callback in `sdk/client.go` (`CanUseTool`)
+3. SDK callback in `manager.go` (`CreatePermissionCallback`)
 
 ### Debugging Message Flow
 
@@ -291,6 +460,8 @@ type SessionIndexCache struct {
 | WebSocket handling | `backend/api/claude.go`, `frontend/.../use-session-websocket.ts` |
 | Message parsing | `backend/claude/sdk/message_parser.go` |
 | Session management | `backend/claude/manager.go`, `session.go` |
+| Session index | `backend/claude/session_index_cache.go` |
+| Message types | `backend/claude/models/*.go` |
 
 ## Testing
 
@@ -298,3 +469,4 @@ type SessionIndexCache struct {
 - Check message round-trip: Claude → Backend → Frontend → stored history
 - Verify unknown message types are preserved (forward compatibility)
 - Test permission flow: request → UI → response → Claude continues
+- Test always-allow: subsequent requests for same tool auto-approve
