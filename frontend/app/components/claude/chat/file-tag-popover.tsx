@@ -50,7 +50,7 @@ export function FileTagPopover({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor virtualRef={virtualRef} />
       <PopoverContent
-        className="p-0 max-h-80 overflow-hidden"
+        className="p-0 max-h-80 overflow-hidden duration-0"
         style={{ width: anchorWidth }}
         align="start"
         side="top"
