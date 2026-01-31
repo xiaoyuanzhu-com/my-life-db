@@ -430,11 +430,12 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 			continue
 		}
 
-		var nodePath string
+		// Full path for recursion (relative to baseDir)
+		var childRelPath string
 		if relativePath == "" {
-			nodePath = name
+			childRelPath = name
 		} else {
-			nodePath = relativePath + "/" + name
+			childRelPath = relativePath + "/" + name
 		}
 
 		info, _ := entry.Info()
@@ -444,7 +445,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		node := FileNode{}
 
 		if fields["path"] {
-			node.Path = nodePath
+			node.Path = name // Only the name, not full path (parent context is implicit)
 		}
 		if fields["type"] {
 			if isDir {
@@ -466,7 +467,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if isDir {
 			// maxDepth: 0 = unlimited, otherwise check current depth
 			if maxDepth == 0 || currentDepth < maxDepth {
-				node.Children = h.readDirRecursive(baseDir, nodePath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly, pathFilter)
+				node.Children = h.readDirRecursive(baseDir, childRelPath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly, pathFilter)
 			} else {
 				node.Children = []FileNode{} // Empty array for unexpanded folders
 			}
