@@ -58,7 +58,15 @@ export default function ClaudePage() {
     nextCursor: null,
     totalCount: 0,
   })
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('claude-session-filter')
+      if (saved === 'all' || saved === 'active' || saved === 'archived') {
+        return saved
+      }
+    }
+    return 'all'
+  })
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // New session state (for empty state)
@@ -81,6 +89,11 @@ export default function ClaudePage() {
       localStorage.setItem('claude-last-working-dir', newSessionWorkingDir)
     }
   }, [newSessionWorkingDir])
+
+  // Persist session filter to localStorage
+  useEffect(() => {
+    localStorage.setItem('claude-session-filter', statusFilter)
+  }, [statusFilter])
 
   // Load sessions on mount or when filter changes
   useEffect(() => {
