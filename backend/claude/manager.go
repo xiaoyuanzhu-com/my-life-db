@@ -407,6 +407,7 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		broadcast:             make(chan []byte, 256),
 		activated:             true, // Sessions created via CreateSessionWithID are immediately activated
 		pendingSDKPermissions: make(map[string]*pendingPermission),
+		Git:                   GetGitInfo(workingDir), // Populate Git metadata
 	}
 
 	// Add to map early so other operations can see it (status will be "active")
@@ -547,6 +548,7 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 		broadcast:             make(chan []byte, 256),
 		activated:             false,
 		pendingSDKPermissions: make(map[string]*pendingPermission),
+		Git:                   GetGitInfo(workingDir), // Populate Git metadata
 	}
 
 	// Set up activation function

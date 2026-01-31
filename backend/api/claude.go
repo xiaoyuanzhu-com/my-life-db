@@ -380,7 +380,6 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"createdAt":    entry.Created,
 			"lastActivity": entry.Modified,
 			"messageCount": entry.MessageCount,
-			"gitBranch":    entry.GitBranch,
 			"isSidechain":  entry.IsSidechain,
 		}
 
@@ -390,9 +389,20 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			sessionData["status"] = activeSession.Status
 			sessionData["processId"] = activeSession.ProcessID
 			sessionData["clients"] = len(activeSession.Clients)
+			// Use live Git info from active session
+			if activeSession.Git != nil {
+				sessionData["git"] = activeSession.Git
+			}
 		} else {
 			sessionData["isActive"] = false
 			sessionData["status"] = "archived"
+			// Build Git info from index entry for archived sessions
+			if entry.GitBranch != "" {
+				sessionData["git"] = map[string]interface{}{
+					"isRepo": true,
+					"branch": entry.GitBranch,
+				}
+			}
 		}
 
 		result = append(result, sessionData)
@@ -1031,3 +1041,4 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	<-pollDone
 	<-pingDone
 }
+

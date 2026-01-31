@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +30,13 @@ type pendingPermission struct {
 	toolName  string
 	requestID string
 	ch        chan PermissionResponse
+}
+
+// GitInfo contains metadata about a Git repository
+type GitInfo struct {
+	IsRepo    bool   `json:"isRepo"`              // Whether the working dir is a Git repository
+	Branch    string `json:"branch,omitempty"`    // Current branch name
+	RemoteURL string `json:"remoteUrl,omitempty"` // Origin remote URL
 }
 
 // SessionMode defines how a session communicates with the Claude CLI
@@ -55,7 +64,8 @@ type Session struct {
 	LastActivity time.Time   `json:"lastActivity"`
 	Status       string      `json:"status"` // "archived", "active", "dead"
 	Title        string      `json:"title"`
-	Mode         SessionMode `json:"mode"` // "cli" or "ui"
+	Mode         SessionMode `json:"mode"`    // "cli" or "ui"
+	Git          *GitInfo    `json:"git"`     // Git repository metadata (nil if not a repo)
 
 	// Internal fields (not serialized)
 	Cmd     *exec.Cmd        `json:"-"`
@@ -213,7 +223,7 @@ func (s *Session) IsActivated() bool {
 func (s *Session) ToJSON() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"id":           s.ID,
 		"processId":    s.ProcessID,
 		"workingDir":   s.WorkingDir,
@@ -224,6 +234,10 @@ func (s *Session) ToJSON() map[string]interface{} {
 		"mode":         s.Mode,
 		"clients":      len(s.Clients),
 	}
+	if s.Git != nil {
+		result["git"] = s.Git
+	}
+	return result
 }
 
 // SendInputUI sends a user message to Claude via JSON stdin (UI mode only).
@@ -672,3 +686,33 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 		}
 	}
 }
+
+// GetGitInfo retrieves Git repository information for a given directory.
+// Returns nil if the directory is not a Git repository.
+func GetGitInfo(workingDir string) *GitInfo {
+	// Check if this is a Git repository
+	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd.Dir = workingDir
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+
+	info := &GitInfo{IsRepo: true}
+
+	// Get current branch
+	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = workingDir
+	if output, err := cmd.Output(); err == nil {
+		info.Branch = strings.TrimSpace(string(output))
+	}
+
+	// Get remote URL (origin)
+	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = workingDir
+	if output, err := cmd.Output(); err == nil {
+		info.RemoteURL = strings.TrimSpace(string(output))
+	}
+
+	return info
+}
+
