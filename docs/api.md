@@ -4,6 +4,15 @@
 
 All API endpoints are prefixed with `/api`. The application uses React Router 7's file-based routing with REST conventions.
 
+## Naming Convention
+
+All JSON request/response fields use **camelCase** (e.g., `fileCount`, `createdAt`, `hasMore`).
+
+**Exceptions:**
+- OAuth token responses use snake_case per OAuth 2.0 spec (`access_token`, `refresh_token`)
+- Claude Code session data preserves Claude's original format
+- External vendor API responses (OpenAI, Aliyun) use their native formats
+
 ## Authentication
 
 ### POST /api/auth/login
@@ -378,7 +387,7 @@ Get directory tree for file browser with optional recursion.
 | `depth` | integer | `1` | Recursion depth. `1`=direct children, `2`=two levels, `0`=unlimited |
 | `limit` | integer | unlimited | Maximum nodes to return |
 | `fields` | string | all | Comma-separated fields: `path`, `type`, `size`, `modifiedAt` |
-| `folder_only` | boolean | `false` | If `true`, return folders only |
+| `folderOnly` | boolean | `false` | If `true`, return folders only |
 
 **Response:**
 ```json
@@ -543,7 +552,7 @@ Create a new task.
 {
   "type": "task-type",
   "input": { /* task-specific data */ },
-  "run_after": "ISO timestamp (optional)"
+  "runAfter": "ISO timestamp (optional)"
 }
 ```
 
@@ -580,8 +589,8 @@ Get task queue statistics.
   "pending": 10,
   "completed": 100,
   "failed": 2,
-  "pending_by_type": { "digest": 5, "search": 5 },
-  "has_ready_tasks": true
+  "pendingByType": { "digest": 5, "search": 5 },
+  "hasReadyTasks": true
 }
 ```
 
@@ -594,8 +603,8 @@ Get combined queue and worker status.
 **Response:**
 ```json
 {
-  "queue": { "pending": 10, "pending_by_type": {...}, "has_ready_tasks": true },
-  "worker": { "running": true, "paused": false, "active_tasks": 2 }
+  "queue": { "pending": 10, "pendingByType": {...}, "hasReadyTasks": true },
+  "worker": { "running": true, "paused": false, "activeTasks": 2 }
 }
 ```
 

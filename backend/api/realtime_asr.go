@@ -36,12 +36,12 @@ type ASRMessage struct {
 
 // TranscriptPayload contains transcription results
 type TranscriptPayload struct {
-	Text       string  `json:"text"`                  // Transcribed text
-	IsFinal    bool    `json:"is_final"`              // true if finalized, false if partial
-	Confidence float64 `json:"confidence,omitempty"`  // 0.0-1.0 confidence score
-	BeginTime  int     `json:"begin_time,omitempty"`  // Milliseconds from start
-	EndTime    int     `json:"end_time,omitempty"`    // Milliseconds from start
-	SpeakerID  string  `json:"speaker_id,omitempty"`  // Speaker identifier (if diarization enabled)
+	Text       string  `json:"text"`                 // Transcribed text
+	IsFinal    bool    `json:"isFinal"`              // true if finalized, false if partial
+	Confidence float64 `json:"confidence,omitempty"` // 0.0-1.0 confidence score
+	BeginTime  int     `json:"beginTime,omitempty"`  // Milliseconds from start
+	EndTime    int     `json:"endTime,omitempty"`    // Milliseconds from start
+	SpeakerID  string  `json:"speakerId,omitempty"`  // Speaker identifier (if diarization enabled)
 }
 
 // ErrorPayload contains error information
@@ -287,15 +287,15 @@ func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
 		ourMsg = ASRMessage{
 			Type: "transcript",
 			Payload: map[string]interface{}{
-				"text":       transcriptPayload.Text,
-				"is_final":   transcriptPayload.IsFinal,
-				"begin_time": transcriptPayload.BeginTime,
-				"end_time":   transcriptPayload.EndTime,
+				"text":      transcriptPayload.Text,
+				"isFinal":   transcriptPayload.IsFinal,
+				"beginTime": transcriptPayload.BeginTime,
+				"endTime":   transcriptPayload.EndTime,
 			},
 		}
 
 		if speakerID != "" {
-			ourMsg.Payload["speaker_id"] = speakerID
+			ourMsg.Payload["speakerId"] = speakerID
 		}
 
 	case "task-finished":
@@ -391,9 +391,9 @@ func sendError(conn *websocket.Conn, errMsg string) {
 
 // ASRRequest represents the request for non-realtime ASR
 type ASRRequest struct {
-	FileURL string `json:"file_url,omitempty"`       // URL to audio file (e.g., presigned OSS URL)
-	FilePath string `json:"file_path,omitempty"`     // Local file path (absolute or relative to app data dir)
-	Diarization bool `json:"diarization,omitempty"`  // Enable speaker diarization
+	FileURL     string `json:"fileUrl,omitempty"`     // URL to audio file (e.g., presigned OSS URL)
+	FilePath    string `json:"filePath,omitempty"`    // Local file path (absolute or relative to app data dir)
+	Diarization bool   `json:"diarization,omitempty"` // Enable speaker diarization
 }
 
 // ASRHandler processes audio through non-realtime ASR (Aliyun Fun-ASR)

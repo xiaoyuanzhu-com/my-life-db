@@ -329,7 +329,7 @@ func parseFields(fieldsParam string) fieldSet {
 //   - depth: recursion depth, 1=direct children, 0=unlimited (default: 1)
 //   - limit: max nodes to return (default: unlimited)
 //   - fields: comma-separated fields to include (default: all)
-//   - folder_only: if true, return folders only (default: false)
+//   - folderOnly: if true, return folders only (default: false)
 func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	requestedPath := c.Query("path")
 
@@ -350,7 +350,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	}
 
 	// Parse folder filter
-	foldersOnly := c.Query("folder_only") == "true"
+	foldersOnly := c.Query("folderOnly") == "true"
 
 	// Parse fields
 	fields := parseFields(c.Query("fields"))

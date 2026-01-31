@@ -39,7 +39,7 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
       const params = new URLSearchParams({
         path: relativePath,
         depth: '1',
-        folder_only: 'true',
+        folderOnly: 'true',
         fields: 'path',
       })
 
@@ -75,7 +75,7 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     const init = async () => {
       const params = new URLSearchParams({
         depth: '0',
-        folder_only: 'true',
+        folderOnly: 'true',
         fields: 'path',
       })
       const response = await api.get(`/api/library/tree?${params}`)

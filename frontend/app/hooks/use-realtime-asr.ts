@@ -106,13 +106,13 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
             case 'transcript': {
               // Extract transcription from our format
               const text = payload?.text || '';
-              const isFinal = payload?.is_final || false;
+              const isFinal = payload?.isFinal || false;
               const hasText = text.trim().length > 0;
 
               console.log('🗣️ Transcript:', JSON.stringify({ text, isFinal }));
 
               // Update transcript state
-              // Backend sends progressive FULL updates per sentence, then finalizes with is_final: true
+              // Backend sends progressive FULL updates per sentence, then finalizes with isFinal: true
               if (isFinal && hasText) {
                 // Final: Append to accumulated transcript, clear partial
                 setRawTranscript(prev => prev ? `${prev} ${text}` : text);
