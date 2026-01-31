@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '~/components/ui/select'
 import { useAuth } from '~/contexts/auth-context'
+import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
 
@@ -193,6 +194,12 @@ export default function ClaudePage() {
       setLoading(false)
     }
   }
+
+  // Refresh session list when titles change (SSE from backend)
+  useClaudeSessionNotifications({
+    onSessionUpdated: useCallback(() => loadSessions(), [statusFilter]),
+    enabled: isAuthenticated,
+  })
 
   // Load more sessions (infinite scroll)
   const loadMoreSessions = useCallback(async () => {

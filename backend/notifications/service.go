@@ -9,12 +9,13 @@ import (
 type EventType string
 
 const (
-	EventInboxChanged   EventType = "inbox-changed"
-	EventLibraryChanged EventType = "library-changed"
-	EventPinChanged     EventType = "pin-changed"
-	EventDigestUpdate   EventType = "digest-update"
-	EventPreviewUpdated EventType = "preview-updated"
-	EventConnected      EventType = "connected"
+	EventInboxChanged         EventType = "inbox-changed"
+	EventLibraryChanged       EventType = "library-changed"
+	EventPinChanged           EventType = "pin-changed"
+	EventDigestUpdate         EventType = "digest-update"
+	EventPreviewUpdated       EventType = "preview-updated"
+	EventConnected            EventType = "connected"
+	EventClaudeSessionUpdated EventType = "claude-session-updated"
 )
 
 // Event represents a notification event
@@ -130,6 +131,19 @@ func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
 		Path:      path,
 		Data: map[string]interface{}{
 			"previewType": previewType,
+		},
+	})
+}
+
+// NotifyClaudeSessionUpdated sends a claude-session-updated event
+// Used when Claude session metadata changes (title, summary, message count, status)
+func (s *Service) NotifyClaudeSessionUpdated(sessionID string, operation string) {
+	s.Notify(Event{
+		Type:      EventClaudeSessionUpdated,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Data: map[string]interface{}{
+			"sessionId": sessionID,
+			"operation": operation,
 		},
 	})
 }

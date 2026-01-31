@@ -15,6 +15,10 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
+// SessionUpdateCallback is called when a session is created, updated, or deleted.
+// operation is one of: "created", "updated", "deleted"
+type SessionUpdateCallback func(sessionID string, operation string)
+
 // SessionIndexCache provides an in-memory cache of Claude session metadata.
 // It lazily initializes on first access by:
 // 1. Reading all sessions-index.json files
@@ -33,6 +37,9 @@ type SessionIndexCache struct {
 
 	// Path to watch
 	projectsDir string
+
+	// Optional callback for session updates (used for SSE notifications)
+	onUpdate SessionUpdateCallback
 }
 
 // CachedSessionEntry holds session metadata in the cache
@@ -71,6 +78,14 @@ func NewSessionIndexCache() *SessionIndexCache {
 		ctx:         ctx,
 		cancel:      cancel,
 	}
+}
+
+// SetUpdateCallback sets the callback function for session updates.
+// This should be called before the cache is first accessed (before initialization).
+func (c *SessionIndexCache) SetUpdateCallback(callback SessionUpdateCallback) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onUpdate = callback
 }
 
 // GetAll returns all cached session entries.
@@ -465,17 +480,46 @@ func (c *SessionIndexCache) handleFSEvent(event fsnotify.Event) {
 		// New or modified JSONL - parse and update cache
 		if cacheEntry := c.parseJSONLFile(sessionID, event.Name); cacheEntry != nil {
 			c.mu.Lock()
+			existingEntry, existed := c.entries[sessionID]
+
+			// Determine if we should notify (only for meaningful changes)
+			// We only notify when:
+			// 1. Session is newly created, OR
+			// 2. Display title changed (summary/customTitle updated)
+			shouldNotify := !existed
+			if existed && existingEntry.DisplayTitle != cacheEntry.DisplayTitle {
+				shouldNotify = true
+			}
+
 			c.entries[sessionID] = cacheEntry
+			callback := c.onUpdate
 			c.mu.Unlock()
-			log.Debug().Str("sessionId", sessionID).Str("op", event.Op.String()).Msg("updated session in cache")
+
+			operation := "updated"
+			if !existed {
+				operation = "created"
+			}
+			log.Debug().Str("sessionId", sessionID).Str("op", event.Op.String()).Str("operation", operation).Bool("notify", shouldNotify).Msg("updated session in cache")
+
+			// Notify listeners (SSE) only for meaningful changes
+			// This prevents notification storms during active conversations
+			if callback != nil && shouldNotify {
+				callback(sessionID, operation)
+			}
 		}
 
 	case event.Op&fsnotify.Remove != 0, event.Op&fsnotify.Rename != 0:
 		// Removed JSONL - remove from cache
 		c.mu.Lock()
 		delete(c.entries, sessionID)
+		callback := c.onUpdate
 		c.mu.Unlock()
 		log.Debug().Str("sessionId", sessionID).Msg("removed session from cache")
+
+		// Notify listeners (SSE) about the deletion
+		if callback != nil {
+			callback(sessionID, "deleted")
+		}
 	}
 }
 

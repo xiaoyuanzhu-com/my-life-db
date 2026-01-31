@@ -463,6 +463,31 @@ func (s *Session) AddMessage(rawJSON []byte) {
 | Session index | `backend/claude/session_index_cache.go` |
 | Message types | `backend/claude/models/*.go` |
 
+## Session List SSE Notifications
+
+The session list auto-refreshes when session titles change.
+
+### How It Works
+
+```
+Claude CLI writes JSONL
+    ↓
+SessionIndexCache (fsnotify) — only notifies if DisplayTitle changed
+    ↓
+SSE "claude-session-updated" event
+    ↓
+Frontend calls loadSessions()
+```
+
+**Key point**: The backend filters out most file writes. Only title changes trigger notifications, so no debouncing needed on frontend.
+
+### Files
+
+- `backend/claude/session_index_cache.go` — compares DisplayTitle, calls callback
+- `backend/notifications/service.go` — `NotifyClaudeSessionUpdated()`
+- `frontend/app/hooks/use-notifications.ts` — `useClaudeSessionNotifications` hook
+- `frontend/app/routes/claude.tsx` — uses hook to call `loadSessions()`
+
 ## Testing
 
 - Use real Claude CLI sessions for integration testing
@@ -470,3 +495,4 @@ func (s *Session) AddMessage(rawJSON []byte) {
 - Verify unknown message types are preserved (forward compatibility)
 - Test permission flow: request → UI → response → Claude continues
 - Test always-allow: subsequent requests for same tool auto-approve
+- Test session list refresh: start a new session, verify title appears in sidebar after Claude generates summary

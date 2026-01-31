@@ -48,8 +48,8 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
 
-	// Initialize Claude Code manager
-	if err := api.InitClaudeManager(); err != nil {
+	// Initialize Claude Code manager with SSE notification support
+	if err := api.InitClaudeManagerWithNotifications(srv.Notifications()); err != nil {
 		log.Fatal().Err(err).Msg("failed to initialize claude manager")
 	}
 

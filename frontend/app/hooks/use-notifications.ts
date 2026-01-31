@@ -295,3 +295,37 @@ export function useLibraryNotifications(options: UseLibraryNotificationsOptions)
     };
   }, [enabled, debouncedOnChange]);
 }
+
+interface UseClaudeSessionNotificationsOptions {
+  onSessionUpdated: () => void;
+  enabled?: boolean;
+}
+
+/**
+ * Hook for Claude session update notifications.
+ * Triggers when session metadata changes (title updates, new sessions, deletions).
+ *
+ * Note: The backend only sends notifications when display titles actually change,
+ * not on every message write. This is already filtered server-side.
+ */
+export function useClaudeSessionNotifications(options: UseClaudeSessionNotificationsOptions) {
+  const { onSessionUpdated, enabled = true } = options;
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const listener = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'claude-session-updated') {
+          onSessionUpdated();
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    };
+
+    const unsubscribe = subscribe(listener);
+    return unsubscribe;
+  }, [enabled, onSessionUpdated]);
+}

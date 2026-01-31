@@ -16,19 +16,34 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
 var claudeManager *claude.Manager
 
-// InitClaudeManager initializes the Claude session manager
-func InitClaudeManager() error {
+// InitClaudeManagerWithNotifications initializes the Claude session manager with notification support
+func InitClaudeManagerWithNotifications(notifService *notifications.Service) error {
 	var err error
 	claudeManager, err = claude.NewManager()
 	if err != nil {
 		return err
 	}
-	log.Info().Msg("Claude Code manager initialized")
+
+	// Wire up SSE notifications for session updates
+	if notifService != nil {
+		claudeManager.GetIndexCache().SetUpdateCallback(func(sessionID, operation string) {
+			notifService.NotifyClaudeSessionUpdated(sessionID, operation)
+		})
+	}
+
+	log.Info().Msg("Claude Code manager initialized with notifications")
 	return nil
+}
+
+// InitClaudeManager initializes the Claude session manager (without notifications)
+// Deprecated: Use InitClaudeManagerWithNotifications instead
+func InitClaudeManager() error {
+	return InitClaudeManagerWithNotifications(nil)
 }
 
 // ShutdownClaudeManager gracefully shuts down the Claude session manager
