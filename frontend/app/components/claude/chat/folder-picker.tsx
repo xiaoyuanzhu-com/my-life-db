@@ -100,14 +100,17 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
       setSearch(displayPath)
       fetchChildren(pathToBrowse)
 
-      // Move cursor to end
-      requestAnimationFrame(() => {
-        const input = inputRef.current
-        if (input) {
-          const len = displayPath.length
-          input.setSelectionRange(len, len)
-        }
-      })
+      // Move cursor to end - skip on mobile to avoid opening keyboard
+      const isMobile = window.matchMedia('(max-width: 768px)').matches
+      if (!isMobile) {
+        requestAnimationFrame(() => {
+          const input = inputRef.current
+          if (input) {
+            const len = displayPath.length
+            input.setSelectionRange(len, len)
+          }
+        })
+      }
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -118,14 +121,17 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     setSearch(displayPath)
     fetchChildren(path)
 
-    // Move cursor to end
-    requestAnimationFrame(() => {
-      const input = inputRef.current
-      if (input) {
-        const len = displayPath.length
-        input.setSelectionRange(len, len)
-      }
-    })
+    // Move cursor to end - skip on mobile to avoid opening keyboard
+    const isMobile = window.matchMedia('(max-width: 768px)').matches
+    if (!isMobile) {
+      requestAnimationFrame(() => {
+        const input = inputRef.current
+        if (input) {
+          const len = displayPath.length
+          input.setSelectionRange(len, len)
+        }
+      })
+    }
   }
 
   // When popover closes, confirm selection
