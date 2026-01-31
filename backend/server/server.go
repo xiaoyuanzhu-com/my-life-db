@@ -125,10 +125,17 @@ func (s *Server) setupRouter() {
 	}
 
 	// Gzip compression (skip SSE and WebSocket endpoints)
-	s.router.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
-		"/api/notifications/stream", // SSE - needs streaming
-		"/api/asr/realtime",         // WebSocket - protocol upgrade
-	})))
+	// Note: WithExcludedPathsRegexs is used for routes with dynamic parameters
+	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
+		gzip.WithExcludedPaths([]string{
+			"/api/notifications/stream", // SSE - needs streaming
+			"/api/asr/realtime",         // WebSocket - protocol upgrade
+		}),
+		gzip.WithExcludedPathsRegexs([]string{
+			"/api/claude/sessions/.*/ws",        // WebSocket - terminal I/O
+			"/api/claude/sessions/.*/subscribe", // WebSocket - session updates
+		}),
+	))
 
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)

@@ -114,9 +114,17 @@ export function useSessionWebSocket(
         }
 
         ws.onclose = () => {
-          wsRef.current = null
+          // Only process if this is still the current WebSocket
+          // (prevents race where old WS's onclose interferes with new connection)
+          const isCurrentWs = wsRef.current === ws
+          if (isCurrentWs) {
+            wsRef.current = null
+          }
 
           if (!isComponentActiveRef.current) return
+
+          // Don't trigger reconnection if we've already started a new connection
+          if (!isCurrentWs) return
 
           // Calculate delay with exponential backoff, capped at maxDelay
           const delay = Math.min(baseDelay * Math.pow(2, attempts - 1), maxDelay)
