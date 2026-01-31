@@ -428,26 +428,19 @@ export function ChatInterface({
     }
   }, [])
 
-  // Clear rawMessages on WebSocket reconnection to avoid duplicates
-  // When the server restarts, the client reconnects and the server resends all cached messages.
-  // Without clearing, messages could duplicate (especially those without stable UUIDs).
+  // Track reconnection for hasConnected state
+  //
+  // UX REQUIREMENT: Seamless reconnection
+  // - If scrolled to middle: stay at same position after reconnect
+  // - If stuck to bottom: remain stuck to bottom after reconnect
+  //
+  // Messages are NOT cleared on reconnect - the uuid-based deduplication in handleMessage
+  // ensures incoming messages either update existing ones or append new ones seamlessly.
+  // This keeps the scroll position stable and avoids UI flicker.
   useEffect(() => {
     if (ws.connectionStatus === 'connected') {
-      if (wasConnectedRef.current) {
-        // This is a reconnection - clear state to receive fresh messages from server
-        setRawMessages([])
-        setActiveTodos([])
-        setProgressMessage(null)
-        permissions.reset()
-        initialLoadCompleteRef.current = false
-        if (initialLoadTimerRef.current) {
-          clearTimeout(initialLoadTimerRef.current)
-          initialLoadTimerRef.current = null
-        }
-      }
       wasConnectedRef.current = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
   }, [ws.connectionStatus])
 
   // ============================================================================
