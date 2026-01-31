@@ -5,6 +5,7 @@ import { TodoPanel } from './todo-panel'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
 import { useSessionWebSocket, usePermissions, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
 import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
+import type { PermissionMode } from './permission-mode-selector'
 import {
   buildToolResultMap,
   hasToolUseResult,
@@ -73,6 +74,9 @@ export function ChatInterface({
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
+
+  // Permission mode state - tracks current session permission mode
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
 
   // Working directory (read-only for existing sessions)
   const workingDir = initialWorkingDir
@@ -203,8 +207,14 @@ export function ChatInterface({
         return
       }
 
-      // Handle control_response - delegate to permissions hook
+      // Handle control_response - for permission tool responses and permission mode changes
       if (msg.type === 'control_response') {
+        // Check if this is a set_permission_mode response
+        const response = msg.response as { subtype?: string; mode?: string } | undefined
+        if (response?.subtype === 'set_permission_mode' && response.mode) {
+          setPermissionMode(response.mode as PermissionMode)
+        }
+        // Also delegate to permissions hook (for can_use_tool responses)
         permissions.handleControlResponse({
           request_id: msg.request_id as string,
         })
@@ -395,6 +405,7 @@ export function ChatInterface({
     setActiveTodos([])
     setError(null)
     setProgressMessage(null)
+    setPermissionMode('default')
     permissions.reset()
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
@@ -549,6 +560,30 @@ export function ChatInterface({
     }
   }, [isWorking, ws.sendMessage])
 
+  // Handle permission mode change - send control_request to backend via WebSocket
+  const handlePermissionModeChange = useCallback(
+    async (mode: PermissionMode) => {
+      // Optimistically update UI
+      setPermissionMode(mode)
+
+      try {
+        await ws.sendMessage({
+          type: 'control_request',
+          request_id: `set_permission_mode_${Date.now()}`,
+          request: {
+            subtype: 'set_permission_mode',
+            mode,
+          },
+        })
+      } catch (error) {
+        console.error('[ChatInterface] Failed to set permission mode:', error)
+        setError('Failed to change permission mode')
+        setTimeout(() => setError(null), 3000)
+      }
+    },
+    [ws.sendMessage]
+  )
+
   // Send initial message once connected (for new session flow)
   useEffect(() => {
     if (
@@ -608,6 +643,8 @@ export function ChatInterface({
             connectionStatus={effectiveConnectionStatus}
             workingDir={workingDir}
             slashCommands={slashCommands}
+            permissionMode={permissionMode}
+            onPermissionModeChange={handlePermissionModeChange}
           />
         </div>
 

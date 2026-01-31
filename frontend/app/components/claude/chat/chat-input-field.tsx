@@ -4,6 +4,7 @@ import { cn } from '~/lib/utils'
 import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
 import { FileTagPopover } from './file-tag-popover'
+import { PermissionModeSelector, type PermissionMode } from './permission-mode-selector'
 import { filterCommands } from './hooks'
 import { useFileTag, useFilteredFiles } from './hooks/use-file-tag'
 import type { SlashCommand } from './slash-commands'
@@ -33,6 +34,10 @@ interface ChatInputFieldProps {
   onWorkingDirChange?: (path: string) => void
   /** Available slash commands */
   slashCommands?: SlashCommand[]
+  /** Current permission mode */
+  permissionMode?: PermissionMode
+  /** Callback when permission mode changes */
+  onPermissionModeChange?: (mode: PermissionMode) => void
 }
 
 export function ChatInputField({
@@ -48,6 +53,8 @@ export function ChatInputField({
   workingDir,
   onWorkingDirChange,
   slashCommands = [],
+  permissionMode = 'default',
+  onPermissionModeChange,
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -413,6 +420,15 @@ export function ChatInputField({
           >
             /
           </button>
+
+          {/* Permission mode selector */}
+          {onPermissionModeChange && (
+            <PermissionModeSelector
+              value={permissionMode}
+              onChange={onPermissionModeChange}
+              disabled={disabled || hasPermission}
+            />
+          )}
 
           {/* Submit / Stop button */}
           {/* Send button takes priority when there's text input */}

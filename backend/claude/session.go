@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -63,9 +62,10 @@ type Session struct {
 	CreatedAt    time.Time   `json:"createdAt"`
 	LastActivity time.Time   `json:"lastActivity"`
 	Status       string      `json:"status"` // "archived", "active", "dead"
-	Title        string      `json:"title"`
-	Mode         SessionMode `json:"mode"`    // "cli" or "ui"
-	Git          *GitInfo    `json:"git"`     // Git repository metadata (nil if not a repo)
+	Title          string             `json:"title"`
+	Mode           SessionMode        `json:"mode"`           // "cli" or "ui"
+	PermissionMode sdk.PermissionMode `json:"permissionMode"` // "default", "acceptEdits", "plan", "bypassPermissions"
+	Git            *GitInfo           `json:"git"`            // Git repository metadata (nil if not a repo)
 
 	// Internal fields (not serialized)
 	Cmd     *exec.Cmd        `json:"-"`
@@ -224,15 +224,16 @@ func (s *Session) ToJSON() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := map[string]interface{}{
-		"id":           s.ID,
-		"processId":    s.ProcessID,
-		"workingDir":   s.WorkingDir,
-		"createdAt":    s.CreatedAt,
-		"lastActivity": s.LastActivity,
-		"status":       s.Status,
-		"title":        s.Title,
-		"mode":         s.Mode,
-		"clients":      len(s.Clients),
+		"id":             s.ID,
+		"processId":      s.ProcessID,
+		"workingDir":     s.WorkingDir,
+		"createdAt":      s.CreatedAt,
+		"lastActivity":   s.LastActivity,
+		"status":         s.Status,
+		"title":          s.Title,
+		"mode":           s.Mode,
+		"permissionMode": s.PermissionMode,
+		"clients":        len(s.Clients),
 	}
 	if s.Git != nil {
 		result["git"] = s.Git
@@ -295,6 +296,26 @@ func (s *Session) SetModel(model string) error {
 	}
 
 	return s.sdkClient.SetModel(model)
+}
+
+// SetPermissionMode changes the permission mode during conversation (UI mode only).
+// For SDK mode, uses the SDK client's SetPermissionMode mechanism.
+//
+// Valid modes:
+//   - sdk.PermissionModeDefault: Standard permission behavior
+//   - sdk.PermissionModeAcceptEdits: Auto-accept file edits
+//   - sdk.PermissionModePlan: Planning mode (no tool execution)
+//   - sdk.PermissionModeBypassPermissions: Allow all tools (use with caution)
+func (s *Session) SetPermissionMode(mode sdk.PermissionMode) error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("SetPermissionMode called on non-UI session")
+	}
+
+	if s.sdkClient == nil {
+		return fmt.Errorf("Cannot set permission mode: session not active (no running process)")
+	}
+
+	return s.sdkClient.SetPermissionMode(mode)
 }
 
 // SendControlResponse sends a response to a control request (UI mode only)

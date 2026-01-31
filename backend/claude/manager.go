@@ -354,12 +354,12 @@ func (m *Manager) forceKillAllSessions() {
 
 // CreateSession spawns a new Claude Code process
 // If resumeSessionID is provided, it will resume from that session's conversation history
-func (m *Manager) CreateSession(workingDir, title string, mode SessionMode) (*Session, error) {
-	return m.CreateSessionWithID(workingDir, title, "", mode)
+func (m *Manager) CreateSession(workingDir, title string, mode SessionMode, permissionMode sdk.PermissionMode) (*Session, error) {
+	return m.CreateSessionWithID(workingDir, title, "", mode, permissionMode)
 }
 
 // CreateSessionWithID spawns a new Claude Code process with an optional session ID to resume
-func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string, mode SessionMode) (*Session, error) {
+func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string, mode SessionMode, permissionMode sdk.PermissionMode) (*Session, error) {
 	// Quick operations under lock: generate ID, create session object
 	m.mu.Lock()
 
@@ -391,11 +391,17 @@ func (m *Manager) CreateSessionWithID(workingDir, title, resumeSessionID string,
 		mode = ModeUI
 	}
 
+	// Default permission mode if not specified
+	if permissionMode == "" {
+		permissionMode = sdk.PermissionModeDefault
+	}
+
 	session := &Session{
 		ID:                    sessionID,
 		WorkingDir:            workingDir,
 		Title:                 title,
 		Mode:                  mode,
+		PermissionMode:        permissionMode,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
 		Status:                "active",
@@ -537,6 +543,7 @@ func (m *Manager) createShellSession(id, workingDir, title string, mode SessionM
 		WorkingDir:            workingDir,
 		Title:                 title,
 		Mode:                  mode,
+		PermissionMode:        sdk.PermissionModeDefault, // Default for historical sessions
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
 		Status:                "archived",
@@ -1030,7 +1037,7 @@ func (m *Manager) createSessionWithSDK(session *Session, resume bool) error {
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                session.WorkingDir,
 		AllowedTools:       allowedTools,
-		PermissionMode:     sdk.PermissionModeDefault,
+		PermissionMode:     session.PermissionMode,
 		CanUseTool:         session.CreatePermissionCallback(),
 		SkipInitialization: true, // Standalone CLI doesn't support initialize control request
 	}

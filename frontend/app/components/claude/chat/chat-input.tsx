@@ -7,6 +7,7 @@ import { PermissionCard } from './permission-card'
 import { QuestionCard } from './question-card'
 import { ChatInputField } from './chat-input-field'
 import type { SlashCommand } from './slash-commands'
+import type { PermissionMode } from './permission-mode-selector'
 
 // Re-export ConnectionStatus for backwards compatibility
 export type { ConnectionStatus }
@@ -51,6 +52,10 @@ interface ChatInputProps {
   onWorkingDirChange?: (path: string) => void
   /** Available slash commands */
   slashCommands?: SlashCommand[]
+  /** Current permission mode */
+  permissionMode?: PermissionMode
+  /** Callback when permission mode changes */
+  onPermissionModeChange?: (mode: PermissionMode) => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -71,6 +76,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     workingDir,
     onWorkingDirChange,
     slashCommands = [],
+    permissionMode = 'default',
+    onPermissionModeChange,
   },
   ref
 ) {
@@ -202,6 +209,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               workingDir={workingDir}
               onWorkingDirChange={onWorkingDirChange}
               slashCommands={slashCommands}
+              permissionMode={permissionMode}
+              onPermissionModeChange={onPermissionModeChange}
             />
           </div>
         </div>

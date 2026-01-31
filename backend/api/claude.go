@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
+	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -76,6 +77,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		Title           string `json:"title"`
 		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
 		Mode            string `json:"mode"`            // Optional: "ui" (default) or "cli"
+		PermissionMode  string `json:"permissionMode"`  // Optional: "default", "acceptEdits", "plan", "bypassPermissions"
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -94,8 +96,19 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		mode = claude.ModeCLI
 	}
 
+	// Parse permission mode (default to "default")
+	permissionMode := sdk.PermissionModeDefault
+	switch body.PermissionMode {
+	case "acceptEdits":
+		permissionMode = sdk.PermissionModeAcceptEdits
+	case "plan":
+		permissionMode = sdk.PermissionModePlan
+	case "bypassPermissions":
+		permissionMode = sdk.PermissionModeBypassPermissions
+	}
+
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode)
+	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
@@ -997,6 +1010,77 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				} else {
 					log.Info().Str("sessionId", sessionID).Msg("session interrupted via WebSocket")
 				}
+
+			case "set_permission_mode":
+				// Parse mode from request
+				var modeReq struct {
+					Request struct {
+						Mode string `json:"mode"`
+					} `json:"request"`
+				}
+				if err := json.Unmarshal(msg, &modeReq); err != nil {
+					log.Debug().Err(err).Msg("Failed to parse set_permission_mode request")
+					break
+				}
+
+				// Validate and convert mode
+				var permMode sdk.PermissionMode
+				switch modeReq.Request.Mode {
+				case "default":
+					permMode = sdk.PermissionModeDefault
+				case "acceptEdits":
+					permMode = sdk.PermissionModeAcceptEdits
+				case "plan":
+					permMode = sdk.PermissionModePlan
+				case "bypassPermissions":
+					permMode = sdk.PermissionModeBypassPermissions
+				default:
+					log.Warn().Str("mode", modeReq.Request.Mode).Msg("Invalid permission mode")
+					errMsg := map[string]any{
+						"type":       "control_response",
+						"request_id": controlReq.RequestID,
+						"error":      "Invalid permission mode: " + modeReq.Request.Mode,
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+					break
+				}
+
+				// Set the permission mode
+				if err := session.SetPermissionMode(permMode); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("mode", modeReq.Request.Mode).Msg("failed to set permission mode")
+					errMsg := map[string]any{
+						"type":       "control_response",
+						"request_id": controlReq.RequestID,
+						"error":      "Failed to set permission mode: " + err.Error(),
+					}
+					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+					}
+				} else {
+					// Update session's stored permission mode
+					session.PermissionMode = permMode
+
+					log.Info().
+						Str("sessionId", sessionID).
+						Str("mode", modeReq.Request.Mode).
+						Msg("permission mode changed")
+
+					// Send control_response confirmation to all clients
+					responseMsg := map[string]any{
+						"type":       "control_response",
+						"request_id": controlReq.RequestID,
+						"response": map[string]any{
+							"subtype": "set_permission_mode",
+							"mode":    modeReq.Request.Mode,
+						},
+					}
+					if msgBytes, err := json.Marshal(responseMsg); err == nil {
+						session.BroadcastUIMessage(msgBytes)
+					}
+				}
+
 			default:
 				log.Debug().Str("subtype", controlReq.Request.Subtype).Msg("Unknown control_request subtype")
 			}
