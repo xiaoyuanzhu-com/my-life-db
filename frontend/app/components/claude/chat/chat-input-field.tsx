@@ -60,92 +60,66 @@ export function ChatInputField({
   // File tagging state
   const { files: allFiles, loading: filesLoading } = useFileTag(workingDir)
 
-  // Find slash command at cursor position
-  // Only active if cursor is within "/command" portion (no space after)
-  const getSlashCommandAtCursor = () => {
-    // Look backwards from cursor to find "/"
-    let slashIdx = -1
+  // Unified input mode detection - returns exactly one mode
+  // This prevents conflicting states where both slash and file tag could be active
+  type InputMode =
+    | { type: 'slash'; triggerIndex: number; query: string; textBefore: string; textAfter: string }
+    | { type: 'fileTag'; triggerIndex: number; query: string; textBefore: string; textAfter: string }
+    | { type: 'none' }
+
+  const getInputModeAtCursor = (): InputMode => {
+    // First, find the start of the current token (go backwards until whitespace)
+    let tokenStart = cursorPos
     for (let i = cursorPos - 1; i >= 0; i--) {
       const char = content[i]
-      if (char === '/') {
-        slashIdx = i
-        break
-      }
-      // Stop if we hit a space (command ends at space)
-      if (char === ' ' || char === '\n') {
-        break
-      }
-    }
-    if (slashIdx === -1) return null
-
-    // Check if there's a space between slash and cursor
-    const textAfterSlash = content.slice(slashIdx + 1, cursorPos)
-    if (textAfterSlash.includes(' ') || textAfterSlash.includes('\n')) {
-      return null
-    }
-
-    // Find end of command (next space or end of string)
-    let endIdx = content.length
-    for (let i = cursorPos; i < content.length; i++) {
-      if (content[i] === ' ' || content[i] === '\n') {
-        endIdx = i
-        break
-      }
-    }
-
-    return {
-      slashIndex: slashIdx,
-      query: content.slice(slashIdx + 1, endIdx),
-      textBefore: content.slice(0, slashIdx),
-      textAfter: content.slice(endIdx),
-    }
-  }
-
-  const slashCommand = getSlashCommandAtCursor()
-  const isSlashMode = slashCommand !== null
-  const slashQuery = slashCommand?.query ?? ''
-  const textBeforeSlash = slashCommand?.textBefore ?? ''
-  const textAfterSlash = slashCommand?.textAfter ?? ''
-
-  // Find file tag at cursor position (@ followed by partial path)
-  const getFileTagAtCursor = () => {
-    // Look backwards from cursor to find "@"
-    let atIdx = -1
-    for (let i = cursorPos - 1; i >= 0; i--) {
-      const char = content[i]
-      if (char === '@') {
-        atIdx = i
-        break
-      }
-      // Stop if we hit whitespace (tag ends at whitespace)
       if (char === ' ' || char === '\n' || char === '\t') {
+        tokenStart = i + 1
         break
       }
+      if (i === 0) {
+        tokenStart = 0
+      }
     }
-    if (atIdx === -1) return null
 
-    // Find end of tag (next whitespace or end of string)
-    let endIdx = content.length
+    // Check if token starts with a trigger character
+    const firstChar = content[tokenStart]
+    if (firstChar !== '/' && firstChar !== '@') {
+      return { type: 'none' }
+    }
+
+    // Find end of the token (next whitespace or end of string)
+    let tokenEnd = content.length
     for (let i = cursorPos; i < content.length; i++) {
       if (content[i] === ' ' || content[i] === '\n' || content[i] === '\t') {
-        endIdx = i
+        tokenEnd = i
         break
       }
     }
 
-    return {
-      atIndex: atIdx,
-      query: content.slice(atIdx + 1, endIdx),
-      textBefore: content.slice(0, atIdx),
-      textAfter: content.slice(endIdx),
+    const result = {
+      triggerIndex: tokenStart,
+      query: content.slice(tokenStart + 1, tokenEnd),
+      textBefore: content.slice(0, tokenStart),
+      textAfter: content.slice(tokenEnd),
     }
+
+    return firstChar === '/'
+      ? { type: 'slash', ...result }
+      : { type: 'fileTag', ...result }
   }
 
-  const fileTag = getFileTagAtCursor()
-  const isFileTagMode = fileTag !== null && !isSlashMode // Slash mode takes priority
-  const fileTagQuery = fileTag?.query ?? ''
-  const textBeforeAt = fileTag?.textBefore ?? ''
-  const textAfterAt = fileTag?.textAfter ?? ''
+  const inputMode = getInputModeAtCursor()
+  const isSlashMode = inputMode.type === 'slash'
+  const isFileTagMode = inputMode.type === 'fileTag'
+
+  // Extract mode-specific data
+  const slashQuery = isSlashMode ? inputMode.query : ''
+  const textBeforeSlash = isSlashMode ? inputMode.textBefore : ''
+  const textAfterSlash = isSlashMode ? inputMode.textAfter : ''
+
+  const fileTagQuery = isFileTagMode ? inputMode.query : ''
+  const textBeforeAt = isFileTagMode ? inputMode.textBefore : ''
+  const textAfterAt = isFileTagMode ? inputMode.textAfter : ''
 
   // Filter files based on query
   const filteredFiles = useFilteredFiles(allFiles, fileTagQuery)
