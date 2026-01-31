@@ -2,6 +2,7 @@
 // Replaces use-inbox-notifications and use-preview-notifications
 
 import { useEffect, useMemo } from 'react';
+import { refreshAccessToken } from '~/lib/fetch-with-refresh';
 
 // Singleton EventSource connection (shared across all hook instances)
 let sharedEventSource: EventSource | null = null;
@@ -69,8 +70,14 @@ function connectToNotifications() {
     disconnectFromNotifications();
 
     // Attempt reconnection after 5 seconds (only if there are active listeners)
+    // Refresh token first in case 401 was due to expired token
     if (connectionRefCount > 0) {
-      reconnectTimeout = setTimeout(() => {
+      reconnectTimeout = setTimeout(async () => {
+        try {
+          await refreshAccessToken();
+        } catch {
+          // Refresh failed, but still try to reconnect
+        }
         connectToNotifications();
       }, 5000);
     }
@@ -128,8 +135,14 @@ function reconnect() {
 
 // Handle page visibility changes globally
 if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible') {
+      // After sleep/wake, token may have expired - try to refresh first
+      try {
+        await refreshAccessToken();
+      } catch {
+        // Refresh failed, but still try to reconnect
+      }
       reconnect();
     }
   });
