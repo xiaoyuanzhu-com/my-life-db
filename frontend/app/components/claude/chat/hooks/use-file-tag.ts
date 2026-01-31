@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { api } from '~/lib/api'
 
 export interface FileItem {
   path: string
@@ -106,7 +107,7 @@ export function useFileTag(workingDir: string | undefined) {
           path: workingDir,
           depth: '0',
         })
-        const response = await fetch(`/api/library/tree?${params}`)
+        const response = await api.get(`/api/library/tree?${params}`)
         if (!response.ok) {
           throw new Error(`Failed to fetch files: ${response.statusText}`)
         }
