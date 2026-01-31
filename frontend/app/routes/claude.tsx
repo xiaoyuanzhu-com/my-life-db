@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
+import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import { ClaudeTerminal } from '~/components/claude/terminal'
 import { Button } from '~/components/ui/button'
 import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
@@ -79,6 +80,7 @@ export default function ClaudePage() {
   })
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>('default')
 
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
@@ -258,6 +260,7 @@ export default function ClaudePage() {
       const response = await api.post('/api/claude/sessions', {
         title: `Session ${sessions.length + 1}`,
         workingDir: newSessionWorkingDir,
+        permissionMode: newSessionPermissionMode,
       })
 
       if (response.ok) {
@@ -522,6 +525,8 @@ export default function ClaudePage() {
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
               slashCommands={BUILTIN_COMMANDS}
+              permissionMode={newSessionPermissionMode}
+              onPermissionModeChange={setNewSessionPermissionMode}
             />
           </div>
         )}
