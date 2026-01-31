@@ -47,6 +47,7 @@ interface FileTreeProps {
 
 interface TreeNodeProps {
   node: FileNode;
+  parentPath: string; // Parent's full path, empty string for root
   level: number;
   onFileOpen: (path: string, name: string) => void;
   expandedFolders: Set<string>;
@@ -103,6 +104,7 @@ function getFileIcon(filename: string) {
 
 function TreeNode({
   node,
+  parentPath,
   level,
   onFileOpen,
   expandedFolders,
@@ -128,17 +130,20 @@ function TreeNode({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isExpanded = expandedFolders.has(node.path);
-  const isSelected = node.type === 'file' && node.path === selectedFilePath;
-  const isDropTarget = dropTarget === node.path && node.type === 'folder';
-  const isDragging = draggedItem?.path === node.path;
+  // Compute full path from parent path and node name
+  const fullPath = parentPath ? `${parentPath}/${node.path}` : node.path;
+
+  const isExpanded = expandedFolders.has(fullPath);
+  const isSelected = node.type === 'file' && fullPath === selectedFilePath;
+  const isDropTarget = dropTarget === fullPath && node.type === 'folder';
+  const isDragging = draggedItem?.path === fullPath;
 
   const loadChildren = useCallback(async () => {
     if (isLoading) return;
 
     setIsLoading(true);
     try {
-      const response = await api.get(`/api/library/tree?path=${encodeURIComponent(node.path)}`);
+      const response = await api.get(`/api/library/tree?path=${encodeURIComponent(fullPath)}`);
       const data = await response.json();
       setChildren(data.children || []);
     } catch (error) {
@@ -148,7 +153,7 @@ function TreeNode({
     }
     // Note: isLoading intentionally excluded to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.path]);
+  }, [fullPath]);
 
   useEffect(() => {
     if (node.type === 'folder' && isExpanded && children.length === 0) {
@@ -165,14 +170,14 @@ function TreeNode({
 
   const handleToggle = () => {
     if (node.type === 'folder') {
-      onToggleFolder(node.path, !isExpanded);
+      onToggleFolder(fullPath, !isExpanded);
     }
   };
 
   const handleClick = () => {
     if (isRenaming) return;
     if (node.type === 'file') {
-      onFileOpen(node.path, getNodeName(node));
+      onFileOpen(fullPath, getNodeName(node));
     } else {
       handleToggle();
     }
@@ -196,7 +201,7 @@ function TreeNode({
     }
 
     try {
-      const response = await api.post('/api/library/rename', { path: node.path, newName: renameValue.trim() });
+      const response = await api.post('/api/library/rename', { path: fullPath, newName: renameValue.trim() });
 
       if (!response.ok) {
         const error = await response.json();
@@ -205,7 +210,7 @@ function TreeNode({
       }
 
       const result = await response.json();
-      onFileRenamed?.(node.path, result.newPath);
+      onFileRenamed?.(fullPath, result.newPath);
       onRefresh();
     } catch (error) {
       console.error('Failed to rename:', error);
@@ -227,7 +232,7 @@ function TreeNode({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const response = await api.delete(`/api/library/file?path=${encodeURIComponent(node.path)}`);
+      const response = await api.delete(`/api/library/file?path=${encodeURIComponent(fullPath)}`);
 
       if (!response.ok) {
         const error = await response.json();
@@ -235,7 +240,7 @@ function TreeNode({
         return;
       }
 
-      onFileDeleted?.(node.path);
+      onFileDeleted?.(fullPath);
       onRefresh();
     } catch (error) {
       console.error('Failed to delete:', error);
@@ -248,7 +253,7 @@ function TreeNode({
 
   const handleCopyPath = async () => {
     try {
-      await navigator.clipboard.writeText(node.path);
+      await navigator.clipboard.writeText(fullPath);
     } catch (error) {
       console.error('Failed to copy path:', error);
     }
@@ -257,9 +262,10 @@ function TreeNode({
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent) => {
     e.stopPropagation();
-    setDraggedItem(node);
+    // Store node with fullPath for drag operations
+    setDraggedItem({ ...node, path: fullPath });
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', node.path);
+    e.dataTransfer.setData('text/plain', fullPath);
   };
 
   const handleDragEnd = () => {
@@ -278,12 +284,12 @@ function TreeNode({
       if (hasFiles && !draggedItem) {
         // External files being dragged over folder
         e.dataTransfer.dropEffect = 'copy';
-        setDropTarget(node.path);
-      } else if (draggedItem && draggedItem.path !== node.path) {
+        setDropTarget(fullPath);
+      } else if (draggedItem && draggedItem.path !== fullPath) {
         // Internal drag - prevent dropping into self or children
-        if (!draggedItem.path.startsWith(node.path + '/')) {
+        if (!draggedItem.path.startsWith(fullPath + '/')) {
           e.dataTransfer.dropEffect = 'move';
-          setDropTarget(node.path);
+          setDropTarget(fullPath);
         }
       }
     }
@@ -292,7 +298,7 @@ function TreeNode({
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dropTarget === node.path) {
+    if (dropTarget === fullPath) {
       setDropTarget(null);
     }
   };
@@ -321,22 +327,22 @@ function TreeNode({
     }
 
     if (entries.length > 0) {
-      await onExternalFileDrop(entries, node.path);
+      await onExternalFileDrop(entries, fullPath);
       return;
     }
 
     // Handle internal drag and drop
-    if (!draggedItem || draggedItem.path === node.path) {
+    if (!draggedItem || draggedItem.path === fullPath) {
       return;
     }
 
     // Prevent dropping into self or children
-    if (draggedItem.path.startsWith(node.path + '/')) {
+    if (draggedItem.path.startsWith(fullPath + '/')) {
       return;
     }
 
     try {
-      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: node.path });
+      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: fullPath });
 
       if (!response.ok) {
         const error = await response.json();
@@ -477,6 +483,7 @@ function TreeNode({
                 <TreeNode
                   key={child.path}
                   node={child}
+                  parentPath={fullPath}
                   level={level + 1}
                   onFileOpen={onFileOpen}
                   expandedFolders={expandedFolders}
@@ -829,6 +836,7 @@ export function FileTree({
                 <TreeNode
                   key={node.path}
                   node={node}
+                  parentPath=""
                   level={0}
                   onFileOpen={onFileOpen}
                   expandedFolders={expandedFolders}

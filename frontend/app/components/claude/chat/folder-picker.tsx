@@ -53,9 +53,12 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
           setBasePath(responseBasePath)
         }
 
-        // Convert children to full paths
+        // Convert children to full paths (node.path is just the name)
+        const responsePath = data.path || ''
         const childPaths = (data.children || []).map(
-          (node: { path: string }) => `${responseBasePath}/${node.path}`
+          (node: { path: string }) => responsePath
+            ? `${responseBasePath}/${responsePath}/${node.path}`
+            : `${responseBasePath}/${node.path}`
         )
         setChildren(childPaths)
 
