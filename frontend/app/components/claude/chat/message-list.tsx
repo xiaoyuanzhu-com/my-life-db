@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
@@ -27,16 +27,20 @@ interface MessageListProps {
  * - Allowing user to scroll up to break sticky behavior
  * - Re-engaging sticky when user scrolls back to bottom
  *
+ * Additional mobile fix:
+ * - Manual scroll listener re-engages sticky when user scrolls to the bottom
+ * - Fixes issue where library doesn't re-engage after mobile momentum scrolling
+ *
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
 export function MessageList({ messages, toolResultMap, optimisticMessage, wipText, onScrollElementReady }: MessageListProps) {
-  const { scrollRef, contentRef } = useStickToBottom({
+  const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
     initial: 'instant',
     resize: 'instant',
   })
 
-  // Track scroll element for parent callback
+  // Track scroll element for parent callback and scroll listeners
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
 
   // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
@@ -54,6 +58,31 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
     },
     [scrollRef, onScrollElementReady]
   )
+
+  // Re-engage sticky when user scrolls to the bottom
+  // The library doesn't always re-engage on mobile after momentum scrolling
+  useEffect(() => {
+    const element = scrollElementRef.current
+    if (!element) return
+
+    const checkAndReengage = () => {
+      const { scrollTop, scrollHeight, clientHeight } = element
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // Re-engage sticky when at the very bottom (within 1px for rounding)
+      if (distanceFromBottom <= 1) {
+        scrollToBottom({ animation: 'instant' })
+      }
+    }
+
+    element.addEventListener('scroll', checkAndReengage, { passive: true })
+    element.addEventListener('scrollend', checkAndReengage, { passive: true })
+
+    return () => {
+      element.removeEventListener('scroll', checkAndReengage)
+      element.removeEventListener('scrollend', checkAndReengage)
+    }
+  }, [scrollToBottom])
 
   return (
     <div
