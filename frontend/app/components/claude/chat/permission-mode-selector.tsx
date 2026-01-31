@@ -68,7 +68,7 @@ export function PermissionModeSelector({
           className={cn(
             'h-8 w-8 rounded-lg',
             'flex items-center justify-center',
-            'text-muted-foreground hover:text-foreground hover:bg-muted',
+            'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             open && 'bg-accent text-foreground'
