@@ -202,6 +202,9 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	db.DeleteDigestsForFile(path)
 	db.RemovePin(path)
 
+	// Notify clients of the change
+	h.server.Notifications().NotifyLibraryChanged(path, "delete")
+
 	c.JSON(http.StatusOK, gin.H{"success": "true"})
 }
 
@@ -574,6 +577,9 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 		db.RenameFilePath(body.Path, newPath, body.NewName)
 	}
 
+	// Notify clients of the change
+	h.server.Notifications().NotifyLibraryChanged(newPath, "rename")
+
 	c.JSON(http.StatusOK, gin.H{"newPath": newPath})
 }
 
@@ -649,6 +655,9 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 		db.RenameFilePath(body.Path, newPath, fileName)
 	}
 
+	// Notify clients of the change
+	h.server.Notifications().NotifyLibraryChanged(newPath, "move")
+
 	c.JSON(http.StatusOK, gin.H{"newPath": newPath})
 }
 
@@ -708,6 +717,9 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 		CreatedAt:     now,
 		LastScannedAt: now,
 	})
+
+	// Notify clients of the change
+	h.server.Notifications().NotifyLibraryChanged(folderPath, "create")
 
 	c.JSON(http.StatusOK, gin.H{"path": folderPath})
 }

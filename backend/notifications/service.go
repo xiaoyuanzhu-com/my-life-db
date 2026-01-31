@@ -10,6 +10,7 @@ type EventType string
 
 const (
 	EventInboxChanged   EventType = "inbox-changed"
+	EventLibraryChanged EventType = "library-changed"
 	EventPinChanged     EventType = "pin-changed"
 	EventDigestUpdate   EventType = "digest-update"
 	EventPreviewUpdated EventType = "preview-updated"
@@ -85,6 +86,19 @@ func (s *Service) NotifyInboxChanged() {
 	s.Notify(Event{
 		Type:      EventInboxChanged,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// NotifyLibraryChanged sends a library-changed event
+// Used when files/folders are created, deleted, renamed, or moved in the library
+func (s *Service) NotifyLibraryChanged(path string, operation string) {
+	s.Notify(Event{
+		Type:      EventLibraryChanged,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Path:      path,
+		Data: map[string]interface{}{
+			"operation": operation,
+		},
 	})
 }
 

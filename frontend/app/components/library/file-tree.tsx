@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy, Loader2 } from 'lucide-react';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { api } from '~/lib/api';
+import { useLibraryNotifications } from '~/hooks/use-notifications';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -528,7 +529,8 @@ export function FileTree({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [pendingUploads, setPendingUploads] = useState<PendingInboxItem[]>([]);
 
-  const loadRoot = useCallback(async () => {
+  // Core tree loading function
+  const loadRootImpl = useCallback(async () => {
     try {
       const response = await api.get('/api/library/tree');
       const data = await response.json();
@@ -540,18 +542,45 @@ export function FileTree({
     }
   }, []);
 
-  useEffect(() => {
-    loadRoot();
+  // Debounced version of loadRoot to prevent excessive API calls
+  // when multiple refresh triggers happen in quick succession
+  const loadRootTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadRoot = useCallback(() => {
+    // Cancel any pending refresh
+    if (loadRootTimeoutRef.current) {
+      clearTimeout(loadRootTimeoutRef.current);
+    }
+    // Schedule a new refresh after a short delay
+    loadRootTimeoutRef.current = setTimeout(() => {
+      loadRootTimeoutRef.current = null;
+      loadRootImpl();
+    }, 100); // 100ms debounce
+  }, [loadRootImpl]);
 
-    // Subscribe to upload progress
-    let unsubscribe: (() => void) | undefined;
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (loadRootTimeoutRef.current) {
+        clearTimeout(loadRootTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Initial load (immediate, not debounced)
+  useEffect(() => {
+    loadRootImpl();
+  }, [loadRootImpl]);
+
+  // Subscribe to upload progress for showing pending uploads in tree
+  useEffect(() => {
+    let unsubscribeProgress: (() => void) | undefined;
 
     const setupUploadTracking = async () => {
       const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
 
-      unsubscribe = uploadManager.onProgress((items) => {
+      unsubscribeProgress = uploadManager.onProgress((items) => {
         // Only show library uploads (not inbox uploads)
         const libraryUploads = items.filter(item => item.destination !== 'inbox' && item.destination !== undefined);
         setPendingUploads(libraryUploads);
@@ -561,9 +590,17 @@ export function FileTree({
     setupUploadTracking();
 
     return () => {
-      unsubscribe?.();
+      unsubscribeProgress?.();
     };
-  }, [loadRoot]);
+  }, []);
+
+  // Subscribe to SSE notifications for library changes
+  // This handles ALL refresh cases: upload, delete, rename, move, create folder
+  // from any source (this tab, other tabs, external changes)
+  useLibraryNotifications({
+    onLibraryChange: loadRoot,
+    enabled: true,
+  });
 
   useEffect(() => {
     if (isCreatingFolder && newFolderInputRef.current) {
@@ -781,16 +818,7 @@ export function FileTree({
 
         await uploadManager.enqueueFile(file, undefined, destination);
       }
-
-      // Subscribe to upload completion to refresh the tree
-      const unsubscribe = uploadManager.onUploadComplete((_item, _serverPath) => {
-        loadRoot();
-      });
-
-      // Clean up subscription after 5 minutes
-      setTimeout(() => {
-        unsubscribe();
-      }, 5 * 60 * 1000);
+      // Note: Tree refresh is handled by the persistent onUploadComplete subscription in useEffect
     } catch (error) {
       console.error('[FileTree] Failed to upload files:', error);
       alert(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);

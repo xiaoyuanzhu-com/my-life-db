@@ -243,3 +243,55 @@ export function usePreviewNotifications(options: UsePreviewNotificationsOptions)
     };
   }, [enabled, onPreviewUpdated]);
 }
+
+interface UseLibraryNotificationsOptions {
+  onLibraryChange: (path: string, operation: string) => void;
+  enabled?: boolean;
+}
+
+/**
+ * Hook for library change notifications (create, delete, rename, move, upload)
+ */
+export function useLibraryNotifications(options: UseLibraryNotificationsOptions) {
+  const { onLibraryChange, enabled = true } = options;
+
+  // Debounce the callback to batch rapid notifications
+  const debouncedOnChange = useMemo(
+    () => debounce((path: string, operation: string) => onLibraryChange(path, operation), DEBOUNCE_MS),
+    [onLibraryChange]
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    // Create listener
+    const listener = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        // Ignore connection confirmation
+        if (data.type === 'connected') {
+          return;
+        }
+
+        // Listen for library-changed events
+        if (data.type === 'library-changed') {
+          const path = data.path || '';
+          const operation = data.data?.operation || 'unknown';
+          debouncedOnChange(path, operation);
+        }
+      } catch {
+        // Silently ignore parse errors
+      }
+    };
+
+    // Subscribe
+    const unsubscribe = subscribe(listener);
+
+    // Cleanup
+    return () => {
+      unsubscribe();
+      debouncedOnChange.cancel();
+    };
+  }, [enabled, debouncedOnChange]);
+}
