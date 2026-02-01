@@ -560,7 +560,13 @@ export function ChatInterface({
   }, [isWorking, ws.sendMessage])
 
   // Handle permission mode change - send control_request to backend via WebSocket
-  // Backend handles activation if session is inactive
+  //
+  // Permission mode behavior for existing sessions:
+  // - Always sends set_permission_mode request to backend
+  // - If session is inactive (historical): backend activates it with the new mode
+  // - If session is active: backend sends mode change to Claude
+  //
+  // This is simpler than tracking inactive state in frontend - backend handles it uniformly.
   const handlePermissionModeChange = useCallback(
     async (mode: PermissionMode) => {
       // Optimistically update UI

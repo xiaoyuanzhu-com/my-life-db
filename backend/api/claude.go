@@ -1012,6 +1012,23 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				}
 
 			case "set_permission_mode":
+				// Permission Mode Change Flow:
+				//
+				// This handler supports both active and inactive (historical) sessions:
+				//
+				// 1. Historical session (not activated):
+				//    - Store permission mode on session object
+				//    - Call EnsureActivated() which starts Claude CLI with --permission-mode flag
+				//    - Claude starts with the correct permission mode from the beginning
+				//
+				// 2. Active session (already running):
+				//    - Send set_permission_mode control request to Claude via SDK
+				//    - Claude updates its permission mode mid-conversation
+				//
+				// This unified approach means the frontend always sends permission mode changes,
+				// and the backend handles activation transparently. No need for frontend to track
+				// whether a session is active or not.
+
 				// Parse mode from request
 				var modeReq struct {
 					Request struct {

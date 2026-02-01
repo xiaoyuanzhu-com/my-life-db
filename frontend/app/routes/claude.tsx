@@ -80,6 +80,10 @@ export default function ClaudePage() {
   })
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  // Permission mode for new session (empty state)
+  // - Stored locally until session is created
+  // - Changing this does NOT create a session or send any request
+  // - Passed to createSessionWithMessage API when user sends first message
   const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>('default')
 
   // Get active session
