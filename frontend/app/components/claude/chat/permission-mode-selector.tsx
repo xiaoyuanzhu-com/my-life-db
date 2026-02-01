@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Shield, ShieldCheck, ShieldOff, FileEdit } from 'lucide-react'
+import { Pencil, FastForward, Pause, Zap } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 
@@ -17,25 +17,25 @@ const PERMISSION_MODES: PermissionModeOption[] = [
     value: 'default',
     label: 'Ask before edits',
     description: 'Prompts for tool permissions',
-    icon: <Shield className="h-3.5 w-3.5" />,
+    icon: <Pencil className="h-3.5 w-3.5" />,
   },
   {
     value: 'acceptEdits',
     label: 'Edit automatically',
     description: 'Auto-accepts file edits',
-    icon: <FileEdit className="h-3.5 w-3.5" />,
+    icon: <FastForward className="h-3.5 w-3.5" />,
   },
   {
     value: 'plan',
     label: 'Plan mode',
     description: 'No tool execution',
-    icon: <ShieldCheck className="h-3.5 w-3.5" />,
+    icon: <Pause className="h-3.5 w-3.5" />,
   },
   {
     value: 'bypassPermissions',
     label: 'YOLO',
     description: 'All tools auto-approved',
-    icon: <ShieldOff className="h-3.5 w-3.5" />,
+    icon: <Zap className="h-3.5 w-3.5" />,
   },
 ]
 
