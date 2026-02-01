@@ -3,17 +3,20 @@ import { MessageDot } from '../message-dot'
 import { SessionMessages } from '../session-messages'
 import type { AgentProgressMessage } from '../session-messages'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
+import type { SessionMessage } from '~/lib/session-message-utils'
 import { parseMarkdown } from '~/lib/shiki'
 
 interface TaskToolViewProps {
   toolCall: ToolCall
   /** Map from tool_use ID to agent progress messages */
   agentProgressMap?: Map<string, AgentProgressMessage[]>
+  /** Map from parent_tool_use_id to subagent messages */
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskToolViewProps) {
+export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, depth = 0 }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [resultHtml, setResultHtml] = useState('')
@@ -50,7 +53,13 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
 
   const result = resultText
 
-  // Get agent progress messages for this tool_use ID
+  // Get subagent messages for this tool_use ID (primary source - persisted messages)
+  const subagentMessages = useMemo(() => {
+    if (!subagentMessagesMap) return []
+    return subagentMessagesMap.get(toolCall.id) || []
+  }, [subagentMessagesMap, toolCall.id])
+
+  // Get agent progress messages for this tool_use ID (fallback for live streaming)
   const agentProgress = useMemo(() => {
     if (!agentProgressMap) return []
     return agentProgressMap.get(toolCall.id) || []
@@ -58,11 +67,15 @@ export function TaskToolView({ toolCall, agentProgressMap, depth = 0 }: TaskTool
 
   // Get the latest normalized messages from agent progress
   // Each progress message contains the full conversation so far, so we take the last one
-  const nestedMessages = useMemo(() => {
+  const normalizedMessages = useMemo(() => {
     if (agentProgress.length === 0) return []
     const latest = agentProgress[agentProgress.length - 1]
     return latest.data?.normalizedMessages || []
   }, [agentProgress])
+
+  // Use subagent messages if available (persisted), otherwise fall back to agent progress (live streaming)
+  // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section for details
+  const nestedMessages = subagentMessages.length > 0 ? subagentMessages : normalizedMessages
 
   const hasNestedSession = nestedMessages.length > 0
 

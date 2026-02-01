@@ -117,6 +117,11 @@ export interface SessionMessage {
 
   // API error indicator (for assistant messages that represent API errors)
   isApiErrorMessage?: boolean
+
+  // Subagent linking - if set, this message belongs to a subagent spawned by the Task tool with this ID
+  // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section
+  // IMPORTANT: Claude Code uses snake_case in JSONL output for this field
+  parent_tool_use_id?: string | null
 }
 
 // System message subtypes

@@ -184,6 +184,32 @@ function isSkillContentMessage(msg: SessionMessage): msg is SkillContentMessage 
 }
 
 /**
+ * Check if a message is a subagent message (belongs to a Task tool's subagent conversation)
+ */
+function isSubagentMessage(msg: SessionMessage): boolean {
+  return msg.parent_tool_use_id != null
+}
+
+/**
+ * Build a map from parent_tool_use_id to subagent messages
+ * This allows Task tools to find their subagent conversation messages
+ * See docs/claude-code/data-models.md "Subagent Message Hierarchy" section
+ */
+export function buildSubagentMessagesMap(messages: SessionMessage[]): Map<string, SessionMessage[]> {
+  const map = new Map<string, SessionMessage[]>()
+
+  for (const msg of messages) {
+    if (isSubagentMessage(msg) && msg.parent_tool_use_id) {
+      const existing = map.get(msg.parent_tool_use_id) || []
+      existing.push(msg)
+      map.set(msg.parent_tool_use_id, existing)
+    }
+  }
+
+  return map
+}
+
+/**
  * Build a map from sourceToolUseID to skill content
  * This allows Skill tools to find their associated skill prompt content
  */
@@ -326,6 +352,11 @@ interface SessionMessagesProps {
    */
   skillContentMap?: Map<string, string>
   /**
+   * Pre-built subagent messages map. If not provided, will be built from messages.
+   * Maps parent_tool_use_id to subagent conversation messages (for Task tools).
+   */
+  subagentMessagesMap?: Map<string, SessionMessage[]>
+  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -352,6 +383,7 @@ export function SessionMessages({
   hookResponseMap: providedHookResponseMap,
   toolUseMap: providedToolUseMap,
   skillContentMap: providedSkillContentMap,
+  subagentMessagesMap: providedSubagentMessagesMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -396,6 +428,12 @@ export function SessionMessages({
     return buildSkillContentMap(messages)
   }, [messages, providedSkillContentMap])
 
+  // Build subagent messages map if not provided
+  const subagentMessagesMap = useMemo(() => {
+    if (providedSubagentMessagesMap) return providedSubagentMessagesMap
+    return buildSubagentMessagesMap(messages)
+  }, [messages, providedSubagentMessagesMap])
+
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
   // - hook_response messages (rendered inside hook_started via hookResponseMap)
@@ -403,6 +441,7 @@ export function SessionMessages({
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   // - control_request/control_response (permission protocol messages, handled via modal)
   // - internal events (queue-operation, file-history-snapshot)
+  // - subagent messages (rendered inside their parent Task tool via subagentMessagesMap)
   const filteredMessages = useMemo(() => {
     return messages.filter((msg) => {
       // Skip all progress messages - they're rendered inside their parent tools:
@@ -438,6 +477,10 @@ export function SessionMessages({
       // Skip user messages with only skipped XML tags
       if (isSkippedUserMessage(msg)) return false
 
+      // Skip subagent messages - they're rendered inside their parent Task tool via subagentMessagesMap
+      // See data-models.md "Subagent Message Hierarchy" section.
+      if (isSubagentMessage(msg)) return false
+
       return true
     })
   }, [messages])
@@ -459,6 +502,7 @@ export function SessionMessages({
           hookResponseMap={hookResponseMap}
           toolUseMap={toolUseMap}
           skillContentMap={skillContentMap}
+          subagentMessagesMap={subagentMessagesMap}
           depth={depth}
         />
       ))}

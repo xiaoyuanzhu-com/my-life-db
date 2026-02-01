@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ToolCall } from '~/types/claude'
+import type { SessionMessage } from '~/lib/session-message-utils'
 import { MessageDot } from './message-dot'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage } from './session-messages'
 
@@ -26,6 +27,8 @@ interface ToolBlockProps {
   hookProgressMap?: Map<string, HookProgressMessage[]>
   /** Map from tool_use ID to skill content (for Skill tools) */
   skillContentMap?: Map<string, string>
+  /** Map from parent_tool_use_id to subagent messages (for Task tools) */
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
@@ -62,18 +65,19 @@ function _getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, subagentMessagesMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} depth={depth} />
 }
 
 function ToolContent({
   toolCall,
   agentProgressMap,
   bashProgressMap,
-  _hookProgressMap,
+  hookProgressMap: _hookProgressMap,
   skillContentMap,
+  subagentMessagesMap,
   depth,
 }: {
   toolCall: ToolCall
@@ -81,6 +85,7 @@ function ToolContent({
   bashProgressMap?: Map<string, BashProgressMessage[]>
   hookProgressMap?: Map<string, HookProgressMessage[]>
   skillContentMap?: Map<string, string>
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   depth: number
 }) {
   // Render tool-specific view based on tool name
@@ -102,7 +107,7 @@ function ToolContent({
     case 'WebSearch':
       return <WebSearchToolView toolCall={toolCall} />
     case 'Task':
-      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} depth={depth} />
+      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} depth={depth} />
     case 'TodoWrite':
       return <TodoToolView toolCall={toolCall} />
     case 'Skill':

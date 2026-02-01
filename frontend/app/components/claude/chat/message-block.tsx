@@ -52,11 +52,13 @@ interface MessageBlockProps {
   toolUseMap?: Map<string, ToolUseInfo>
   /** Map from tool_use ID to skill content (for Skill tools) */
   skillContentMap?: Map<string, string>
+  /** Map from parent_tool_use_id to subagent messages (for Task tools) */
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -278,7 +280,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} depth={depth} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} depth={depth} />
         </div>
       )}
     </div>
@@ -293,6 +295,7 @@ function ToolCallGroups({
   bashProgressMap,
   hookProgressMap,
   skillContentMap,
+  subagentMessagesMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -300,6 +303,7 @@ function ToolCallGroups({
   bashProgressMap?: Map<string, BashProgressMessage[]>
   hookProgressMap?: Map<string, HookProgressMessage[]>
   skillContentMap?: Map<string, string>
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   depth: number
 }) {
   // Group consecutive tool calls by name
@@ -339,6 +343,7 @@ function ToolCallGroups({
               bashProgressMap={bashProgressMap}
               hookProgressMap={hookProgressMap}
               skillContentMap={skillContentMap}
+              subagentMessagesMap={subagentMessagesMap}
               depth={depth}
             />
           )
@@ -353,6 +358,7 @@ function ToolCallGroups({
             bashProgressMap={bashProgressMap}
             hookProgressMap={hookProgressMap}
             skillContentMap={skillContentMap}
+            subagentMessagesMap={subagentMessagesMap}
             depth={depth}
           />
         )
@@ -368,6 +374,7 @@ function ToolCallGroup({
   bashProgressMap,
   hookProgressMap,
   skillContentMap,
+  subagentMessagesMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -375,6 +382,7 @@ function ToolCallGroup({
   bashProgressMap?: Map<string, BashProgressMessage[]>
   hookProgressMap?: Map<string, HookProgressMessage[]>
   skillContentMap?: Map<string, string>
+  subagentMessagesMap?: Map<string, SessionMessage[]>
   depth: number
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
@@ -406,6 +414,7 @@ function ToolCallGroup({
               bashProgressMap={bashProgressMap}
               hookProgressMap={hookProgressMap}
               skillContentMap={skillContentMap}
+              subagentMessagesMap={subagentMessagesMap}
               depth={depth}
             />
           ))}
