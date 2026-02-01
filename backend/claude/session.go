@@ -187,6 +187,13 @@ func (s *Session) EnsureActivated() error {
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
+	// Reset message cache before starting new CLI process.
+	// This clears any accumulated ephemeral messages (like init) from previous CLI runs
+	// and reloads persisted history from JSONL.
+	s.mu.Unlock() // Unlock before ResetMessageCache (it acquires cacheMu)
+	s.ResetMessageCache()
+	s.mu.Lock()
+
 	if err := s.activateFn(); err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("failed to activate session: %w", err)
@@ -426,6 +433,26 @@ func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID st
 				Msg("failed to auto-approve pending request (channel full or closed)")
 		}
 	}
+}
+
+// ResetMessageCache clears the message cache and reloads from JSONL.
+// This should be called when the CLI restarts to ensure a fresh state.
+// It clears any accumulated ephemeral messages (like init) that don't persist to JSONL.
+func (s *Session) ResetMessageCache() {
+	s.cacheMu.Lock()
+	oldCount := len(s.cachedMessages)
+	s.cachedMessages = nil
+	s.seenUUIDs = make(map[string]bool)
+	s.cacheLoaded = false
+	s.cacheMu.Unlock()
+
+	log.Debug().
+		Str("sessionId", s.ID).
+		Int("clearedMessages", oldCount).
+		Msg("reset message cache before CLI activation")
+
+	// Reload from JSONL
+	s.LoadMessageCache()
 }
 
 // LoadMessageCache loads messages from JSONL file into cache (UI mode)
