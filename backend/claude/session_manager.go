@@ -167,7 +167,8 @@ func NewSessionManager() (*SessionManager, error) {
 }
 
 // Subscribe registers a callback for session events.
-// Returns an unsubscribe function.
+// Returns an unsubscribe function. The goroutine is tracked and will be
+// cleaned up on Shutdown even if unsubscribe is not called.
 func (m *SessionManager) Subscribe(callback SessionEventCallback) func() {
 	ch := make(chan SessionEvent, 10)
 
@@ -175,10 +176,22 @@ func (m *SessionManager) Subscribe(callback SessionEventCallback) func() {
 	m.subscribers[ch] = struct{}{}
 	m.subscribersMu.Unlock()
 
-	// Start goroutine to forward events to callback
+	// Track this goroutine in the wait group
+	m.wg.Add(1)
 	go func() {
-		for event := range ch {
-			callback(event)
+		defer m.wg.Done()
+		for {
+			select {
+			case <-m.ctx.Done():
+				// Manager shutting down, exit
+				return
+			case event, ok := <-ch:
+				if !ok {
+					// Channel closed by unsubscribe
+					return
+				}
+				callback(event)
+			}
 		}
 	}()
 
