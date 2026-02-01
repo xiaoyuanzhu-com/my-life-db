@@ -733,11 +733,23 @@ func (m *SessionManager) UpdateSession(id string, title string) error {
 // Initialization and FS Watcher
 // =============================================================================
 
-// ensureInitialized lazily initializes the cache
+// ensureInitialized lazily initializes the cache using double-checked locking.
+// This prevents blocking all requests during slow filesystem initialization.
 func (m *SessionManager) ensureInitialized() {
-	m.mu.Lock()
+	// Fast path: already initialized (read lock only)
+	m.mu.RLock()
 	if m.initialized {
-		m.mu.Unlock()
+		m.mu.RUnlock()
+		return
+	}
+	m.mu.RUnlock()
+
+	// Slow path: need to initialize (write lock)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if m.initialized {
 		return
 	}
 
@@ -751,7 +763,6 @@ func (m *SessionManager) ensureInitialized() {
 	}
 
 	m.initialized = true
-	m.mu.Unlock()
 
 	log.Info().Int("sessionCount", len(m.entries)).Msg("SessionManager initialized")
 }
