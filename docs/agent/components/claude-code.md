@@ -37,16 +37,31 @@ Claude CLI
 
 | Location | Purpose |
 |----------|---------|
-| `backend/claude/manager.go` | Session pool, lifecycle management, index cache |
+| `backend/claude/session_manager.go` | Unified session management: lifecycle, index cache, FS watching, pagination |
 | `backend/claude/session.go` | Individual session state, client management |
+| `backend/claude/process_utils.go` | Process utilities (graceful termination, CLI args, JSON splitting) |
 | `backend/claude/sdk/client.go` | SDK wrapper for subprocess communication |
 | `backend/claude/sdk/query.go` | Control protocol, permission callbacks |
 | `backend/claude/sdk/message_parser.go` | Message type parsing |
 | `backend/claude/session_reader.go` | Session history loading from JSONL |
-| `backend/claude/session_index_cache.go` | Session index with pagination, deduplication |
-| `backend/claude/session_watcher.go` | Filesystem watching for new sessions |
 | `backend/claude/models/` | 13+ message type definitions |
 | `frontend/app/components/claude/` | UI components |
+
+### SessionManager (Single Source of Truth)
+
+The `SessionManager` is the unified component for all session state. It is owned by the `Server` struct and accessed via `srv.Claude()`. It aggregates:
+
+- **File-based metadata** (from JSONL files and session indexes)
+- **Runtime state** (active processes, WebSocket clients)
+- **Event subscriptions** (for SSE notifications)
+- **Filesystem watching** (fsnotify for new sessions)
+
+Key features:
+- **Lazy initialization**: Scans `~/.claude/projects/` on first access
+- **Double-checked locking**: Thread-safe lazy init without blocking all requests
+- **Deduplication**: Sessions with same `FirstUserMessageUUID` are collapsed
+- **Cursor-based pagination**: Efficient listing for large session counts
+- **Event subscription**: Subscribe to session events (created, updated, activated, deactivated, deleted)
 
 ## Session Structure
 
@@ -86,46 +101,51 @@ type Session struct {
 ### Creation
 
 ```go
-// Manager creates session
-session := manager.CreateSessionWithID(workingDir, title, resumeID, mode)
-// Session struct exists but Claude CLI not started yet (lazy activation)
+// SessionManager creates session (owned by Server, accessed via srv.Claude())
+session, err := sessionManager.CreateSessionWithID(workingDir, title, resumeID, mode, permissionMode)
+// Session is immediately active with Claude CLI running
 ```
 
-### Activation (Lazy)
+### Shell Sessions (Lazy Activation)
 
-Sessions are activated when:
-1. First WebSocket client connects
-2. First message is sent
+For archived sessions accessed via `GetSession()`:
 
 ```go
-func (s *Session) EnsureActivated() error {
-    if s.activated {
-        return nil
-    }
-    // For UI mode, uses SDK
-    return s.activateFn()  // Calls createSessionWithSDK or createSessionWithLegacy
-}
+// GetSession creates a "shell session" for archived sessions
+session, err := sessionManager.GetSession(id)
+// Session struct exists but Claude CLI not started yet
+
+// Activated when needed:
+session.EnsureActivated()  // Calls activateFn which spawns the process
 ```
 
-### SDK vs Legacy Activation
+### Events
+
+SessionManager emits events for all lifecycle changes:
+
+```go
+sessionManager.Subscribe(func(event SessionEvent) {
+    // event.Type: created, updated, activated, deactivated, deleted
+    // event.SessionID: the affected session
+})
+```
+
+The notification service subscribes to these events to trigger SSE updates.
+
+### SDK vs PTY Modes
 
 ```go
 // UI Mode (default) - uses SDK
-func (m *Manager) createSessionWithSDK(s *Session) error {
-    sdkClient, err := sdk.NewClaudeSDKClient(sdk.Options{
-        WorkingDir: s.WorkingDir,
-        // Permission callback bridges async WebSocket flow
-        CanUseTool: m.CreatePermissionCallback(s),
-    })
-    s.sdkClient = sdkClient
-    // ...
+func (m *SessionManager) createSessionWithSDK(s *Session, resume bool) error {
+    client := sdk.NewClaudeSDKClient(options)
+    client.Connect(ctx, "")
+    s.sdkClient = client
+    // Messages forwarded via forwardSDKMessages goroutine
 }
 
 // CLI Mode - uses PTY
-func (m *Manager) createSessionWithLegacy(s *Session) error {
-    // Creates PTY, spawns claude CLI directly
-    // Raw terminal output to xterm.js
-}
+// Creates PTY, spawns claude CLI directly
+// Raw terminal output to xterm.js
 ```
 
 ## Message Flow
@@ -312,37 +332,41 @@ func (m *Manager) CreatePermissionCallback(s *Session) func(string, string) bool
 }
 ```
 
-## Session Index Cache
+## Session Listing (Pagination)
 
-The `SessionIndexCache` provides efficient session listing:
+The `SessionManager` provides efficient session listing via `ListAllSessions()`:
 
 ```go
-type SessionIndexCache struct {
-    sessions     []SessionIndexEntry
-    mu           sync.RWMutex
-    initialized  bool
-
-    // Deduplication by FirstUserMessageUUID
-    seenUUIDs    map[string]bool
+type SessionPaginationResult struct {
+    Entries    []*SessionEntry
+    HasMore    bool
+    NextCursor string
+    TotalCount int
 }
 
-type SessionIndexEntry struct {
-    SessionID          string
-    SessionFile        string
-    CreatedAt          time.Time
-    UpdatedAt          time.Time
-    FirstPrompt        string    // Lazily loaded
+type SessionEntry struct {
+    SessionID            string
+    DisplayTitle         string
+    FirstPrompt          string
     FirstUserMessageUUID string  // For deduplication
+    MessageCount         int
+    Created              time.Time
+    Modified             time.Time
+    IsActivated          bool
+    Status               string  // "active", "archived", "dead"
+    // ... other fields
 }
 ```
 
 ### Features
 
-- **Lazy initialization**: Scans `~/.claude/projects/` on first access
-- **Deduplication**: Related sessions (same FirstUserMessageUUID) are collapsed
-- **Pagination**: Cursor-based seeking for large session lists
-- **Enrichment**: Lazily loads FirstPrompt from JSONL files
-- **File watching**: fsnotify updates cache on new sessions
+- **Lazy initialization**: Scans `~/.claude/projects/` on first access using double-checked locking
+- **Deduplication**: Sessions with same `FirstUserMessageUUID` are collapsed (keeps one with most messages)
+- **Pagination**: Cursor-based seeking using `modified_time_sessionID` format
+- **Enrichment**: Lazily loads `FirstPrompt` and `FirstUserMessageUUID` from JSONL files
+- **Status filtering**: Filter by "active" or "archived"
+- **Sorted by modification time**: Most recent first
+- **File watching**: fsnotify updates cache on new/modified sessions
 
 ## WebSocket Protocol
 
@@ -459,31 +483,45 @@ func (s *Session) AddMessage(rawJSON []byte) {
 | Permission UI | `frontend/app/components/claude/chat/permission-card.tsx` |
 | WebSocket handling | `backend/api/claude.go`, `frontend/.../use-session-websocket.ts` |
 | Message parsing | `backend/claude/sdk/message_parser.go` |
-| Session management | `backend/claude/manager.go`, `session.go` |
-| Session index | `backend/claude/session_index_cache.go` |
+| Session management | `backend/claude/session_manager.go`, `session.go` |
+| Session listing/pagination | `backend/claude/session_manager.go` (ListAllSessions) |
 | Message types | `backend/claude/models/*.go` |
 
 ## Session List SSE Notifications
 
-The session list auto-refreshes when session titles change.
+The session list auto-refreshes when session state changes.
 
 ### How It Works
 
 ```
 Claude CLI writes JSONL
     ↓
-SessionIndexCache (fsnotify) — only notifies if DisplayTitle changed
+SessionManager (fsnotify watcher) — only notifies if DisplayTitle changed
+    ↓
+SessionManager.notify() — emits SessionEvent to subscribers
+    ↓
+Server subscription callback — calls NotifyClaudeSessionUpdated()
     ↓
 SSE "claude-session-updated" event
     ↓
 Frontend calls loadSessions()
 ```
 
-**Key point**: The backend filters out most file writes. Only title changes trigger notifications, so no debouncing needed on frontend.
+**Key point**: The backend filters out most file writes. Only meaningful changes (title, new sessions) trigger notifications, so no debouncing needed on frontend.
+
+### Event Types
+
+The `SessionManager` emits these event types:
+- `created` — new session
+- `updated` — session metadata changed (e.g., title)
+- `activated` — archived session now has a running process
+- `deactivated` — session process stopped
+- `deleted` — session removed
 
 ### Files
 
-- `backend/claude/session_index_cache.go` — compares DisplayTitle, calls callback
+- `backend/claude/session_manager.go` — handles fsnotify, emits events via `notify()`
+- `backend/server/server.go` — subscribes to SessionManager events
 - `backend/notifications/service.go` — `NotifyClaudeSessionUpdated()`
 - `frontend/app/hooks/use-notifications.ts` — `useClaudeSessionNotifications` hook
 - `frontend/app/routes/claude.tsx` — uses hook to call `loadSessions()`
