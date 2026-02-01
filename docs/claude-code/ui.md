@@ -1340,6 +1340,7 @@ Some message types are intentionally **not rendered** in the chat interface as s
 | Skipped XML tags only | User messages containing ONLY skipped XML tags (no other content) |
 | `type: "progress"` | Progress messages are rendered inside their parent tools, not as standalone messages |
 | `system.subtype: hook_response` | Rendered inside hook_started via hookResponseMap, not as standalone message |
+| `system.subtype: status` | Rendered as **transient indicator** at end of message list when non-null (e.g., "Compacting..."). Disappears when status is null. |
 | `type: "control_request"` | Permission protocol message - triggers permission modal, not a chat message |
 | `type: "control_response"` | Permission protocol message - sent from UI to CLI via stdin, not displayed |
 | `parent_tool_use_id` set | Subagent messages - rendered inside parent Task tool, not as top-level messages. See [data-models.md "Subagent Message Hierarchy"](./data-models.md#subagent-message-hierarchy--critical). |

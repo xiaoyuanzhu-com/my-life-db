@@ -4,6 +4,7 @@ import {
   buildToolResultMap,
   isSkippedUserMessage,
   isHookResponseMessage,
+  isStatusMessage,
   isToolUseBlock,
   type SessionMessage,
   type ExtractedToolResult,
@@ -52,6 +53,14 @@ export interface HookProgressMessage extends SessionMessage {
     hookName: string
     command: string
   }
+}
+
+// Status message structure (ephemeral session state indicators)
+export interface StatusMessage extends SessionMessage {
+  type: 'system'
+  subtype: 'status'
+  session_id: string
+  status: string | null  // e.g., "compacting" or null when cleared
 }
 
 /**
@@ -318,6 +327,39 @@ export function buildToolUseMap(messages: SessionMessage[]): Map<string, ToolUse
   return map
 }
 
+/**
+ * Map status values to human-readable labels
+ */
+const STATUS_LABELS: Record<string, string> = {
+  compacting: 'Compacting...',
+}
+
+/**
+ * TransientStatusBlock - Shows ephemeral session status (e.g., "Compacting...")
+ * Disappears when status is cleared (null) and compact_boundary takes over
+ */
+function TransientStatusBlock({ status }: { status: string }) {
+  const label = STATUS_LABELS[status] || `${status}...`
+
+  return (
+    <div className="mb-4 flex items-start gap-2">
+      {/* Orange dot indicates running/in-progress state */}
+      <span
+        className="select-none font-mono text-[13px] leading-[1.5]"
+        style={{ color: 'var(--claude-status-warn, #F59E0B)' }}
+      >
+        ●
+      </span>
+      <span
+        className="font-mono text-[13px] leading-[1.5]"
+        style={{ color: 'var(--claude-text-secondary)' }}
+      >
+        {label}
+      </span>
+    </div>
+  )
+}
+
 interface SessionMessagesProps {
   /** Messages to render */
   messages: SessionMessage[]
@@ -453,6 +495,10 @@ export function SessionMessages({
       // Skip hook_response messages - they're rendered inside hook_started via hookResponseMap
       if (isHookResponseMessage(msg)) return false
 
+      // Skip status messages - rendered as transient indicator at the end of the message list
+      // when status is non-null (e.g., "compacting"), disappears when status becomes null
+      if (isStatusMessage(msg)) return false
+
       // Skip permission protocol messages - these trigger the permission modal,
       // not standalone chat messages. See data-models.md "Permission Handling" section.
       // - control_request: Claude asks for permission to use a tool
@@ -485,7 +531,22 @@ export function SessionMessages({
     })
   }, [messages])
 
-  if (filteredMessages.length === 0) {
+  // Derive current active status from the last status message
+  // Status messages are ephemeral indicators (e.g., "compacting") that should show
+  // while active, then disappear when cleared (status: null)
+  const currentStatus = useMemo(() => {
+    // Find the last status message (iterate in reverse)
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i] as StatusMessage
+      if (isStatusMessage(msg)) {
+        // Return the status value (could be "compacting", null, etc.)
+        return msg.status
+      }
+    }
+    return null
+  }, [messages])
+
+  if (filteredMessages.length === 0 && !currentStatus) {
     return null
   }
 
@@ -506,6 +567,8 @@ export function SessionMessages({
           depth={depth}
         />
       ))}
+      {/* Transient status indicator - shows while status is active, disappears when cleared */}
+      {currentStatus && <TransientStatusBlock status={currentStatus} />}
     </div>
   )
 }

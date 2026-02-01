@@ -284,7 +284,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 
 | Type | Subtypes |
 |------|----------|
-| `system` | `init`, `compact_boundary`, `microcompact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started` |
+| `system` | `init`, `compact_boundary`, `microcompact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started`, `status` |
 | `progress` | `hook_progress`, `bash_progress`, `agent_progress`, `query_update`, `search_results_received` |
 | `result` | `success`, `error` |
 
@@ -1045,6 +1045,7 @@ System messages report internal events. The `subtype` field determines the speci
 | `local_command` | Local slash command executed (e.g., `/doctor`) | ✅ Yes |
 | `hook_started` | Hook execution started | ✅ Yes |
 | `hook_response` | Hook execution completed with output | ✅ Yes |
+| `status` | Ephemeral session status indicator (e.g., "compacting") | ✅ Yes |
 
 **5a. Init (Session Initialization)**
 
@@ -1325,6 +1326,47 @@ The `hook_id` field links `hook_started` and `hook_response` messages as a pair.
 - Completed state (green): When `hook_response` with `outcome: "success"` is paired
 - Failed state (red): When `hook_response` with `outcome: "error"` is paired
 - Collapsible output: When `hook_response` contains stdout/output
+
+**5g. Status (Ephemeral Session Status)**
+
+Status messages are ephemeral indicators of session state, typically used to signal that an operation is in progress.
+
+```json
+{
+  "type": "system",
+  "subtype": "status",
+  "session_id": "336a2af6-b733-4731-8d6a-1e9b846277c9",
+  "status": "compacting",
+  "uuid": "c8e4eb2c-b308-43b2-832a-1d6bd4072c76"
+}
+```
+
+**Status Values**:
+| status | Description |
+|--------|-------------|
+| `"compacting"` | Session compaction is in progress |
+| `null` | Status cleared (operation complete) |
+
+**Fields**:
+| Field | Type | Description |
+|-------|------|-------------|
+| `subtype` | string | Always `"status"` |
+| `session_id` | string | Session UUID where the operation is occurring |
+| `status` | string \| null | Current status value, or `null` when cleared |
+
+**Lifecycle**:
+```
+status (status: "compacting") → status (status: null) → compact_boundary
+```
+
+Status messages are transient indicators. The final state is communicated by other messages (e.g., `compact_boundary` shows "Session compacted" after compaction completes).
+
+**Rendering:** Status messages are rendered as **transient indicators** at the end of the message list:
+1. When `status: "compacting"` arrives → show "● Compacting..." with orange running indicator
+2. When `status: null` arrives → indicator disappears (last status is null)
+3. Then `compact_boundary` shows the permanent "● Session compacted"
+
+In historical sessions, the last status is typically `null` (operation complete), so no transient indicator shows - only the `compact_boundary` is visible.
 
 **6. Progress Messages**
 

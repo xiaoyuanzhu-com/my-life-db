@@ -126,7 +126,7 @@ export interface SessionMessage {
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
@@ -465,6 +465,16 @@ export function isHookStartedMessage(msg: SessionMessage): boolean {
  */
 export function isHookResponseMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'hook_response'
+}
+
+/**
+ * Type guard to check if a message is a status message.
+ * Status messages are ephemeral indicators of session state (e.g., "compacting").
+ * They are skipped from rendering because the final state is shown by other messages
+ * (e.g., compact_boundary shows "Session compacted" after compaction is complete).
+ */
+export function isStatusMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'status'
 }
 
 /**
