@@ -15,25 +15,25 @@ interface PermissionModeOption {
 const PERMISSION_MODES: PermissionModeOption[] = [
   {
     value: 'default',
-    label: 'Default',
+    label: 'Ask before edits',
     description: 'Prompts for tool permissions',
     icon: <Shield className="h-4 w-4" />,
   },
   {
     value: 'acceptEdits',
-    label: 'Auto-edit',
+    label: 'Edit automatically',
     description: 'Auto-accepts file edits',
     icon: <FileEdit className="h-4 w-4" />,
   },
   {
     value: 'plan',
-    label: 'Plan only',
+    label: 'Plan mode',
     description: 'No tool execution',
     icon: <ShieldCheck className="h-4 w-4" />,
   },
   {
     value: 'bypassPermissions',
-    label: 'Autonomous',
+    label: 'YOLO',
     description: 'All tools auto-approved',
     icon: <ShieldOff className="h-4 w-4" />,
   },
