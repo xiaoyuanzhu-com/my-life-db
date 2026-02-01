@@ -560,6 +560,7 @@ export function ChatInterface({
   }, [isWorking, ws.sendMessage])
 
   // Handle permission mode change - send control_request to backend via WebSocket
+  // Backend handles activation if session is inactive
   const handlePermissionModeChange = useCallback(
     async (mode: PermissionMode) => {
       // Optimistically update UI

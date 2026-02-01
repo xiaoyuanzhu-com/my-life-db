@@ -1047,38 +1047,58 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					break
 				}
 
-				// Set the permission mode
-				if err := session.SetPermissionMode(permMode); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Str("mode", modeReq.Request.Mode).Msg("failed to set permission mode")
+				// Store permission mode first (used during activation if not already active)
+				wasActivated := session.IsActivated()
+				session.PermissionMode = permMode
+
+				// Ensure session is activated (uses session.PermissionMode for CLI args)
+				if err := session.EnsureActivated(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session for permission mode change")
 					errMsg := map[string]any{
 						"type":       "control_response",
 						"request_id": controlReq.RequestID,
-						"error":      "Failed to set permission mode: " + err.Error(),
+						"error":      "Failed to activate session: " + err.Error(),
 					}
 					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
 						conn.Write(ctx, websocket.MessageText, msgBytes)
 					}
-				} else {
-					// Update session's stored permission mode
-					session.PermissionMode = permMode
+					break
+				}
 
-					log.Info().
-						Str("sessionId", sessionID).
-						Str("mode", modeReq.Request.Mode).
-						Msg("permission mode changed")
+				// If session was already active, send permission mode change to Claude
+				// (newly activated sessions already have the correct mode from CLI args)
+				if wasActivated {
+					if err := session.SetPermissionMode(permMode); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Str("mode", modeReq.Request.Mode).Msg("failed to set permission mode")
+						errMsg := map[string]any{
+							"type":       "control_response",
+							"request_id": controlReq.RequestID,
+							"error":      "Failed to set permission mode: " + err.Error(),
+						}
+						if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+							conn.Write(ctx, websocket.MessageText, msgBytes)
+						}
+						break
+					}
+				}
 
-					// Send control_response confirmation to all clients
-					responseMsg := map[string]any{
-						"type":       "control_response",
-						"request_id": controlReq.RequestID,
-						"response": map[string]any{
-							"subtype": "set_permission_mode",
-							"mode":    modeReq.Request.Mode,
-						},
-					}
-					if msgBytes, err := json.Marshal(responseMsg); err == nil {
-						session.BroadcastUIMessage(msgBytes)
-					}
+				log.Info().
+					Str("sessionId", sessionID).
+					Str("mode", modeReq.Request.Mode).
+					Bool("wasActivated", wasActivated).
+					Msg("permission mode changed")
+
+				// Send control_response confirmation to all clients
+				responseMsg := map[string]any{
+					"type":       "control_response",
+					"request_id": controlReq.RequestID,
+					"response": map[string]any{
+						"subtype": "set_permission_mode",
+						"mode":    modeReq.Request.Mode,
+					},
+				}
+				if msgBytes, err := json.Marshal(responseMsg); err == nil {
+					session.BroadcastUIMessage(msgBytes)
 				}
 
 			default:
