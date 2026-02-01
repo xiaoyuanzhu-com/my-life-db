@@ -267,3 +267,24 @@ func TestDebouncer_PendingCount(t *testing.T) {
 		t.Errorf("expected 0 pending after processing, got %d", d.PendingCount())
 	}
 }
+
+func TestDebouncer_QueueAfterStop(t *testing.T) {
+	d := newDebouncer(50*time.Millisecond, func(path string, eventType EventType) {
+		t.Error("should not be called after stop")
+	})
+
+	// Stop first
+	d.Stop()
+
+	// Queue should return false after stop
+	if d.Queue("test.txt", EventWrite) {
+		t.Error("expected Queue to return false after Stop")
+	}
+
+	if d.Queue("test.txt", EventDelete) {
+		t.Error("expected Queue to return false for delete after Stop")
+	}
+
+	// Wait to ensure no processing happens
+	time.Sleep(100 * time.Millisecond)
+}

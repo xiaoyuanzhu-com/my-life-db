@@ -141,6 +141,13 @@ func (s *scanner) scan() {
 		s.processFiles(filesToProcess)
 	}
 
+	// Cleanup stale lock entries to prevent memory leaks
+	if cleaned := s.service.fileLock.cleanupStale(); cleaned > 0 {
+		log.Info().
+			Int("cleanedLocks", cleaned).
+			Msg("cleaned up stale file locks")
+	}
+
 	log.Info().
 		Dur("totalDuration", time.Since(startTime)).
 		Msg("filesystem scan complete")

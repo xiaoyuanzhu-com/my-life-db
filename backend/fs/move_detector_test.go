@@ -6,10 +6,10 @@ import (
 )
 
 func TestMoveDetector_SameFilename(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
-	// Track a rename
-	md.TrackRename("inbox/document.md")
+	// Track a rename (size 0 means unknown)
+	md.TrackRename("inbox/document.md", 0)
 
 	// Check for move with same filename in different directory
 	oldPath, isMove := md.CheckMove("notes/document.md")
@@ -24,10 +24,10 @@ func TestMoveDetector_SameFilename(t *testing.T) {
 }
 
 func TestMoveDetector_DifferentFilename(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Track a rename
-	md.TrackRename("inbox/document.md")
+	md.TrackRename("inbox/document.md", 0)
 
 	// Check for move with different filename - should NOT match
 	oldPath, isMove := md.CheckMove("notes/other-file.md")
@@ -38,10 +38,10 @@ func TestMoveDetector_DifferentFilename(t *testing.T) {
 }
 
 func TestMoveDetector_TTLExpiry(t *testing.T) {
-	md := newMoveDetector(50 * time.Millisecond)
+	md := newMoveDetector(50*time.Millisecond, "")
 
 	// Track a rename
-	md.TrackRename("inbox/document.md")
+	md.TrackRename("inbox/document.md", 0)
 
 	// Wait for TTL to expire
 	time.Sleep(60 * time.Millisecond)
@@ -55,12 +55,12 @@ func TestMoveDetector_TTLExpiry(t *testing.T) {
 }
 
 func TestMoveDetector_MultipleRenames(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Track multiple renames
-	md.TrackRename("inbox/file1.md")
-	md.TrackRename("inbox/file2.md")
-	md.TrackRename("inbox/file3.md")
+	md.TrackRename("inbox/file1.md", 0)
+	md.TrackRename("inbox/file2.md", 0)
+	md.TrackRename("inbox/file3.md", 0)
 
 	if md.PendingCount() != 3 {
 		t.Errorf("expected 3 pending renames, got %d", md.PendingCount())
@@ -87,10 +87,10 @@ func TestMoveDetector_MultipleRenames(t *testing.T) {
 }
 
 func TestMoveDetector_SameDirectoryRename(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Track a rename (same directory, same filename - shouldn't match)
-	md.TrackRename("notes/old-name.md")
+	md.TrackRename("notes/old-name.md", 0)
 
 	// Check with same directory but different filename - should NOT match
 	_, isMove := md.CheckMove("notes/new-name.md")
@@ -101,11 +101,11 @@ func TestMoveDetector_SameDirectoryRename(t *testing.T) {
 }
 
 func TestMoveDetector_ExactFilenameMatch(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Track renames with similar filenames
-	md.TrackRename("inbox/test.md")
-	md.TrackRename("inbox/test-backup.md")
+	md.TrackRename("inbox/test.md", 0)
+	md.TrackRename("inbox/test-backup.md", 0)
 
 	// Check for exact match - should match test.md, not test-backup.md
 	oldPath, isMove := md.CheckMove("notes/test.md")
@@ -116,10 +116,10 @@ func TestMoveDetector_ExactFilenameMatch(t *testing.T) {
 }
 
 func TestMoveDetector_Clear(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
-	md.TrackRename("inbox/file1.md")
-	md.TrackRename("inbox/file2.md")
+	md.TrackRename("inbox/file1.md", 0)
+	md.TrackRename("inbox/file2.md", 0)
 
 	if md.PendingCount() != 2 {
 		t.Errorf("expected 2 pending, got %d", md.PendingCount())
@@ -139,7 +139,7 @@ func TestMoveDetector_Clear(t *testing.T) {
 }
 
 func TestMoveDetector_NoRenameTracked(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Check for move without any renames tracked
 	_, isMove := md.CheckMove("notes/document.md")
@@ -150,11 +150,11 @@ func TestMoveDetector_NoRenameTracked(t *testing.T) {
 }
 
 func TestMoveDetector_DuplicateRename(t *testing.T) {
-	md := newMoveDetector(500 * time.Millisecond)
+	md := newMoveDetector(500*time.Millisecond, "")
 
 	// Track the same path twice
-	md.TrackRename("inbox/file.md")
-	md.TrackRename("inbox/file.md")
+	md.TrackRename("inbox/file.md", 0)
+	md.TrackRename("inbox/file.md", 0)
 
 	// Should only have one entry (later one overwrites)
 	if md.PendingCount() != 1 {
@@ -169,17 +169,17 @@ func TestMoveDetector_DuplicateRename(t *testing.T) {
 }
 
 func TestMoveDetector_CleanupOnCheck(t *testing.T) {
-	md := newMoveDetector(50 * time.Millisecond)
+	md := newMoveDetector(50*time.Millisecond, "")
 
 	// Track multiple renames
-	md.TrackRename("inbox/old1.md")
-	md.TrackRename("inbox/old2.md")
+	md.TrackRename("inbox/old1.md", 0)
+	md.TrackRename("inbox/old2.md", 0)
 
 	// Wait for TTL to expire
 	time.Sleep(60 * time.Millisecond)
 
 	// Add a new rename that won't be expired
-	md.TrackRename("inbox/new.md")
+	md.TrackRename("inbox/new.md", 0)
 
 	// Check for a non-matching move - this should trigger cleanup of expired entries
 	md.CheckMove("notes/unrelated.md")
@@ -187,5 +187,25 @@ func TestMoveDetector_CleanupOnCheck(t *testing.T) {
 	// Only the new rename should remain
 	if md.PendingCount() != 1 {
 		t.Errorf("expected 1 pending after cleanup, got %d", md.PendingCount())
+	}
+}
+
+func TestMoveDetector_MostRecentMatch(t *testing.T) {
+	md := newMoveDetector(500*time.Millisecond, "")
+
+	// Track two renames with the same filename from different directories
+	md.TrackRename("inbox/document.md", 0)
+	time.Sleep(10 * time.Millisecond) // Ensure different timestamps
+	md.TrackRename("archive/document.md", 0)
+
+	// Should match the most recent rename (archive/document.md)
+	oldPath, isMove := md.CheckMove("notes/document.md")
+
+	if !isMove {
+		t.Error("expected isMove to be true")
+	}
+
+	if oldPath != "archive/document.md" {
+		t.Errorf("expected most recent match 'archive/document.md', got '%s'", oldPath)
 	}
 }

@@ -17,18 +17,23 @@ type watcher struct {
 	debouncer    *debouncer
 	moveDetector *moveDetector
 	stopChan     chan struct{}
+	ctx          context.Context    // For cancellation during shutdown
+	cancel       context.CancelFunc // To cancel in-flight operations
 }
 
 // newWatcher creates a new filesystem watcher
 func newWatcher(service *Service) *watcher {
+	ctx, cancel := context.WithCancel(context.Background())
 	w := &watcher{
 		service:  service,
 		stopChan: make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
-	// Initialize debouncer with 150ms delay to coalesce rapid events
-	w.debouncer = newDebouncer(150*time.Millisecond, w.processDebounced)
-	// Initialize move detector with 500ms TTL to correlate RENAME+CREATE events
-	w.moveDetector = newMoveDetector(500 * time.Millisecond)
+	// Initialize debouncer with default delay to coalesce rapid events
+	w.debouncer = newDebouncer(DefaultDebounceDelay, w.processDebounced)
+	// Initialize move detector with default TTL to correlate RENAME+CREATE events
+	w.moveDetector = newMoveDetector(DefaultMoveDetectorTTL, service.cfg.DataRoot)
 	return w
 }
 
@@ -56,12 +61,30 @@ func (w *watcher) Start() error {
 	return nil
 }
 
-// Stop stops the filesystem watcher
+// Stop stops the filesystem watcher gracefully.
+// It cancels the context first to stop in-flight operations,
+// then stops the debouncer to prevent new events from being processed.
 func (w *watcher) Stop() {
-	close(w.stopChan)
+	// Cancel context first to stop in-flight metadata computations
+	if w.cancel != nil {
+		w.cancel()
+	}
+
+	// Stop debouncer before closing stopChan to prevent race
+	// where events try to queue after debouncer is stopped
 	if w.debouncer != nil {
 		w.debouncer.Stop()
 	}
+
+	// Clear move detector
+	if w.moveDetector != nil {
+		w.moveDetector.Clear()
+	}
+
+	// Signal event loop to exit
+	close(w.stopChan)
+
+	// Close fsnotify watcher
 	if w.watcher != nil {
 		w.watcher.Close()
 	}
@@ -153,7 +176,12 @@ func (w *watcher) handleEvent(event fsnotify.Event) {
 			// Track RENAME for move detection (before processing as delete)
 			// When a file is moved, fsnotify sends RENAME(old) then CREATE(new)
 			if event.Op&fsnotify.Rename != 0 {
-				w.moveDetector.TrackRename(relPath)
+				// Try to get file size from DB for better move matching
+				var size int64
+				if record, _ := w.service.cfg.DB.GetFileByPath(relPath); record != nil && record.Size != nil {
+					size = int64(*record.Size)
+				}
+				w.moveDetector.TrackRename(relPath, size)
 			}
 			// DELETE events are processed immediately (no debounce)
 			w.debouncer.Queue(relPath, EventDelete)
@@ -194,22 +222,28 @@ func (w *watcher) handleCreate(path string) {
 		return
 	}
 
-	// Check if already processing (API might have just created it)
-	if w.service.fileLock.isProcessing(path) {
+	// Try to acquire the file lock (same mechanism as scanner uses)
+	// This ensures proper coordination between watcher, scanner, and API
+	fileMu := w.service.fileLock.acquireFileLock(path)
+	if !fileMu.TryLock() {
+		// File is being processed by scanner or API - skip
 		log.Debug().
 			Str("path", path).
-			Msg("file already being processed, skipping fsnotify create event")
+			Msg("file locked by another operation, skipping fsnotify create event")
 		return
 	}
 
-	// Mark as processing
-	if !w.service.fileLock.markProcessing(path) {
+	// Also check processing flag for duplicate watcher events
+	if w.service.fileLock.isProcessing(path) {
+		fileMu.Unlock()
 		log.Debug().
 			Str("path", path).
-			Msg("file already marked for processing, skipping")
+			Msg("file already being processed by watcher, skipping")
 		return
 	}
-	// NOTE: Do NOT defer unmarkProcessing here - it must be inside the goroutine
+
+	// Mark as processing to prevent duplicate watcher processing
+	w.service.fileLock.markProcessing(path)
 
 	log.Info().
 		Str("path", path).
@@ -219,29 +253,36 @@ func (w *watcher) handleCreate(path string) {
 	w.service.wg.Add(1)
 	go func() {
 		defer w.service.wg.Done()
-		defer w.service.fileLock.unmarkProcessing(path) // Moved inside goroutine
+		defer fileMu.Unlock()
+		defer w.service.fileLock.unmarkProcessing(path)
 		w.processExternalFile(path, "fsnotify_create")
 	}()
 }
 
 // handleWrite handles file write/modification events
 func (w *watcher) handleWrite(path string) {
-	// Check if already processing
-	if w.service.fileLock.isProcessing(path) {
+	// Try to acquire the file lock (same mechanism as scanner uses)
+	// This ensures proper coordination between watcher, scanner, and API
+	fileMu := w.service.fileLock.acquireFileLock(path)
+	if !fileMu.TryLock() {
+		// File is being processed by scanner or API - skip
 		log.Debug().
 			Str("path", path).
-			Msg("file already being processed, skipping fsnotify write event")
+			Msg("file locked by another operation, skipping fsnotify write event")
 		return
 	}
 
-	// Mark as processing
-	if !w.service.fileLock.markProcessing(path) {
+	// Also check processing flag for duplicate watcher events
+	if w.service.fileLock.isProcessing(path) {
+		fileMu.Unlock()
 		log.Debug().
 			Str("path", path).
-			Msg("file already marked for processing, skipping")
+			Msg("file already being processed by watcher, skipping")
 		return
 	}
-	// NOTE: Do NOT defer unmarkProcessing here - it must be inside the goroutine
+
+	// Mark as processing to prevent duplicate watcher processing
+	w.service.fileLock.markProcessing(path)
 
 	log.Debug().
 		Str("path", path).
@@ -251,7 +292,8 @@ func (w *watcher) handleWrite(path string) {
 	w.service.wg.Add(1)
 	go func() {
 		defer w.service.wg.Done()
-		defer w.service.fileLock.unmarkProcessing(path) // Moved inside goroutine
+		defer fileMu.Unlock()
+		defer w.service.fileLock.unmarkProcessing(path)
 		w.processExternalFile(path, "fsnotify_write")
 	}()
 }
@@ -295,9 +337,17 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 		oldHash = *existing.Hash
 	}
 
-	// Compute metadata
-	metadata, err := w.service.processor.ComputeMetadata(context.Background(), path)
+	// Compute metadata (use watcher context for cancellation)
+	metadata, err := w.service.processor.ComputeMetadata(w.ctx, path)
 	if err != nil {
+		// Check if context was cancelled (shutdown in progress)
+		if w.ctx.Err() != nil {
+			log.Debug().
+				Str("path", path).
+				Msg("metadata computation cancelled during shutdown")
+			return
+		}
+
 		log.Error().
 			Err(err).
 			Str("path", path).
@@ -378,9 +428,17 @@ func (w *watcher) processMove(oldPath, newPath string) {
 		oldHash = *oldRecord.Hash
 	}
 
-	// Compute metadata for new location
-	metadata, err := w.service.processor.ComputeMetadata(context.Background(), newPath)
+	// Compute metadata for new location (use watcher context for cancellation)
+	metadata, err := w.service.processor.ComputeMetadata(w.ctx, newPath)
 	if err != nil {
+		// Check if context was cancelled (shutdown in progress)
+		if w.ctx.Err() != nil {
+			log.Debug().
+				Str("path", newPath).
+				Msg("move processing cancelled during shutdown")
+			return
+		}
+
 		log.Warn().
 			Err(err).
 			Str("path", newPath).

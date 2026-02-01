@@ -2,6 +2,7 @@ package fs
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -13,6 +14,10 @@ const (
 	EventWrite
 	EventDelete
 )
+
+// Default debounce delay for coalescing rapid filesystem events.
+// 150ms provides good balance between responsiveness and coalescing.
+const DefaultDebounceDelay = 150 * time.Millisecond
 
 // String returns the string representation of an EventType
 func (e EventType) String() string {
@@ -36,6 +41,7 @@ type debouncer struct {
 	mu        sync.Mutex
 	delay     time.Duration
 	onProcess func(path string, eventType EventType)
+	stopping  atomic.Bool // Prevents new events during shutdown
 }
 
 // pendingEvent represents a queued event waiting to be processed
@@ -58,9 +64,20 @@ func newDebouncer(delay time.Duration, onProcess func(path string, eventType Eve
 // DELETE events are processed immediately.
 // CREATE/WRITE events wait for the debounce delay.
 // New events for the same path reset the timer.
-func (d *debouncer) Queue(path string, eventType EventType) {
+// Returns false if the debouncer is stopping and the event was ignored.
+func (d *debouncer) Queue(path string, eventType EventType) bool {
+	// Check if stopping before acquiring lock (fast path)
+	if d.stopping.Load() {
+		return false
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	// Double-check after acquiring lock (prevents race with Stop)
+	if d.stopping.Load() {
+		return false
+	}
 
 	// Delete is immediate - cancel any pending event and process now
 	if eventType == EventDelete {
@@ -70,19 +87,32 @@ func (d *debouncer) Queue(path string, eventType EventType) {
 		}
 		// Process delete immediately (in a goroutine to avoid blocking)
 		go d.onProcess(path, EventDelete)
-		return
+		return true
 	}
 
 	// Check if already pending
 	if p, ok := d.pending[path]; ok {
-		// Reset timer
-		p.timer.Reset(d.delay)
-		// Upgrade event type if needed: CREATE takes precedence over WRITE
-		// (if we see CREATE then WRITE, treat as CREATE)
-		if eventType == EventCreate {
-			p.eventType = EventCreate
+		// Try to reset timer. If Reset returns false, the timer already fired
+		// and onTimer is running or about to run. In that case, the entry
+		// may have been removed, so we treat it as a new event.
+		if !p.timer.Reset(d.delay) {
+			// Timer already fired - create new pending event
+			timer := time.AfterFunc(d.delay, func() {
+				d.onTimer(path)
+			})
+			d.pending[path] = &pendingEvent{
+				path:      path,
+				timer:     timer,
+				eventType: eventType,
+			}
+		} else {
+			// Timer reset successfully, upgrade event type if needed
+			// CREATE takes precedence over WRITE (if we see CREATE then WRITE, treat as CREATE)
+			if eventType == EventCreate {
+				p.eventType = EventCreate
+			}
 		}
-		return
+		return true
 	}
 
 	// New pending event
@@ -94,6 +124,7 @@ func (d *debouncer) Queue(path string, eventType EventType) {
 		timer:     timer,
 		eventType: eventType,
 	}
+	return true
 }
 
 // onTimer fires when debounce delay expires
@@ -110,8 +141,12 @@ func (d *debouncer) onTimer(path string) {
 	}
 }
 
-// Stop cancels all pending events
+// Stop cancels all pending events and prevents new ones from being queued.
+// After Stop returns, no more events will be processed.
 func (d *debouncer) Stop() {
+	// Set stopping flag first to prevent new events
+	d.stopping.Store(true)
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

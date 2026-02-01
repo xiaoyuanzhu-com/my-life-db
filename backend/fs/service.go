@@ -9,6 +9,10 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
+// Size of the buffered channel for file change notifications.
+// This prevents unbounded goroutine creation during batch imports.
+const changeNotificationBufferSize = 100
+
 // Service coordinates all filesystem operations
 type Service struct {
 	// Configuration
@@ -23,9 +27,10 @@ type Service struct {
 	// Concurrency control
 	fileLock *fileLock
 
-	// File change notification
+	// File change notification (bounded channel to prevent goroutine explosion)
 	changeHandler FileChangeHandler
 	handlerMu     sync.RWMutex
+	changeChan    chan FileChangeEvent // Buffered channel for change events
 
 	// Lifecycle
 	stopChan chan struct{}
@@ -35,10 +40,11 @@ type Service struct {
 // NewService creates a new filesystem service
 func NewService(cfg Config) *Service {
 	s := &Service{
-		cfg:       cfg,
-		validator: newValidator(),
-		fileLock:  &fileLock{},
-		stopChan:  make(chan struct{}),
+		cfg:        cfg,
+		validator:  newValidator(),
+		fileLock:   &fileLock{},
+		stopChan:   make(chan struct{}),
+		changeChan: make(chan FileChangeEvent, changeNotificationBufferSize),
 	}
 
 	// Initialize sub-components
@@ -57,6 +63,10 @@ func NewService(cfg Config) *Service {
 // Start begins background processes (watching, scanning)
 func (s *Service) Start() error {
 	log.Info().Str("dataRoot", s.cfg.DataRoot).Msg("starting filesystem service")
+
+	// Start change notification worker
+	s.wg.Add(1)
+	go s.changeNotificationWorker()
 
 	// Start watcher if enabled
 	if s.watcher != nil {
@@ -80,12 +90,19 @@ func (s *Service) Stop() error {
 
 	close(s.stopChan)
 
-	// Stop sub-components
-	s.watcher.Stop()
-	s.scanner.Stop()
+	// Stop sub-components (check for nil - watcher may be disabled)
+	if s.watcher != nil {
+		s.watcher.Stop()
+	}
+	if s.scanner != nil {
+		s.scanner.Stop()
+	}
 
 	// Wait for all goroutines
 	s.wg.Wait()
+
+	// Cleanup file locks to prevent memory leaks
+	s.fileLock.cleanup()
 
 	log.Info().Msg("filesystem service stopped")
 	return nil
@@ -98,15 +115,56 @@ func (s *Service) SetFileChangeHandler(handler FileChangeHandler) {
 	s.changeHandler = handler
 }
 
-// notifyFileChange calls the registered change handler (if any)
+// notifyFileChange queues a file change event for processing.
+// Events are processed by a single worker goroutine to prevent
+// unbounded goroutine creation during batch imports.
 func (s *Service) notifyFileChange(event FileChangeEvent) {
-	s.handlerMu.RLock()
-	handler := s.changeHandler
-	s.handlerMu.RUnlock()
+	// Non-blocking send to prevent caller from blocking
+	select {
+	case s.changeChan <- event:
+		// Event queued successfully
+	default:
+		// Channel full - log warning and drop event
+		// The scanner will eventually catch up
+		log.Warn().
+			Str("path", event.FilePath).
+			Str("trigger", event.Trigger).
+			Msg("change notification queue full, event dropped")
+	}
+}
 
-	if handler != nil {
-		// Call handler in goroutine to avoid blocking
-		go handler(event)
+// changeNotificationWorker processes file change events sequentially.
+// This prevents unbounded goroutine creation during batch imports.
+func (s *Service) changeNotificationWorker() {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case event := <-s.changeChan:
+			s.handlerMu.RLock()
+			handler := s.changeHandler
+			s.handlerMu.RUnlock()
+
+			if handler != nil {
+				handler(event)
+			}
+
+		case <-s.stopChan:
+			// Drain remaining events before exiting
+			for {
+				select {
+				case event := <-s.changeChan:
+					s.handlerMu.RLock()
+					handler := s.changeHandler
+					s.handlerMu.RUnlock()
+					if handler != nil {
+						handler(event)
+					}
+				default:
+					return
+				}
+			}
+		}
 	}
 }
 
