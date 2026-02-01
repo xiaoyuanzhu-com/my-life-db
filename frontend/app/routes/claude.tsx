@@ -550,6 +550,7 @@ export default function ClaudePage() {
         {activeSessionId && activeSession ? (
           uiMode === 'chat' ? (
             <ChatInterface
+              key={activeSessionId}
               sessionId={activeSessionId}
               sessionName={activeSession.title || 'Session'}
               workingDir={activeSession.workingDir}
@@ -560,7 +561,7 @@ export default function ClaudePage() {
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           ) : (
-            <ClaudeTerminal sessionId={activeSessionId} />
+            <ClaudeTerminal key={activeSessionId} sessionId={activeSessionId} />
           )
         ) : (
           <div className="flex flex-1 flex-col claude-bg">
