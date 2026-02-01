@@ -58,4 +58,5 @@ type Database interface {
 	UpsertFile(record *db.FileRecord) (bool, error)
 	DeleteFile(path string) error
 	UpdateFileField(path string, field string, value interface{}) error
+	MoveFileAtomic(oldPath, newPath string, record *db.FileRecord) error
 }

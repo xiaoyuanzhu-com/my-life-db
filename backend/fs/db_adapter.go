@@ -31,3 +31,8 @@ func (a *dbAdapter) DeleteFile(path string) error {
 func (a *dbAdapter) UpdateFileField(path string, field string, value interface{}) error {
 	return db.UpdateFileField(path, field, value)
 }
+
+// MoveFileAtomic atomically moves a file record from oldPath to newPath
+func (a *dbAdapter) MoveFileAtomic(oldPath, newPath string, record *db.FileRecord) error {
+	return db.MoveFileAtomic(oldPath, newPath, record)
+}

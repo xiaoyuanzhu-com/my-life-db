@@ -63,10 +63,10 @@ func UpsertFile(f *FileRecord) (bool, error) {
 			is_folder = excluded.is_folder,
 			size = excluded.size,
 			mime_type = excluded.mime_type,
-			hash = excluded.hash,
+			hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
 			modified_at = excluded.modified_at,
 			last_scanned_at = excluded.last_scanned_at,
-			text_preview = excluded.text_preview
+			text_preview = COALESCE(excluded.text_preview, files.text_preview)
 	`
 
 	isFolder := 0
@@ -160,10 +160,10 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 			is_folder = excluded.is_folder,
 			size = excluded.size,
 			mime_type = excluded.mime_type,
-			hash = excluded.hash,
+			hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
 			modified_at = excluded.modified_at,
 			last_scanned_at = excluded.last_scanned_at,
-			text_preview = excluded.text_preview
+			text_preview = COALESCE(excluded.text_preview, files.text_preview)
 	`)
 	if err != nil {
 		return nil, err
@@ -724,4 +724,62 @@ func UpdateFileField(path string, field string, value interface{}) error {
 	query := fmt.Sprintf("UPDATE files SET %s = ? WHERE path = ?", field)
 	_, err := GetDB().Exec(query, value, path)
 	return err
+}
+
+// MoveFileAtomic atomically moves a file record from oldPath to newPath.
+// This is used when detecting external file moves via fsnotify.
+// It updates the file record, digests, and pins in a single transaction.
+func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Insert/update new path with smart COALESCE handling
+	isFolder := 0
+	if newRecord.IsFolder {
+		isFolder = 1
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			name = excluded.name,
+			is_folder = excluded.is_folder,
+			size = excluded.size,
+			mime_type = excluded.mime_type,
+			hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
+			modified_at = excluded.modified_at,
+			last_scanned_at = excluded.last_scanned_at,
+			text_preview = COALESCE(excluded.text_preview, files.text_preview)
+	`, newRecord.Path, newRecord.Name, isFolder, newRecord.Size, newRecord.MimeType,
+		newRecord.Hash, newRecord.ModifiedAt, newRecord.CreatedAt, newRecord.LastScannedAt,
+		newRecord.TextPreview, newRecord.ScreenshotSqlar)
+	if err != nil {
+		return fmt.Errorf("failed to insert new path: %w", err)
+	}
+
+	// 2. Delete old path (if different from new path)
+	if oldPath != newPath {
+		_, err = tx.Exec(`DELETE FROM files WHERE path = ?`, oldPath)
+		if err != nil {
+			return fmt.Errorf("failed to delete old path: %w", err)
+		}
+	}
+
+	// 3. Update related tables: digests
+	_, err = tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update digests: %w", err)
+	}
+
+	// 4. Update related tables: pins
+	_, err = tx.Exec(`UPDATE pins SET path = ? WHERE path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update pins: %w", err)
+	}
+
+	return tx.Commit()
 }

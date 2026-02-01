@@ -188,7 +188,7 @@ func (s *scanner) processFiles(files []fileToProcess) {
 
 	processed := 0
 	failed := 0
-	var mu sync.Mutex
+	var counterMu sync.Mutex
 
 	for _, file := range files {
 		wg.Add(1)
@@ -199,19 +199,12 @@ func (s *scanner) processFiles(files []fileToProcess) {
 			sem <- struct{}{}
 			defer func() { <-sem }() // Release
 
-			// Check if already being processed
-			if s.service.fileLock.isProcessing(f.path) {
-				log.Debug().
-					Str("path", f.path).
-					Msg("file already being processed, skipping scan")
-				return
-			}
-
-			// Mark as processing
-			if !s.service.fileLock.markProcessing(f.path) {
-				return
-			}
-			defer s.service.fileLock.unmarkProcessing(f.path)
+			// Acquire per-file mutex (same as API uses) to coordinate with API operations.
+			// This ensures that if an API call is writing to a file, the scanner will wait,
+			// and vice versa. This prevents race conditions where scanner overwrites newer data.
+			fileMu := s.service.fileLock.acquireFileLock(f.path)
+			fileMu.Lock()
+			defer fileMu.Unlock()
 
 			// Process file
 			if err := s.processFile(f); err != nil {
@@ -220,13 +213,13 @@ func (s *scanner) processFiles(files []fileToProcess) {
 					Str("path", f.path).
 					Str("reason", f.reason).
 					Msg("failed to process file during scan")
-				mu.Lock()
+				counterMu.Lock()
 				failed++
-				mu.Unlock()
+				counterMu.Unlock()
 			} else {
-				mu.Lock()
+				counterMu.Lock()
 				processed++
-				mu.Unlock()
+				counterMu.Unlock()
 			}
 		}(file)
 	}

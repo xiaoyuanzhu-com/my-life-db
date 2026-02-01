@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -11,17 +12,24 @@ import (
 
 // watcher handles filesystem watching using fsnotify
 type watcher struct {
-	service  *Service
-	watcher  *fsnotify.Watcher
-	stopChan chan struct{}
+	service      *Service
+	watcher      *fsnotify.Watcher
+	debouncer    *debouncer
+	moveDetector *moveDetector
+	stopChan     chan struct{}
 }
 
 // newWatcher creates a new filesystem watcher
 func newWatcher(service *Service) *watcher {
-	return &watcher{
+	w := &watcher{
 		service:  service,
 		stopChan: make(chan struct{}),
 	}
+	// Initialize debouncer with 150ms delay to coalesce rapid events
+	w.debouncer = newDebouncer(150*time.Millisecond, w.processDebounced)
+	// Initialize move detector with 500ms TTL to correlate RENAME+CREATE events
+	w.moveDetector = newMoveDetector(500 * time.Millisecond)
+	return w
 }
 
 // Start begins watching the filesystem
@@ -51,8 +59,23 @@ func (w *watcher) Start() error {
 // Stop stops the filesystem watcher
 func (w *watcher) Stop() {
 	close(w.stopChan)
+	if w.debouncer != nil {
+		w.debouncer.Stop()
+	}
 	if w.watcher != nil {
 		w.watcher.Close()
+	}
+}
+
+// processDebounced is called by the debouncer when an event is ready to be processed
+func (w *watcher) processDebounced(path string, eventType EventType) {
+	switch eventType {
+	case EventCreate:
+		w.handleCreate(path)
+	case EventWrite:
+		w.handleWrite(path)
+	case EventDelete:
+		w.handleDelete(path)
 	}
 }
 
@@ -125,8 +148,15 @@ func (w *watcher) handleEvent(event fsnotify.Event) {
 	info, err := os.Stat(event.Name)
 	if err != nil {
 		// File was deleted or is inaccessible
-		if event.Op&fsnotify.Remove != 0 {
-			w.handleDelete(relPath)
+		// Handle both Remove AND Rename - both mean "file gone from this path"
+		if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+			// Track RENAME for move detection (before processing as delete)
+			// When a file is moved, fsnotify sends RENAME(old) then CREATE(new)
+			if event.Op&fsnotify.Rename != 0 {
+				w.moveDetector.TrackRename(relPath)
+			}
+			// DELETE events are processed immediately (no debounce)
+			w.debouncer.Queue(relPath, EventDelete)
 		}
 		return
 	}
@@ -144,16 +174,26 @@ func (w *watcher) handleEvent(event fsnotify.Event) {
 		return // Don't process directory events further
 	}
 
-	// Handle file events
+	// Handle file events via debouncer to coalesce rapid changes
 	if isCreate {
-		w.handleCreate(relPath)
+		w.debouncer.Queue(relPath, EventCreate)
 	} else if isWrite {
-		w.handleWrite(relPath)
+		w.debouncer.Queue(relPath, EventWrite)
 	}
 }
 
 // handleCreate handles file creation events
 func (w *watcher) handleCreate(path string) {
+	// Check if this CREATE is part of a move operation (recent RENAME + CREATE with same filename)
+	if oldPath, isMove := w.moveDetector.CheckMove(path); isMove {
+		log.Info().
+			Str("oldPath", oldPath).
+			Str("newPath", path).
+			Msg("detected external file move")
+		w.processMove(oldPath, path)
+		return
+	}
+
 	// Check if already processing (API might have just created it)
 	if w.service.fileLock.isProcessing(path) {
 		log.Debug().
@@ -169,7 +209,7 @@ func (w *watcher) handleCreate(path string) {
 			Msg("file already marked for processing, skipping")
 		return
 	}
-	defer w.service.fileLock.unmarkProcessing(path)
+	// NOTE: Do NOT defer unmarkProcessing here - it must be inside the goroutine
 
 	log.Info().
 		Str("path", path).
@@ -179,6 +219,7 @@ func (w *watcher) handleCreate(path string) {
 	w.service.wg.Add(1)
 	go func() {
 		defer w.service.wg.Done()
+		defer w.service.fileLock.unmarkProcessing(path) // Moved inside goroutine
 		w.processExternalFile(path, "fsnotify_create")
 	}()
 }
@@ -200,7 +241,7 @@ func (w *watcher) handleWrite(path string) {
 			Msg("file already marked for processing, skipping")
 		return
 	}
-	defer w.service.fileLock.unmarkProcessing(path)
+	// NOTE: Do NOT defer unmarkProcessing here - it must be inside the goroutine
 
 	log.Debug().
 		Str("path", path).
@@ -210,6 +251,7 @@ func (w *watcher) handleWrite(path string) {
 	w.service.wg.Add(1)
 	go func() {
 		defer w.service.wg.Done()
+		defer w.service.fileLock.unmarkProcessing(path) // Moved inside goroutine
 		w.processExternalFile(path, "fsnotify_write")
 	}()
 }
@@ -312,4 +354,66 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 		Bool("hashComputed", true).
 		Str("trigger", trigger).
 		Msg("external file processed successfully")
+}
+
+// processMove handles an external file move/rename operation.
+// It atomically updates the database to reflect the new path while preserving
+// related records (digests, pins).
+func (w *watcher) processMove(oldPath, newPath string) {
+	// Get file info at new location
+	fullPath := filepath.Join(w.service.cfg.DataRoot, newPath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("newPath", newPath).
+			Msg("failed to stat moved file")
+		return
+	}
+
+	// Get old record if exists (for hash preservation)
+	oldRecord, _ := w.service.cfg.DB.GetFileByPath(oldPath)
+	var oldHash string
+	if oldRecord != nil && oldRecord.Hash != nil {
+		oldHash = *oldRecord.Hash
+	}
+
+	// Compute metadata for new location
+	metadata, err := w.service.processor.ComputeMetadata(context.Background(), newPath)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("path", newPath).
+			Msg("failed to compute metadata for moved file, proceeding with old hash")
+		// Use old hash if metadata computation fails
+		if oldHash != "" {
+			metadata = &MetadataResult{Hash: oldHash}
+		}
+	}
+
+	// Build record for new path
+	record := w.service.buildFileRecord(newPath, info, metadata)
+
+	// Atomic move in database
+	if err := w.service.cfg.DB.MoveFileAtomic(oldPath, newPath, record); err != nil {
+		log.Error().
+			Err(err).
+			Str("oldPath", oldPath).
+			Str("newPath", newPath).
+			Msg("failed to move file record atomically")
+		return
+	}
+
+	// Notify of file change (location changed, not content)
+	w.service.notifyFileChange(FileChangeEvent{
+		FilePath:       newPath,
+		IsNew:          false,
+		ContentChanged: false, // Content didn't change, just location
+		Trigger:        "fsnotify_move",
+	})
+
+	log.Info().
+		Str("oldPath", oldPath).
+		Str("newPath", newPath).
+		Msg("external file move processed successfully")
 }
