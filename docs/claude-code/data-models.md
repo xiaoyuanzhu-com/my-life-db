@@ -305,6 +305,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 | `userType` | string | User type ("external") |
 | `agentId` | string? | Subagent ID (e.g., "a081313") |
 | `slug` | string? | Human-readable session slug |
+| `parent_tool_use_id` | string? | If set, this message belongs to a subagent spawned by the Task tool with this ID. **UI should filter from top-level and render inside parent Task.** See "Subagent Message Hierarchy" section. |
 
 ---
 
@@ -785,6 +786,148 @@ Unlike regular tools which have a simple 1:1 relationship (tool_use → tool_res
 - Usually an **object** with tool-specific fields
 - For errors (especially Bash), can be a **string** containing the error message
 ```
+
+#### Subagent Message Hierarchy ⭐⭐⭐ CRITICAL
+
+The Task tool spawns a **subagent** - a separate Claude instance that runs its own conversation. The subagent's messages are linked to the parent Task via the `parent_tool_use_id` field.
+
+**The `parent_tool_use_id` Field:**
+
+This field appears on messages that belong to a subagent conversation. It points to the `tool_use.id` of the Task that spawned the subagent.
+
+| Message | `parent_tool_use_id` | Interpretation |
+|---------|---------------------|----------------|
+| Top-level assistant with Task | `null` or absent | Parent session requesting a Task |
+| User message (subagent prompt) | `"toolu_xxx"` | The prompt being sent TO the subagent |
+| Assistant message (subagent tool) | `"toolu_xxx"` | Tool called BY the subagent |
+| User message (subagent tool result) | `"toolu_xxx"` | Tool result for the subagent |
+
+**Visual Hierarchy:**
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ TOP-LEVEL SESSION                                                    │
+├──────────────────────────────────────────────────────────────────────┤
+│ assistant: "I'll explore this for you"                               │
+│            tool_use Task (id: toolu_ABC, parent_tool_use_id: null)   │
+│ ┌──────────────────────────────────────────────────────────────────┐ │
+│ │ SUBAGENT SESSION (all messages have parent_tool_use_id: toolu_ABC)│
+│ ├──────────────────────────────────────────────────────────────────┤ │
+│ │ user: "Explore the file system..." (prompt to subagent)          │ │
+│ │ assistant: tool_use Read (subagent's first tool call)            │ │
+│ │ user: tool_result for Read                                       │ │
+│ │ assistant: tool_use Grep (subagent's second tool call)           │ │
+│ │ user: tool_result for Grep                                       │ │
+│ │ assistant: "Here's what I found..." (subagent's final response)  │ │
+│ └──────────────────────────────────────────────────────────────────┘ │
+│ user: tool_result for Task (final result returned to parent)         │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Identifying Task Tools (Parent):**
+
+```typescript
+// A tool_use block is a Task if:
+const isTaskTool = toolUseBlock.name === 'Task'
+
+// Task tool input parameters:
+interface TaskToolInput {
+  description: string      // Short description (shown in header)
+  prompt: string           // Full prompt sent to subagent
+  subagent_type: string    // Agent type: "Explore", "Plan", "Bash", etc.
+  model?: string           // Optional: model override (e.g., "haiku")
+  run_in_background?: boolean
+}
+```
+
+**Identifying Subagent Messages (Children):**
+
+```typescript
+// A message belongs to a subagent if it has a non-null parent_tool_use_id
+const isSubagentMessage = (msg: SessionMessage): boolean => {
+  return msg.parent_tool_use_id != null
+}
+
+// Group subagent messages by their parent Task
+const buildSubagentMessagesMap = (messages: SessionMessage[]): Map<string, SessionMessage[]> => {
+  const map = new Map<string, SessionMessage[]>()
+  for (const msg of messages) {
+    if (msg.parent_tool_use_id) {
+      const existing = map.get(msg.parent_tool_use_id) || []
+      existing.push(msg)
+      map.set(msg.parent_tool_use_id, existing)
+    }
+  }
+  return map
+}
+```
+
+**Subagent Message Example:**
+
+```json
+{
+  "type": "user",
+  "uuid": "4c772532-8484-410e-8169-54c0db23b617",
+  "parent_tool_use_id": "toolu_01QmtbYnyobtcV2wmkKSYGDp",
+  "session_id": "336a2af6-b733-4731-8d6a-1e9b846277c9",
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Explore the file system service architecture..."
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "type": "assistant",
+  "uuid": "251bf3d4-6215-414a-83c5-5002f5200bcf",
+  "parent_tool_use_id": "toolu_01QmtbYnyobtcV2wmkKSYGDp",
+  "session_id": "336a2af6-b733-4731-8d6a-1e9b846277c9",
+  "message": {
+    "model": "claude-haiku-4-5-20251001",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01WxjzPB4Lh3J8nzGSQmuJU2",
+        "name": "Read",
+        "input": {"file_path": "/path/to/file"}
+      }
+    ]
+  }
+}
+```
+
+**Key Observations:**
+- Subagent messages use the **same session_id** as the parent
+- Subagent may use a **different model** (e.g., haiku for Explore agents)
+- The `parent_tool_use_id` creates a **tree structure** (can be nested if subagent spawns another Task)
+- No explicit "agent" message type - standard `user`/`assistant` messages with linking field
+
+**Rendering Criteria:**
+
+| Criteria | Action |
+|----------|--------|
+| `parent_tool_use_id` is null/absent | Render as top-level message |
+| `parent_tool_use_id` is set | Filter from top-level; render inside parent Task tool |
+| Task tool with matching child messages | Show collapsible "Sub-agent conversation (N messages)" |
+| Task tool with no child messages | Show only the Task header and result |
+
+**Relationship to Progress Messages:**
+
+There are **two ways** to access subagent conversation data:
+
+| Source | Field | When Available | Content |
+|--------|-------|----------------|---------|
+| Progress messages | `agent_progress.data.normalizedMessages` | Live streaming | Snapshot of conversation so far |
+| Direct messages | `parent_tool_use_id` on user/assistant | Always (persisted) | Actual conversation messages |
+
+For historical sessions (JSONL), use `parent_tool_use_id`. For live sessions, either source works.
 
 **4i. AskUserQuestion Tool** ⭐ INTERACTIVE
 

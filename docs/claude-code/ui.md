@@ -1201,6 +1201,41 @@ The Task tool spawns a subagent and has a **special lifecycle** with progress me
 - Result includes agent stats (duration, tokens, tool calls)
 - `agentId` is a 7-character hex identifier
 
+**Subagent Message Handling:**
+
+The Task tool spawns a subagent whose messages have `parent_tool_use_id` pointing back to the Task's `tool_use.id`. See [data-models.md "Subagent Message Hierarchy"](./data-models.md#subagent-message-hierarchy--critical) for full details.
+
+**Filtering Criteria:**
+```typescript
+// Filter subagent messages from top-level rendering
+const isSubagentMessage = (msg) => msg.parent_tool_use_id != null
+
+// Group by parent Task for nested rendering
+const subagentMessagesMap = buildSubagentMessagesMap(messages)
+```
+
+**Rendering:**
+```
+● Task "Review FS architecture" (Explore) ▾
+  ┌─────────────────────────────────────────┐
+  │ [Result markdown - final answer]        │
+  └─────────────────────────────────────────┘
+  ▸ Sub-agent conversation (24 messages)    [collapsed by default]
+    ┌───────────────────────────────────────┐
+    │ Nested SessionMessages with depth+1   │
+    │ - user: prompt to subagent            │
+    │ - assistant: tool_use Read            │
+    │ - user: tool_result                   │
+    │ - ...                                 │
+    └───────────────────────────────────────┘
+```
+
+**Data Sources:**
+| Source | When | Use Case |
+|--------|------|----------|
+| `agent_progress.data.normalizedMessages` | Live streaming | Real-time progress |
+| Messages with `parent_tool_use_id` | Always (persisted) | Historical sessions, full conversation |
+
 </details>
 
 <details>
@@ -1307,6 +1342,7 @@ Some message types are intentionally **not rendered** in the chat interface as s
 | `system.subtype: hook_response` | Rendered inside hook_started via hookResponseMap, not as standalone message |
 | `type: "control_request"` | Permission protocol message - triggers permission modal, not a chat message |
 | `type: "control_response"` | Permission protocol message - sent from UI to CLI via stdin, not displayed |
+| `parent_tool_use_id` set | Subagent messages - rendered inside parent Task tool, not as top-level messages. See [data-models.md "Subagent Message Hierarchy"](./data-models.md#subagent-message-hierarchy--critical). |
 
 **Progress Messages:**
 
@@ -1321,6 +1357,31 @@ Progress messages (`type: "progress"`) are filtered from the main message list b
 | `search_results_received` | (future) | Web search results received |
 
 Progress messages are linked to their parent tool via `parentToolUseID`, which maps to the `tool_use` block's `id` field.
+
+**Subagent Messages:**
+
+When a Task tool spawns a subagent, the subagent's conversation messages (user prompts, assistant tool calls, tool results) have `parent_tool_use_id` set to the Task's `tool_use.id`. These messages are:
+
+1. **Filtered from top-level** - They should not appear as standalone messages in the main chat
+2. **Grouped by parent** - Build a `subagentMessagesMap` keyed by `parent_tool_use_id`
+3. **Rendered inside Task tool** - The Task tool component renders them in a collapsible "Sub-agent conversation" section
+
+```typescript
+// Filter subagent messages from main message list
+const topLevelMessages = messages.filter(m => !m.parent_tool_use_id)
+
+// Group for Task tool rendering
+const subagentMessagesMap = new Map<string, SessionMessage[]>()
+for (const msg of messages) {
+  if (msg.parent_tool_use_id) {
+    const existing = subagentMessagesMap.get(msg.parent_tool_use_id) || []
+    existing.push(msg)
+    subagentMessagesMap.set(msg.parent_tool_use_id, existing)
+  }
+}
+```
+
+See [data-models.md "Subagent Message Hierarchy"](./data-models.md#subagent-message-hierarchy--critical) for full details on message structure and examples.
 
 **Skipped XML Tags:**
 
