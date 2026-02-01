@@ -884,6 +884,17 @@ func (m *SessionManager) scanForMissingJSONL() {
 	}
 }
 
+// hasUsefulMessages checks if the session has at least one useful message.
+// Uses each message's HasUsefulContent() method for unified filtering logic.
+func hasUsefulMessages(messages []models.SessionMessageI) bool {
+	for _, msg := range messages {
+		if msg.HasUsefulContent() {
+			return true
+		}
+	}
+	return false
+}
+
 // parseJSONLFile parses a JSONL file and extracts session metadata
 func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEntry {
 	messages, err := ReadSessionHistoryRaw(sessionID, "")
