@@ -204,7 +204,10 @@ func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 	return args
 }
 
-// Manager manages Claude Code sessions in memory
+// Manager manages Claude Code sessions in memory.
+//
+// Deprecated: Use SessionManager instead, which provides unified session state
+// management with built-in event subscription for real-time updates.
 type Manager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex

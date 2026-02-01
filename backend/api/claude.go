@@ -20,24 +20,26 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
-var claudeManager *claude.Manager
+var sessionManager *claude.SessionManager
 
 // InitClaudeManagerWithNotifications initializes the Claude session manager with notification support
 func InitClaudeManagerWithNotifications(notifService *notifications.Service) error {
 	var err error
-	claudeManager, err = claude.NewManager()
+	sessionManager, err = claude.NewSessionManager()
 	if err != nil {
 		return err
 	}
 
-	// Wire up SSE notifications for session updates
+	// Subscribe to session events and forward to SSE
 	if notifService != nil {
-		claudeManager.GetIndexCache().SetUpdateCallback(func(sessionID, operation string) {
-			notifService.NotifyClaudeSessionUpdated(sessionID, operation)
+		sessionManager.Subscribe(func(event claude.SessionEvent) {
+			// Map event types to operation strings for SSE
+			operation := string(event.Type)
+			notifService.NotifyClaudeSessionUpdated(event.SessionID, operation)
 		})
 	}
 
-	log.Info().Msg("Claude Code manager initialized with notifications")
+	log.Info().Msg("Claude SessionManager initialized with notifications")
 	return nil
 }
 
@@ -49,15 +51,20 @@ func InitClaudeManager() error {
 
 // ShutdownClaudeManager gracefully shuts down the Claude session manager
 func ShutdownClaudeManager(ctx context.Context) error {
-	if claudeManager == nil {
+	if sessionManager == nil {
 		return nil
 	}
-	return claudeManager.Shutdown(ctx)
+	return sessionManager.Shutdown(ctx)
+}
+
+// GetSessionManager returns the global session manager instance
+func GetSessionManager() *claude.SessionManager {
+	return sessionManager
 }
 
 // ListClaudeSessions handles GET /api/claude/sessions
 func (h *Handlers) ListClaudeSessions(c *gin.Context) {
-	sessions := claudeManager.ListSessions()
+	sessions := sessionManager.ListSessions()
 
 	// Convert to JSON-safe format
 	result := make([]map[string]interface{}, len(sessions))
@@ -108,7 +115,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	}
 
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := claudeManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
+	session, err := sessionManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
@@ -122,7 +129,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 func (h *Handlers) GetClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	session, err := claudeManager.GetSession(sessionID)
+	session, err := sessionManager.GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -144,7 +151,7 @@ func (h *Handlers) UpdateClaudeSession(c *gin.Context) {
 		return
 	}
 
-	if err := claudeManager.UpdateSession(sessionID, body.Title); err != nil {
+	if err := sessionManager.UpdateSession(sessionID, body.Title); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -160,7 +167,7 @@ func (h *Handlers) UpdateClaudeSession(c *gin.Context) {
 func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	if err := claudeManager.DeleteSession(sessionID); err != nil {
+	if err := sessionManager.DeleteSession(sessionID); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -177,7 +184,7 @@ func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 func (h *Handlers) DeactivateClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	if err := claudeManager.DeactivateSession(sessionID); err != nil {
+	if err := sessionManager.DeactivateSession(sessionID); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -194,7 +201,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	// GetSession will auto-resume from history if not active
-	session, err := claudeManager.GetSession(sessionID)
+	session, err := sessionManager.GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -355,7 +362,7 @@ type ChatMessage struct {
 }
 
 // ListAllClaudeSessions handles GET /api/claude/sessions/all
-// Returns both active and historical sessions using the in-memory cache.
+// Returns both active and historical sessions using the SessionManager.
 // Supports pagination via query parameters:
 //   - limit: number of sessions to return (default 20, max 100)
 //   - cursor: pagination cursor from previous response
@@ -371,21 +378,10 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	cursor := c.Query("cursor")
 	statusFilter := c.DefaultQuery("status", "all")
 
-	// Get all active sessions from our manager's pool
-	activeSessions := claudeManager.ListSessions()
-	activeSessionIDs := make(map[string]bool)
-	activeSessionMap := make(map[string]*claude.Session)
-	for _, s := range activeSessions {
-		activeSessionIDs[s.ID] = s.IsActivated()
-		activeSessionMap[s.ID] = s
-	}
-
-	// Get paginated sessions from the index cache
-	indexCache := claudeManager.GetIndexCache()
-	paginationResult := indexCache.GetPaginated(cursor, limit, activeSessionIDs, statusFilter)
+	// SessionManager handles merging file metadata + runtime state internally
+	paginationResult := sessionManager.ListAllSessions(cursor, limit, statusFilter)
 
 	log.Debug().
-		Int("managerSessionCount", len(activeSessions)).
 		Int("returnedCount", len(paginationResult.Entries)).
 		Int("totalCount", paginationResult.TotalCount).
 		Bool("hasMore", paginationResult.HasMore).
@@ -393,81 +389,41 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		Str("statusFilter", statusFilter).
 		Msg("ListAllClaudeSessions: fetching sessions with pagination")
 
-	// Track which sessions we've already added (to avoid duplicates)
-	addedSessions := make(map[string]bool)
+	// Convert SessionEntry to response format
 	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
-
-	// Convert cached entries to response format
 	for _, entry := range paginationResult.Entries {
-		addedSessions[entry.SessionID] = true
-
 		sessionData := map[string]interface{}{
 			"id":           entry.SessionID,
-			"title":        entry.GetDisplayTitle(),
+			"title":        entry.DisplayTitle,
 			"workingDir":   entry.ProjectPath,
 			"createdAt":    entry.Created,
 			"lastActivity": entry.Modified,
 			"messageCount": entry.MessageCount,
 			"isSidechain":  entry.IsSidechain,
+			"isActive":     entry.IsActivated,
+			"status":       entry.Status,
 		}
 
-		// Check if session is in our manager's pool
-		if activeSession, ok := activeSessionMap[entry.SessionID]; ok {
-			sessionData["isActive"] = activeSession.IsActivated()
-			sessionData["status"] = activeSession.Status
-			sessionData["processId"] = activeSession.ProcessID
-			sessionData["clients"] = len(activeSession.Clients)
-			// Use live Git info from active session
-			if activeSession.Git != nil {
-				sessionData["git"] = activeSession.Git
-			}
-		} else {
-			sessionData["isActive"] = false
-			sessionData["status"] = "archived"
-			// Build Git info from index entry for archived sessions
-			if entry.GitBranch != "" {
-				sessionData["git"] = map[string]interface{}{
-					"isRepo": true,
-					"branch": entry.GitBranch,
-				}
+		if entry.ProcessID != 0 {
+			sessionData["processId"] = entry.ProcessID
+		}
+		if entry.ClientCount > 0 {
+			sessionData["clients"] = entry.ClientCount
+		}
+		if entry.Git != nil {
+			sessionData["git"] = entry.Git
+		} else if entry.GitBranch != "" {
+			sessionData["git"] = map[string]interface{}{
+				"isRepo": true,
+				"branch": entry.GitBranch,
 			}
 		}
 
 		result = append(result, sessionData)
 	}
 
-	// For first page only: Add any sessions from manager that aren't in the cache yet (just created)
-	// These are prepended to the result since they're the newest
-	if cursor == "" {
-		newSessions := make([]map[string]interface{}, 0)
-		for _, s := range activeSessions {
-			if addedSessions[s.ID] {
-				continue // Already added from cache
-			}
-
-			// Apply status filter
-			isActive := s.IsActivated()
-			if statusFilter == "active" && !isActive {
-				continue
-			}
-			if statusFilter == "archived" && isActive {
-				continue
-			}
-
-			sessionData := s.ToJSON()
-			sessionData["isActive"] = isActive
-			newSessions = append(newSessions, sessionData)
-			log.Debug().Str("sessionId", s.ID).Msg("ListAllClaudeSessions: adding session from manager (not in cache)")
-		}
-		// Prepend new sessions (they're the most recent)
-		if len(newSessions) > 0 {
-			result = append(newSessions, result...)
-		}
-	}
-
 	log.Debug().
 		Int("totalReturned", len(result)).
-		Int("fromCache", len(paginationResult.Entries)).
 		Bool("hasMore", paginationResult.HasMore).
 		Msg("ListAllClaudeSessions: returning paginated sessions")
 
@@ -496,7 +452,7 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 	}
 
 	// Get or create session (will auto-resume from history if not active)
-	session, err := claudeManager.GetSession(sessionID)
+	session, err := sessionManager.GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -556,7 +512,7 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	// GetSession will auto-resume from history if not active
-	session, err := claudeManager.GetSession(sessionID)
+	session, err := sessionManager.GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -605,7 +561,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	log.Debug().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: WebSocket connection request")
 
 	// GetSession will auto-resume from history if not active
-	session, err := claudeManager.GetSession(sessionID)
+	session, err := sessionManager.GetSession(sessionID)
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: session not found")
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})

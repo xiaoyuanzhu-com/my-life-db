@@ -24,6 +24,9 @@ type SessionUpdateCallback func(sessionID string, operation string)
 // 1. Reading all sessions-index.json files
 // 2. Scanning for JSONL files not in the index
 // 3. Starting an fsnotify watcher for real-time updates
+//
+// Deprecated: Use SessionManager instead, which provides unified session state
+// management with built-in event subscription for real-time updates.
 type SessionIndexCache struct {
 	mu          sync.RWMutex
 	entries     map[string]*CachedSessionEntry
