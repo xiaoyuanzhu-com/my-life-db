@@ -1193,8 +1193,8 @@ func (m *SessionManager) activateSession(session *Session) error {
 		go m.monitorProcess(session)
 	}
 
-	// Emit activation event
-	m.notify(SessionEvent{Type: SessionEventActivated, SessionID: session.ID})
+	// Note: Event emission is handled by the public ActivateSession() method
+	// to avoid duplicate events when called via session.EnsureActivated()
 
 	return nil
 }
