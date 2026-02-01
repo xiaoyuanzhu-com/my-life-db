@@ -17,25 +17,25 @@ const PERMISSION_MODES: PermissionModeOption[] = [
     value: 'default',
     label: 'Ask before edits',
     description: 'Prompts for tool permissions',
-    icon: <Shield className="h-4 w-4" />,
+    icon: <Shield className="h-3.5 w-3.5" />,
   },
   {
     value: 'acceptEdits',
     label: 'Edit automatically',
     description: 'Auto-accepts file edits',
-    icon: <FileEdit className="h-4 w-4" />,
+    icon: <FileEdit className="h-3.5 w-3.5" />,
   },
   {
     value: 'plan',
     label: 'Plan mode',
     description: 'No tool execution',
-    icon: <ShieldCheck className="h-4 w-4" />,
+    icon: <ShieldCheck className="h-3.5 w-3.5" />,
   },
   {
     value: 'bypassPermissions',
     label: 'YOLO',
     description: 'All tools auto-approved',
-    icon: <ShieldOff className="h-4 w-4" />,
+    icon: <ShieldOff className="h-3.5 w-3.5" />,
   },
 ]
 
@@ -69,19 +69,19 @@ export function PermissionModeSelector({
           type="button"
           disabled={disabled}
           className={cn(
-            'rounded-lg',
-            'flex items-center justify-center gap-1.5',
-            'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
+            'flex items-center gap-1.5 rounded-lg',
+            'text-xs text-muted-foreground',
+            'hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            showLabel ? 'h-8 px-2.5' : 'h-8 w-8',
+            showLabel ? 'px-2 py-1.5' : 'p-1.5',
             open && 'bg-accent text-foreground'
           )}
           aria-label={`Permission mode: ${currentMode.label}`}
           title={`${currentMode.label}: ${currentMode.description}`}
         >
           {currentMode.icon}
-          {showLabel && <span className="text-xs">{currentMode.label}</span>}
+          {showLabel && <span>{currentMode.label}</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent
