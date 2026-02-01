@@ -139,6 +139,50 @@ export default function ClaudePage() {
     }
   }, [statusFilter])
 
+  // Background refresh - updates sessions without showing loading state
+  // Used for SSE-triggered updates (e.g., title changes)
+  const refreshSessions = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        limit: '20',
+        status: statusFilter,
+      })
+
+      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const data = await response.json()
+      const newSessionList: Session[] = data.sessions || []
+
+      // Merge: update existing sessions, add new ones
+      setSessions((prevSessions) => {
+        const prevMap = new Map(prevSessions.map((s) => [s.id, s]))
+        const newMap = new Map(newSessionList.map((s) => [s.id, s]))
+
+        // Update existing sessions with new data, preserve ones not in new list
+        const merged = prevSessions.map((s) => {
+          const updated = newMap.get(s.id)
+          return updated ? { ...s, ...updated } : s
+        })
+
+        // Add any new sessions that weren't in the previous list
+        for (const newSession of newSessionList) {
+          if (!prevMap.has(newSession.id)) {
+            merged.unshift(newSession)
+          }
+        }
+
+        return sortSessions(merged)
+      })
+
+      setPagination({
+        hasMore: data.pagination?.hasMore ?? false,
+        nextCursor: data.pagination?.nextCursor ?? null,
+        totalCount: data.pagination?.totalCount ?? newSessionList.length,
+      })
+    } catch (error) {
+      console.error('Failed to refresh sessions:', error)
+    }
+  }, [statusFilter])
+
   // Load sessions on mount or when filter changes
   useEffect(() => {
     loadSessions()
@@ -215,8 +259,9 @@ export default function ClaudePage() {
   }, [navigate])
 
   // Refresh session list when titles change (SSE from backend)
+  // Uses refreshSessions for seamless background updates without loading flash
   useClaudeSessionNotifications({
-    onSessionUpdated: loadSessions,
+    onSessionUpdated: refreshSessions,
     enabled: isAuthenticated,
   })
 
@@ -510,7 +555,7 @@ export default function ClaudePage() {
               workingDir={activeSession.workingDir}
               isActive={activeSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-              refreshSessions={loadSessions}
+              refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
