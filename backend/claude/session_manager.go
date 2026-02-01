@@ -211,13 +211,24 @@ func (m *SessionManager) notify(event SessionEvent) {
 	m.subscribersMu.RLock()
 	defer m.subscribersMu.RUnlock()
 
+	subscriberCount := len(m.subscribers)
+	droppedCount := 0
+
 	for ch := range m.subscribers {
 		select {
 		case ch <- event:
 		default:
-			// Channel full, skip
-			log.Warn().Str("sessionId", event.SessionID).Str("type", string(event.Type)).Msg("subscriber channel full, dropping event")
+			droppedCount++
 		}
+	}
+
+	if droppedCount > 0 {
+		log.Warn().
+			Str("sessionId", event.SessionID).
+			Str("eventType", string(event.Type)).
+			Int("droppedCount", droppedCount).
+			Int("totalSubscribers", subscriberCount).
+			Msg("dropped session events due to full subscriber channels")
 	}
 }
 
