@@ -194,6 +194,12 @@ func (s *Session) EnsureActivated() error {
 	s.ResetMessageCache()
 	s.mu.Lock()
 
+	log.Info().
+		Str("sessionId", s.ID).
+		Str("mode", string(s.Mode)).
+		Str("workingDir", s.WorkingDir).
+		Msg("activating session (starting new CLI process)")
+
 	if err := s.activateFn(); err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("failed to activate session: %w", err)
