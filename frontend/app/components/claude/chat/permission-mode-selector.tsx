@@ -43,12 +43,15 @@ interface PermissionModeSelectorProps {
   value: PermissionMode
   onChange: (mode: PermissionMode) => void
   disabled?: boolean
+  /** Show label text next to the icon */
+  showLabel?: boolean
 }
 
 export function PermissionModeSelector({
   value,
   onChange,
   disabled = false,
+  showLabel = false,
 }: PermissionModeSelectorProps) {
   const [open, setOpen] = useState(false)
 
@@ -66,17 +69,19 @@ export function PermissionModeSelector({
           type="button"
           disabled={disabled}
           className={cn(
-            'h-8 w-8 rounded-lg',
-            'flex items-center justify-center',
+            'rounded-lg',
+            'flex items-center justify-center gap-1.5',
             'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',
+            showLabel ? 'h-8 px-2.5' : 'h-8 w-8',
             open && 'bg-accent text-foreground'
           )}
           aria-label={`Permission mode: ${currentMode.label}`}
           title={`${currentMode.label}: ${currentMode.description}`}
         >
           {currentMode.icon}
+          {showLabel && <span className="text-xs">{currentMode.label}</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent

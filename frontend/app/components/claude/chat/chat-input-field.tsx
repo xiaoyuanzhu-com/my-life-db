@@ -371,7 +371,7 @@ export function ChatInputField({
 
       {/* Actions row */}
       <div className="flex items-center justify-between mt-2">
-        {/* Left side - working dir */}
+        {/* Left side - working dir and permission mode */}
         <div className="flex items-center gap-3">
           {(workingDir || onWorkingDirChange) && (
             <FolderPicker
@@ -379,6 +379,14 @@ export function ChatInputField({
               onChange={onWorkingDirChange}
               disabled={disabled || hasPermission}
               readOnly={!onWorkingDirChange}
+            />
+          )}
+          {onPermissionModeChange && (
+            <PermissionModeSelector
+              value={permissionMode}
+              onChange={onPermissionModeChange}
+              disabled={disabled || hasPermission}
+              showLabel
             />
           )}
         </div>
@@ -420,15 +428,6 @@ export function ChatInputField({
           >
             /
           </button>
-
-          {/* Permission mode selector */}
-          {onPermissionModeChange && (
-            <PermissionModeSelector
-              value={permissionMode}
-              onChange={onPermissionModeChange}
-              disabled={disabled || hasPermission}
-            />
-          )}
 
           {/* Submit / Stop button */}
           {/* Send button takes priority when there's text input */}
