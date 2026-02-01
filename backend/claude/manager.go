@@ -650,78 +650,55 @@ func (m *Manager) UpdateSession(id string, title string) error {
 	return nil
 }
 
-// DeleteSession kills a session and cleans up resources
+// DeleteSession kills a session and cleans up resources.
+// Uses optimistic approach: removes session immediately and cleans up in background.
 func (m *Manager) DeleteSession(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	session, ok := m.sessions[id]
 	if !ok {
+		m.mu.Unlock()
 		return ErrSessionNotFound
 	}
-
-	// SDK mode cleanup
-	if session.sdkClient != nil {
-		if session.sdkCancel != nil {
-			session.sdkCancel()
-		}
-		session.sdkClient.Close()
-		delete(m.sessions, id)
-		log.Info().Str("sessionId", id).Msg("deleted SDK claude session")
-		return nil
-	}
-
-	// Legacy mode cleanup: Close stdin/PTY first to signal EOF to Claude
-	if session.Mode == ModeUI {
-		if session.Stdin != nil {
-			session.Stdin.Close()
-		}
-	} else {
-		if session.PTY != nil {
-			session.PTY.Close()
-		}
-	}
-
-	// Gracefully terminate the process (SIGTERM, wait, then SIGKILL)
-	gracefulTerminate(session.Cmd, 3*time.Second)
-
-	// Close remaining resources
-	if session.Mode == ModeUI {
-		if session.Stdout != nil {
-			session.Stdout.Close()
-		}
-		if session.Stderr != nil {
-			session.Stderr.Close()
-		}
-	}
-
+	// Remove immediately for fast response
 	delete(m.sessions, id)
+	m.mu.Unlock()
 
-	log.Info().Str("sessionId", id).Msg("deleted claude session")
+	// Cleanup in background
+	go m.cleanupSession(session, id)
 
 	return nil
 }
 
 // DeactivateSession stops a session process but keeps it in the active sessions map
-// This allows the session to be archived while preserving its state in the history
+// This allows the session to be archived while preserving its state in the history.
+// Uses optimistic approach: removes session immediately and cleans up in background.
 func (m *Manager) DeactivateSession(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	session, ok := m.sessions[id]
 	if !ok {
+		m.mu.Unlock()
 		return ErrSessionNotFound
 	}
+	// Remove immediately for fast response
+	delete(m.sessions, id)
+	m.mu.Unlock()
 
+	// Cleanup in background
+	go m.cleanupSession(session, id)
+
+	return nil
+}
+
+// cleanupSession performs the actual cleanup of a deactivated session
+func (m *Manager) cleanupSession(session *Session, id string) {
 	// SDK mode cleanup
 	if session.sdkClient != nil {
 		if session.sdkCancel != nil {
 			session.sdkCancel()
 		}
 		session.sdkClient.Close()
-		delete(m.sessions, id)
 		log.Info().Str("sessionId", id).Msg("deactivated SDK claude session")
-		return nil
+		return
 	}
 
 	// Legacy mode cleanup: Close stdin/PTY first to signal EOF to Claude
@@ -748,12 +725,7 @@ func (m *Manager) DeactivateSession(id string) error {
 		}
 	}
 
-	// Remove from active sessions map (will show as archived in ListAllClaudeSessions)
-	delete(m.sessions, id)
-
 	log.Info().Str("sessionId", id).Msg("deactivated claude session")
-
-	return nil
 }
 
 // cleanupWorker periodically cleans up dead sessions
