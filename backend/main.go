@@ -48,11 +48,6 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
 
-	// Initialize Claude Code manager with SSE notification support
-	if err := api.InitClaudeManagerWithNotifications(srv.Notifications()); err != nil {
-		log.Fatal().Err(err).Msg("failed to initialize claude manager")
-	}
-
 	// Setup API routes
 	handlers := api.NewHandlers(srv)
 	api.SetupRoutes(srv.Router(), handlers)
@@ -79,11 +74,6 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-
-	// Shutdown Claude manager first (kills all sessions)
-	if err := api.ShutdownClaudeManager(ctx); err != nil {
-		log.Error().Err(err).Msg("claude manager shutdown error")
-	}
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")

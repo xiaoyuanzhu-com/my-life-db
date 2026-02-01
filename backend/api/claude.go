@@ -17,54 +17,11 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
-
-var sessionManager *claude.SessionManager
-
-// InitClaudeManagerWithNotifications initializes the Claude session manager with notification support
-func InitClaudeManagerWithNotifications(notifService *notifications.Service) error {
-	var err error
-	sessionManager, err = claude.NewSessionManager()
-	if err != nil {
-		return err
-	}
-
-	// Subscribe to session events and forward to SSE
-	if notifService != nil {
-		sessionManager.Subscribe(func(event claude.SessionEvent) {
-			// Map event types to operation strings for SSE
-			operation := string(event.Type)
-			notifService.NotifyClaudeSessionUpdated(event.SessionID, operation)
-		})
-	}
-
-	log.Info().Msg("Claude SessionManager initialized with notifications")
-	return nil
-}
-
-// InitClaudeManager initializes the Claude session manager (without notifications)
-// Deprecated: Use InitClaudeManagerWithNotifications instead
-func InitClaudeManager() error {
-	return InitClaudeManagerWithNotifications(nil)
-}
-
-// ShutdownClaudeManager gracefully shuts down the Claude session manager
-func ShutdownClaudeManager(ctx context.Context) error {
-	if sessionManager == nil {
-		return nil
-	}
-	return sessionManager.Shutdown(ctx)
-}
-
-// GetSessionManager returns the global session manager instance
-func GetSessionManager() *claude.SessionManager {
-	return sessionManager
-}
 
 // ListClaudeSessions handles GET /api/claude/sessions
 func (h *Handlers) ListClaudeSessions(c *gin.Context) {
-	sessions := sessionManager.ListSessions()
+	sessions := h.server.Claude().ListSessions()
 
 	// Convert to JSON-safe format
 	result := make([]map[string]interface{}, len(sessions))
@@ -115,7 +72,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	}
 
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := sessionManager.CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
+	session, err := h.server.Claude().CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
@@ -129,7 +86,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 func (h *Handlers) GetClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	session, err := sessionManager.GetSession(sessionID)
+	session, err := h.server.Claude().GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -151,7 +108,7 @@ func (h *Handlers) UpdateClaudeSession(c *gin.Context) {
 		return
 	}
 
-	if err := sessionManager.UpdateSession(sessionID, body.Title); err != nil {
+	if err := h.server.Claude().UpdateSession(sessionID, body.Title); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -167,7 +124,7 @@ func (h *Handlers) UpdateClaudeSession(c *gin.Context) {
 func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	if err := sessionManager.DeleteSession(sessionID); err != nil {
+	if err := h.server.Claude().DeleteSession(sessionID); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -184,7 +141,7 @@ func (h *Handlers) DeleteClaudeSession(c *gin.Context) {
 func (h *Handlers) DeactivateClaudeSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	if err := sessionManager.DeactivateSession(sessionID); err != nil {
+	if err := h.server.Claude().DeactivateSession(sessionID); err != nil {
 		if err == claude.ErrSessionNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 			return
@@ -201,7 +158,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	// GetSession will auto-resume from history if not active
-	session, err := sessionManager.GetSession(sessionID)
+	session, err := h.server.Claude().GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -379,7 +336,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	statusFilter := c.DefaultQuery("status", "all")
 
 	// SessionManager handles merging file metadata + runtime state internally
-	paginationResult := sessionManager.ListAllSessions(cursor, limit, statusFilter)
+	paginationResult := h.server.Claude().ListAllSessions(cursor, limit, statusFilter)
 
 	log.Debug().
 		Int("returnedCount", len(paginationResult.Entries)).
@@ -452,7 +409,7 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 	}
 
 	// Get or create session (will auto-resume from history if not active)
-	session, err := sessionManager.GetSession(sessionID)
+	session, err := h.server.Claude().GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -512,7 +469,7 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	sessionID := c.Param("id")
 
 	// GetSession will auto-resume from history if not active
-	session, err := sessionManager.GetSession(sessionID)
+	session, err := h.server.Claude().GetSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -561,7 +518,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	log.Debug().Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: WebSocket connection request")
 
 	// GetSession will auto-resume from history if not active
-	session, err := sessionManager.GetSession(sessionID)
+	session, err := h.server.Claude().GetSession(sessionID)
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("ClaudeSubscribeWebSocket: session not found")
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})

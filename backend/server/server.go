@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -20,10 +21,11 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	database     *db.DB
-	fsService    *fs.Service
-	digestWorker *digest.Worker
-	notifService *notifications.Service
+	database      *db.DB
+	fsService     *fs.Service
+	digestWorker  *digest.Worker
+	notifService  *notifications.Service
+	claudeManager *claude.SessionManager
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -63,6 +65,20 @@ func New(cfg *Config) (*Server, error) {
 	// 3. Create notifications service
 	log.Info().Msg("initializing notifications service")
 	s.notifService = notifications.NewService()
+
+	// 3.5. Create Claude session manager
+	log.Info().Msg("initializing Claude session manager")
+	claudeManager, err := claude.NewSessionManager()
+	if err != nil {
+		database.Close()
+		return nil, fmt.Errorf("failed to create Claude manager: %w", err)
+	}
+	s.claudeManager = claudeManager
+
+	// Subscribe to session events for SSE notifications
+	claudeManager.Subscribe(func(event claude.SessionEvent) {
+		s.notifService.NotifyClaudeSessionUpdated(event.SessionID, string(event.Type))
+	})
 
 	// 4. Create FS service
 	log.Info().Msg("initializing filesystem service")
@@ -247,6 +263,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// 2. Close notification service to cleanly disconnect SSE clients
 	s.notifService.Shutdown()
 
+	// 2.5. Shutdown Claude manager (kills all sessions)
+	if s.claudeManager != nil {
+		if err := s.claudeManager.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("Claude manager shutdown error")
+		}
+	}
+
 	// 3. Shutdown HTTP server (stop accepting new requests and wait for existing ones)
 	if s.http != nil {
 		if err := s.http.Shutdown(ctx); err != nil {
@@ -275,5 +298,6 @@ func (s *Server) DB() *db.DB                             { return s.database }
 func (s *Server) FS() *fs.Service                        { return s.fsService }
 func (s *Server) Digest() *digest.Worker                 { return s.digestWorker }
 func (s *Server) Notifications() *notifications.Service  { return s.notifService }
+func (s *Server) Claude() *claude.SessionManager         { return s.claudeManager }
 func (s *Server) Router() *gin.Engine                    { return s.router }
 func (s *Server) ShutdownContext() context.Context       { return s.shutdownCtx }
