@@ -20,7 +20,6 @@ const __dirname = dirname(__filename);
 const PROJECT_ROOT = __dirname;
 
 // Configuration
-const SMEE_URL = "https://smee.io/HgO0qrM4nNJLQv0";
 const WEBHOOK_PORT = 9999;
 const WATCH_INTERVAL_MS = 2000;
 
@@ -331,8 +330,17 @@ async function runQdrant() {
 }
 
 async function runGithub() {
+  loadEnv();
+
+  const smeeUrl = process.env.SMEE_URL;
+  if (!smeeUrl) {
+    log.error("SMEE_URL environment variable is required");
+    log.info("Get a URL from https://smee.io and set it in .env");
+    process.exit(1);
+  }
+
   log.info("Starting GitHub webhook listener...");
-  log.info(`Smee URL: ${SMEE_URL}`);
+  log.info(`Smee URL: ${smeeUrl}`);
   log.info(`Webhook port: ${WEBHOOK_PORT}`);
 
   // Start webhook HTTP server
@@ -392,7 +400,7 @@ async function runGithub() {
 
   // Start smee client
   log.info("Starting smee client...");
-  const smee = spawnProcess("smee", ["-u", SMEE_URL, "-t", `http://localhost:${WEBHOOK_PORT}`]);
+  const smee = spawnProcess("smee", ["-u", smeeUrl, "-t", `http://localhost:${WEBHOOK_PORT}`]);
 
   // Handle graceful shutdown
   const shutdown = async () => {

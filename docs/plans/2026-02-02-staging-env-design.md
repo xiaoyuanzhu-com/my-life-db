@@ -77,8 +77,7 @@ Replace `run.sh` with `run.js` - a standalone Node.js script (zero local depende
 
 ## Configuration
 
-Smee.io channel: `https://smee.io/HgO0qrM4nNJLQv0`
-
-Environment variables (same as run.sh):
+Environment variables:
+- `SMEE_URL` - Smee.io channel URL (required for `github` command, get one from https://smee.io)
 - `USER_DATA_DIR` - User data directory (default: ./data)
 - `APP_DATA_DIR` - App data directory (default: ./.my-life-db)
