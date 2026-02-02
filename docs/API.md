@@ -4,16 +4,152 @@ This document describes the REST API endpoints for the MyLifeDB backend. Mobile 
 
 **Base URL**: `http://{host}:{port}` (default: `http://localhost:12345`)
 
-**Content-Type**: All requests and responses use `application/json` unless otherwise specified.
+---
 
-## Naming Convention
+## API Design Principles
 
-All JSON request/response fields use **camelCase** (e.g., `fileCount`, `createdAt`, `hasMore`).
+### 1. HTTP Semantics First
+
+We use proper HTTP status codes and methods. The HTTP layer carries meaningful information:
+
+| Method | Purpose | Idempotent |
+|--------|---------|------------|
+| `GET` | Retrieve resources | Yes |
+| `POST` | Create resources / trigger actions | No |
+| `PUT` | Full update (replace) | Yes |
+| `PATCH` | Partial update | Yes |
+| `DELETE` | Remove resources | Yes |
+
+| Status | Meaning | When to Use |
+|--------|---------|-------------|
+| `200` | OK | Successful GET, PUT, PATCH |
+| `201` | Created | Successful POST that creates a resource |
+| `204` | No Content | Successful DELETE |
+| `400` | Bad Request | Validation errors, malformed request |
+| `401` | Unauthorized | Authentication required |
+| `403` | Forbidden | Permission denied |
+| `404` | Not Found | Resource doesn't exist |
+| `409` | Conflict | Resource already exists |
+| `500` | Internal Error | Server-side failure |
+| `503` | Service Unavailable | External dependency down |
+
+### 2. Unified Response Structure
+
+**All responses follow a consistent structure:**
+
+```json
+// Success: Single resource
+{
+  "data": { "id": "...", "name": "..." }
+}
+
+// Success: Collection
+{
+  "data": [{ "id": "..." }, { "id": "..." }],
+  "pagination": { "hasMore": true, "nextCursor": "..." }
+}
+
+// Success: No content
+HTTP 204 (empty body)
+
+// Error: All errors
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Display name is required",
+    "details": [{ "field": "displayName", "message": "required" }]
+  }
+}
+```
+
+### 3. No API Versioning
+
+We do NOT use URL versioning (`/api/v1/`). Instead:
+
+- **Additive changes only**: Add new fields and endpoints without removing existing ones
+- **Deprecation period**: Mark fields as deprecated before removal
+- **Frontend-first migration**: Update frontend to handle both old/new formats before backend changes
+
+This keeps URLs simple and avoids maintenance burden of multiple versions.
+
+### 4. Naming Conventions
+
+| Context | Convention | Example |
+|---------|------------|---------|
+| URL paths | kebab-case, plural nouns | `/api/inbox-items`, `/api/people` |
+| JSON fields | camelCase | `displayName`, `createdAt`, `hasMore` |
+| Query params | camelCase | `?folderOnly=true`, `?pageSize=20` |
+| Error codes | SCREAMING_SNAKE_CASE | `VALIDATION_ERROR`, `NOT_FOUND` |
 
 **Exceptions:**
-- OAuth token responses use snake_case per OAuth 2.0 spec (`access_token`, `refresh_token`)
-- Claude Code session data preserves Claude's original format
-- External vendor API responses (OpenAI, Aliyun) use their native formats
+- OAuth responses use snake_case per OAuth 2.0 spec (`access_token`, `refresh_token`)
+- Claude Code preserves Claude's original format
+- External vendor responses use their native formats
+
+### 5. Resource-Oriented Design
+
+URLs represent resources (nouns), not actions (verbs):
+
+```
+# Good: Resources
+GET    /api/people          # List people
+POST   /api/people          # Create person
+GET    /api/people/:id      # Get person
+PUT    /api/people/:id      # Update person
+DELETE /api/people/:id      # Delete person
+
+# Avoid: Actions in URLs (but acceptable for non-CRUD operations)
+POST   /api/people/:id/merge   # OK - complex action
+POST   /api/inbox/:id/reenrich # OK - trigger processing
+```
+
+### 6. Consistent Pagination
+
+**Cursor-based pagination** (preferred for real-time data):
+```json
+{
+  "data": [...],
+  "pagination": {
+    "hasMore": true,
+    "nextCursor": "eyJpZCI6MTIzfQ==",
+    "prevCursor": "eyJpZCI6MTAwfQ=="
+  }
+}
+```
+
+**Offset-based pagination** (for search results):
+```json
+{
+  "data": [...],
+  "pagination": {
+    "total": 156,
+    "limit": 20,
+    "offset": 40,
+    "hasMore": true
+  }
+}
+```
+
+### 7. Error Codes
+
+All errors include a machine-readable code for programmatic handling:
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `BAD_REQUEST` | 400 | Malformed request syntax |
+| `VALIDATION_ERROR` | 400 | Field validation failed |
+| `UNAUTHORIZED` | 401 | Authentication required |
+| `FORBIDDEN` | 403 | Permission denied |
+| `NOT_FOUND` | 404 | Resource not found |
+| `CONFLICT` | 409 | Resource conflict |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
+| `SERVICE_UNAVAILABLE` | 503 | Dependency unavailable |
+
+### 8. Idempotency
+
+- `PUT` and `DELETE` operations are idempotent (same result if called multiple times)
+- `DELETE` on non-existent resource returns `404`, not error
+- Toggle operations use explicit state: `PUT /pin` to pin, `DELETE /pin` to unpin
 
 ---
 
@@ -66,16 +202,19 @@ POST /api/auth/login
 **Response (200 OK):**
 ```json
 {
-  "success": true,
-  "sessionId": "string"
+  "data": {
+    "sessionId": "string"
+  }
 }
 ```
 
 **Response (401 Unauthorized):**
 ```json
 {
-  "success": false,
-  "error": "Invalid password"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid password"
+  }
 }
 ```
 
@@ -89,12 +228,7 @@ POST /api/auth/login
 POST /api/auth/logout
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ### OAuth/OIDC Authentication
 
@@ -128,17 +262,21 @@ GET /api/oauth/token
 **Response (200 OK - Authenticated):**
 ```json
 {
-  "authenticated": true,
-  "username": "string",
-  "sub": "string",
-  "email": "string"
+  "data": {
+    "authenticated": true,
+    "username": "string",
+    "sub": "string",
+    "email": "string"
+  }
 }
 ```
 
 **Response (200 OK - Not Authenticated):**
 ```json
 {
-  "authenticated": false
+  "data": {
+    "authenticated": false
+  }
 }
 ```
 
@@ -151,15 +289,19 @@ POST /api/oauth/refresh
 **Response (200 OK):**
 ```json
 {
-  "success": true,
-  "expiresIn": 3600
+  "data": {
+    "expiresIn": 3600
+  }
 }
 ```
 
 **Response (401 Unauthorized):**
 ```json
 {
-  "error": "No refresh token provided"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "No refresh token provided"
+  }
 }
 ```
 
@@ -169,12 +311,7 @@ POST /api/oauth/refresh
 POST /api/oauth/logout
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ---
 
@@ -199,7 +336,7 @@ GET /api/inbox
 **Response (200 OK):**
 ```json
 {
-  "items": [
+  "data": [
     {
       "path": "inbox/file.md",
       "name": "file.md",
@@ -215,15 +352,17 @@ GET /api/inbox
       "isPinned": false
     }
   ],
-  "cursors": {
-    "first": "2024-01-15T10:30:00Z:inbox/file.md",
-    "last": "2024-01-14T08:00:00Z:inbox/other.md"
-  },
-  "hasMore": {
-    "older": true,
-    "newer": false
-  },
-  "targetIndex": 5
+  "pagination": {
+    "cursors": {
+      "first": "2024-01-15T10:30:00Z:inbox/file.md",
+      "last": "2024-01-14T08:00:00Z:inbox/other.md"
+    },
+    "hasMore": {
+      "older": true,
+      "newer": false
+    },
+    "targetIndex": 5
+  }
 }
 ```
 
@@ -245,53 +384,59 @@ Content-Type: multipart/form-data
 **Response (201 Created):**
 ```json
 {
-  "path": "inbox/uuid.md",
-  "paths": ["inbox/uuid.md", "inbox/photo.jpg"]
+  "data": {
+    "path": "inbox/uuid.md",
+    "paths": ["inbox/uuid.md", "inbox/photo.jpg"]
+  }
 }
 ```
+
+**Headers:** `Location: /api/inbox/uuid.md`
 
 ### Get Inbox Item
 
 ```http
-GET /api/inbox/:id
+GET /api/inbox/:filename
 ```
 
 **Path Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `id` | string | Filename in inbox (e.g., "file.md") |
+| `filename` | string | Filename in inbox (e.g., "file.md") |
 
 **Response (200 OK):**
 ```json
 {
-  "path": "inbox/file.md",
-  "name": "file.md",
-  "isFolder": false,
-  "size": 1024,
-  "mimeType": "text/markdown",
-  "hash": "sha256:abc123...",
-  "modifiedAt": "2024-01-15T10:30:00Z",
-  "createdAt": "2024-01-15T10:30:00Z",
-  "textPreview": "Preview text...",
-  "screenshotSqlar": "screenshots/abc123.png",
-  "digests": [
-    {
-      "id": "uuid",
-      "filePath": "inbox/file.md",
-      "digester": "tags",
-      "status": "done",
-      "content": "{\"tags\": [\"work\", \"notes\"]}",
-      "createdAt": "2024-01-15T10:30:00Z",
-      "updatedAt": "2024-01-15T10:35:00Z"
-    }
-  ]
+  "data": {
+    "path": "inbox/file.md",
+    "name": "file.md",
+    "isFolder": false,
+    "size": 1024,
+    "mimeType": "text/markdown",
+    "hash": "sha256:abc123...",
+    "modifiedAt": "2024-01-15T10:30:00Z",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "textPreview": "Preview text...",
+    "screenshotSqlar": "screenshots/abc123.png",
+    "digests": [
+      {
+        "id": "uuid",
+        "filePath": "inbox/file.md",
+        "digester": "tags",
+        "status": "done",
+        "content": "{\"tags\": [\"work\", \"notes\"]}",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "updatedAt": "2024-01-15T10:35:00Z"
+      }
+    ]
+  }
 }
 ```
 
 ### Update Inbox Item
 
 ```http
-PUT /api/inbox/:id
+PUT /api/inbox/:filename
 ```
 
 **Request Body:**
@@ -304,22 +449,20 @@ PUT /api/inbox/:id
 **Response (200 OK):**
 ```json
 {
-  "success": true
+  "data": {
+    "path": "inbox/file.md",
+    "modifiedAt": "2024-01-15T12:00:00Z"
+  }
 }
 ```
 
 ### Delete Inbox Item
 
 ```http
-DELETE /api/inbox/:id
+DELETE /api/inbox/:filename
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ### Get Pinned Inbox Items
 
@@ -330,7 +473,7 @@ GET /api/inbox/pinned
 **Response (200 OK):**
 ```json
 {
-  "items": [
+  "data": [
     {
       "path": "inbox/important.md",
       "name": "important.md",
@@ -347,39 +490,43 @@ GET /api/inbox/pinned
 Triggers re-processing of all digesters for an item.
 
 ```http
-POST /api/inbox/:id/reenrich
+POST /api/inbox/:filename/reenrich
 ```
 
-**Response (200 OK):**
+**Response (202 Accepted):**
 ```json
 {
-  "success": true,
-  "message": "Re-enrichment triggered"
+  "data": {
+    "message": "Re-enrichment triggered",
+    "path": "inbox/file.md"
+  }
 }
 ```
 
 ### Get Inbox Item Status
 
 ```http
-GET /api/inbox/:id/status
+GET /api/inbox/:filename/status
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "status": "processing",
-  "digests": [
-    {
-      "id": "uuid",
-      "digester": "tags",
-      "status": "done"
-    },
-    {
-      "id": "uuid2",
-      "digester": "image-captioning",
-      "status": "running"
-    }
-  ]
+  "data": {
+    "status": "processing",
+    "digests": [
+      {
+        "id": "uuid",
+        "digester": "tags",
+        "status": "done"
+      },
+      {
+        "id": "uuid2",
+        "digester": "image-captioning",
+        "status": "running"
+      }
+    ]
+  }
 }
 ```
 
@@ -387,15 +534,6 @@ GET /api/inbox/:id/status
 - `done` - All digests completed successfully
 - `processing` - At least one digest is currently running
 - `pending` - Digests are queued (`todo`) or have failed
-
-**Individual Digest Status Values:**
-| Status | Description |
-|--------|-------------|
-| `todo` | Queued for processing |
-| `running` | Currently being processed |
-| `done` | Completed successfully |
-| `failed` | Processing failed (see `error` field) |
-| `skipped` | Skipped (e.g., file type not supported by digester) |
 
 ---
 
@@ -421,35 +559,31 @@ GET /api/library/tree
 **Response (200 OK):**
 ```json
 {
-  "basePath": "/path/to/data",
-  "path": "notes",
-  "children": [
-    {
-      "path": "work",
-      "type": "folder",
-      "children": [
-        {
-          "path": "meeting.md",
-          "type": "file",
-          "size": 2048,
-          "modifiedAt": "2024-01-15T10:30:00Z"
-        }
-      ]
-    },
-    {
-      "path": "personal.md",
-      "type": "file",
-      "size": 512,
-      "modifiedAt": "2024-01-14T08:00:00Z"
-    }
-  ]
+  "data": {
+    "basePath": "/path/to/data",
+    "path": "notes",
+    "children": [
+      {
+        "path": "work",
+        "type": "folder",
+        "children": [
+          {
+            "path": "meeting.md",
+            "type": "file",
+            "size": 2048,
+            "modifiedAt": "2024-01-15T10:30:00Z"
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
 ### Get File Info
 
 ```http
-GET /api/library/file-info
+GET /api/library/files
 ```
 
 **Query Parameters:**
@@ -460,23 +594,25 @@ GET /api/library/file-info
 **Response (200 OK):**
 ```json
 {
-  "path": "notes/meeting.md",
-  "name": "meeting.md",
-  "isFolder": false,
-  "size": 2048,
-  "mimeType": "text/markdown",
-  "hash": "sha256:abc123...",
-  "modifiedAt": "2024-01-15T10:30:00Z",
-  "createdAt": "2024-01-10T14:00:00Z",
-  "textPreview": "Meeting notes from...",
-  "digests": []
+  "data": {
+    "path": "notes/meeting.md",
+    "name": "meeting.md",
+    "isFolder": false,
+    "size": 2048,
+    "mimeType": "text/markdown",
+    "hash": "sha256:abc123...",
+    "modifiedAt": "2024-01-15T10:30:00Z",
+    "createdAt": "2024-01-10T14:00:00Z",
+    "textPreview": "Meeting notes from...",
+    "digests": []
+  }
 }
 ```
 
 ### Delete File
 
 ```http
-DELETE /api/library/file
+DELETE /api/library/files
 ```
 
 **Query Parameters:**
@@ -484,68 +620,70 @@ DELETE /api/library/file
 |-----------|------|-------------|
 | `path` | string | **Required.** Relative path to file or folder |
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ### Rename File
 
 ```http
-POST /api/library/rename
+PATCH /api/library/files
 ```
 
 **Request Body:**
 ```json
 {
   "path": "notes/old-name.md",
-  "newName": "new-name.md"
+  "name": "new-name.md"
 }
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "newPath": "notes/new-name.md"
+  "data": {
+    "path": "notes/new-name.md"
+  }
 }
 ```
 
 **Response (409 Conflict):**
 ```json
 {
-  "error": "A file with this name already exists"
+  "error": {
+    "code": "CONFLICT",
+    "message": "A file with this name already exists"
+  }
 }
 ```
 
 ### Move File
 
 ```http
-POST /api/library/move
+PATCH /api/library/files
 ```
 
 **Request Body:**
 ```json
 {
   "path": "inbox/file.md",
-  "targetPath": "notes/work"
+  "parent": "notes/work"
 }
 ```
 
-**Note:** Empty `targetPath` moves to data root.
+**Note:** Empty `parent` moves to data root.
 
 **Response (200 OK):**
 ```json
 {
-  "newPath": "notes/work/file.md"
+  "data": {
+    "path": "notes/work/file.md"
+  }
 }
 ```
 
 ### Create Folder
 
 ```http
-POST /api/library/folder
+POST /api/library/folders
 ```
 
 **Request Body:**
@@ -556,19 +694,21 @@ POST /api/library/folder
 }
 ```
 
-**Response (200 OK):**
+**Response (201 Created):**
 ```json
 {
-  "path": "notes/new-folder"
+  "data": {
+    "path": "notes/new-folder"
+  }
 }
 ```
 
-### Pin File (Toggle)
+**Headers:** `Location: /api/library/folders?path=notes/new-folder`
 
-Toggles the pin state of a file.
+### Pin File
 
 ```http
-POST /api/library/pin
+PUT /api/library/pins
 ```
 
 **Request Body:**
@@ -581,14 +721,18 @@ POST /api/library/pin
 **Response (200 OK):**
 ```json
 {
-  "isPinned": true
+  "data": {
+    "path": "inbox/important.md",
+    "isPinned": true,
+    "pinnedAt": "2024-01-15T10:30:00Z"
+  }
 }
 ```
 
 ### Unpin File
 
 ```http
-DELETE /api/library/pin
+DELETE /api/library/pins
 ```
 
 **Query Parameters:**
@@ -596,12 +740,7 @@ DELETE /api/library/pin
 |-----------|------|-------------|
 | `path` | string | **Required.** Path to file |
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ---
 
@@ -628,7 +767,7 @@ GET /api/search
 **Response (200 OK):**
 ```json
 {
-  "results": [
+  "data": [
     {
       "path": "notes/meeting.md",
       "name": "meeting.md",
@@ -653,14 +792,6 @@ GET /api/search
           "type": "content",
           "label": "Document content"
         }
-      },
-      "matchedObject": {
-        "title": "laptop",
-        "bbox": [100, 200, 300, 400],
-        "rle": {
-          "size": [480, 640],
-          "counts": [...]
-        }
       }
     }
   ],
@@ -670,20 +801,17 @@ GET /api/search
     "offset": 0,
     "hasMore": true
   },
-  "query": "meeting notes",
-  "timing": {
-    "totalMs": 45,
-    "searchMs": 30,
-    "enrichMs": 15
-  },
-  "sources": ["keyword", "semantic"]
+  "meta": {
+    "query": "meeting notes",
+    "timing": {
+      "totalMs": 45,
+      "searchMs": 30,
+      "enrichMs": 15
+    },
+    "sources": ["keyword", "semantic"]
+  }
 }
 ```
-
-**Search Types:**
-- `keyword` - Full-text search via Meilisearch
-- `semantic` - Vector similarity search via Qdrant
-- `database` - Fallback SQLite LIKE search
 
 ---
 
@@ -700,7 +828,7 @@ GET /api/digest/digesters
 **Response (200 OK):**
 ```json
 {
-  "digesters": [
+  "data": [
     {
       "name": "tags",
       "label": "Tags",
@@ -712,40 +840,10 @@ GET /api/digest/digesters
       "label": "URL Crawler",
       "description": "Crawl and extract content from URLs",
       "outputs": ["url-crawler"]
-    },
-    {
-      "name": "image-captioning",
-      "label": "Image Captioning",
-      "description": "Generate image captions",
-      "outputs": ["image-captioning"]
-    },
-    {
-      "name": "speech-recognition",
-      "label": "Speech Recognition",
-      "description": "Transcribe audio/video",
-      "outputs": ["speech-recognition"]
     }
   ]
 }
 ```
-
-**Available Digesters:**
-| Name | Description |
-|------|-------------|
-| `tags` | Generate tags using AI |
-| `url-crawler` | Crawl and extract content from URLs |
-| `url-crawl-summary` | Summarize crawled URL content |
-| `doc-to-markdown` | Convert documents to markdown |
-| `doc-to-screenshot` | Generate document screenshots |
-| `image-captioning` | Generate image captions |
-| `image-ocr` | Extract text from images (OCR) |
-| `image-objects` | Detect objects in images |
-| `speech-recognition` | Transcribe audio/video |
-| `speech-recognition-cleanup` | Clean up transcripts |
-| `speech-recognition-summary` | Summarize transcripts |
-| `speaker-embedding` | Extract speaker voice embeddings |
-| `search-keyword` | Index for keyword search |
-| `search-semantic` | Index for semantic search |
 
 ### Get Digest Stats
 
@@ -756,52 +854,56 @@ GET /api/digest/stats
 **Response (200 OK):**
 ```json
 {
-  "byDigester": {
-    "tags": {"todo": 5, "running": 1, "done": 100, "failed": 2, "skipped": 10},
-    "image-captioning": {"todo": 0, "running": 0, "done": 50, "failed": 0, "skipped": 5}
-  },
-  "byStatus": {
-    "todo": 5,
-    "running": 1,
-    "done": 150,
-    "failed": 2,
-    "skipped": 15
-  },
-  "total": 173
+  "data": {
+    "byDigester": {
+      "tags": {"todo": 5, "running": 1, "done": 100, "failed": 2, "skipped": 10},
+      "image-captioning": {"todo": 0, "running": 0, "done": 50, "failed": 0, "skipped": 5}
+    },
+    "byStatus": {
+      "todo": 5,
+      "running": 1,
+      "done": 150,
+      "failed": 2,
+      "skipped": 15
+    },
+    "total": 173
+  }
 }
 ```
 
 ### Get File Digests
 
 ```http
-GET /api/digest/file/*path
+GET /api/digest/files/*path
 ```
 
-**Example:** `GET /api/digest/file/inbox/photo.jpg`
+**Example:** `GET /api/digest/files/inbox/photo.jpg`
 
 **Response (200 OK):**
 ```json
 {
-  "path": "inbox/photo.jpg",
-  "status": "processing",
-  "digests": [
-    {
-      "id": "uuid",
-      "filePath": "inbox/photo.jpg",
-      "digester": "image-captioning",
-      "status": "done",
-      "content": "{\"caption\": \"A sunset over the ocean\"}",
-      "createdAt": "2024-01-15T10:30:00Z",
-      "updatedAt": "2024-01-15T10:35:00Z"
-    }
-  ]
+  "data": {
+    "path": "inbox/photo.jpg",
+    "status": "processing",
+    "digests": [
+      {
+        "id": "uuid",
+        "filePath": "inbox/photo.jpg",
+        "digester": "image-captioning",
+        "status": "done",
+        "content": "{\"caption\": \"A sunset over the ocean\"}",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "updatedAt": "2024-01-15T10:35:00Z"
+      }
+    ]
+  }
 }
 ```
 
 ### Trigger Digest Processing
 
 ```http
-POST /api/digest/file/*path
+POST /api/digest/files/*path
 ```
 
 **Request Body (optional):**
@@ -812,12 +914,13 @@ POST /api/digest/file/*path
 }
 ```
 
-**Response (200 OK):**
+**Response (202 Accepted):**
 ```json
 {
-  "success": true,
-  "message": "Digest processing triggered",
-  "path": "inbox/photo.jpg"
+  "data": {
+    "message": "Digest processing triggered",
+    "path": "inbox/photo.jpg"
+  }
 }
 ```
 
@@ -826,14 +929,15 @@ POST /api/digest/file/*path
 Resets all digests of a specific type to "todo" status.
 
 ```http
-DELETE /api/digest/reset/:digester
+POST /api/digest/digesters/:name/reset
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "success": true,
-  "affected": 42
+  "data": {
+    "affected": 42
+  }
 }
 ```
 
@@ -849,14 +953,16 @@ GET /api/people
 
 **Response (200 OK):**
 ```json
-[
-  {
-    "id": "uuid",
-    "displayName": "John Doe",
-    "createdAt": "2024-01-15T10:30:00Z",
-    "updatedAt": "2024-01-15T10:30:00Z"
-  }
-]
+{
+  "data": [
+    {
+      "id": "uuid",
+      "displayName": "John Doe",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
 ```
 
 ### Create Person
@@ -875,12 +981,16 @@ POST /api/people
 **Response (201 Created):**
 ```json
 {
-  "id": "uuid",
-  "displayName": "John Doe",
-  "createdAt": "2024-01-15T10:30:00Z",
-  "updatedAt": "2024-01-15T10:30:00Z"
+  "data": {
+    "id": "uuid",
+    "displayName": "John Doe",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:30:00Z"
+  }
 }
 ```
+
+**Headers:** `Location: /api/people/uuid`
 
 ### Get Person
 
@@ -891,20 +1001,22 @@ GET /api/people/:id
 **Response (200 OK):**
 ```json
 {
-  "id": "uuid",
-  "displayName": "John Doe",
-  "createdAt": "2024-01-15T10:30:00Z",
-  "updatedAt": "2024-01-15T10:30:00Z",
-  "clusters": [
-    {
-      "id": "cluster-uuid",
-      "peopleId": "uuid",
-      "clusterType": "face",
-      "sampleCount": 15,
-      "createdAt": "2024-01-15T10:30:00Z",
-      "updatedAt": "2024-01-16T14:00:00Z"
-    }
-  ]
+  "data": {
+    "id": "uuid",
+    "displayName": "John Doe",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:30:00Z",
+    "clusters": [
+      {
+        "id": "cluster-uuid",
+        "peopleId": "uuid",
+        "clusterType": "face",
+        "sampleCount": 15,
+        "createdAt": "2024-01-15T10:30:00Z",
+        "updatedAt": "2024-01-16T14:00:00Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -924,7 +1036,11 @@ PUT /api/people/:id
 **Response (200 OK):**
 ```json
 {
-  "success": true
+  "data": {
+    "id": "uuid",
+    "displayName": "John Smith",
+    "updatedAt": "2024-01-15T12:00:00Z"
+  }
 }
 ```
 
@@ -934,12 +1050,7 @@ PUT /api/people/:id
 DELETE /api/people/:id
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ### Merge People
 
@@ -964,14 +1075,17 @@ POST /api/people/:id/merge
 **Response (200 OK):**
 ```json
 {
-  "success": true
+  "data": {
+    "mergedCount": 3,
+    "targetId": "uuid"
+  }
 }
 ```
 
 ### Assign Embedding to Person
 
 ```http
-POST /api/people/embeddings/:id/assign
+PUT /api/people/embeddings/:embeddingId
 ```
 
 **Request Body:**
@@ -984,22 +1098,20 @@ POST /api/people/embeddings/:id/assign
 **Response (200 OK):**
 ```json
 {
-  "success": true
+  "data": {
+    "embeddingId": "embedding-uuid",
+    "personId": "person-uuid"
+  }
 }
 ```
 
 ### Unassign Embedding
 
 ```http
-POST /api/people/embeddings/:id/unassign
+DELETE /api/people/embeddings/:embeddingId
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ---
 
@@ -1014,55 +1126,36 @@ GET /api/settings
 **Response (200 OK):**
 ```json
 {
-  "preferences": {
-    "theme": "auto",
-    "defaultView": "inbox",
-    "weeklyDigest": false,
-    "digestDay": 0,
-    "logLevel": "info",
-    "userEmail": "user@example.com",
-    "languages": ["en", "zh"]
-  },
-  "vendors": {
-    "openai": {
-      "baseUrl": "https://api.openai.com/v1",
-      "apiKey": "********",
-      "model": "gpt-4o-mini"
+  "data": {
+    "preferences": {
+      "theme": "auto",
+      "defaultView": "inbox",
+      "weeklyDigest": false,
+      "digestDay": 0,
+      "logLevel": "info",
+      "userEmail": "user@example.com",
+      "languages": ["en", "zh"]
     },
-    "homelabAi": {
-      "baseUrl": "http://localhost:8080",
-      "chromeCdpUrl": "http://localhost:9222"
+    "vendors": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "********",
+        "model": "gpt-4o-mini"
+      }
     },
-    "aliyun": {
-      "apiKey": "********",
-      "region": "beijing",
-      "asrProvider": "fun-asr-realtime"
+    "digesters": {
+      "tags": true,
+      "image-captioning": true
     },
-    "meilisearch": {
-      "host": "http://localhost:7700"
+    "extraction": {
+      "autoEnrich": true,
+      "minConfidence": 0.7
     },
-    "qdrant": {
-      "host": "http://localhost:6333"
+    "storage": {
+      "dataPath": "/data",
+      "autoBackup": true,
+      "maxFileSize": 104857600
     }
-  },
-  "digesters": {
-    "tags": true,
-    "image-captioning": true,
-    "speech-recognition": false
-  },
-  "extraction": {
-    "autoEnrich": true,
-    "includeEntities": true,
-    "includeSentiment": false,
-    "includeActionItems": true,
-    "includeRelatedEntries": false,
-    "minConfidence": 0.7
-  },
-  "storage": {
-    "dataPath": "/data",
-    "backupPath": "/backups",
-    "autoBackup": true,
-    "maxFileSize": 104857600
   }
 }
 ```
@@ -1072,7 +1165,7 @@ GET /api/settings
 ### Update Settings
 
 ```http
-PUT /api/settings
+PATCH /api/settings
 ```
 
 **Request Body:** Partial settings object (only include fields to update)
@@ -1088,24 +1181,17 @@ PUT /api/settings
 }
 ```
 
-**Response (200 OK):** Returns the complete updated settings object.
+**Response (200 OK):** Returns the complete updated settings object in `data` field.
 
 **Note:** Masked API keys (`********`) are ignored and won't update the stored value.
 
 ### Reset Settings
 
 ```http
-POST /api/settings
+DELETE /api/settings
 ```
 
-**Request Body:**
-```json
-{
-  "action": "reset"
-}
-```
-
-**Response (200 OK):** Returns the default settings object.
+**Response (200 OK):** Returns the default settings object in `data` field.
 
 ---
 
@@ -1120,17 +1206,19 @@ GET /api/stats
 **Response (200 OK):**
 ```json
 {
-  "library": {
-    "fileCount": 1234,
-    "totalSize": 5368709120
-  },
-  "inbox": {
-    "itemCount": 42
-  },
-  "digests": {
-    "totalFiles": 1276,
-    "digestedFiles": 1200,
-    "pendingDigests": 76
+  "data": {
+    "library": {
+      "fileCount": 1234,
+      "totalSize": 5368709120
+    },
+    "inbox": {
+      "itemCount": 42
+    },
+    "digests": {
+      "totalFiles": 1276,
+      "digestedFiles": 1200,
+      "pendingDigests": 76
+    }
   }
 }
 ```
@@ -1151,21 +1239,26 @@ POST /api/ai/summarize
 ```json
 {
   "text": "Long transcript or document text...",
-  "max_tokens": 300
+  "maxTokens": 300
 }
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "summary": "• Key point 1\n• Key point 2\n• Action items..."
+  "data": {
+    "summary": "• Key point 1\n• Key point 2\n• Action items..."
+  }
 }
 ```
 
 **Response (503 Service Unavailable):**
 ```json
 {
-  "error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
+  "error": {
+    "code": "SERVICE_UNAVAILABLE",
+    "message": "OpenAI API key not configured"
+  }
 }
 ```
 
@@ -1213,17 +1306,13 @@ POST /api/upload/finalize
 }
 ```
 
-**Destination Options:**
-- `null` or omitted: defaults to `"inbox"`
-- `""` (empty string): data root
-- `"path/to/folder"`: specific folder
-
 **Response (200 OK):**
 ```json
 {
-  "success": true,
-  "path": "inbox/document.pdf",
-  "paths": ["inbox/document.pdf"]
+  "data": {
+    "path": "inbox/document.pdf",
+    "paths": ["inbox/document.pdf"]
+  }
 }
 ```
 
@@ -1251,12 +1340,7 @@ PUT /raw/*path
 
 **Request Body:** Raw file content
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ---
 
@@ -1273,8 +1357,6 @@ GET /sqlar/*path
 **Example:** `GET /sqlar/screenshots/abc123.png`
 
 **Response:** Decompressed file contents with appropriate `Content-Type` header.
-
-**Note:** SQLAR files are zlib-compressed in the database and decompressed on-the-fly.
 
 ---
 
@@ -1301,8 +1383,6 @@ data: {"type":"inbox-changed","timestamp":"2024-01-15T10:30:00Z"}
 
 data: {"type":"library-changed","path":"notes/file.md","action":"create","timestamp":"2024-01-15T10:31:00Z"}
 
-data: {"type":"pin-changed","path":"inbox/important.md","timestamp":"2024-01-15T10:32:00Z"}
-
 : heartbeat
 ```
 
@@ -1314,8 +1394,6 @@ data: {"type":"pin-changed","path":"inbox/important.md","timestamp":"2024-01-15T
 | `library-changed` | Library content changed | `path`, `action` |
 | `pin-changed` | Pin state changed | `path` |
 | `digest-update` | Digest processing update | `path`, `digester`, `status` |
-
-**Heartbeat:** Sent every 30 seconds as `: heartbeat\n\n`
 
 ---
 
@@ -1330,17 +1408,10 @@ GET /api/vendors/openai/models
 **Response (200 OK):**
 ```json
 {
-  "models": [
+  "data": [
     {"id": "gpt-4o", "name": "GPT-4o"},
     {"id": "gpt-4o-mini", "name": "GPT-4o Mini"}
   ]
-}
-```
-
-**Response (503 Service Unavailable):**
-```json
-{
-  "error": "OpenAI is not configured"
 }
 ```
 
@@ -1356,20 +1427,16 @@ GET /api/directories
 
 **Response (200 OK):**
 ```json
-["inbox", "notes", "journal", "photos"]
+{
+  "data": ["inbox", "notes", "journal", "photos"]
+}
 ```
-
-**Note:** Excludes hidden directories (starting with `.`) and the `app` directory.
 
 ---
 
 ## Speech Recognition (ASR)
 
-MyLifeDB provides speech recognition capabilities via Aliyun Fun-ASR, with both batch processing and real-time streaming options.
-
 ### Non-Realtime ASR
-
-Process audio files for transcription. Supports file upload or file path reference.
 
 ```http
 POST /api/asr
@@ -1389,172 +1456,42 @@ Content-Type: multipart/form-data
 ```json
 {
   "filePath": "/path/to/audio.wav",
-  "fileUrl": "https://example.com/audio.wav",
   "diarization": true
 }
 ```
 
-**Note:** Provide either `filePath` or `fileUrl`, not both.
-
 **Response (200 OK):**
 ```json
 {
-  "text": "Full transcription text...",
-  "segments": [
-    {
-      "text": "Hello, how are you?",
-      "beginTime": 0,
-      "endTime": 2500,
-      "speakerId": "speaker_1"
-    },
-    {
-      "text": "I'm doing well, thanks.",
-      "beginTime": 2600,
-      "endTime": 4800,
-      "speakerId": "speaker_2"
-    }
-  ]
+  "data": {
+    "text": "Full transcription text...",
+    "segments": [
+      {
+        "text": "Hello, how are you?",
+        "beginTime": 0,
+        "endTime": 2500,
+        "speakerId": "speaker_1"
+      }
+    ]
+  }
 }
 ```
 
-**Error Responses:**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `audio file is required in multipart upload` | Missing audio file in multipart |
-| 400 | `either file_url or file_path is required` | Missing file reference in JSON |
-| 400 | `Aliyun API key not configured` | Aliyun credentials not set |
-| 500 | `ASR failed: {error}` | Transcription failed |
-
----
-
 ### Real-time ASR (WebSocket)
-
-Stream audio in real-time for live transcription.
 
 ```
 ws://{host}:{port}/api/asr/realtime
 ```
 
-**Audio Requirements:**
-- Format: PCM (raw audio)
-- Sample rate: 16000 Hz
-- Channels: Mono
-
-#### WebSocket Message Types
-
-**Client → Server**
-
-**Start Session:**
-```json
-{
-  "type": "start",
-  "payload": {}
-}
-```
-
-**Stop Session:**
-```json
-{
-  "type": "stop",
-  "payload": {}
-}
-```
-
-**Audio Data:**
-Send raw PCM audio as binary WebSocket messages.
-
-**Server → Client**
-
-**Ready (Session Started):**
-```json
-{
-  "type": "ready",
-  "payload": {}
-}
-```
-
-**Transcript (Partial or Final):**
-```json
-{
-  "type": "transcript",
-  "payload": {
-    "text": "Hello, how are",
-    "isFinal": false,
-    "beginTime": 0,
-    "endTime": 1500
-  }
-}
-```
-
-```json
-{
-  "type": "transcript",
-  "payload": {
-    "text": "Hello, how are you?",
-    "isFinal": true,
-    "beginTime": 0,
-    "endTime": 2500,
-    "speakerId": "speaker_1"
-  }
-}
-```
-
-**Done (Session Complete):**
-```json
-{
-  "type": "done",
-  "payload": {}
-}
-```
-
-**Error:**
-```json
-{
-  "type": "error",
-  "payload": {
-    "message": "Connection lost to ASR provider",
-    "code": "connection_error"
-  }
-}
-```
-
-#### Connection Flow
-
-1. Connect to WebSocket endpoint
-2. Send `{"type": "start"}` to begin session
-3. Receive `{"type": "ready"}` confirmation
-4. Stream audio as binary messages
-5. Receive partial transcripts (`isFinal: false`)
-6. Receive final transcripts (`isFinal: true`) when sentences complete
-7. Send `{"type": "stop"}` when done
-8. Receive `{"type": "done"}` confirmation
-9. Close WebSocket connection
-
-#### Mobile Implementation Notes
-
-1. **Audio Recording**: Use 16kHz mono PCM format
-2. **Chunk Size**: Send audio in chunks (e.g., 3200 bytes = 100ms at 16kHz)
-3. **Latency**: Expect 100-300ms latency for partial results
-4. **Reconnection**: Handle WebSocket disconnects with retry logic
-5. **Permissions**: Request microphone permissions before connecting
+See detailed WebSocket protocol documentation in the original section.
 
 ---
 
 ## Claude Code Integration
 
-Claude Code is an AI-powered coding assistant that runs as a session-based agent. The mobile app can create sessions, send messages, and receive real-time responses via WebSocket.
-
-### Overview
-
-- **Sessions**: Persistent conversations with Claude AI
-- **Modes**: `ui` (structured JSON messaging) or `cli` (terminal I/O)
-- **Permission Modes**: `default`, `acceptEdits`, `plan`, `bypassPermissions`
-- **Real-time**: WebSocket for bidirectional communication
+Claude Code is an AI-powered coding assistant that runs as a session-based agent.
 
 ### List Active Sessions
-
-Returns sessions currently managed by the server (active/running).
 
 ```http
 GET /api/claude/sessions
@@ -1563,7 +1500,7 @@ GET /api/claude/sessions
 **Response (200 OK):**
 ```json
 {
-  "sessions": [
+  "data": [
     {
       "id": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
       "title": "Refactoring auth system",
@@ -1585,8 +1522,6 @@ GET /api/claude/sessions
 
 ### List All Sessions (with Pagination)
 
-Returns both active and historical sessions from the session index.
-
 ```http
 GET /api/claude/sessions/all
 ```
@@ -1595,29 +1530,13 @@ GET /api/claude/sessions/all
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `limit` | integer | 20 | Number of sessions (max 100) |
-| `cursor` | string | - | Pagination cursor from previous response |
+| `cursor` | string | - | Pagination cursor |
 | `status` | string | "all" | Filter: `"all"`, `"active"`, `"archived"` |
 
 **Response (200 OK):**
 ```json
 {
-  "sessions": [
-    {
-      "id": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-      "title": "Refactoring auth system",
-      "workingDir": "/path/to/project",
-      "createdAt": "2024-01-15T10:30:00Z",
-      "lastActivity": "2024-01-15T11:45:00Z",
-      "messageCount": 42,
-      "isSidechain": false,
-      "isActive": true,
-      "status": "active",
-      "git": {
-        "isRepo": true,
-        "branch": "main"
-      }
-    }
-  ],
+  "data": [...sessions...],
   "pagination": {
     "hasMore": true,
     "nextCursor": "2024-01-14T08:00:00Z",
@@ -1627,8 +1546,6 @@ GET /api/claude/sessions/all
 ```
 
 ### Create Session
-
-Creates a new Claude Code session or resumes an existing one.
 
 ```http
 POST /api/claude/sessions
@@ -1645,32 +1562,17 @@ POST /api/claude/sessions
 }
 ```
 
-**Fields:**
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `workingDir` | string | User data dir | Working directory for the session |
-| `title` | string | - | Optional session title |
-| `resumeSessionId` | string | - | Resume from existing session ID |
-| `mode` | string | `"ui"` | `"ui"` (structured JSON) or `"cli"` (terminal) |
-| `permissionMode` | string | `"default"` | Permission mode (see below) |
-
-**Permission Modes:**
-| Mode | Description |
-|------|-------------|
-| `default` | Ask user for permissions |
-| `acceptEdits` | Auto-approve file edits |
-| `plan` | Read-only mode (research/planning) |
-| `bypassPermissions` | Skip all permission checks |
-
-**Response (200 OK):**
+**Response (201 Created):**
 ```json
 {
-  "id": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-  "title": "Feature implementation",
-  "workingDir": "/path/to/project",
-  "createdAt": "2024-01-15T10:30:00Z",
-  "mode": "ui",
-  "status": "active"
+  "data": {
+    "id": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
+    "title": "Feature implementation",
+    "workingDir": "/path/to/project",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "mode": "ui",
+    "status": "active"
+  }
 }
 ```
 
@@ -1683,20 +1585,15 @@ GET /api/claude/sessions/:id
 **Response (200 OK):**
 ```json
 {
-  "id": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-  "title": "Refactoring auth system",
-  "workingDir": "/path/to/project",
-  "createdAt": "2024-01-15T10:30:00Z",
-  "lastActivity": "2024-01-15T11:45:00Z",
-  "mode": "ui",
-  "status": "active",
-  "messageCount": 42
+  "data": {
+    "id": "...",
+    "title": "...",
+    ...
+  }
 }
 ```
 
 ### Get Session Messages
-
-Returns all cached messages for a session.
 
 ```http
 GET /api/claude/sessions/:id/messages
@@ -1705,38 +1602,16 @@ GET /api/claude/sessions/:id/messages
 **Response (200 OK):**
 ```json
 {
-  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-  "mode": "ui",
-  "count": 42,
-  "messages": [
-    {
-      "type": "user",
-      "uuid": "c0a21d6f-3652-4f86-a36b-b98d75a15298",
-      "timestamp": "2024-01-15T10:30:00Z",
-      "message": {
-        "role": "user",
-        "content": [{"type": "text", "text": "Help me refactor the auth system"}]
-      }
-    },
-    {
-      "type": "assistant",
-      "uuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
-      "parentUuid": "c0a21d6f-3652-4f86-a36b-b98d75a15298",
-      "timestamp": "2024-01-15T10:30:05Z",
-      "message": {
-        "role": "assistant",
-        "model": "claude-sonnet-4-5-20250929",
-        "content": [{"type": "text", "text": "I'll help you refactor..."}],
-        "usage": {"input_tokens": 245, "output_tokens": 150}
-      }
-    }
-  ]
+  "data": {
+    "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
+    "mode": "ui",
+    "count": 42,
+    "messages": [...]
+  }
 }
 ```
 
-### Send Message (HTTP)
-
-Send a message to a session via HTTP (alternative to WebSocket).
+### Send Message
 
 ```http
 POST /api/claude/sessions/:id/messages
@@ -1749,19 +1624,17 @@ POST /api/claude/sessions/:id/messages
 }
 ```
 
-**Response (200 OK):**
+**Response (202 Accepted):**
 ```json
 {
-  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-  "status": "sent"
+  "data": {
+    "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
+    "status": "sent"
+  }
 }
 ```
 
-**Note:** This only sends the message. Use WebSocket to receive the response.
-
 ### Update Session
-
-Update session metadata (title).
 
 ```http
 PATCH /api/claude/sessions/:id
@@ -1777,407 +1650,32 @@ PATCH /api/claude/sessions/:id
 **Response (200 OK):**
 ```json
 {
-  "success": true
+  "data": {
+    "id": "...",
+    "title": "New session title"
+  }
 }
 ```
 
 ### Deactivate Session
 
-Archives a session without deleting history. The session can be resumed later.
-
 ```http
 POST /api/claude/sessions/:id/deactivate
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
+**Response:** `204 No Content`
 
 ### Delete Session
-
-Permanently deletes a session and its history.
 
 ```http
 DELETE /api/claude/sessions/:id
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true
-}
-```
-
----
+**Response:** `204 No Content`
 
 ### WebSocket Protocol
 
-For real-time bidirectional communication, use the WebSocket endpoints.
-
-#### Subscribe WebSocket (Recommended)
-
-Real-time structured message streaming. Preferred for mobile apps.
-
-```
-ws://{host}:{port}/api/claude/sessions/:id/subscribe
-```
-
-**Connection Flow:**
-1. Connect to WebSocket endpoint
-2. Server sends all cached messages (history)
-3. Send user messages via WebSocket
-4. Receive Claude responses in real-time
-5. Server sends heartbeat pings every 30 seconds
-
-#### Terminal WebSocket
-
-Raw terminal I/O for CLI mode sessions.
-
-```
-ws://{host}:{port}/api/claude/sessions/:id/ws
-```
-
----
-
-### WebSocket Message Types
-
-#### Client → Server
-
-**User Message:**
-```json
-{
-  "type": "user_message",
-  "content": "What files are in this directory?"
-}
-```
-
-**Control Request (Interrupt):**
-```json
-{
-  "type": "control_request",
-  "request_id": "req_123",
-  "request": {
-    "subtype": "interrupt"
-  }
-}
-```
-
-**Control Request (Set Permission Mode):**
-```json
-{
-  "type": "control_request",
-  "request_id": "req_124",
-  "request": {
-    "subtype": "set_permission_mode",
-    "mode": "acceptEdits"
-  }
-}
-```
-
-**Control Response (Permission Decision):**
-```json
-{
-  "type": "control_response",
-  "request_id": "req_125",
-  "response": {
-    "subtype": "can_use_tool",
-    "response": {
-      "behavior": "allow",
-      "message": ""
-    }
-  },
-  "always_allow": false,
-  "tool_name": "Bash"
-}
-```
-
-**Behavior Values:**
-- `"allow"` - Permit the tool to execute
-- `"deny"` - Block the tool (requires `message` with reason)
-
-#### Server → Client
-
-**User Message (from history or synthetic):**
-```json
-{
-  "type": "user",
-  "uuid": "c0a21d6f-3652-4f86-a36b-b98d75a15298",
-  "parentUuid": null,
-  "timestamp": "2024-01-15T10:30:00Z",
-  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4",
-  "message": {
-    "role": "user",
-    "content": [{"type": "text", "text": "What files are here?"}]
-  }
-}
-```
-
-**Assistant Text Response:**
-```json
-{
-  "type": "assistant",
-  "uuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
-  "parentUuid": "c0a21d6f-3652-4f86-a36b-b98d75a15298",
-  "timestamp": "2024-01-15T10:30:05Z",
-  "message": {
-    "role": "assistant",
-    "model": "claude-sonnet-4-5-20250929",
-    "content": [{"type": "text", "text": "I'll check the directory..."}],
-    "usage": {
-      "input_tokens": 245,
-      "output_tokens": 12
-    }
-  }
-}
-```
-
-**Assistant Tool Call:**
-```json
-{
-  "type": "assistant",
-  "uuid": "75819da3-58d5-4d30-a167-a1449fd87738",
-  "parentUuid": "a953b709-f2f8-46e3-8c99-4f9b01f8e6d5",
-  "timestamp": "2024-01-15T10:30:06Z",
-  "message": {
-    "role": "assistant",
-    "content": [
-      {
-        "type": "tool_use",
-        "id": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-        "name": "Bash",
-        "input": {"command": "ls -la"}
-      }
-    ]
-  }
-}
-```
-
-**Tool Result:**
-```json
-{
-  "type": "user",
-  "uuid": "8f3c5d2a-1234-5678-9abc-def012345678",
-  "parentUuid": "75819da3-58d5-4d30-a167-a1449fd87738",
-  "timestamp": "2024-01-15T10:30:07Z",
-  "message": {
-    "role": "user",
-    "content": [
-      {
-        "type": "tool_result",
-        "tool_use_id": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-        "content": "total 48\ndrwxr-xr-x  12 user  staff  384 Jan 15 10:30 ."
-      }
-    ]
-  },
-  "toolUseResult": {
-    "toolUseId": "toolu_014EkHUXLk8xUUUqjocQNd8g",
-    "isError": false
-  }
-}
-```
-
-**Permission Request (from Claude):**
-```json
-{
-  "type": "control_request",
-  "request_id": "req_125",
-  "request": {
-    "subtype": "can_use_tool",
-    "tool_name": "Bash",
-    "input": {"command": "rm -rf node_modules"}
-  }
-}
-```
-
-**Progress Message:**
-```json
-{
-  "type": "progress",
-  "uuid": "26978643-ffbd-4e71-8fe2-16f258a3ce06",
-  "timestamp": "2024-01-15T10:30:08Z",
-  "data": {
-    "type": "hook_progress",
-    "hookEvent": "PreToolUse",
-    "hookName": "PreToolUse:Read"
-  },
-  "toolUseID": "toolu_01X5nzhSfiEL5MQ8DUeeFZhY"
-}
-```
-
-**Thinking Block (Extended Thinking):**
-```json
-{
-  "type": "assistant",
-  "uuid": "b812dc15-5444-460a-bae4-2111a7f2c2f8",
-  "timestamp": "2024-01-15T10:30:10Z",
-  "message": {
-    "role": "assistant",
-    "model": "claude-opus-4-5-20251101",
-    "content": [
-      {
-        "type": "thinking",
-        "thinking": "Let me analyze the directory structure...",
-        "signature": "EsQCCkYICxgCKkAw8Q1KeDQe..."
-      }
-    ]
-  }
-}
-```
-
-**Todo Update:**
-```json
-{
-  "type": "todo_update",
-  "data": {
-    "todos": [
-      {"content": "Create file", "activeForm": "Creating file", "status": "completed"},
-      {"content": "Update imports", "activeForm": "Updating imports", "status": "in_progress"},
-      {"content": "Run tests", "activeForm": "Running tests", "status": "pending"}
-    ]
-  }
-}
-```
-
-**Queue Operation (Session State):**
-```json
-{
-  "type": "queue-operation",
-  "operation": "dequeue",
-  "timestamp": "2024-01-15T10:31:00Z",
-  "sessionId": "04361723-fde4-4be9-8e44-e2b0f9b524c4"
-}
-```
-
-**Error:**
-```json
-{
-  "type": "error",
-  "error": "Failed to send message to session"
-}
-```
-
----
-
-### Content Block Types
-
-Messages can contain different content blocks in `message.content`:
-
-**Text Block:**
-```typescript
-{
-  type: "text",
-  text: string
-}
-```
-
-**Thinking Block (Claude Opus extended reasoning):**
-```typescript
-{
-  type: "thinking",
-  thinking: string,
-  signature?: string
-}
-```
-
-**Tool Use Block:**
-```typescript
-{
-  type: "tool_use",
-  id: string,          // e.g., "toolu_014EkHUXLk8xUUUqjocQNd8g"
-  name: string,        // e.g., "Read", "Bash", "Edit", "Write"
-  input: object        // Tool-specific parameters
-}
-```
-
-**Tool Result Block:**
-```typescript
-{
-  type: "tool_result",
-  tool_use_id: string,
-  content: string | ContentBlock[],
-  is_error?: boolean
-}
-```
-
----
-
-### Available Tools
-
-Claude Code can use these tools during sessions:
-
-| Tool | Description | Requires Permission |
-|------|-------------|-------------------|
-| `Read` | Read file contents | No (can be restricted) |
-| `Write` | Create/overwrite files | Yes |
-| `Edit` | Make targeted edits | Yes |
-| `Bash` | Execute shell commands | Yes (most restricted) |
-| `Glob` | Find files by pattern | No |
-| `Grep` | Search file contents | No |
-| `WebFetch` | Fetch from URLs | Yes |
-| `WebSearch` | Search the web | Yes |
-| `Task` | Spawn subagents | No |
-| `TodoWrite` | Create task lists | No |
-| `AskUserQuestion` | Gather requirements | No |
-| `NotebookEdit` | Edit Jupyter notebooks | Yes |
-
----
-
-### Detecting Working State
-
-To show a "working" indicator in the UI, track these signals:
-
-**Claude is working when:**
-- Last message is `type: "user"` (sent, waiting for response)
-- `type: "progress"` messages are being received
-- Last assistant message has `tool_use` content blocks
-
-**Claude is idle when:**
-- `type: "queue-operation"` with `operation: "dequeue"` received
-- Last assistant message has `stop_reason: "end_turn"`
-- Last message timestamp is stale (> 60 seconds old)
-
----
-
-### Message Threading
-
-Messages form a tree structure using `uuid` and `parentUuid`:
-
-```
-User Message (uuid: A, parentUuid: null)
-  └─ Assistant Response (uuid: B, parentUuid: A)
-      └─ Tool Call (uuid: C, parentUuid: B)
-          └─ Tool Result (uuid: D, parentUuid: C)
-              └─ Final Response (uuid: E, parentUuid: D)
-```
-
----
-
-### Mobile Implementation Notes for Claude Code
-
-1. **WebSocket Connection**:
-   - Connect to `/api/claude/sessions/:id/subscribe`
-   - Handle reconnection with exponential backoff
-   - Messages are deduplicated by `uuid`
-
-2. **Permission Handling**:
-   - Listen for `control_request` messages with `subtype: "can_use_tool"`
-   - Show permission dialog to user
-   - Respond with `control_response` message
-
-3. **Session Resume**:
-   - Use `resumeSessionId` when creating session to continue previous conversation
-   - All history is sent on WebSocket connect
-
-4. **Offline Handling**:
-   - Sessions persist on server
-   - Reconnect and receive missed messages via initial history load
-
-5. **Tool Results Display**:
-   - Match `tool_result.tool_use_id` with `tool_use.id`
-   - Render tool outputs appropriately (code, file contents, errors)
+See the original WebSocket documentation section for detailed message types and protocol.
 
 ---
 
@@ -2206,7 +1704,7 @@ interface FileRecord {
 interface Digest {
   id: string;             // UUID
   filePath: string;       // Path to source file
-  digester: string;       // Digester name (e.g., "tags")
+  digester: string;       // Digester name
   status: "todo" | "running" | "done" | "failed" | "skipped";
   content?: string;       // JSON string with digest results
   sqlarName?: string;     // Path to artifact in SQLAR
@@ -2227,15 +1725,6 @@ interface Person {
   updatedAt: string;      // ISO 8601 timestamp
   clusters?: PersonCluster[];
 }
-
-interface PersonCluster {
-  id: string;             // UUID
-  peopleId?: string;      // Associated person (null if unassigned)
-  clusterType: "face" | "voice";
-  sampleCount: number;    // Number of samples in cluster
-  createdAt: string;
-  updatedAt: string;
-}
 ```
 
 ### UserSettings
@@ -2246,148 +1735,35 @@ interface UserSettings {
     theme: "auto" | "light" | "dark";
     defaultView: string;
     weeklyDigest: boolean;
-    digestDay: number;    // 0-6 (Sunday-Saturday)
+    digestDay: number;
     logLevel?: string;
     userEmail?: string;
-    languages?: string[]; // ISO language codes
+    languages?: string[];
   };
-  vendors?: {
-    openai?: {
-      baseUrl?: string;
-      apiKey?: string;    // Masked in responses
-      model?: string;
-    };
-    homelabAi?: {
-      baseUrl?: string;
-      chromeCdpUrl?: string;
-    };
-    aliyun?: {
-      apiKey?: string;    // Masked in responses
-      region?: string;
-      asrProvider?: string;
-      ossAccessKeyId?: string;
-      ossAccessKeySecret?: string;
-      ossRegion?: string;
-      ossBucket?: string;
-    };
-    meilisearch?: {
-      host?: string;
-    };
-    qdrant?: {
-      host?: string;
-    };
-  };
+  vendors?: { ... };
   digesters?: Record<string, boolean>;
-  extraction: {
-    autoEnrich: boolean;
-    includeEntities: boolean;
-    includeSentiment: boolean;
-    includeActionItems: boolean;
-    includeRelatedEntries: boolean;
-    minConfidence: number;
-  };
-  storage: {
-    dataPath: string;
-    backupPath?: string;
-    autoBackup: boolean;
-    maxFileSize: number;  // Bytes
-  };
+  extraction: { ... };
+  storage: { ... };
 }
 ```
-
----
-
-## Error Responses
-
-All endpoints return errors in a consistent format:
-
-```json
-{
-  "error": "Human-readable error message"
-}
-```
-
-**Note:** The `code` field is optional and may not be present in all error responses.
-
-### Common HTTP Status Codes
-
-| Status | Description |
-|--------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request - Invalid parameters or missing required fields |
-| 401 | Unauthorized - Authentication required or session expired |
-| 404 | Not Found - Resource doesn't exist |
-| 409 | Conflict - Resource already exists (e.g., duplicate filename) |
-| 500 | Internal Server Error - Server-side failure |
-| 503 | Service Unavailable - External service not configured or unreachable |
-
-### Common Error Messages by Category
-
-**Authentication Errors (401):**
-```json
-{"error": "Invalid password"}
-{"error": "Session expired"}
-{"error": "Authentication required"}
-```
-
-**Validation Errors (400):**
-```json
-{"error": "Invalid request body"}
-{"error": "Path is required"}
-{"error": "Either text or files must be provided"}
-{"error": "Invalid cursor format"}
-```
-
-**Not Found Errors (404):**
-```json
-{"error": "Inbox item not found"}
-{"error": "File not found"}
-{"error": "Person not found"}
-{"error": "Session not found"}
-```
-
-**Conflict Errors (409):**
-```json
-{"error": "A file with this name already exists"}
-```
-
-**Service Errors (503):**
-```json
-{"error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."}
-{"error": "Aliyun API key not configured"}
-{"error": "Meilisearch is not configured"}
-```
-
----
-
-## Rate Limiting
-
-Currently, there is no rate limiting implemented. Mobile clients should implement their own throttling for network efficiency.
-
----
-
-## Versioning
-
-The API does not currently use versioning. Breaking changes will be documented in release notes.
 
 ---
 
 ## Mobile Implementation Notes
 
 ### Authentication
-1. Check `GET /api/oauth/token` on app launch to verify session
-2. Implement OAuth flow using system browser or in-app WebView
-3. Store tokens securely in Keychain (iOS) / EncryptedSharedPreferences (Android)
-4. Implement automatic token refresh before expiry
+1. Check `GET /api/oauth/token` on app launch
+2. Implement OAuth flow using system browser
+3. Store tokens securely in Keychain/EncryptedSharedPreferences
+4. Implement automatic token refresh
 
 ### File Uploads
-1. Use TUS protocol for large files (resumable uploads)
-2. For small files, use `POST /api/inbox` with multipart/form-data
-3. Always finalize TUS uploads with `POST /api/upload/finalize`
+1. Use TUS protocol for large files (resumable)
+2. For small files, use `POST /api/inbox` with multipart
+3. Always finalize TUS uploads
 
 ### Real-time Updates
-1. Connect to SSE endpoint `/api/notifications/stream`
+1. Connect to SSE `/api/notifications/stream`
 2. Handle reconnection with exponential backoff
 3. Use heartbeats to detect connection health
 
@@ -2395,8 +1771,3 @@ The API does not currently use versioning. Breaking changes will be documented i
 1. Cache file metadata locally
 2. Queue uploads for when connectivity returns
 3. Sync changes on reconnection
-
-### Image Handling
-1. Use `/raw/*path` for full-resolution images
-2. Check `screenshotSqlar` for thumbnails
-3. Consider lazy loading for large galleries
