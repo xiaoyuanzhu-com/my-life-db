@@ -6,6 +6,15 @@ This document describes the REST API endpoints for the MyLifeDB backend. Mobile 
 
 **Content-Type**: All requests and responses use `application/json` unless otherwise specified.
 
+## Naming Convention
+
+All JSON request/response fields use **camelCase** (e.g., `fileCount`, `createdAt`, `hasMore`).
+
+**Exceptions:**
+- OAuth token responses use snake_case per OAuth 2.0 spec (`access_token`, `refresh_token`)
+- Claude Code session data preserves Claude's original format
+- External vendor API responses (OpenAI, Aliyun) use their native formats
+
 ---
 
 ## Table of Contents
