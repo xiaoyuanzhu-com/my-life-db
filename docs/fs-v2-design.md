@@ -23,7 +23,24 @@ Keep it simple:
 1. **No duplicate processing** - One file, one processor at a time
 2. **No orphaned records** - Moves/renames clean up old paths
 3. **Latest data wins** - Don't overwrite new data with old
-4. **Eventually consistent** - Scanner catches anything missed
+4. **Full consistency** - DB always matches filesystem state
+
+### Consistency Model
+
+The system must reach consistency in **two scenarios**:
+
+| Scenario | Mechanism | Goal |
+|----------|-----------|------|
+| **Runtime changes** | Watcher + debouncer | Immediate detection, no orphans |
+| **Offline changes** | Scanner reconciliation | Sync on startup, remove orphans |
+
+**Runtime** (server running): Files created/modified/deleted/moved while server is running are detected via fsnotify watcher, debounced, and processed. Move detection correlates RENAME+CREATE events.
+
+**Offline** (server stopped, restarted): Files changed while server was stopped (user ran `mv`, `rm`, etc.) are detected by scanner on startup. Scanner compares DB to disk and:
+- Upserts files found on disk (new or modified)
+- **Deletes orphaned DB records** (files in DB but not on disk)
+
+This ensures the DB is eventually consistent with the filesystem regardless of when changes occur.
 
 Non-goals (keep current behavior):
 - We don't need sub-100ms latency
@@ -32,7 +49,47 @@ Non-goals (keep current behavior):
 
 ---
 
-## Current Bugs
+## Implementation Status
+
+**Good news**: Most of the v2 design is already implemented! Review of current codebase:
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `debouncer.go` | ✅ Implemented | 150ms delay, coalesces rapid events |
+| `move_detector.go` | ✅ Implemented | Correlates RENAME+CREATE, handles same-name matching |
+| `watcher.go` | ✅ Implemented | Uses debouncer, handles RENAME as delete, move detection |
+| `db/files.go` UpsertFile | ✅ Implemented | Uses `COALESCE(NULLIF(excluded.hash, ''), files.hash)` |
+| `db/files.go` MoveFileAtomic | ✅ Implemented | Transaction with files + digests + pins |
+| `scanner.go` processFile | ✅ Implemented | Uses mutex (`acquireFileLock`) for coordination |
+| `scanner.go` reconciliation | ⚠️ **Missing** | Scanner doesn't delete orphaned DB records |
+
+### What's Missing: Scanner Reconciliation
+
+The scanner currently only **upserts** files found on disk. It does NOT detect and remove files that exist in DB but not on disk (orphans from offline deletes/moves).
+
+**Example of the gap**:
+```
+Before server shutdown:
+  DB: inbox/doc.md, notes/readme.md
+  Disk: inbox/doc.md, notes/readme.md
+
+While server stopped:
+  User runs: rm inbox/doc.md
+  User runs: mv notes/readme.md archive/readme.md
+
+On startup, current scanner:
+  Walks disk: finds archive/readme.md
+  Upserts: archive/readme.md ✅
+
+  BUT: inbox/doc.md still in DB (orphan) ❌
+  BUT: notes/readme.md still in DB (orphan) ❌
+```
+
+**Solution**: Add reconciliation phase to scanner (see Solution section below).
+
+---
+
+## Current Bugs (Historical)
 
 ### Bug 1: `unmarkProcessing` runs too early
 
@@ -330,6 +387,96 @@ func MoveFile(oldPath, newPath string, newRecord *FileRecord) error {
 }
 ```
 
+**Status**: ✅ Already implemented in `db/files.go` as `MoveFileAtomic()`.
+
+### 7. Scanner reconciliation (detect offline deletes)
+
+The scanner must detect files that exist in DB but not on disk (orphans from offline operations).
+
+**Two-phase scan**:
+
+```go
+func (s *scanner) scan() {
+    // Phase 1: Walk filesystem, collect paths, upsert files
+    seenPaths := make(map[string]bool)
+
+    filepath.Walk(s.service.cfg.DataRoot, func(path string, info os.FileInfo, err error) error {
+        if info.IsDir() || s.service.validator.IsExcluded(relPath) {
+            return nil
+        }
+
+        seenPaths[relPath] = true
+
+        // Existing logic: check if needs processing, upsert if so
+        if needsProcessing, _ := s.checkNeedsProcessing(relPath, info); needsProcessing {
+            s.processFile(...)
+        }
+        return nil
+    })
+
+    // Phase 2: Remove orphaned DB records
+    s.reconcileOrphans(seenPaths)
+}
+
+func (s *scanner) reconcileOrphans(seenPaths map[string]bool) {
+    // Query all file paths from DB
+    rows, _ := s.service.cfg.DB.ListAllFilePaths()
+    defer rows.Close()
+
+    var orphans []string
+    for rows.Next() {
+        var dbPath string
+        rows.Scan(&dbPath)
+
+        if !seenPaths[dbPath] {
+            orphans = append(orphans, dbPath)
+        }
+    }
+
+    // Delete orphans
+    for _, path := range orphans {
+        log.Info().Str("path", path).Msg("removing orphaned DB record")
+        s.service.cfg.DB.DeleteFile(path)
+        // Note: DeleteFile should cascade to digests, pins via FK or manual cleanup
+    }
+
+    if len(orphans) > 0 {
+        log.Info().Int("count", len(orphans)).Msg("reconciliation complete")
+    }
+}
+```
+
+**DB helper needed** (add to `db/files.go`):
+
+```go
+// ListAllFilePaths returns all file paths in the database (for reconciliation)
+func ListAllFilePaths() (*sql.Rows, error) {
+    return GetDB().Query("SELECT path FROM files WHERE is_folder = 0")
+}
+```
+
+**Cascade cleanup**: When deleting a file, also clean up related records:
+
+```go
+func DeleteFileWithCascade(path string) error {
+    tx, _ := GetDB().Begin()
+    defer tx.Rollback()
+
+    // Delete digests
+    tx.Exec("DELETE FROM digests WHERE file_path = ?", path)
+
+    // Delete pins
+    tx.Exec("DELETE FROM pins WHERE path = ?", path)
+
+    // Delete file record
+    tx.Exec("DELETE FROM files WHERE path = ?", path)
+
+    return tx.Commit()
+}
+```
+
+**Status**: ⚠️ **Not yet implemented** - this is the remaining work.
+
 ---
 
 ## Architecture
@@ -378,42 +525,58 @@ Key points:
 
 ## Changes Summary
 
-| Component | Change | Complexity |
-|-----------|--------|------------|
-| `watcher.go` | Fix defer placement | Simple |
-| `watcher.go` | Handle RENAME events | Simple |
-| `watcher.go` | Add debouncer | Medium |
-| `watcher.go` | Add move detection | Medium |
-| `operations.go` | No changes needed | - |
-| `scanner.go` | Use same processFile path | Simple |
-| `db/files.go` | Smarter upsert (COALESCE) | Simple |
-| `db/files.go` | Add MoveFile transaction | Medium |
+| Component | Change | Status |
+|-----------|--------|--------|
+| `watcher.go` | Fix defer placement | ✅ Done |
+| `watcher.go` | Handle RENAME events | ✅ Done |
+| `watcher.go` | Add debouncer | ✅ Done |
+| `watcher.go` | Add move detection | ✅ Done |
+| `operations.go` | No changes needed | ✅ N/A |
+| `scanner.go` | Use mutex for coordination | ✅ Done |
+| `scanner.go` | Add reconciliation phase | ⚠️ **TODO** |
+| `db/files.go` | Smarter upsert (COALESCE) | ✅ Done |
+| `db/files.go` | Add MoveFileAtomic | ✅ Done |
+| `db/files.go` | Add ListAllFilePaths | ⚠️ **TODO** |
+| `db/files.go` | Add DeleteFileWithCascade | ⚠️ **TODO** |
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Fix critical bugs (1 day)
-1. Fix defer placement in handleCreate/handleWrite
-2. Handle RENAME events as delete
-3. Update DB upsert to use COALESCE
+### ~~Phase 1: Fix critical bugs~~ ✅ DONE
+1. ~~Fix defer placement in handleCreate/handleWrite~~
+2. ~~Handle RENAME events as delete~~
+3. ~~Update DB upsert to use COALESCE~~
 
-### Phase 2: Add debouncing (1 day)
-1. Add simple debouncer struct
-2. Wire watcher to use debouncer
-3. Test with rapid file changes
+### ~~Phase 2: Add debouncing~~ ✅ DONE
+1. ~~Add simple debouncer struct~~
+2. ~~Wire watcher to use debouncer~~
+3. ~~Test with rapid file changes~~
 
-### Phase 3: Add move detection (0.5 day)
-1. Add move detector
-2. Wire into debouncer
-3. Add MoveFile DB transaction
+### ~~Phase 3: Add move detection~~ ✅ DONE
+1. ~~Add move detector~~
+2. ~~Wire into watcher~~
+3. ~~Add MoveFileAtomic DB transaction~~
 
-### Phase 4: Test & polish (0.5 day)
-1. Manual testing with AI agent workflows
-2. Fix any edge cases
-3. Update scanner to use same code path
+### Phase 4: Scanner reconciliation (remaining work)
+1. Add `ListAllFilePaths()` to `db/files.go`
+2. Add `DeleteFileWithCascade()` to `db/files.go`
+3. Modify `scanner.scan()` to track seen paths
+4. Add `reconcileOrphans()` after walk completes
+5. Test with offline delete/move scenarios
 
-Total: ~3 days
+**Estimated time**: 0.5 day
+
+### Phase 5: Test & polish
+1. Manual testing with offline scenarios:
+   - Delete file while server stopped → restart → orphan removed
+   - Move file while server stopped → restart → old path removed, new path added
+2. Verify no regression in runtime scenarios
+3. Add automated tests for reconciliation
+
+**Estimated time**: 0.5 day
+
+**Total remaining**: ~1 day
 
 ---
 
@@ -433,18 +596,33 @@ We can add these later if needed. For now, fix the bugs simply.
 
 ## Testing
 
-Manual tests to verify:
+### Manual tests to verify:
 
+**Runtime scenarios** (server running):
 1. **Rapid writes**: Create file, modify 5x rapidly → single hash in DB
 2. **Move detection**: `mv inbox/a.md notes/a.md` → only notes/a.md in DB
 3. **Scanner doesn't overwrite**: API write during scan → API hash preserved
 4. **No duplicate processing**: Check logs for single "processing" per file
 
-Automated tests:
+**Offline scenarios** (server stopped, changes made, server restarted):
+5. **Offline delete**: Delete file while stopped → restart → orphan removed from DB
+6. **Offline move**: Move file while stopped → restart → old path removed, new path added
+7. **Offline create**: Create file while stopped → restart → new file in DB
+8. **Mixed offline ops**: Multiple deletes + moves + creates → restart → DB matches disk
+
+### Automated tests:
+
+**Existing** (runtime):
 - `TestDebouncer_CoalescesRapidWrites`
 - `TestMoveDetector_SameFilename`
 - `TestUpsert_PreservesNewerHash`
 - `TestWatcher_RenameDeletesOldRecord`
+
+**New** (reconciliation):
+- `TestScanner_RemovesOrphanedRecords`
+- `TestScanner_PreservesValidRecords`
+- `TestScanner_HandlesOfflineMove`
+- `TestDeleteFileWithCascade_RemovesDigestsAndPins`
 
 ---
 
@@ -502,6 +680,56 @@ T100:  Scanner finishes ComputeMetadata → H1
 Result: DB has H2 (correct, newer)
 ```
 
+### Scenario: Offline Delete (reconciliation)
+
+```
+Before shutdown:
+  DB:   inbox/doc.md, notes/readme.md
+  Disk: inbox/doc.md, notes/readme.md
+
+While server stopped:
+  User: rm inbox/doc.md
+
+On startup scanner:
+  Phase 1 (walk):
+    └─ Found: notes/readme.md
+    └─ seenPaths = {"notes/readme.md"}
+    └─ Upsert notes/readme.md (no change needed)
+
+  Phase 2 (reconcile):
+    └─ DB paths: ["inbox/doc.md", "notes/readme.md"]
+    └─ Check inbox/doc.md: NOT in seenPaths → orphan
+    └─ Delete inbox/doc.md from DB (with cascade)
+
+Result: DB has only notes/readme.md ✅
+```
+
+### Scenario: Offline Move (reconciliation)
+
+```
+Before shutdown:
+  DB:   inbox/doc.md
+  Disk: inbox/doc.md
+
+While server stopped:
+  User: mv inbox/doc.md notes/doc.md
+
+On startup scanner:
+  Phase 1 (walk):
+    └─ Found: notes/doc.md (new to DB)
+    └─ seenPaths = {"notes/doc.md"}
+    └─ Upsert notes/doc.md (insert new record)
+
+  Phase 2 (reconcile):
+    └─ DB paths: ["inbox/doc.md", "notes/doc.md"]
+    └─ Check inbox/doc.md: NOT in seenPaths → orphan
+    └─ Delete inbox/doc.md from DB
+
+Result: DB has only notes/doc.md ✅
+```
+
+Note: Unlike runtime move detection, offline moves are treated as separate delete + create operations. The file's history (digests, pins) at the old path is lost. This is acceptable for offline scenarios - if users want to preserve history, they should move files while the server is running.
+
 Wait, this scenario still has a problem - scanner's `markProcessing` doesn't coordinate with API's `fileLock`. Let me think...
 
 Actually, the current code has API using `fileLock.acquireFileLock().Lock()` (mutex) while scanner uses `fileLock.markProcessing()` (flag). They don't coordinate.
@@ -527,16 +755,37 @@ This way:
 
 ---
 
-## Updated Changes Summary
+## Final Implementation Summary
 
-| Component | Change | Complexity |
-|-----------|--------|------------|
-| `watcher.go` | Fix defer placement | Simple |
-| `watcher.go` | Handle RENAME events | Simple |
-| `watcher.go` | Add debouncer + move detection | Medium |
-| `scanner.go` | Use mutex instead of just flag | Simple |
-| `db/files.go` | Smarter upsert (COALESCE) | Simple |
-| `db/files.go` | Add MoveFile transaction | Medium |
+| Component | Change | Status | Complexity |
+|-----------|--------|--------|------------|
+| `debouncer.go` | Event coalescing (150ms) | ✅ Done | Medium |
+| `move_detector.go` | RENAME+CREATE correlation | ✅ Done | Medium |
+| `watcher.go` | Defer fix, RENAME handling, debouncer integration | ✅ Done | Medium |
+| `scanner.go` | Mutex coordination with API | ✅ Done | Simple |
+| `scanner.go` | **Reconciliation phase** | ⚠️ TODO | Simple |
+| `db/files.go` | COALESCE in upsert | ✅ Done | Simple |
+| `db/files.go` | MoveFileAtomic transaction | ✅ Done | Medium |
+| `db/files.go` | **ListAllFilePaths** | ⚠️ TODO | Simple |
+| `db/files.go` | **DeleteFileWithCascade** | ⚠️ TODO | Simple |
+
+### Architecture Compliance
+
+The v2 design adheres to the existing architecture with **no breaking changes**:
+
+- ✅ No new "coordinator" abstraction - uses existing `fileLock`
+- ✅ Same component structure: `Service` → `watcher`, `scanner`, `processor`
+- ✅ Same notification pattern: `FileChangeHandler` callback
+- ✅ Same DB layer: adds functions to existing `db/files.go`
+- ✅ Scanner still runs on timer (10s initial delay, 1h interval)
+- ✅ Watcher still uses fsnotify with recursive directory watching
+
+The only new addition is the reconciliation phase in scanner, which:
+1. Tracks paths seen during walk (in-memory map)
+2. Queries all DB paths after walk
+3. Deletes DB records not seen on disk
+
+This is a **simple addition** to existing scan logic, not a restructuring.
 
 ---
 
