@@ -351,6 +351,15 @@ async function runGithub() {
       return;
     }
 
+    // Check GitHub event type from header
+    const eventType = req.headers["x-github-event"];
+    if (eventType && eventType !== "push") {
+      log.debug(`Ignoring GitHub event: ${eventType}`);
+      res.writeHead(200);
+      res.end("OK");
+      return;
+    }
+
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
@@ -358,9 +367,10 @@ async function runGithub() {
         const payload = JSON.parse(body);
 
         // Handle GitHub push event
-        if (payload.ref && payload.commits) {
+        if (payload.ref) {
           const branch = payload.ref.replace("refs/heads/", "");
-          log.info(`Received push to ${branch} (${payload.commits.length} commits)`);
+          const commitCount = payload.commits?.length || 0;
+          log.info(`Received push to ${branch} (${commitCount} commits)`);
 
           // Only pull for main branch
           if (branch === "main" || branch === "master") {
