@@ -94,8 +94,22 @@ export default function ClaudePage() {
     return 'default'
   })
 
-  // Get active session
+  // Get active session - use ref to cache and prevent unmount during session list refresh
+  // This prevents ChatInterface from unmounting when sessions array temporarily
+  // doesn't contain the active session (e.g., during filter changes or refresh)
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+  const cachedActiveSessionRef = useRef<Session | undefined>(undefined)
+
+  // Update cache when we have a valid session, but don't clear it when undefined
+  // This keeps ChatInterface mounted during brief periods where activeSession is undefined
+  if (activeSession) {
+    cachedActiveSessionRef.current = activeSession
+  }
+
+  // Use cached session if current lookup failed but we have a cached value
+  // Clear cache only when activeSessionId changes (user explicitly switched sessions)
+  const effectiveActiveSession = activeSession ||
+    (cachedActiveSessionRef.current?.id === activeSessionId ? cachedActiveSessionRef.current : undefined)
 
   // Persist working directory to localStorage
   useEffect(() => {
@@ -560,14 +574,14 @@ export default function ClaudePage() {
 
       {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-        {activeSessionId && activeSession ? (
+        {activeSessionId && effectiveActiveSession ? (
           uiMode === 'chat' ? (
             <ChatInterface
               key={activeSessionId}
               sessionId={activeSessionId}
-              sessionName={activeSession.title || 'Session'}
-              workingDir={activeSession.workingDir}
-              isActive={activeSession.isActive}
+              sessionName={effectiveActiveSession.title || 'Session'}
+              workingDir={effectiveActiveSession.workingDir}
+              isActive={effectiveActiveSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
               refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}
