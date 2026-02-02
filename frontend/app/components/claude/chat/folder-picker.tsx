@@ -90,18 +90,13 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When user selects a folder, navigate into it
+  // When user selects a folder, navigate into it and update value immediately
   const handleSelect = (path: string) => {
     setCurrentPath(path)
     fetchChildren(path)
-  }
-
-  // When popover closes, confirm selection
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen && currentPath && currentPath !== value && onChange) {
-      onChange(currentPath)
+    if (onChange) {
+      onChange(path)
     }
-    setOpen(newOpen)
   }
 
   const getLastSegment = (path: string) => {
@@ -157,7 +152,7 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
   ]
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
