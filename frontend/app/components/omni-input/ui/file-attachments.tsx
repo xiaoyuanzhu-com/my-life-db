@@ -20,7 +20,7 @@ export function FileAttachments({ files, onRemove }: FileAttachmentsProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2 px-4 pb-2">
+    <div className="flex flex-col gap-2 px-4 pb-2 max-h-48 overflow-y-auto">
       {files.map((file, index) => (
         <div
           key={index}
