@@ -426,6 +426,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			entryCopy.Git = session.Git
 		} else {
 			entryCopy.Status = "archived"
+			entryCopy.IsActivated = false
 		}
 
 		allEntries = append(allEntries, &entryCopy)
