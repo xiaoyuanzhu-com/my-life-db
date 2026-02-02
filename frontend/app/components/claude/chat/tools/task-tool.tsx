@@ -65,17 +65,39 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
     return agentProgressMap.get(toolCall.id) || []
   }, [agentProgressMap, toolCall.id])
 
-  // Get the latest normalized messages from agent progress
-  // Each progress message contains the full conversation so far, so we take the last one
-  const normalizedMessages = useMemo(() => {
+  // Get messages from agent progress for live streaming
+  // Strategy:
+  // 1. First try normalizedMessages from the latest progress (contains full conversation)
+  // 2. If empty, accumulate individual messages from data.message across all progress events
+  const progressMessages = useMemo(() => {
     if (agentProgress.length === 0) return []
+
+    // Try normalizedMessages first (full conversation snapshot)
     const latest = agentProgress[agentProgress.length - 1]
-    return latest.data?.normalizedMessages || []
+    const normalized = latest.data?.normalizedMessages
+    if (normalized && normalized.length > 0) {
+      return normalized
+    }
+
+    // Fallback: accumulate from data.message across all progress events
+    // Each progress event may contain a single message in data.message
+    const accumulated: SessionMessage[] = []
+    const seenUuids = new Set<string>()
+
+    for (const progress of agentProgress) {
+      const msg = progress.data?.message as SessionMessage | undefined
+      if (msg && msg.uuid && !seenUuids.has(msg.uuid)) {
+        seenUuids.add(msg.uuid)
+        accumulated.push(msg)
+      }
+    }
+
+    return accumulated
   }, [agentProgress])
 
   // Use subagent messages if available (persisted), otherwise fall back to agent progress (live streaming)
   // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section for details
-  const nestedMessages = subagentMessages.length > 0 ? subagentMessages : normalizedMessages
+  const nestedMessages = subagentMessages.length > 0 ? subagentMessages : progressMessages
 
   const hasNestedSession = nestedMessages.length > 0
 

@@ -20,7 +20,7 @@ export interface ToolUseInfo {
 }
 
 // Agent progress message structure
-interface AgentProgressMessage extends SessionMessage {
+export interface AgentProgressMessage extends SessionMessage {
   type: 'progress'
   parentToolUseID?: string
   data?: {
@@ -28,6 +28,7 @@ interface AgentProgressMessage extends SessionMessage {
     agentId: string
     prompt: string
     normalizedMessages?: SessionMessage[]
+    message?: SessionMessage  // Individual subagent message (when normalizedMessages is empty)
   }
 }
 
@@ -569,4 +570,4 @@ export function SessionMessages({
   )
 }
 
-export type { AgentProgressMessage, BashProgressMessage }
+export type { BashProgressMessage }
