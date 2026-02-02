@@ -202,7 +202,7 @@ QDRANT_HOST=http://localhost:6333
 OPENAI_API_KEY=sk-...
 ```
 
-Load with `run.sh` or manually:
+Load with `run.js` or manually:
 ```bash
 source .env && go run .
 ```

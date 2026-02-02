@@ -42,12 +42,15 @@ go test -v ./...  # Run Go tests
 go vet ./...      # Run Go linter
 ```
 
-### run.sh Helper Script
+### run.js Helper Script
 ```bash
-./run.sh frontend    # Start frontend dev server
-./run.sh backend     # Build and start backend (loads .env automatically)
-./run.sh meili       # Start Meilisearch via Docker
-./run.sh qdrant      # Start Qdrant via Docker
+./run.js frontend           # Start frontend dev server
+./run.js frontend --watch   # Start + auto-restart on git changes
+./run.js backend            # Build and start backend (loads .env automatically)
+./run.js backend --watch    # Start + auto-restart on git changes
+./run.js meili              # Start Meilisearch via Docker
+./run.js qdrant             # Start Qdrant via Docker
+./run.js github             # Start GitHub webhook listener (for staging)
 ```
 
 ### Full Stack Development
@@ -98,7 +101,7 @@ my-life-db/
 │   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
 │   └── main.go         # Entry point - creates Server and wires routes
-├── run.sh              # Helper script for running services
+├── run.js              # Helper script for running services (Node.js)
 └── docs/               # Product and technical design docs (voice, claude-code, etc.)
 ```
 

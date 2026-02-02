@@ -412,11 +412,11 @@ func (d *ImageCaptioningDigester) Digest(...) ([]DigestInput, error) {
 
 ```bash
 # Start Meilisearch
-./run.sh meili
+./run.js meili
 # or: docker run -p 7700:7700 getmeili/meilisearch:v1.6
 
 # Start Qdrant
-./run.sh qdrant
+./run.js qdrant
 # or: docker run -p 6333:6333 qdrant/qdrant:latest
 ```
 
