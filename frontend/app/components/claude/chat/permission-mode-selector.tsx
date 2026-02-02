@@ -8,7 +8,6 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermiss
 interface PermissionModeOption {
   value: PermissionMode
   label: string
-  shortLabel: string
   description: string
   icon: React.ReactNode
 }
@@ -17,28 +16,24 @@ const PERMISSION_MODES: PermissionModeOption[] = [
   {
     value: 'default',
     label: 'Ask before edits',
-    shortLabel: 'Ask',
     description: 'Prompts for tool permissions',
     icon: <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'acceptEdits',
     label: 'Edit automatically',
-    shortLabel: 'Auto-edit',
     description: 'Auto-accepts file edits',
     icon: <FastForward className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'plan',
     label: 'Plan mode',
-    shortLabel: 'Plan',
     description: 'No tool execution',
     icon: <Pause className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'bypassPermissions',
     label: 'YOLO',
-    shortLabel: 'YOLO',
     description: 'All tools auto-approved',
     icon: <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
@@ -87,10 +82,7 @@ export function PermissionModeSelector({
         >
           <span className="shrink-0">{currentMode.icon}</span>
           {showLabel && (
-            <>
-              <span className="hidden sm:inline">{currentMode.label}</span>
-              <span className="sm:hidden">{currentMode.shortLabel}</span>
-            </>
+            <span className="hidden sm:inline">{currentMode.label}</span>
           )}
         </button>
       </PopoverTrigger>
