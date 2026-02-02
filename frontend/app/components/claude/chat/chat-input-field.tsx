@@ -372,7 +372,7 @@ export function ChatInputField({
       {/* Actions row */}
       <div className="flex items-center justify-between mt-2">
         {/* Left side - working dir and permission mode */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {(workingDir || onWorkingDirChange) && (
             <FolderPicker
               value={workingDir || ''}
@@ -392,14 +392,14 @@ export function ChatInputField({
         </div>
 
         {/* Right side - attach, slash button and submit/stop */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {/* Attach file button */}
           <button
             type="button"
             onClick={handleAttachClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'h-8 w-8 rounded-lg',
+              'h-7 w-7 sm:h-8 sm:w-8 rounded-lg',
               'flex items-center justify-center',
               'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
               'cursor-pointer transition-colors',
@@ -407,7 +407,7 @@ export function ChatInputField({
             )}
             aria-label="Attach file"
           >
-            <Paperclip className="h-3.5 w-3.5" />
+            <Paperclip className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </button>
 
           {/* Slash command button */}
@@ -416,12 +416,12 @@ export function ChatInputField({
             onClick={handleSlashButtonClick}
             disabled={disabled || hasPermission}
             className={cn(
-              'h-8 w-8 rounded-lg',
+              'h-7 w-7 sm:h-8 sm:w-8 rounded-lg',
               'flex items-center justify-center',
               'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
               'cursor-pointer transition-colors',
               'disabled:cursor-not-allowed disabled:opacity-50',
-              'text-sm font-medium',
+              'text-xs sm:text-sm font-medium',
               effectivePopoverOpen && 'bg-accent text-foreground'
             )}
             aria-label="Slash commands"
@@ -437,7 +437,7 @@ export function ChatInputField({
               onClick={onInterrupt}
               disabled={disabled}
               className={cn(
-                'h-9 w-9 rounded-lg',
+                'h-8 w-8 sm:h-9 sm:w-9 rounded-lg',
                 'bg-muted hover:bg-muted/80 border border-border',
                 'flex items-center justify-center',
                 'transition-all',
@@ -445,7 +445,7 @@ export function ChatInputField({
               )}
               aria-label="Stop generation (Esc)"
             >
-              <Square className="h-3.5 w-3.5 text-muted-foreground" fill="currentColor" />
+              <Square className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" fill="currentColor" />
             </button>
           ) : (
             <button
@@ -453,7 +453,7 @@ export function ChatInputField({
               onClick={onSend}
               disabled={!canSend}
               className={cn(
-                'h-9 w-9 rounded-lg',
+                'h-8 w-8 sm:h-9 sm:w-9 rounded-lg',
                 'bg-primary hover:bg-primary/80 border border-primary',
                 'flex items-center justify-center',
                 'transition-all',
@@ -462,7 +462,7 @@ export function ChatInputField({
               )}
               aria-label="Send message"
             >
-              <ArrowUp className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+              <ArrowUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary-foreground" strokeWidth={2.5} />
             </button>
           )}
         </div>

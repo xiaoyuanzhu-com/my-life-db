@@ -8,6 +8,7 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermiss
 interface PermissionModeOption {
   value: PermissionMode
   label: string
+  shortLabel: string
   description: string
   icon: React.ReactNode
 }
@@ -16,26 +17,30 @@ const PERMISSION_MODES: PermissionModeOption[] = [
   {
     value: 'default',
     label: 'Ask before edits',
+    shortLabel: 'Ask',
     description: 'Prompts for tool permissions',
-    icon: <Pencil className="h-3.5 w-3.5" />,
+    icon: <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'acceptEdits',
     label: 'Edit automatically',
+    shortLabel: 'Auto-edit',
     description: 'Auto-accepts file edits',
-    icon: <FastForward className="h-3.5 w-3.5" />,
+    icon: <FastForward className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'plan',
     label: 'Plan mode',
+    shortLabel: 'Plan',
     description: 'No tool execution',
-    icon: <Pause className="h-3.5 w-3.5" />,
+    icon: <Pause className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'bypassPermissions',
     label: 'YOLO',
+    shortLabel: 'YOLO',
     description: 'All tools auto-approved',
-    icon: <Zap className="h-3.5 w-3.5" />,
+    icon: <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
 ]
 
@@ -69,19 +74,24 @@ export function PermissionModeSelector({
           type="button"
           disabled={disabled}
           className={cn(
-            'flex items-center gap-1.5 rounded-lg',
-            'text-xs text-muted-foreground',
+            'flex items-center gap-1 sm:gap-1.5 rounded-lg',
+            'text-[11px] sm:text-xs text-muted-foreground',
             'hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            showLabel ? 'px-2 py-1.5' : 'p-1.5',
+            showLabel ? 'px-1.5 sm:px-2 py-1 sm:py-1.5' : 'p-1 sm:p-1.5',
             open && 'bg-accent text-foreground'
           )}
           aria-label={`Permission mode: ${currentMode.label}`}
           title={`${currentMode.label}: ${currentMode.description}`}
         >
-          {currentMode.icon}
-          {showLabel && <span>{currentMode.label}</span>}
+          <span className="shrink-0">{currentMode.icon}</span>
+          {showLabel && (
+            <>
+              <span className="hidden sm:inline">{currentMode.label}</span>
+              <span className="sm:hidden">{currentMode.shortLabel}</span>
+            </>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
