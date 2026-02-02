@@ -27,7 +27,7 @@ interface ToolBlockProps {
   hookProgressMap?: Map<string, HookProgressMessage[]>
   /** Map from tool_use ID to skill content (for Skill tools) */
   skillContentMap?: Map<string, string>
-  /** Map from parent_tool_use_id to subagent messages (for Task tools) */
+  /** Map from parentToolUseID to subagent messages (for Task tools) */
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number

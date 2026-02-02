@@ -79,14 +79,9 @@ export interface SessionMessage {
 
   // Tool use result - varies by tool type (see docs/claude-code/data-models.md)
   // Can be string (for errors) or object (for success with tool-specific fields)
-  //
-  // IMPORTANT: Claude Code has inconsistent field naming between output formats:
-  // - JSONL files (historical sessions): uses camelCase "toolUseResult"
-  // - stdout (stream-json, live sessions): uses snake_case "tool_use_result"
-  // We handle both to support viewing historical sessions and live WebSocket streams.
-  // See docs/claude-code/data-models.md "Field Naming Inconsistency" section.
+  // NOTE: After normalization, this is always camelCase. See normalizeMessage().
   toolUseResult?: ToolUseResult
-  tool_use_result?: ToolUseResult  // snake_case variant from stdout
+  tool_use_result?: ToolUseResult  // Pre-normalization only (from stdout)
 
   // System message fields (when type === 'system')
   // IMPORTANT: System messages do NOT have a `message` field - their data is on the root object
@@ -120,8 +115,79 @@ export interface SessionMessage {
 
   // Subagent linking - if set, this message belongs to a subagent spawned by the Task tool with this ID
   // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section
-  // IMPORTANT: Claude Code uses snake_case in JSONL output for this field
-  parent_tool_use_id?: string | null
+  // NOTE: After normalization, this is always camelCase. See normalizeMessage().
+  parentToolUseID?: string | null
+  parent_tool_use_id?: string | null  // Pre-normalization only (from stdout)
+}
+
+// ============================================================================
+// Field Name Normalization
+// ============================================================================
+//
+// Claude Code uses inconsistent field naming between JSONL (camelCase) and
+// stdout (snake_case). We normalize to camelCase at parse time.
+//
+// See docs/claude-code/data-models.md "Field Naming Inconsistency" section.
+//
+// To add a new field alias:
+// 1. Add it to FIELD_ALIASES below
+// 2. Document it in data-models.md
+// 3. Update SessionMessage interface to use camelCase as canonical
+// ============================================================================
+
+/**
+ * Field aliases: snake_case → camelCase
+ * Add new entries here when discovering new inconsistent fields.
+ */
+const FIELD_ALIASES: Record<string, string> = {
+  'tool_use_result': 'toolUseResult',
+  'parent_tool_use_id': 'parentToolUseID',
+}
+
+/**
+ * Normalize a message by converting snake_case fields to camelCase.
+ * This ensures consistent field access regardless of message source (JSONL vs stdout).
+ *
+ * Call this at parse time (WebSocket handler, JSONL parser) before using the message.
+ *
+ * @example
+ * const msg = normalizeMessage(JSON.parse(line))
+ * console.log(msg.toolUseResult) // Works regardless of original field name
+ */
+export function normalizeMessage<T extends Record<string, unknown>>(msg: T): T {
+  let hasChanges = false
+
+  // Check if any normalization is needed
+  for (const snakeCase of Object.keys(FIELD_ALIASES)) {
+    if (snakeCase in msg && !(FIELD_ALIASES[snakeCase] in msg)) {
+      hasChanges = true
+      break
+    }
+  }
+
+  // Fast path: no changes needed
+  if (!hasChanges) {
+    return msg
+  }
+
+  // Apply normalization
+  const normalized = { ...msg }
+  for (const [snakeCase, camelCase] of Object.entries(FIELD_ALIASES)) {
+    if (snakeCase in normalized && !(camelCase in normalized)) {
+      ;(normalized as Record<string, unknown>)[camelCase] = normalized[snakeCase]
+      delete (normalized as Record<string, unknown>)[snakeCase]
+    }
+  }
+
+  return normalized as T
+}
+
+/**
+ * Normalize an array of messages.
+ * Convenience wrapper for normalizing message arrays from JSONL or WebSocket.
+ */
+export function normalizeMessages<T extends Record<string, unknown>>(msgs: T[]): T[] {
+  return msgs.map(normalizeMessage)
 }
 
 // System message subtypes
@@ -541,11 +607,10 @@ export interface ExtractedToolResult {
 /**
  * Get the tool use result from a message, handling both field naming conventions.
  *
- * Claude Code has inconsistent field naming between output formats:
- * - JSONL files (historical sessions): uses camelCase "toolUseResult"
- * - stdout (stream-json, live sessions): uses snake_case "tool_use_result"
+ * After normalizeMessage() is called, only toolUseResult (camelCase) should exist.
+ * This accessor checks both for backwards compatibility with non-normalized messages.
  *
- * This helper normalizes access to support both sources.
+ * Prefer using msg.toolUseResult directly if you know the message is normalized.
  */
 export function getToolUseResult(msg: SessionMessage): ToolUseResult | undefined {
   return msg.toolUseResult ?? msg.tool_use_result
@@ -553,9 +618,32 @@ export function getToolUseResult(msg: SessionMessage): ToolUseResult | undefined
 
 /**
  * Check if a message has a tool use result (either field naming convention)
+ *
+ * After normalizeMessage() is called, only toolUseResult (camelCase) should exist.
  */
 export function hasToolUseResult(msg: SessionMessage): boolean {
   return msg.toolUseResult !== undefined || msg.tool_use_result !== undefined
+}
+
+/**
+ * Get the parent tool use ID from a message, handling both field naming conventions.
+ *
+ * After normalizeMessage() is called, only parentToolUseID (camelCase) should exist.
+ * This accessor checks both for backwards compatibility with non-normalized messages.
+ *
+ * Prefer using msg.parentToolUseID directly if you know the message is normalized.
+ */
+export function getParentToolUseID(msg: SessionMessage): string | null | undefined {
+  return msg.parentToolUseID ?? msg.parent_tool_use_id
+}
+
+/**
+ * Check if a message is a subagent message (has a parent tool use ID)
+ *
+ * After normalizeMessage() is called, only parentToolUseID (camelCase) should exist.
+ */
+export function isSubagentMessage(msg: SessionMessage): boolean {
+  return getParentToolUseID(msg) != null
 }
 
 /**

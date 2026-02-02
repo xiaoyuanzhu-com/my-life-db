@@ -6,6 +6,8 @@ import {
   isHookResponseMessage,
   isStatusMessage,
   isToolUseBlock,
+  isSubagentMessage,
+  getParentToolUseID,
   type SessionMessage,
   type ExtractedToolResult,
 } from '~/lib/session-message-utils'
@@ -193,14 +195,7 @@ function isSkillContentMessage(msg: SessionMessage): msg is SkillContentMessage 
 }
 
 /**
- * Check if a message is a subagent message (belongs to a Task tool's subagent conversation)
- */
-function isSubagentMessage(msg: SessionMessage): boolean {
-  return msg.parent_tool_use_id != null
-}
-
-/**
- * Build a map from parent_tool_use_id to subagent messages
+ * Build a map from parentToolUseID to subagent messages
  * This allows Task tools to find their subagent conversation messages
  * See docs/claude-code/data-models.md "Subagent Message Hierarchy" section
  */
@@ -208,10 +203,11 @@ export function buildSubagentMessagesMap(messages: SessionMessage[]): Map<string
   const map = new Map<string, SessionMessage[]>()
 
   for (const msg of messages) {
-    if (isSubagentMessage(msg) && msg.parent_tool_use_id) {
-      const existing = map.get(msg.parent_tool_use_id) || []
+    const parentId = getParentToolUseID(msg)
+    if (parentId) {
+      const existing = map.get(parentId) || []
       existing.push(msg)
-      map.set(msg.parent_tool_use_id, existing)
+      map.set(parentId, existing)
     }
   }
 
@@ -395,7 +391,7 @@ interface SessionMessagesProps {
   skillContentMap?: Map<string, string>
   /**
    * Pre-built subagent messages map. If not provided, will be built from messages.
-   * Maps parent_tool_use_id to subagent conversation messages (for Task tools).
+   * Maps parentToolUseID to subagent conversation messages (for Task tools).
    */
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /**

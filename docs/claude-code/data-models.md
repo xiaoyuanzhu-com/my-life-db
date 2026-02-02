@@ -182,38 +182,94 @@ When the backend receives a user message via WebSocket and sends it to Claude's 
 
 #### Field Naming Inconsistency ⚠️ IMPORTANT
 
-Claude Code uses **different field naming conventions** between JSONL and stdout:
+Claude Code uses **different field naming conventions** between different output formats. This is a known inconsistency that we normalize in the frontend.
 
-| Field | JSONL (historical) | stdout (live) |
-|-------|-------------------|---------------|
-| Tool use result | `toolUseResult` (camelCase) | `tool_use_result` (snake_case) |
+**Known Inconsistent Fields:**
+
+| Semantic | camelCase | snake_case | Notes |
+|----------|-----------|------------|-------|
+| Tool use result | `toolUseResult` | `tool_use_result` | Rich metadata for tool results |
+| Parent tool use ID | `parentToolUseID` | `parent_tool_use_id` | Links subagent messages to parent Task |
+
+**When each format appears:**
+
+| Source | Format | Example Fields |
+|--------|--------|----------------|
+| JSONL (historical sessions) | camelCase | `toolUseResult`, `parentToolUseID` |
+| stdout (live WebSocket) | snake_case | `tool_use_result`, `parent_tool_use_id` |
 
 **Example - same data, different field names:**
 
 JSONL file:
 ```json
-{"type": "user", "toolUseResult": {"stdout": "...", "stderr": ""}, ...}
+{"type": "user", "toolUseResult": {"stdout": "..."}, "parentToolUseID": "toolu_xxx"}
 ```
 
 stdout (stream-json):
 ```json
-{"type": "user", "tool_use_result": {"stdout": "...", "stderr": ""}, ...}
+{"type": "user", "tool_use_result": {"stdout": "..."}, "parent_tool_use_id": "toolu_xxx"}
 ```
 
-**Why this matters:**
-- If you only handle one format, tool results won't render correctly for the other source
-- Historical sessions (JSONL) use camelCase
-- Live WebSocket sessions (stdout) use snake_case
+**Frontend Normalization Strategy:**
 
-**Recommended approach:**
-- Handle **both** field names in your code
-- Use helper functions like `getToolUseResult(msg)` that check both fields
-- Don't transform data in the backend - honor the raw output for easier debugging
+We normalize **to camelCase** at parse time in the frontend. This is implemented in `session-message-utils.ts`:
 
-**Implication for Web UI:**
-- When **viewing historical sessions** (reading JSONL): No `init` or `result` messages
-- When **watching live sessions** (WebSocket/stdout): Receive `init` first, `result` last
-- **Must handle both** `toolUseResult` and `tool_use_result` field names
+```typescript
+/**
+ * Field aliases: snake_case → camelCase
+ * Add new entries here when discovering new inconsistent fields.
+ */
+const FIELD_ALIASES: Record<string, string> = {
+  'tool_use_result': 'toolUseResult',
+  'parent_tool_use_id': 'parentToolUseID',
+}
+
+/**
+ * Normalize a message by converting snake_case fields to camelCase.
+ * This ensures consistent field access regardless of message source.
+ */
+export function normalizeMessage<T extends Record<string, unknown>>(msg: T): T {
+  const normalized = { ...msg }
+  for (const [snakeCase, camelCase] of Object.entries(FIELD_ALIASES)) {
+    if (snakeCase in normalized && !(camelCase in normalized)) {
+      normalized[camelCase] = normalized[snakeCase]
+      delete normalized[snakeCase]
+    }
+  }
+  return normalized as T
+}
+```
+
+**Where normalization is applied:**
+
+1. **WebSocket message handler** - Live session messages
+2. **JSONL parser** - Historical session loading
+3. **API response handler** - Session data from backend
+
+**Benefits of this approach:**
+
+- Single source of truth for field names (camelCase)
+- Easy to add new aliases when discovered
+- Rest of codebase uses consistent naming
+- No need for dual-field accessors everywhere
+
+**Legacy accessors (deprecated):**
+
+For backwards compatibility, these accessors still exist but prefer using normalized fields:
+
+```typescript
+// Deprecated - use msg.toolUseResult directly after normalization
+export function getToolUseResult(msg: SessionMessage): ToolUseResult | undefined {
+  return msg.toolUseResult ?? msg.tool_use_result
+}
+```
+
+**Adding new field aliases:**
+
+When you discover a new inconsistent field:
+1. Add it to `FIELD_ALIASES` in `session-message-utils.ts`
+2. Document it in this table above
+3. Update the `SessionMessage` interface to use camelCase only
 
 #### Backend Raw JSON Passthrough ⭐⭐⭐ CRITICAL
 

@@ -10,7 +10,7 @@ interface TaskToolViewProps {
   toolCall: ToolCall
   /** Map from tool_use ID to agent progress messages */
   agentProgressMap?: Map<string, AgentProgressMessage[]>
-  /** Map from parent_tool_use_id to subagent messages */
+  /** Map from parentToolUseID to subagent messages */
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
