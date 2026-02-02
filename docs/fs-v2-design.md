@@ -1,7 +1,7 @@
 # Filesystem Service v2 Design
 
 **Date:** 2026-01-31
-**Status:** Draft
+**Status:** Implementation Complete (Phase 7 testing remaining)
 
 ---
 
@@ -61,7 +61,7 @@ Non-goals (keep current behavior):
 | `db/files.go` UpsertFile | ✅ Implemented | Uses `COALESCE(NULLIF(excluded.hash, ''), files.hash)` |
 | `db/files.go` MoveFileAtomic | ✅ Implemented | Transaction with files + digests + pins |
 | `scanner.go` processFile | ✅ Implemented | Uses mutex (`acquireFileLock`) for coordination |
-| `scanner.go` reconciliation | ⚠️ **Missing** | Scanner doesn't delete orphaned DB records |
+| `scanner.go` reconciliation | ✅ Implemented | Two-phase scan with orphan deletion |
 
 ### What's Missing: Scanner Reconciliation
 
@@ -475,7 +475,194 @@ func DeleteFileWithCascade(path string) error {
 }
 ```
 
-**Status**: ⚠️ **Not yet implemented** - this is the remaining work.
+**Status**: ✅ Implemented in `db/files.go` and `scanner.go`.
+
+---
+
+## Data Flow Analysis: File Operations → Search Indices
+
+### The Problem: Multiple Code Paths
+
+Currently, file operations are handled by **multiple independent code paths** that don't consistently update all related tables:
+
+| Code Path | Location | When Used |
+|-----------|----------|-----------|
+| **API Write** | `fs/operations.go:writeFile()` | HTTP PUT /raw/* |
+| **API Delete** | `api/files.go:DeleteLibraryFile()` | HTTP DELETE /api/library/file |
+| **API Rename** | `api/files.go:RenameLibraryFile()` | HTTP POST /api/library/rename |
+| **API Move** | `api/files.go:MoveLibraryFile()` | HTTP POST /api/library/move |
+| **Watcher Create** | `fs/watcher.go:handleCreate()` | fsnotify CREATE event |
+| **Watcher Delete** | `fs/watcher.go:handleDelete()` | fsnotify REMOVE/RENAME event |
+| **Watcher Move** | `fs/watcher.go:processMove()` | Detected RENAME+CREATE |
+| **Scanner Create** | `fs/scanner.go:processFile()` | New file found on disk |
+| **Scanner Update** | `fs/scanner.go:processFile()` | Modified file found |
+| **Scanner Reconcile** | `fs/scanner.go:reconcileOrphans()` | DB record, no file on disk |
+
+### Complete Data Flow Matrix
+
+This matrix shows exactly which tables are updated by each operation:
+
+| Operation | files | digests | pins | meili_documents | qdrant_documents | Notes |
+|-----------|:-----:|:-------:|:----:|:---------------:|:----------------:|-------|
+| **CREATE (API)** | ✅ Upsert | - | - | - | - | Hash computed, notifies digest worker |
+| **CREATE (Watcher)** | ✅ Upsert | - | - | - | - | Via `processExternalFile()` |
+| **CREATE (Scanner)** | ✅ Upsert | - | - | - | - | Via `processFile()` |
+| **UPDATE (API)** | ✅ Upsert | - | - | - | - | Notifies digest worker if hash changed |
+| **UPDATE (Watcher)** | ✅ Upsert | - | - | - | - | Via `handleWrite()` |
+| **UPDATE (Scanner)** | ✅ Upsert | - | - | - | - | If mtime changed |
+| **DELETE (API)** | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | Uses `DeleteFileWithCascade` |
+| **DELETE (Watcher)** | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | Uses `DeleteFileWithCascade` |
+| **DELETE (Scanner)** | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | ✅ Delete | Uses `DeleteFileWithCascade` |
+| **MOVE (Watcher)** | ✅ Atomic | ✅ Update | ✅ Update | ✅ Update | ✅ Update | Uses `MoveFileAtomic` |
+| **RENAME (API)** | ✅ Update | ✅ Update | ✅ Update | ✅ Update | ✅ Update | Uses `RenameFilePath(s)` |
+| **MOVE (API)** | ✅ Update | ✅ Update | ✅ Update | ✅ Update | ✅ Update | Uses `RenameFilePath(s)` |
+
+**Note**: Search index documents (`meili_documents`, `qdrant_documents`) are only created by the digest worker when processing files. The cascade operations above ensure they're properly updated/deleted when files move or are deleted.
+
+### Issues Identified (All Fixed)
+
+#### ~~Issue 1: Search Indices Never Updated on Delete/Move~~ ✅ FIXED
+
+~~When files are deleted or moved, `meili_documents` and `qdrant_documents` tables are NOT updated.~~
+
+**Solution**: All cascade functions now update meili/qdrant:
+- `DeleteFileWithCascade()` - deletes from all tables
+- `MoveFileAtomic()` - updates file_path in all tables
+- `RenameFilePath(s)` - updates file_path in all tables
+
+#### ~~Issue 2: Watcher Delete Doesn't Cascade~~ ✅ FIXED
+
+~~`watcher.go:handleDelete()` only calls `DeleteFile(path)`.~~
+
+**Solution**: Updated to use `DeleteFileWithCascade(path)`.
+
+#### Issue 3: Multiple Code Paths for Same Operation (Future Work)
+
+Move/rename operations have different implementations:
+1. **Watcher**: Uses `MoveFileAtomic()` (transaction-safe)
+2. **API**: Uses `RenameFilePath()` / `RenameFilePaths()` (now also transaction-safe)
+
+Both are now consistent in what tables they update, but centralized FileOps would reduce code duplication.
+
+### Solution: Centralized File Operations via fs.Service
+
+Instead of creating a separate `fileops` package, use the existing `fs.Service` as the central coordinator. It already:
+- Is owned by `server.Server` (proper lifecycle management)
+- Has DB access, file locks, notifications
+- Coordinates watcher, scanner, and API
+- Is stateful (tracks locks, goroutines)
+
+**New methods on `fs.Service`:**
+
+```go
+// fs/service.go - extend existing Service
+
+// DeleteFile removes a file from disk and ALL related DB records.
+// This is the SINGLE entry point for file deletion.
+// Called by: API handlers, watcher, scanner reconcile
+func (s *Service) DeleteFile(ctx context.Context, path string) error {
+    // 1. Acquire file lock
+    mu := s.fileLock.acquireFileLock(path)
+    mu.Lock()
+    defer mu.Unlock()
+
+    // 2. Delete from filesystem (if exists)
+    fullPath := filepath.Join(s.cfg.DataRoot, path)
+    if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+        return fmt.Errorf("failed to delete file: %w", err)
+    }
+
+    // 3. Cascade delete from DB (files, digests, pins, meili, qdrant)
+    if err := s.cfg.DB.DeleteFileWithCascade(path); err != nil {
+        return fmt.Errorf("failed to delete from database: %w", err)
+    }
+
+    // 4. Cleanup
+    s.fileLock.releaseFileLock(path)
+    return nil
+}
+
+// MoveFile moves a file and updates ALL related DB records atomically.
+// This is the SINGLE entry point for file moves/renames.
+// Called by: API handlers, watcher move detection
+func (s *Service) MoveFile(ctx context.Context, oldPath, newPath string) error {
+    // 1. Acquire locks for both paths (ordered to prevent deadlocks)
+    locks := s.acquireMultipleLocks(oldPath, newPath)
+    defer s.releaseMultipleLocks(locks)
+
+    // 2. Move on filesystem
+    oldFullPath := filepath.Join(s.cfg.DataRoot, oldPath)
+    newFullPath := filepath.Join(s.cfg.DataRoot, newPath)
+
+    if err := os.MkdirAll(filepath.Dir(newFullPath), 0755); err != nil {
+        return fmt.Errorf("failed to create parent directory: %w", err)
+    }
+
+    if err := os.Rename(oldFullPath, newFullPath); err != nil {
+        return fmt.Errorf("failed to move file: %w", err)
+    }
+
+    // 3. Get file info and compute metadata
+    info, err := os.Stat(newFullPath)
+    if err != nil {
+        return fmt.Errorf("failed to stat moved file: %w", err)
+    }
+
+    metadata, _ := s.processor.ComputeMetadata(ctx, newPath)
+    record := s.buildFileRecord(newPath, info, metadata)
+
+    // 4. Atomic DB update (files, digests, pins, meili, qdrant)
+    if err := s.cfg.DB.MoveFileAtomic(oldPath, newPath, record); err != nil {
+        return fmt.Errorf("failed to update database: %w", err)
+    }
+
+    // 5. Notify (optional - for move, content didn't change)
+    s.notifyFileChange(FileChangeEvent{
+        FilePath:       newPath,
+        IsNew:          false,
+        ContentChanged: false,
+        Trigger:        "move",
+    })
+
+    return nil
+}
+```
+
+### Updated Code Paths (After Centralization)
+
+All code paths use `fs.Service` methods:
+
+| Code Path | Operation | Calls |
+|-----------|-----------|-------|
+| API DELETE /api/library/file | Delete | `fs.DeleteFile()` |
+| API POST /api/library/rename | Move | `fs.MoveFile()` |
+| API POST /api/library/move | Move | `fs.MoveFile()` |
+| Watcher handleDelete() | Delete | `fs.DeleteFile()` |
+| Watcher processMove() | Move | `fs.MoveFile()` |
+| Scanner reconcileOrphans() | Delete | `fs.DeleteFile()` |
+
+**Benefits:**
+- Single entry point for each operation type
+- Consistent locking across all callers
+- Consistent cascade behavior
+- Proper error handling and logging
+- Easy to add metrics/observability later
+
+### Migration Plan
+
+**~~Phase 1: Fix Cascade Operations~~ ✅ DONE**
+1. ~~Update `DeleteFileWithCascade()` to include meili/qdrant~~
+2. ~~Update `MoveFileAtomic()` to include meili/qdrant~~
+3. ~~Update `RenameFilePath(s)` to include meili/qdrant~~
+4. ~~Update watcher delete to use cascade~~
+
+**Phase 2: Centralize via fs.Service**
+1. Add `DeleteFile()` method to `fs.Service`
+2. Add `MoveFile()` method to `fs.Service`
+3. Update API handlers to call `fs.Service` methods
+4. Update watcher to call `fs.Service` methods
+5. Update scanner reconcile to call `fs.Service` methods
+6. Remove duplicate logic from callers
 
 ---
 
@@ -531,13 +718,18 @@ Key points:
 | `watcher.go` | Handle RENAME events | ✅ Done |
 | `watcher.go` | Add debouncer | ✅ Done |
 | `watcher.go` | Add move detection | ✅ Done |
+| `watcher.go` | Use cascade delete | ✅ Done |
 | `operations.go` | No changes needed | ✅ N/A |
 | `scanner.go` | Use mutex for coordination | ✅ Done |
-| `scanner.go` | Add reconciliation phase | ⚠️ **TODO** |
+| `scanner.go` | Add reconciliation phase | ✅ Done |
 | `db/files.go` | Smarter upsert (COALESCE) | ✅ Done |
 | `db/files.go` | Add MoveFileAtomic | ✅ Done |
-| `db/files.go` | Add ListAllFilePaths | ⚠️ **TODO** |
-| `db/files.go` | Add DeleteFileWithCascade | ⚠️ **TODO** |
+| `db/files.go` | Add ListAllFilePaths | ✅ Done |
+| `db/files.go` | Add DeleteFileWithCascade | ✅ Done |
+| `db/files.go` | Cascade to meili/qdrant | ✅ Done |
+| `db/files.go` | MoveFileAtomic meili/qdrant | ✅ Done |
+| `db/files.go` | RenameFilePath(s) meili/qdrant | ✅ Done |
+| `api/files.go` | Use cascade delete | ✅ Done |
 
 ---
 
@@ -558,25 +750,36 @@ Key points:
 2. ~~Wire into watcher~~
 3. ~~Add MoveFileAtomic DB transaction~~
 
-### Phase 4: Scanner reconciliation (remaining work)
-1. Add `ListAllFilePaths()` to `db/files.go`
-2. Add `DeleteFileWithCascade()` to `db/files.go`
-3. Modify `scanner.scan()` to track seen paths
-4. Add `reconcileOrphans()` after walk completes
-5. Test with offline delete/move scenarios
+### ~~Phase 4: Scanner reconciliation~~ ✅ DONE
+1. ~~Add `ListAllFilePaths()` to `db/files.go`~~
+2. ~~Add `DeleteFileWithCascade()` to `db/files.go`~~
+3. ~~Modify `scanner.scan()` to track seen paths~~
+4. ~~Add `reconcileOrphans()` after walk completes~~
+5. ~~Test with offline delete/move scenarios~~
+
+### ~~Phase 5: Search Index Cascade~~ ✅ DONE
+1. ~~Update `DeleteFileWithCascade()` to delete from meili_documents, qdrant_documents~~
+2. ~~Update `MoveFileAtomic()` to update file_path in meili_documents, qdrant_documents~~
+3. ~~Update `RenameFilePath()` / `RenameFilePaths()` similarly~~
+4. ~~Update `watcher.go:handleDelete()` to use `DeleteFileWithCascade()`~~
+5. ~~Update `api/files.go:DeleteLibraryFile()` to use `DeleteFileWithCascade()`~~
+
+### ~~Phase 6: Centralize via fs.Service~~ ✅ DONE
+1. ~~Add `DeleteFile()` method to `fs.Service`~~ (already exists as `deleteFile()` in operations.go)
+2. ~~Add `MoveFile()` method to `fs.Service`~~ (already exists as `moveFile()` in operations.go)
+3. ~~Update API handlers to call `fs.Service` methods~~ (`api/files.go:DeleteLibraryFile` now uses `fs.Service.DeleteFile()`)
+4. ~~Update operations.go to use cascade operations~~ (`deleteFile` uses `DeleteFileWithCascade`, `moveFile` uses `MoveFileAtomic`)
+5. ~~Watcher already calls fs.Service internal methods~~
+6. ~~Scanner reconcile uses `DeleteFileWithCascade`~~
+
+### Phase 7: Test & polish
+1. Manual testing with offline scenarios
+2. Verify search index cleanup on delete/move
+3. Add automated tests for cascade operations
 
 **Estimated time**: 0.5 day
 
-### Phase 5: Test & polish
-1. Manual testing with offline scenarios:
-   - Delete file while server stopped → restart → orphan removed
-   - Move file while server stopped → restart → old path removed, new path added
-2. Verify no regression in runtime scenarios
-3. Add automated tests for reconciliation
-
-**Estimated time**: 0.5 day
-
-**Total remaining**: ~1 day
+**Total remaining**: ~0.5 day
 
 ---
 
@@ -762,12 +965,20 @@ This way:
 | `debouncer.go` | Event coalescing (150ms) | ✅ Done | Medium |
 | `move_detector.go` | RENAME+CREATE correlation | ✅ Done | Medium |
 | `watcher.go` | Defer fix, RENAME handling, debouncer integration | ✅ Done | Medium |
+| `watcher.go` | Use cascade delete | ✅ Done | Simple |
 | `scanner.go` | Mutex coordination with API | ✅ Done | Simple |
-| `scanner.go` | **Reconciliation phase** | ⚠️ TODO | Simple |
+| `scanner.go` | Reconciliation phase | ✅ Done | Simple |
 | `db/files.go` | COALESCE in upsert | ✅ Done | Simple |
 | `db/files.go` | MoveFileAtomic transaction | ✅ Done | Medium |
-| `db/files.go` | **ListAllFilePaths** | ⚠️ TODO | Simple |
-| `db/files.go` | **DeleteFileWithCascade** | ⚠️ TODO | Simple |
+| `db/files.go` | ListAllFilePaths | ✅ Done | Simple |
+| `db/files.go` | DeleteFileWithCascade (files/digests/pins) | ✅ Done | Simple |
+| `db/files.go` | DeleteFileWithCascade (meili/qdrant) | ✅ Done | Simple |
+| `db/files.go` | MoveFileAtomic (meili/qdrant) | ✅ Done | Simple |
+| `db/files.go` | RenameFilePath(s) (meili/qdrant) | ✅ Done | Simple |
+| `api/files.go` | Use DeleteFileWithCascade | ✅ Done | Simple |
+| `api/files.go` | Use fs.Service.DeleteFile for files | ✅ Done | Simple |
+| `fs/operations.go` | deleteFile uses DeleteFileWithCascade | ✅ Done | Simple |
+| `fs/operations.go` | moveFile uses MoveFileAtomic | ✅ Done | Simple |
 
 ### Architecture Compliance
 

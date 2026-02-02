@@ -182,25 +182,26 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 		return
 	}
 
-	// Delete file or folder
+	// Handle folders separately (fs.Service.DeleteFile only handles files)
 	if info.IsDir() {
 		if err := os.RemoveAll(fullPath); err != nil {
 			log.Error().Err(err).Msg("failed to delete folder")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
 			return
 		}
+		// Cascade delete folder record and all files inside
+		if err := db.DeleteFileWithCascade(path); err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("failed to cascade delete folder record")
+		}
 	} else {
-		if err := os.Remove(fullPath); err != nil {
+		// Use centralized fs.Service.DeleteFile for files
+		// This handles: filesystem, files table, digests, pins, meili, qdrant
+		if err := h.server.FS().DeleteFile(c.Request.Context(), path); err != nil {
 			log.Error().Err(err).Msg("failed to delete file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
 			return
 		}
 	}
-
-	// Clean up database
-	db.DeleteFile(path)
-	db.DeleteDigestsForFile(path)
-	db.RemovePin(path)
 
 	// Notify clients of the change
 	h.server.Notifications().NotifyLibraryChanged(path, "delete")

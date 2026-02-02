@@ -647,34 +647,59 @@ func GetFileWithDigests(path string) (*FileWithDigests, error) {
 	}, nil
 }
 
-// RenameFilePath updates a single file's path and name
+// RenameFilePath updates a single file's path and name, including all related tables.
+// Updates: files, digests, pins, meili_documents, qdrant_documents.
 func RenameFilePath(oldPath, newPath, newName string) error {
-	_, err := GetDB().Exec(`
-		UPDATE files SET path = ?, name = ? WHERE path = ?
-	`, newPath, newName, oldPath)
+	tx, err := GetDB().Begin()
 	if err != nil {
 		return err
+	}
+	defer tx.Rollback()
+
+	// Update files
+	_, err = tx.Exec(`UPDATE files SET path = ?, name = ? WHERE path = ?`, newPath, newName, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update files: %w", err)
 	}
 
 	// Update digests
-	_, err = GetDB().Exec(`
-		UPDATE digests SET file_path = ? WHERE file_path = ?
-	`, newPath, oldPath)
+	_, err = tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update digests: %w", err)
 	}
 
 	// Update pins
-	_, err = GetDB().Exec(`
-		UPDATE pins SET path = ? WHERE path = ?
-	`, newPath, oldPath)
-	return err
+	_, err = tx.Exec(`UPDATE pins SET path = ? WHERE path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update pins: %w", err)
+	}
+
+	// Update meili_documents
+	_, err = tx.Exec(`UPDATE meili_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update meili_documents: %w", err)
+	}
+
+	// Update qdrant_documents
+	_, err = tx.Exec(`UPDATE qdrant_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update qdrant_documents: %w", err)
+	}
+
+	return tx.Commit()
 }
 
-// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames)
+// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames).
+// Updates all related tables: files, digests, pins, meili_documents, qdrant_documents.
 func RenameFilePaths(oldPath, newPath string) error {
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	// Update files table - all files and subfolders
-	_, err := GetDB().Exec(`
+	_, err = tx.Exec(`
 		UPDATE files
 		SET path = ? || substr(path, ?) ,
 			name = CASE
@@ -684,26 +709,50 @@ func RenameFilePaths(oldPath, newPath string) error {
 		WHERE path = ? OR path LIKE ? || '/%'
 	`, newPath, len(oldPath)+1, oldPath, filepath.Base(newPath), oldPath, oldPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update files: %w", err)
 	}
 
 	// Update digests
-	_, err = GetDB().Exec(`
+	_, err = tx.Exec(`
 		UPDATE digests
 		SET file_path = ? || substr(file_path, ?)
 		WHERE file_path = ? OR file_path LIKE ? || '/%'
 	`, newPath, len(oldPath)+1, oldPath, oldPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update digests: %w", err)
 	}
 
 	// Update pins
-	_, err = GetDB().Exec(`
+	_, err = tx.Exec(`
 		UPDATE pins
 		SET path = ? || substr(path, ?)
 		WHERE path = ? OR path LIKE ? || '/%'
 	`, newPath, len(oldPath)+1, oldPath, oldPath)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to update pins: %w", err)
+	}
+
+	// Update meili_documents
+	_, err = tx.Exec(`
+		UPDATE meili_documents
+		SET file_path = ? || substr(file_path, ?)
+		WHERE file_path = ? OR file_path LIKE ? || '/%'
+	`, newPath, len(oldPath)+1, oldPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update meili_documents: %w", err)
+	}
+
+	// Update qdrant_documents
+	_, err = tx.Exec(`
+		UPDATE qdrant_documents
+		SET file_path = ? || substr(file_path, ?)
+		WHERE file_path = ? OR file_path LIKE ? || '/%'
+	`, newPath, len(oldPath)+1, oldPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update qdrant_documents: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 // UpdateFileField updates a single field on a file record
@@ -728,7 +777,8 @@ func UpdateFileField(path string, field string, value interface{}) error {
 
 // MoveFileAtomic atomically moves a file record from oldPath to newPath.
 // This is used when detecting external file moves via fsnotify.
-// It updates the file record, digests, and pins in a single transaction.
+// It updates the file record and ALL related tables in a single transaction:
+// files, digests, pins, meili_documents, qdrant_documents.
 func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -781,6 +831,18 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
 
+	// 5. Update related tables: meili_documents
+	_, err = tx.Exec(`UPDATE meili_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update meili_documents: %w", err)
+	}
+
+	// 6. Update related tables: qdrant_documents
+	_, err = tx.Exec(`UPDATE qdrant_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to update qdrant_documents: %w", err)
+	}
+
 	return tx.Commit()
 }
 
@@ -805,8 +867,9 @@ func ListAllFilePaths() ([]string, error) {
 	return paths, rows.Err()
 }
 
-// DeleteFileWithCascade removes a file record and all related records (digests, pins)
-// in a single transaction. Used during reconciliation to clean up orphaned records.
+// DeleteFileWithCascade removes a file record and all related records in a single transaction.
+// This includes: digests, pins, meili_documents, qdrant_documents.
+// Used during reconciliation and file deletion to clean up all related data.
 func DeleteFileWithCascade(path string) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -814,7 +877,16 @@ func DeleteFileWithCascade(path string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete digests first (foreign key dependency)
+	// Delete search index documents first
+	if _, err := tx.Exec("DELETE FROM qdrant_documents WHERE file_path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete qdrant_documents: %w", err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete meili_documents: %w", err)
+	}
+
+	// Delete digests
 	if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ?", path); err != nil {
 		return fmt.Errorf("failed to delete digests: %w", err)
 	}

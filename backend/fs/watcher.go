@@ -303,8 +303,8 @@ func (w *watcher) handleDelete(path string) {
 		Str("path", path).
 		Msg("detected external file deletion, updating database")
 
-	// Delete from database
-	if err := w.service.cfg.DB.DeleteFile(path); err != nil {
+	// Delete from database with cascade (deletes digests, pins, meili, qdrant)
+	if err := w.service.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
 			Str("path", path).

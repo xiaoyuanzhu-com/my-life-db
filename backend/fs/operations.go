@@ -168,7 +168,9 @@ func (s *Service) readFile(ctx context.Context, path string) (io.ReadCloser, err
 	return file, nil
 }
 
-// deleteFile removes a file from filesystem and database
+// deleteFile removes a file from filesystem and database.
+// This is the SINGLE entry point for file deletion - all callers should use this.
+// Handles: filesystem, files table, digests, pins, meili_documents, qdrant_documents.
 func (s *Service) deleteFile(ctx context.Context, path string) error {
 	// 1. Validate path
 	if err := s.ValidatePath(path); err != nil {
@@ -186,23 +188,25 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete file from filesystem: %w", err)
 	}
 
-	// 4. Delete from database
-	if err := s.cfg.DB.DeleteFile(path); err != nil {
+	// 4. Cascade delete from database (files, digests, pins, meili, qdrant)
+	if err := s.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
 			Str("path", path).
-			Msg("failed to delete file from database (file already deleted from filesystem)")
+			Msg("failed to cascade delete file from database")
 		return fmt.Errorf("failed to delete file from database: %w", err)
 	}
 
 	// 5. Release lock (garbage collection)
-	defer s.fileLock.releaseFileLock(path)
+	s.fileLock.releaseFileLock(path)
 
 	log.Info().Str("path", path).Msg("file deleted successfully")
 	return nil
 }
 
-// moveFile moves a file from src to dst
+// moveFile moves a file from src to dst.
+// This is the SINGLE entry point for file moves/renames - all callers should use this.
+// Handles: filesystem, files table, digests, pins, meili_documents, qdrant_documents.
 func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	// 1. Validate paths
 	if err := s.ValidatePath(src); err != nil {
@@ -242,25 +246,20 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 		}
 	}
 
-	// 5. Update database (delete old, create new)
-	// Get file info at new location
+	// 5. Get file info at new location
 	info, err := os.Stat(dstFullPath)
 	if err != nil {
 		return fmt.Errorf("failed to stat destination file: %w", err)
 	}
 
-	// Create new record
+	// 6. Build new record, preserving hash and text preview
 	newRecord := s.buildFileRecord(dst, info, nil)
-	newRecord.Hash = srcRecord.Hash             // Preserve hash
-	newRecord.TextPreview = srcRecord.TextPreview // Preserve text preview
+	newRecord.Hash = srcRecord.Hash
+	newRecord.TextPreview = srcRecord.TextPreview
 
-	if _, err := s.cfg.DB.UpsertFile(newRecord); err != nil {
-		return fmt.Errorf("failed to create destination record: %w", err)
-	}
-
-	// Delete old record
-	if err := s.cfg.DB.DeleteFile(src); err != nil {
-		log.Warn().Err(err).Msg("failed to delete source record")
+	// 7. Atomic DB update (files, digests, pins, meili, qdrant)
+	if err := s.cfg.DB.MoveFileAtomic(src, dst, newRecord); err != nil {
+		return fmt.Errorf("failed to update database: %w", err)
 	}
 
 	log.Info().Str("src", src).Str("dst", dst).Msg("file moved successfully")

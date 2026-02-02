@@ -140,12 +140,13 @@ func (s *Server) setupRouter() {
 		s.router.Use(s.securityHeadersMiddleware())
 	}
 
-	// Gzip compression (skip SSE and WebSocket endpoints)
+	// Gzip compression (skip SSE, WebSocket, and TUS upload endpoints)
 	// Note: WithExcludedPathsRegexs is used for routes with dynamic parameters
 	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
 		gzip.WithExcludedPaths([]string{
 			"/api/notifications/stream", // SSE - needs streaming
 			"/api/asr/realtime",         // WebSocket - protocol upgrade
+			"/api/upload/tus/",          // TUS - needs ResponseController for timeout extension
 		}),
 		gzip.WithExcludedPathsRegexs([]string{
 			"/api/claude/sessions/.*/ws",        // WebSocket - terminal I/O
