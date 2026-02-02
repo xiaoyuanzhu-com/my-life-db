@@ -251,6 +251,13 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
+	// 0. Signal Claude sessions that we're shutting down FIRST
+	// This must happen before SIGINT propagates to child processes,
+	// so they know to expect process exit errors and log at debug level.
+	if s.claudeManager != nil {
+		s.claudeManager.SignalShutdown()
+	}
+
 	// 1. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE)
 	// This allows them to stop gracefully before we close the HTTP server
 	log.Info().Msg("signaling handlers to stop")

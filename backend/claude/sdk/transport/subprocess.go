@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -82,6 +83,9 @@ type SubprocessCLITransport struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Shutdown signaling - set early to expect process exit errors
+	shuttingDown atomic.Bool
 }
 
 // NewSubprocessCLITransport creates a new subprocess transport
@@ -444,16 +448,22 @@ func (t *SubprocessCLITransport) monitorProcess() {
 
 	if err != nil {
 		// Only report error if we didn't cancel (graceful shutdown)
-		select {
-		case <-t.ctx.Done():
-			// Context was cancelled - this is expected during graceful shutdown
+		// Check shuttingDown flag first - it's set early in shutdown sequence
+		// before context cancellation propagates
+		if t.shuttingDown.Load() {
 			log.Debug().Err(err).Msg("Claude CLI process terminated during shutdown")
-		default:
-			// Unexpected error - process died on its own
-			log.Error().Err(err).Msg("Claude CLI process error")
+		} else {
 			select {
-			case t.errors <- &CLIConnectionError{Message: "process exited", Cause: err}:
+			case <-t.ctx.Done():
+				// Context was cancelled - this is expected during graceful shutdown
+				log.Debug().Err(err).Msg("Claude CLI process terminated during shutdown")
 			default:
+				// Unexpected error - process died on its own
+				log.Error().Err(err).Msg("Claude CLI process error")
+				select {
+				case t.errors <- &CLIConnectionError{Message: "process exited", Cause: err}:
+				default:
+				}
 			}
 		}
 	}
@@ -590,4 +600,10 @@ func (t *SubprocessCLITransport) IsConnected() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.connected && !t.closed
+}
+
+// SignalShutdown marks the transport as shutting down.
+// Call this early in shutdown sequence so process exit errors are expected.
+func (t *SubprocessCLITransport) SignalShutdown() {
+	t.shuttingDown.Store(true)
 }

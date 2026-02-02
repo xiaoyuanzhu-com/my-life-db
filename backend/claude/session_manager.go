@@ -232,6 +232,17 @@ func (m *SessionManager) notify(event SessionEvent) {
 	}
 }
 
+// SignalShutdown marks all sessions as shutting down.
+// Call this early in shutdown sequence so process exit errors are expected.
+func (m *SessionManager) SignalShutdown() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, session := range m.sessions {
+		session.SignalShutdown()
+	}
+}
+
 // Shutdown gracefully stops the session manager
 func (m *SessionManager) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down SessionManager")

@@ -28,4 +28,10 @@ type Transport interface {
 
 	// IsConnected returns whether the transport is currently connected
 	IsConnected() bool
+
+	// SignalShutdown marks the transport as shutting down.
+	// This should be called early in the shutdown sequence so that
+	// expected errors (like process exit from SIGINT) are logged
+	// at debug level instead of error level.
+	SignalShutdown()
 }

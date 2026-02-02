@@ -232,6 +232,17 @@ func (s *Session) IsActivated() bool {
 	return s.activated
 }
 
+// SignalShutdown marks the session as shutting down.
+// Call this early in shutdown sequence so process exit errors are expected.
+func (s *Session) SignalShutdown() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.sdkClient != nil {
+		s.sdkClient.SignalShutdown()
+	}
+}
+
 // ToJSON returns a JSON-safe representation of the session
 func (s *Session) ToJSON() map[string]interface{} {
 	s.mu.RLock()

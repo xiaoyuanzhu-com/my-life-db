@@ -331,6 +331,17 @@ func (c *ClaudeSDKClient) Close() error {
 	return c.Disconnect()
 }
 
+// SignalShutdown marks the client as shutting down.
+// Call this early in shutdown sequence so process exit errors are expected.
+func (c *ClaudeSDKClient) SignalShutdown() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.transport != nil {
+		c.transport.SignalShutdown()
+	}
+}
+
 // --- One-shot Query Function ---
 
 // QueryOnce performs a one-shot query to Claude Code.
