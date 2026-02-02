@@ -253,12 +253,14 @@ async function runMeilisearch() {
   log.info(`Data will be persisted to: ${MEILI_DATA_DIR}`);
   log.info(`Meilisearch will be available at: http://localhost:${MEILI_PORT}`);
 
+  const CONTAINER_NAME = "mld-meilisearch";
+
   // Check if container is already running
   try {
     const running = execSync("docker ps --format '{{.Names}}'", { encoding: "utf-8" });
-    if (running.includes("meilisearch")) {
-      log.warn("Meilisearch container is already running");
-      log.info("To stop it, run: docker stop meilisearch");
+    if (running.includes(CONTAINER_NAME)) {
+      log.warn(`${CONTAINER_NAME} container is already running`);
+      log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
       return null;
     }
   } catch {
@@ -273,7 +275,7 @@ async function runMeilisearch() {
     "run",
     "--rm",
     "--name",
-    "meilisearch",
+    CONTAINER_NAME,
     "-p",
     `${MEILI_PORT}:7700`,
     "-e",
@@ -294,6 +296,8 @@ async function runQdrant() {
   // Create data directory if needed
   execSync(`mkdir -p "${QDRANT_DATA_DIR}"`);
 
+  const CONTAINER_NAME = "mld-qdrant";
+
   log.info(`Data will be persisted to: ${QDRANT_DATA_DIR}`);
   log.info(`Qdrant HTTP API will be available at: http://localhost:${QDRANT_PORT}`);
   log.info(`Qdrant gRPC API will be available at: http://localhost:6334`);
@@ -301,9 +305,9 @@ async function runQdrant() {
   // Check if container is already running
   try {
     const running = execSync("docker ps --format '{{.Names}}'", { encoding: "utf-8" });
-    if (running.includes("qdrant")) {
-      log.warn("Qdrant container is already running");
-      log.info("To stop it, run: docker stop qdrant");
+    if (running.includes(CONTAINER_NAME)) {
+      log.warn(`${CONTAINER_NAME} container is already running`);
+      log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
       return null;
     }
   } catch {
@@ -318,7 +322,7 @@ async function runQdrant() {
     "run",
     "--rm",
     "--name",
-    "qdrant",
+    CONTAINER_NAME,
     "-p",
     `${QDRANT_PORT}:6333`,
     "-p",
