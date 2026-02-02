@@ -40,6 +40,7 @@
     "react-router": "^7.1.0",
     "shiki": "^3.21.0",
     "simple-icons": "^15.17.0",
+    "sonner": "^1.7.0",
     "tailwind-merge": "^3.3.1",
     "tus-js-client": "^4.3.1",
     "use-stick-to-bottom": "^1.1.2",

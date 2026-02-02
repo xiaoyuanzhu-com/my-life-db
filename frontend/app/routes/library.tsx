@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import { Upload, FolderUp, FolderPlus } from "lucide-react";
 import { FileTree } from "~/components/library/file-tree";
 import { FileViewer } from "~/components/library/file-viewer";
@@ -18,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { useAuth } from "~/contexts/auth-context";
+import { useUploadNotifications } from "~/hooks/use-upload-notifications";
 
 export interface TabState {
   path: string;
@@ -39,6 +41,9 @@ function LibraryContent() {
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Subscribe to upload notifications (shows toast on success/failure)
+  useUploadNotifications();
 
   const activeTab = tabs.find((tab) => tab.isActive);
   const activeFilePath = activeTab?.path ?? null;
@@ -248,17 +253,26 @@ function LibraryContent() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const fileArray = Array.from(files);
+
+    // Show upload start toast
+    if (fileArray.length === 1) {
+      toast.info(`Uploading ${fileArray[0].name}...`);
+    } else {
+      toast.info(`Uploading ${fileArray.length} files...`);
+    }
+
     try {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
 
-      for (const file of Array.from(files)) {
+      for (const file of fileArray) {
         await uploadManager.enqueueFile(file, undefined, "");
       }
     } catch (error) {
       console.error("Failed to upload files:", error);
-      alert(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
 
     // Reset input so the same file can be selected again
@@ -269,12 +283,22 @@ function LibraryContent() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const fileArray = Array.from(files);
+
+    // Show upload start toast
+    if (fileArray.length > 0) {
+      // Get the top-level folder name from the first file's path
+      const firstPath = (fileArray[0] as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+      const folderName = firstPath.split("/")[0] || "folder";
+      toast.info(`Uploading ${folderName} (${fileArray.length} files)...`);
+    }
+
     try {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
 
-      for (const file of Array.from(files)) {
+      for (const file of fileArray) {
         // webkitRelativePath contains the folder structure (e.g., "folder/subfolder/file.txt")
         const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
         const pathParts = relativePath.split("/");
@@ -285,7 +309,7 @@ function LibraryContent() {
       }
     } catch (error) {
       console.error("Failed to upload folder:", error);
-      alert(`Failed to upload folder: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
 
     // Reset input so the same folder can be selected again

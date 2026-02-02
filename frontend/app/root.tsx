@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
+import { Toaster } from "~/components/ui/sonner";
 import "./globals.css";
 
 function useDarkMode() {
@@ -42,6 +43,7 @@ export default function Root() {
         </main>
       </AuthProvider>
       <ScrollRestoration />
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }
