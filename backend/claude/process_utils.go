@@ -118,16 +118,17 @@ var (
 	}
 )
 
-// gracefulTerminate attempts to gracefully terminate a process by sending SIGTERM first,
+// gracefulTerminate attempts to gracefully terminate a process by sending SIGINT first,
 // waiting for a short period, then forcefully killing with SIGKILL if it doesn't exit.
 // This allows the process (Claude) to finish writing any pending data (like JSONL files).
+// Note: Claude CLI (Node.js) responds to SIGINT but not SIGTERM.
 func gracefulTerminate(cmd *exec.Cmd, timeout time.Duration) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
 
-	// Send SIGTERM for graceful shutdown
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	// Send SIGINT for graceful shutdown (Claude CLI responds to SIGINT, not SIGTERM)
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
 		// Process might already be dead, try Kill anyway
 		cmd.Process.Kill()
 		return

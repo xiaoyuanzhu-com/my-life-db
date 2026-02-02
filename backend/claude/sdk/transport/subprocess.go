@@ -539,8 +539,8 @@ func (t *SubprocessCLITransport) Close() error {
 
 	// Gracefully terminate process
 	if t.cmd != nil && t.cmd.Process != nil {
-		// Send SIGTERM first
-		if err := t.cmd.Process.Signal(syscall.SIGTERM); err == nil {
+		// Send SIGINT first (Claude CLI responds to SIGINT but not SIGTERM)
+		if err := t.cmd.Process.Signal(syscall.SIGINT); err == nil {
 			// Wait briefly for graceful exit
 			processDone := make(chan struct{})
 			go func() {
