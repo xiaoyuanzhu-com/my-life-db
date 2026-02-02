@@ -84,7 +84,15 @@ export default function ClaudePage() {
   // - Stored locally until session is created
   // - Changing this does NOT create a session or send any request
   // - Passed to createSessionWithMessage API when user sends first message
-  const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>('default')
+  const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('claude-permission-mode')
+      if (saved === 'default' || saved === 'plan' || saved === 'bypassPermissions') {
+        return saved
+      }
+    }
+    return 'default'
+  })
 
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
@@ -100,6 +108,11 @@ export default function ClaudePage() {
   useEffect(() => {
     localStorage.setItem('claude-session-filter', statusFilter)
   }, [statusFilter])
+
+  // Persist permission mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('claude-permission-mode', newSessionPermissionMode)
+  }, [newSessionPermissionMode])
 
   // Sort sessions: active first, then by last activity
   const sortSessions = (sessionList: Session[]): Session[] => {
