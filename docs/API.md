@@ -25,8 +25,9 @@ This document describes the REST API endpoints for the MyLifeDB backend. Mobile 
 13. [Notifications (SSE)](#notifications-sse)
 14. [Vendors](#vendors)
 15. [Directories](#directories)
-16. [Claude Code Integration](#claude-code-integration)
-17. [Data Models](#data-models)
+16. [Speech Recognition (ASR)](#speech-recognition-asr)
+17. [Claude Code Integration](#claude-code-integration)
+18. [Data Models](#data-models)
 
 ---
 
@@ -269,7 +270,7 @@ GET /api/inbox/:id
       "id": "uuid",
       "filePath": "inbox/file.md",
       "digester": "tags",
-      "status": "completed",
+      "status": "done",
       "content": "{\"tags\": [\"work\", \"notes\"]}",
       "createdAt": "2024-01-15T10:30:00Z",
       "updatedAt": "2024-01-15T10:35:00Z"
@@ -294,7 +295,7 @@ PUT /api/inbox/:id
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -307,7 +308,7 @@ DELETE /api/inbox/:id
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -343,7 +344,7 @@ POST /api/inbox/:id/reenrich
 **Response (200 OK):**
 ```json
 {
-  "success": "true",
+  "success": true,
   "message": "Re-enrichment triggered"
 }
 ```
@@ -362,7 +363,7 @@ GET /api/inbox/:id/status
     {
       "id": "uuid",
       "digester": "tags",
-      "status": "completed"
+      "status": "done"
     },
     {
       "id": "uuid2",
@@ -373,10 +374,19 @@ GET /api/inbox/:id/status
 }
 ```
 
-**Status Values:**
-- `done` - All digests completed
-- `processing` - At least one digest is running
-- `pending` - Digests are queued (todo) or failed
+**Overall Status Values:**
+- `done` - All digests completed successfully
+- `processing` - At least one digest is currently running
+- `pending` - Digests are queued (`todo`) or have failed
+
+**Individual Digest Status Values:**
+| Status | Description |
+|--------|-------------|
+| `todo` | Queued for processing |
+| `running` | Currently being processed |
+| `done` | Completed successfully |
+| `failed` | Processing failed (see `error` field) |
+| `skipped` | Skipped (e.g., file type not supported by digester) |
 
 ---
 
@@ -468,7 +478,7 @@ DELETE /api/library/file
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -580,7 +590,7 @@ DELETE /api/library/pin
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -770,7 +780,7 @@ GET /api/digest/file/*path
       "id": "uuid",
       "filePath": "inbox/photo.jpg",
       "digester": "image-captioning",
-      "status": "completed",
+      "status": "done",
       "content": "{\"caption\": \"A sunset over the ocean\"}",
       "createdAt": "2024-01-15T10:30:00Z",
       "updatedAt": "2024-01-15T10:35:00Z"
@@ -905,7 +915,7 @@ PUT /api/people/:id
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -918,7 +928,7 @@ DELETE /api/people/:id
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -945,7 +955,7 @@ POST /api/people/:id/merge
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -965,7 +975,7 @@ POST /api/people/embeddings/:id/assign
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -978,7 +988,7 @@ POST /api/people/embeddings/:id/unassign
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -1235,7 +1245,7 @@ PUT /raw/*path
 **Response (200 OK):**
 ```json
 {
-  "success": "true"
+  "success": true
 }
 ```
 
@@ -1341,6 +1351,184 @@ GET /api/directories
 ```
 
 **Note:** Excludes hidden directories (starting with `.`) and the `app` directory.
+
+---
+
+## Speech Recognition (ASR)
+
+MyLifeDB provides speech recognition capabilities via Aliyun Fun-ASR, with both batch processing and real-time streaming options.
+
+### Non-Realtime ASR
+
+Process audio files for transcription. Supports file upload or file path reference.
+
+```http
+POST /api/asr
+```
+
+**Option 1: Multipart File Upload**
+```http
+Content-Type: multipart/form-data
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `audio` | file | **Required.** Audio file to transcribe |
+| `diarization` | string | `"true"` to enable speaker diarization |
+
+**Option 2: JSON Request**
+```json
+{
+  "filePath": "/path/to/audio.wav",
+  "fileUrl": "https://example.com/audio.wav",
+  "diarization": true
+}
+```
+
+**Note:** Provide either `filePath` or `fileUrl`, not both.
+
+**Response (200 OK):**
+```json
+{
+  "text": "Full transcription text...",
+  "segments": [
+    {
+      "text": "Hello, how are you?",
+      "beginTime": 0,
+      "endTime": 2500,
+      "speakerId": "speaker_1"
+    },
+    {
+      "text": "I'm doing well, thanks.",
+      "beginTime": 2600,
+      "endTime": 4800,
+      "speakerId": "speaker_2"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `audio file is required in multipart upload` | Missing audio file in multipart |
+| 400 | `either file_url or file_path is required` | Missing file reference in JSON |
+| 400 | `Aliyun API key not configured` | Aliyun credentials not set |
+| 500 | `ASR failed: {error}` | Transcription failed |
+
+---
+
+### Real-time ASR (WebSocket)
+
+Stream audio in real-time for live transcription.
+
+```
+ws://{host}:{port}/api/asr/realtime
+```
+
+**Audio Requirements:**
+- Format: PCM (raw audio)
+- Sample rate: 16000 Hz
+- Channels: Mono
+
+#### WebSocket Message Types
+
+**Client → Server**
+
+**Start Session:**
+```json
+{
+  "type": "start",
+  "payload": {}
+}
+```
+
+**Stop Session:**
+```json
+{
+  "type": "stop",
+  "payload": {}
+}
+```
+
+**Audio Data:**
+Send raw PCM audio as binary WebSocket messages.
+
+**Server → Client**
+
+**Ready (Session Started):**
+```json
+{
+  "type": "ready",
+  "payload": {}
+}
+```
+
+**Transcript (Partial or Final):**
+```json
+{
+  "type": "transcript",
+  "payload": {
+    "text": "Hello, how are",
+    "isFinal": false,
+    "beginTime": 0,
+    "endTime": 1500
+  }
+}
+```
+
+```json
+{
+  "type": "transcript",
+  "payload": {
+    "text": "Hello, how are you?",
+    "isFinal": true,
+    "beginTime": 0,
+    "endTime": 2500,
+    "speakerId": "speaker_1"
+  }
+}
+```
+
+**Done (Session Complete):**
+```json
+{
+  "type": "done",
+  "payload": {}
+}
+```
+
+**Error:**
+```json
+{
+  "type": "error",
+  "payload": {
+    "message": "Connection lost to ASR provider",
+    "code": "connection_error"
+  }
+}
+```
+
+#### Connection Flow
+
+1. Connect to WebSocket endpoint
+2. Send `{"type": "start"}` to begin session
+3. Receive `{"type": "ready"}` confirmation
+4. Stream audio as binary messages
+5. Receive partial transcripts (`isFinal: false`)
+6. Receive final transcripts (`isFinal: true`) when sentences complete
+7. Send `{"type": "stop"}` when done
+8. Receive `{"type": "done"}` confirmation
+9. Close WebSocket connection
+
+#### Mobile Implementation Notes
+
+1. **Audio Recording**: Use 16kHz mono PCM format
+2. **Chunk Size**: Send audio in chunks (e.g., 3200 bytes = 100ms at 16kHz)
+3. **Latency**: Expect 100-300ms latency for partial results
+4. **Reconnection**: Handle WebSocket disconnects with retry logic
+5. **Permissions**: Request microphone permissions before connecting
 
 ---
 
@@ -2106,10 +2294,11 @@ All endpoints return errors in a consistent format:
 
 ```json
 {
-  "error": "Human-readable error message",
-  "code": "ERROR_CODE"
+  "error": "Human-readable error message"
 }
 ```
+
+**Note:** The `code` field is optional and may not be present in all error responses.
 
 ### Common HTTP Status Codes
 
@@ -2117,12 +2306,49 @@ All endpoints return errors in a consistent format:
 |--------|-------------|
 | 200 | Success |
 | 201 | Created |
-| 400 | Bad Request - Invalid parameters |
-| 401 | Unauthorized - Authentication required |
+| 400 | Bad Request - Invalid parameters or missing required fields |
+| 401 | Unauthorized - Authentication required or session expired |
 | 404 | Not Found - Resource doesn't exist |
-| 409 | Conflict - Resource already exists |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable - External service not configured |
+| 409 | Conflict - Resource already exists (e.g., duplicate filename) |
+| 500 | Internal Server Error - Server-side failure |
+| 503 | Service Unavailable - External service not configured or unreachable |
+
+### Common Error Messages by Category
+
+**Authentication Errors (401):**
+```json
+{"error": "Invalid password"}
+{"error": "Session expired"}
+{"error": "Authentication required"}
+```
+
+**Validation Errors (400):**
+```json
+{"error": "Invalid request body"}
+{"error": "Path is required"}
+{"error": "Either text or files must be provided"}
+{"error": "Invalid cursor format"}
+```
+
+**Not Found Errors (404):**
+```json
+{"error": "Inbox item not found"}
+{"error": "File not found"}
+{"error": "Person not found"}
+{"error": "Session not found"}
+```
+
+**Conflict Errors (409):**
+```json
+{"error": "A file with this name already exists"}
+```
+
+**Service Errors (503):**
+```json
+{"error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."}
+{"error": "Aliyun API key not configured"}
+{"error": "Meilisearch is not configured"}
+```
 
 ---
 

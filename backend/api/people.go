@@ -160,7 +160,7 @@ func (h *Handlers) UpdatePerson(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // DeletePerson handles DELETE /api/people/:id
@@ -188,7 +188,7 @@ func (h *Handlers) DeletePerson(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // MergePeople handles POST /api/people/:id/merge
@@ -220,7 +220,7 @@ func (h *Handlers) MergePeople(c *gin.Context) {
 	// Delete source person
 	db.GetDB().Exec("DELETE FROM people WHERE id = ?", body.SourceID)
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // AssignEmbedding handles POST /api/people/embeddings/:id/assign
@@ -246,7 +246,7 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // UnassignEmbedding handles POST /api/people/embeddings/:id/unassign
@@ -262,5 +262,5 @@ func (h *Handlers) UnassignEmbedding(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

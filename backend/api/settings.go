@@ -237,7 +237,7 @@ func (h *Handlers) ResetSettings(c *gin.Context) {
 	settings, err := db.LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings after reset")
-		c.JSON(http.StatusOK, gin.H{"success": "true"})
+		c.JSON(http.StatusOK, gin.H{"success": true})
 		return
 	}
 

@@ -104,7 +104,7 @@ func (h *Handlers) SaveRawFile(c *gin.Context) {
 		Bool("hashComputed", result.HashComputed).
 		Msg("raw file saved")
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // ServeSqlarFile handles GET /sqlar/*path
@@ -205,7 +205,7 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	// Notify clients of the change
 	h.server.Notifications().NotifyLibraryChanged(path, "delete")
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // GetLibraryFileInfo handles GET /api/library/file-info
@@ -295,7 +295,7 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // FileNode represents a file or folder in the tree (recursive structure)

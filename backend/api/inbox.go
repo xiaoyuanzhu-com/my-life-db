@@ -321,7 +321,7 @@ func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 	nowStr := db.NowUTC()
 	db.UpdateFileField(path, "modified_at", nowStr)
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // DeleteInboxItem handles DELETE /api/inbox/:id
@@ -362,7 +362,7 @@ func (h *Handlers) DeleteInboxItem(c *gin.Context) {
 	// Notify UI
 	h.server.Notifications().NotifyInboxChanged()
 
-	c.JSON(http.StatusOK, gin.H{"success": "true"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // PinnedItem represents a pinned item for UI display (matching Node.js schema)
@@ -432,7 +432,7 @@ func (h *Handlers) ReenrichInboxItem(c *gin.Context) {
 
 	// TODO: Trigger digest processing
 
-	c.JSON(http.StatusOK, gin.H{"success": "true", "message": "Re-enrichment triggered"})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Re-enrichment triggered"})
 }
 
 // GetInboxItemStatus handles GET /api/inbox/:id/status
