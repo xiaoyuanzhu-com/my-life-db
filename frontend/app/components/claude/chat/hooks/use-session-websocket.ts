@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ConnectionStatus } from './use-reconnection-feedback'
 import { refreshAccessToken } from '~/lib/fetch-with-refresh'
+import { normalizeMessage } from '~/lib/session-message-utils'
 
 export { type ConnectionStatus }
 
@@ -56,7 +57,10 @@ export function useSessionWebSocket(
       }
       try {
         const data = JSON.parse(event.data)
-        onMessageRef.current(data)
+        // Normalize field names (snake_case → camelCase) at the entry point
+        // See docs/claude-code/data-models.md "Field Naming Inconsistency" section
+        const normalized = normalizeMessage(data as Record<string, unknown>)
+        onMessageRef.current(normalized)
       } catch (error) {
         console.error('[useSessionWebSocket] Failed to parse WebSocket message:', error)
       }
