@@ -508,6 +508,17 @@
   border: 1px solid var(--claude-border-light);
 }
 
+.prose-claude .table-wrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.prose-claude .table-wrapper table {
+  margin: 0;
+  width: max-content;
+  min-width: 100%;
+}
+
 .prose-claude thead {
   background-color: var(--claude-bg-subtle);
 }

@@ -266,6 +266,10 @@ export async function parseMarkdown(content: string): Promise<string> {
   // Parse markdown (mermaid/html-preview blocks become placeholders)
   let html = marked.parse(content) as string
 
+  // Wrap tables in scrollable containers for wide tables
+  html = html.replace(/<table>/g, '<div class="table-wrapper"><table>')
+  html = html.replace(/<\/table>/g, '</table></div>')
+
   // Replace HTML preview placeholders (sync, no async needed)
   if (htmlPreviewBlocks.length > 0) {
     html = html.replace(HTML_PREVIEW_PLACEHOLDER_REGEX, (_, index) => {
