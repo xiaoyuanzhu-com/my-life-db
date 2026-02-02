@@ -4,6 +4,52 @@ import (
 	"testing"
 )
 
+func TestValidatePath_SecurityOnly(t *testing.T) {
+	v := newValidator()
+
+	// Security violations should still fail
+	securityTests := []struct {
+		path    string
+		wantErr bool
+		desc    string
+	}{
+		{"../etc/passwd", true, "should reject directory traversal"},
+		{"/etc/passwd", true, "should reject absolute path"},
+		{"foo/../bar", true, "should reject embedded .."},
+		{"normal/path.txt", false, "should accept normal path"},
+	}
+
+	for _, tt := range securityTests {
+		t.Run(tt.desc, func(t *testing.T) {
+			err := v.ValidatePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+			}
+		})
+	}
+
+	// Excluded paths should now be ALLOWED by ValidatePath (security only)
+	excludedPaths := []string{
+		".DS_Store",
+		".git/config",
+		"media/.DS_Store",
+		".obsidian/workspace",
+	}
+
+	for _, path := range excludedPaths {
+		t.Run("allows excluded: "+path, func(t *testing.T) {
+			err := v.ValidatePath(path)
+			if err != nil {
+				t.Errorf("ValidatePath(%q) should allow excluded paths, got error: %v", path, err)
+			}
+			// But IsExcluded should still return true
+			if !v.IsExcluded(path) {
+				t.Errorf("IsExcluded(%q) should return true", path)
+			}
+		})
+	}
+}
+
 func TestExclusionPatterns(t *testing.T) {
 	v := newValidator()
 

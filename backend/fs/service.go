@@ -168,9 +168,14 @@ func (s *Service) changeNotificationWorker() {
 	}
 }
 
-// ValidatePath checks if path is valid and not excluded
+// ValidatePath checks if path is valid (security only - no exclusion filtering)
 func (s *Service) ValidatePath(path string) error {
 	return s.validator.ValidatePath(path)
+}
+
+// IsExcluded checks if a path should be excluded from display/listing
+func (s *Service) IsExcluded(path string) bool {
+	return s.validator.IsExcluded(path)
 }
 
 // GetFileInfo retrieves file metadata from database

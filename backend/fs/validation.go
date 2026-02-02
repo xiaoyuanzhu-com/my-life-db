@@ -22,7 +22,7 @@ func (v *validator) IsExcluded(path string) bool {
 	return v.pathFilter.IsExcluded(path)
 }
 
-// ValidatePath checks if a path is valid and not malicious
+// ValidatePath checks if a path is valid and not malicious (security only)
 func (v *validator) ValidatePath(path string) error {
 	// No absolute paths
 	if filepath.IsAbs(path) {
@@ -37,6 +37,16 @@ func (v *validator) ValidatePath(path string) error {
 	// No leading /
 	if strings.HasPrefix(path, "/") {
 		return ErrInvalidPath
+	}
+
+	return nil
+}
+
+// ValidatePathForRead checks if a path is valid for reading (security + exclusion)
+// Use this for display/listing operations where excluded files should be hidden
+func (v *validator) ValidatePathForRead(path string) error {
+	if err := v.ValidatePath(path); err != nil {
+		return err
 	}
 
 	// Check against exclusion patterns
