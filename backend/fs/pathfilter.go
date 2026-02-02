@@ -496,6 +496,5 @@ var logSuffixes = []string{
 
 // MyLifeDB App-reserved paths (only checked at root level)
 var appReservedNames = map[string]bool{
-	"inbox": true,
-	"app":   true,
+	// No reserved paths - inbox and app are shown in library tree
 }
