@@ -72,10 +72,8 @@ func TestPathFilter_IsExcluded(t *testing.T) {
 		{"log file", CategoryLogs, "app.log", true},
 		{"not log", CategoryLogs, "logger", false},
 
-		// App reserved (only at root)
-		{"inbox at root", CategoryAppReserved, "inbox", true},
-		{"app at root", CategoryAppReserved, "app", true},
-		{"inbox nested", CategoryAppReserved, "foo/inbox", false}, // Not at root
+		// App reserved (currently empty - inbox and app are shown in library tree)
+		{"inbox nested", CategoryAppReserved, "foo/inbox", false},
 		{"not reserved", CategoryAppReserved, "library", false},
 
 		// Combined categories
@@ -106,12 +104,6 @@ func TestPathFilter_IsExcludedEntry(t *testing.T) {
 		atRoot     bool
 		want       bool
 	}{
-		// App reserved - root vs nested
-		{"inbox at root", CategoryAppReserved, "inbox", true, true},
-		{"inbox not at root", CategoryAppReserved, "inbox", false, false},
-		{"app at root", CategoryAppReserved, "app", true, true},
-		{"app not at root", CategoryAppReserved, "app", false, false},
-
 		// Case insensitivity for OS files
 		{"DS_Store upper", CategoryOS, ".DS_Store", false, true},
 		{"ds_store lower", CategoryOS, ".ds_store", false, true},
