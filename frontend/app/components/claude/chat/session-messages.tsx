@@ -520,13 +520,14 @@ export function SessionMessages({
       // Skip user messages with only skipped XML tags
       if (isSkippedUserMessage(msg)) return false
 
-      // Skip subagent messages - they're rendered inside their parent Task tool via subagentMessagesMap
+      // Skip subagent messages at top level - they're rendered inside their parent Task tool via subagentMessagesMap
       // See data-models.md "Subagent Message Hierarchy" section.
-      if (isSubagentMessage(msg)) return false
+      // When depth > 0, we're already inside a Task tool's nested session, so don't filter these out.
+      if (depth === 0 && isSubagentMessage(msg)) return false
 
       return true
     })
-  }, [messages])
+  }, [messages, depth])
 
   // Derive current active status from the last status message
   // Status messages are ephemeral indicators (e.g., "compacting") that should show
