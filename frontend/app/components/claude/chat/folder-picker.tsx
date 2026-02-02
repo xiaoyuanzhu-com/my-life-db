@@ -1,16 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FolderOpen, Check } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from '~/components/ui/command'
 
 interface FolderPickerProps {
   value: string // full path
@@ -24,8 +16,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
   const [children, setChildren] = useState<string[]>([]) // children of currentPath
-  const [search, setSearch] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
 
   // Fetch children of a given full path
   const fetchChildren = useCallback(async (fullPath: string, knownBasePath?: string) => {
@@ -96,42 +86,14 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     if (open) {
       const pathToBrowse = value || basePath
       setCurrentPath(pathToBrowse)
-      const displayPath = getRelativeDisplay(pathToBrowse)
-      setSearch(displayPath)
       fetchChildren(pathToBrowse)
-
-      // Move cursor to end - skip on mobile to avoid opening keyboard
-      const isMobile = window.matchMedia('(max-width: 768px)').matches
-      if (!isMobile) {
-        requestAnimationFrame(() => {
-          const input = inputRef.current
-          if (input) {
-            const len = displayPath.length
-            input.setSelectionRange(len, len)
-          }
-        })
-      }
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // When user selects a folder, navigate into it
   const handleSelect = (path: string) => {
     setCurrentPath(path)
-    const displayPath = getRelativeDisplay(path)
-    setSearch(displayPath)
     fetchChildren(path)
-
-    // Move cursor to end - skip on mobile to avoid opening keyboard
-    const isMobile = window.matchMedia('(max-width: 768px)').matches
-    if (!isMobile) {
-      requestAnimationFrame(() => {
-        const input = inputRef.current
-        if (input) {
-          const len = displayPath.length
-          input.setSelectionRange(len, len)
-        }
-      })
-    }
   }
 
   // When popover closes, confirm selection
@@ -154,30 +116,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     const segments = path.split('/').filter(Boolean)
     if (segments.length === 0) return ''
     return segments.slice(-n).join('/')
-  }
-
-  // Get display path relative to basePath's parent (e.g., "data/bookmarks" instead of full path)
-  const getRelativeDisplay = (path: string) => {
-    if (!path || !basePath) return path
-    const baseLastSegment = getLastSegment(basePath)
-    if (path === basePath) return baseLastSegment
-    if (path.startsWith(basePath + '/')) {
-      return baseLastSegment + path.slice(basePath.length)
-    }
-    return path
-  }
-
-  // Fuzzy match: characters must appear in order, not necessarily contiguous
-  const fuzzyMatch = (text: string, pattern: string) => {
-    const lowerText = text.toLowerCase()
-    const lowerPattern = pattern.toLowerCase()
-    let patternIdx = 0
-    for (let i = 0; i < lowerText.length && patternIdx < lowerPattern.length; i++) {
-      if (lowerText[i] === lowerPattern[patternIdx]) {
-        patternIdx++
-      }
-    }
-    return patternIdx === lowerPattern.length
   }
 
   const displayValue = value ? getLastSegment(value) : '.'
@@ -210,18 +148,12 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     return path.slice(0, lastSlash)
   }
 
-  // Build full list: [parent?, current, ...filtered children]
+  // Build full list: [parent?, current, ...children]
   const parentPath = getParentPath(currentPath)
-  // Filter children using relative display for fuzzy match
-  const filteredChildren = children.filter((path) =>
-    fuzzyMatch(getRelativeDisplay(path), search)
-  )
-  const filteredOptions = [
-    // Parent and current always shown (not filtered)
+  const options = [
     ...(parentPath ? [parentPath] : []),
     ...(currentPath ? [currentPath] : []),
-    // Only children are filtered
-    ...filteredChildren,
+    ...children,
   ]
 
   return (
@@ -242,44 +174,40 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
           <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start" side="top">
-        <Command shouldFilter={false}>
-          <CommandInput
-            ref={inputRef}
-            placeholder="Navigate folders..."
-            value={search}
-            onValueChange={setSearch}
-          />
-          <CommandList>
-            <CommandEmpty>No subfolders</CommandEmpty>
-            <CommandGroup>
-              {filteredOptions.map((folder) => {
-                // Display: ".." for parent, 1 segment for current, 2 segments for children
-                const isParent = folder === parentPath
-                const isCurrent = folder === currentPath
-                const displayName = isParent
-                  ? '..'
-                  : isCurrent
-                    ? getLastSegment(folder)
-                    : getLastNSegments(folder, 2)
-                return (
-                  <CommandItem
-                    key={folder}
-                    value={folder}
-                    onSelect={() => handleSelect(folder)}
-                    className={cn(
-                      'flex items-center justify-between',
-                      folder === currentPath && 'bg-accent'
-                    )}
-                  >
-                    <span>{displayName}</span>
-                    {isCurrent && <Check className="h-4 w-4 text-muted-foreground" />}
-                  </CommandItem>
-                )
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+      <PopoverContent className="w-64 p-1" align="start" side="top">
+        <div className="max-h-64 overflow-y-auto space-y-0.5">
+          {options.length === 0 ? (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">No subfolders</div>
+          ) : (
+            options.map((folder) => {
+              // Display: ".." for parent, 1 segment for current, 2 segments for children
+              const isParent = folder === parentPath
+              const isCurrent = folder === currentPath
+              const displayName = isParent
+                ? '..'
+                : isCurrent
+                  ? getLastSegment(folder)
+                  : getLastNSegments(folder, 2)
+              return (
+                <button
+                  key={folder}
+                  type="button"
+                  onClick={() => handleSelect(folder)}
+                  className={cn(
+                    'w-full px-2 py-1.5 rounded-md text-left text-sm',
+                    'hover:bg-accent transition-colors',
+                    'focus:outline-none focus:bg-accent',
+                    'flex items-center justify-between',
+                    isCurrent && 'bg-accent'
+                  )}
+                >
+                  <span>{displayName}</span>
+                  {isCurrent && <Check className="h-4 w-4 text-muted-foreground" />}
+                </button>
+              )
+            })
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )
