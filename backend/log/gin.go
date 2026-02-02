@@ -38,7 +38,7 @@ func GinLogger() gin.HandlerFunc {
 		} else if status >= 400 {
 			event = Warn()
 		} else {
-			event = Debug()
+			event = Info()
 		}
 
 		event.
