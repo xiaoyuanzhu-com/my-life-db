@@ -270,20 +270,30 @@ async function runMeilisearch() {
   // Pull image
   spawnSync("docker", ["pull", `getmeili/meilisearch:${MEILI_VERSION}`], { stdio: "inherit" });
 
-  // Run container
-  return spawnProcess("docker", [
-    "run",
-    "--rm",
-    "--name",
-    CONTAINER_NAME,
-    "-p",
-    `${MEILI_PORT}:7700`,
-    "-e",
-    "MEILI_ENV=development",
-    "-v",
-    `${MEILI_DATA_DIR}:/meili_data`,
-    `getmeili/meilisearch:${MEILI_VERSION}`,
-  ]);
+  // Run container in background
+  spawnSync(
+    "docker",
+    [
+      "run",
+      "-d",
+      "--rm",
+      "--name",
+      CONTAINER_NAME,
+      "-p",
+      `${MEILI_PORT}:7700`,
+      "-e",
+      "MEILI_ENV=development",
+      "-v",
+      `${MEILI_DATA_DIR}:/meili_data`,
+      `getmeili/meilisearch:${MEILI_VERSION}`,
+    ],
+    { stdio: "inherit" }
+  );
+
+  log.info(`${CONTAINER_NAME} started in background`);
+  log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
+  log.info(`To view logs, run: docker logs -f ${CONTAINER_NAME}`);
+  return null;
 }
 
 async function runQdrant() {
@@ -317,20 +327,30 @@ async function runQdrant() {
   // Pull image
   spawnSync("docker", ["pull", `qdrant/qdrant:${QDRANT_VERSION}`], { stdio: "inherit" });
 
-  // Run container
-  return spawnProcess("docker", [
-    "run",
-    "--rm",
-    "--name",
-    CONTAINER_NAME,
-    "-p",
-    `${QDRANT_PORT}:6333`,
-    "-p",
-    "6334:6334",
-    "-v",
-    `${QDRANT_DATA_DIR}:/qdrant/storage`,
-    `qdrant/qdrant:${QDRANT_VERSION}`,
-  ]);
+  // Run container in background
+  spawnSync(
+    "docker",
+    [
+      "run",
+      "-d",
+      "--rm",
+      "--name",
+      CONTAINER_NAME,
+      "-p",
+      `${QDRANT_PORT}:6333`,
+      "-p",
+      "6334:6334",
+      "-v",
+      `${QDRANT_DATA_DIR}:/qdrant/storage`,
+      `qdrant/qdrant:${QDRANT_VERSION}`,
+    ],
+    { stdio: "inherit" }
+  );
+
+  log.info(`${CONTAINER_NAME} started in background`);
+  log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
+  log.info(`To view logs, run: docker logs -f ${CONTAINER_NAME}`);
+  return null;
 }
 
 async function runGithub() {
@@ -474,39 +494,15 @@ async function main() {
       break;
 
     case "meili":
-    case "meilisearch": {
+    case "meilisearch":
       if (watch) log.warn("--watch not supported for meili, ignoring");
-      const proc = await runMeilisearch();
-      if (proc) {
-        const shutdown = async () => {
-          log.info("Shutting down...");
-          proc.kill("SIGTERM");
-          await waitForExit(proc);
-          process.exit(0);
-        };
-        process.on("SIGINT", shutdown);
-        process.on("SIGTERM", shutdown);
-        await waitForExit(proc);
-      }
+      await runMeilisearch();
       break;
-    }
 
-    case "qdrant": {
+    case "qdrant":
       if (watch) log.warn("--watch not supported for qdrant, ignoring");
-      const proc = await runQdrant();
-      if (proc) {
-        const shutdown = async () => {
-          log.info("Shutting down...");
-          proc.kill("SIGTERM");
-          await waitForExit(proc);
-          process.exit(0);
-        };
-        process.on("SIGINT", shutdown);
-        process.on("SIGTERM", shutdown);
-        await waitForExit(proc);
-      }
+      await runQdrant();
       break;
-    }
 
     case "github":
       if (watch) log.warn("--watch not supported for github, ignoring");
