@@ -59,4 +59,7 @@ type Database interface {
 	DeleteFile(path string) error
 	UpdateFileField(path string, field string, value interface{}) error
 	MoveFileAtomic(oldPath, newPath string, record *db.FileRecord) error
+	// Reconciliation methods
+	ListAllFilePaths() ([]string, error)
+	DeleteFileWithCascade(path string) error
 }

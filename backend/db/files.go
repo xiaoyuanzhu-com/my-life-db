@@ -783,3 +783,51 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 
 	return tx.Commit()
 }
+
+// ListAllFilePaths returns all file paths in the database (for reconciliation).
+// The caller is responsible for closing the returned rows.
+func ListAllFilePaths() ([]string, error) {
+	rows, err := GetDB().Query("SELECT path FROM files WHERE is_folder = 0")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+
+	return paths, rows.Err()
+}
+
+// DeleteFileWithCascade removes a file record and all related records (digests, pins)
+// in a single transaction. Used during reconciliation to clean up orphaned records.
+func DeleteFileWithCascade(path string) error {
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete digests first (foreign key dependency)
+	if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete digests: %w", err)
+	}
+
+	// Delete pins
+	if _, err := tx.Exec("DELETE FROM pins WHERE path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete pins: %w", err)
+	}
+
+	// Delete file record
+	if _, err := tx.Exec("DELETE FROM files WHERE path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	return tx.Commit()
+}

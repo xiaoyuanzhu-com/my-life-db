@@ -76,14 +76,17 @@ func (s *scanner) Stop() {
 	close(s.stopChan)
 }
 
-// scan performs a full filesystem scan
+// scan performs a full filesystem scan with two phases:
+// Phase 1: Walk filesystem, identify files needing processing, track all seen paths
+// Phase 2: Reconcile - remove DB records for files that no longer exist on disk
 func (s *scanner) scan() {
 	log.Info().Str("root", s.service.cfg.DataRoot).Msg("starting filesystem scan")
 	startTime := time.Now()
 
 	var filesToProcess []fileToProcess
+	seenPaths := make(map[string]bool) // Track all files seen on disk
 
-	// 1. Walk filesystem and identify files needing processing
+	// Phase 1: Walk filesystem and identify files needing processing
 	var totalFiles, excludedFiles, dirs int
 	err := filepath.Walk(s.service.cfg.DataRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -112,6 +115,7 @@ func (s *scanner) scan() {
 		}
 
 		totalFiles++
+		seenPaths[relPath] = true // Track this file as seen on disk
 
 		// Check if file needs processing
 		needsProcessing, reason := s.checkNeedsProcessing(relPath, info)
@@ -132,14 +136,18 @@ func (s *scanner) scan() {
 	}
 
 	log.Info().
+		Int("totalFiles", totalFiles).
 		Int("filesNeedingProcessing", len(filesToProcess)).
 		Dur("walkDuration", time.Since(startTime)).
 		Msg("filesystem walk complete, processing files")
 
-	// 2. Process files that need updates (in parallel with bounded concurrency)
+	// Process files that need updates (in parallel with bounded concurrency)
 	if len(filesToProcess) > 0 {
 		s.processFiles(filesToProcess)
 	}
+
+	// Phase 2: Reconcile - remove orphaned DB records
+	orphansRemoved := s.reconcileOrphans(seenPaths)
 
 	// Cleanup stale lock entries to prevent memory leaks
 	if cleaned := s.service.fileLock.cleanupStale(); cleaned > 0 {
@@ -149,6 +157,9 @@ func (s *scanner) scan() {
 	}
 
 	log.Info().
+		Int("totalFiles", totalFiles).
+		Int("filesProcessed", len(filesToProcess)).
+		Int("orphansRemoved", orphansRemoved).
 		Dur("totalDuration", time.Since(startTime)).
 		Msg("filesystem scan complete")
 }
@@ -238,6 +249,56 @@ func (s *scanner) processFiles(files []fileToProcess) {
 		Int("failed", failed).
 		Int("total", len(files)).
 		Msg("scan processing complete")
+}
+
+// reconcileOrphans removes DB records for files that no longer exist on disk.
+// This handles files deleted or moved while the server was stopped.
+// Returns the number of orphaned records removed.
+func (s *scanner) reconcileOrphans(seenPaths map[string]bool) int {
+	// Get all file paths from database
+	dbPaths, err := s.service.cfg.DB.ListAllFilePaths()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to list file paths from database for reconciliation")
+		return 0
+	}
+
+	// Find orphans (in DB but not on disk)
+	var orphans []string
+	for _, dbPath := range dbPaths {
+		if !seenPaths[dbPath] {
+			orphans = append(orphans, dbPath)
+		}
+	}
+
+	if len(orphans) == 0 {
+		return 0
+	}
+
+	log.Info().
+		Int("count", len(orphans)).
+		Msg("found orphaned DB records, removing")
+
+	// Delete orphans with cascade (removes related digests, pins)
+	removed := 0
+	for _, path := range orphans {
+		if err := s.service.cfg.DB.DeleteFileWithCascade(path); err != nil {
+			log.Warn().
+				Err(err).
+				Str("path", path).
+				Msg("failed to delete orphaned record")
+			continue
+		}
+
+		log.Info().
+			Str("path", path).
+			Msg("removed orphaned DB record")
+		removed++
+
+		// Release any file locks for this path
+		s.service.fileLock.releaseFileLock(path)
+	}
+
+	return removed
 }
 
 // processFile processes a single file during scan

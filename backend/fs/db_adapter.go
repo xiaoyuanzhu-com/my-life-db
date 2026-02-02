@@ -36,3 +36,13 @@ func (a *dbAdapter) UpdateFileField(path string, field string, value interface{}
 func (a *dbAdapter) MoveFileAtomic(oldPath, newPath string, record *db.FileRecord) error {
 	return db.MoveFileAtomic(oldPath, newPath, record)
 }
+
+// ListAllFilePaths returns all file paths in the database (for reconciliation)
+func (a *dbAdapter) ListAllFilePaths() ([]string, error) {
+	return db.ListAllFilePaths()
+}
+
+// DeleteFileWithCascade removes a file and all related records (digests, pins)
+func (a *dbAdapter) DeleteFileWithCascade(path string) error {
+	return db.DeleteFileWithCascade(path)
+}
