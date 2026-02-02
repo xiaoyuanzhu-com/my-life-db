@@ -118,10 +118,18 @@ var (
 	}
 )
 
-// gracefulTerminate attempts to gracefully terminate a process by sending SIGINT first,
-// waiting for a short period, then forcefully killing with SIGKILL if it doesn't exit.
-// This allows the process (Claude) to finish writing any pending data (like JSONL files).
-// Note: Claude CLI (Node.js) responds to SIGINT but not SIGTERM.
+// gracefulTerminate attempts to gracefully terminate a Claude CLI process.
+//
+// Signal behavior (Claude CLI is Node.js):
+//   - SIGINT (Ctrl+C): ✅ Works - Node.js has built-in handler for graceful exit
+//   - SIGTERM:         ❌ Ignored - No default handler in Node.js CLI apps
+//   - SIGKILL:         ✅ Works - Kernel-level force kill (last resort)
+//
+// This function sends SIGINT first, waits for the timeout period, then falls back
+// to SIGKILL if the process doesn't exit. This allows Claude to finish writing
+// any pending data (like JSONL session files).
+//
+// Used by: PTY mode sessions (legacy CLI mode)
 func gracefulTerminate(cmd *exec.Cmd, timeout time.Duration) {
 	if cmd == nil || cmd.Process == nil {
 		return

@@ -526,6 +526,61 @@ The `SessionManager` emits these event types:
 - `frontend/app/hooks/use-notifications.ts` — `useClaudeSessionNotifications` hook
 - `frontend/app/routes/claude.tsx` — uses hook to call `loadSessions()`
 
+## Process Termination / Signal Handling
+
+Claude CLI is a Node.js application with specific signal handling behavior:
+
+### Signal Behavior
+
+| Signal | Effect | Notes |
+|--------|--------|-------|
+| **SIGINT** (Ctrl+C) | ✅ Graceful exit | Node.js has built-in handler |
+| **SIGTERM** | ❌ Ignored | No default handler in Node.js |
+| **SIGKILL** | ✅ Force kill | Always works (kernel level) |
+
+### Why SIGINT Works
+
+Node.js CLI tools typically handle SIGINT (Ctrl+C) for interactive use but don't install SIGTERM handlers by default. Claude CLI follows this pattern.
+
+### Code Locations
+
+| Use Case | Code Location | Signal Used |
+|----------|---------------|-------------|
+| **SDK sessions** (UI mode) | `sdk/transport/subprocess.go:Close()` | SIGINT |
+| **PTY sessions** (CLI mode) | `process_utils.go:gracefulTerminate()` | SIGINT |
+| **Server shutdown** | Calls `SessionManager.Shutdown()` → `cleanupSession()` | SIGINT (via above) |
+
+### Shutdown Flow
+
+```
+User clicks "Deactivate" or Server receives shutdown signal
+    ↓
+SessionManager.DeactivateSession() or Shutdown()
+    ↓
+cleanupSession(session)
+    ↓
+┌─────────────────────────────────────┐
+│ SDK Mode (session.sdkClient != nil) │
+│   → sdkClient.Close()               │
+│   → transport.Close()               │
+│   → SIGINT + 3s timeout + SIGKILL   │
+├─────────────────────────────────────┤
+│ PTY Mode (legacy CLI)               │
+│   → gracefulTerminate(cmd, 3s)      │
+│   → SIGINT + 3s timeout + SIGKILL   │
+└─────────────────────────────────────┘
+```
+
+### Testing
+
+Run graceful exit tests:
+```bash
+go test -v -run TestGracefulExit ./claude/sdk/
+```
+
+- `TestGracefulExitSIGINT` — Verifies SIGINT works (low-level)
+- `TestGracefulExitSDK` — Verifies SDK client closes gracefully
+
 ## Testing
 
 - Use real Claude CLI sessions for integration testing

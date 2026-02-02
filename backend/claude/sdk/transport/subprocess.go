@@ -517,7 +517,23 @@ func (t *SubprocessCLITransport) EndInput() error {
 	return nil
 }
 
-// Close terminates the connection and cleans up resources
+// Close terminates the connection and cleans up resources.
+//
+// Signal behavior (Claude CLI is Node.js):
+//   - SIGINT (Ctrl+C): ✅ Works - Node.js has built-in handler for graceful exit
+//   - SIGTERM:         ❌ Ignored - No default handler in Node.js CLI apps
+//   - SIGKILL:         ✅ Works - Kernel-level force kill (last resort)
+//
+// Shutdown sequence:
+//  1. Cancel context (signals goroutines to stop)
+//  2. Close stdin (signals EOF to Claude CLI)
+//  3. Send SIGINT (graceful shutdown request)
+//  4. Wait up to 3 seconds for exit
+//  5. Send SIGKILL if still running (force kill)
+//  6. Close stdout/stderr pipes
+//  7. Wait for reader goroutines (up to 2 seconds)
+//
+// Used by: SDK mode sessions (UI mode)
 func (t *SubprocessCLITransport) Close() error {
 	t.mu.Lock()
 	if t.closed {
