@@ -385,11 +385,40 @@ export async function updateProgress(
 }
 
 /**
- * Mark item as uploaded and delete from queue
+ * Mark item as uploaded (keeps in DB briefly for UI animation)
  */
-export async function markUploaded(id: string, _serverPath: string): Promise<void> {
-  // Simply delete the item - it's now on the server
-  await deleteItem(id);
+export async function markUploaded(id: string, serverPath: string): Promise<void> {
+  const db = await openDatabase();
+  const now = new Date().toISOString();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+
+    const getRequest = store.get(id);
+    getRequest.onerror = () => reject(new Error(`Failed to get item: ${getRequest.error?.message}`));
+    getRequest.onsuccess = () => {
+      const item: PendingInboxItem | undefined = getRequest.result;
+      if (!item) {
+        resolve();
+        return;
+      }
+
+      const updatedItem: PendingInboxItem = {
+        ...item,
+        status: 'uploaded',
+        uploadProgress: 100,
+        serverPath,
+        uploadedAt: now,
+        uploadingBy: undefined,
+        uploadingAt: undefined,
+      };
+
+      const putRequest = store.put(updatedItem);
+      putRequest.onerror = () => reject(new Error(`Failed to mark uploaded: ${putRequest.error?.message}`));
+      putRequest.onsuccess = () => resolve();
+    };
+  });
 }
 
 /**
