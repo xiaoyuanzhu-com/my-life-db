@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, File, FileText, Image, Film, Music, FileCode, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert } from 'lucide-react';
+import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
@@ -244,6 +245,20 @@ function TreeNode({
   const isSelected = node.type === 'file' && fullPath === selectedFilePath;
   const isDropTarget = dropTarget === fullPath && node.type === 'folder';
   const isDragging = draggedItem?.path === fullPath;
+
+  // Calculate folder status from pending uploads
+  const folderStatus = node.type === 'folder'
+    ? (node.uploadStatus || getFolderUploadStatus(fullPath, allPendingUploads))
+    : undefined;
+
+  // File status comes directly from node
+  const fileStatus = node.type === 'file' ? node.uploadStatus : undefined;
+
+  // Combined status for styling
+  const uploadStatus = folderStatus || fileStatus;
+  const isUploading = uploadStatus === 'pending' || uploadStatus === 'uploading';
+  const hasError = uploadStatus === 'error';
+  const isFile = node.type === 'file';
 
   // Filter pending uploads for items that should appear directly in this folder
   // An item belongs here if its destination exactly matches this folder's full path
@@ -524,7 +539,10 @@ function TreeNode({
               </div>
             )}
             {node.type === 'file' && <div className="w-4" />}
-            <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Icon className={cn(
+              "w-4 h-4 flex-shrink-0",
+              isUploading ? "text-muted-foreground" : "text-muted-foreground"
+            )} />
             {isRenaming ? (
               <Input
                 ref={renameInputRef}
@@ -536,9 +554,26 @@ function TreeNode({
                 className="h-5 py-0 px-1 text-sm"
               />
             ) : (
-              <span className="text-sm truncate" title={getNodeName(node)}>
-                {getNodeName(node)}
-              </span>
+              <>
+                <span className={cn(
+                  "text-sm truncate",
+                  isUploading && "text-muted-foreground",
+                  hasError && isFile && "text-destructive"
+                )} title={getNodeName(node)}>
+                  {getNodeName(node)}
+                </span>
+                {uploadStatus === 'pending' && (
+                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />
+                )}
+                {uploadStatus === 'uploading' && (
+                  <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                    {node.uploadProgress ?? 0}%
+                  </span>
+                )}
+                {hasError && (
+                  <CircleAlert className="w-3 h-3 text-destructive flex-shrink-0" />
+                )}
+              </>
             )}
           </div>
         </ContextMenuTrigger>
