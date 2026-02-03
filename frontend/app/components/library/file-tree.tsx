@@ -260,12 +260,6 @@ function TreeNode({
   const hasError = uploadStatus === 'error';
   const isFile = node.type === 'file';
 
-  // Filter pending uploads for items that should appear directly in this folder
-  // An item belongs here if its destination exactly matches this folder's full path
-  const directPendingUploads = allPendingUploads.filter(
-    (item) => item.destination === fullPath
-  );
-
   const loadChildren = useCallback(async () => {
     if (isLoading) return;
 
@@ -622,14 +616,19 @@ function TreeNode({
               Loading...
             </div>
           ) : (
-            <>
-              {/* Show pending uploads for this folder */}
-              {directPendingUploads.map((item) => (
-                <PendingUploadItem key={item.id} item={item} level={level + 1} />
-              ))}
-              {children.map((child) => (
+            (() => {
+              // Build set of real child paths
+              const realChildPaths = new Set(children.map(c => c.path));
+
+              // Get virtual nodes for this folder level
+              const virtualChildren = buildVirtualNodes(allPendingUploads, fullPath, realChildPaths);
+
+              // Merge: virtual nodes first, then real children
+              const allChildren = [...virtualChildren, ...children];
+
+              return allChildren.map((child) => (
                 <TreeNode
-                  key={child.path}
+                  key={child.path + (child.uploadStatus ? '-virtual' : '')}
                   node={child}
                   parentPath={fullPath}
                   level={level + 1}
@@ -648,8 +647,8 @@ function TreeNode({
                   onExternalFileDrop={onExternalFileDrop}
                   allPendingUploads={allPendingUploads}
                 />
-              ))}
-            </>
+              ));
+            })()
           )}
         </div>
       )}
