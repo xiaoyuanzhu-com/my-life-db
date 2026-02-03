@@ -66,7 +66,7 @@ export function OmniInput({
   }, [saveAudio, voice.saveAudioRef]);
 
   // Use the local-first send queue
-  const { send } = useSendQueue(() => {
+  const { send, pendingItems } = useSendQueue(() => {
     onEntryCreated?.();
   });
 
@@ -260,8 +260,12 @@ export function OmniInput({
             )}
           </div>
 
-          {/* File chips */}
-          <FileAttachments files={files.files} onRemove={files.removeFile} />
+          {/* File chips - shows both uploading items and pending files */}
+          <FileAttachments
+            files={files.files}
+            onRemove={files.removeFile}
+            uploadingItems={pendingItems}
+          />
 
           {/* Bottom control bar */}
           <div className="flex items-center justify-between px-3 h-9">
