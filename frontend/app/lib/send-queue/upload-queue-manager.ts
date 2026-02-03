@@ -22,6 +22,7 @@ import {
   updateHeartbeat,
   updateProgress,
   markUploaded,
+  deleteCompletedByPaths,
   requestPersistentStorage,
 } from './db';
 import { generateTextFilename, deduplicateFilename } from './filename';
@@ -34,8 +35,6 @@ const {
   RETRY_JITTER_PERCENT,
 } = QUEUE_CONSTANTS;
 
-/** How long to show completion state before removing from queue (ms) */
-const COMPLETION_HOLD_MS = 800;
 
 type ProgressCallback = (items: PendingInboxItem[]) => void;
 type UploadCompleteCallback = (item: PendingInboxItem, serverPath: string) => void;
@@ -396,6 +395,17 @@ export class UploadQueueManager {
   }
 
   /**
+   * Delete completed uploads whose serverPath matches any of the given paths
+   * Called by file-tree when real files appear in the tree
+   */
+  async deleteCompletedUploads(paths: Set<string>): Promise<void> {
+    const deletedIds = await deleteCompletedByPaths(paths);
+    if (deletedIds.length > 0) {
+      await this.notifyProgress();
+    }
+  }
+
+  /**
    * Process the next item in the queue
    */
   /**
@@ -468,16 +478,11 @@ export class UploadQueueManager {
       // Create TUS upload
       const serverPath = await this.performTusUpload(updatedItem, activeUpload);
 
-      // Success! Mark as uploaded (keeps item in DB for UI animation)
+      // Success! Mark as uploaded
+      // Item stays in DB until real file appears in tree (cleaned up by file-tree.tsx)
       await markUploaded(item.id, serverPath);
       this.notifyUploadComplete(updatedItem, serverPath);
       await this.notifyProgress();
-
-      // Schedule deletion after completion hold (allows UI to show success state)
-      setTimeout(async () => {
-        await deleteItem(item.id);
-        await this.notifyProgress();
-      }, COMPLETION_HOLD_MS);
 
     } catch (err) {
       console.error('[UploadQueue] Upload failed:', err);

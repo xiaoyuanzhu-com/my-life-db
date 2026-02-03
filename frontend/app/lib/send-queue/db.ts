@@ -422,6 +422,38 @@ export async function markUploaded(id: string, serverPath: string): Promise<void
 }
 
 /**
+ * Delete completed uploads whose serverPath matches any of the given paths
+ * Used by file-tree to clean up uploads when real files appear
+ */
+export async function deleteCompletedByPaths(paths: Set<string>): Promise<string[]> {
+  if (paths.size === 0) return [];
+
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getAllRequest = store.getAll();
+
+    getAllRequest.onerror = () => reject(new Error(`Failed to get items: ${getAllRequest.error?.message}`));
+    getAllRequest.onsuccess = () => {
+      const items: PendingInboxItem[] = getAllRequest.result || [];
+      const deletedIds: string[] = [];
+
+      // Find completed uploads whose serverPath is in the paths set
+      for (const item of items) {
+        if (item.status === 'uploaded' && item.serverPath && paths.has(item.serverPath)) {
+          store.delete(item.id);
+          deletedIds.push(item.id);
+        }
+      }
+
+      tx.oncomplete = () => resolve(deletedIds);
+      tx.onerror = () => reject(new Error(`Failed to delete items: ${tx.error?.message}`));
+    };
+  });
+}
+
+/**
  * Request persistent storage to prevent browser eviction
  */
 export async function requestPersistentStorage(): Promise<boolean> {
