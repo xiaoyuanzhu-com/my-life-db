@@ -47,6 +47,74 @@ function getFolderUploadStatus(
   return 'pending'; // has pending or uploading
 }
 
+function getFileUploadStatus(item: PendingInboxItem): 'pending' | 'uploading' | 'error' {
+  if (item.errorMessage) return 'error';
+  if (item.status === 'uploading') return 'uploading';
+  return 'pending';
+}
+
+function buildVirtualNodes(
+  pendingUploads: PendingInboxItem[],
+  basePath: string,
+  realNodePaths: Set<string>
+): FileNode[] {
+  const virtualFolders = new Map<string, PendingInboxItem[]>();
+  const virtualFiles: FileNode[] = [];
+
+  for (const item of pendingUploads) {
+    const dest = item.destination || '';
+
+    // Skip if destination doesn't match basePath context
+    if (basePath) {
+      if (!dest.startsWith(basePath + '/') && dest !== basePath) continue;
+    }
+
+    // Get relative path from basePath
+    const relativeDest = basePath ? dest.slice(basePath.length + 1) : dest;
+
+    // If destination equals basePath, this file goes directly here
+    if (dest === basePath || relativeDest === '') {
+      virtualFiles.push({
+        path: item.filename,
+        type: 'file',
+        size: item.size,
+        uploadStatus: getFileUploadStatus(item),
+        uploadProgress: item.uploadProgress,
+      });
+      continue;
+    }
+
+    // Otherwise, get the first path segment (folder name)
+    const firstSegment = relativeDest.split('/')[0];
+    if (!firstSegment) continue;
+
+    // Skip if this folder already exists in real nodes
+    if (realNodePaths.has(firstSegment)) continue;
+
+    // Group by first segment for virtual folders
+    const existing = virtualFolders.get(firstSegment);
+    if (existing) {
+      existing.push(item);
+    } else {
+      virtualFolders.set(firstSegment, [item]);
+    }
+  }
+
+  // Convert virtual folder map to FileNode array
+  const virtualFolderNodes: FileNode[] = Array.from(virtualFolders.entries()).map(
+    ([name, items]) => {
+      const hasError = items.some(i => i.errorMessage);
+      return {
+        path: name,
+        type: 'folder' as const,
+        uploadStatus: hasError ? 'error' : 'pending',
+      };
+    }
+  );
+
+  return [...virtualFolderNodes, ...virtualFiles];
+}
+
 // Derive name from path
 function getNodeName(node: FileNode): string {
   return node.path.split('/').pop() || node.path;
