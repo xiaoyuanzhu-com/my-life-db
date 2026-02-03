@@ -955,23 +955,23 @@ export function FileTree({
         return;
       }
 
-      // Enqueue all files with their relative paths preserved
-      for (const { file, relativePath } of allFiles) {
-        // Extract the directory path from the relative path (e.g., "folder/subfolder/file.txt" -> "folder/subfolder")
+      // Build batch with destinations
+      const batch = allFiles.map(({ file, relativePath }) => {
         const pathParts = relativePath.split('/');
         pathParts.pop(); // Remove filename from path
         const relativeDir = pathParts.join('/');
 
-        // Combine base destination with relative directory
         const destination = baseDestination
           ? relativeDir
             ? `${baseDestination}/${relativeDir}`
             : baseDestination
           : relativeDir;
 
-        await uploadManager.enqueueFile(file, undefined, destination);
-      }
-      // Note: Tree refresh is handled by the persistent onUploadComplete subscription in useEffect
+        return { file, destination };
+      });
+
+      // Batch enqueue all files at once (single notification)
+      await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('[FileTree] Failed to upload files:', error);
       alert(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);

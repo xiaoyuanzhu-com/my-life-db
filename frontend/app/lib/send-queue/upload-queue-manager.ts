@@ -299,6 +299,54 @@ export class UploadQueueManager {
   }
 
   /**
+   * Enqueue multiple files with different destinations (batch, single notification)
+   * Used for folder uploads where each file may have a different destination
+   */
+  async enqueueBatch(
+    files: Array<{ file: File; destination: string }>
+  ): Promise<PendingInboxItem[]> {
+    const items: PendingInboxItem[] = [];
+    const usedNames = new Set<string>();
+
+    for (const { file, destination } of files) {
+      const id = generateUUID();
+      const now = new Date().toISOString();
+
+      let filename = file.name;
+      // Deduplicate within the batch
+      const key = `${destination}/${filename}`;
+      if (usedNames.has(key)) {
+        filename = deduplicateFilename(filename, usedNames);
+      }
+      usedNames.add(`${destination}/${filename}`);
+
+      const item: PendingInboxItem = {
+        id,
+        createdAt: now,
+        filename,
+        blob: file,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        status: 'saved',
+        uploadProgress: 0,
+        retryCount: 0,
+        destination,
+      };
+
+      await saveItem(item);
+      items.push(item);
+    }
+
+    // Single notification after all items are saved
+    await this.notifyProgress();
+
+    // Start processing
+    this.processNext();
+
+    return items;
+  }
+
+  /**
    * Get all pending items (for display)
    */
   async getPendingItems(): Promise<PendingInboxItem[]> {

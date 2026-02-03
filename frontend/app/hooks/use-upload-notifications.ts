@@ -2,7 +2,7 @@
  * Hook for upload progress notifications
  *
  * Subscribes to the upload queue and shows toast notifications for:
- * - Upload completion (success)
+ * - Upload completion (success) - batched, shows one toast when all complete
  * - Upload failures (with retry info)
  */
 
@@ -28,10 +28,23 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
   const notifiedSuccessRef = useRef<Set<string>>(new Set());
   const notifiedErrorRef = useRef<Set<string>>(new Set());
   const prevItemsRef = useRef<Map<string, PendingInboxItem>>(new Map());
+  // Track active uploads to know when all are done
+  const activeUploadsRef = useRef<Set<string>>(new Set());
+  const completedCountRef = useRef<number>(0);
+  const successToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleProgress = useCallback((items: PendingInboxItem[]) => {
     const prevItems = prevItemsRef.current;
 
+    // Track new uploads
+    for (const item of items) {
+      if (item.status === 'saved' || item.status === 'uploading') {
+        activeUploadsRef.current.add(item.id);
+      }
+    }
+
+    // Count newly completed uploads
+    let newlyCompleted = 0;
     for (const item of items) {
       const prev = prevItems.get(item.id);
 
@@ -41,10 +54,8 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
         !notifiedSuccessRef.current.has(item.id)
       ) {
         notifiedSuccessRef.current.add(item.id);
-        toast.success('Upload complete', {
-          description: item.filename,
-          duration: 3000,
-        });
+        activeUploadsRef.current.delete(item.id);
+        newlyCompleted++;
       }
 
       // Check for new error (only notify once per error)
@@ -77,6 +88,30 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
           duration: 5000,
         });
       }
+    }
+
+    // Batch success notifications - wait for all uploads to complete
+    if (newlyCompleted > 0) {
+      completedCountRef.current += newlyCompleted;
+
+      // Clear any pending toast
+      if (successToastTimeoutRef.current) {
+        clearTimeout(successToastTimeoutRef.current);
+      }
+
+      // Show toast after a short delay (to batch multiple completions)
+      successToastTimeoutRef.current = setTimeout(() => {
+        const count = completedCountRef.current;
+        if (count > 0) {
+          if (count === 1) {
+            toast.success('Upload complete', { duration: 3000 });
+          } else {
+            toast.success(`${count} uploads complete`, { duration: 3000 });
+          }
+          completedCountRef.current = 0;
+        }
+        successToastTimeoutRef.current = null;
+      }, 500); // Wait 500ms to batch completions
     }
 
     // Update previous items map

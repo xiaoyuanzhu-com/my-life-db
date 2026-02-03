@@ -260,9 +260,9 @@ function LibraryContent() {
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
 
-      for (const file of fileArray) {
-        await uploadManager.enqueueFile(file, undefined, "");
-      }
+      // Batch enqueue all files at once (single notification)
+      const batch = fileArray.map(file => ({ file, destination: "" }));
+      await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error("Failed to upload files:", error);
       toast.error(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -283,15 +283,17 @@ function LibraryContent() {
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
 
-      for (const file of fileArray) {
-        // webkitRelativePath contains the folder structure (e.g., "folder/subfolder/file.txt")
+      // Build batch with destinations from folder structure
+      const batch = fileArray.map(file => {
         const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
         const pathParts = relativePath.split("/");
         pathParts.pop(); // Remove filename
         const destination = pathParts.join("/");
+        return { file, destination };
+      });
 
-        await uploadManager.enqueueFile(file, undefined, destination);
-      }
+      // Batch enqueue all files at once (single notification)
+      await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error("Failed to upload folder:", error);
       toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : "Unknown error"}`);
