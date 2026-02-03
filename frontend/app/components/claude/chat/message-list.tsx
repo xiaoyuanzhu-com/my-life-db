@@ -2,12 +2,15 @@ import { useStickToBottom } from 'use-stick-to-bottom'
 import { useCallback, useEffect, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
+import { StreamingResponse } from './streaming-response'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
 
 interface MessageListProps {
   messages: SessionMessage[]
   toolResultMap: Map<string, ExtractedToolResult>
   optimisticMessage?: string | null
+  /** Streaming text from stream_event messages (progressive response display) */
+  streamingText?: string
   wipText?: string | null
   /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
   onScrollElementReady?: (element: HTMLDivElement | null) => void
@@ -34,7 +37,7 @@ interface MessageListProps {
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, wipText, onScrollElementReady }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, wipText, onScrollElementReady }: MessageListProps) {
   const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
     initial: 'instant',
     resize: 'instant',
@@ -117,6 +120,9 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, wipTex
                 </div>
               </div>
             )}
+
+            {/* Streaming response (progressive text as Claude generates) */}
+            {streamingText && <StreamingResponse text={streamingText} />}
 
             {/* Work-in-Progress indicator */}
             {wipText && <ClaudeWIP text={wipText} />}

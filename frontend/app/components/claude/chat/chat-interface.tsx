@@ -75,6 +75,9 @@ export function ChatInterface({
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
+  // Streaming text - accumulates text from stream_event messages for progressive display
+  const [streamingText, setStreamingText] = useState<string>('')
+
   // Permission mode state - tracks current session permission mode
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
 
@@ -175,6 +178,32 @@ export function ChatInterface({
         return
       }
 
+      // Handle stream_event messages - progressive text streaming
+      if (msg.type === 'stream_event') {
+        const event = msg.event as Record<string, unknown> | undefined
+        if (!event) return
+
+        const eventType = event.type as string | undefined
+
+        // Handle text deltas from content_block_delta events
+        if (eventType === 'content_block_delta') {
+          const delta = event.delta as Record<string, unknown> | undefined
+          if (delta?.type === 'text_delta') {
+            const text = delta.text as string | undefined
+            if (text) {
+              setStreamingText((prev) => prev + text)
+            }
+          }
+        }
+
+        // Clear streaming text on message_stop (response complete)
+        if (eventType === 'message_stop') {
+          setStreamingText('')
+        }
+
+        return
+      }
+
       // Handle result messages
       if (msg.type === 'result') {
         setProgressMessage(null)
@@ -253,6 +282,7 @@ export function ChatInterface({
 
       if (sessionMsg.type === 'assistant') {
         setProgressMessage(null)
+        setStreamingText('') // Clear streaming text when full message arrives
       }
 
       // Only refresh if: inactive session, haven't refreshed yet, AND initial load is complete
@@ -406,6 +436,7 @@ export function ChatInterface({
     setActiveTodos([])
     setError(null)
     setProgressMessage(null)
+    setStreamingText('')
     setPermissionMode('default')
     permissions.reset()
     hasRefreshedRef.current = false
@@ -625,8 +656,9 @@ export function ChatInterface({
             messages={renderableMessages}
             toolResultMap={toolResultMap}
             optimisticMessage={optimisticMessage}
+            streamingText={streamingText}
             wipText={
-              isWorking
+              isWorking && !streamingText
                 ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
                   progressMessage ||
                   'Working...'
