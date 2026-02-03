@@ -1,5 +1,3 @@
-import { MessageDot } from './message-dot'
-
 interface StreamingResponseProps {
   /** The accumulated streaming text so far */
   text: string
@@ -10,8 +8,9 @@ interface StreamingResponseProps {
 /**
  * StreamingResponse - Displays Claude's response as it streams in
  *
- * Shows the accumulated text with a pulsing indicator to show more content
- * is being generated. Styled to match the assistant message bubble.
+ * Shows the accumulated text with a blinking cursor at the end,
+ * matching the industry-standard UX (ChatGPT, Claude.ai, etc.).
+ * Styled to match the assistant message bubble.
  */
 export function StreamingResponse({ text, className = '' }: StreamingResponseProps) {
   if (!text) return null
@@ -26,14 +25,11 @@ export function StreamingResponse({ text, className = '' }: StreamingResponsePro
             color: 'var(--claude-text-primary)',
           }}
         >
-          <div className="flex items-start gap-2">
-            <div className="flex-1 min-w-0">
-              {text}
-              <span className="inline-flex items-center ml-1">
-                <MessageDot status="in_progress" />
-              </span>
-            </div>
-          </div>
+          {text}
+          <span
+            className="inline-block w-[2px] h-[1.1em] ml-0.5 align-middle animate-blink"
+            style={{ backgroundColor: 'var(--claude-text-primary)' }}
+          />
         </div>
       </div>
     </div>
