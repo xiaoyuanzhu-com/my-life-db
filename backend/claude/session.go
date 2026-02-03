@@ -640,15 +640,36 @@ func (s *Session) ResolveControlRequest(requestID string, response map[string]in
 // CreatePermissionCallback creates a CanUseTool callback for SDK mode.
 // This bridges the SDK's synchronous permission callback with the async WebSocket flow:
 // 1. SDK calls CanUseTool callback (blocks until we return)
-// 2. Check if tool is in always-allowed list - if so, auto-allow
-// 3. Otherwise broadcast a control_request message to all WebSocket clients
-// 4. Frontend shows permission UI
-// 5. User allows/denies via WebSocket control_response
-// 6. SendControlResponse routes to pendingSDKPermissions channel
-// 7. This callback receives the response and returns to SDK
+// 2. Check if tool is in configured allowedTools list - if so, auto-allow
+// 3. Check if tool is in session's always-allowed list (from "Always allow" clicks) - if so, auto-allow
+// 4. Otherwise broadcast a control_request message to all WebSocket clients
+// 5. Frontend shows permission UI
+// 6. User allows/denies via WebSocket control_response
+// 7. SendControlResponse routes to pendingSDKPermissions channel
+// 8. This callback receives the response and returns to SDK
+//
+// NOTE: Why we check allowedTools here instead of relying on CLI's --allowedTools flag:
+// When --permission-prompt-tool is set to "stdio", the CLI delegates ALL permission
+// decisions to the external handler (this callback) via the control protocol.
+// The CLI's --allowedTools flag is still passed for documentation and potential
+// future use, but the actual permission decisions are made here in the SDK layer.
+// This matches the behavior of the official Python Agent SDK.
 func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 	return func(toolName string, input map[string]any, ctx sdk.ToolPermissionContext) (sdk.PermissionResult, error) {
+		// Check if tool is in the configured allowedTools list
+		// This handles both simple tool names and Bash patterns
+		if isToolAllowed(toolName, input) {
+			log.Debug().
+				Str("sessionId", s.ID).
+				Str("toolName", toolName).
+				Msg("tool is in allowedTools list, auto-approving")
+			return sdk.PermissionResultAllow{
+				Behavior: sdk.PermissionAllow,
+			}, nil
+		}
+
 		// Check if this tool is always allowed for this session
+		// (set when user clicks "Always allow for session" in the UI)
 		s.alwaysAllowedToolsMu.RLock()
 		isAlwaysAllowed := s.alwaysAllowedTools != nil && s.alwaysAllowedTools[toolName]
 		s.alwaysAllowedToolsMu.RUnlock()
@@ -657,7 +678,7 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 			log.Debug().
 				Str("sessionId", s.ID).
 				Str("toolName", toolName).
-				Msg("tool is always-allowed, auto-approving")
+				Msg("tool is session-always-allowed, auto-approving")
 			return sdk.PermissionResultAllow{
 				Behavior: sdk.PermissionAllow,
 			}, nil

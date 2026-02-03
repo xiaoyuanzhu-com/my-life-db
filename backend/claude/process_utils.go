@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -117,6 +118,92 @@ var (
 		"Bash(sudo *)",
 	}
 )
+
+// isToolAllowed checks if a tool should be auto-approved based on the allowedTools list.
+// This is called by CreatePermissionCallback to determine if a tool permission request
+// should be auto-approved without prompting the user.
+//
+// For simple tools (Read, Write, etc.), it checks exact name match.
+// For Bash tools, it checks if the command matches any allowed Bash pattern.
+// Deny rules take precedence over allow rules.
+func isToolAllowed(toolName string, input map[string]any) bool {
+	// For Bash commands, check patterns
+	if toolName == "Bash" {
+		command, ok := input["command"].(string)
+		if !ok || command == "" {
+			return false
+		}
+
+		// Check disallowed patterns first (deny takes precedence)
+		for _, pattern := range disallowedTools {
+			if matchBashPattern(pattern, command) {
+				return false
+			}
+		}
+
+		// Check allowed Bash patterns
+		for _, pattern := range allowedTools {
+			if matchBashPattern(pattern, command) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	// For non-Bash tools, check simple name match
+	for _, allowed := range allowedTools {
+		// Skip Bash patterns when checking simple tools
+		if strings.HasPrefix(allowed, "Bash(") {
+			continue
+		}
+		if allowed == toolName {
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchBashPattern checks if a command matches a Bash pattern like "Bash(git *)".
+// Patterns use simple glob matching where * matches any characters.
+// Returns false if the pattern is not a Bash pattern.
+func matchBashPattern(pattern, command string) bool {
+	// Check if it's a Bash pattern
+	if !strings.HasPrefix(pattern, "Bash(") || !strings.HasSuffix(pattern, ")") {
+		return false
+	}
+
+	// Extract the command pattern from "Bash(pattern)"
+	cmdPattern := pattern[5 : len(pattern)-1] // Remove "Bash(" and ")"
+
+	// Handle exact match (no wildcard)
+	if !strings.Contains(cmdPattern, "*") {
+		return command == cmdPattern
+	}
+
+	// Handle wildcard patterns
+	// "git *" should match "git status" but not "gitk"
+	// "ls *" should match "ls -la" but not "lsof"
+	if strings.HasSuffix(cmdPattern, " *") {
+		// Pattern like "git *" - prefix match with space boundary
+		prefix := cmdPattern[:len(cmdPattern)-2] // Remove " *"
+		return command == prefix || strings.HasPrefix(command, prefix+" ")
+	} else if strings.HasSuffix(cmdPattern, "*") {
+		// Pattern like "ls*" - simple prefix match (no boundary)
+		prefix := cmdPattern[:len(cmdPattern)-1]
+		return strings.HasPrefix(command, prefix)
+	}
+
+	// For patterns with * in the middle, use simple contains check
+	// This is a simplification - full glob matching would be more complex
+	parts := strings.Split(cmdPattern, "*")
+	if len(parts) == 2 {
+		return strings.HasPrefix(command, parts[0]) && strings.HasSuffix(command, parts[1])
+	}
+
+	return false
+}
 
 // gracefulTerminate attempts to gracefully terminate a Claude CLI process.
 //
