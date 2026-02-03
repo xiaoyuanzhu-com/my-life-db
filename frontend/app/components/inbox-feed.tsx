@@ -607,6 +607,10 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   useEffect(() => {
     if (!scrollToCursor) return;
 
+    // Immediately disable stick-to-bottom to prevent other effects from
+    // scrolling to bottom while we're trying to scroll to a specific item
+    stickToBottomRef.current = false;
+
     const navigate = async () => {
       const targetPath = parseCursorPath(scrollToCursor);
 
