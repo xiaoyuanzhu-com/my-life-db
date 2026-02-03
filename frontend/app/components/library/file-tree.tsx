@@ -165,6 +165,8 @@ interface TreeNodeProps {
   allPendingUploads: PendingInboxItem[];
   /** All pending file paths - for ghost file tracking */
   allPendingFilePaths: Set<string>;
+  /** All pending folder paths - for ghost folder tracking */
+  allPendingFolderPaths: Set<string>;
 }
 
 function getFileIcon(filename: string) {
@@ -202,6 +204,7 @@ function TreeNode({
   onExternalFileDrop,
   allPendingUploads,
   allPendingFilePaths,
+  allPendingFolderPaths,
 }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -598,6 +601,25 @@ function TreeNode({
               const virtualChildren = buildVirtualNodes(allPendingUploads, fullPath, realChildPaths);
               const virtualChildPaths = new Set(virtualChildren.map(c => c.path));
 
+              // Add ghost folders for completed uploads in this folder
+              // Filter pendingFolderPaths to those that are direct children of fullPath
+              const ghostFolders: FileNode[] = [...allPendingFolderPaths]
+                .filter(p => {
+                  // Must start with current folder path + /
+                  if (!p.startsWith(fullPath + '/')) return false;
+                  // Get relative path after current folder
+                  const relativePath = p.slice(fullPath.length + 1);
+                  // Must be direct child (no more slashes in the remaining path)
+                  if (relativePath.includes('/')) return false;
+                  // Must not already exist in real children or virtual children
+                  return !realChildPaths.has(relativePath) && !virtualChildPaths.has(relativePath);
+                })
+                .map(p => ({
+                  path: p.slice(fullPath.length + 1), // Get just the folder name
+                  type: 'folder' as const,
+                  uploadStatus: 'pending' as const,
+                }));
+
               // Add ghost files for completed uploads in this folder
               // Filter pendingFilePaths to those starting with fullPath + "/"
               const ghostFiles: FileNode[] = [...allPendingFilePaths]
@@ -618,7 +640,7 @@ function TreeNode({
                 }));
 
               // Merge and sort: folders first, then files, alphabetically
-              const allChildren = sortNodes([...virtualChildren, ...ghostFiles, ...children]);
+              const allChildren = sortNodes([...virtualChildren, ...ghostFolders, ...ghostFiles, ...children]);
 
               return allChildren.map((child) => (
                 <TreeNode
@@ -641,6 +663,7 @@ function TreeNode({
                   onExternalFileDrop={onExternalFileDrop}
                   allPendingUploads={allPendingUploads}
                   allPendingFilePaths={allPendingFilePaths}
+                  allPendingFolderPaths={allPendingFolderPaths}
                 />
               ));
             })()
@@ -732,15 +755,21 @@ export function FileTree({
         setPendingUploads(libraryUploads);
 
         // Track all folder paths that have uploads (for keeping virtual folders visible)
+        // This includes ALL folder levels, not just root folders
         const folderPaths = new Set<string>();
         // Track all file paths that have uploads (for keeping virtual files visible)
         const filePaths = new Set<string>();
         for (const item of libraryUploads) {
           const dest = item.destination || '';
-          // Get the root folder of the destination
-          const rootFolder = dest.split('/')[0];
-          if (rootFolder) {
-            folderPaths.add(rootFolder);
+          if (dest) {
+            // Add ALL folder levels in the path
+            // e.g., "life/photos/2024" adds: "life", "life/photos", "life/photos/2024"
+            const parts = dest.split('/');
+            let path = '';
+            for (const part of parts) {
+              path = path ? `${path}/${part}` : part;
+              folderPaths.add(path);
+            }
           }
           // Track the full file path (destination + filename)
           const fullFilePath = dest ? `${dest}/${item.filename}` : item.filename;
@@ -1067,9 +1096,9 @@ export function FileTree({
                 const virtualNodePaths = new Set(virtualNodes.map(n => n.path));
 
                 // Add "ghost" folders for recently-uploaded paths that don't exist yet
-                // This keeps folders visible between upload completion and tree refresh
+                // Only include root-level folders (no / in the path)
                 const ghostFolders: FileNode[] = [...pendingFolderPaths]
-                  .filter(p => !realNodePaths.has(p) && !virtualNodePaths.has(p))
+                  .filter(p => !p.includes('/') && !realNodePaths.has(p) && !virtualNodePaths.has(p))
                   .map(path => ({
                     path,
                     type: 'folder' as const,
@@ -1110,6 +1139,7 @@ export function FileTree({
                     onExternalFileDrop={handleExternalFileDrop}
                     allPendingUploads={pendingUploads}
                     allPendingFilePaths={pendingFilePaths}
+                    allPendingFolderPaths={pendingFolderPaths}
                   />
                 ));
               })()}
