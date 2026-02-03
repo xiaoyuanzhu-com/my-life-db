@@ -99,7 +99,14 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
   // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section for details
   const nestedMessages = subagentMessages.length > 0 ? subagentMessages : progressMessages
 
-  const hasNestedSession = nestedMessages.length > 0
+  // Extract the prompt sent to the subagent from agent_progress messages
+  const subagentPrompt = useMemo(() => {
+    if (agentProgress.length === 0) return null
+    // The first progress message typically contains the prompt
+    return agentProgress[0]?.data?.prompt || null
+  }, [agentProgress])
+
+  const hasNestedSession = nestedMessages.length > 0 || subagentPrompt
 
   // Determine if header should be expandable
   const hasExpandableContent = result || hasNestedSession
@@ -225,10 +232,30 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                     maxHeight: '60vh',
                   }}
                 >
-                  <SessionMessages
-                    messages={nestedMessages}
-                    depth={depth + 1}
-                  />
+                  {/* Show the prompt sent to the subagent */}
+                  {subagentPrompt && (
+                    <div
+                      className="mb-3 p-3 rounded text-[12px] whitespace-pre-wrap"
+                      style={{
+                        backgroundColor: 'var(--claude-bg-code-block)',
+                        color: 'var(--claude-text-secondary)',
+                      }}
+                    >
+                      <div
+                        className="text-[10px] uppercase tracking-wide mb-1 font-medium"
+                        style={{ color: 'var(--claude-text-tertiary)' }}
+                      >
+                        Prompt
+                      </div>
+                      {subagentPrompt}
+                    </div>
+                  )}
+                  {nestedMessages.length > 0 && (
+                    <SessionMessages
+                      messages={nestedMessages}
+                      depth={depth + 1}
+                    />
+                  )}
                 </div>
               )}
             </div>
