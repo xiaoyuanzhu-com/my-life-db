@@ -149,14 +149,14 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--tools", strings.Join(opts.Tools, ","))
 	}
 
-	// Allowed tools
-	for _, tool := range opts.AllowedTools {
-		cmd = append(cmd, "--allowedTools", tool)
+	// Allowed tools (comma-separated, matching Python SDK format)
+	if len(opts.AllowedTools) > 0 {
+		cmd = append(cmd, "--allowedTools", strings.Join(opts.AllowedTools, ","))
 	}
 
-	// Disallowed tools
-	for _, tool := range opts.DisallowedTools {
-		cmd = append(cmd, "--disallowedTools", tool)
+	// Disallowed tools (comma-separated, matching Python SDK format)
+	if len(opts.DisallowedTools) > 0 {
+		cmd = append(cmd, "--disallowedTools", strings.Join(opts.DisallowedTools, ","))
 	}
 
 	// Permission mode

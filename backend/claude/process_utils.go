@@ -261,9 +261,9 @@ func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 			"--verbose",
 		}
 
-		// Add allowed tools (auto-approved without prompting)
-		for _, tool := range allowedTools {
-			args = append(args, "--allowedTools", tool)
+		// Add allowed tools (comma-separated, matching Python SDK format)
+		if len(allowedTools) > 0 {
+			args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
 		}
 	} else {
 		// CLI mode: PTY with skipped permissions (legacy behavior)
@@ -271,14 +271,14 @@ func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
 			"--dangerously-skip-permissions", // Skip interactive permission prompts
 		}
 
-		// Add allowed tools
-		for _, tool := range allowedTools {
-			args = append(args, "--allowedTools", tool)
+		// Add allowed tools (comma-separated, matching Python SDK format)
+		if len(allowedTools) > 0 {
+			args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
 		}
 
-		// Add disallowed tools
-		for _, tool := range disallowedTools {
-			args = append(args, "--disallowedTools", tool)
+		// Add disallowed tools (comma-separated, matching Python SDK format)
+		if len(disallowedTools) > 0 {
+			args = append(args, "--disallowedTools", strings.Join(disallowedTools, ","))
 		}
 	}
 
