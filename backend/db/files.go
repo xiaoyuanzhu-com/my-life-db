@@ -892,7 +892,7 @@ func DeleteFileWithCascade(path string) error {
 	}
 
 	// Delete pins
-	if _, err := tx.Exec("DELETE FROM pins WHERE path = ?", path); err != nil {
+	if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ?", path); err != nil {
 		return fmt.Errorf("failed to delete pins: %w", err)
 	}
 
