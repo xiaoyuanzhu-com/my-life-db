@@ -153,47 +153,6 @@ interface TreeNodeProps {
   allPendingUploads: PendingInboxItem[];
 }
 
-function PendingUploadItem({ item, level }: { item: PendingInboxItem; level: number }) {
-  const paddingLeft = `${level * 12 + 8}px`;
-  const IconComponent = getFileIcon(item.filename);
-  const progress = item.uploadProgress ?? 0;
-  const isUploading = item.status === 'uploading';
-  const hasError = !!item.errorMessage;
-
-  return (
-    <div
-      className="relative flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground"
-      style={{ paddingLeft }}
-    >
-      {/* Progress bar background */}
-      {isUploading && (
-        <div
-          className="absolute inset-0 bg-primary/10 transition-all duration-300 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      )}
-      {/* Content */}
-      <div className="relative flex items-center gap-1 w-full opacity-70">
-        <div className="w-4 flex items-center justify-center flex-shrink-0">
-          {hasError ? (
-            <div className="w-2 h-2 rounded-full bg-destructive" title={item.errorMessage} />
-          ) : (
-            <Loader2 className="w-3 h-3 animate-spin text-primary" />
-          )}
-        </div>
-        {/* File type indicator - just a small colored dot/line */}
-        <div className="w-4 flex items-center justify-center flex-shrink-0">
-          <IconComponent className="w-4 h-4" />
-        </div>
-        <span className="truncate flex-1" title={item.filename}>{item.filename}</span>
-        {isUploading && (
-          <span className="text-xs tabular-nums flex-shrink-0">{progress}%</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function getFileIcon(filename: string) {
   const ext = filename.toLowerCase().split('.').pop();
 
