@@ -262,6 +262,9 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 		return fmt.Errorf("failed to update database: %w", err)
 	}
 
+	// 8. Sync external search services (Meili, Qdrant) - best effort, async
+	go db.SyncSearchIndexOnMove(src, dst)
+
 	log.Info().Str("src", src).Str("dst", dst).Msg("file moved successfully")
 	return nil
 }

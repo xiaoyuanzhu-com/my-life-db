@@ -297,3 +297,134 @@ func GetQdrant() *QdrantClient {
 func (q *QdrantClient) UpsertPoint(id string, vector []float32, payload map[string]interface{}) error {
 	return q.Upsert(id, vector, payload)
 }
+
+// SetPayload updates payload fields for points matching a filter.
+// Uses SetPayload API - only specified fields are modified, vector and other fields preserved.
+// This is more efficient than re-upserting (which requires the vector).
+func (q *QdrantClient) SetPayload(pointIDs []string, payload map[string]interface{}) error {
+	if q == nil || len(pointIDs) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Convert payload to Qdrant format
+	qdrantPayload := make(map[string]*qdrant.Value)
+	for k, v := range payload {
+		switch val := v.(type) {
+		case string:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_StringValue{StringValue: val},
+			}
+		case int:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(val)},
+			}
+		case float64:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_DoubleValue{DoubleValue: val},
+			}
+		}
+	}
+
+	// Convert string IDs to PointId
+	ids := make([]*qdrant.PointId, len(pointIDs))
+	for i, id := range pointIDs {
+		ids[i] = qdrant.NewIDUUID(id)
+	}
+
+	_, err := q.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: q.collection,
+		Payload:        qdrantPayload,
+		PointsSelector: &qdrant.PointsSelector{
+			PointsSelectorOneOf: &qdrant.PointsSelector_Points{
+				Points: &qdrant.PointsIdsList{
+					Ids: ids,
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("count", len(pointIDs)).
+			Msg("failed to set payload in Qdrant")
+	}
+	return err
+}
+
+// SetPayloadByFilter updates payload fields for all points matching a filter.
+// Useful for updating filePath when we don't know the point IDs.
+func (q *QdrantClient) SetPayloadByFilter(filter *qdrant.Filter, payload map[string]interface{}) error {
+	if q == nil || filter == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Convert payload to Qdrant format
+	qdrantPayload := make(map[string]*qdrant.Value)
+	for k, v := range payload {
+		switch val := v.(type) {
+		case string:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_StringValue{StringValue: val},
+			}
+		case int:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(val)},
+			}
+		case float64:
+			qdrantPayload[k] = &qdrant.Value{
+				Kind: &qdrant.Value_DoubleValue{DoubleValue: val},
+			}
+		}
+	}
+
+	_, err := q.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: q.collection,
+		Payload:        qdrantPayload,
+		PointsSelector: &qdrant.PointsSelector{
+			PointsSelectorOneOf: &qdrant.PointsSelector_Filter{
+				Filter: filter,
+			},
+		},
+	})
+
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Msg("failed to set payload by filter in Qdrant")
+	}
+	return err
+}
+
+// UpdateFilePath updates the filePath payload field for all points with the old path.
+// This is the recommended way to handle file moves - preserves vectors and other payload.
+func (q *QdrantClient) UpdateFilePath(oldPath, newPath string) error {
+	if q == nil {
+		return nil
+	}
+
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			{
+				ConditionOneOf: &qdrant.Condition_Field{
+					Field: &qdrant.FieldCondition{
+						Key: "filePath",
+						Match: &qdrant.Match{
+							MatchValue: &qdrant.Match_Keyword{
+								Keyword: oldPath,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return q.SetPayloadByFilter(filter, map[string]interface{}{
+		"filePath": newPath,
+	})
+}

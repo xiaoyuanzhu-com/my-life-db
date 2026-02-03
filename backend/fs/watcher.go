@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -460,6 +461,9 @@ func (w *watcher) processMove(oldPath, newPath string) {
 			Msg("failed to move file record atomically")
 		return
 	}
+
+	// Sync external search services (Meili, Qdrant) - best effort, async
+	go db.SyncSearchIndexOnMove(oldPath, newPath)
 
 	// Notify of file change (location changed, not content)
 	w.service.notifyFileChange(FileChangeEvent{

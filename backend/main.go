@@ -15,8 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
+	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 func main() {
@@ -47,6 +49,16 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
+
+	// Setup search clients for sync operations (breaks circular dependency)
+	db.SetSearchClients(
+		func() db.MeiliClientInterface {
+			return vendors.GetMeiliClient()
+		},
+		func() db.QdrantClientInterface {
+			return vendors.GetQdrantClient()
+		},
+	)
 
 	// Setup API routes
 	handlers := api.NewHandlers(srv)

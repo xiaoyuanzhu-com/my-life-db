@@ -280,3 +280,53 @@ func (m *MeiliClient) IndexDocumentSimple(path, name, content string) error {
 	})
 	return err
 }
+
+// UpdateDocumentFilePath updates only the filePath field of a document.
+// Uses partial update (PUT) - only specified fields are modified, others preserved.
+// This is more efficient than re-indexing the entire document.
+func (m *MeiliClient) UpdateDocumentFilePath(documentID, newFilePath string) error {
+	if m == nil {
+		return nil
+	}
+
+	// Partial update: only send documentId (primary key) and fields to update
+	doc := map[string]interface{}{
+		"documentId": documentID,
+		"filePath":   newFilePath,
+	}
+
+	_, err := m.index.UpdateDocuments([]map[string]interface{}{doc}, nil)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("documentId", documentID).
+			Str("newFilePath", newFilePath).
+			Msg("failed to update document filePath in Meilisearch")
+	}
+	return err
+}
+
+// UpdateDocumentsFilePath updates filePath for multiple documents in batch.
+// Each item maps documentID -> newFilePath.
+func (m *MeiliClient) UpdateDocumentsFilePath(updates map[string]string) error {
+	if m == nil || len(updates) == 0 {
+		return nil
+	}
+
+	docs := make([]map[string]interface{}, 0, len(updates))
+	for documentID, newFilePath := range updates {
+		docs = append(docs, map[string]interface{}{
+			"documentId": documentID,
+			"filePath":   newFilePath,
+		})
+	}
+
+	_, err := m.index.UpdateDocuments(docs, nil)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("count", len(updates)).
+			Msg("failed to batch update document filePaths in Meilisearch")
+	}
+	return err
+}

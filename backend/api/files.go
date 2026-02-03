@@ -573,9 +573,13 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	if info.IsDir() {
 		// For folders, update all paths that start with the old path
 		db.RenameFilePaths(body.Path, newPath)
+		// Sync external search services (Meili, Qdrant) - best effort
+		go db.SyncSearchIndexOnMovePrefix(body.Path, newPath)
 	} else {
 		// For files, just update the single record
 		db.RenameFilePath(body.Path, newPath, body.NewName)
+		// Sync external search services (Meili, Qdrant) - best effort
+		go db.SyncSearchIndexOnMove(body.Path, newPath)
 	}
 
 	// Notify clients of the change
@@ -652,8 +656,12 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	// Update database records
 	if info.IsDir() {
 		db.RenameFilePaths(body.Path, newPath)
+		// Sync external search services (Meili, Qdrant) - best effort
+		go db.SyncSearchIndexOnMovePrefix(body.Path, newPath)
 	} else {
 		db.RenameFilePath(body.Path, newPath, fileName)
+		// Sync external search services (Meili, Qdrant) - best effort
+		go db.SyncSearchIndexOnMove(body.Path, newPath)
 	}
 
 	// Notify clients of the change
