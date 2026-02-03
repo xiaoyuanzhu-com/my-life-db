@@ -265,6 +265,81 @@ All messages from server follow the `SessionMessage` structure from Claude's JSO
 
 **Client behavior**: Display error to user, reset streaming state
 
+#### Stream Event (Progressive Updates)
+
+When `IncludePartialMessages` is enabled in the SDK options, the server sends `stream_event` messages containing Anthropic API streaming events. These enable progressive text display as Claude generates responses.
+
+**Message Format**:
+```json
+{
+  "type": "stream_event",
+  "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+      "type": "text_delta",
+      "text": "Here is some "
+    }
+  }
+}
+```
+
+**Event Sequence** (for a typical response):
+1. `message_start` - Response generation begins
+2. `content_block_start` - A content block (text/thinking/tool_use) begins
+3. `content_block_delta` (×N) - Incremental content updates
+4. `content_block_stop` - Content block complete
+5. `message_delta` - Message metadata update (stop_reason, usage)
+6. `message_stop` - Response generation complete
+
+**Delta Types**:
+
+| Delta Type | In Event | Contains |
+|------------|----------|----------|
+| `text_delta` | `content_block_delta` | `delta.text` - incremental text |
+| `thinking_delta` | `content_block_delta` | `delta.thinking` - incremental thinking |
+| `input_json_delta` | `content_block_delta` | `delta.partial_json` - tool input JSON |
+
+**Client Implementation**:
+```typescript
+// Accumulate streaming text
+let streamingText = ''
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data)
+
+  if (msg.type === 'stream_event') {
+    const evt = msg.event
+
+    // Accumulate text deltas
+    if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+      streamingText += evt.delta.text
+      updateUI(streamingText)
+    }
+
+    // Clear on completion
+    if (evt.type === 'message_stop') {
+      streamingText = ''
+    }
+  }
+
+  // Full assistant message arrives after stream completes
+  if (msg.type === 'assistant') {
+    streamingText = ''  // Clear streaming state
+    renderFinalMessage(msg)
+  }
+}
+```
+
+**Timing Characteristics** (typical):
+- Average delta interval: ~65ms
+- Minimum: ~0.2ms (burst)
+- Maximum: ~240ms (thinking/pauses)
+
+**When sent**:
+- Only when session has `IncludePartialMessages: true` in SDK options
+- Not persisted to JSONL (streaming-only)
+
 ---
 
 ## Content Block Types

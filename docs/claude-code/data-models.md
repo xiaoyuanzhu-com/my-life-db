@@ -329,6 +329,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 | `result` | ✅ `subtype` | **Turn complete** - sent when Claude finishes (stdout only) |
 | `system` | ✅ `subtype` | System messages (init, errors, compaction) |
 | `progress` | ✅ `data.type` | Progress updates (hooks, bash, agents, search) |
+| `stream_event` | ✅ `event.type` | **Progressive streaming** - partial response updates (stdout only, requires `--include-partial-messages`) |
 | `summary` | ❌ | Auto-generated session summary |
 | `custom-title` | ❌ | User-set custom title |
 | `tag` | ❌ | User-assigned session tag |
@@ -343,6 +344,7 @@ This is returned **exactly as-is** from the API, even though the `SummarySession
 | `system` | `init`, `compact_boundary`, `microcompact_boundary`, `turn_duration`, `api_error`, `local_command`, `hook_started`, `status` |
 | `progress` | `hook_progress`, `bash_progress`, `agent_progress`, `query_update`, `search_results_received` |
 | `result` | `success`, `error` |
+| `stream_event` | `message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop` |
 
 **Common Message Fields**:
 
@@ -1615,6 +1617,51 @@ Sent when a subagent (Task tool) is spawned and begins processing. Unlike regula
 |-------|------|-------------|
 | `data.query` | string | The search query being executed |
 | `data.resultCount` | number | Number of results received (search_results_received only) |
+
+**6f. Stream Events (Progressive Response Streaming)**
+
+> **Requires**: `--include-partial-messages` CLI flag (or `IncludePartialMessages: true` in SDK options)
+
+Stream events contain Anthropic API streaming events, enabling progressive text display as Claude generates responses. Unlike other message types, stream events are **stdout only** and **not persisted** to JSONL.
+
+**Example: Text Delta**
+```json
+{
+  "type": "stream_event",
+  "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+      "type": "text_delta",
+      "text": "Here is some "
+    }
+  }
+}
+```
+
+**Event Types** (in `event.type`):
+
+| Event Type | Description |
+|------------|-------------|
+| `message_start` | Response generation begins |
+| `content_block_start` | A content block (text/thinking/tool_use) begins |
+| `content_block_delta` | Incremental content update |
+| `content_block_stop` | Content block complete |
+| `message_delta` | Message metadata update (stop_reason, usage) |
+| `message_stop` | Response generation complete |
+
+**Delta Types** (in `event.delta.type`):
+
+| Delta Type | Field | Description |
+|------------|-------|-------------|
+| `text_delta` | `delta.text` | Incremental text content |
+| `thinking_delta` | `delta.thinking` | Incremental thinking content |
+| `input_json_delta` | `delta.partial_json` | Incremental tool input JSON |
+
+**UI Usage**:
+- Accumulate `text_delta` content to show progressive response
+- Clear accumulated text when `message_stop` or final `assistant` message arrives
+- Typical timing: ~65ms average between deltas (range: 0.2ms to 240ms)
 
 **7. Summary (Auto-generated title)**
 ```json
