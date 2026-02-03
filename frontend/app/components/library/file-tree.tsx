@@ -980,11 +980,6 @@ export function FileTree({
     );
   }
 
-  // Pending uploads at root level (empty destination)
-  const rootPendingUploads = pendingUploads.filter(
-    (item) => item.destination === '' || item.destination === undefined
-  );
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -1000,32 +995,39 @@ export function FileTree({
             </div>
           ) : (
             <>
-              {/* Show pending uploads at root level */}
-              {rootPendingUploads.map((item) => (
-                <PendingUploadItem key={item.id} item={item} level={0} />
-              ))}
-              {rootNodes.map((node) => (
-                <TreeNode
-                  key={node.path}
-                  node={node}
-                  parentPath=""
-                  level={0}
-                  onFileOpen={onFileOpen}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={onToggleFolder}
-                  selectedFilePath={selectedFilePath}
-                  onRefresh={loadRoot}
-                  onFileDeleted={onFileDeleted}
-                  onFileRenamed={onFileRenamed}
-                  onFileMoved={onFileMoved}
-                  draggedItem={draggedItem}
-                  setDraggedItem={setDraggedItem}
-                  dropTarget={dropTarget}
-                  setDropTarget={setDropTarget}
-                  onExternalFileDrop={handleExternalFileDrop}
-                  allPendingUploads={pendingUploads}
-                />
-              ))}
+              {(() => {
+                // Build set of real node paths at root level
+                const realNodePaths = new Set(rootNodes.map(n => n.path));
+
+                // Get virtual nodes for root level
+                const virtualNodes = buildVirtualNodes(pendingUploads, '', realNodePaths);
+
+                // Merge and sort: virtual folders first (they're new), then real nodes
+                const allNodes = [...virtualNodes, ...rootNodes];
+
+                return allNodes.map((node) => (
+                  <TreeNode
+                    key={node.path + (node.uploadStatus ? '-virtual' : '')}
+                    node={node}
+                    parentPath=""
+                    level={0}
+                    onFileOpen={onFileOpen}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={onToggleFolder}
+                    selectedFilePath={selectedFilePath}
+                    onRefresh={loadRoot}
+                    onFileDeleted={onFileDeleted}
+                    onFileRenamed={onFileRenamed}
+                    onFileMoved={onFileMoved}
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    dropTarget={dropTarget}
+                    setDropTarget={setDropTarget}
+                    onExternalFileDrop={handleExternalFileDrop}
+                    allPendingUploads={pendingUploads}
+                  />
+                ));
+              })()}
               {isCreatingFolder && (
                 <div className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: '8px' }}>
                   <div className="w-4" />
