@@ -91,6 +91,9 @@ export class UploadQueueManager {
   private initialized = false;
   private progressThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
   private progressPending = false;
+  // Mutex to prevent concurrent processNext() calls from racing
+  private isProcessing = false;
+  private needsReprocess = false;
 
   constructor() {
     this.tabId = generateTabId();
@@ -435,19 +438,37 @@ export class UploadQueueManager {
   }
 
   /**
-   * Process the next item in the queue
-   */
-  /**
    * Process next items from queue (fills up to MAX_CONCURRENT_UPLOADS)
    *
-   * Uses atomic database operation (getNextItemAndLock) to prevent race conditions.
-   * No application-level locks needed - database transaction handles atomicity.
+   * Uses a JavaScript mutex to serialize calls, preventing race conditions where
+   * concurrent getNextItemAndLock() calls could return the same item before
+   * either transaction commits.
    */
   async processNext(): Promise<void> {
+    // If already processing, mark that we need to reprocess when done
+    if (this.isProcessing) {
+      this.needsReprocess = true;
+      return;
+    }
+
+    this.isProcessing = true;
+    try {
+      do {
+        this.needsReprocess = false;
+        await this.doProcessNext();
+      } while (this.needsReprocess);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Internal: actually process items (called by processNext with mutex held)
+   */
+  private async doProcessNext(): Promise<void> {
     // Fill up to max concurrent uploads
     while (this.activeUploads.size < MAX_CONCURRENT_UPLOADS) {
       // Atomically get next item AND lock it in a single DB transaction
-      // This is race-condition-free: only one call can lock a given item
       const item = await getNextItemAndLock(this.tabId);
 
       if (!item) {
@@ -455,9 +476,9 @@ export class UploadQueueManager {
         break;
       }
 
-      // Defensive check - should never happen since DB ensures uniqueness
+      // Defensive check - should never happen with mutex
       if (this.activeUploads.has(item.id)) {
-        console.error('[UploadQueue] IMPOSSIBLE: Item already in activeUploads after atomic lock:', item.id);
+        console.error('[UploadQueue] Item already in activeUploads:', item.id);
         continue;
       }
 
