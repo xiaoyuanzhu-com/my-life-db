@@ -70,6 +70,31 @@ export function OmniInput({
     onEntryCreated?.();
   });
 
+  // Track IDs of items sent from THIS component instance (not old queue items)
+  const [sentItemIds, setSentItemIds] = useState<Set<string>>(new Set());
+
+  // Only show items that were sent from this session
+  const sessionUploadingItems = pendingItems.filter(item => sentItemIds.has(item.id));
+
+  // Clean up completed items from tracking set
+  useEffect(() => {
+    const uploadedIds = pendingItems
+      .filter(item => item.status === 'uploaded')
+      .map(item => item.id);
+
+    if (uploadedIds.length > 0) {
+      // Remove uploaded items from tracking after they animate out
+      const timer = setTimeout(() => {
+        setSentItemIds(prev => {
+          const next = new Set(prev);
+          uploadedIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 1000); // After animation completes
+      return () => clearTimeout(timer);
+    }
+  }, [pendingItems]);
+
   // Auto-resize textarea
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -182,7 +207,14 @@ export function OmniInput({
     setError('');
 
     try {
-      await send(trimmed || undefined, files.files);
+      const sentItems = await send(trimmed || undefined, files.files);
+
+      // Track the IDs of items we just sent
+      setSentItemIds(prev => {
+        const next = new Set(prev);
+        sentItems.forEach(item => next.add(item.id));
+        return next;
+      });
 
       // Clear input immediately
       setContent('');
@@ -260,11 +292,11 @@ export function OmniInput({
             )}
           </div>
 
-          {/* File chips - shows both uploading items and pending files */}
+          {/* File chips - shows items sent from this session + pending files */}
           <FileAttachments
             files={files.files}
             onRemove={files.removeFile}
-            uploadingItems={pendingItems}
+            uploadingItems={sessionUploadingItems}
           />
 
           {/* Bottom control bar */}
