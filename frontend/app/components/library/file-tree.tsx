@@ -75,6 +75,9 @@ function buildVirtualNodes(
 
     // If destination equals basePath, this file goes directly here
     if (dest === basePath || relativeDest === '') {
+      // Skip if file already exists in real nodes
+      if (realNodePaths.has(item.filename)) continue;
+
       virtualFiles.push({
         path: item.filename,
         type: 'file',
@@ -234,10 +237,13 @@ function TreeNode({
   const hasError = uploadStatus === 'error';
   const isFile = node.type === 'file';
 
-  const loadChildren = useCallback(async () => {
+  const loadChildren = useCallback(async (isInitialLoad = false) => {
     if (isLoading) return;
 
-    setIsLoading(true);
+    // Only show loading state on initial load, not refreshes
+    if (isInitialLoad) {
+      setIsLoading(true);
+    }
     try {
       const response = await api.get(`/api/library/tree?path=${encodeURIComponent(fullPath)}`);
       const data = await response.json();
@@ -253,7 +259,7 @@ function TreeNode({
 
   useEffect(() => {
     if (node.type === 'folder' && isExpanded && children.length === 0) {
-      loadChildren();
+      loadChildren(true); // Initial load - show loading state
     }
   }, [isExpanded, node.type, children.length, loadChildren]);
 
@@ -263,7 +269,7 @@ function TreeNode({
     if (prevRefreshTrigger.current !== refreshTrigger) {
       prevRefreshTrigger.current = refreshTrigger;
       if (node.type === 'folder' && isExpanded) {
-        loadChildren();
+        loadChildren(false); // Refresh - don't show loading state
       }
     }
   }, [refreshTrigger, node.type, isExpanded, loadChildren]);
@@ -596,7 +602,7 @@ function TreeNode({
       {/* Render children if expanded */}
       {node.type === 'folder' && isExpanded && (
         <div>
-          {isLoading ? (
+          {isLoading && children.length === 0 ? (
             <div className="text-xs text-muted-foreground px-2 py-1" style={{ paddingLeft: `${paddingLeft + 20}px` }}>
               Loading...
             </div>
@@ -734,8 +740,7 @@ export function FileTree({
   }, []);
 
   // Clean up completed uploads after all active uploads finish
-  // buildVirtualNodes already hides completed uploads when real files exist,
-  // so this cleanup is just housekeeping to remove items from IndexedDB
+  // SSE handles tree refresh, this just removes items from IndexedDB
   useEffect(() => {
     const hasActiveUploads = pendingUploads.some(
       item => item.status === 'saved' || item.status === 'uploading'
@@ -745,7 +750,7 @@ export function FileTree({
     // Only clean up when all active uploads are done and there are completed uploads
     if (hasActiveUploads || completedUploads.length === 0 || !uploadManagerRef.current) return;
 
-    // Delay cleanup to allow SSE refresh to complete and show real files
+    // Small delay to ensure SSE has refreshed the tree
     const timer = setTimeout(() => {
       if (!uploadManagerRef.current) return;
       const pathsToDelete = new Set<string>();
@@ -757,7 +762,7 @@ export function FileTree({
       if (pathsToDelete.size > 0) {
         uploadManagerRef.current.deleteCompletedUploads(pathsToDelete);
       }
-    }, 500); // Wait for SSE refresh to complete
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [pendingUploads]);

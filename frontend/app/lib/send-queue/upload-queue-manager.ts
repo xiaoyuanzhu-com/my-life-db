@@ -79,6 +79,9 @@ function getRetryDelay(retryCount: number): number {
   return Math.round(baseDelay + jitter);
 }
 
+/** Throttle interval for progress notifications (ms) */
+const PROGRESS_THROTTLE_MS = 100;
+
 export class UploadQueueManager {
   private tabId: string;
   private activeUploads = new Map<string, ActiveUpload>();
@@ -86,6 +89,8 @@ export class UploadQueueManager {
   private onProgressCallbacks: ProgressCallback[] = [];
   private onUploadCompleteCallbacks: UploadCompleteCallback[] = [];
   private initialized = false;
+  private progressThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private progressPending = false;
 
   constructor() {
     this.tabId = generateTabId();
@@ -171,9 +176,33 @@ export class UploadQueueManager {
   }
 
   /**
-   * Notify progress subscribers
+   * Notify progress subscribers (throttled to avoid excessive re-renders)
    */
   private async notifyProgress(): Promise<void> {
+    // If a notification is already pending, just mark that we need another one
+    if (this.progressThrottleTimeout) {
+      this.progressPending = true;
+      return;
+    }
+
+    // Send notification immediately
+    await this.doNotifyProgress();
+
+    // Set throttle timeout
+    this.progressThrottleTimeout = setTimeout(async () => {
+      this.progressThrottleTimeout = null;
+      // If there was a pending notification, send it now
+      if (this.progressPending) {
+        this.progressPending = false;
+        await this.doNotifyProgress();
+      }
+    }, PROGRESS_THROTTLE_MS);
+  }
+
+  /**
+   * Actually send progress notification to subscribers
+   */
+  private async doNotifyProgress(): Promise<void> {
     const items = await getAllItems();
     for (const callback of this.onProgressCallbacks) {
       try {
