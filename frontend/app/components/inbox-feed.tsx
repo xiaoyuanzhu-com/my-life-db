@@ -178,9 +178,10 @@ const getBottomStickThreshold = () => typeof window !== 'undefined' ? window.inn
 
 /**
  * Parse cursor string to extract path
+ * Handles both formats: with milliseconds (2026-02-01T15:37:06.123Z) and without (2026-02-01T15:37:06Z)
  */
 function parseCursorPath(cursor: string): string | null {
-  const match = cursor.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z:(.+)$/);
+  const match = cursor.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z:(.+)$/);
   return match ? match[1] : null;
 }
 

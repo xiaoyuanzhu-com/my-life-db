@@ -212,20 +212,30 @@ type Cursor struct {
 }
 
 // CreateCursor creates a cursor string from a file record
+// Format: created_at:path (e.g., "2026-02-01T15:37:06Z:inbox/file.md")
 func CreateCursor(f *FileRecord) string {
-	return f.CreatedAt + "|" + f.Path
+	return f.CreatedAt + ":" + f.Path
 }
 
 // ParseCursor parses a cursor string
+// Supports both ":" and "|" separators for backwards compatibility
+// The timestamp ends with "Z", so we look for "Z:" or "Z|" to find the split point
 func ParseCursor(cursor string) *Cursor {
-	parts := strings.SplitN(cursor, "|", 2)
-	if len(parts) != 2 {
-		return nil
+	// Try colon separator first (new format)
+	if idx := strings.Index(cursor, "Z:"); idx != -1 {
+		return &Cursor{
+			CreatedAt: cursor[:idx+1], // Include the Z
+			Path:      cursor[idx+2:], // Skip "Z:"
+		}
 	}
-	return &Cursor{
-		CreatedAt: parts[0],
-		Path:      parts[1],
+	// Fall back to pipe separator (legacy format)
+	if idx := strings.Index(cursor, "Z|"); idx != -1 {
+		return &Cursor{
+			CreatedAt: cursor[:idx+1],
+			Path:      cursor[idx+2:],
+		}
 	}
+	return nil
 }
 
 // FileListResult represents a paginated list of files
