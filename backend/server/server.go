@@ -14,6 +14,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/search"
 )
 
 // Server owns and coordinates all application components
@@ -24,6 +25,7 @@ type Server struct {
 	database      *db.DB
 	fsService     *fs.Service
 	digestWorker  *digest.Worker
+	searchWorker  *search.Worker
 	notifService  *notifications.Service
 	claudeManager *claude.SessionManager
 
@@ -91,10 +93,15 @@ func New(cfg *Config) (*Server, error) {
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
 
-	// 6. Wire service connections
+	// 6. Create search sync worker
+	log.Info().Msg("initializing search sync worker")
+	searchCfg := cfg.ToSearchConfig()
+	s.searchWorker = search.NewWorker(searchCfg)
+
+	// 8. Wire service connections
 	s.connectServices()
 
-	// 7. Setup HTTP router
+	// 9. Setup HTTP router
 	s.setupRouter()
 
 	log.Info().Msg("server initialized successfully")
@@ -232,6 +239,9 @@ func (s *Server) Start() error {
 	// Start digest worker
 	go s.digestWorker.Start()
 
+	// Start search sync worker
+	go s.searchWorker.Start()
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -286,6 +296,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// Stop background services (in reverse order of startup)
+	s.searchWorker.Stop()
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
