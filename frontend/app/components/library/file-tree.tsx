@@ -28,6 +28,23 @@ interface FileNode {
   size?: number;
   modifiedAt?: string;
   children?: FileNode[];
+  uploadStatus?: 'pending' | 'uploading' | 'error';
+  uploadProgress?: number;
+}
+
+function getFolderUploadStatus(
+  folderPath: string,
+  pendingUploads: PendingInboxItem[]
+): 'pending' | 'error' | undefined {
+  // Find uploads where destination starts with or equals this folder path
+  const relevantUploads = pendingUploads.filter(item => {
+    const dest = item.destination || '';
+    return dest === folderPath || dest.startsWith(folderPath + '/');
+  });
+
+  if (relevantUploads.length === 0) return undefined;
+  if (relevantUploads.some(u => u.errorMessage)) return 'error';
+  return 'pending'; // has pending or uploading
 }
 
 // Derive name from path
