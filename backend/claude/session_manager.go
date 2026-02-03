@@ -1497,11 +1497,12 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 	session.sdkCancel = cancel
 
 	options := sdk.ClaudeAgentOptions{
-		Cwd:                session.WorkingDir,
-		AllowedTools:       allowedTools,
-		PermissionMode:     session.PermissionMode,
-		CanUseTool:         session.CreatePermissionCallback(),
-		SkipInitialization: true,
+		Cwd:                    session.WorkingDir,
+		AllowedTools:           allowedTools,
+		PermissionMode:         session.PermissionMode,
+		CanUseTool:             session.CreatePermissionCallback(),
+		SkipInitialization:     true,
+		IncludePartialMessages: true, // Enable progressive streaming updates
 	}
 
 	if resume {

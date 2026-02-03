@@ -201,9 +201,9 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--add-dir", dir)
 	}
 
-	// Include partial messages
+	// Include partial messages (enables stream_event messages with text deltas)
 	if opts.IncludePartialMessages {
-		cmd = append(cmd, "--output-format", "stream-json-with-events")
+		cmd = append(cmd, "--include-partial-messages")
 	}
 
 	// Max thinking tokens
