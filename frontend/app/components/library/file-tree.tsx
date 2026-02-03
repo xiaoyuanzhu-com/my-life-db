@@ -116,6 +116,18 @@ function buildVirtualNodes(
   return [...virtualFolderNodes, ...virtualFiles];
 }
 
+// Sort nodes: folders first, then files, alphabetically within each group
+function sortNodes(nodes: FileNode[]): FileNode[] {
+  return [...nodes].sort((a, b) => {
+    // Folders come before files
+    if (a.type !== b.type) {
+      return a.type === 'folder' ? -1 : 1;
+    }
+    // Alphabetical within same type
+    return a.path.localeCompare(b.path);
+  });
+}
+
 // Derive name from path
 function getNodeName(node: FileNode): string {
   return node.path.split('/').pop() || node.path;
@@ -582,8 +594,8 @@ function TreeNode({
               // Get virtual nodes for this folder level
               const virtualChildren = buildVirtualNodes(allPendingUploads, fullPath, realChildPaths);
 
-              // Merge: virtual nodes first, then real children
-              const allChildren = [...virtualChildren, ...children];
+              // Merge and sort: folders first, then files, alphabetically
+              const allChildren = sortNodes([...virtualChildren, ...children]);
 
               return allChildren.map((child) => (
                 <TreeNode
@@ -679,6 +691,7 @@ export function FileTree({
   // Subscribe to upload progress for showing pending uploads in tree
   useEffect(() => {
     let unsubscribeProgress: (() => void) | undefined;
+    let unsubscribeComplete: (() => void) | undefined;
 
     const setupUploadTracking = async () => {
       const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
@@ -690,14 +703,23 @@ export function FileTree({
         const libraryUploads = items.filter(item => item.destination !== 'inbox' && item.destination !== undefined);
         setPendingUploads(libraryUploads);
       });
+
+      // Refresh tree when uploads complete to show the real files
+      unsubscribeComplete = uploadManager.onUploadComplete((item) => {
+        // Only refresh for library uploads
+        if (item.destination !== 'inbox' && item.destination !== undefined) {
+          loadRoot();
+        }
+      });
     };
 
     setupUploadTracking();
 
     return () => {
       unsubscribeProgress?.();
+      unsubscribeComplete?.();
     };
-  }, []);
+  }, [loadRoot]);
 
   // Subscribe to SSE notifications for library changes
   // This handles ALL refresh cases: upload, delete, rename, move, create folder
@@ -960,8 +982,8 @@ export function FileTree({
                 // Get virtual nodes for root level
                 const virtualNodes = buildVirtualNodes(pendingUploads, '', realNodePaths);
 
-                // Merge and sort: virtual folders first (they're new), then real nodes
-                const allNodes = [...virtualNodes, ...rootNodes];
+                // Merge and sort: folders first, then files, alphabetically
+                const allNodes = sortNodes([...virtualNodes, ...rootNodes]);
 
                 return allNodes.map((node) => (
                   <TreeNode
