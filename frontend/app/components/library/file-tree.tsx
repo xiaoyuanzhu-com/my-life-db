@@ -688,10 +688,12 @@ export function FileTree({
     loadRootImpl();
   }, [loadRootImpl]);
 
+  // Track folder paths that had uploads - keeps virtual folders visible until real ones appear
+  const [pendingFolderPaths, setPendingFolderPaths] = useState<Set<string>>(new Set());
+
   // Subscribe to upload progress for showing pending uploads in tree
   useEffect(() => {
     let unsubscribeProgress: (() => void) | undefined;
-    let unsubscribeComplete: (() => void) | undefined;
 
     const setupUploadTracking = async () => {
       const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
@@ -702,14 +704,23 @@ export function FileTree({
         // Only show library uploads (not inbox uploads)
         const libraryUploads = items.filter(item => item.destination !== 'inbox' && item.destination !== undefined);
         setPendingUploads(libraryUploads);
-      });
 
-      // Refresh tree when uploads complete to show the real files
-      unsubscribeComplete = uploadManager.onUploadComplete((item) => {
-        // Only refresh for library uploads
-        if (item.destination !== 'inbox' && item.destination !== undefined) {
-          loadRoot();
+        // Track all folder paths that have uploads (for keeping virtual folders visible)
+        const folderPaths = new Set<string>();
+        for (const item of libraryUploads) {
+          const dest = item.destination || '';
+          // Get the root folder of the destination
+          const rootFolder = dest.split('/')[0];
+          if (rootFolder) {
+            folderPaths.add(rootFolder);
+          }
         }
+        // Add new paths to existing set (don't remove old ones yet)
+        setPendingFolderPaths(prev => {
+          const next = new Set(prev);
+          folderPaths.forEach(p => next.add(p));
+          return next;
+        });
       });
     };
 
@@ -717,9 +728,24 @@ export function FileTree({
 
     return () => {
       unsubscribeProgress?.();
-      unsubscribeComplete?.();
     };
-  }, [loadRoot]);
+  }, []);
+
+  // Clear pending folder paths when real folders appear
+  useEffect(() => {
+    if (pendingFolderPaths.size === 0) return;
+
+    const realPaths = new Set(rootNodes.map(n => n.path));
+    const pathsToRemove = [...pendingFolderPaths].filter(p => realPaths.has(p));
+
+    if (pathsToRemove.length > 0) {
+      setPendingFolderPaths(prev => {
+        const next = new Set(prev);
+        pathsToRemove.forEach(p => next.delete(p));
+        return next;
+      });
+    }
+  }, [rootNodes, pendingFolderPaths]);
 
   // Subscribe to SSE notifications for library changes
   // This handles ALL refresh cases: upload, delete, rename, move, create folder
@@ -969,7 +995,7 @@ export function FileTree({
           onDragLeave={handleRootDragLeave}
           onDrop={handleRootDrop}
         >
-          {rootNodes.length === 0 && !isCreatingFolder && pendingUploads.length === 0 ? (
+          {rootNodes.length === 0 && !isCreatingFolder && pendingUploads.length === 0 && pendingFolderPaths.size === 0 ? (
             <div className="p-4 text-sm text-muted-foreground">
               No files in library. Right-click to create a folder.
             </div>
@@ -979,11 +1005,22 @@ export function FileTree({
                 // Build set of real node paths at root level
                 const realNodePaths = new Set(rootNodes.map(n => n.path));
 
-                // Get virtual nodes for root level
+                // Get virtual nodes for root level (from active uploads)
                 const virtualNodes = buildVirtualNodes(pendingUploads, '', realNodePaths);
+                const virtualNodePaths = new Set(virtualNodes.map(n => n.path));
+
+                // Add "ghost" folders for recently-uploaded paths that don't exist yet
+                // This keeps folders visible between upload completion and tree refresh
+                const ghostFolders: FileNode[] = [...pendingFolderPaths]
+                  .filter(p => !realNodePaths.has(p) && !virtualNodePaths.has(p))
+                  .map(path => ({
+                    path,
+                    type: 'folder' as const,
+                    uploadStatus: 'pending' as const,
+                  }));
 
                 // Merge and sort: folders first, then files, alphabetically
-                const allNodes = sortNodes([...virtualNodes, ...rootNodes]);
+                const allNodes = sortNodes([...virtualNodes, ...ghostFolders, ...rootNodes]);
 
                 return allNodes.map((node) => (
                   <TreeNode
