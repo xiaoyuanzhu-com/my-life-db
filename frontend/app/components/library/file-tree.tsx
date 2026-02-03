@@ -850,6 +850,28 @@ export function FileTree({
   // Note: Ghost paths are cleared when real files/folders appear (see effects above)
   // We don't use time-based cleanup because SSE delivery timing is unpredictable
 
+  // Trigger final refresh when all uploads complete to catch any stragglers
+  // that might have completed after the last SSE-triggered refresh
+  const hadUploadsRef = useRef(false);
+  useEffect(() => {
+    const hasActiveUploads = pendingUploads.some(
+      item => item.status === 'saved' || item.status === 'uploading'
+    );
+
+    if (hasActiveUploads) {
+      hadUploadsRef.current = true;
+    } else if (hadUploadsRef.current && pendingUploads.length === 0) {
+      // All uploads finished and items cleaned up - do final refresh
+      hadUploadsRef.current = false;
+      // Small delay to let backend finish writing any remaining files
+      const timer = setTimeout(() => {
+        loadRoot();
+        setRefreshTrigger(n => n + 1);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingUploads, loadRoot]);
+
   // Subscribe to SSE notifications for library changes
   // This handles ALL refresh cases: upload, delete, rename, move, create folder
   // from any source (this tab, other tabs, external changes)

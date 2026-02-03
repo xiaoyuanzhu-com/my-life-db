@@ -90,7 +90,7 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
       }
     }
 
-    // Batch success notifications - wait for all uploads to complete
+    // Batch success notifications - wait for ALL uploads to complete
     if (newlyCompleted > 0) {
       completedCountRef.current += newlyCompleted;
 
@@ -99,19 +99,22 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
         clearTimeout(successToastTimeoutRef.current);
       }
 
-      // Show toast after a short delay (to batch multiple completions)
-      successToastTimeoutRef.current = setTimeout(() => {
-        const count = completedCountRef.current;
-        if (count > 0) {
-          if (count === 1) {
-            toast.success('Upload complete', { duration: 3000 });
-          } else {
-            toast.success(`${count} uploads complete`, { duration: 3000 });
+      // Only show toast when ALL active uploads are complete
+      // This prevents split toasts like "90 complete" + "10 complete"
+      if (activeUploadsRef.current.size === 0) {
+        successToastTimeoutRef.current = setTimeout(() => {
+          const count = completedCountRef.current;
+          if (count > 0) {
+            if (count === 1) {
+              toast.success('Upload complete', { duration: 3000 });
+            } else {
+              toast.success(`${count} uploads complete`, { duration: 3000 });
+            }
+            completedCountRef.current = 0;
           }
-          completedCountRef.current = 0;
-        }
-        successToastTimeoutRef.current = null;
-      }, 500); // Wait 500ms to batch completions
+          successToastTimeoutRef.current = null;
+        }, 300); // Small delay to batch near-simultaneous completions
+      }
     }
 
     // Update previous items map
