@@ -1,3 +1,7 @@
+import { useMemo } from 'react'
+import { parseMarkdownSync } from '~/lib/shiki'
+import { MessageDot } from './message-dot'
+
 interface StreamingResponseProps {
   /** The accumulated streaming text so far */
   text: string
@@ -8,29 +12,29 @@ interface StreamingResponseProps {
 /**
  * StreamingResponse - Displays Claude's response as it streams in
  *
- * Shows the accumulated text with a blinking cursor at the end,
- * matching the industry-standard UX (ChatGPT, Claude.ai, etc.).
- * Styled to match the assistant message bubble.
+ * Renders markdown as it arrives using the sync parser (no syntax highlighting).
+ * Shows a blinking cursor at the end, matching industry-standard UX.
  */
 export function StreamingResponse({ text, className = '' }: StreamingResponseProps) {
+  const html = useMemo(() => {
+    if (!text) return ''
+    return parseMarkdownSync(text)
+  }, [text])
+
   if (!text) return null
 
   return (
-    <div className={`mb-4 ${className}`}>
-      <div className="flex flex-col items-start">
+    <div className={`flex gap-2 ${className}`}>
+      <MessageDot status="in_progress" lineHeight="prose" />
+      <div className="flex-1 min-w-0">
         <div
-          className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words"
-          style={{
-            backgroundColor: 'var(--claude-bg-subtle)',
-            color: 'var(--claude-text-primary)',
-          }}
-        >
-          {text}
-          <span
-            className="inline-block w-[2px] h-[1.1em] ml-0.5 align-middle animate-blink"
-            style={{ backgroundColor: 'var(--claude-text-primary)' }}
-          />
-        </div>
+          className="prose-claude"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+        <span
+          className="inline-block w-[2px] h-[1em] align-middle animate-blink"
+          style={{ backgroundColor: 'var(--claude-text-primary)' }}
+        />
       </div>
     </div>
   )

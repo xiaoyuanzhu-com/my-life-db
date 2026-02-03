@@ -252,6 +252,23 @@ function renderHtmlPreviewBlock(code: string): string {
   return `<div class="html-preview-container"><iframe srcdoc="${escapedHtml}" sandbox="allow-scripts" class="html-preview-iframe"></iframe></div>`
 }
 
+/**
+ * Synchronous markdown parsing for streaming content.
+ * Uses marked.parse() directly without syntax highlighting or mermaid rendering.
+ * Fast enough to call on every streaming update without debouncing.
+ */
+export function parseMarkdownSync(content: string): string {
+  // Use a simple marked instance without the custom code renderer
+  // to avoid issues with mermaidBlocks/htmlPreviewBlocks state
+  let html = marked.parse(content, { async: false, gfm: true, breaks: true }) as string
+
+  // Wrap tables in scrollable containers
+  html = html.replace(/<table>/g, '<div class="table-wrapper"><table>')
+  html = html.replace(/<\/table>/g, '</table></div>')
+
+  return html
+}
+
 export async function parseMarkdown(content: string): Promise<string> {
   const hl = await getHighlighter()
 
