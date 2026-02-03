@@ -255,13 +255,6 @@ function LibraryContent() {
 
     const fileArray = Array.from(files);
 
-    // Show upload start toast
-    if (fileArray.length === 1) {
-      toast.info(`Uploading ${fileArray[0].name}...`);
-    } else {
-      toast.info(`Uploading ${fileArray.length} files...`);
-    }
-
     try {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
       const uploadManager = getUploadQueueManager();
@@ -284,14 +277,6 @@ function LibraryContent() {
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-
-    // Show upload start toast
-    if (fileArray.length > 0) {
-      // Get the top-level folder name from the first file's path
-      const firstPath = (fileArray[0] as File & { webkitRelativePath?: string }).webkitRelativePath || "";
-      const folderName = firstPath.split("/")[0] || "folder";
-      toast.info(`Uploading ${folderName} (${fileArray.length} files)...`);
-    }
 
     try {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
