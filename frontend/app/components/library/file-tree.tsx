@@ -167,6 +167,8 @@ interface TreeNodeProps {
   allPendingFilePaths: Set<string>;
   /** All pending folder paths - for ghost folder tracking */
   allPendingFolderPaths: Set<string>;
+  /** Trigger to reload children (incremented on SSE refresh) */
+  refreshTrigger: number;
 }
 
 function getFileIcon(filename: string) {
@@ -205,6 +207,7 @@ function TreeNode({
   allPendingUploads,
   allPendingFilePaths,
   allPendingFolderPaths,
+  refreshTrigger,
 }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -259,6 +262,17 @@ function TreeNode({
       loadChildren();
     }
   }, [isExpanded, node.type, children.length, loadChildren]);
+
+  // Reload children when SSE triggers a refresh (for expanded folders)
+  const prevRefreshTrigger = useRef(refreshTrigger);
+  useEffect(() => {
+    if (prevRefreshTrigger.current !== refreshTrigger) {
+      prevRefreshTrigger.current = refreshTrigger;
+      if (node.type === 'folder' && isExpanded) {
+        loadChildren();
+      }
+    }
+  }, [refreshTrigger, node.type, isExpanded, loadChildren]);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -664,6 +678,7 @@ function TreeNode({
                   allPendingUploads={allPendingUploads}
                   allPendingFilePaths={allPendingFilePaths}
                   allPendingFolderPaths={allPendingFolderPaths}
+                  refreshTrigger={refreshTrigger}
                 />
               ));
             })()
@@ -692,6 +707,8 @@ export function FileTree({
   const [draggedItem, setDraggedItem] = useState<FileNode | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [pendingUploads, setPendingUploads] = useState<PendingInboxItem[]>([]);
+  // Trigger to reload children in expanded folders (incremented on SSE refresh)
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Core tree loading function
   const loadRootImpl = useCallback(async () => {
@@ -836,8 +853,14 @@ export function FileTree({
   // Subscribe to SSE notifications for library changes
   // This handles ALL refresh cases: upload, delete, rename, move, create folder
   // from any source (this tab, other tabs, external changes)
+  const handleLibraryChange = useCallback(() => {
+    loadRoot();
+    // Also trigger children refresh in expanded folders
+    setRefreshTrigger(n => n + 1);
+  }, [loadRoot]);
+
   useLibraryNotifications({
-    onLibraryChange: loadRoot,
+    onLibraryChange: handleLibraryChange,
     enabled: true,
   });
 
@@ -1140,6 +1163,7 @@ export function FileTree({
                     allPendingUploads={pendingUploads}
                     allPendingFilePaths={pendingFilePaths}
                     allPendingFolderPaths={pendingFolderPaths}
+                    refreshTrigger={refreshTrigger}
                   />
                 ));
               })()}
