@@ -15,8 +15,9 @@ type ProgressSessionMessage struct {
 type ProgressDataType string
 
 const (
-	ProgressDataTypeHook ProgressDataType = "hook_progress"
-	ProgressDataTypeBash ProgressDataType = "bash_progress"
+	ProgressDataTypeHook  ProgressDataType = "hook_progress"
+	ProgressDataTypeBash  ProgressDataType = "bash_progress"
+	ProgressDataTypeAgent ProgressDataType = "agent_progress"
 )
 
 // ProgressDataBase contains the common type field for progress data.
@@ -94,4 +95,26 @@ func (m ProgressSessionMessage) GetHookProgressData() (*HookProgressData, error)
 // HasUsefulContent returns false - progress messages are metadata.
 func (m *ProgressSessionMessage) HasUsefulContent() bool {
 	return false
+}
+
+// AgentProgressData represents agent/subagent progress data.
+type AgentProgressData struct {
+	Type    ProgressDataType `json:"type"` // "agent_progress"
+	AgentID string           `json:"agentId,omitempty"`
+	Prompt  string           `json:"prompt,omitempty"`
+}
+
+// GetAgentProgressData parses and returns AgentProgressData if the data type is agent_progress.
+func (m ProgressSessionMessage) GetAgentProgressData() (*AgentProgressData, error) {
+	if len(m.Data) == 0 {
+		return nil, nil
+	}
+	var data AgentProgressData
+	if err := json.Unmarshal(m.Data, &data); err != nil {
+		return nil, err
+	}
+	if data.Type != ProgressDataTypeAgent {
+		return nil, nil
+	}
+	return &data, nil
 }

@@ -1384,6 +1384,10 @@ for (const msg of messages) {
 
 See [data-models.md "Subagent Message Hierarchy"](./data-models.md#subagent-message-hierarchy--critical) for full details on message structure and examples.
 
+**Note on Backend Loading:**
+
+Claude Code stores subagent conversations in separate JSONL files (`{sessionId}/subagents/agent-{agentId}.jsonl`). The backend's `ReadSessionWithSubagents()` function loads these files and **injects `parentToolUseID`** into each message at load time. This means the frontend receives all messages (main + subagent) with proper `parentToolUseID` linking, regardless of how they're stored on disk.
+
 **Skipped XML Tags:**
 
 User messages are skipped if their content consists **entirely** of these XML tags (whitespace allowed between tags, but no other content):

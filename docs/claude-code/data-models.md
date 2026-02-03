@@ -985,6 +985,19 @@ There are **two ways** to access subagent conversation data:
 
 For historical sessions (JSONL), use `parent_tool_use_id`. For live sessions, either source works.
 
+**Backend Loading of Subagent Files:**
+
+Claude Code stores subagent conversations in **separate JSONL files** at `{sessionId}/subagents/agent-{agentId}.jsonl`. These files do NOT contain `parentToolUseID` - the messages are linked via the file naming convention.
+
+The backend's `ReadSessionWithSubagents()` function handles this:
+1. Reads the main session JSONL
+2. Extracts `agentId` → `parentToolUseID` mapping from `agent_progress` messages
+3. Loads each `subagents/agent-{agentId}.jsonl` file
+4. **Injects `parentToolUseID`** into each subagent message at load time
+5. Returns all messages merged together
+
+This allows the frontend to use the same `parent_tool_use_id` based logic for both live streaming and historical sessions.
+
 **4i. AskUserQuestion Tool** ⭐ INTERACTIVE
 
 The `AskUserQuestion` tool is used by Claude to ask the user questions during execution. Unlike other tools which execute automatically, this tool requires **user interaction** - the UI must display the question and collect the user's answer.

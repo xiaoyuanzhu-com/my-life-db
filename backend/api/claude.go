@@ -488,8 +488,10 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 			messages = append(messages, json.RawMessage(msgBytes))
 		}
 	} else {
-		// CLI mode: Read from JSONL file (same as WebSocket)
-		rawMessages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
+		// CLI mode: Read from JSONL file including subagent messages
+		// ReadSessionWithSubagents loads both main session and subagent JSONL files,
+		// injecting parentToolUseID into subagent messages for proper linking
+		rawMessages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
 		if err != nil {
 			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no history found")
 		} else {
@@ -576,7 +578,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// For CLI mode only: Send existing messages from JSONL file on connect
 	// For UI mode: Claude outputs history on stdout when session activates, so no need to read JSONL
 	if session.Mode == claude.ModeCLI {
-		initialMessages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
+		initialMessages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
 		if err == nil && len(initialMessages) > 0 {
 			log.Debug().
 				Str("sessionId", sessionID).
