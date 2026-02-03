@@ -18,14 +18,14 @@ function formatFileSize(bytes: number): string {
 }
 
 function UploadingFileItem({ item }: { item: PendingInboxItem }) {
-  const [isVisible, setIsVisible] = useState(false);
+  const [phase, setPhase] = useState<'entering' | 'active' | 'exiting'>('entering');
   const mountedRef = useRef(true);
 
   // Animate in on mount
   useEffect(() => {
     mountedRef.current = true;
     const timer = setTimeout(() => {
-      if (mountedRef.current) setIsVisible(true);
+      if (mountedRef.current) setPhase('active');
     }, 10);
     return () => {
       mountedRef.current = false;
@@ -33,7 +33,17 @@ function UploadingFileItem({ item }: { item: PendingInboxItem }) {
     };
   }, []);
 
-  const isUploading = item.status === 'uploading';
+  // Start exit animation when completed
+  useEffect(() => {
+    if (item.status === 'uploaded' && phase === 'active') {
+      // Small delay to ensure completion state is visible
+      const timer = setTimeout(() => {
+        if (mountedRef.current) setPhase('exiting');
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [item.status, phase]);
+
   const isComplete = item.status === 'uploaded';
   const hasError = !!item.errorMessage;
   const progress = item.uploadProgress;
@@ -41,42 +51,34 @@ function UploadingFileItem({ item }: { item: PendingInboxItem }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 relative overflow-hidden rounded-md p-2 transition-all duration-300',
-        'bg-primary/10',
-        !isVisible && 'opacity-0 translate-y-2',
-        isVisible && 'opacity-100 translate-y-0',
-        isComplete && 'opacity-50'
+        'flex items-center gap-2 relative overflow-hidden rounded-md p-2',
+        'transition-all duration-300 ease-out',
+        phase === 'entering' && 'opacity-0 translate-y-1',
+        phase === 'active' && 'opacity-100 translate-y-0',
+        phase === 'exiting' && 'opacity-0 -translate-y-1'
       )}
     >
-      {/* Progress bar background */}
+      {/* Progress bar - fills from left */}
       <div
         className={cn(
-          'absolute inset-0 transition-all duration-300 ease-out',
-          hasError ? 'bg-destructive/20' : 'bg-primary/20'
+          'absolute inset-0 rounded-md transition-all ease-out',
+          isComplete ? 'duration-200' : 'duration-150',
+          hasError ? 'bg-destructive/15' : isComplete ? 'bg-green-500/20' : 'bg-primary/10'
         )}
         style={{ width: `${progress}%` }}
       />
 
-      {/* Icon */}
+      {/* Icon - simple: spinner while uploading, check when done */}
       <div className="relative z-10 flex-shrink-0">
         {isComplete ? (
-          <Check className="h-4 w-4 text-primary" />
-        ) : isUploading ? (
-          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          <Check className="h-4 w-4 text-green-600" />
         ) : (
-          <Upload className="h-4 w-4 text-muted-foreground" />
+          <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
         )}
       </div>
 
-      {/* File info */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 relative z-10">
-        <span className="text-sm truncate flex-1">{item.filename}</span>
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {isUploading && `${progress}%`}
-          {!isUploading && !isComplete && formatFileSize(item.size)}
-          {isComplete && <Check className="h-3 w-3 inline" />}
-        </span>
-      </div>
+      {/* Filename only - no percentage, cleaner look */}
+      <span className="text-sm truncate flex-1 relative z-10">{item.filename}</span>
 
       {/* Error indicator */}
       {hasError && (
@@ -128,19 +130,15 @@ export function FileAttachments({
   onRemove,
   uploadingItems = []
 }: FileAttachmentsProps) {
-  // Filter out uploaded items (they should disappear)
-  const activeUploadingItems = uploadingItems.filter(
-    item => item.status !== 'uploaded'
-  );
-
-  if (files.length === 0 && activeUploadingItems.length === 0) {
+  // Show all items including uploaded (they animate out before deletion)
+  if (files.length === 0 && uploadingItems.length === 0) {
     return null;
   }
 
   return (
     <div className="flex flex-col gap-2 px-4 pb-2 max-h-48 overflow-y-auto">
-      {/* Uploading items first */}
-      {activeUploadingItems.map((item) => (
+      {/* Uploading/completed items first */}
+      {uploadingItems.map((item) => (
         <UploadingFileItem key={item.id} item={item} />
       ))}
 

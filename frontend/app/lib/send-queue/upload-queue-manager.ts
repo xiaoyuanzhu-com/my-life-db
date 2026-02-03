@@ -34,6 +34,9 @@ const {
   RETRY_JITTER_PERCENT,
 } = QUEUE_CONSTANTS;
 
+/** How long to show completion state before removing from queue (ms) */
+const COMPLETION_HOLD_MS = 800;
+
 type ProgressCallback = (items: PendingInboxItem[]) => void;
 type UploadCompleteCallback = (item: PendingInboxItem, serverPath: string) => void;
 
@@ -417,10 +420,16 @@ export class UploadQueueManager {
       // Create TUS upload
       const serverPath = await this.performTusUpload(updatedItem, activeUpload);
 
-      // Success! Mark as uploaded
+      // Success! Mark as uploaded (keeps item in DB for UI animation)
       await markUploaded(item.id, serverPath);
       this.notifyUploadComplete(updatedItem, serverPath);
       await this.notifyProgress();
+
+      // Schedule deletion after completion hold (allows UI to show success state)
+      setTimeout(async () => {
+        await deleteItem(item.id);
+        await this.notifyProgress();
+      }, COMPLETION_HOLD_MS);
 
     } catch (err) {
       console.error('[UploadQueue] Upload failed:', err);
