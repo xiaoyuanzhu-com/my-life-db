@@ -114,6 +114,24 @@ func GetMeiliClient() *MeiliClient {
 
 		index := client.Index(indexUID)
 
+		// Configure filterable attributes (required for filtering to work)
+		filterableAttrs := []interface{}{"filePath", "mimeType"}
+		filterableTask, err := index.UpdateFilterableAttributes(&filterableAttrs)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to update filterable attributes")
+		} else {
+			client.WaitForTask(filterableTask.TaskUID, 0)
+		}
+
+		// Configure searchable attributes
+		searchableAttrs := []string{"content", "summary", "tags", "filePath"}
+		searchableTask, err := index.UpdateSearchableAttributes(&searchableAttrs)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to update searchable attributes")
+		} else {
+			client.WaitForTask(searchableTask.TaskUID, 0)
+		}
+
 		meiliClient = &MeiliClient{
 			client:   client,
 			index:    index,

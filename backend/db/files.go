@@ -669,7 +669,7 @@ func RenameFilePath(oldPath, newPath, newName string) error {
 	}
 
 	// Update pins
-	_, err = tx.Exec(`UPDATE pins SET path = ? WHERE path = ?`, newPath, oldPath)
+	_, err = tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
@@ -826,7 +826,7 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	}
 
 	// 4. Update related tables: pins
-	_, err = tx.Exec(`UPDATE pins SET path = ? WHERE path = ?`, newPath, oldPath)
+	_, err = tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
