@@ -224,6 +224,8 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const loadingNewestPageRef = useRef(false);
   // Flag to queue a refresh if one arrives while loading
   const pendingRefreshRef = useRef(false);
+  // Lock to prevent handleScroll from re-enabling stickToBottom during pin navigation
+  const navigatingToCursorRef = useRef(false);
 
   // Computed values
   const pageIndices = useMemo(() =>
@@ -511,24 +513,61 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   // Scroll to specific item with highlight
   const scrollToItem = useCallback((path: string) => {
     const element = itemRefs.current.get(path);
-    if (!element) {
-      console.warn(`Cannot scroll to ${path}: element not found`);
+    const container = scrollContainerRef.current;
+    if (!element || !container) {
+      console.warn(`Cannot scroll to ${path}: element or container not found`);
       return;
     }
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    stickToBottomRef.current = false;
+
+    // Calculate target scroll position manually to center the element
+    const scrollToCenter = () => {
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const elementOffsetTop = elementRect.top - containerRect.top + container.scrollTop;
+      const targetScrollTop = elementOffsetTop - (container.clientHeight / 2) + (element.offsetHeight / 2);
+      return Math.max(0, targetScrollTop);
+    };
+
+    // Scroll to the element
+    const targetScrollTop = scrollToCenter();
+    container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+
+    // Re-adjust after content might have loaded (images, etc.)
+    // This handles the case where scrollHeight changes during scroll
+    const checkAndCorrect = () => {
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const elementCenterY = elementRect.top + elementRect.height / 2;
+      const containerCenterY = containerRect.top + containerRect.height / 2;
+      const offset = Math.abs(elementCenterY - containerCenterY);
+
+      // If element is not reasonably centered (more than 100px off), re-scroll
+      if (offset > 100) {
+        const newTarget = scrollToCenter();
+        container.scrollTo({ top: newTarget, behavior: 'smooth' });
+      }
+    };
+
+    // Check and correct after initial scroll and potential content load
+    setTimeout(checkAndCorrect, 300);
+    setTimeout(checkAndCorrect, 600);
 
     // Highlight animation
     element.style.transition = 'background-color 0.3s ease';
     element.style.backgroundColor = 'hsl(var(--primary) / 0.1)';
     setTimeout(() => {
       element.style.backgroundColor = '';
-    }, 1000);
+    }, 1500);
 
-    stickToBottomRef.current = false;
+    // Clear navigation lock after scroll completes
+    setTimeout(() => {
+      navigatingToCursorRef.current = false;
+    }, 800);
 
     if (onScrollComplete) {
-      setTimeout(onScrollComplete, 500);
+      setTimeout(onScrollComplete, 800);
     }
   }, [onScrollComplete]);
 
@@ -548,8 +587,10 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
     const nearBottom = distanceFromBottom < getBottomStickThreshold();
 
     if (nearBottom) {
-      // Always allow enabling stickToBottom
-      stickToBottomRef.current = true;
+      // Don't re-enable stickToBottom during pin navigation
+      if (!navigatingToCursorRef.current) {
+        stickToBottomRef.current = true;
+      }
     } else if (contentStabilizedRef.current) {
       // Only disable when content is stable (user actually scrolled up)
       stickToBottomRef.current = false;
@@ -606,6 +647,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   // Handle scrollToCursor prop
   useEffect(() => {
     if (!scrollToCursor) return;
+
+    // Lock navigation to prevent handleScroll from re-enabling stickToBottom
+    navigatingToCursorRef.current = true;
 
     // Immediately disable stick-to-bottom to prevent other effects from
     // scrolling to bottom while we're trying to scroll to a specific item
@@ -695,17 +739,9 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         contentStabilizedRef.current = true;
       }, 500);
 
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-
-      // Always scroll to bottom if stickToBottomRef is true (simplest check)
+      // Only scroll to bottom if stickToBottomRef is true
+      // This is the single source of truth for "should we stick to bottom"
       if (stickToBottomRef.current) {
-        container.scrollTop = container.scrollHeight;
-        updateScrollMetrics();
-        return;
-      }
-
-      // Also scroll if we're close to bottom (handles edge cases)
-      if (distanceFromBottom < getBottomStickThreshold()) {
         container.scrollTop = container.scrollHeight;
         updateScrollMetrics();
       }
