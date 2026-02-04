@@ -159,8 +159,8 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
               className={cn(
                 'text-[13px] font-medium px-2 py-1 rounded transition-colors whitespace-nowrap',
                 activeTab === index
-                  ? 'text-foreground bg-muted'
-                  : 'text-muted-foreground hover:text-foreground',
+                  ? 'text-primary-foreground bg-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                 isDismissing && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -282,7 +282,7 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-end mt-4 pt-3 border-t border-border">
+      <div className="flex items-center justify-end mt-4">
         <button
           onClick={handleSubmit}
           disabled={isDismissing || !isValid}
