@@ -51,7 +51,6 @@ export function usePermissions(): UsePermissionsResult {
       request_id: string
       request: { tool_name: string; input?: Record<string, unknown> }
     }) => {
-      console.log('[usePermissions] Received control_request:', data.request_id, data.request.tool_name)
       setControlRequests((prev) => {
         const next = new Map(prev)
         next.set(data.request_id, {
@@ -66,7 +65,6 @@ export function usePermissions(): UsePermissionsResult {
   )
 
   const handleControlResponse = useCallback((data: { request_id: string }) => {
-    console.log('[usePermissions] Received control_response:', data.request_id)
     setControlResponses((prev) => {
       const next = new Set(prev)
       next.add(data.request_id)
