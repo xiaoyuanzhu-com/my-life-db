@@ -65,6 +65,12 @@ export function ChatInterface({
     setLocalIsActive(isActive)
   }, [isActive])
 
+  // Track if we've seen the init message - this marks the boundary between historical and live messages
+  // IMPORTANT: This is the key to distinguishing historical incomplete tool_use from live control_requests
+  // - Before init: messages are from historical JSONL cache
+  // - After init: messages are from active Claude CLI stdout
+  const [hasSeenInit, setHasSeenInit] = useState(false)
+
   // Optimistic user message (shown immediately before server confirms)
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null)
 
@@ -288,7 +294,10 @@ export function ChatInterface({
       }
 
       // Handle system init message
+      // IMPORTANT: init is the boundary marker between historical and live messages
+      // It's stdout-only (never persisted to JSONL), so seeing it means we're receiving live data
       if (msg.type === 'system' && msg.subtype === 'init') {
+        setHasSeenInit(true) // Mark that we've crossed from historical to live messages
         const initMsg: SessionMessage = {
           type: 'system',
           uuid: (msg.uuid as string) || crypto.randomUUID(),
@@ -415,14 +424,29 @@ export function ChatInterface({
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
 
-  // Detect AskUserQuestion tool_use blocks that need user response (for historical sessions)
-  // These are tool_use blocks from assistant messages where:
-  // 1. name === 'AskUserQuestion'
-  // 2. No corresponding tool_result exists yet
-  // NOTE: For live sessions, questions come via control_request messages which use a different
-  // request_id format (sdk-perm-xxx). We preserve those and only add detected tool_use questions
-  // that aren't already pending.
+  // Detect AskUserQuestion tool_use blocks that need user response
+  //
+  // BOUNDARY MARKER: hasSeenInit
+  // - Before init: messages are historical (from JSONL cache)
+  // - After init: messages are live (from Claude CLI stdout)
+  //
+  // POPOVER BEHAVIOR:
+  // - !hasSeenInit (historical session): Show popover for detected tool_use without result
+  //   → Allows user to answer and activate the session (Case 1)
+  // - hasSeenInit (live session): Only show popover for control_request questions
+  //   → Historical tool_use are shown in message list as incomplete (○ gray) but no popover (Case 2)
+  //   → Live control_requests show popover (Case 3)
+  //
+  // NOTE: Message list always renders tool_use status correctly - this only affects popover behavior
   useEffect(() => {
+    // For live sessions (after init), only use control_request questions
+    // These are added via the control_request handler and have sdk-perm-xxx format
+    if (hasSeenInit) {
+      setPendingQuestions((prev) => prev.filter((q) => q.id.startsWith('sdk-perm-')))
+      return
+    }
+
+    // For historical sessions (before init), detect tool_use blocks without results
     const detectedQuestions: UserQuestion[] = []
 
     for (const msg of rawMessages) {
@@ -457,21 +481,19 @@ export function ChatInterface({
       }
     }
 
-    // Only use tool_use detection for historical sessions (when no control_request questions exist)
-    // For live sessions, control_request messages handle questions with proper request IDs
+    // For historical sessions, merge detected questions with any existing control_request questions
     setPendingQuestions((prev) => {
-      // Keep questions from control_request (they have sdk-perm-xxx format)
       const controlRequestQuestions = prev.filter((q) => q.id.startsWith('sdk-perm-'))
-
-      // If we have control_request questions, don't add tool_use detected ones (live session)
-      if (controlRequestQuestions.length > 0) {
-        return controlRequestQuestions
+      // Deduplicate by id
+      const merged = [...controlRequestQuestions]
+      for (const q of detectedQuestions) {
+        if (!merged.some((m) => m.id === q.id)) {
+          merged.push(q)
+        }
       }
-
-      // No control_request questions = historical session, use tool_use detection
-      return detectedQuestions
+      return merged
     })
-  }, [rawMessages, toolResultMap])
+  }, [rawMessages, toolResultMap, hasSeenInit])
 
   // ============================================================================
   // Effects
@@ -497,6 +519,7 @@ export function ChatInterface({
     initialLoadCompleteRef.current = false
     initialMessageSentRef.current = false
     wasConnectedRef.current = false // Reset so initial connection to new session isn't treated as reconnect
+    setHasSeenInit(false) // Reset init boundary marker for new session
     if (initialLoadTimerRef.current) {
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null

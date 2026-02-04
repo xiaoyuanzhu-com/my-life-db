@@ -1065,6 +1065,25 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				break
 			}
 
+			// Ensure session is activated before sending control_response
+			// This handles the case where user answers a historical AskUserQuestion:
+			// 1. Session is inactive (no Claude CLI process running)
+			// 2. User submits answer via control_response
+			// 3. We need to activate the session first so Claude can receive the answer
+			// NOTE: For historical questions, Claude may create a NEW tool_use with different ID
+			// after resuming, so the user might need to answer again. This is expected behavior.
+			if err := session.EnsureActivated(); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session for control_response")
+				errMsg := map[string]interface{}{
+					"type":  "error",
+					"error": fmt.Sprintf("Failed to activate session: %v", err),
+				}
+				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+					conn.Write(ctx, websocket.MessageText, msgBytes)
+				}
+				break
+			}
+
 			// Send the response to Claude
 			if err := session.SendControlResponse(
 				controlResp.RequestID,
