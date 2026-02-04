@@ -322,6 +322,21 @@ func (s *Session) SetModel(model string) error {
 	return s.sdkClient.SetModel(model)
 }
 
+// SendToolResult sends a tool result back to Claude (UI mode only).
+// This is used for interactive tools like AskUserQuestion that require user input.
+// The toolUseID must match the id from the tool_use block.
+func (s *Session) SendToolResult(toolUseID string, content string) error {
+	if s.Mode != ModeUI {
+		return fmt.Errorf("SendToolResult called on non-UI session")
+	}
+
+	if s.sdkClient == nil {
+		return fmt.Errorf("Cannot send tool result: session not active (no running process)")
+	}
+
+	return s.sdkClient.SendToolResult(toolUseID, content)
+}
+
 // SetPermissionMode changes the permission mode during conversation (UI mode only).
 // For SDK mode, uses the SDK client's SetPermissionMode mechanism.
 //

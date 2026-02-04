@@ -655,6 +655,43 @@ func (q *Query) SendUserMessage(content string, sessionID string) error {
 	return q.transport.Write(string(msgJSON) + "\n")
 }
 
+// SendToolResult sends a tool result back to Claude.
+// This is used for tools like AskUserQuestion that require user input.
+// The toolUseID must match the id from the tool_use block.
+func (q *Query) SendToolResult(toolUseID string, content string, sessionID string) error {
+	if sessionID == "" {
+		sessionID = "default"
+	}
+
+	message := map[string]any{
+		"type": "user",
+		"message": map[string]any{
+			"role": "user",
+			"content": []map[string]any{
+				{
+					"type":        "tool_result",
+					"tool_use_id": toolUseID,
+					"content":     content,
+				},
+			},
+		},
+		"parent_tool_use_id": nil,
+		"session_id":         sessionID,
+	}
+
+	msgJSON, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tool result: %w", err)
+	}
+
+	log.Debug().
+		Str("toolUseId", toolUseID).
+		Str("content", content).
+		Msg("sending tool_result to Claude CLI")
+
+	return q.transport.Write(string(msgJSON) + "\n")
+}
+
 // Messages returns a channel for receiving messages as map[string]any.
 // This matches Python SDK's query.receive_messages() -> dict[str, Any].
 func (q *Query) Messages() <-chan map[string]any {

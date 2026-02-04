@@ -168,6 +168,19 @@ func (c *ClaudeSDKClient) SendMessageWithSession(content string, sessionID strin
 	return c.query.SendUserMessage(content, sessionID)
 }
 
+// SendToolResult sends a tool result back to Claude.
+// This is used for interactive tools like AskUserQuestion that require user input.
+func (c *ClaudeSDKClient) SendToolResult(toolUseID string, content string) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.query == nil {
+		return ErrNotConnected
+	}
+
+	return c.query.SendToolResult(toolUseID, content, "")
+}
+
 // Messages returns a channel for receiving typed messages from Claude.
 // Like Python SDK's client.receive_messages() -> Message.
 func (c *ClaudeSDKClient) Messages() <-chan Message {

@@ -1084,6 +1084,41 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Msg("sent control response to Claude")
 			}
 
+		case "tool_result":
+			// UI mode only: Handle tool results from the frontend (e.g., AskUserQuestion answers)
+			if session.Mode != claude.ModeUI {
+				log.Debug().Str("sessionId", sessionID).Msg("tool_result received for non-UI session, ignoring")
+				break
+			}
+
+			// Parse the tool_result message
+			var toolResult struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+			}
+			if err := json.Unmarshal(msg, &toolResult); err != nil {
+				log.Debug().Err(err).Msg("Failed to parse tool_result")
+				break
+			}
+
+			// Send the tool result to Claude
+			if err := session.SendToolResult(toolResult.ToolUseID, toolResult.Content); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send tool result")
+				errMsg := map[string]any{
+					"type":  "error",
+					"error": "Failed to send tool result: " + err.Error(),
+				}
+				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+					conn.Write(ctx, websocket.MessageText, msgBytes)
+				}
+			} else {
+				log.Info().
+					Str("sessionId", sessionID).
+					Str("toolUseId", toolResult.ToolUseID).
+					Msg("sent tool result to Claude")
+			}
+
 		default:
 			log.Debug().Str("type", inMsg.Type).Msg("Unknown subscribe message type")
 		}
