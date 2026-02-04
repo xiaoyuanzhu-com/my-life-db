@@ -140,7 +140,7 @@ Claude Code outputs messages in **two different contexts** with subtle differenc
 | **Stdout** (`--output-format stream-json`) | Live execution | Only persisted after turn completes | What WebSocket receives in real-time |
 
 **Key differences:**
-- `system:init` message: **stdout only** - never written to JSONL
+- `system:init` message: **stdout only** - never written to JSONL, **sent once per user input** (not once per session)
 - `result` message: **stdout only** - summarizes the completed turn, not persisted
 - `queue-operation`: **both** - appears in real-time and is persisted
 - `progress` messages: **both** - persisted to JSONL for replay
@@ -1278,12 +1278,17 @@ System messages report internal events. The `subtype` field determines the speci
 
 **5a. Init (Session Initialization)**
 
-**Lifecycle**: The `init` message is output to stdout when Claude CLI **starts** - either for a fresh session or when resuming an existing one. It is **NOT persisted to JSONL files** because it's session metadata, not conversation history.
+**Lifecycle**: The `init` message is output to stdout **once per user input** (per turn), NOT once per session. Each time you send a user message, Claude CLI outputs a fresh `init` message before processing. It is **NOT persisted to JSONL files**.
+
+**Key Behavior (Verified by Testing)**:
+- **1 init per user input**: If you send 2 user messages in the same session, you receive 2 init messages
+- **NOT persisted**: Init messages are stream-only; JSONL files contain `queue-operation`, `file-history-snapshot`, `progress`, `user`, `assistant`, `result` - but NO init messages
+- **Dynamic content**: Each init message reflects the current state (tools, MCP servers, model, etc.) which can change between turns
 
 **Important for Web UI**:
 - When viewing historical sessions (reading JSONL), there is no `init` message
 - The `init` message only arrives when Claude CLI is actively running
-- As soon as a user sends a message (triggering Claude CLI to start), the `init` message is output first
+- Do NOT cache init messages assuming 1 per session - you'll receive one for each turn
 
 ```json
 {
