@@ -1,8 +1,32 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Check } from 'lucide-react'
+import { FolderOpen, Check, Clock } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+
+const RECENT_FOLDERS_KEY = 'claude-recent-folders'
+const MAX_RECENT_FOLDERS = 3
+
+function getRecentFolders(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = localStorage.getItem(RECENT_FOLDERS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentFolder(path: string) {
+  if (typeof window === 'undefined' || !path) return
+  try {
+    const recent = getRecentFolders().filter(p => p !== path)
+    recent.unshift(path)
+    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_FOLDERS)))
+  } catch {
+    // ignore
+  }
+}
 
 interface FolderPickerProps {
   value: string // full path
@@ -16,6 +40,7 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
   const [children, setChildren] = useState<string[]>([]) // children of currentPath
+  const [recentFolders, setRecentFolders] = useState<string[]>([])
 
   // Fetch children of a given full path
   const fetchChildren = useCallback(async (fullPath: string, knownBasePath?: string) => {
@@ -81,12 +106,13 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When popover opens, fetch children of current value
+  // When popover opens, fetch children of current value and load recent folders
   useEffect(() => {
     if (open) {
       const pathToBrowse = value || basePath
       setCurrentPath(pathToBrowse)
       fetchChildren(pathToBrowse)
+      setRecentFolders(getRecentFolders())
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -98,6 +124,22 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
       onChange(path)
     }
   }
+
+  // Select a folder and close the popover (used for recent folders quick select)
+  const handleQuickSelect = (path: string) => {
+    saveRecentFolder(path)
+    if (onChange) {
+      onChange(path)
+    }
+    setOpen(false)
+  }
+
+  // Save to recent when popover closes with a selection
+  useEffect(() => {
+    if (!open && value) {
+      saveRecentFolder(value)
+    }
+  }, [open, value])
 
   const getLastSegment = (path: string) => {
     const segments = path.split('/').filter(Boolean)
@@ -170,38 +212,71 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start" side="top">
-        <div className="max-h-64 overflow-y-auto space-y-0.5">
-          {options.length === 0 ? (
-            <div className="px-2 py-1.5 text-sm text-muted-foreground">No subfolders</div>
-          ) : (
-            options.map((folder) => {
-              // Display: ".." for parent, 1 segment for current, 2 segments for children
-              const isParent = folder === parentPath
-              const isCurrent = folder === currentPath
-              const displayName = isParent
-                ? '..'
-                : isCurrent
-                  ? getLastSegment(folder)
-                  : getLastNSegments(folder, 2)
-              return (
-                <button
-                  key={folder}
-                  type="button"
-                  onClick={() => handleSelect(folder)}
-                  className={cn(
-                    'w-full px-2 py-1.5 rounded-md text-left text-sm',
-                    'hover:bg-accent transition-colors',
-                    'focus:outline-none focus:bg-accent',
-                    'flex items-center justify-between',
-                    isCurrent && 'bg-accent'
-                  )}
-                >
-                  <span>{displayName}</span>
-                  {isCurrent && <Check className="h-4 w-4 text-muted-foreground" />}
-                </button>
-              )
-            })
+        <div className="max-h-64 overflow-y-auto">
+          {/* Recent folders section */}
+          {recentFolders.length > 0 && (
+            <>
+              <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Recent
+              </div>
+              <div className="space-y-0.5 mb-1">
+                {recentFolders.map((folder) => (
+                  <button
+                    key={`recent-${folder}`}
+                    type="button"
+                    onClick={() => handleQuickSelect(folder)}
+                    className={cn(
+                      'w-full px-2 py-1.5 rounded-md text-left text-sm',
+                      'hover:bg-accent transition-colors',
+                      'focus:outline-none focus:bg-accent',
+                      'flex items-center justify-between',
+                      folder === value && 'bg-accent'
+                    )}
+                  >
+                    <span className="truncate">{getLastNSegments(folder, 2)}</span>
+                    {folder === value && <Check className="h-4 w-4 text-muted-foreground shrink-0" />}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-border my-1" />
+            </>
           )}
+
+          {/* Browse section */}
+          <div className="space-y-0.5">
+            {options.length === 0 ? (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">No subfolders</div>
+            ) : (
+              options.map((folder) => {
+                // Display: ".." for parent, 1 segment for current, 2 segments for children
+                const isParent = folder === parentPath
+                const isCurrent = folder === currentPath
+                const displayName = isParent
+                  ? '..'
+                  : isCurrent
+                    ? getLastSegment(folder)
+                    : getLastNSegments(folder, 2)
+                return (
+                  <button
+                    key={folder}
+                    type="button"
+                    onClick={() => handleSelect(folder)}
+                    className={cn(
+                      'w-full px-2 py-1.5 rounded-md text-left text-sm',
+                      'hover:bg-accent transition-colors',
+                      'focus:outline-none focus:bg-accent',
+                      'flex items-center justify-between',
+                      isCurrent && 'bg-accent'
+                    )}
+                  >
+                    <span>{displayName}</span>
+                    {isCurrent && <Check className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                )
+              })
+            )}
+          </div>
         </div>
       </PopoverContent>
     </Popover>
