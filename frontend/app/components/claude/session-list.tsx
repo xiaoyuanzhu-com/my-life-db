@@ -31,10 +31,18 @@ interface SessionListProps {
   onLoadMore?: () => void
 }
 
+// Max chars to render in DOM - prevents performance issues with very long titles
+// CSS truncate handles visual truncation; this caps extreme cases (e.g., 1000+ char prompts)
+const MAX_TITLE_CHARS = 120
+
 // Get the display title for a session
 // Backend computes the proper title with priority: customTitle > summary > firstUserPrompt
-function getSessionDisplayTitle(session: Session): string {
-  return session.title || 'Untitled'
+function getSessionDisplayTitle(session: Session): { display: string; full: string } {
+  const full = session.title || 'Untitled'
+  if (full.length <= MAX_TITLE_CHARS) {
+    return { display: full, full }
+  }
+  return { display: full.slice(0, MAX_TITLE_CHARS) + '…', full }
 }
 
 // Format relative time (e.g., "3h ago", "2d ago")
@@ -72,7 +80,7 @@ export function SessionList({
 
   const _startEdit = (session: Session) => {
     setEditingId(session.id)
-    setEditTitle(getSessionDisplayTitle(session))
+    setEditTitle(getSessionDisplayTitle(session).full)
   }
 
   const saveEdit = () => {
@@ -181,8 +189,11 @@ export function SessionList({
                         {session.isActive && (
                           <div className="h-2 w-2 rounded-full shrink-0 bg-green-500" />
                         )}
-                        <h3 className="truncate text-sm font-medium text-foreground">
-                          {getSessionDisplayTitle(session)}
+                        <h3
+                          className="truncate text-sm font-medium text-foreground"
+                          title={getSessionDisplayTitle(session).full}
+                        >
+                          {getSessionDisplayTitle(session).display}
                         </h3>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
