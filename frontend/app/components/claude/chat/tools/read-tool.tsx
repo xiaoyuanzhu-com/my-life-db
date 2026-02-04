@@ -136,24 +136,26 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
         </div>
       )}
 
-      {/* Expanded content with syntax highlighting */}
-      {isExpanded && content && (
-        <div
-          className="mt-2 ml-5 rounded-md overflow-hidden"
-          style={{ border: '1px solid var(--claude-border-light)' }}
-        >
+      {/* Expanded content with syntax highlighting - smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded && content ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
           <div
-            className="overflow-y-auto"
-            style={{ maxHeight: '60vh' }}
+            className="mt-2 ml-5 rounded-md overflow-hidden"
+            style={{ border: '1px solid var(--claude-border-light)' }}
           >
             <div
-              className="p-3 text-[12px] [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent"
-              style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
+              className="overflow-y-auto"
+              style={{ maxHeight: '60vh' }}
+            >
+              <div
+                className="p-3 text-[12px] [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent"
+                style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Error */}
       {toolCall.error && (

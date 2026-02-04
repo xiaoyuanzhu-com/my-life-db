@@ -98,19 +98,21 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
         </div>
       )}
 
-      {/* Expanded output */}
-      {expanded && hasOutput && (
-        <div
-          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '60vh',
-            color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)',
-          }}
-        >
-          {errorText || outputText}
+      {/* Expanded output - smooth collapse */}
+      <div className={`collapsible-grid ${expanded && hasOutput ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '60vh',
+              color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)',
+            }}
+          >
+            {errorText || outputText}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

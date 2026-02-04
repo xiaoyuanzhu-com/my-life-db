@@ -403,23 +403,25 @@ function ToolCallGroup({
         </span>
       </button>
 
-      {/* Individual tool calls - indented */}
-      {isExpanded && (
-        <div className="ml-6 mt-2 space-y-2">
-          {toolCalls.map((toolCall) => (
-            <ToolBlock
-              key={toolCall.id}
-              toolCall={toolCall}
-              agentProgressMap={agentProgressMap}
-              bashProgressMap={bashProgressMap}
-              hookProgressMap={hookProgressMap}
-              skillContentMap={skillContentMap}
-              subagentMessagesMap={subagentMessagesMap}
-              depth={depth}
-            />
-          ))}
+      {/* Individual tool calls - indented with smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div className="ml-6 mt-2 space-y-2">
+            {toolCalls.map((toolCall) => (
+              <ToolBlock
+                key={toolCall.id}
+                toolCall={toolCall}
+                agentProgressMap={agentProgressMap}
+                bashProgressMap={bashProgressMap}
+                hookProgressMap={hookProgressMap}
+                skillContentMap={skillContentMap}
+                subagentMessagesMap={subagentMessagesMap}
+                depth={depth}
+              />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -528,17 +530,19 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
         </div>
       </button>
 
-      {/* Expanded content - rendered as markdown */}
-      {isExpanded && (
-        <div
-          className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '60vh',
-          }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      )}
+      {/* Expanded content - rendered as markdown with smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '60vh',
+            }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -829,35 +833,39 @@ function HookBlock({
         </div>
       </button>
 
-      {/* Expanded output content */}
-      {isExpanded && hasOutput && (
-        <div
-          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '40vh',
-            color: 'var(--claude-text-secondary)',
-          }}
-        >
-          {outputContent}
+      {/* Expanded output content with smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded && hasOutput ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '40vh',
+              color: 'var(--claude-text-secondary)',
+            }}
+          >
+            {outputContent}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Show stderr if present and different from stdout */}
-      {isExpanded && hookResponse?.stderr && hookResponse.stderr.trim() && hookResponse.stderr !== hookResponse.stdout && (
-        <div
-          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '20vh',
-            color: 'var(--claude-status-alert)',
-            border: '1px solid var(--claude-status-alert)',
-          }}
-        >
-          <div className="font-semibold mb-1">stderr:</div>
-          {hookResponse.stderr}
+      <div className={`collapsible-grid ${isExpanded && hookResponse?.stderr && hookResponse.stderr.trim() && hookResponse.stderr !== hookResponse.stdout ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '20vh',
+              color: 'var(--claude-status-alert)',
+              border: '1px solid var(--claude-status-alert)',
+            }}
+          >
+            <div className="font-semibold mb-1">stderr:</div>
+            {hookResponse?.stderr}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -920,23 +928,25 @@ function MicrocompactBlock({
         </div>
       </button>
 
-      {/* Expanded content - list of compacted tools */}
-      {isExpanded && hasDetails && (
-        <div
-          className="mt-2 ml-5 flex flex-col gap-1"
-          style={{ color: 'var(--claude-text-secondary)' }}
-        >
-          {compactedTools.map((tool) => (
-            <div key={tool.id} className="flex items-center gap-2">
-              <span className="select-none">└</span>
-              <span>{tool.name}</span>
-              <span style={{ color: 'var(--claude-text-tertiary)' }}>
-                {tool.title !== tool.name && tool.title}
-              </span>
-            </div>
-          ))}
+      {/* Expanded content - list of compacted tools with smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded && hasDetails ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 flex flex-col gap-1"
+            style={{ color: 'var(--claude-text-secondary)' }}
+          >
+            {compactedTools.map((tool) => (
+              <div key={tool.id} className="flex items-center gap-2">
+                <span className="select-none">└</span>
+                <span>{tool.name}</span>
+                <span style={{ color: 'var(--claude-text-tertiary)' }}>
+                  {tool.title !== tool.name && tool.title}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -189,9 +189,9 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
         </div>
       )}
 
-      {/* Expanded content: result + sub-agent session */}
-      {expanded && (
-        <>
+      {/* Expanded content: result + sub-agent session - smooth collapse */}
+      <div className={`collapsible-grid ${expanded ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
           {/* Result content (rendered as markdown or JSON in 60vh scrolling div) */}
           {result && (
             <div
@@ -224,44 +224,47 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                 </span>
               </button>
 
-              {agentExpanded && (
-                <div
-                  className="mt-2 pl-3 overflow-y-auto"
-                  style={{
-                    borderLeft: '2px solid var(--claude-border-light)',
-                    maxHeight: '60vh',
-                  }}
-                >
-                  {/* Show the prompt sent to the subagent */}
-                  {subagentPrompt && (
-                    <div
-                      className="mb-3 p-3 rounded text-[12px] whitespace-pre-wrap"
-                      style={{
-                        backgroundColor: 'var(--claude-bg-code-block)',
-                        color: 'var(--claude-text-secondary)',
-                      }}
-                    >
+              {/* Sub-agent content - smooth collapse */}
+              <div className={`collapsible-grid ${agentExpanded ? '' : 'collapsed'}`}>
+                <div className="collapsible-grid-content">
+                  <div
+                    className="mt-2 pl-3 overflow-y-auto"
+                    style={{
+                      borderLeft: '2px solid var(--claude-border-light)',
+                      maxHeight: '60vh',
+                    }}
+                  >
+                    {/* Show the prompt sent to the subagent */}
+                    {subagentPrompt && (
                       <div
-                        className="text-[10px] uppercase tracking-wide mb-1 font-medium"
-                        style={{ color: 'var(--claude-text-tertiary)' }}
+                        className="mb-3 p-3 rounded text-[12px] whitespace-pre-wrap"
+                        style={{
+                          backgroundColor: 'var(--claude-bg-code-block)',
+                          color: 'var(--claude-text-secondary)',
+                        }}
                       >
-                        Prompt
+                        <div
+                          className="text-[10px] uppercase tracking-wide mb-1 font-medium"
+                          style={{ color: 'var(--claude-text-tertiary)' }}
+                        >
+                          Prompt
+                        </div>
+                        {subagentPrompt}
                       </div>
-                      {subagentPrompt}
-                    </div>
-                  )}
-                  {nestedMessages.length > 0 && (
-                    <SessionMessages
-                      messages={nestedMessages}
-                      depth={depth + 1}
-                    />
-                  )}
+                    )}
+                    {nestedMessages.length > 0 && (
+                      <SessionMessages
+                        messages={nestedMessages}
+                        depth={depth + 1}
+                      />
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
       {/* Error (always visible) */}
       {toolCall.error && (

@@ -106,17 +106,19 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
         </div>
       )}
 
-      {/* Expanded markdown content (like thinking block) */}
-      {isExpanded && content && (
-        <div
-          className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '60vh',
-          }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      )}
+      {/* Expanded markdown content (like thinking block) - smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded && content ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '60vh',
+            }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+      </div>
 
       {/* Error */}
       {toolCall.error && (

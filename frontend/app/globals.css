@@ -256,6 +256,21 @@
   overflow: hidden;
 }
 
+/* Collapsible content using CSS Grid - smooth height transitions */
+.collapsible-grid {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease-out;
+}
+
+.collapsible-grid.collapsed {
+  grid-template-rows: 0fr;
+}
+
+.collapsible-grid-content {
+  overflow: hidden;
+}
+
 /* Initial hidden state for new items before animation starts */
 .animate-new-item-initial {
   opacity: 0;

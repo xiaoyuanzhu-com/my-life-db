@@ -52,14 +52,16 @@ export function TodoPanel({ todos }: TodoPanelProps) {
         />
       </div>
 
-      {/* Todo list */}
-      {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {todos.map((todo, index) => (
-            <TodoItemView key={index} todo={todo} />
-          ))}
+      {/* Todo list - uses CSS grid for smooth collapse animation */}
+      <div className={`collapsible-grid ${isCollapsed ? 'collapsed' : ''}`}>
+        <div className="collapsible-grid-content">
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {todos.map((todo, index) => (
+              <TodoItemView key={index} todo={todo} />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -99,38 +99,40 @@ export function WebSearchToolView({ toolCall }: WebSearchToolViewProps) {
         </div>
       ) : null}
 
-      {/* Expanded content: List of links */}
-      {isExpanded && hasContent && (
-        <div
-          className="mt-2 ml-5 p-3 rounded-md overflow-y-auto space-y-2"
-          style={{
-            backgroundColor: 'var(--claude-bg-code-block)',
-            maxHeight: '40vh',
-          }}
-        >
-          {links.map((link, index) => (
-            <div key={index} className="flex flex-col">
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline break-words"
-                style={{ color: 'var(--claude-text-link, #2563eb)' }}
-              >
-                {link.title || link.url}
-              </a>
-              {link.title && (
-                <span
-                  className="text-[11px] break-all"
-                  style={{ color: 'var(--claude-text-tertiary)' }}
+      {/* Expanded content: List of links - smooth collapse */}
+      <div className={`collapsible-grid ${isExpanded && hasContent ? '' : 'collapsed'}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto space-y-2"
+            style={{
+              backgroundColor: 'var(--claude-bg-code-block)',
+              maxHeight: '40vh',
+            }}
+          >
+            {links.map((link, index) => (
+              <div key={index} className="flex flex-col">
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline break-words"
+                  style={{ color: 'var(--claude-text-link, #2563eb)' }}
                 >
-                  {link.url}
-                </span>
-              )}
-            </div>
-          ))}
+                  {link.title || link.url}
+                </a>
+                {link.title && (
+                  <span
+                    className="text-[11px] break-all"
+                    style={{ color: 'var(--claude-text-tertiary)' }}
+                  >
+                    {link.url}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Error */}
       {toolCall.error && (
