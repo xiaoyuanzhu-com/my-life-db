@@ -61,7 +61,8 @@ export function AskUserQuestionToolView({ toolCall }: { toolCall: ToolCall }) {
         <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
           Ask User Question
         </span>
-        {!hasAnswers && toolCall.status !== 'running' && (
+        {/* Only show "(no response)" for terminal states (completed/failed) without answers */}
+        {!hasAnswers && (toolCall.status === 'completed' || toolCall.status === 'failed') && (
           <span className="text-[11px] text-muted-foreground">(no response)</span>
         )}
       </div>
