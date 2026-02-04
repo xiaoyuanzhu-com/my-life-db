@@ -16,6 +16,7 @@ import { WebSearchToolView } from './tools/web-search-tool'
 import { TaskToolView } from './tools/task-tool'
 import { TodoToolView } from './tools/todo-tool'
 import { SkillToolView } from './tools/skill-tool'
+import { AskUserQuestionToolView } from './tools/ask-user-question-tool'
 
 interface ToolBlockProps {
   toolCall: ToolCall
@@ -112,6 +113,8 @@ function ToolContent({
       return <TodoToolView toolCall={toolCall} />
     case 'Skill':
       return <SkillToolView toolCall={toolCall} skillContentMap={skillContentMap} />
+    case 'AskUserQuestion':
+      return <AskUserQuestionToolView toolCall={toolCall} />
     default:
       return <GenericToolView toolCall={toolCall} />
   }
