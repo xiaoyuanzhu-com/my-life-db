@@ -64,10 +64,11 @@ var (
 // - https://www.joinformal.com/blog/allowlisting-some-bash-commands-is-often-the-same-as-allowlisting-all-with-claude-code/
 var (
 	// Tools that are always allowed without prompting
+	// NOTE: AskUserQuestion is intentionally NOT in this list.
+	// It's handled specially in CreatePermissionCallback to broadcast to frontend.
 	allowedTools = []string{
 		// === No permission required by default ===
-		"AskUserQuestion", // Asks multiple-choice questions
-		"Glob",            // Finds files based on pattern matching
+		"Glob", // Finds files based on pattern matching
 		"Grep",            // Searches for patterns in file contents
 		"KillShell",       // Kills a running background bash shell
 		"LSP",             // Code intelligence via language servers

@@ -64,17 +64,25 @@ export function AskUserQuestion({ question, onAnswer, onSkip }: AskUserQuestionP
 
   const handleSubmit = () => {
     // Merge answers with "other" inputs
+    // Per SDK docs: keys should be the question text, values should be selected label(s)
     const finalAnswers: Record<string, string | string[]> = {}
 
     question.questions.forEach((q, index) => {
-      const key = `q${index}`
+      const key = `q${index}` // Internal key for state tracking
+      const questionText = q.question // The actual question text (used as answer key per SDK)
       const otherValue = otherInputs[key]
 
       if (otherValue && otherValue.trim()) {
         // Use "other" input if provided
-        finalAnswers[key] = otherValue.trim()
+        finalAnswers[questionText] = otherValue.trim()
       } else if (answers[key]) {
-        finalAnswers[key] = answers[key]
+        // For multi-select, join labels with ", "
+        const answer = answers[key]
+        if (Array.isArray(answer)) {
+          finalAnswers[questionText] = answer.join(', ')
+        } else {
+          finalAnswers[questionText] = answer
+        }
       }
     })
 

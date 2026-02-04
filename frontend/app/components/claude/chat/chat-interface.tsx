@@ -250,6 +250,29 @@ export function ChatInterface({
         return
       }
 
+      // Handle question_request - AskUserQuestion tool intercepted by permission callback
+      if (msg.type === 'question_request') {
+        const requestId = msg.request_id as string
+        const questions = msg.questions as Array<{
+          question: string
+          header: string
+          options: Array<{ label: string; description: string }>
+          multiSelect: boolean
+        }>
+
+        if (requestId && questions && questions.length > 0) {
+          setPendingQuestions((prev) => [
+            ...prev,
+            {
+              id: requestId,
+              toolCallId: requestId, // Use request_id as toolCallId for compatibility
+              questions,
+            },
+          ])
+        }
+        return
+      }
+
       // Handle system init message
       if (msg.type === 'system' && msg.subtype === 'init') {
         const initMsg: SessionMessage = {
@@ -523,23 +546,18 @@ export function ChatInterface({
     [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
   )
 
-  // Handle question answer - send tool_result back to Claude
+  // Handle question answer - send question_response back to backend
   const handleQuestionAnswer = useCallback(
     async (questionId: string, answers: Record<string, string | string[]>) => {
-      // Format the answer for Claude
-      const answerText = Object.entries(answers)
-        .map(([key, value]) => {
-          const answer = Array.isArray(value) ? value.join(', ') : value
-          return `${key}: ${answer}`
-        })
-        .join('\n')
-
       try {
         await ws.sendMessage({
-          type: 'tool_result',
-          tool_use_id: questionId,
-          content: `User selected: ${answerText}`,
+          type: 'question_response',
+          request_id: questionId,
+          answers: answers,
+          skipped: false,
         })
+        // Remove from pending questions
+        setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
       } catch (error) {
         console.error('[ChatInterface] Failed to send question answer:', error)
         setError('Failed to send answer')
@@ -550,15 +568,18 @@ export function ChatInterface({
     [ws.sendMessage]
   )
 
-  // Handle question skip - send empty/skipped tool_result
+  // Handle question skip - send question_response with skipped=true
   const handleQuestionSkip = useCallback(
     async (questionId: string) => {
       try {
         await ws.sendMessage({
-          type: 'tool_result',
-          tool_use_id: questionId,
-          content: 'User skipped this question',
+          type: 'question_response',
+          request_id: questionId,
+          answers: {},
+          skipped: true,
         })
+        // Remove from pending questions
+        setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
       } catch (error) {
         console.error('[ChatInterface] Failed to send question skip:', error)
         setError('Failed to skip question')
