@@ -281,14 +281,21 @@ export function ChatInterface({
 
       // Handle control_response - for permission tool responses and permission mode changes
       if (msg.type === 'control_response') {
+        const requestId = msg.request_id as string
+
         // Check if this is a set_permission_mode response
         const response = msg.response as { subtype?: string; mode?: string } | undefined
         if (response?.subtype === 'set_permission_mode' && response.mode) {
           setPermissionMode(response.mode as PermissionMode)
         }
+
+        // Remove from pendingQuestions if this response is for an AskUserQuestion
+        // (AskUserQuestion uses pendingQuestions, not pendingPermissions)
+        setPendingQuestions((prev) => prev.filter((q) => q.id !== requestId))
+
         // Also delegate to permissions hook (for can_use_tool responses)
         permissions.handleControlResponse({
-          request_id: msg.request_id as string,
+          request_id: requestId,
         })
         return
       }

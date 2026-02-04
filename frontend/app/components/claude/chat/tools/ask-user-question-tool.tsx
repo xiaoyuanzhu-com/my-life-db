@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { cn } from '~/lib/utils'
 import { Check } from 'lucide-react'
 import type { ToolCall } from '~/types/claude'
@@ -21,11 +20,9 @@ interface AskUserQuestionResult {
 /**
  * Renders an AskUserQuestion tool block in the message list.
  * Shows questions and answers in a read-only disabled state.
- * No collapsible header - directly renders all questions.
+ * All questions rendered flat in order.
  */
 export function AskUserQuestionToolView({ toolCall }: { toolCall: ToolCall }) {
-  const [activeTab, setActiveTab] = useState(0)
-
   const input = toolCall.parameters as unknown as AskUserQuestionInput
   const questions = input?.questions || []
 
@@ -45,9 +42,6 @@ export function AskUserQuestionToolView({ toolCall }: { toolCall: ToolCall }) {
   }
 
   const hasAnswers = Object.keys(answers).length > 0
-  const currentQuestion = questions[activeTab]
-  const currentKey = `q${activeTab}`
-  const currentAnswer = answers[currentKey]
 
   if (!questions.length) {
     return null
@@ -67,100 +61,79 @@ export function AskUserQuestionToolView({ toolCall }: { toolCall: ToolCall }) {
         )}
       </div>
 
-      {/* Question tabs and content */}
-      <div className="ml-5">
-        {/* Tabs */}
-        <div className="flex items-center gap-2 mb-3 overflow-x-auto">
-          {questions.map((q, index) => {
-            const key = `q${index}`
-            const hasAnswer = answers[key] !== undefined
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => setActiveTab(index)}
-                className={cn(
-                  'text-[12px] font-medium px-2 py-1 rounded transition-colors whitespace-nowrap',
-                  activeTab === index
-                    ? 'text-primary-foreground bg-primary'
-                    : hasAnswer
-                      ? 'text-muted-foreground bg-muted/50'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                )}
-              >
-                {q.header}
-              </button>
-            )
-          })}
-        </div>
+      {/* All questions rendered flat */}
+      <div className="ml-5 space-y-4">
+        {questions.map((q, qIndex) => {
+          const key = `q${qIndex}`
+          const answer = answers[key]
 
-        {/* Current Question Content */}
-        {currentQuestion && (
-          <div className="space-y-2">
-            {/* Question text */}
-            <p className="text-[13px] font-medium text-foreground">
-              {currentQuestion.question}
-            </p>
+          return (
+            <div key={qIndex} className="space-y-2">
+              {/* Question text */}
+              <p className="text-[13px] font-medium text-foreground">
+                {q.question}
+              </p>
 
-            {/* Options - compact table list (disabled/readonly) */}
-            <div className="border border-border rounded-lg overflow-hidden opacity-80">
-              {currentQuestion.options.map((option, oIndex) => {
-                const isSelected = currentQuestion.multiSelect
-                  ? Array.isArray(currentAnswer) && currentAnswer.includes(option.label)
-                  : currentAnswer === option.label
+              {/* Options - compact table list (disabled/readonly) */}
+              <div className="border border-border rounded-lg overflow-hidden opacity-80">
+                {q.options.map((option, oIndex) => {
+                  const isSelected = q.multiSelect
+                    ? Array.isArray(answer) && answer.includes(option.label)
+                    : answer === option.label
 
-                return (
-                  <div
-                    key={oIndex}
-                    className={cn(
-                      'w-full text-left px-3 py-2 flex items-center gap-3',
-                      oIndex > 0 && 'border-t border-border',
-                      isSelected ? 'bg-primary/10' : ''
-                    )}
-                  >
-                    {/* Checkbox indicator */}
+                  return (
                     <div
+                      key={oIndex}
                       className={cn(
-                        'h-4 w-4 border-2 flex items-center justify-center flex-shrink-0',
-                        currentQuestion.multiSelect ? 'rounded' : 'rounded-full',
-                        isSelected
-                          ? 'border-primary bg-primary'
-                          : 'border-muted-foreground/30'
+                        'w-full text-left px-3 py-2 flex items-center gap-3',
+                        oIndex > 0 && 'border-t border-border',
+                        isSelected ? 'bg-primary/10' : ''
                       )}
                     >
-                      {isSelected && (
-                        <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                      )}
+                      {/* Checkbox indicator */}
+                      <div
+                        className={cn(
+                          'h-4 w-4 border-2 flex items-center justify-center flex-shrink-0',
+                          q.multiSelect ? 'rounded' : 'rounded-full',
+                          isSelected
+                            ? 'border-primary bg-primary'
+                            : 'border-muted-foreground/30'
+                        )}
+                      >
+                        {isSelected && (
+                          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] font-medium">{option.label}</span>
+                        {option.description && (
+                          <span className="text-[11px] text-muted-foreground ml-2">
+                            {option.description}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[12px] font-medium">{option.label}</span>
-                      {option.description && (
-                        <span className="text-[11px] text-muted-foreground ml-2">
-                          {option.description}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
 
-              {/* Show "Other" answer if it exists and doesn't match any option */}
-              {currentAnswer &&
-                typeof currentAnswer === 'string' &&
-                !currentQuestion.options.some((o) => o.label === currentAnswer) && (
-                  <div className="w-full text-left px-3 py-2 flex items-center gap-3 border-t border-border bg-primary/10">
-                    <div className="h-4 w-4 border-2 border-primary bg-primary flex items-center justify-center flex-shrink-0 rounded-full">
-                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                {/* Show "Other" answer if it exists and doesn't match any option */}
+                {answer &&
+                  typeof answer === 'string' &&
+                  !q.options.some((o) => o.label === answer) && (
+                    <div className="w-full text-left px-3 py-2 flex items-center gap-3 border-t border-border bg-primary/10">
+                      <div className="h-4 w-4 border-2 border-primary bg-primary flex items-center justify-center flex-shrink-0 rounded-full">
+                        <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] font-medium">Other: </span>
+                        <span className="text-[12px] text-muted-foreground">{answer}</span>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[12px] font-medium">Other: </span>
-                      <span className="text-[12px] text-muted-foreground">{currentAnswer}</span>
-                    </div>
-                  </div>
-                )}
+                  )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })}
       </div>
     </div>
   )
