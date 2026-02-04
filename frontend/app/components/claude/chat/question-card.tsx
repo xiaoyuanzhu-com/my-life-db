@@ -43,10 +43,10 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
         })
       }
     } else {
-      // Single select: replace
+      // Single select: toggle (click again to unselect)
       setAnswers({
         ...answers,
-        [key]: optionLabel,
+        [key]: answers[key] === optionLabel ? '' : optionLabel,
       })
     }
   }
