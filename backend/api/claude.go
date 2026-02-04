@@ -1051,8 +1051,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				Response  struct {
 					Subtype  string `json:"subtype"`
 					Response struct {
-						Behavior string `json:"behavior"`
-						Message  string `json:"message"` // Denial reason (required for deny)
+						Behavior     string         `json:"behavior"`
+						Message      string         `json:"message"`       // Denial reason (required for deny)
+						UpdatedInput map[string]any `json:"updated_input"` // Updated tool input (for AskUserQuestion answers)
 					} `json:"response"`
 				} `json:"response"`
 				// Extended fields for "always allow" support
@@ -1072,6 +1073,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				controlResp.Response.Response.Message,
 				controlResp.ToolName,
 				controlResp.AlwaysAllow,
+				controlResp.Response.Response.UpdatedInput,
 			); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send control response")
 			} else {
@@ -1081,6 +1083,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Str("behavior", controlResp.Response.Response.Behavior).
 					Bool("alwaysAllow", controlResp.AlwaysAllow).
 					Str("toolName", controlResp.ToolName).
+					Bool("hasUpdatedInput", controlResp.Response.Response.UpdatedInput != nil).
 					Msg("sent control response to Claude")
 			}
 
@@ -1117,43 +1120,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Str("sessionId", sessionID).
 					Str("toolUseId", toolResult.ToolUseID).
 					Msg("sent tool result to Claude")
-			}
-
-		case "question_response":
-			// UI mode only: Handle responses to AskUserQuestion from the frontend
-			if session.Mode != claude.ModeUI {
-				log.Debug().Str("sessionId", sessionID).Msg("question_response received for non-UI session, ignoring")
-				break
-			}
-
-			// Parse the question_response message
-			var questionResp struct {
-				Type      string                 `json:"type"`
-				RequestID string                 `json:"request_id"`
-				Answers   map[string]interface{} `json:"answers"`
-				Skipped   bool                   `json:"skipped"`
-			}
-			if err := json.Unmarshal(msg, &questionResp); err != nil {
-				log.Debug().Err(err).Msg("Failed to parse question_response")
-				break
-			}
-
-			// Send the response to the pending question handler
-			if err := session.SendQuestionResponse(questionResp.RequestID, questionResp.Answers, questionResp.Skipped); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send question response")
-				errMsg := map[string]any{
-					"type":  "error",
-					"error": "Failed to send question response: " + err.Error(),
-				}
-				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-					conn.Write(ctx, websocket.MessageText, msgBytes)
-				}
-			} else {
-				log.Info().
-					Str("sessionId", sessionID).
-					Str("requestId", questionResp.RequestID).
-					Bool("skipped", questionResp.Skipped).
-					Msg("sent question response")
 			}
 
 		default:

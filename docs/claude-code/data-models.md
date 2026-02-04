@@ -1088,9 +1088,13 @@ The `AskUserQuestion` tool is used by Claude to ask the user questions during ex
 
 When using the SDK/UI mode (as opposed to CLI mode with `--dangerously-skip-permissions`), AskUserQuestion requires special handling because it needs user interaction before Claude can continue.
 
+**Key Principle: No Custom Message Types**
+
+AskUserQuestion uses the **same `control_request`/`control_response` protocol** as all other tools. We do NOT invent custom message types. The frontend detects `tool_name === "AskUserQuestion"` and shows the question UI instead of the permission UI.
+
 **Key Difference from Regular Tools:**
 - Regular tools: CanUseTool callback returns Allow/Deny, tool executes, Claude gets result
-- AskUserQuestion: CanUseTool callback broadcasts question to frontend, waits for user answer, returns Allow with UpdatedInput containing answers
+- AskUserQuestion: CanUseTool callback broadcasts `control_request`, frontend shows question UI, user answers, frontend sends `control_response` with `updated_input` containing answers
 
 **Flow:**
 
@@ -1103,45 +1107,52 @@ When using the SDK/UI mode (as opposed to CLI mode with `--dangerously-skip-perm
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │ 2. SDK CanUseTool callback is invoked                                           │
-│    └── Backend detects AskUserQuestion, generates question_request              │
+│    └── Standard permission flow (no special case for AskUserQuestion)           │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ 3. question_request broadcast to frontend via WebSocket                         │
+│ 3. control_request broadcast to frontend via WebSocket                          │
 │    {                                                                            │
-│      "type": "question_request",                                                │
-│      "request_id": "ask-user-1738668123456789",                                 │
-│      "questions": [...]                                                         │
+│      "type": "control_request",                                                 │
+│      "request_id": "sdk-perm-1738668123456789",                                 │
+│      "request": {                                                               │
+│        "subtype": "can_use_tool",                                               │
+│        "tool_name": "AskUserQuestion",                                          │
+│        "input": { "questions": [...] }                                          │
+│      }                                                                          │
 │    }                                                                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ 4. Frontend displays question UI, user selects answers                          │
+│ 4. Frontend detects tool_name="AskUserQuestion", shows question UI              │
+│    └── NOT the permission UI - a dedicated question card                        │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ 5. Frontend sends question_response via WebSocket                               │
+│ 5. Frontend sends control_response with updated_input containing answers        │
 │    {                                                                            │
-│      "type": "question_response",                                               │
-│      "request_id": "ask-user-1738668123456789",                                 │
-│      "answers": {"What is your favorite color?": "Blue"},                       │
-│      "skipped": false                                                           │
+│      "type": "control_response",                                                │
+│      "request_id": "sdk-perm-1738668123456789",                                 │
+│      "response": {                                                              │
+│        "subtype": "success",                                                    │
+│        "response": {                                                            │
+│          "behavior": "allow",                                                   │
+│          "updated_input": {                                                     │
+│            "questions": [...],                                                  │
+│            "answers": {"What is your favorite color?": "Blue"}                  │
+│          }                                                                      │
+│        }                                                                        │
+│      }                                                                          │
 │    }                                                                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │ 6. SDK callback returns PermissionResultAllow with UpdatedInput                 │
-│    {                                                                            │
-│      "behavior": "allow",                                                       │
-│      "updated_input": {                                                         │
-│        "questions": [...],                                                      │
-│        "answers": {"What is your favorite color?": "Blue"}                      │
-│      }                                                                          │
-│    }                                                                            │
+│    └── Contains both questions AND answers                                      │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -1151,49 +1162,70 @@ When using the SDK/UI mode (as opposed to CLI mode with `--dangerously-skip-perm
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**question_request Message:**
+**control_request for AskUserQuestion:**
+
+Uses the standard `control_request` format - same as all other tools:
+
 ```json
 {
-  "type": "question_request",
-  "request_id": "ask-user-1738668123456789",
-  "questions": [
-    {
-      "question": "Which database should we use for this project?",
-      "header": "Database",
-      "options": [
-        {"label": "PostgreSQL (Recommended)", "description": "..."},
-        {"label": "SQLite", "description": "..."}
-      ],
-      "multiSelect": false
+  "type": "control_request",
+  "request_id": "sdk-perm-1738668123456789",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "AskUserQuestion",
+    "input": {
+      "questions": [
+        {
+          "question": "Which database should we use for this project?",
+          "header": "Database",
+          "options": [
+            {"label": "PostgreSQL (Recommended)", "description": "..."},
+            {"label": "SQLite", "description": "..."}
+          ],
+          "multiSelect": false
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | Always `"question_request"` |
-| `request_id` | string | Unique ID to correlate request/response (format: `ask-user-{timestamp}`) |
-| `questions` | array | Same format as AskUserQuestion tool input |
+**control_response with updated_input (for answers):**
 
-**question_response Message:**
 ```json
 {
-  "type": "question_response",
-  "request_id": "ask-user-1738668123456789",
-  "answers": {
-    "Which database should we use for this project?": "PostgreSQL (Recommended)"
-  },
-  "skipped": false
+  "type": "control_response",
+  "request_id": "sdk-perm-1738668123456789",
+  "response": {
+    "subtype": "success",
+    "response": {
+      "behavior": "allow",
+      "updated_input": {
+        "questions": [...],
+        "answers": {
+          "Which database should we use for this project?": "PostgreSQL (Recommended)"
+        }
+      }
+    }
+  }
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | Always `"question_response"` |
-| `request_id` | string | Must match the `request_id` from `question_request` |
-| `answers` | object | Map of question text → selected answer. Keys are the full question text, not indices. |
-| `skipped` | boolean | If `true`, user skipped the question (tool returns deny with "User skipped this question") |
+**control_response for Skip (user declined to answer):**
+
+```json
+{
+  "type": "control_response",
+  "request_id": "sdk-perm-1738668123456789",
+  "response": {
+    "subtype": "success",
+    "response": {
+      "behavior": "deny",
+      "message": "User skipped this question"
+    }
+  }
+}
+```
 
 **Answer Format Requirements:**
 - Keys must be the **full question text** (e.g., `"Which database should we use?"`)
@@ -1204,8 +1236,8 @@ When using the SDK/UI mode (as opposed to CLI mode with `--dangerously-skip-perm
 
 AskUserQuestion is NOT in the `allowedTools` list intentionally. This ensures:
 1. The SDK's CanUseTool callback is invoked for this tool
-2. The backend can intercept it to broadcast questions to the frontend
-3. User interaction happens before the tool "executes"
+2. The standard `control_request` is broadcast to the frontend
+3. Frontend detects `tool_name === "AskUserQuestion"` and shows question UI
 4. The callback returns Allow with `UpdatedInput` containing both questions AND answers
 
 This pattern is documented in the official Claude Agent SDK: tools requiring user interaction should be handled via the permission callback with `UpdatedInput` to inject user responses.

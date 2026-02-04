@@ -379,13 +379,13 @@ The AskUserQuestion tool enables Claude to gather user input during execution. U
 
 **SDK/UI Mode Flow:**
 
-In UI mode, AskUserQuestion is handled specially through the permission callback:
+In UI mode, AskUserQuestion uses the **standard `control_request`/`control_response` protocol** (same as all other tools). The frontend detects `tool_name === "AskUserQuestion"` and shows the question UI instead of the permission UI.
 
 1. Claude calls `AskUserQuestion` tool
 2. SDK's `CanUseTool` callback is invoked (AskUserQuestion is NOT in allowedTools)
-3. Backend broadcasts `question_request` to frontend via WebSocket
-4. Frontend displays question UI, user selects answers
-5. Frontend sends `question_response` via WebSocket
+3. Backend broadcasts `control_request` to frontend via WebSocket (standard permission flow)
+4. Frontend detects `tool_name === "AskUserQuestion"`, shows question UI
+5. Frontend sends `control_response` with `updated_input` containing answers
 6. Callback returns `PermissionResultAllow` with `UpdatedInput` containing answers
 7. Claude receives tool_result with user's selections
 
@@ -393,8 +393,8 @@ In UI mode, AskUserQuestion is handled specially through the permission callback
 
 AskUserQuestion requires user interaction, so it cannot be auto-approved. The permission callback pattern allows the backend to:
 1. Intercept the tool call before execution
-2. Broadcast questions to all connected WebSocket clients
-3. Wait for user response
+2. Broadcast `control_request` to all connected WebSocket clients
+3. Wait for user response (via `control_response`)
 4. Inject user answers via `UpdatedInput`
 
 This matches the official Claude Agent SDK pattern for tools requiring user interaction.
@@ -405,10 +405,10 @@ This matches the official Claude Agent SDK pattern for tools requiring user inte
 assistant: tool_use AskUserQuestion
     │
     ▼ (CanUseTool callback)
-question_request → Frontend shows question UI
+control_request (tool_name="AskUserQuestion") → Frontend shows question UI
     │
     ▼ (User answers)
-question_response → Backend receives answers
+control_response (with updated_input) → Backend receives answers
     │
     ▼ (Callback returns Allow with UpdatedInput)
 user: tool_result (contains user's answers)

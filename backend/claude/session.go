@@ -18,10 +18,11 @@ import (
 
 // PermissionResponse represents a response to an SDK permission request
 type PermissionResponse struct {
-	Behavior    string // "allow" or "deny"
-	Message     string // Optional denial message
-	AlwaysAllow bool   // If true, remember this tool as always allowed for the session
-	ToolName    string // Tool name (needed for always-allow tracking)
+	Behavior     string         // "allow" or "deny"
+	Message      string         // Optional denial message
+	AlwaysAllow  bool           // If true, remember this tool as always allowed for the session
+	ToolName     string         // Tool name (needed for always-allow tracking)
+	UpdatedInput map[string]any // Updated tool input (used by AskUserQuestion to inject answers)
 }
 
 // pendingPermission stores a pending permission request with its metadata
@@ -118,18 +119,6 @@ type Session struct {
 	// Future permission requests for the same tool auto-allow without prompting.
 	alwaysAllowedTools   map[string]bool `json:"-"`
 	alwaysAllowedToolsMu sync.RWMutex    `json:"-"`
-
-	// Pending AskUserQuestion requests (SDK mode only)
-	// When AskUserQuestion is requested, we broadcast to frontend and wait for user answers.
-	// Maps request_id to response channel.
-	pendingQuestions   map[string]chan QuestionResponse `json:"-"`
-	pendingQuestionsMu sync.RWMutex                     `json:"-"`
-}
-
-// QuestionResponse represents the user's answer to an AskUserQuestion request
-type QuestionResponse struct {
-	Answers map[string]interface{} `json:"answers"` // Question key -> answer
-	Skipped bool                   `json:"skipped"` // True if user skipped
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -374,7 +363,8 @@ func (s *Session) SetPermissionMode(mode sdk.PermissionMode) error {
 // For legacy mode, writes directly to stdin.
 // If alwaysAllow is true and behavior is "allow", the tool is remembered for auto-approval.
 // The message parameter is required for "deny" behavior - it will be included in the tool_result error.
-func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, message string, toolName string, alwaysAllow bool) error {
+// The updatedInput parameter is used by AskUserQuestion to inject user answers into the tool input.
+func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, message string, toolName string, alwaysAllow bool, updatedInput map[string]any) error {
 	if s.Mode != ModeUI {
 		return fmt.Errorf("SendControlResponse called on non-UI session")
 	}
@@ -406,10 +396,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 			Str("requestId", requestID).
 			Str("behavior", behavior).
 			Bool("alwaysAllow", alwaysAllow).
+			Bool("hasUpdatedInput", updatedInput != nil).
 			Msg("routing control response to SDK permission channel")
 
 		select {
-		case pending.ch <- PermissionResponse{Behavior: behavior, Message: message, ToolName: toolName, AlwaysAllow: alwaysAllow}:
+		case pending.ch <- PermissionResponse{Behavior: behavior, Message: message, ToolName: toolName, AlwaysAllow: alwaysAllow, UpdatedInput: updatedInput}:
 			// Broadcast control_response to ALL clients so they can clear their permission UI
 			// This handles the case where multiple tabs have the same session open
 			responseMsg := fmt.Sprintf(`{"type":"control_response","request_id":%q,"behavior":%q}`,
@@ -683,15 +674,10 @@ func (s *Session) ResolveControlRequest(requestID string, response map[string]in
 // This matches the behavior of the official Python Agent SDK.
 func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 	return func(toolName string, input map[string]any, ctx sdk.ToolPermissionContext) (sdk.PermissionResult, error) {
-		// Special handling for AskUserQuestion
-		// This tool requires user interaction, so we handle it specially:
-		// 1. Broadcast the questions to frontend
-		// 2. Wait for user answers
-		// 3. Return PermissionResultDeny with the answers in the message
-		//    (The "deny" message becomes Claude's way of receiving the user's answers)
-		if toolName == "AskUserQuestion" {
-			return s.handleAskUserQuestion(input)
-		}
+		// NOTE: AskUserQuestion is handled through the standard permission flow.
+		// The frontend detects tool_name="AskUserQuestion" in control_request and shows
+		// the question UI instead of the permission UI. The response includes updated_input
+		// with the user's answers.
 
 		// Check if tool is in the configured allowedTools list
 		// This handles both simple tool names and Bash patterns
@@ -779,12 +765,19 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 				Str("sessionId", s.ID).
 				Str("requestId", requestID).
 				Str("behavior", resp.Behavior).
+				Bool("hasUpdatedInput", resp.UpdatedInput != nil).
 				Msg("permission callback received response")
 
 			if resp.Behavior == "allow" {
-				return sdk.PermissionResultAllow{
+				result := sdk.PermissionResultAllow{
 					Behavior: sdk.PermissionAllow,
-				}, nil
+				}
+				// If UpdatedInput is provided (e.g., from AskUserQuestion with user answers),
+				// include it in the result so Claude receives the modified input
+				if resp.UpdatedInput != nil {
+					result.UpdatedInput = resp.UpdatedInput
+				}
+				return result, nil
 			}
 			// Ensure deny message is not empty (required by Anthropic API)
 			denyMessage := resp.Message
@@ -807,128 +800,6 @@ func (s *Session) CreatePermissionCallback() sdk.CanUseToolFunc {
 				Message:  "Session closed",
 			}, nil
 		}
-	}
-}
-
-// handleAskUserQuestion handles the AskUserQuestion tool by broadcasting to the frontend
-// and waiting for user input. This is called by the permission callback.
-//
-// Flow (per official SDK docs at platform.claude.com/docs/en/agent-sdk/user-input):
-// 1. Extract questions from tool input
-// 2. Generate a unique request ID
-// 3. Broadcast question_request to frontend via WebSocket
-// 4. Wait for user to answer (or skip)
-// 5. Return PermissionResultAllow with updated_input containing both questions AND answers
-//    (The tool executes with the modified input, Claude receives the answers)
-func (s *Session) handleAskUserQuestion(input map[string]any) (sdk.PermissionResult, error) {
-	// Generate unique request ID
-	requestID := fmt.Sprintf("ask-user-%d", time.Now().UnixNano())
-
-	// Create response channel
-	responseChan := make(chan QuestionResponse, 1)
-
-	// Register pending question
-	s.pendingQuestionsMu.Lock()
-	if s.pendingQuestions == nil {
-		s.pendingQuestions = make(map[string]chan QuestionResponse)
-	}
-	s.pendingQuestions[requestID] = responseChan
-	s.pendingQuestionsMu.Unlock()
-
-	// Build question_request message for frontend
-	questionRequest := map[string]interface{}{
-		"type":       "question_request",
-		"request_id": requestID,
-		"questions":  input["questions"],
-	}
-
-	// Serialize and broadcast
-	data, err := json.Marshal(questionRequest)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to marshal question_request")
-		return sdk.PermissionResultDeny{
-			Behavior: sdk.PermissionDeny,
-			Message:  "Failed to marshal question request",
-		}, nil
-	}
-
-	// Clean up on exit
-	defer func() {
-		s.pendingQuestionsMu.Lock()
-		delete(s.pendingQuestions, requestID)
-		s.pendingQuestionsMu.Unlock()
-	}()
-
-	// Broadcast to WebSocket clients
-	s.BroadcastUIMessage(data)
-
-	log.Info().
-		Str("sessionId", s.ID).
-		Str("requestId", requestID).
-		Msg("AskUserQuestion waiting for user response")
-
-	// Wait for response or session close
-	select {
-	case resp := <-responseChan:
-		log.Info().
-			Str("sessionId", s.ID).
-			Str("requestId", requestID).
-			Bool("skipped", resp.Skipped).
-			Msg("AskUserQuestion received user response")
-
-		if resp.Skipped {
-			// User skipped - deny the tool with a message
-			return sdk.PermissionResultDeny{
-				Behavior: sdk.PermissionDeny,
-				Message:  "User skipped this question",
-			}, nil
-		}
-
-		// Return Allow with updated input containing both questions and answers
-		// Per SDK docs: the tool executes with the modified input
-		updatedInput := map[string]any{
-			"questions": input["questions"],
-			"answers":   resp.Answers,
-		}
-
-		return sdk.PermissionResultAllow{
-			Behavior:     sdk.PermissionAllow,
-			UpdatedInput: updatedInput,
-		}, nil
-
-	case <-s.sdkCtx.Done():
-		log.Debug().
-			Str("sessionId", s.ID).
-			Str("requestId", requestID).
-			Msg("AskUserQuestion cancelled (session closed)")
-		return sdk.PermissionResultDeny{
-			Behavior: sdk.PermissionDeny,
-			Message:  "Session closed",
-		}, nil
-	}
-}
-
-// SendQuestionResponse sends a user's response to an AskUserQuestion request.
-// Called from the WebSocket handler when the frontend sends a question_response message.
-func (s *Session) SendQuestionResponse(requestID string, answers map[string]interface{}, skipped bool) error {
-	s.pendingQuestionsMu.RLock()
-	respChan, ok := s.pendingQuestions[requestID]
-	s.pendingQuestionsMu.RUnlock()
-
-	if !ok || respChan == nil {
-		return fmt.Errorf("no pending question with request_id: %s", requestID)
-	}
-
-	select {
-	case respChan <- QuestionResponse{Answers: answers, Skipped: skipped}:
-		log.Info().
-			Str("sessionId", s.ID).
-			Str("requestId", requestID).
-			Bool("skipped", skipped).
-			Msg("sent question response to handler")
-		return nil
-	default:
-		return fmt.Errorf("question response channel full or closed")
 	}
 }
 
