@@ -188,8 +188,8 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
           {currentQuestion.question}
         </p>
 
-        {/* Options */}
-        <div className="space-y-1">
+        {/* Options - compact table list */}
+        <div className="border border-border rounded-lg overflow-hidden">
           {currentQuestion.options.map((option, oIndex) => {
             const isSelected = currentQuestion.multiSelect
               ? ((answers[currentKey] as string[]) || []).includes(option.label)
@@ -204,36 +204,33 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
                 }
                 disabled={isDismissing}
                 className={cn(
-                  'w-full text-left rounded-lg border p-3 transition-colors',
-                  isSelected
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:border-muted-foreground/50',
+                  'w-full text-left px-3 py-2 transition-colors flex items-center gap-3',
+                  oIndex > 0 && 'border-t border-border',
+                  isSelected ? 'bg-primary/10' : 'hover:bg-muted/50',
                   isDismissing && 'opacity-50 cursor-not-allowed'
                 )}
               >
-                <div className="flex items-start gap-3">
-                  {/* Checkbox indicator */}
-                  <div
-                    className={cn(
-                      'mt-0.5 h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0',
-                      currentQuestion.multiSelect ? 'rounded' : 'rounded-full',
-                      isSelected
-                        ? 'border-primary bg-primary'
-                        : 'border-muted-foreground/50'
-                    )}
-                  >
-                    {isSelected && (
-                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium">{option.label}</div>
-                    {option.description && (
-                      <div className="text-[12px] text-muted-foreground mt-0.5">
-                        {option.description}
-                      </div>
-                    )}
-                  </div>
+                {/* Checkbox indicator */}
+                <div
+                  className={cn(
+                    'h-4 w-4 border-2 flex items-center justify-center flex-shrink-0',
+                    currentQuestion.multiSelect ? 'rounded' : 'rounded-full',
+                    isSelected
+                      ? 'border-primary bg-primary'
+                      : 'border-muted-foreground/40'
+                  )}
+                >
+                  {isSelected && (
+                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[13px] font-medium">{option.label}</span>
+                  {option.description && (
+                    <span className="text-[12px] text-muted-foreground ml-2">
+                      {option.description}
+                    </span>
+                  )}
                 </div>
               </button>
             )
@@ -243,35 +240,32 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
           <button
             type="button"
             onClick={() => {
-              // Focus the input when clicking "Other"
               const input = document.getElementById(`other-input-${activeTab}`)
               if (input) input.focus()
             }}
             disabled={isDismissing}
             className={cn(
-              'w-full text-left rounded-lg border p-3 transition-colors',
-              otherInputs[currentKey]?.trim()
-                ? 'border-primary bg-primary/10'
-                : 'border-border hover:border-muted-foreground/50',
+              'w-full text-left px-3 py-2 transition-colors border-t border-border',
+              otherInputs[currentKey]?.trim() ? 'bg-primary/10' : 'hover:bg-muted/50',
               isDismissing && 'opacity-50 cursor-not-allowed'
             )}
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-center gap-3">
               <div
                 className={cn(
-                  'mt-0.5 h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0',
+                  'h-4 w-4 border-2 flex items-center justify-center flex-shrink-0',
                   currentQuestion.multiSelect ? 'rounded' : 'rounded-full',
                   otherInputs[currentKey]?.trim()
                     ? 'border-primary bg-primary'
-                    : 'border-muted-foreground/50'
+                    : 'border-muted-foreground/40'
                 )}
               >
                 {otherInputs[currentKey]?.trim() && (
                   <Check className="h-2.5 w-2.5 text-primary-foreground" />
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium">Other</div>
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <span className="text-[13px] font-medium flex-shrink-0">Other</span>
                 <Input
                   id={`other-input-${activeTab}`}
                   placeholder="Type your answer..."
@@ -279,7 +273,7 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
                   onChange={(e) => handleOtherInput(activeTab, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   disabled={isDismissing}
-                  className="mt-1.5 h-7 text-[12px]"
+                  className="h-6 text-[12px] flex-1"
                 />
               </div>
             </div>
@@ -288,25 +282,14 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-        {/* Submit button with keyboard hint */}
+      <div className="flex items-center justify-end mt-4 pt-3 border-t border-border">
         <button
           onClick={handleSubmit}
           disabled={isDismissing || !isValid}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted text-[13px] text-foreground hover:bg-muted/80 transition-colors cursor-pointer disabled:opacity-50"
+          className="px-3 py-1.5 rounded-md bg-primary text-[13px] text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
         >
-          {isFirst && (
-            <span className="text-muted-foreground font-mono text-[11px]">1</span>
-          )}
           Submit answers
         </button>
-
-        {/* Esc to cancel hint */}
-        {isFirst && (
-          <span className="text-[12px] text-muted-foreground">
-            Esc to cancel
-          </span>
-        )}
       </div>
     </div>
   )
