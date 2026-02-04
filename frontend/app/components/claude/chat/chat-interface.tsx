@@ -401,12 +401,15 @@ export function ChatInterface({
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
 
-  // Detect AskUserQuestion tool_use blocks that need user response
+  // Detect AskUserQuestion tool_use blocks that need user response (for historical sessions)
   // These are tool_use blocks from assistant messages where:
   // 1. name === 'AskUserQuestion'
   // 2. No corresponding tool_result exists yet
+  // NOTE: For live sessions, questions come via question_request messages which use a different
+  // request_id format (ask-user-xxx). We preserve those and only add detected tool_use questions
+  // that aren't already pending.
   useEffect(() => {
-    const questions: UserQuestion[] = []
+    const detectedQuestions: UserQuestion[] = []
 
     for (const msg of rawMessages) {
       if (msg.type !== 'assistant') continue
@@ -431,7 +434,7 @@ export function ChatInterface({
         }
 
         if (input.questions && input.questions.length > 0) {
-          questions.push({
+          detectedQuestions.push({
             id: block.id,
             toolCallId: block.id,
             questions: input.questions,
@@ -440,7 +443,20 @@ export function ChatInterface({
       }
     }
 
-    setPendingQuestions(questions)
+    // Only use tool_use detection for historical sessions (when no question_request questions exist)
+    // For live sessions, question_request messages handle questions with proper request IDs
+    setPendingQuestions((prev) => {
+      // Keep questions from question_request (they have ask-user-xxx format)
+      const questionRequestQuestions = prev.filter((q) => q.id.startsWith('ask-user-'))
+
+      // If we have question_request questions, don't add tool_use detected ones (live session)
+      if (questionRequestQuestions.length > 0) {
+        return questionRequestQuestions
+      }
+
+      // No question_request questions = historical session, use tool_use detection
+      return detectedQuestions
+    })
   }, [rawMessages, toolResultMap])
 
   // ============================================================================
