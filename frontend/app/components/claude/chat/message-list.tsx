@@ -38,9 +38,12 @@ interface MessageListProps {
  * which can be used recursively for nested agent sessions.
  */
 export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, wipText, onScrollElementReady }: MessageListProps) {
+  // use-stick-to-bottom with velocity-based spring animations
+  // 'smooth' enables natural deceleration for streaming content
+  // This adapts scroll speed to distance - faster when far behind, slower when close
   const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
-    initial: 'instant',
-    resize: 'instant',
+    initial: 'smooth',
+    resize: 'smooth',
   })
 
   // Track scroll element for parent callback and scroll listeners

@@ -317,6 +317,23 @@
   animation: blink 1s step-end infinite;
 }
 
+/* Streaming text fade+blur animation - words "materialize" into focus
+   Used for smooth word appearance during LLM streaming */
+@keyframes stream-fade-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.animate-stream-word {
+  animation: stream-fade-in 120ms ease-out forwards;
+}
+
 /* ============================================
    Claude Code Interface - Design System
    ============================================ */

@@ -78,6 +78,11 @@ export function ChatInterface({
   // Streaming text - accumulates text from stream_event messages for progressive display
   const [streamingText, setStreamingText] = useState<string>('')
 
+  // Token batching for smooth streaming UX
+  // Tokens are buffered and flushed every 40ms to reduce re-renders and smooth visual appearance
+  const streamingBufferRef = useRef<string[]>([])
+  const streamingFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // Permission mode state - tracks current session permission mode
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
 
@@ -186,18 +191,21 @@ export function ChatInterface({
         const eventType = event.type as string | undefined
 
         // Handle text deltas from content_block_delta events
+        // Buffer tokens instead of immediate state update for smoother visual appearance
         if (eventType === 'content_block_delta') {
           const delta = event.delta as Record<string, unknown> | undefined
           if (delta?.type === 'text_delta') {
             const text = delta.text as string | undefined
             if (text) {
-              setStreamingText((prev) => prev + text)
+              streamingBufferRef.current.push(text)
             }
           }
         }
 
         // Clear streaming text on message_stop (response complete)
+        // Also flush any remaining buffer immediately
         if (eventType === 'message_stop') {
+          streamingBufferRef.current = []
           setStreamingText('')
         }
 
@@ -222,13 +230,42 @@ export function ChatInterface({
       }
 
       // Handle control_request - delegate to permissions hook
+      // Special case: AskUserQuestion is handled via the standard permission protocol
+      // but we show the question UI instead of the permission UI
       if (msg.type === 'control_request') {
         const request = msg.request as { subtype?: string; tool_name?: string; input?: Record<string, unknown> } | undefined
         if (request?.subtype === 'can_use_tool') {
+          const requestId = msg.request_id as string
+          const toolName = request.tool_name || ''
+
+          // AskUserQuestion: show question UI instead of permission UI
+          if (toolName === 'AskUserQuestion') {
+            const input = request.input as { questions?: Array<{
+              question: string
+              header: string
+              options: Array<{ label: string; description: string }>
+              multiSelect: boolean
+            }> } | undefined
+            const questions = input?.questions
+
+            if (requestId && questions && questions.length > 0) {
+              setPendingQuestions((prev) => [
+                ...prev,
+                {
+                  id: requestId,
+                  toolCallId: requestId, // Use request_id as toolCallId for compatibility
+                  questions,
+                },
+              ])
+            }
+            return
+          }
+
+          // Regular tools: show permission UI
           permissions.handleControlRequest({
-            request_id: msg.request_id as string,
+            request_id: requestId,
             request: {
-              tool_name: request.tool_name || '',
+              tool_name: toolName,
               input: request.input,
             },
           })
@@ -247,29 +284,6 @@ export function ChatInterface({
         permissions.handleControlResponse({
           request_id: msg.request_id as string,
         })
-        return
-      }
-
-      // Handle question_request - AskUserQuestion tool intercepted by permission callback
-      if (msg.type === 'question_request') {
-        const requestId = msg.request_id as string
-        const questions = msg.questions as Array<{
-          question: string
-          header: string
-          options: Array<{ label: string; description: string }>
-          multiSelect: boolean
-        }>
-
-        if (requestId && questions && questions.length > 0) {
-          setPendingQuestions((prev) => [
-            ...prev,
-            {
-              id: requestId,
-              toolCallId: requestId, // Use request_id as toolCallId for compatibility
-              questions,
-            },
-          ])
-        }
         return
       }
 
@@ -405,8 +419,8 @@ export function ChatInterface({
   // These are tool_use blocks from assistant messages where:
   // 1. name === 'AskUserQuestion'
   // 2. No corresponding tool_result exists yet
-  // NOTE: For live sessions, questions come via question_request messages which use a different
-  // request_id format (ask-user-xxx). We preserve those and only add detected tool_use questions
+  // NOTE: For live sessions, questions come via control_request messages which use a different
+  // request_id format (sdk-perm-xxx). We preserve those and only add detected tool_use questions
   // that aren't already pending.
   useEffect(() => {
     const detectedQuestions: UserQuestion[] = []
@@ -443,18 +457,18 @@ export function ChatInterface({
       }
     }
 
-    // Only use tool_use detection for historical sessions (when no question_request questions exist)
-    // For live sessions, question_request messages handle questions with proper request IDs
+    // Only use tool_use detection for historical sessions (when no control_request questions exist)
+    // For live sessions, control_request messages handle questions with proper request IDs
     setPendingQuestions((prev) => {
-      // Keep questions from question_request (they have ask-user-xxx format)
-      const questionRequestQuestions = prev.filter((q) => q.id.startsWith('ask-user-'))
+      // Keep questions from control_request (they have sdk-perm-xxx format)
+      const controlRequestQuestions = prev.filter((q) => q.id.startsWith('sdk-perm-'))
 
-      // If we have question_request questions, don't add tool_use detected ones (live session)
-      if (questionRequestQuestions.length > 0) {
-        return questionRequestQuestions
+      // If we have control_request questions, don't add tool_use detected ones (live session)
+      if (controlRequestQuestions.length > 0) {
+        return controlRequestQuestions
       }
 
-      // No question_request questions = historical session, use tool_use detection
+      // No control_request questions = historical session, use tool_use detection
       return detectedQuestions
     })
   }, [rawMessages, toolResultMap])
@@ -476,6 +490,7 @@ export function ChatInterface({
     setError(null)
     setProgressMessage(null)
     setStreamingText('')
+    streamingBufferRef.current = [] // Clear buffered tokens on session change
     setPermissionMode('default')
     permissions.reset()
     hasRefreshedRef.current = false
@@ -494,6 +509,24 @@ export function ChatInterface({
     return () => {
       if (initialLoadTimerRef.current) {
         clearTimeout(initialLoadTimerRef.current)
+      }
+    }
+  }, [])
+
+  // Token batching: flush buffer every 40ms for smooth streaming UX
+  // This reduces re-renders from ~100/sec to ~25/sec while maintaining perceived responsiveness
+  useEffect(() => {
+    streamingFlushIntervalRef.current = setInterval(() => {
+      if (streamingBufferRef.current.length > 0) {
+        const bufferedText = streamingBufferRef.current.join('')
+        streamingBufferRef.current = []
+        setStreamingText((prev) => prev + bufferedText)
+      }
+    }, 40) // ~25 updates/second
+
+    return () => {
+      if (streamingFlushIntervalRef.current) {
+        clearInterval(streamingFlushIntervalRef.current)
       }
     }
   }, [])
@@ -562,15 +595,34 @@ export function ChatInterface({
     [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
   )
 
-  // Handle question answer - send question_response back to backend
+  // Handle question answer - send control_response with updated_input back to backend
+  // AskUserQuestion uses the standard permission protocol with updated_input for answers
   const handleQuestionAnswer = useCallback(
     async (questionId: string, answers: Record<string, string | string[]>) => {
       try {
+        // Find the pending question to get the original questions array
+        const pendingQuestion = pendingQuestions.find((q) => q.id === questionId)
+        if (!pendingQuestion) {
+          console.error('[ChatInterface] Question not found:', questionId)
+          return
+        }
+
+        // Send control_response with updated_input containing questions and answers
         await ws.sendMessage({
-          type: 'question_response',
+          type: 'control_response',
           request_id: questionId,
-          answers: answers,
-          skipped: false,
+          response: {
+            subtype: 'success',
+            response: {
+              behavior: 'allow',
+              updated_input: {
+                questions: pendingQuestion.questions,
+                answers: answers,
+              },
+            },
+          },
+          tool_name: 'AskUserQuestion',
+          always_allow: false,
         })
         // Remove from pending questions
         setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
@@ -581,18 +633,26 @@ export function ChatInterface({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ws.sendMessage]
+    [ws.sendMessage, pendingQuestions]
   )
 
-  // Handle question skip - send question_response with skipped=true
+  // Handle question skip - send control_response with behavior=deny
   const handleQuestionSkip = useCallback(
     async (questionId: string) => {
       try {
+        // Send control_response with deny behavior
         await ws.sendMessage({
-          type: 'question_response',
+          type: 'control_response',
           request_id: questionId,
-          answers: {},
-          skipped: true,
+          response: {
+            subtype: 'success',
+            response: {
+              behavior: 'deny',
+              message: 'User skipped this question',
+            },
+          },
+          tool_name: 'AskUserQuestion',
+          always_allow: false,
         })
         // Remove from pending questions
         setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
