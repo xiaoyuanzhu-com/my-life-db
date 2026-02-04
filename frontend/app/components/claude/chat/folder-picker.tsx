@@ -193,6 +193,10 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     ...children,
   ]
 
+  // Filter recent folders to exclude those already in browse list
+  const optionsSet = new Set(options)
+  const filteredRecentFolders = recentFolders.filter(folder => !optionsSet.has(folder))
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -213,15 +217,15 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start" side="top">
         <div className="max-h-64 overflow-y-auto">
-          {/* Recent folders section */}
-          {recentFolders.length > 0 && (
+          {/* Recent folders section - only show if there are filtered recent folders */}
+          {filteredRecentFolders.length > 0 && (
             <>
               <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 Recent
               </div>
               <div className="space-y-0.5 mb-1">
-                {recentFolders.map((folder) => (
+                {filteredRecentFolders.map((folder) => (
                   <button
                     key={`recent-${folder}`}
                     type="button"
