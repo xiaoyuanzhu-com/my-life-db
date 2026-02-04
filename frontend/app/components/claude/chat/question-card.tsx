@@ -59,13 +59,12 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
     })
   }
 
-  // Check if all questions have valid answers
-  const isValid = question.questions.every((q, index) => {
+  // Check if at least one question has an answer (allow partial submission)
+  const isValid = question.questions.some((q, index) => {
     const key = `q${index}`
     const answer = answers[key]
     const other = otherInputs[key]
 
-    // Valid if has answer or has other input
     if (other && other.trim()) return true
     if (q.multiSelect) {
       return Array.isArray(answer) && answer.length > 0
