@@ -366,6 +366,64 @@ The TodoWrite tool enables Claude to track task progress, giving users visibilit
 - `in_progress` → Show `activeForm` with half-filled indicator (◐)
 - `completed` → Show `content` with strikethrough and filled checkbox (●)
 
+### AskUserQuestion Tool
+
+The AskUserQuestion tool enables Claude to gather user input during execution. Unlike other tools which execute automatically, this tool requires **user interaction** before continuing.
+
+**Key Behaviors:**
+
+| Mode | Behavior |
+|------|----------|
+| **CLI mode** (`--dangerously-skip-permissions`) | Claude auto-generates empty answers and continues |
+| **SDK/UI mode** (permission callback) | Questions broadcast to frontend, waits for user answers |
+
+**SDK/UI Mode Flow:**
+
+In UI mode, AskUserQuestion is handled specially through the permission callback:
+
+1. Claude calls `AskUserQuestion` tool
+2. SDK's `CanUseTool` callback is invoked (AskUserQuestion is NOT in allowedTools)
+3. Backend broadcasts `question_request` to frontend via WebSocket
+4. Frontend displays question UI, user selects answers
+5. Frontend sends `question_response` via WebSocket
+6. Callback returns `PermissionResultAllow` with `UpdatedInput` containing answers
+7. Claude receives tool_result with user's selections
+
+**Why It Uses Permission Callback:**
+
+AskUserQuestion requires user interaction, so it cannot be auto-approved. The permission callback pattern allows the backend to:
+1. Intercept the tool call before execution
+2. Broadcast questions to all connected WebSocket clients
+3. Wait for user response
+4. Inject user answers via `UpdatedInput`
+
+This matches the official Claude Agent SDK pattern for tools requiring user interaction.
+
+**Message Flow (SDK Mode):**
+
+```
+assistant: tool_use AskUserQuestion
+    │
+    ▼ (CanUseTool callback)
+question_request → Frontend shows question UI
+    │
+    ▼ (User answers)
+question_response → Backend receives answers
+    │
+    ▼ (Callback returns Allow with UpdatedInput)
+user: tool_result (contains user's answers)
+    │
+    ▼
+assistant: continues with knowledge of user's selection
+```
+
+**Answer Format:**
+- Keys are the **full question text** (not indices)
+- Values are the **selected option label** or custom text
+- Example: `{"Which database?": "PostgreSQL (Recommended)"}`
+
+See [data-models.md Section 4i](./data-models.md#askuserquestion-in-ui-mode-sdk) for detailed message formats.
+
 ---
 
 ## 3. Permission System

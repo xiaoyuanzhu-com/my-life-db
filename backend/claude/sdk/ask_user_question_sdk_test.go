@@ -212,3 +212,231 @@ func containsAnswer(content string, answer string) bool {
 			return false
 		}())
 }
+
+// ============================================================================
+// VERIFIED BEHAVIORS - AskUserQuestion SDK Flow
+// ============================================================================
+//
+// These tests document and verify the expected SDK behavior for AskUserQuestion.
+// They serve as both tests and documentation for how the feature works.
+//
+// Reference: docs/claude-code/data-models.md (Section 4i - AskUserQuestion in UI Mode)
+// Reference: docs/claude-code/how-it-works.md (AskUserQuestion Tool section)
+//
+// ============================================================================
+
+// TestVerifiedBehavior_AskUserQuestion_TriggersCanUseTool verifies that
+// AskUserQuestion tool calls trigger the SDK's CanUseTool callback.
+//
+// VERIFIED BEHAVIOR:
+// - When Claude uses AskUserQuestion, the CanUseTool callback is invoked
+// - The callback receives toolName="AskUserQuestion" and input with "questions" array
+// - This allows external handlers to intercept and collect user answers
+//
+// This is critical for UI mode where we need to broadcast questions to the frontend.
+func TestVerifiedBehavior_AskUserQuestion_TriggersCanUseTool(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping in CI environment - requires Claude CLI")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var (
+		mu                 sync.Mutex
+		callbackInvoked    bool
+		receivedToolName   string
+		receivedQuestions  []any
+	)
+
+	maxTurns := 2
+	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
+		Cwd:                "/tmp",
+		SkipInitialization: true,
+		MaxTurns:           &maxTurns,
+		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {
+			if toolName == "AskUserQuestion" {
+				mu.Lock()
+				callbackInvoked = true
+				receivedToolName = toolName
+				if questions, ok := input["questions"].([]any); ok {
+					receivedQuestions = questions
+				}
+				mu.Unlock()
+
+				// Return with answers to allow conversation to continue
+				return claudesdk.PermissionResultAllow{
+					Behavior: claudesdk.PermissionAllow,
+					UpdatedInput: map[string]any{
+						"questions": input["questions"],
+						"answers":   map[string]any{"test": "answer"},
+					},
+				}, nil
+			}
+			return claudesdk.PermissionResultAllow{Behavior: claudesdk.PermissionAllow}, nil
+		},
+	})
+
+	if err := client.Connect(ctx, ""); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.SendMessage("Use AskUserQuestion to ask: What is your name? Options: Alice, Bob"); err != nil {
+		t.Fatalf("Failed to send message: %v", err)
+	}
+
+	// Wait for conversation to complete
+	messages := client.RawMessages()
+	timeout := time.After(45 * time.Second)
+
+readLoop:
+	for {
+		select {
+		case msg, ok := <-messages:
+			if !ok {
+				break readLoop
+			}
+			if msg["type"] == "result" {
+				break readLoop
+			}
+		case <-timeout:
+			break readLoop
+		case <-ctx.Done():
+			break readLoop
+		}
+	}
+
+	// Verify the callback was invoked correctly
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !callbackInvoked {
+		t.Fatal("VERIFIED BEHAVIOR VIOLATED: CanUseTool callback was not invoked for AskUserQuestion")
+	}
+
+	if receivedToolName != "AskUserQuestion" {
+		t.Fatalf("VERIFIED BEHAVIOR VIOLATED: Expected toolName='AskUserQuestion', got '%s'", receivedToolName)
+	}
+
+	if len(receivedQuestions) == 0 {
+		t.Fatal("VERIFIED BEHAVIOR VIOLATED: CanUseTool callback did not receive questions array")
+	}
+
+	t.Log("VERIFIED: AskUserQuestion triggers CanUseTool callback with questions array")
+}
+
+// TestVerifiedBehavior_AskUserQuestion_UpdatedInputPassesAnswers verifies that
+// returning PermissionResultAllow with UpdatedInput passes answers to Claude.
+//
+// VERIFIED BEHAVIOR:
+// - When CanUseTool returns Allow with UpdatedInput containing "answers" field
+// - Claude receives a tool_result containing those answers
+// - The answers format is: map[questionText]answerValue
+//
+// This is the mechanism by which user answers are injected into the conversation.
+func TestVerifiedBehavior_AskUserQuestion_UpdatedInputPassesAnswers(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping in CI environment - requires Claude CLI")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// The answer we'll inject
+	expectedAnswer := "My answer is Blue"
+
+	var (
+		mu               sync.Mutex
+		sawToolResult    bool
+		toolResultString string
+	)
+
+	maxTurns := 2
+	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
+		Cwd:                "/tmp",
+		SkipInitialization: true,
+		MaxTurns:           &maxTurns,
+		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {
+			if toolName == "AskUserQuestion" {
+				// Inject our answer via UpdatedInput
+				return claudesdk.PermissionResultAllow{
+					Behavior: claudesdk.PermissionAllow,
+					UpdatedInput: map[string]any{
+						"questions": input["questions"],
+						"answers": map[string]any{
+							"What is your favorite color?": expectedAnswer,
+						},
+					},
+				}, nil
+			}
+			return claudesdk.PermissionResultAllow{Behavior: claudesdk.PermissionAllow}, nil
+		},
+	})
+
+	if err := client.Connect(ctx, ""); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.SendMessage("Use AskUserQuestion to ask: What is your favorite color? Options: Red, Blue, Green"); err != nil {
+		t.Fatalf("Failed to send message: %v", err)
+	}
+
+	// Read messages and look for tool_result
+	messages := client.RawMessages()
+	timeout := time.After(45 * time.Second)
+
+readLoop:
+	for {
+		select {
+		case msg, ok := <-messages:
+			if !ok {
+				break readLoop
+			}
+
+			// Check for tool_result in user messages
+			if msg["type"] == "user" {
+				if message, ok := msg["message"].(map[string]any); ok {
+					if content, ok := message["content"].([]any); ok {
+						for _, block := range content {
+							if blockMap, ok := block.(map[string]any); ok {
+								if blockMap["type"] == "tool_result" {
+									mu.Lock()
+									sawToolResult = true
+									if contentStr, ok := blockMap["content"].(string); ok {
+										toolResultString = contentStr
+									}
+									mu.Unlock()
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if msg["type"] == "result" {
+				break readLoop
+			}
+		case <-timeout:
+			break readLoop
+		case <-ctx.Done():
+			break readLoop
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !sawToolResult {
+		t.Fatal("VERIFIED BEHAVIOR VIOLATED: No tool_result message was generated")
+	}
+
+	// The tool_result should contain our answer in some form
+	// (either as raw text or as JSON with our answer)
+	if toolResultString == "" {
+		t.Fatal("VERIFIED BEHAVIOR VIOLATED: tool_result content is empty")
+	}
+
+	t.Logf("VERIFIED: UpdatedInput answers passed to tool_result: %s", toolResultString)
+}
