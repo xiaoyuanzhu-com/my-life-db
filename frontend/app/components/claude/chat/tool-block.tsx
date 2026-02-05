@@ -259,7 +259,7 @@ function MarkdownContentView({ content }: { content: string }) {
   useEffect(() => {
     let cancelled = false
 
-    import('~/lib/shiki').then(({ parseMarkdown }) => {
+    import('~/lib/markdown').then(({ parseMarkdown }) => {
       parseMarkdown(content).then((parsed) => {
         if (!cancelled) setHtml(parsed)
       })

@@ -4,7 +4,7 @@ import { SessionMessages } from '../session-messages'
 import type { AgentProgressMessage } from '../session-messages'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
 import type { SessionMessage } from '~/lib/session-message-utils'
-import { parseMarkdown } from '~/lib/shiki'
+import { parseMarkdown } from '~/lib/markdown'
 
 interface TaskToolViewProps {
   toolCall: ToolCall
@@ -126,7 +126,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       })
     } else {
       // JSON - use Shiki highlighting
-      import('~/lib/shiki').then(({ highlightCode }) => {
+      import('~/lib/markdown').then(({ highlightCode }) => {
         highlightCode(result, 'json').then((highlighted) => {
           if (!cancelled) setResultHtml(highlighted)
         })

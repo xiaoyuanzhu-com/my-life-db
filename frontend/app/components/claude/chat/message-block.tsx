@@ -20,7 +20,7 @@ import {
   type SummaryMessage,
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage, ToolUseInfo } from './session-messages'
-import { parseMarkdown, onMermaidThemeChange, highlightCode } from '~/lib/shiki'
+import { parseMarkdown, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { MessageDot } from '../message-dot'
-import { highlightCode } from '~/lib/shiki'
+import { highlightCode } from '~/lib/markdown'
 import type { ToolCall, ReadToolParams, ReadToolResult } from '~/types/claude'
 
 interface ReadToolViewProps {

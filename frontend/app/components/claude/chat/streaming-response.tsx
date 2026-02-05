@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
-import { parseMarkdownSync } from '~/lib/shiki'
+import { parseMarkdownSync } from '~/lib/markdown'
 import { MessageDot } from './message-dot'
 
 interface StreamingResponseProps {

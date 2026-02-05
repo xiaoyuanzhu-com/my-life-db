@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { MessageDot } from '../message-dot'
-import { parseMarkdown } from '~/lib/shiki'
+import { parseMarkdown } from '~/lib/markdown'
 import type { ToolCall, WebFetchToolParams, WebFetchToolResult } from '~/types/claude'
 
 interface WebFetchToolViewProps {
