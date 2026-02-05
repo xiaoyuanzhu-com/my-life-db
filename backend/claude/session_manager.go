@@ -1249,8 +1249,8 @@ func (m *SessionManager) activateSession(session *Session) error {
 // cleanupSession terminates a Claude CLI session and releases resources.
 //
 // Two shutdown paths based on session type:
-//   - SDK mode (UI): sdkClient.Close() → SIGINT → 3s timeout → SIGKILL
-//   - PTY mode (CLI): gracefulTerminate() → SIGINT → 3s timeout → SIGKILL
+//   - SDK mode (UI): sdkClient.Close() → SIGINT → 5s timeout → SIGKILL
+//   - PTY mode (CLI): gracefulTerminate() → SIGINT → 5s timeout → SIGKILL
 //
 // Note: Claude CLI (Node.js) responds to SIGINT but ignores SIGTERM.
 // See docs/agent/components/claude-code.md for details.
@@ -1276,7 +1276,7 @@ func (m *SessionManager) cleanupSession(session *Session, id string) {
 		}
 	}
 
-	gracefulTerminate(session.Cmd, 3*time.Second) // Sends SIGINT, falls back to SIGKILL
+	gracefulTerminate(session.Cmd, 5*time.Second) // Sends SIGINT, falls back to SIGKILL
 
 	if session.Mode == ModeUI {
 		if session.Stdout != nil {

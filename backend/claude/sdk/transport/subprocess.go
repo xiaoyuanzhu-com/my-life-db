@@ -567,7 +567,7 @@ func (t *SubprocessCLITransport) Close() error {
 			select {
 			case <-processDone:
 				// Process exited gracefully
-			case <-time.After(3 * time.Second):
+			case <-time.After(5 * time.Second):
 				// Force kill after timeout
 				log.Warn().Int("pid", t.cmd.Process.Pid).Msg("process didn't exit gracefully, sending SIGKILL")
 				t.cmd.Process.Kill()
