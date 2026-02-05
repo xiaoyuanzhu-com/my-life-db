@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,6 +14,13 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"golang.org/x/oauth2"
+)
+
+const (
+	// oauthStateCookieName is the cookie name for storing OAuth state
+	oauthStateCookieName = "oauth_state"
+	// oauthStateCookieMaxAge is the max age for the OAuth state cookie (5 minutes)
+	oauthStateCookieMaxAge = 300
 )
 
 // TokenResponse represents the OAuth token response
@@ -35,8 +44,20 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
-	// Generate state parameter (in production, store this in session)
-	state := "state-token" // TODO: Generate random state and store in session
+	// Generate cryptographically random state parameter to prevent CSRF
+	state, err := generateOAuthState()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to generate OAuth state")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to initiate OAuth flow",
+		})
+		return
+	}
+
+	// Store state in a short-lived httpOnly cookie for validation on callback
+	cfg := config.Get()
+	secure := !cfg.IsDevelopment()
+	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
 
 	// Get authorization URL with discovered endpoints
 	authURL := provider.GetAuthCodeURL(state)
@@ -56,6 +77,28 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 			return
 		}
 		c.Redirect(http.StatusFound, "/?error=no_code")
+		return
+	}
+
+	// Validate state parameter to prevent CSRF attacks
+	stateParam := c.Query("state")
+	stateCookie, err := c.Cookie(oauthStateCookieName)
+	if err != nil || stateCookie == "" {
+		log.Warn().Msg("OAuth callback missing state cookie")
+		c.Redirect(http.StatusFound, "/?error=invalid_state")
+		return
+	}
+
+	// Clear the state cookie immediately
+	c.SetCookie(oauthStateCookieName, "", -1, "/api/oauth", "", false, true)
+
+	// Verify state matches
+	if stateParam != stateCookie {
+		log.Warn().
+			Str("expected", stateCookie).
+			Str("received", stateParam).
+			Msg("OAuth state mismatch - possible CSRF attack")
+		c.Redirect(http.StatusFound, "/?error=invalid_state")
 		return
 	}
 
@@ -329,4 +372,13 @@ func setAuthCookiesGin(c *gin.Context, tokens *TokenResponse) {
 func clearAuthCookiesGin(c *gin.Context) {
 	c.SetCookie("access_token", "", -1, "/", "", false, true)
 	c.SetCookie("refresh_token", "", -1, "/api/oauth", "", false, true)
+}
+
+// generateOAuthState generates a cryptographically random state string
+func generateOAuthState() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }
