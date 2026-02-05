@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { cn } from '~/lib/utils'
+import { parseMarkdown } from '~/lib/markdown'
 import type { PermissionRequest, PermissionDecision } from '~/types/claude'
 
 interface PermissionCardProps {
@@ -24,6 +25,8 @@ function getActionVerb(toolName: string): string {
       return 'Fetch'
     case 'WebSearch':
       return 'Search'
+    case 'ExitPlanMode':
+      return 'Execute'
     default:
       return 'Use'
   }
@@ -55,6 +58,28 @@ function getDescription(input: Record<string, unknown>): string | null {
 export function PermissionCard({ request, onDecision, isFirst = true }: PermissionCardProps) {
   const [isDismissing, setIsDismissing] = useState(false)
   const [pendingDecision, setPendingDecision] = useState<PermissionDecision | null>(null)
+  const [planHtml, setPlanHtml] = useState('')
+
+  // Check if this is an ExitPlanMode request
+  const isExitPlanMode = request.toolName === 'ExitPlanMode'
+  const planContent = isExitPlanMode ? (request.input.plan as string) || '' : ''
+
+  // Parse plan markdown for ExitPlanMode
+  useEffect(() => {
+    if (!isExitPlanMode || !planContent) {
+      setPlanHtml('')
+      return
+    }
+
+    let cancelled = false
+    parseMarkdown(planContent).then((parsed) => {
+      if (!cancelled) setPlanHtml(parsed)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isExitPlanMode, planContent])
 
   // Handle button click - start exit animation
   const handleDecision = useCallback(
@@ -111,7 +136,8 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
     >
       {/* Header: Allow Claude to {Action}? */}
       <div className="text-[14px] leading-relaxed text-foreground mb-2">
-        Allow Claude to <span className="font-semibold">{actionVerb}</span>?
+        Allow Claude to <span className="font-semibold">{actionVerb}</span>
+        {isExitPlanMode ? ' below plan?' : '?'}
       </div>
 
       {/* Description (if available) */}
@@ -119,13 +145,21 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
         <div className="text-[12px] text-muted-foreground mb-2">{description}</div>
       )}
 
-      {/* Command/query preview block */}
-      <div
-        className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-32 overflow-y-auto"
-        style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
-      >
-        <pre className="whitespace-pre-wrap break-all">{previewText}</pre>
-      </div>
+      {/* Content block - markdown for ExitPlanMode, code block for others */}
+      {isExitPlanMode ? (
+        <div
+          className="rounded-lg border border-border p-4 mb-3 max-h-96 overflow-y-auto prose-claude"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+          dangerouslySetInnerHTML={{ __html: planHtml }}
+        />
+      ) : (
+        <div
+          className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-32 overflow-y-auto"
+          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+        >
+          <pre className="whitespace-pre-wrap break-all">{previewText}</pre>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-2">
