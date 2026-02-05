@@ -6,108 +6,116 @@ import (
 
 // SetupRoutes configures all API routes with handlers
 func SetupRoutes(r *gin.Engine, h *Handlers) {
-	// API group
+	// Public routes (no auth required)
+	public := r.Group("/api")
+	{
+		// Auth routes - must be public for login flow
+		public.POST("/auth/login", h.Login)
+		public.POST("/auth/logout", h.Logout)
+
+		// OAuth routes - must be public for OAuth flow
+		public.GET("/oauth/authorize", h.OAuthAuthorize)
+		public.GET("/oauth/callback", h.OAuthCallback)
+		public.POST("/oauth/refresh", h.OAuthRefresh)
+		public.GET("/oauth/token", h.OAuthToken)
+		public.POST("/oauth/logout", h.OAuthLogout)
+	}
+
+	// Protected routes (require auth when auth mode is enabled)
 	api := r.Group("/api")
+	api.Use(AuthMiddleware())
+	{
+		// Inbox routes
+		api.GET("/inbox", h.GetInbox)
+		api.POST("/inbox", h.CreateInboxItem)
+		api.GET("/inbox/pinned", h.GetPinnedInboxItems)
+		api.GET("/inbox/:id", h.GetInboxItem)
+		api.PUT("/inbox/:id", h.UpdateInboxItem)
+		api.DELETE("/inbox/:id", h.DeleteInboxItem)
+		api.POST("/inbox/:id/reenrich", h.ReenrichInboxItem)
+		api.GET("/inbox/:id/status", h.GetInboxItemStatus)
 
-	// Auth routes
-	api.POST("/auth/login", h.Login)
-	api.POST("/auth/logout", h.Logout)
+		// Digest routes - static routes first
+		api.GET("/digest/digesters", h.GetDigesters)
+		api.GET("/digest/stats", h.GetDigestStats)
+		api.DELETE("/digest/reset/:digester", h.ResetDigester)
+		// Wildcard routes use /digest/file/* to avoid conflict with static routes
+		api.GET("/digest/file/*path", h.GetDigest)
+		api.POST("/digest/file/*path", h.TriggerDigest)
 
-	// OAuth routes
-	api.GET("/oauth/authorize", h.OAuthAuthorize)
-	api.GET("/oauth/callback", h.OAuthCallback)
-	api.POST("/oauth/refresh", h.OAuthRefresh) // POST per OAuth 2.0 spec
-	api.GET("/oauth/token", h.OAuthToken)
-	api.POST("/oauth/logout", h.OAuthLogout)
+		// Library routes
+		api.DELETE("/library/file", h.DeleteLibraryFile)
+		api.GET("/library/file-info", h.GetLibraryFileInfo)
+		api.POST("/library/pin", h.PinFile)
+		api.DELETE("/library/pin", h.UnpinFile)
+		api.GET("/library/tree", h.GetLibraryTree)
+		api.POST("/library/rename", h.RenameLibraryFile)
+		api.POST("/library/move", h.MoveLibraryFile)
+		api.POST("/library/folder", h.CreateLibraryFolder)
 
-	// Inbox routes
-	api.GET("/inbox", h.GetInbox)
-	api.POST("/inbox", h.CreateInboxItem)
-	api.GET("/inbox/pinned", h.GetPinnedInboxItems)
-	api.GET("/inbox/:id", h.GetInboxItem)
-	api.PUT("/inbox/:id", h.UpdateInboxItem)
-	api.DELETE("/inbox/:id", h.DeleteInboxItem)
-	api.POST("/inbox/:id/reenrich", h.ReenrichInboxItem)
-	api.GET("/inbox/:id/status", h.GetInboxItemStatus)
+		// Notifications (SSE)
+		api.GET("/notifications/stream", h.NotificationStream)
 
-	// Digest routes - static routes first
-	api.GET("/digest/digesters", h.GetDigesters)
-	api.GET("/digest/stats", h.GetDigestStats)
-	api.DELETE("/digest/reset/:digester", h.ResetDigester)
-	// Wildcard routes use /digest/file/* to avoid conflict with static routes
-	api.GET("/digest/file/*path", h.GetDigest)
-	api.POST("/digest/file/*path", h.TriggerDigest)
+		// People routes
+		api.GET("/people", h.GetPeople)
+		api.POST("/people", h.CreatePerson)
+		api.GET("/people/:id", h.GetPerson)
+		api.PUT("/people/:id", h.UpdatePerson)
+		api.DELETE("/people/:id", h.DeletePerson)
+		api.POST("/people/:id/merge", h.MergePeople)
+		api.POST("/people/embeddings/:id/assign", h.AssignEmbedding)
+		api.POST("/people/embeddings/:id/unassign", h.UnassignEmbedding)
 
-	// Library routes
-	api.DELETE("/library/file", h.DeleteLibraryFile)
-	api.GET("/library/file-info", h.GetLibraryFileInfo)
-	api.POST("/library/pin", h.PinFile)
-	api.DELETE("/library/pin", h.UnpinFile)
-	api.GET("/library/tree", h.GetLibraryTree)
-	api.POST("/library/rename", h.RenameLibraryFile)
-	api.POST("/library/move", h.MoveLibraryFile)
-	api.POST("/library/folder", h.CreateLibraryFolder)
+		// Search
+		api.GET("/search", h.Search)
 
-	// Notifications (SSE)
-	api.GET("/notifications/stream", h.NotificationStream)
+		// AI routes
+		api.POST("/ai/summarize", h.Summarize)
 
-	// People routes
-	api.GET("/people", h.GetPeople)
-	api.POST("/people", h.CreatePerson)
-	api.GET("/people/:id", h.GetPerson)
-	api.PUT("/people/:id", h.UpdatePerson)
-	api.DELETE("/people/:id", h.DeletePerson)
-	api.POST("/people/:id/merge", h.MergePeople)
-	api.POST("/people/embeddings/:id/assign", h.AssignEmbedding)
-	api.POST("/people/embeddings/:id/unassign", h.UnassignEmbedding)
+		// Settings
+		api.GET("/settings", h.GetSettings)
+		api.PUT("/settings", h.UpdateSettings)
+		api.POST("/settings", h.ResetSettings)
 
-	// Search
-	api.GET("/search", h.Search)
+		// Stats
+		api.GET("/stats", h.GetStats)
 
-	// AI routes
-	api.POST("/ai/summarize", h.Summarize)
+		// Upload (TUS)
+		api.POST("/upload/finalize", h.FinalizeUpload)
+		api.Any("/upload/tus/*path", h.TUSHandler)
 
-	// Settings
-	api.GET("/settings", h.GetSettings)
-	api.PUT("/settings", h.UpdateSettings)
-	api.POST("/settings", h.ResetSettings)
+		// Directories
+		api.GET("/directories", h.GetDirectories)
 
-	// Stats
-	api.GET("/stats", h.GetStats)
+		// Vendor routes
+		api.GET("/vendors/openai/models", h.GetOpenAIModels)
 
-	// Upload (TUS)
-	api.POST("/upload/finalize", h.FinalizeUpload)
-	api.Any("/upload/tus/*path", h.TUSHandler)
+		// Claude Code routes
+		api.GET("/claude/sessions", h.ListClaudeSessions)
+		api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
+		api.POST("/claude/sessions", h.CreateClaudeSession)
+		api.GET("/claude/sessions/:id", h.GetClaudeSession)
+		api.GET("/claude/sessions/:id/messages", h.GetClaudeSessionMessages)
+		api.POST("/claude/sessions/:id/messages", h.SendClaudeMessage)
+		api.PATCH("/claude/sessions/:id", h.UpdateClaudeSession)
+		api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
+		api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
 
-	// Directories
-	api.GET("/directories", h.GetDirectories)
+		// ASR routes
+		api.POST("/asr", h.ASRHandler)
+	}
 
-	// Vendor routes
-	api.GET("/vendors/openai/models", h.GetOpenAIModels)
+	// WebSocket routes - need auth but registered on main router
+	// Apply auth middleware individually
+	wsAuth := AuthMiddleware()
+	r.GET("/api/claude/sessions/:id/ws", wsAuth, h.ClaudeWebSocket)
+	r.GET("/api/claude/sessions/:id/subscribe", wsAuth, h.ClaudeSubscribeWebSocket)
+	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
 
-	// Claude Code routes
-	api.GET("/claude/sessions", h.ListClaudeSessions)
-	api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
-	api.POST("/claude/sessions", h.CreateClaudeSession)
-	api.GET("/claude/sessions/:id", h.GetClaudeSession)
-	api.GET("/claude/sessions/:id/messages", h.GetClaudeSessionMessages)
-	api.POST("/claude/sessions/:id/messages", h.SendClaudeMessage)
-	api.PATCH("/claude/sessions/:id", h.UpdateClaudeSession)
-	api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
-	api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
+	// Raw file serving - protected
+	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
+	r.PUT("/raw/*path", wsAuth, h.SaveRawFile)
 
-	// WebSocket routes - register on main router to bypass API group middleware
-	r.GET("/api/claude/sessions/:id/ws", h.ClaudeWebSocket)
-	r.GET("/api/claude/sessions/:id/subscribe", h.ClaudeSubscribeWebSocket)
-	r.GET("/api/asr/realtime", h.RealtimeASR)
-
-	// ASR routes
-	api.POST("/asr", h.ASRHandler) // Non-realtime ASR processing
-
-	// Raw file serving
-	r.GET("/raw/*path", h.ServeRawFile)
-	r.PUT("/raw/*path", h.SaveRawFile)
-
-	// SQLAR file serving
-	r.GET("/sqlar/*path", h.ServeSqlarFile)
+	// SQLAR file serving - protected
+	r.GET("/sqlar/*path", wsAuth, h.ServeSqlarFile)
 }
