@@ -29,11 +29,15 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.GET("/inbox", h.GetInbox)
 		api.POST("/inbox", h.CreateInboxItem)
 		api.GET("/inbox/pinned", h.GetPinnedInboxItems)
+		api.GET("/inbox/intentions", h.GetInboxIntentions)
 		api.GET("/inbox/:id", h.GetInboxItem)
 		api.PUT("/inbox/:id", h.UpdateInboxItem)
 		api.DELETE("/inbox/:id", h.DeleteInboxItem)
 		api.POST("/inbox/:id/reenrich", h.ReenrichInboxItem)
 		api.GET("/inbox/:id/status", h.GetInboxItemStatus)
+
+		// Agent routes
+		api.GET("/files/intention", h.GetFileIntention)
 
 		// Digest routes - static routes first
 		api.GET("/digest/digesters", h.GetDigesters)

@@ -205,6 +205,25 @@ func (o *OpenAIClient) Complete(opts CompletionOptions) (*CompletionResponse, er
 	}, nil
 }
 
+// RawComplete performs a chat completion with full control over request/response
+func (o *OpenAIClient) RawComplete(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionResponse, error) {
+	if o == nil {
+		return nil, fmt.Errorf("OpenAI client not initialized")
+	}
+
+	// Use configured model if not specified
+	if req.Model == "" {
+		req.Model = o.model
+	}
+
+	resp, err := o.client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 // Embed generates embeddings for text
 func (o *OpenAIClient) Embed(texts []string) ([][]float32, error) {
 	if o == nil {

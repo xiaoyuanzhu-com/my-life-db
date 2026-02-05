@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/agent"
+	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -28,6 +31,7 @@ type Server struct {
 	searchWorker  *search.Worker
 	notifService  *notifications.Service
 	claudeManager *claude.SessionManager
+	agent         *agent.Agent
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -98,6 +102,12 @@ func New(cfg *Config) (*Server, error) {
 	searchCfg := cfg.ToSearchConfig()
 	s.searchWorker = search.NewWorker(searchCfg)
 
+	// 7. Create agent
+	log.Info().Msg("initializing inbox agent")
+	appClient := appclient.NewLocalClient(s.database.DB(), s.fsService)
+	llmClient := agent.NewOpenAILLMClient()
+	s.agent = agent.NewAgent(appClient, llmClient)
+
 	// 8. Wire service connections
 	s.connectServices()
 
@@ -120,6 +130,42 @@ func (s *Server) connectServices() {
 		if event.IsNew || event.ContentChanged {
 			s.notifService.NotifyInboxChanged()
 		}
+	})
+
+	// Digest → Agent: When inbox files finish processing, trigger intention recognition
+	s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
+		// Only trigger for inbox files
+		if !strings.HasPrefix(filePath, "inbox/") {
+			return
+		}
+
+		// Only trigger if at least one digest was successfully processed
+		if processed == 0 {
+			log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
+			return
+		}
+
+		log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
+
+		// Run agent analysis in background
+		go func() {
+			ctx := context.Background()
+			resp, err := s.agent.AnalyzeFile(ctx, filePath)
+			if err != nil {
+				log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
+				return
+			}
+
+			log.Info().
+				Str("path", filePath).
+				Str("intentionType", resp.Intention.IntentionType).
+				Str("suggestedFolder", resp.Intention.SuggestedFolder).
+				Float64("confidence", resp.Intention.Confidence).
+				Msg("agent analysis complete")
+
+			// Notify UI of new intention
+			s.notifService.NotifyInboxChanged()
+		}()
 	})
 }
 
@@ -318,5 +364,6 @@ func (s *Server) FS() *fs.Service                        { return s.fsService }
 func (s *Server) Digest() *digest.Worker                 { return s.digestWorker }
 func (s *Server) Notifications() *notifications.Service  { return s.notifService }
 func (s *Server) Claude() *claude.SessionManager         { return s.claudeManager }
+func (s *Server) Agent() *agent.Agent                    { return s.agent }
 func (s *Server) Router() *gin.Engine                    { return s.router }
 func (s *Server) ShutdownContext() context.Context       { return s.shutdownCtx }

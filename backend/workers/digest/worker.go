@@ -10,16 +10,21 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
+// FileCompletionHandler is called when a file finishes processing
+type FileCompletionHandler func(filePath string, processed int, failed int)
+
 // Worker manages digest processing
 type Worker struct {
 	cfg   Config
 	db    *db.DB
 	notif *notifications.Service
 
-	stopChan   chan struct{}
-	wg         sync.WaitGroup
-	queue      chan string
-	processing sync.Map // Currently processing files
+	stopChan          chan struct{}
+	wg                sync.WaitGroup
+	queue             chan string
+	processing        sync.Map // Currently processing files
+	completionHandler FileCompletionHandler
+	handlerMu         sync.RWMutex
 }
 
 // NewWorker creates a new digest worker with dependencies
@@ -67,6 +72,13 @@ func (w *Worker) Stop() {
 	close(w.stopChan)
 	w.wg.Wait()
 	log.Info().Msg("digest worker stopped")
+}
+
+// SetCompletionHandler sets the handler called when a file finishes processing
+func (w *Worker) SetCompletionHandler(handler FileCompletionHandler) {
+	w.handlerMu.Lock()
+	defer w.handlerMu.Unlock()
+	w.completionHandler = handler
 }
 
 // OnFileChange handles file change events from FS worker
@@ -356,6 +368,15 @@ func (w *Worker) processFile(filePath string) {
 		Int("skipped", skipped).
 		Int("failed", failed).
 		Msg("file processing complete")
+
+	// Call completion handler if set
+	w.handlerMu.RLock()
+	handler := w.completionHandler
+	w.handlerMu.RUnlock()
+
+	if handler != nil && processed > 0 {
+		handler(filePath, processed, failed)
+	}
 }
 
 // supervisorLoop periodically checks for pending digests
