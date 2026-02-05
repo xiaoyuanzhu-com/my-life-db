@@ -168,3 +168,32 @@ func TestDefaultPathFilter(t *testing.T) {
 		t.Errorf("DefaultPathFilter exclusions = %v, want %v", f.exclusions, ExcludeDefault)
 	}
 }
+
+func TestAllowedHiddenNames(t *testing.T) {
+	// Test that .claude is not excluded even with CategoryHidden
+	tests := []struct {
+		name       string
+		exclusions Category
+		entry      string
+		want       bool
+	}{
+		// .claude is hidden but allowed
+		{".claude allowed", CategoryHidden, ".claude", false},
+		{".CLAUDE uppercase", CategoryHidden, ".CLAUDE", false},
+		// .git is hidden and excluded
+		{".git excluded", CategoryHidden, ".git", true},
+		// Other hidden files still excluded
+		{".hidden excluded", CategoryHidden, ".hidden", true},
+		// .claude works with ExcludeForTree preset
+		{".claude with tree preset", ExcludeForTree, ".claude", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := NewPathFilter(tt.exclusions)
+			if got := f.IsExcludedEntry(tt.entry, false); got != tt.want {
+				t.Errorf("IsExcludedEntry(%q) = %v, want %v", tt.entry, got, tt.want)
+			}
+		})
+	}
+}

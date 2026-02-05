@@ -103,13 +103,18 @@ func (f *PathFilter) IsExcludedEntry(name string, atRoot bool) bool {
 	return f.isExcludedName(name, atRoot)
 }
 
+// Directories that are hidden (start with .) but should not be excluded
+var allowedHiddenNames = map[string]bool{
+	".claude": true, // Claude Code agent definitions
+}
+
 // isExcludedName checks if a single name matches exclusion rules
 func (f *PathFilter) isExcludedName(name string, atRoot bool) bool {
 	lower := strings.ToLower(name)
 
 	// Hidden files (starts with dot, but not "." itself)
 	if f.exclusions&CategoryHidden != 0 {
-		if strings.HasPrefix(name, ".") && name != "." {
+		if strings.HasPrefix(name, ".") && name != "." && !allowedHiddenNames[lower] {
 			return true
 		}
 	}
