@@ -75,11 +75,12 @@ type PersonCluster struct {
 	UpdatedAt   string  `json:"updatedAt"`
 }
 
-// Session represents a session record
+// Session represents an authentication session record
 type Session struct {
-	ID           string  `json:"id"`
-	PasswordHash *string `json:"-"`
-	CreatedAt    string  `json:"createdAt"`
+	ID         string `json:"id"`
+	CreatedAt  string `json:"createdAt"`
+	ExpiresAt  string `json:"expiresAt"`
+	LastUsedAt string `json:"lastUsedAt"`
 }
 
 // SqlarFile represents a file in the SQLite Archive
