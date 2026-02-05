@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"compress/zlib"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -59,11 +60,25 @@ func (h *Handlers) ServeRawFile(c *gin.Context) {
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(path)
 
-	// Set headers
-	c.Header("Content-Type", mimeType)
-	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
+	// Set cache headers for static assets
+	// Cache for 1 day - revalidation is cheap with 304 responses
+	setCacheHeaders(c, path, info.ModTime(), false)
 
-	c.File(fullPath)
+	// Set ETag before calling ServeContent (required for conditional requests)
+	etag := fmt.Sprintf(`"%d-%s"`, info.ModTime().Unix(), computePathHash(path))
+	c.Header("ETag", etag)
+
+	// Use http.ServeContent which handles conditional requests automatically
+	// This built-in function checks If-None-Match and If-Modified-Since for us
+	file, err := os.Open(fullPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	c.Header("Content-Type", mimeType)
+	http.ServeContent(c.Writer, c.Request, filepath.Base(path), info.ModTime(), file)
 }
 
 // SaveRawFile handles PUT /raw/*path
@@ -153,9 +168,21 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(name)
 
+	// Set cache headers for SQLAR files (these are immutable digest outputs)
+	// Use mtime from SQLAR as modification time
+	modTime := time.Unix(int64(sqlarFile.Mtime), 0)
+	// SQLAR files are digest outputs that never change, use immutable cache
+	setCacheHeaders(c, name, modTime, true)
+
+	// Set ETag for conditional requests
+	etag := fmt.Sprintf(`"%d-%s"`, modTime.Unix(), computePathHash(name))
+	c.Header("ETag", etag)
+
 	c.Header("Content-Type", mimeType)
-	c.Header("Content-Length", strconv.Itoa(len(data)))
-	c.Data(http.StatusOK, mimeType, data)
+
+	// Use http.ServeContent for automatic conditional request handling
+	// It checks If-None-Match/If-Modified-Since and returns 304 when appropriate
+	http.ServeContent(c.Writer, c.Request, name, modTime, bytes.NewReader(data))
 }
 
 // DeleteLibraryFile handles DELETE /api/library/file
@@ -731,4 +758,59 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 	h.server.Notifications().NotifyLibraryChanged(folderPath, "create")
 
 	c.JSON(http.StatusOK, gin.H{"path": folderPath})
+}
+
+// =============================================================================
+// HTTP Caching Helpers
+// =============================================================================
+
+// setCacheHeaders sets appropriate cache headers for static assets
+// This implements industry best practices for HTTP caching across all platforms
+func setCacheHeaders(c *gin.Context, path string, modTime time.Time, isImmutable bool) {
+	// Generate ETag from modification time + path
+	// This provides a unique identifier that changes when file content changes
+	etag := fmt.Sprintf(`"%d-%s"`, modTime.Unix(), computePathHash(path))
+	c.Header("ETag", etag)
+
+	// Set Last-Modified header (RFC 7232)
+	// Format: Wed, 21 Oct 2015 07:28:00 GMT
+	c.Header("Last-Modified", modTime.UTC().Format(http.TimeFormat))
+
+	// Cache-Control: public means the response can be cached by any cache (browser, CDN, proxy)
+	//
+	// For user-uploaded files: max-age=1 day (revalidatable)
+	// - Files rarely change, but we check daily for peace of mind
+	// - 304 responses are cheap (~300 bytes, ~10-50ms)
+	// - ETag changes automatically if file is modified
+	// - Good balance between freshness and efficiency
+	//
+	// For digest outputs (SQLAR): max-age=1 year + immutable
+	// - These files NEVER change (they're content-addressed)
+	// - immutable directive = browser won't even revalidate
+	// - Maximum performance with zero staleness risk
+	if isImmutable {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		c.Header("Cache-Control", "public, max-age=86400") // 1 day
+	}
+
+	// Vary header tells caches to consider Accept-Encoding when caching
+	// (important for gzip/brotli compression)
+	c.Header("Vary", "Accept-Encoding")
+}
+
+// Note: We use Go's built-in http.ServeContent() for conditional request handling
+// It automatically checks If-None-Match (ETag) and If-Modified-Since headers
+// and returns 304 Not Modified when appropriate. No custom logic needed!
+
+// computePathHash creates a simple hash of the path for ETag generation
+// This ensures ETag uniqueness across different files with same modification time
+func computePathHash(path string) string {
+	// Simple FNV-1a hash implementation
+	hash := uint32(2166136261)
+	for i := 0; i < len(path); i++ {
+		hash ^= uint32(path[i])
+		hash *= 16777619
+	}
+	return strconv.FormatUint(uint64(hash), 36)
 }
