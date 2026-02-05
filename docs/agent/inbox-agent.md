@@ -1,7 +1,6 @@
-# Inbox Agent Architecture v2
-## Using Anthropic's Tool Use Pattern
+# Inbox Agent Architecture
 
-This document describes a simplified architecture that leverages **Claude's native tool use** instead of building a custom skill system.
+This document describes the agent architecture for the MyLifeDB inbox, leveraging **Claude's native tool use** pattern.
 
 ---
 
@@ -1019,47 +1018,33 @@ func (c *RemoteAppClient) Search(ctx context.Context, req SearchRequest) (*Searc
 
 ---
 
-## Comparison with Previous Design
+## Design Philosophy
 
-### What Changed
+This architecture prioritizes **simplicity and extensibility**:
 
-| Aspect | inbox-agent.md | inbox-agent-v2.md (This Doc) |
-|--------|----------------|------------------------------|
-| **Agent Architecture** | Two-stage with router + specialized agents | Single general-purpose agent |
-| **Skill System** | Custom skill abstraction | Native Claude tool use |
-| **Intent Classification** | Fast router (gpt-4o-mini) | Agent decides via tools |
-| **Separation** | Embedded in app | Independent via AppClient |
-| **Complexity** | Higher (router, registry, multiple agents) | Lower (one agent, simple tools) |
-| **Extensibility** | Add new agents | Add new tools |
+1. **Single general-purpose agent** - One intelligent agent handles both query and organize tasks
+2. **Native tool use** - Leverages Claude's well-tested tool calling instead of custom abstractions
+3. **Clean separation** - AppClient interface allows future extraction to separate service
+4. **Fewer moving parts** - Easier to maintain and debug
+5. **Easy to extend** - Just add new tools as needed
 
-### Why Simpler?
+### When to Consider Multi-Agent Architecture
 
-1. **One agent** can handle both query and organize tasks
-2. **Claude's tool use** is powerful enough - no need for router
-3. **AppClient interface** provides clean separation
-4. **Fewer moving parts** = easier to maintain
-5. **Still extensible** - just add new tools as needed
-
-### When to Revisit Router Pattern
-
-Consider the two-stage architecture if:
-- Latency becomes a problem (>2s for simple queries)
+If we encounter these issues in production, we can revisit a multi-agent design:
+- Latency becomes problematic (>2s for simple queries)
 - Cost becomes significant (too many tool calls)
-- Need domain-specific expertise (different system prompts per task)
-- Multiple specialized workflows emerge
-
-For now, **keep it simple** with one intelligent agent.
+- Need specialized system prompts for different domains
+- Multiple distinct workflows emerge that benefit from separation
 
 ---
 
 ## Related Documents
 
-- [inbox-agent.md](inbox-agent.md) - Original two-stage design (archived)
-- [inbox-agent-tech-design.md](inbox-agent-tech-design.md) - Technical details for two-stage approach
+- [components-reference.md](components-reference.md) - Detailed component definitions (system prompts, tools, execution flow)
 - [architecture.md](../architecture.md) - Overall system architecture
-- [digest-system.md](digest-system.md) - File processing pipeline
-- [fs-service.md](fs-service.md) - Filesystem operations
-- [claude-code.md](claude-code.md) - Reference for conversation UI patterns
+- [components/digest-system.md](components/digest-system.md) - File processing pipeline
+- [components/fs-service.md](components/fs-service.md) - Filesystem operations
+- [components/claude-code.md](components/claude-code.md) - Reference for conversation UI patterns
 
 ---
 
