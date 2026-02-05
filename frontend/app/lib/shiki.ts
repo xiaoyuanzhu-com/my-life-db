@@ -254,17 +254,30 @@ function renderHtmlPreviewBlock(code: string): string {
 
 /**
  * Synchronous markdown parsing for streaming content.
- * Uses marked.parse() directly without syntax highlighting or mermaid rendering.
+ * Uses marked.parse() with the custom renderer but replaces special block
+ * placeholders with loading UI instead of rendering them.
  * Fast enough to call on every streaming update without debouncing.
  */
 export function parseMarkdownSync(content: string): string {
-  // Use a simple marked instance without the custom code renderer
-  // to avoid issues with mermaidBlocks/htmlPreviewBlocks state
+  // Reset blocks before parsing (they get populated by the custom renderer)
+  mermaidBlocks = []
+  htmlPreviewBlocks = []
+
   let html = marked.parse(content, { async: false, gfm: true, breaks: true }) as string
 
   // Wrap tables in scrollable containers
   html = html.replace(/<table>/g, '<div class="table-wrapper"><table>')
   html = html.replace(/<\/table>/g, '</table></div>')
+
+  // Replace mermaid placeholders with loading UI
+  html = html.replace(MERMAID_PLACEHOLDER_REGEX, () => {
+    return '<div class="mermaid-loading"><span class="text-muted-foreground text-sm">Rendering diagram...</span></div>'
+  })
+
+  // Replace HTML preview placeholders with loading UI
+  html = html.replace(HTML_PREVIEW_PLACEHOLDER_REGEX, () => {
+    return '<div class="html-preview-loading"><span class="text-muted-foreground text-sm">Loading preview...</span></div>'
+  })
 
   return html
 }

@@ -605,6 +605,16 @@
   margin-bottom: 0.5rem;
 }
 
+.mermaid-loading,
+.html-preview-loading {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+  background: var(--muted);
+  text-align: center;
+}
+
 /* HTML preview iframe styling */
 .html-preview-container {
   margin: 1rem 0;
