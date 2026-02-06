@@ -241,9 +241,6 @@ func LoadUserSettings() (*models.UserSettings, error) {
 		Meilisearch: &models.Meilisearch{
 			Host: pickFromMap("vendors_meilisearch_host", "MEILI_HOST", ""),
 		},
-		Qdrant: &models.Qdrant{
-			Host: pickFromMap("vendors_qdrant_host", "QDRANT_URL", ""),
-		},
 	}
 
 	// Build digesters
@@ -367,9 +364,6 @@ func SaveUserSettings(settings *models.UserSettings) error {
 		}
 		if settings.Vendors.Meilisearch != nil && settings.Vendors.Meilisearch.Host != "" {
 			updates["vendors_meilisearch_host"] = settings.Vendors.Meilisearch.Host
-		}
-		if settings.Vendors.Qdrant != nil && settings.Vendors.Qdrant.Host != "" {
-			updates["vendors_qdrant_host"] = settings.Vendors.Qdrant.Host
 		}
 	}
 

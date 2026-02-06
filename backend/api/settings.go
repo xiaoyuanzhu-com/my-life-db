@@ -155,14 +155,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			}
 		}
 
-		if updates.Vendors.Qdrant != nil {
-			if merged.Vendors.Qdrant == nil {
-				merged.Vendors.Qdrant = &models.Qdrant{}
-			}
-			if updates.Vendors.Qdrant.Host != "" {
-				merged.Vendors.Qdrant.Host = updates.Vendors.Qdrant.Host
-			}
-		}
 	}
 
 	// Merge digesters

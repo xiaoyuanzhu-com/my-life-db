@@ -279,25 +279,6 @@ func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 	return map[string]interface{}{"models": models}, nil
 }
 
-// EmbedText is a convenience function to embed a single text using HAID
-func EmbedText(text string) ([]float32, error) {
-	client := GetHAIDClient()
-	if client == nil {
-		return nil, fmt.Errorf("HAID client not initialized")
-	}
-
-	results, err := client.Embed([]string{text})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(results) == 0 {
-		return nil, fmt.Errorf("HAID returned no embeddings")
-	}
-
-	return results[0], nil
-}
-
 // GetOpenAI returns the OpenAI client (wrapper for digest workers)
 func GetOpenAI() *OpenAIClient {
 	return GetOpenAIClient()

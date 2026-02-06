@@ -14,7 +14,7 @@ func init() {
 
 func migration002Up(db *sql.DB) error {
 	// Create meili_documents table for full-text keyword search (1:1 file mapping)
-	_, err = db.Exec(`
+	_, err := db.Exec(`
 		CREATE TABLE meili_documents (
 			document_id TEXT PRIMARY KEY,
 			file_path TEXT NOT NULL UNIQUE,

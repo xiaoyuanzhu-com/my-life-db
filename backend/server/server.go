@@ -95,12 +95,7 @@ func New(cfg *Config) (*Server, error) {
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
 
-	// 6. Create search sync worker
-	log.Info().Msg("initializing search sync worker")
-	searchCfg := cfg.ToSearchConfig()
-	s.searchWorker = search.NewWorker(searchCfg)
-
-	// 7. Create agent (if enabled)
+	// 6. Create agent (if enabled)
 	if cfg.InboxAgentEnabled {
 		log.Info().Msg("initializing inbox agent")
 		appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
@@ -289,9 +284,6 @@ func (s *Server) Start() error {
 	// Start digest worker
 	go s.digestWorker.Start()
 
-	// Start search sync worker
-	go s.searchWorker.Start()
-
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -346,7 +338,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// Stop background services (in reverse order of startup)
-	s.searchWorker.Stop()
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
