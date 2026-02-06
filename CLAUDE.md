@@ -2,19 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Agent Documentation
+## Documentation
 
-For detailed technical documentation when making code changes, see:
+All project documentation lives in `../my-life-db-docs/` (Astro Starlight site). Key sections for code changes:
 
-- **[docs/agent/architecture.md](docs/agent/architecture.md)** - System overview, component relationships, common patterns
-- **[docs/agent/components/](docs/agent/components/)** - Deep dives into specific subsystems:
-  - `claude-code.md` - Claude Code integration (WebSocket, sessions, messages)
-  - `digest-system.md` - File processing and digesters
-  - `fs-service.md` - Filesystem watching and scanning
-  - `notifications.md` - SSE real-time updates
-  - `auth.md` - Authentication modes
+- **Architecture** — System overview, backend architecture, tech design, module interfaces
+- **Components** — Deep dives into subsystems: claude-code, digest-system, fs-service, notifications, auth, etc.
+- **API** — REST API reference, HTTP caching
+- **Features** — Inbox, search, digest, voice, people, and more
 
-Read the architecture doc first, then the relevant component doc for your task.
+Read the architecture overview first, then the relevant component doc for your task.
 
 ## Project Overview
 
@@ -100,8 +97,7 @@ my-life-db/
 │   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
 │   └── main.go         # Entry point - creates Server and wires routes
-├── run.js              # Helper script for running services (Node.js)
-└── docs/               # Product and technical design docs (voice, claude-code, etc.)
+└── run.js              # Helper script for running services (Node.js)
 ```
 
 ### Server Architecture
@@ -159,7 +155,7 @@ func (h *Handlers) GetInbox(c *gin.Context) {
 6. Start server with `srv.Start()`
 7. Graceful shutdown with `srv.Shutdown(ctx)`
 
-See [docs/backend-arch.md](docs/backend-arch.md) for detailed architecture documentation.
+See the Architecture section in `../my-life-db-docs/` for detailed architecture documentation.
 
 ### Background Workers
 
@@ -316,13 +312,13 @@ The app embeds Claude Code sessions with a web UI for interacting with Claude CL
 - **Backend** (`backend/claude/`): Session management, message parsing, WebSocket protocol for real-time communication, session index caching, file watching
 - **Frontend** (`frontend/app/routes/claude.tsx`, `frontend/app/components/claude/`): Terminal UI, session list, chat interface, permission modal, todo panel
 - **WebSocket routes**: `/api/claude/sessions/:id/ws` (bidirectional), `/api/claude/sessions/:id/subscribe` (read-only)
-- **Docs**: `docs/claude-code.md` and `docs/claude-code/` subdirectory
+- **Docs**: See Claude Code section in `../my-life-db-docs/`
 
 ### Voice / ASR System
 Real-time and batch speech recognition:
 - **Backend**: `backend/api/realtime_asr.go` (WebSocket), `backend/vendors/aliyun.go` (Aliyun Fun-ASR)
 - **Frontend**: `frontend/app/hooks/use-realtime-asr.ts`, `frontend/app/components/omni-input/` (multi-modal input: text, voice, files), recording visualizer, transcript viewer
-- **Docs**: `docs/voice.md`, `docs/realtime-asr.md`, `docs/aliyun-asr-config.md`, `docs/omni-input.md`
+- **Docs**: See Features section in `../my-life-db-docs/` (voice, realtime-asr, aliyun-asr-config, omni-input)
 
 ### Authentication
 Three auth modes configured via `MLD_AUTH_MODE`:
