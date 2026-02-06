@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +20,8 @@ import (
 const (
 	// oauthStateCookieName is the cookie name for storing OAuth state
 	oauthStateCookieName = "oauth_state"
+	// oauthNativeRedirectCookieName stores the native app redirect scheme during OAuth flow
+	oauthNativeRedirectCookieName = "oauth_native_redirect"
 	// oauthStateCookieMaxAge is the max age for the OAuth state cookie (5 minutes)
 	oauthStateCookieMaxAge = 300
 )
@@ -58,6 +61,11 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	cfg := config.Get()
 	secure := !cfg.IsDevelopment()
 	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
+
+	// If native app redirect is requested, store it in a cookie for the callback
+	if nativeRedirect := c.Query("native_redirect"); nativeRedirect != "" {
+		c.SetCookie(oauthNativeRedirectCookieName, nativeRedirect, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
+	}
 
 	// Get authorization URL with discovered endpoints
 	authURL := provider.GetAuthCodeURL(state)
@@ -190,6 +198,22 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 		Str("sub", claims.Sub).
 		Str("username", username).
 		Msg("OAuth login successful")
+
+	// Check for native app redirect
+	if nativeRedirect, err := c.Cookie(oauthNativeRedirectCookieName); err == nil && nativeRedirect != "" {
+		// Clear the native redirect cookie
+		c.SetCookie(oauthNativeRedirectCookieName, "", -1, "/api/oauth", "", false, true)
+
+		// Build redirect URL with tokens for the native app
+		redirectURL := fmt.Sprintf("%s?access_token=%s&expires_in=%d",
+			nativeRedirect, url.QueryEscape(tokens.AccessToken), tokens.ExpiresIn)
+		if tokens.RefreshToken != "" {
+			redirectURL += "&refresh_token=" + url.QueryEscape(tokens.RefreshToken)
+		}
+
+		c.Redirect(http.StatusFound, redirectURL)
+		return
+	}
 
 	// Redirect to home
 	c.Redirect(http.StatusFound, "/")

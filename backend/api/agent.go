@@ -24,7 +24,7 @@ func (h *Handlers) GetFileIntention(c *gin.Context) {
 		WHERE file_path = ?
 	`
 
-	row := h.server.DB().QueryRow(query, path)
+	row := h.server.DB().Conn().QueryRow(query, path)
 
 	type Intention struct {
 		ID               string  `json:"id"`
@@ -92,7 +92,7 @@ func (h *Handlers) GetInboxIntentions(c *gin.Context) {
 		ORDER BY created_at DESC
 	`
 
-	rows, err := h.server.DB().Query(query)
+	rows, err := h.server.DB().Conn().Query(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

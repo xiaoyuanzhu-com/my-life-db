@@ -19,7 +19,7 @@ type CompletionRequest struct {
 	Model     string
 	System    string
 	Messages  []Message
-	Tools     []Tool Definition
+	Tools     []ToolDefinition
 	MaxTokens int
 }
 

@@ -104,7 +104,7 @@ func New(cfg *Config) (*Server, error) {
 
 	// 7. Create agent
 	log.Info().Msg("initializing inbox agent")
-	appClient := appclient.NewLocalClient(s.database.DB(), s.fsService)
+	appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
 	llmClient := agent.NewOpenAILLMClient()
 	s.agent = agent.NewAgent(appClient, llmClient)
 

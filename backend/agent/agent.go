@@ -7,20 +7,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // Agent handles inbox file analysis and organization
 type Agent struct {
-	app   appclient.AppClient
+	app   AppClient
 	llm   LLMClient
 	model string
 }
 
 // NewAgent creates a new agent instance
-func NewAgent(app appclient.AppClient, llm LLMClient) *Agent {
+func NewAgent(app AppClient, llm LLMClient) *Agent {
 	cfg := config.Get()
 	model := cfg.OpenAIModel
 	if model == "" {
@@ -50,7 +49,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 	}
 
 	// Save conversation
-	if err := a.app.(*appclient.LocalAppClient).SaveConversation(ctx, conv); err != nil {
+	if err := a.app.SaveConversation(ctx, conv); err != nil {
 		log.Error().Err(err).Msg("failed to save conversation")
 	}
 
@@ -68,7 +67,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 	conv.Messages = append(conv.Messages, userMsg)
 
 	// Save user message
-	if err := a.app.(*appclient.LocalAppClient).SaveMessage(ctx, &userMsg); err != nil {
+	if err := a.app.SaveMessage(ctx, &userMsg); err != nil {
 		log.Error().Err(err).Msg("failed to save user message")
 	}
 
@@ -113,14 +112,14 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 			conv.Messages = append(conv.Messages, assistantMsg)
 
 			// Save assistant message
-			if err := a.app.(*appclient.LocalAppClient).SaveMessage(ctx, &assistantMsg); err != nil {
+			if err := a.app.SaveMessage(ctx, &assistantMsg); err != nil {
 				log.Error().Err(err).Msg("failed to save assistant message")
 			}
 
 			// Update conversation status
 			conv.UpdatedAt = time.Now().UTC()
 			conv.Status = "completed"
-			if err := a.app.(*appclient.LocalAppClient).SaveConversation(ctx, conv); err != nil {
+			if err := a.app.SaveConversation(ctx, conv); err != nil {
 				log.Error().Err(err).Msg("failed to update conversation")
 			}
 
@@ -146,7 +145,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 		conv.Messages = append(conv.Messages, assistantMsg)
 
 		// Save assistant message
-		if err := a.app.(*appclient.LocalAppClient).SaveMessage(ctx, &assistantMsg); err != nil {
+		if err := a.app.SaveMessage(ctx, &assistantMsg); err != nil {
 			log.Error().Err(err).Msg("failed to save assistant message")
 		}
 
@@ -171,7 +170,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 			conv.Messages = append(conv.Messages, toolResultMsg)
 
 			// Save tool result message
-			if err := a.app.(*appclient.LocalAppClient).SaveMessage(ctx, &toolResultMsg); err != nil {
+			if err := a.app.SaveMessage(ctx, &toolResultMsg); err != nil {
 				log.Error().Err(err).Msg("failed to save tool result message")
 			}
 		}

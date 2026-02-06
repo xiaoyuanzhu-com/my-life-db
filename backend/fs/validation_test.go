@@ -62,7 +62,7 @@ func TestExclusionPatterns(t *testing.T) {
 		{".my-life-db/database.sqlite", true, "should exclude .my-life-db directory"},
 		{".git/config", true, "should exclude .git directory"},
 		{".obsidian/workspace", true, "should exclude .obsidian directory"},
-		{".claude/settings", true, "should exclude .claude directory"},
+		{".claude/settings", false, "should NOT exclude .claude directory (allowed hidden)"},
 		{".DS_Store", true, "should exclude .DS_Store files"},
 
 		// Directories starting with . in subdirectories

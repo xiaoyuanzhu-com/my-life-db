@@ -12,12 +12,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// LocalAppClient implements AppClient using direct service calls
+// LocalAppClient implements agent.AppClient using direct service calls
 type LocalAppClient struct {
 	database  *sql.DB
 	fsService *fs.Service
@@ -36,7 +35,7 @@ func NewLocalClient(database *sql.DB, fsService *fs.Service) *LocalAppClient {
 // ──────────────────────────────────────────────────────────────
 
 // Search for files using keyword search (simplified - no semantic search yet)
-func (c *LocalAppClient) Search(ctx context.Context, req SearchRequest) (*SearchResult, error) {
+func (c *LocalAppClient) Search(ctx context.Context, req agent.SearchRequest) (*agent.SearchResult, error) {
 	// Build SQL query with filters
 	query := `
 		SELECT path, name, mime_type, created_at
@@ -80,9 +79,9 @@ func (c *LocalAppClient) Search(ctx context.Context, req SearchRequest) (*Search
 	}
 	defer rows.Close()
 
-	var results []SearchResultItem
+	var results []agent.SearchResultItem
 	for rows.Next() {
-		var item SearchResultItem
+		var item agent.SearchResultItem
 		var createdAt string
 		err := rows.Scan(&item.Path, &item.Name, &item.MimeType, &createdAt)
 		if err != nil {
@@ -92,19 +91,19 @@ func (c *LocalAppClient) Search(ctx context.Context, req SearchRequest) (*Search
 		results = append(results, item)
 	}
 
-	return &SearchResult{
+	return &agent.SearchResult{
 		Results: results,
 		Total:   len(results),
 	}, nil
 }
 
 // GetFile returns file metadata with digests
-func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*FileWithDigests, error) {
+func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*agent.FileWithDigests, error) {
 	// Get file record
 	query := `SELECT path, name, mime_type, size, created_at FROM files WHERE path = ?`
 	row := c.database.QueryRow(query, path)
 
-	var file FileWithDigests
+	var file agent.FileWithDigests
 	var createdAtStr string
 	err := row.Scan(&file.Path, &file.Name, &file.MimeType, &file.Size, &createdAtStr)
 	if err == sql.ErrNoRows {
@@ -124,7 +123,7 @@ func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*FileWithDig
 	}
 	defer rows.Close()
 
-	file.Digests = make(map[string]DigestContent)
+	file.Digests = make(map[string]agent.DigestContent)
 	for rows.Next() {
 		var digester, status string
 		var content, errorMsg sql.NullString
@@ -134,7 +133,7 @@ func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*FileWithDig
 			continue
 		}
 
-		digest := DigestContent{
+		digest := agent.DigestContent{
 			Status: status,
 		}
 		if content.Valid {
@@ -151,7 +150,7 @@ func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*FileWithDig
 }
 
 // ListRecentFiles returns recently added files
-func (c *LocalAppClient) ListRecentFiles(ctx context.Context, limit int, mimeTypePrefix string) ([]FileSummary, error) {
+func (c *LocalAppClient) ListRecentFiles(ctx context.Context, limit int, mimeTypePrefix string) ([]agent.FileSummary, error) {
 	if limit == 0 {
 		limit = 10
 	}
@@ -177,9 +176,9 @@ func (c *LocalAppClient) ListRecentFiles(ctx context.Context, limit int, mimeTyp
 	}
 	defer rows.Close()
 
-	var files []FileSummary
+	var files []agent.FileSummary
 	for rows.Next() {
-		var f FileSummary
+		var f agent.FileSummary
 		var createdAtStr string
 		err := rows.Scan(&f.Path, &f.Name, &f.MimeType, &f.Size, &createdAtStr)
 		if err != nil {
@@ -197,17 +196,17 @@ func (c *LocalAppClient) ListRecentFiles(ctx context.Context, limit int, mimeTyp
 // ──────────────────────────────────────────────────────────────
 
 // GetFolderTree returns the folder structure
-func (c *LocalAppClient) GetFolderTree(ctx context.Context, depth int) (*FolderNode, error) {
+func (c *LocalAppClient) GetFolderTree(ctx context.Context, depth int) (*agent.FolderNode, error) {
 	cfg := config.Get()
 	if depth == 0 {
 		depth = 2
 	}
 
-	root := &FolderNode{
+	root := &agent.FolderNode{
 		Name:     filepath.Base(cfg.UserDataDir),
 		Path:     "",
 		IsFolder: true,
-		Children: []*FolderNode{},
+		Children: []*agent.FolderNode{},
 	}
 
 	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
@@ -216,7 +215,7 @@ func (c *LocalAppClient) GetFolderTree(ctx context.Context, depth int) (*FolderN
 	return root, nil
 }
 
-func (c *LocalAppClient) buildFolderTree(node *FolderNode, baseDir, relativePath string, maxDepth, currentDepth int, pathFilter *fs.PathFilter) {
+func (c *LocalAppClient) buildFolderTree(node *agent.FolderNode, baseDir, relativePath string, maxDepth, currentDepth int, pathFilter *fs.PathFilter) {
 	if maxDepth > 0 && currentDepth > maxDepth {
 		return
 	}
@@ -243,11 +242,11 @@ func (c *LocalAppClient) buildFolderTree(node *FolderNode, baseDir, relativePath
 			childPath = filepath.Join(relativePath, name)
 		}
 
-		child := &FolderNode{
+		child := &agent.FolderNode{
 			Name:     name,
 			Path:     childPath,
 			IsFolder: true,
-			Children: []*FolderNode{},
+			Children: []*agent.FolderNode{},
 		}
 
 		if currentDepth < maxDepth {
@@ -495,7 +494,7 @@ func (c *LocalAppClient) ResolveSuggestion(ctx context.Context, suggestionID, ac
 }
 
 // ──────────────────────────────────────────────────────────────
-// CONVERSATION STORAGE (internal helper methods)
+// CONVERSATION STORAGE
 // ──────────────────────────────────────────────────────────────
 
 // SaveConversation saves a conversation to the database
