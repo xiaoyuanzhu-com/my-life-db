@@ -87,7 +87,7 @@ export default function ClaudePage() {
   const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('claude-permission-mode')
-      if (saved === 'default' || saved === 'plan' || saved === 'bypassPermissions') {
+      if (saved === 'default' || saved === 'acceptEdits' || saved === 'plan' || saved === 'bypassPermissions') {
         return saved
       }
     }
@@ -127,6 +127,18 @@ export default function ClaudePage() {
   useEffect(() => {
     localStorage.setItem('claude-permission-mode', newSessionPermissionMode)
   }, [newSessionPermissionMode])
+
+  // Sync permission mode from localStorage when returning to new-session view
+  // (mode may have been changed inside an active session's ChatInterface)
+  useEffect(() => {
+    if (!activeSessionId) {
+      const saved = localStorage.getItem('claude-permission-mode') as PermissionMode | null
+      if (saved && saved !== newSessionPermissionMode) {
+        setNewSessionPermissionMode(saved)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
+  }, [activeSessionId])
 
   // Sort sessions: active first, then by last activity
   const sortSessions = (sessionList: Session[]): Session[] => {

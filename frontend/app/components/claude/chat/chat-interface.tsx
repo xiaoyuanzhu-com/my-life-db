@@ -730,6 +730,9 @@ export function ChatInterface({
       // Optimistically update UI
       setPermissionMode(mode)
 
+      // Persist to localStorage so new sessions default to the last-used mode
+      localStorage.setItem('claude-permission-mode', mode)
+
       try {
         await ws.sendMessage({
           type: 'control_request',
