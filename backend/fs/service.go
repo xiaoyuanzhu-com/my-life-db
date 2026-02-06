@@ -211,6 +211,25 @@ func (s *Service) MoveFile(ctx context.Context, src, dst string) error {
 	return s.moveFile(ctx, src, dst)
 }
 
+// RenameOrMove renames or moves a file/directory from oldPath to newPath.
+// Handles both files and directories, including all related DB tables and search indices.
+func (s *Service) RenameOrMove(ctx context.Context, oldPath, newPath string) error {
+	// Implementation in operations.go
+	return s.renameOrMove(ctx, oldPath, newPath)
+}
+
+// DeleteFolder removes a directory and all its contents
+func (s *Service) DeleteFolder(ctx context.Context, path string) error {
+	// Implementation in operations.go
+	return s.deleteFolder(ctx, path)
+}
+
+// CreateFolder creates a new directory and adds it to the database
+func (s *Service) CreateFolder(ctx context.Context, path string) error {
+	// Implementation in operations.go
+	return s.createFolder(ctx, path)
+}
+
 // ProcessMetadata computes hash and text preview for existing file
 func (s *Service) ProcessMetadata(ctx context.Context, path string) (*MetadataResult, error) {
 	if err := s.ValidatePath(path); err != nil {

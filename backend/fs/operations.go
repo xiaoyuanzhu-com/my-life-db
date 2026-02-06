@@ -269,6 +269,129 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	return nil
 }
 
+// renameOrMove renames or moves a file/directory from oldPath to newPath.
+// This is the SINGLE entry point for rename/move operations.
+// Handles both files and directories, including all related DB tables.
+func (s *Service) renameOrMove(ctx context.Context, oldPath, newPath string) error {
+	// 1. Validate paths
+	if err := s.ValidatePath(oldPath); err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+	if err := s.ValidatePath(newPath); err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	// 2. Check source exists and determine if it's a directory
+	oldFullPath := filepath.Join(s.cfg.DataRoot, oldPath)
+	info, err := os.Stat(oldFullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+		return fmt.Errorf("failed to stat source: %w", err)
+	}
+	isDir := info.IsDir()
+
+	// 3. Ensure destination parent directory exists
+	newFullPath := filepath.Join(s.cfg.DataRoot, newPath)
+	if err := os.MkdirAll(filepath.Dir(newFullPath), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// 4. Rename on filesystem
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		return fmt.Errorf("failed to rename: %w", err)
+	}
+
+	// 5. Update database records
+	if isDir {
+		if err := s.cfg.DB.RenameFilePaths(oldPath, newPath); err != nil {
+			return fmt.Errorf("failed to update database paths: %w", err)
+		}
+		// Sync external search services (best effort, async)
+		go db.SyncSearchIndexOnMovePrefix(oldPath, newPath)
+
+		log.Info().
+			Str("oldPath", oldPath).
+			Str("newPath", newPath).
+			Msg("folder renamed/moved successfully")
+	} else {
+		newName := filepath.Base(newPath)
+		if err := s.cfg.DB.RenameFilePath(oldPath, newPath, newName); err != nil {
+			return fmt.Errorf("failed to update database path: %w", err)
+		}
+		// Sync external search services (best effort, async)
+		go db.SyncSearchIndexOnMove(oldPath, newPath)
+
+		log.Info().
+			Str("oldPath", oldPath).
+			Str("newPath", newPath).
+			Msg("file renamed/moved successfully")
+	}
+
+	return nil
+}
+
+// deleteFolder removes a directory and all its contents from filesystem and database.
+// This is the SINGLE entry point for folder deletion.
+// Handles: filesystem, files table, digests, pins, meili_documents, qdrant_documents.
+func (s *Service) deleteFolder(ctx context.Context, path string) error {
+	// 1. Validate path
+	if err := s.ValidatePath(path); err != nil {
+		return err
+	}
+
+	// 2. Delete from filesystem
+	fullPath := filepath.Join(s.cfg.DataRoot, path)
+	if err := os.RemoveAll(fullPath); err != nil {
+		return fmt.Errorf("failed to delete folder from filesystem: %w", err)
+	}
+
+	// 3. Cascade delete from database (folder + all children)
+	if err := s.cfg.DB.DeleteFilesWithCascadePrefix(path); err != nil {
+		log.Warn().
+			Err(err).
+			Str("path", path).
+			Msg("failed to cascade delete folder from database")
+		return fmt.Errorf("failed to delete folder from database: %w", err)
+	}
+
+	log.Info().Str("path", path).Msg("folder deleted successfully")
+	return nil
+}
+
+// createFolder creates a new directory and adds it to the database.
+// This is the SINGLE entry point for folder creation.
+func (s *Service) createFolder(ctx context.Context, path string) error {
+	// 1. Validate path
+	if err := s.ValidatePath(path); err != nil {
+		return err
+	}
+
+	// 2. Create on filesystem
+	fullPath := filepath.Join(s.cfg.DataRoot, path)
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		return fmt.Errorf("failed to create folder: %w", err)
+	}
+
+	// 3. Add to database
+	now := db.NowUTC()
+	_, err := s.cfg.DB.UpsertFile(&db.FileRecord{
+		Path:          path,
+		Name:          filepath.Base(path),
+		IsFolder:      true,
+		ModifiedAt:    now,
+		CreatedAt:     now,
+		LastScannedAt: now,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add folder to database: %w", err)
+	}
+
+	log.Info().Str("path", path).Msg("folder created successfully")
+	return nil
+}
+
 // buildFileRecord creates a FileRecord from file info and metadata
 func (s *Service) buildFileRecord(path string, info os.FileInfo, metadata *MetadataResult) *db.FileRecord {
 	now := db.NowUTC()

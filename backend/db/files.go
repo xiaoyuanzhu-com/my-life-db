@@ -735,8 +735,8 @@ func RenameFilePaths(oldPath, newPath string) error {
 	// Update pins
 	_, err = tx.Exec(`
 		UPDATE pins
-		SET path = ? || substr(path, ?)
-		WHERE path = ? OR path LIKE ? || '/%'
+		SET file_path = ? || substr(file_path, ?)
+		WHERE file_path = ? OR file_path LIKE ? || '/%'
 	`, newPath, len(oldPath)+1, oldPath, oldPath)
 	if err != nil {
 		return fmt.Errorf("failed to update pins: %w", err)
@@ -909,6 +909,43 @@ func DeleteFileWithCascade(path string) error {
 	// Delete file record
 	if _, err := tx.Exec("DELETE FROM files WHERE path = ?", path); err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
+// Cleans up: files, digests, pins, meili_documents, qdrant_documents.
+// Used for recursive folder deletion.
+func DeleteFilesWithCascadePrefix(pathPrefix string) error {
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete search index documents
+	if _, err := tx.Exec("DELETE FROM qdrant_documents WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete qdrant_documents: %w", err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete meili_documents: %w", err)
+	}
+
+	// Delete digests
+	if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete digests: %w", err)
+	}
+
+	// Delete pins
+	if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete pins: %w", err)
+	}
+
+	// Delete file records
+	if _, err := tx.Exec("DELETE FROM files WHERE path = ? OR path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete files: %w", err)
 	}
 
 	return tx.Commit()

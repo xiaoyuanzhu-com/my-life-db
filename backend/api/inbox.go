@@ -292,15 +292,6 @@ func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 	id := c.Param("id")
 	path := "inbox/" + id
 
-	cfg := config.Get()
-	fullPath := filepath.Join(cfg.UserDataDir, path)
-
-	// Check if file exists
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Inbox item not found"})
-		return
-	}
-
 	// Get new content from request body
 	var body struct {
 		Content string `json:"content"`
@@ -310,16 +301,19 @@ func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 		return
 	}
 
-	// Write content to file
-	if err := os.WriteFile(fullPath, []byte(body.Content), 0644); err != nil {
-		log.Error().Err(err).Msg("failed to update file")
+	// Write via fs.Service (handles filesystem, hash, metadata, digest trigger, logging)
+	_, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
+		Path:            path,
+		Content:         strings.NewReader(body.Content),
+		Source:          "api_update",
+		ComputeMetadata: true,
+		Sync:            false,
+	})
+	if err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to update inbox item")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update file"})
 		return
 	}
-
-	// Update file record
-	nowStr := db.NowUTC()
-	db.UpdateFileField(path, "modified_at", nowStr)
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
@@ -339,25 +333,20 @@ func (h *Handlers) DeleteInboxItem(c *gin.Context) {
 		return
 	}
 
-	// Delete file/folder
+	// Delete via fs.Service (handles filesystem, DB cascade, logging)
 	if info.IsDir() {
-		if err := os.RemoveAll(fullPath); err != nil {
-			log.Error().Err(err).Msg("failed to delete folder")
+		if err := h.server.FS().DeleteFolder(c.Request.Context(), path); err != nil {
+			log.Error().Err(err).Str("path", path).Msg("failed to delete inbox folder")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
 			return
 		}
 	} else {
-		if err := os.Remove(fullPath); err != nil {
-			log.Error().Err(err).Msg("failed to delete file")
+		if err := h.server.FS().DeleteFile(c.Request.Context(), path); err != nil {
+			log.Error().Err(err).Str("path", path).Msg("failed to delete inbox item")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
 			return
 		}
 	}
-
-	// Delete from database
-	db.DeleteFile(path)
-	db.DeleteDigestsForFile(path)
-	db.RemovePin(path)
 
 	// Notify UI
 	h.server.Notifications().NotifyInboxChanged()

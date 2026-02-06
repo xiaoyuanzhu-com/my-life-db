@@ -209,22 +209,16 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 		return
 	}
 
-	// Handle folders separately (fs.Service.DeleteFile only handles files)
+	// Delete via fs.Service (handles filesystem, DB cascade, logging)
 	if info.IsDir() {
-		if err := os.RemoveAll(fullPath); err != nil {
-			log.Error().Err(err).Msg("failed to delete folder")
+		if err := h.server.FS().DeleteFolder(c.Request.Context(), path); err != nil {
+			log.Error().Err(err).Str("path", path).Msg("failed to delete folder")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
 			return
 		}
-		// Cascade delete folder record and all files inside
-		if err := db.DeleteFileWithCascade(path); err != nil {
-			log.Warn().Err(err).Str("path", path).Msg("failed to cascade delete folder record")
-		}
 	} else {
-		// Use centralized fs.Service.DeleteFile for files
-		// This handles: filesystem, files table, digests, pins, meili, qdrant
 		if err := h.server.FS().DeleteFile(c.Request.Context(), path); err != nil {
-			log.Error().Err(err).Msg("failed to delete file")
+			log.Error().Err(err).Str("path", path).Msg("failed to delete file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
 			return
 		}
@@ -564,14 +558,6 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	oldFullPath := filepath.Join(cfg.UserDataDir, body.Path)
-
-	// Check if source exists
-	info, err := os.Stat(oldFullPath)
-	if os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
 
 	// Build new path
 	parentDir := filepath.Dir(body.Path)
@@ -589,24 +575,11 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 		return
 	}
 
-	// Rename on filesystem
-	if err := os.Rename(oldFullPath, newFullPath); err != nil {
-		log.Error().Err(err).Msg("failed to rename file")
+	// Rename via fs.Service (handles filesystem, DB, search sync, logging)
+	if err := h.server.FS().RenameOrMove(c.Request.Context(), body.Path, newPath); err != nil {
+		log.Error().Err(err).Str("path", body.Path).Str("newPath", newPath).Msg("failed to rename file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to rename file"})
 		return
-	}
-
-	// Update database records
-	if info.IsDir() {
-		// For folders, update all paths that start with the old path
-		db.RenameFilePaths(body.Path, newPath)
-		// Sync external search services (Meili, Qdrant) - best effort
-		go db.SyncSearchIndexOnMovePrefix(body.Path, newPath)
-	} else {
-		// For files, just update the single record
-		db.RenameFilePath(body.Path, newPath, body.NewName)
-		// Sync external search services (Meili, Qdrant) - best effort
-		go db.SyncSearchIndexOnMove(body.Path, newPath)
 	}
 
 	// Notify clients of the change
@@ -638,14 +611,6 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	oldFullPath := filepath.Join(cfg.UserDataDir, body.Path)
-
-	// Check if source exists
-	info, err := os.Stat(oldFullPath)
-	if os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
 
 	// Get file name
 	fileName := filepath.Base(body.Path)
@@ -665,30 +630,11 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 		return
 	}
 
-	// Ensure target directory exists
-	targetDir := filepath.Dir(newFullPath)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		log.Error().Err(err).Msg("failed to create target directory")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create target directory"})
-		return
-	}
-
-	// Move on filesystem
-	if err := os.Rename(oldFullPath, newFullPath); err != nil {
-		log.Error().Err(err).Msg("failed to move file")
+	// Move via fs.Service (handles filesystem, DB, search sync, logging, parent dir creation)
+	if err := h.server.FS().RenameOrMove(c.Request.Context(), body.Path, newPath); err != nil {
+		log.Error().Err(err).Str("path", body.Path).Str("newPath", newPath).Msg("failed to move file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move file"})
 		return
-	}
-
-	// Update database records
-	if info.IsDir() {
-		db.RenameFilePaths(body.Path, newPath)
-		// Sync external search services (Meili, Qdrant) - best effort
-		go db.SyncSearchIndexOnMovePrefix(body.Path, newPath)
-	} else {
-		db.RenameFilePath(body.Path, newPath, fileName)
-		// Sync external search services (Meili, Qdrant) - best effort
-		go db.SyncSearchIndexOnMove(body.Path, newPath)
 	}
 
 	// Notify clients of the change
@@ -719,8 +665,6 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 		return
 	}
 
-	cfg := config.Get()
-
 	// Build full path
 	var folderPath string
 	if body.Path == "" {
@@ -728,6 +672,8 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 	} else {
 		folderPath = body.Path + "/" + body.Name
 	}
+
+	cfg := config.Get()
 	fullPath := filepath.Join(cfg.UserDataDir, folderPath)
 
 	// Check if already exists
@@ -736,23 +682,12 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 		return
 	}
 
-	// Create folder
-	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		log.Error().Err(err).Msg("failed to create folder")
+	// Create folder via fs.Service (handles filesystem + DB + logging)
+	if err := h.server.FS().CreateFolder(c.Request.Context(), folderPath); err != nil {
+		log.Error().Err(err).Str("path", folderPath).Msg("failed to create folder")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create folder"})
 		return
 	}
-
-	// Add to database
-	now := db.NowUTC()
-	db.UpsertFile(&db.FileRecord{
-		Path:          folderPath,
-		Name:          body.Name,
-		IsFolder:      true,
-		ModifiedAt:    now,
-		CreatedAt:     now,
-		LastScannedAt: now,
-	})
 
 	// Notify clients of the change
 	h.server.Notifications().NotifyLibraryChanged(folderPath, "create")

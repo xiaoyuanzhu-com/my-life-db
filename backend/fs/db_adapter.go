@@ -42,7 +42,22 @@ func (a *dbAdapter) ListAllFilePaths() ([]string, error) {
 	return db.ListAllFilePaths()
 }
 
+// RenameFilePath updates a single file's path and name, including all related tables
+func (a *dbAdapter) RenameFilePath(oldPath, newPath, newName string) error {
+	return db.RenameFilePath(oldPath, newPath, newName)
+}
+
+// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames)
+func (a *dbAdapter) RenameFilePaths(oldPath, newPath string) error {
+	return db.RenameFilePaths(oldPath, newPath)
+}
+
 // DeleteFileWithCascade removes a file and all related records (digests, pins)
 func (a *dbAdapter) DeleteFileWithCascade(path string) error {
 	return db.DeleteFileWithCascade(path)
+}
+
+// DeleteFilesWithCascadePrefix removes a folder and all files/records under it
+func (a *dbAdapter) DeleteFilesWithCascadePrefix(pathPrefix string) error {
+	return db.DeleteFilesWithCascadePrefix(pathPrefix)
 }
