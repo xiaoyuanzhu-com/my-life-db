@@ -20,8 +20,6 @@ import (
 const (
 	// oauthStateCookieName is the cookie name for storing OAuth state
 	oauthStateCookieName = "oauth_state"
-	// oauthNativeRedirectCookieName stores the native app redirect scheme during OAuth flow
-	oauthNativeRedirectCookieName = "oauth_native_redirect"
 	// oauthStateCookieMaxAge is the max age for the OAuth state cookie (5 minutes)
 	oauthStateCookieMaxAge = 300
 )
@@ -57,15 +55,17 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
+	// If native app redirect is requested, encode it in the state parameter
+	// so it survives the IdP redirect chain (cookies can be lost cross-site)
+	nativeRedirect := c.Query("native_redirect")
+	if nativeRedirect != "" {
+		state = state + "." + base64.URLEncoding.EncodeToString([]byte(nativeRedirect))
+	}
+
 	// Store state in a short-lived httpOnly cookie for validation on callback
 	cfg := config.Get()
 	secure := !cfg.IsDevelopment()
 	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
-
-	// If native app redirect is requested, store it in a cookie for the callback
-	if nativeRedirect := c.Query("native_redirect"); nativeRedirect != "" {
-		c.SetCookie(oauthNativeRedirectCookieName, nativeRedirect, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
-	}
 
 	// Get authorization URL with discovered endpoints
 	authURL := provider.GetAuthCodeURL(state)
@@ -199,11 +199,8 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 		Str("username", username).
 		Msg("OAuth login successful")
 
-	// Check for native app redirect
-	if nativeRedirect, err := c.Cookie(oauthNativeRedirectCookieName); err == nil && nativeRedirect != "" {
-		// Clear the native redirect cookie
-		c.SetCookie(oauthNativeRedirectCookieName, "", -1, "/api/oauth", "", false, true)
-
+	// Check for native app redirect encoded in the state parameter
+	if nativeRedirect := extractNativeRedirect(stateParam); nativeRedirect != "" {
 		// Build redirect URL with tokens for the native app
 		redirectURL := fmt.Sprintf("%s?access_token=%s&expires_in=%d",
 			nativeRedirect, url.QueryEscape(tokens.AccessToken), tokens.ExpiresIn)
@@ -407,4 +404,18 @@ func generateOAuthState() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// extractNativeRedirect extracts native app redirect URL from the OAuth state parameter.
+// State format: "<csrf_token>.<base64url(native_redirect)>" or just "<csrf_token>"
+func extractNativeRedirect(state string) string {
+	parts := strings.SplitN(state, ".", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	decoded, err := base64.URLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	return string(decoded)
 }
