@@ -2,6 +2,7 @@
  * Hook for upload progress notifications
  *
  * Subscribes to the upload queue and shows toast notifications for:
+ * - Upload progress (xx/yy) - persistent toast that updates as files complete
  * - Upload completion (success) - batched, shows one toast when all complete
  * - Upload failures (with retry info)
  */
@@ -18,6 +19,9 @@ interface UseUploadNotificationsOptions {
   enabled?: boolean;
 }
 
+/** Stable toast ID for the upload progress toast so we can update it in place */
+const PROGRESS_TOAST_ID = 'upload-progress';
+
 /**
  * Hook that subscribes to upload queue and shows toast notifications
  */
@@ -32,6 +36,10 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
   const activeUploadsRef = useRef<Set<string>>(new Set());
   const completedCountRef = useRef<number>(0);
   const successToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track the total number of items in the current batch for progress display
+  const batchTotalRef = useRef<number>(0);
+  // Track the batch label (folder name or filename) for the progress toast
+  const batchLabelRef = useRef<string>('');
 
   const handleProgress = useCallback((items: PendingInboxItem[]) => {
     const prevItems = prevItemsRef.current;
@@ -40,7 +48,24 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
     for (const item of items) {
       if (item.status === 'saved' || item.status === 'uploading') {
         activeUploadsRef.current.add(item.id);
+        // Capture batch label from first item we see (root folder name or filename)
+        if (!batchLabelRef.current) {
+          if (item.destination) {
+            // Folder upload: use the root folder name
+            batchLabelRef.current = item.destination.split('/')[0];
+          } else {
+            batchLabelRef.current = item.filename;
+          }
+        }
       }
+    }
+
+    // Update batch total: the high-water mark of tracked uploads in this batch
+    const currentActive = activeUploadsRef.current.size;
+    const currentCompleted = completedCountRef.current;
+    const currentTotal = currentActive + currentCompleted;
+    if (currentTotal > batchTotalRef.current) {
+      batchTotalRef.current = currentTotal;
     }
 
     // Count newly completed uploads
@@ -102,6 +127,9 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
       // Only show toast when ALL active uploads are complete
       // This prevents split toasts like "90 complete" + "10 complete"
       if (activeUploadsRef.current.size === 0) {
+        // Dismiss the progress toast now that everything is done
+        toast.dismiss(PROGRESS_TOAST_ID);
+
         successToastTimeoutRef.current = setTimeout(() => {
           const count = completedCountRef.current;
           if (count > 0) {
@@ -111,10 +139,23 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
               toast.success(`${count} uploads complete`, { duration: 3000 });
             }
             completedCountRef.current = 0;
+            batchTotalRef.current = 0;
+            batchLabelRef.current = '';
           }
           successToastTimeoutRef.current = null;
         }, 300); // Small delay to batch near-simultaneous completions
       }
+    }
+
+    // Show/update progress toast when there are multiple files uploading
+    const batchTotal = batchTotalRef.current;
+    if (batchTotal > 1 && activeUploadsRef.current.size > 0) {
+      const uploaded = completedCountRef.current;
+      const label = batchLabelRef.current;
+      toast.loading(`${label} — uploading ${uploaded}/${batchTotal}`, {
+        id: PROGRESS_TOAST_ID,
+        duration: Infinity,
+      });
     }
 
     // Update previous items map
@@ -142,10 +183,15 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
         if (item.status === 'uploaded') {
           notifiedSuccessRef.current.add(item.id);
         }
+        if (item.status === 'saved' || item.status === 'uploading') {
+          activeUploadsRef.current.add(item.id);
+        }
         if (item.errorMessage) {
           notifiedErrorRef.current.add(`${item.id}-${item.retryCount}`);
         }
       }
+      // Initialize batch total from existing active uploads
+      batchTotalRef.current = activeUploadsRef.current.size;
       prevItemsRef.current = new Map(items.map((i) => [i.id, i]));
     };
 
