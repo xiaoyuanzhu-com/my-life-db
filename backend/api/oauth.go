@@ -280,8 +280,10 @@ func (h *Handlers) OAuthRefresh(c *gin.Context) {
 	setAuthCookiesGin(c, tokens)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"expiresIn": tokens.ExpiresIn,
+		"success":       true,
+		"expiresIn":     tokens.ExpiresIn,
+		"access_token":  tokens.AccessToken,
+		"refresh_token": tokens.RefreshToken,
 	})
 }
 
