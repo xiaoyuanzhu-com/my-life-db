@@ -12,7 +12,19 @@ The agent is:
 - A **separate logical entity** that lives alongside the app
 - Uses the app's capabilities through a clean **AppClient** interface
 - Communicates via **Anthropic's tool use protocol** (or OpenAI's function calling)
+- **Event-driven** — triggered automatically when new files arrive in inbox
 - Independent enough to be extracted to a service later
+
+### Two Search Layers
+
+The system has two distinct search capabilities:
+
+| Layer | What it is | How it works |
+|-------|-----------|--------------|
+| **App search** | Keyword + semantic search | Meilisearch + Qdrant, already built, used by `/api/search` |
+| **Agent search** | Intelligent file understanding | Claude reasons over file content, folder structure, and guidelines using tools — this is the new capability |
+
+The agent does NOT wrap the existing app search. The agent IS the new search — it uses Claude's reasoning over `get_file`, `get_folder_tree`, and `read_guideline` tools to understand files and decide where they belong.
 
 ---
 
@@ -25,17 +37,17 @@ The agent is:
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │                         App Backend                                    │ │
 │  │                                                                        │ │
-│  │   Files │ Search │ Library │ Digest │ FS Service │ Database           │ │
+│  │   Files │ Library │ Digest │ FS Service │ Database                    │ │
 │  │                                                                        │ │
 │  │   ┌──────────────────────────────────────────────────────────────────┐│ │
 │  │   │                       AppClient Interface                        ││ │
 │  │   │  (The app's capabilities exposed as simple methods)              ││ │
 │  │   │                                                                  ││ │
-│  │   │  search(query) → results                                         ││ │
 │  │   │  getFile(path) → file+digests                                    ││ │
 │  │   │  getFolderTree() → tree                                          ││ │
 │  │   │  moveFile(from, to) → ok                                         ││ │
 │  │   │  readGuideline() → text                                          ││ │
+│  │   │  listRecentFiles() → files                                       ││ │
 │  │   └──────────────────────────────────────────────────────────────────┘│ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                  ▲                                          │
@@ -46,26 +58,28 @@ The agent is:
 │  │                   (Uses Anthropic's tool use pattern)                 │  │
 │  │                                                                       │  │
 │  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
-│  │  │  Conversation Loop                                               │ │  │
+│  │  │  Tool Loop                                                       │ │  │
 │  │  │                                                                   │ │  │
-│  │  │  1. Receive user message                                         │ │  │
-│  │  │  2. Build messages array with conversation history               │ │  │
-│  │  │  3. Call Claude/GPT with tools=[search, organize, getFile, ...]  │ │  │
+│  │  │  1. Receive new inbox file event from FS service                 │ │  │
+│  │  │  2. Build messages with file context                             │ │  │
+│  │  │  3. Call Claude with tools=[get_file, get_folder_tree, ...]     │ │  │
 │  │  │  4. Execute tool calls via AppClient                             │ │  │
 │  │  │  5. Add tool results to messages                                 │ │  │
 │  │  │  6. Repeat until agent responds without tools                    │ │  │
-│  │  │  7. Return final response                                        │ │  │
+│  │  │  7. Return suggestion (or skip if unsure)                        │ │  │
 │  │  └─────────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                       │  │
 │  │  Tools (map directly to AppClient methods):                          │  │
-│  │  - search                                                             │  │
 │  │  - get_file                                                           │  │
 │  │  - get_folder_tree                                                    │  │
 │  │  - read_guideline                                                     │  │
-│  │  - move_file                                                          │  │
 │  │  - create_suggestion                                                  │  │
 │  │  - list_recent_files                                                  │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  Trigger:                                                                   │
+│    FS Service ──(new inbox file)──→ Agent Runtime                          │
+│    (fsnotify watch OR periodic scan OR upload API)                          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -83,11 +97,8 @@ This is the **contract** between the agent and the app. The agent only accesses 
 // or via HTTP (RemoteClient) for service deployment
 type AppClient interface {
     // ──────────────────────────────────────────────────────────────
-    // SEARCH & RETRIEVAL
+    // FILE RETRIEVAL
     // ──────────────────────────────────────────────────────────────
-
-    // Search for files using keyword + semantic search
-    Search(ctx context.Context, req SearchRequest) (*SearchResult, error)
 
     // Get file metadata and digests
     GetFile(ctx context.Context, path string) (*FileWithDigests, error)
@@ -115,19 +126,11 @@ type AppClient interface {
     // Create a pending organization suggestion
     CreateSuggestion(ctx context.Context, s *Suggestion) (string, error)
 
-    // Get pending suggestion for a conversation
-    GetPendingSuggestion(ctx context.Context, convID string) (*Suggestion, error)
+    // Get pending suggestion for a file
+    GetPendingSuggestion(ctx context.Context, filePath string) (*Suggestion, error)
 
     // Execute/reject a suggestion
     ResolveSuggestion(ctx context.Context, suggestionID, action string) error
-}
-
-// SearchRequest matches the existing /api/search parameters
-type SearchRequest struct {
-    Query  string
-    Type   string // mime type filter
-    Folder string // path filter
-    Limit  int
 }
 
 // FileWithDigests includes file + all digest content
@@ -143,12 +146,11 @@ type FileWithDigests struct {
 // Suggestion is a pending organization action
 type Suggestion struct {
     ID           string
-    ConvID       string
     FilePath     string
     TargetFolder string
     Reasoning    string
     Confidence   float64
-    Status       string
+    Status       string // pending, accepted, rejected, expired
     CreatedAt    time.Time
 }
 ```
@@ -163,24 +165,12 @@ For same-process deployment, directly call app services:
 // backend/agent/appclient/local.go
 
 type LocalAppClient struct {
-    db     *db.DB
-    fs     *fs.Service
-    search *search.Service
+    db *db.DB
+    fs *fs.Service
 }
 
-func NewLocalClient(db *db.DB, fs *fs.Service, search *search.Service) *LocalAppClient {
-    return &LocalAppClient{db: db, fs: fs, search: search}
-}
-
-func (c *LocalAppClient) Search(ctx context.Context, req SearchRequest) (*SearchResult, error) {
-    // Call search service directly
-    return c.search.Search(ctx, search.Request{
-        Query:  req.Query,
-        Type:   req.Type,
-        Path:   req.Folder,
-        Limit:  req.Limit,
-        Types:  []string{"keyword", "semantic"},
-    })
+func NewLocalClient(db *db.DB, fs *fs.Service) *LocalAppClient {
+    return &LocalAppClient{db: db, fs: fs}
 }
 
 func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*FileWithDigests, error) {
@@ -225,8 +215,8 @@ func (c *LocalAppClient) CreateSuggestion(ctx context.Context, s *Suggestion) (s
     return c.db.CreateSuggestion(ctx, s)
 }
 
-func (c *LocalAppClient) GetPendingSuggestion(ctx context.Context, convID string) (*Suggestion, error) {
-    return c.db.GetPendingSuggestion(ctx, convID)
+func (c *LocalAppClient) GetPendingSuggestion(ctx context.Context, filePath string) (*Suggestion, error) {
+    return c.db.GetPendingSuggestion(ctx, filePath)
 }
 
 func (c *LocalAppClient) ResolveSuggestion(ctx context.Context, id, action string) error {
@@ -238,71 +228,60 @@ func (c *LocalAppClient) ResolveSuggestion(ctx context.Context, id, action strin
 
 ## The Agent
 
-A simple conversation loop using Claude/GPT's native tool calling:
+The agent processes a single inbox file per invocation. No conversation history — each file is an independent task.
 
 ```go
 // backend/agent/agent.go
 
 type Agent struct {
-    app       AppClient
-    llm       LLMClient  // Anthropic or OpenAI client
-    model     string
-    convStore *ConversationStore
+    app   AppClient
+    llm   LLMClient  // Anthropic or OpenAI client
+    model string
 }
 
 func NewAgent(app AppClient, llm LLMClient, model string) *Agent {
     return &Agent{
-        app:       app,
-        llm:       llm,
-        model:     model,
-        convStore: NewConversationStore(),
+        app:   app,
+        llm:   llm,
+        model: model,
     }
 }
 
-func (a *Agent) Handle(ctx context.Context, req Request) (*Response, error) {
-    // Load conversation history
-    conv := a.convStore.Get(req.ConversationID)
-
-    // Add user message
-    conv.AddMessage(Message{Role: "user", Content: req.Text})
-
-    // Build tool definitions from AppClient capabilities
+// OrganizeFile is called when a new file appears in inbox.
+// The agent uses Claude + tools to understand the file and suggest organization.
+func (a *Agent) OrganizeFile(ctx context.Context, filePath string) (*Suggestion, error) {
     tools := a.buildTools()
-
-    // System prompt includes user's guideline
     systemPrompt := a.buildSystemPrompt(ctx)
 
-    // Agent loop - Claude decides what to do
+    // Initial message tells Claude about the new file
+    messages := []Message{
+        {Role: "user", Content: fmt.Sprintf(
+            "A new file has arrived in inbox: %s. "+
+            "Analyze it and suggest where it should be organized.", filePath)},
+    }
+
+    // Tool loop - Claude decides what to do
     for turn := 0; turn < 10; turn++ {
         completion, err := a.llm.Complete(ctx, CompletionRequest{
-            Model:    a.model,
-            System:   systemPrompt,
-            Messages: conv.Messages,
-            Tools:    tools,
+            Model:     a.model,
+            System:    systemPrompt,
+            Messages:  messages,
+            Tools:     tools,
             MaxTokens: 4096,
         })
         if err != nil {
             return nil, err
         }
 
-        // Check if agent wants to use tools
+        // No tools = agent is done reasoning
         if len(completion.ToolUse) == 0 {
-            // No tools - final response
-            conv.AddMessage(Message{
-                Role:    "assistant",
-                Content: completion.Content,
-            })
-            a.convStore.Save(conv)
-
-            return &Response{
-                ConversationID: req.ConversationID,
-                Text:          completion.Content,
-                Artifacts:     a.extractArtifacts(conv),
-            }, nil
+            // Check if a suggestion was created during tool calls
+            suggestion, _ := a.app.GetPendingSuggestion(ctx, filePath)
+            return suggestion, nil // may be nil if agent couldn't decide
         }
 
         // Add assistant message with tool use
-        conv.AddMessage(Message{
+        messages = append(messages, Message{
             Role:    "assistant",
             Content: completion.Content,
             ToolUse: completion.ToolUse,
@@ -312,18 +291,15 @@ func (a *Agent) Handle(ctx context.Context, req Request) (*Response, error) {
         for _, tool := range completion.ToolUse {
             result, err := a.executeTool(ctx, tool)
 
-            // Add tool result to conversation
-            conv.AddMessage(Message{
+            messages = append(messages, Message{
                 Role:         "user",
                 ToolResultID: tool.ID,
                 Content:      formatToolResult(result, err),
             })
         }
-
-        // Continue loop - agent will see tool results and decide next step
     }
 
-    return nil, fmt.Errorf("agent exceeded max turns")
+    return nil, fmt.Errorf("agent exceeded max turns for %s", filePath)
 }
 ```
 
@@ -336,32 +312,6 @@ Tools map directly to AppClient methods:
 ```go
 func (a *Agent) buildTools() []ToolDefinition {
     return []ToolDefinition{
-        {
-            Name:        "search",
-            Description: "Search for files by content, name, tags, or description. Returns matching files with context.",
-            InputSchema: map[string]any{
-                "type": "object",
-                "properties": map[string]any{
-                    "query": map[string]any{
-                        "type":        "string",
-                        "description": "Search query - can be keywords or natural language",
-                    },
-                    "type": map[string]any{
-                        "type":        "string",
-                        "description": "Filter by mime type prefix (e.g., 'image/', 'application/pdf')",
-                    },
-                    "folder": map[string]any{
-                        "type":        "string",
-                        "description": "Limit search to specific folder",
-                    },
-                    "limit": map[string]any{
-                        "type":        "integer",
-                        "description": "Max results (default 10)",
-                    },
-                },
-                "required": []string{"query"},
-            },
-        },
         {
             Name:        "get_file",
             Description: "Get detailed information about a file including extracted content from digests (OCR, transcription, etc.)",
@@ -453,26 +403,6 @@ Map tool calls to AppClient methods:
 ```go
 func (a *Agent) executeTool(ctx context.Context, tool ToolUse) (any, error) {
     switch tool.Name {
-    case "search":
-        var params struct {
-            Query  string `json:"query"`
-            Type   string `json:"type"`
-            Folder string `json:"folder"`
-            Limit  int    `json:"limit"`
-        }
-        json.Unmarshal(tool.Input, &params)
-
-        if params.Limit == 0 {
-            params.Limit = 10
-        }
-
-        return a.app.Search(ctx, SearchRequest{
-            Query:  params.Query,
-            Type:   params.Type,
-            Folder: params.Folder,
-            Limit:  params.Limit,
-        })
-
     case "get_file":
         var params struct {
             Path string `json:"path"`
@@ -503,7 +433,6 @@ func (a *Agent) executeTool(ctx context.Context, tool ToolUse) (any, error) {
         json.Unmarshal(tool.Input, &params)
 
         return a.app.CreateSuggestion(ctx, &Suggestion{
-            ConvID:       a.currentConvID,
             FilePath:     params.FilePath,
             TargetFolder: params.TargetFolder,
             Reasoning:    params.Reasoning,
@@ -531,17 +460,18 @@ func (a *Agent) executeTool(ctx context.Context, tool ToolUse) (any, error) {
 
 ## System Prompt
 
-The system prompt gives the agent its personality and context:
+The system prompt tells Claude its role and how to organize files:
 
 ```
-You are a helpful personal assistant for MyLifeDB, a personal knowledge management system.
+You are an auto-organization agent for MyLifeDB, a personal knowledge management system.
 
-## Your Role
+## Your Task
 
-You help users:
-1. **Find information** - Search through files, answer questions about their data
-2. **Organize files** - Suggest moving files to appropriate folders based on their organization patterns
-3. **Understand content** - Read and summarize file contents (OCR, transcriptions, digests)
+A new file has arrived in the inbox. Your job is to:
+1. Examine the file (content, metadata, name)
+2. Read the user's organization guideline
+3. Check the folder tree for available destinations
+4. Suggest the best folder for this file
 
 ## User's Organization Patterns
 
@@ -549,47 +479,27 @@ You help users:
 
 ## Available Tools
 
-You have access to these tools:
-- search: Find files by content, name, or description
-- get_file: Get detailed file content and metadata
+- get_file: Get file content and metadata (including digests like OCR, transcription)
 - get_folder_tree: See the user's folder structure
 - read_guideline: Read the user's organization guide
-- list_recent_files: See recently added files
-- create_suggestion: Suggest moving a file (requires user confirmation)
+- list_recent_files: See recently added files for context
+- create_suggestion: Suggest moving the file to a folder (requires user confirmation)
 
-## Guidelines
+## How to Organize
 
-### When searching:
-- Use semantic understanding - "ID photo" should match "license", "passport", etc.
-- If search returns too many results, ask clarifying questions
-- Show relevant files to the user with context
-
-### When organizing files:
 1. **Always read guideline.md first** to understand the user's patterns
 2. Check the folder tree to see available destinations
-3. Examine the file content and metadata
-4. Suggest the most appropriate folder with clear reasoning
-5. Provide confidence score (0.0-1.0)
-6. Offer alternatives if multiple folders could fit
+3. Examine the file content and metadata via get_file
+4. Call create_suggestion with the best folder, clear reasoning, and confidence score
 
-**Important**: Never move files without calling create_suggestion first. The user must confirm.
+**Important**: Always call create_suggestion — never move files directly. The user must confirm.
 
 ### Confidence levels:
-- High (>0.9): Strong match to existing patterns
+- High (>0.9): Strong match to existing patterns (e.g., W-2 form → work/company/compensation/)
 - Medium (0.7-0.9): Good match but some uncertainty
-- Low (<0.7): Ask user for guidance
+- Low (<0.7): Still suggest, but note the uncertainty in reasoning
 
-## Conversation Style
-
-- Be conversational and helpful
-- Explain your reasoning clearly
-- Ask questions when unclear
-- Admit when you're not sure
-
-## Context
-
-Recent files in inbox:
-{recent_inbox_files}
+If you truly cannot determine where a file belongs, respond without calling create_suggestion.
 ```
 
 ```go
@@ -597,48 +507,20 @@ func (a *Agent) buildSystemPrompt(ctx context.Context) string {
     // Read user's guideline
     guideline, _ := a.app.ReadGuideline(ctx)
 
-    // Get recent inbox files for context
-    recentFiles, _ := a.app.ListRecentFiles(ctx, 5, "")
-
-    return fmt.Sprintf(systemPromptTemplate, guideline, formatRecentFiles(recentFiles))
+    return fmt.Sprintf(systemPromptTemplate, guideline)
 }
 ```
 
 ---
 
-## Example Flows
+## Example Flow
 
-### User Query: "find my ID photo"
-
-```
-User message: "find my ID photo"
-        ↓
-Agent thinks: "User wants to find an ID photo. I'll search for it."
-        ↓
-Agent calls: search(query="ID license passport photo", type="image/")
-        ↓
-Search returns:
-  - life/gov docs/ID.jpg (score: 0.95)
-  - life/gov docs/license.png (score: 0.89)
-  - documents/passport.jpg (score: 0.82)
-        ↓
-Agent responds: "I found 3 photos that might be your ID:
-                 1. ID.jpg in life/gov docs/
-                 2. license.png in life/gov docs/
-                 3. passport.jpg in documents/
-
-                 Would you like me to show you any of these?"
-```
-
-### Auto-Organization: New file digest completed
+### New inbox file: W2_2024.pdf
 
 ```
-File: inbox/W2_2024.pdf
-Digest completed → trigger organization
+FS Service detects: inbox/W2_2024.pdf (new file)
         ↓
-Agent initialized with context:
-  - Recent inbox files
-  - Pending suggestions (none)
+Server calls: agent.OrganizeFile(ctx, "inbox/W2_2024.pdf")
         ↓
 Agent calls: read_guideline()
         ↓
@@ -665,8 +547,8 @@ Agent calls: create_suggestion(
     confidence=0.92
 )
         ↓
-User sees notification:
-  "I suggest moving W2_2024.pdf to work/hotstar/compensation/
+User sees notification via SSE:
+  "Suggest moving W2_2024.pdf → work/hotstar/compensation/
    [Move] [Keep in Inbox] [Choose Different Folder]"
 ```
 
@@ -674,140 +556,53 @@ User sees notification:
 
 ## Database Schema
 
-### Conversations
-
-```sql
-CREATE TABLE inbox_conversations (
-    id TEXT PRIMARY KEY,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'active', -- active, completed, archived
-    summary TEXT -- brief summary of conversation
-);
-```
-
-### Messages
-
-```sql
-CREATE TABLE inbox_messages (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL, -- user, assistant
-    content TEXT NOT NULL,
-    metadata TEXT, -- JSON for tool_use, attachments, etc.
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (conversation_id) REFERENCES inbox_conversations(id)
-);
-```
-
 ### Suggestions
 
 ```sql
 CREATE TABLE organization_suggestions (
     id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
     file_path TEXT NOT NULL,
     target_folder TEXT NOT NULL,
     reasoning TEXT NOT NULL,
     confidence REAL NOT NULL,
     status TEXT DEFAULT 'pending', -- pending, accepted, rejected, expired
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP,
-    FOREIGN KEY (conversation_id) REFERENCES inbox_conversations(id)
+    resolved_at TIMESTAMP
 );
 ```
+
+No conversations or messages tables needed — the agent processes one file at a time with no persistent conversation state.
 
 ---
 
 ## API Endpoints
 
-### Send message
+### List pending suggestions
 
 ```
-POST /api/inbox/agent/message
-{
-  "message": "find my ID photo",
-  "conversation_id": "optional-existing-conversation"
-}
+GET /api/inbox/suggestions
+  ?status=pending
 
 Response:
 {
-  "conversation_id": "conv-123",
-  "message": {
-    "id": "msg-456",
-    "role": "assistant",
-    "content": "I found 3 photos...",
-    "artifacts": [
-      {"type": "file", "path": "life/gov docs/ID.jpg"},
-      {"type": "file", "path": "life/gov docs/license.png"}
-    ]
-  }
-}
-```
-
-### Get conversation
-
-```
-GET /api/inbox/agent/conversations/:id
-
-Response:
-{
-  "id": "conv-123",
-  "created_at": "2025-02-05T10:00:00Z",
-  "updated_at": "2025-02-05T10:05:00Z",
-  "status": "active",
-  "messages": [
+  "suggestions": [
     {
-      "id": "msg-1",
-      "role": "user",
-      "content": "find my ID photo",
-      "created_at": "2025-02-05T10:00:00Z"
-    },
-    {
-      "id": "msg-2",
-      "role": "assistant",
-      "content": "I found 3 photos...",
-      "artifacts": [...],
+      "id": "sug-789",
+      "file_path": "inbox/W2_2024.pdf",
+      "target_folder": "work/hotstar/compensation/",
+      "reasoning": "W-2 is a tax form from your employer Hotstar...",
+      "confidence": 0.92,
+      "status": "pending",
       "created_at": "2025-02-05T10:00:05Z"
-    }
-  ],
-  "pending_suggestion": {
-    "id": "sug-789",
-    "file_path": "inbox/W2_2024.pdf",
-    "target_folder": "work/hotstar/compensation/",
-    "reasoning": "...",
-    "confidence": 0.92
-  }
-}
-```
-
-### List conversations
-
-```
-GET /api/inbox/agent/conversations
-  ?status=active,completed,archived
-  &limit=20
-
-Response:
-{
-  "conversations": [
-    {
-      "id": "conv-123",
-      "created_at": "2025-02-05T10:00:00Z",
-      "updated_at": "2025-02-05T10:05:00Z",
-      "status": "active",
-      "summary": "Finding ID photos and organizing W-2 form",
-      "last_message": "I found 3 photos that might be your ID...",
-      "unread_count": 2
     }
   ]
 }
 ```
 
-### Handle suggestion
+### Resolve suggestion
 
 ```
-POST /api/inbox/agent/suggestions/:id/resolve
+POST /api/inbox/suggestions/:id/resolve
 {
   "action": "accept" // or "reject"
 }
@@ -820,11 +615,13 @@ Response:
 }
 ```
 
+Suggestions also arrive via SSE notifications in real-time.
+
 ---
 
-## Auto-Organization Trigger
+## Trigger: FS Service New File Event
 
-Hook into the digest worker completion event:
+Hook into the FS service's new-file signal. This covers all sources: fsnotify watch, periodic scan, and upload API.
 
 ```go
 // backend/server/server.go
@@ -832,48 +629,38 @@ Hook into the digest worker completion event:
 func (s *Server) wireEventHandlers() {
     // ... existing handlers ...
 
-    // Trigger agent organization when digest completes for inbox files
-    s.digestWorker.SetCompletionHandler(func(filePath string) {
+    // Trigger agent when a new file appears in inbox
+    s.fsService.OnNewFile(func(filePath string) {
         if strings.HasPrefix(filePath, "inbox/") {
-            go s.triggerAutoOrganization(filePath)
+            go s.organizeInboxFile(filePath)
         }
     })
 }
 
-func (s *Server) triggerAutoOrganization(filePath string) {
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (s *Server) organizeInboxFile(filePath string) {
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
     defer cancel()
 
-    // Create or get conversation for auto-organization
-    convID := "auto-org-" + time.Now().Format("2006-01-02")
-    conv := s.agentConvStore.GetOrCreate(convID)
-
-    // Build message asking agent to organize this file
-    msg := fmt.Sprintf("A new file has been added to inbox: %s. Please analyze it and suggest where it should be organized.", filePath)
-
-    // Send to agent
-    resp, err := s.agent.Handle(ctx, agent.Request{
-        ConversationID: convID,
-        Text:          msg,
-    })
-
+    suggestion, err := s.agent.OrganizeFile(ctx, filePath)
     if err != nil {
-        log.Error().Err(err).Str("file", filePath).Msg("auto-organization failed")
+        log.Error().Err(err).Str("file", filePath).Msg("agent organization failed")
         return
     }
 
     // If agent created a suggestion, notify user via SSE
-    if resp.Suggestion != nil {
-        s.notifService.NotifyOrganizationSuggestion(resp.Suggestion)
+    if suggestion != nil {
+        s.notifService.NotifyOrganizationSuggestion(suggestion)
     }
 }
 ```
+
+The trigger fires immediately on file detection — it does **not** wait for digest processing or any other pipeline step.
 
 ---
 
 ## Server Integration
 
-Add agent components to the Server struct:
+Add agent to the Server struct:
 
 ```go
 // backend/server/server.go
@@ -881,33 +668,29 @@ Add agent components to the Server struct:
 type Server struct {
     // ... existing fields ...
 
-    agent          *agent.Agent
-    agentConvStore *agent.ConversationStore
-    appClient      appclient.AppClient
+    agent     *agent.Agent
+    appClient agent.AppClient
 }
 
 func New(cfg *Config) (*Server, error) {
     // ... existing initialization ...
 
     // Create AppClient interface
-    s.appClient = appclient.NewLocalClient(s.database, s.fsService, s.searchService)
+    s.appClient = agent.NewLocalClient(s.database, s.fsService)
 
     // Create LLM client
     llmClient := vendors.NewOpenAIClient(cfg.OpenAIConfig)
 
     // Create agent
     s.agent = agent.NewAgent(s.appClient, llmClient, cfg.AgentModel)
-    s.agentConvStore = agent.NewConversationStore()
 
-    // Wire event handlers (including auto-organization trigger)
+    // Wire event handlers (including inbox file trigger)
     s.wireEventHandlers()
 
     return s, nil
 }
 
-// Expose for API handlers
 func (s *Server) Agent() *agent.Agent { return s.agent }
-func (s *Server) AgentConversations() *agent.ConversationStore { return s.agentConvStore }
 ```
 
 ---
@@ -935,51 +718,36 @@ type AgentConfig struct {
 
 ## Implementation Phases
 
-### Phase 1: Foundation (1-2 days)
-- [ ] Database migrations (conversations, messages, suggestions)
+### Phase 1: Foundation
+- [ ] Database migration (organization_suggestions table)
 - [ ] AppClient interface definition
 - [ ] LocalAppClient implementation
-- [ ] Basic agent structure with conversation loop
+- [ ] Agent struct with OrganizeFile + tool loop
 - [ ] Tool definitions and execution
 
-### Phase 2: Core Tools (2-3 days)
-- [ ] Search tool (reuse existing search service)
-- [ ] GetFile tool (with digest content)
-- [ ] GetFolderTree tool
-- [ ] ReadGuideline tool
-- [ ] ListRecentFiles tool
-- [ ] CreateSuggestion tool
+### Phase 2: FS Trigger + Wiring
+- [ ] FS service `OnNewFile` event for inbox files
+- [ ] Server wiring: FS event → agent.OrganizeFile
+- [ ] SSE notification for new suggestions
 
-### Phase 3: API & Frontend (2-3 days)
-- [ ] API endpoints (message, conversations, suggestions)
-- [ ] Frontend inbox UI with message feed
-- [ ] Message input component
-- [ ] File artifact display
-- [ ] Suggestion UI with accept/reject buttons
+### Phase 3: API + Frontend
+- [ ] API endpoints (list suggestions, resolve suggestion)
+- [ ] Suggestion UI in inbox: accept/reject/choose different folder
+- [ ] SSE integration for real-time suggestion display
 
-### Phase 4: Auto-Organization (1-2 days)
-- [ ] Hook digest completion event
-- [ ] Auto-trigger agent for inbox files
-- [ ] SSE notifications for suggestions
-- [ ] Settings for auto-organization preferences
-
-### Phase 5: Polish (1-2 days)
-- [ ] Streaming responses (SSE)
-- [ ] Conversation management (archive, delete)
+### Phase 4: Polish
 - [ ] Error handling and retries
-- [ ] Loading states and optimistic updates
+- [ ] Timeout management for agent calls
 - [ ] Testing and bug fixes
-
-**Total estimate: 7-12 days**
 
 ---
 
 ## Future Enhancements
 
-### Multi-turn Conversations
-- Keep context across multiple messages
-- Support follow-up questions
-- Conversation summarization for long threads
+### User-Initiated Chat
+- Add `POST /api/inbox/agent/message` for interactive conversations
+- Conversation history, multi-turn follow-ups
+- User can ask agent to search, explain files, etc.
 
 ### Learning from Decisions
 - Track accepted/rejected suggestions
@@ -1020,21 +788,14 @@ func (c *RemoteAppClient) Search(ctx context.Context, req SearchRequest) (*Searc
 
 ## Design Philosophy
 
-This architecture prioritizes **simplicity and extensibility**:
+This architecture prioritizes **simplicity and single responsibility**:
 
-1. **Single general-purpose agent** - One intelligent agent handles both query and organize tasks
-2. **Native tool use** - Leverages Claude's well-tested tool calling instead of custom abstractions
-3. **Clean separation** - AppClient interface allows future extraction to separate service
-4. **Fewer moving parts** - Easier to maintain and debug
-5. **Easy to extend** - Just add new tools as needed
-
-### When to Consider Multi-Agent Architecture
-
-If we encounter these issues in production, we can revisit a multi-agent design:
-- Latency becomes problematic (>2s for simple queries)
-- Cost becomes significant (too many tool calls)
-- Need specialized system prompts for different domains
-- Multiple distinct workflows emerge that benefit from separation
+1. **Event-driven, not chat-driven** — Agent reacts to FS events, no user-initiated API needed initially
+2. **One file, one invocation** — No conversation state; each file is processed independently
+3. **Native tool use** — Leverages Claude's well-tested tool calling instead of custom abstractions
+4. **Two distinct search layers** — App search (keyword+semantic) and agent search (Claude reasoning) serve different purposes
+5. **Clean separation** — AppClient interface allows future extraction to separate service
+6. **Easy to extend** — Add user-initiated chat, new tools, or multi-agent patterns when needed
 
 ---
 
@@ -1049,4 +810,4 @@ If we encounter these issues in production, we can revisit a multi-agent design:
 ---
 
 *Created: 2025-02-05*
-*Last updated: 2025-02-05*
+*Last updated: 2025-02-06*
