@@ -49,7 +49,6 @@ go vet ./...      # Run Go linter
 ./run.js backend            # Build and start backend (loads .env automatically)
 ./run.js backend --watch    # Start + auto-restart on git changes
 ./run.js meili              # Start Meilisearch via Docker
-./run.js qdrant             # Start Qdrant via Docker
 ./run.js github             # Start GitHub webhook listener (for staging)
 ```
 
@@ -96,7 +95,7 @@ my-life-db/
 │   │   ├── server.go   # Server lifecycle & component management
 │   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
-│   ├── vendors/        # External clients (Meilisearch, Qdrant, OpenAI, HAID, Aliyun)
+│   ├── vendors/        # External clients (Meilisearch, OpenAI, HAID, Aliyun)
 │   ├── workers/
 │   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
@@ -271,12 +270,10 @@ Never create shadcn components manually.
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
 | MEILI_HOST | | Meilisearch URL (optional) |
-| QDRANT_HOST | | Qdrant URL (optional, env var name is `QDRANT_HOST`) |
-| QDRANT_API_KEY | | Qdrant API key (optional) |
 | OPENAI_API_KEY | | OpenAI API key (optional) |
 | OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
 | OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |
-| HAID_BASE_URL | | HAID embedding service URL (optional) |
+| HAID_BASE_URL | | HAID service URL for OCR, ASR, etc. (optional) |
 | HAID_API_KEY | | HAID API key (optional) |
 | MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
 | MLD_OAUTH_CLIENT_ID | | OAuth client ID |
@@ -297,7 +294,7 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
 | Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
 | Digest | `/api/digest/*` | Digester registry, stats, trigger/reset digests |
-| People | `/api/people`, `/api/people/:id` | Person management + merge + embeddings assign/unassign |
+| People | `/api/people`, `/api/people/:id` | Person management + merge |
 | Search | `/api/search` | Full-text search |
 | AI | `/api/ai/summarize` | AI summarization |
 | Settings | `/api/settings` | GET/PUT/POST (get, update, reset) |
@@ -381,7 +378,7 @@ The user typically has a development server running. Check before starting a new
 
 **BAD:**
 ```go
-// User configured port 6333, but I "know" Qdrant uses 6334 for gRPC
+// User configured a port, but I "know" the service uses a different port
 if port == "6333" {
     port = "6334"  // Automatic "correction"
 }

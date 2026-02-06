@@ -374,48 +374,6 @@ func (h *HAIDClient) SegmentImage(imagePath string) (*SAMResponse, error) {
 	return &result, nil
 }
 
-// Embed generates embeddings for texts
-func (h *HAIDClient) Embed(texts []string) ([][]float32, error) {
-	if h == nil {
-		return nil, nil
-	}
-
-	log.Info().Int("textCount", len(texts)).Msg("generating embeddings via HAID")
-
-	body := map[string]interface{}{
-		"texts": texts,
-		"model": "Qwen/Qwen3-Embedding-0.6B",
-	}
-
-	resp, err := h.post("/api/text-to-embedding", body)
-	if err != nil {
-		log.Error().Err(err).Msg("HAID embedding request failed")
-		return nil, err
-	}
-
-	var result struct {
-		Embeddings [][]float32 `json:"embeddings"`
-		Model      string      `json:"model"`
-		Dimensions int         `json:"dimensions"`
-		Error      string      `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		log.Error().Err(err).Msg("failed to parse HAID embedding response")
-		return nil, err
-	}
-
-	if result.Error != "" {
-		return nil, fmt.Errorf("HAID embedding error: %s", result.Error)
-	}
-
-	log.Info().
-		Str("model", result.Model).
-		Int("dimensions", result.Dimensions).
-		Int("embeddingCount", len(result.Embeddings)).
-		Msg("HAID embeddings generated successfully")
-
-	return result.Embeddings, nil
-}
 
 // NOTE: SpeakerEmbedding functionality removed - speaker embeddings are included
 // in the ASR response when diarization is enabled. There is no separate

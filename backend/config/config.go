@@ -26,10 +26,6 @@ type Config struct {
 	MeiliAPIKey string
 	MeiliIndex  string
 
-	QdrantHost       string
-	QdrantAPIKey     string
-	QdrantCollection string
-
 	OpenAIAPIKey  string
 	OpenAIBaseURL string
 	OpenAIModel   string
@@ -92,11 +88,6 @@ func load() *Config {
 		MeiliHost:   getEnv("MEILI_HOST", ""),
 		MeiliAPIKey: getEnv("MEILI_API_KEY", ""),
 		MeiliIndex:  getEnv("MEILI_INDEX", "mylifedb_files"),
-
-		// Qdrant
-		QdrantHost:       getEnv("QDRANT_HOST", ""),
-		QdrantAPIKey:     getEnv("QDRANT_API_KEY", ""),
-		QdrantCollection: getEnv("QDRANT_COLLECTION", "mylifedb_vectors"),
 
 		// OpenAI
 		OpenAIAPIKey:  getEnv("OPENAI_API_KEY", ""),

@@ -26,7 +26,6 @@ type Vendors struct {
 	HomelabAI   *HomelabAI   `json:"homelabAi,omitempty"`
 	Aliyun      *Aliyun      `json:"aliyun,omitempty"`
 	Meilisearch *Meilisearch `json:"meilisearch,omitempty"`
-	Qdrant      *Qdrant      `json:"qdrant,omitempty"`
 }
 
 type OpenAI struct {
@@ -51,10 +50,6 @@ type Aliyun struct {
 }
 
 type Meilisearch struct {
-	Host string `json:"host,omitempty"`
-}
-
-type Qdrant struct {
 	Host string `json:"host,omitempty"`
 }
 

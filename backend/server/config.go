@@ -6,7 +6,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/search"
 )
 
 // Config holds server configuration
@@ -41,10 +40,6 @@ type Config struct {
 	MeiliHost   string
 	MeiliAPIKey string
 	MeiliIndex  string
-
-	QdrantHost       string
-	QdrantAPIKey     string
-	QdrantCollection string
 
 	// OAuth settings
 	AuthMode              string
@@ -98,11 +93,3 @@ func (c *Config) ToDigestConfig() digest.Config {
 	}
 }
 
-// ToSearchConfig converts server config to search sync worker config
-func (c *Config) ToSearchConfig() search.Config {
-	return search.Config{
-		SyncInterval:    10 * time.Second,
-		MeiliBatchSize:  50,
-		QdrantBatchSize: 20,
-	}
-}

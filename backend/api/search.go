@@ -116,15 +116,14 @@ func (h *Handlers) Search(c *gin.Context) {
 	// Parse search types
 	typesParam := c.Query("types")
 	if typesParam == "" {
-		typesParam = "keyword,semantic"
+		typesParam = "keyword"
 	}
 	searchTypes := strings.Split(typesParam, ",")
 	useKeyword := contains(searchTypes, "keyword")
-	useSemantic := contains(searchTypes, "semantic")
 
-	if !useKeyword && !useSemantic {
+	if !useKeyword {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid types parameter. Use 'keyword', 'semantic', or 'keyword,semantic'",
+			"error": "Invalid types parameter. Use 'keyword'",
 			"code":  "INVALID_TYPES",
 		})
 		return
@@ -132,7 +131,6 @@ func (h *Handlers) Search(c *gin.Context) {
 
 	// Initialize clients
 	meiliClient := vendors.GetMeiliClient()
-	qdrantClient := vendors.GetQdrantClient()
 
 	results := []SearchResultItem{}
 	var total int
@@ -201,92 +199,6 @@ func (h *Handlers) Search(c *gin.Context) {
 					MatchContext:    matchContext,
 					MatchedObject:   matchedObject,
 				})
-			}
-		}
-	}
-
-	// Semantic search
-	if useSemantic && qdrantClient != nil {
-		// Get query embedding
-		embedding, err := vendors.EmbedText(query)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to get query embedding")
-			// If semantic search was explicitly requested, return error
-			if !useKeyword {
-				c.JSON(http.StatusServiceUnavailable, gin.H{
-					"error": "Semantic search is not available: " + err.Error(),
-					"code":  "SEMANTIC_SEARCH_UNAVAILABLE",
-				})
-				return
-			}
-		} else {
-			semanticResults, err := qdrantClient.Search(embedding, vendors.QdrantSearchOptions{
-				Limit:          limit,
-				ScoreThreshold: 0.7,
-				TypeFilter:     typeFilter,
-				PathFilter:     pathFilter,
-			})
-			if err != nil {
-				log.Error().Err(err).Msg("qdrant search failed")
-				// If semantic search was explicitly requested, return error
-				if !useKeyword {
-					c.JSON(http.StatusServiceUnavailable, gin.H{
-						"error": "Semantic search failed: " + err.Error(),
-						"code":  "SEMANTIC_SEARCH_FAILED",
-					})
-					return
-				}
-			} else {
-				sources = append(sources, "semantic")
-
-				// Deduplicate with keyword results
-				existingPaths := make(map[string]bool)
-				for _, r := range results {
-					existingPaths[r.Path] = true
-				}
-
-				for _, hit := range semanticResults {
-					if existingPaths[hit.FilePath] {
-						continue
-					}
-
-					file, err := db.GetFileWithDigests(hit.FilePath)
-					if err != nil || file == nil {
-						continue
-					}
-
-					score := float64(hit.Score)
-					terms := extractSearchTerms(query)
-
-					// For image files, check if we matched on image-objects and include the matched object for highlighting
-					var matchedObject *MatchedObject
-					if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
-						matchedObject = findMatchingObject(file, terms)
-					}
-
-					results = append(results, SearchResultItem{
-						Path:            file.Path,
-						Name:            file.Name,
-						IsFolder:        file.IsFolder,
-						Size:            file.Size,
-						MimeType:        file.MimeType,
-						ModifiedAt:      file.ModifiedAt,
-						CreatedAt:       file.CreatedAt,
-						Digests:         file.Digests,
-						Score:           float64(hit.Score),
-						Snippet:         safeSubstring(hit.Text, 200),
-						TextPreview:     file.TextPreview,
-						ScreenshotSqlar: file.ScreenshotSqlar,
-						MatchContext: &MatchContext{
-							Source:     "semantic",
-							Snippet:    safeSubstring(hit.Text, 300),
-							Terms:      terms,
-							Score:      &score,
-							SourceType: hit.SourceType,
-						},
-						MatchedObject: matchedObject,
-					})
-				}
 			}
 		}
 	}

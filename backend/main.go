@@ -55,9 +55,7 @@ func main() {
 		func() db.MeiliClientInterface {
 			return vendors.GetMeiliClient()
 		},
-		func() db.QdrantClientInterface {
-			return vendors.GetQdrantClient()
-		},
+		nil, // Qdrant removed
 	)
 
 	// Setup API routes

@@ -82,12 +82,10 @@ var digesterOrder = []Digester{
 	&URLCrawlSummaryDigester{},
 	&SpeechRecognitionCleanupDigester{},
 	&SpeechRecognitionSummaryDigester{},
-	&SpeakerEmbeddingDigester{},
 
 	// Phase 3: Tags and search (depends on text content being available)
 	&TagsDigester{},
 	&SearchKeywordDigester{},
-	&SearchSemanticDigester{},
 }
 
 // InitializeRegistry registers all digesters in their defined order

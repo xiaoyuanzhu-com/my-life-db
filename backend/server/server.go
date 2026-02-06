@@ -17,7 +17,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/search"
 )
 
 // Server owns and coordinates all application components
@@ -28,7 +27,6 @@ type Server struct {
 	database      *db.DB
 	fsService     *fs.Service
 	digestWorker  *digest.Worker
-	searchWorker  *search.Worker
 	notifService  *notifications.Service
 	claudeManager *claude.SessionManager
 	agent         *agent.Agent
@@ -97,12 +95,7 @@ func New(cfg *Config) (*Server, error) {
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
 
-	// 6. Create search sync worker
-	log.Info().Msg("initializing search sync worker")
-	searchCfg := cfg.ToSearchConfig()
-	s.searchWorker = search.NewWorker(searchCfg)
-
-	// 7. Create agent
+	// 6. Create agent
 	log.Info().Msg("initializing inbox agent")
 	appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
 	llmClient := agent.NewOpenAILLMClient()
