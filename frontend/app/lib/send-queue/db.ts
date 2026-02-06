@@ -135,8 +135,22 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
 
         // Uploading items - check if we should take over
         if (item.status === 'uploading') {
-          // Already being uploaded by this tab
-          if (item.uploadingBy === tabId) return true;
+          // For items locked by this tab, only consider them if the lock is stale
+          // (i.e., this tab crashed mid-upload and is now recovering).
+          // Fresh locks mean the upload is actively in progress — skip them.
+          if (item.uploadingBy === tabId) {
+            if (item.uploadingAt) {
+              const lockTime = new Date(item.uploadingAt).getTime();
+              if (lockTime >= staleThreshold) {
+                return false; // Lock is fresh, upload is active — skip
+              }
+            }
+            // Lock is stale or missing timestamp — safe to reclaim
+            if (!item.nextRetryAt || item.nextRetryAt <= now) {
+              return true;
+            }
+            return false;
+          }
 
           // Check if lock is stale
           if (item.uploadingAt) {
@@ -205,7 +219,22 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
         if (item.status === 'saved') return true;
 
         if (item.status === 'uploading') {
-          if (item.uploadingBy === tabId) return true;
+          // For items locked by this tab, only consider them if the lock is stale
+          // (i.e., this tab crashed mid-upload and is now recovering).
+          // Fresh locks mean the upload is actively in progress — skip them.
+          if (item.uploadingBy === tabId) {
+            if (item.uploadingAt) {
+              const lockTime = new Date(item.uploadingAt).getTime();
+              if (lockTime >= staleThreshold) {
+                return false; // Lock is fresh, upload is active — skip
+              }
+            }
+            // Lock is stale or missing timestamp — safe to reclaim
+            if (!item.nextRetryAt || item.nextRetryAt <= now) {
+              return true;
+            }
+            return false;
+          }
 
           if (item.uploadingAt) {
             const lockTime = new Date(item.uploadingAt).getTime();
