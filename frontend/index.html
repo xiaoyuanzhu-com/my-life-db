@@ -11,6 +11,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preload" as="image" href="/static/my-life-db-logo-144.png" fetchpriority="high" />
 
+    <!-- Prevent FOUC: Apply dark mode class and color-scheme before first paint -->
+    <script>
+      (function() {
+        var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        }
+        // Set color-scheme to prevent browser UI flash (scrollbars, inputs, etc.)
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      })();
+    </script>
+
     <!-- Claude Code UI Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

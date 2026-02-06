@@ -10,12 +10,26 @@ function useDarkMode() {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
 
     const update = () => {
-      document.documentElement.classList.toggle('dark', mq.matches);
+      const isDark = mq.matches;
+      document.documentElement.classList.toggle('dark', isDark);
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
     };
 
     update();
     mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
+
+    // Re-apply on visibility change (fixes bfcache issues on mobile)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        update();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      mq.removeEventListener('change', update);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 }
 
