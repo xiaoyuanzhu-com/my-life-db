@@ -41,6 +41,13 @@ type Config struct {
 	MeiliAPIKey string
 	MeiliIndex  string
 
+	QdrantHost       string
+	QdrantAPIKey     string
+	QdrantCollection string
+
+	// Feature flags
+	InboxAgentEnabled bool
+
 	// OAuth settings
 	AuthMode              string
 	OAuthClientID         string

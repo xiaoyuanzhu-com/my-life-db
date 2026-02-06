@@ -281,6 +281,7 @@ Never create shadcn components manually.
 | MLD_OAUTH_ISSUER_URL | | OIDC issuer URL |
 | MLD_OAUTH_REDIRECT_URI | | OAuth redirect URI |
 | MLD_EXPECTED_USERNAME | | Expected username for user instance |
+| MLD_INBOX_AGENT | | Set to `1` to enable inbox agent |
 | DB_LOG_QUERIES | | Set to `1` to enable SQL query logging |
 
 ## API Routes

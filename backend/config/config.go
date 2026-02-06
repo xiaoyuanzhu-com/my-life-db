@@ -42,6 +42,9 @@ type Config struct {
 	OAuthRedirectURI      string
 	OAuthExpectedUsername string
 
+	// Feature flags
+	InboxAgentEnabled bool
+
 	// Debug settings
 	DBLogQueries bool
 	DebugModules string
@@ -106,6 +109,9 @@ func load() *Config {
 		OAuthIssuerURL:        getEnv("MLD_OAUTH_ISSUER_URL", ""),
 		OAuthRedirectURI:      getEnv("MLD_OAUTH_REDIRECT_URI", ""),
 		OAuthExpectedUsername: getEnv("MLD_EXPECTED_USERNAME", ""),
+
+		// Feature flags
+		InboxAgentEnabled: getEnv("MLD_INBOX_AGENT", "") == "1",
 
 		// Debug
 		DBLogQueries: getEnv("DB_LOG_QUERIES", "") == "1",

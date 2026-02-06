@@ -95,11 +95,20 @@ func New(cfg *Config) (*Server, error) {
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
 
-	// 6. Create agent
-	log.Info().Msg("initializing inbox agent")
-	appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
-	llmClient := agent.NewOpenAILLMClient()
-	s.agent = agent.NewAgent(appClient, llmClient)
+	// 6. Create search sync worker
+	log.Info().Msg("initializing search sync worker")
+	searchCfg := cfg.ToSearchConfig()
+	s.searchWorker = search.NewWorker(searchCfg)
+
+	// 7. Create agent (if enabled)
+	if cfg.InboxAgentEnabled {
+		log.Info().Msg("initializing inbox agent")
+		appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
+		llmClient := agent.NewOpenAILLMClient()
+		s.agent = agent.NewAgent(appClient, llmClient)
+	} else {
+		log.Info().Msg("inbox agent disabled")
+	}
 
 	// 8. Wire service connections
 	s.connectServices()
@@ -126,40 +135,42 @@ func (s *Server) connectServices() {
 	})
 
 	// Digest → Agent: When inbox files finish processing, trigger intention recognition
-	s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
-		// Only trigger for inbox files
-		if !strings.HasPrefix(filePath, "inbox/") {
-			return
-		}
-
-		// Only trigger if at least one digest was successfully processed
-		if processed == 0 {
-			log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
-			return
-		}
-
-		log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
-
-		// Run agent analysis in background
-		go func() {
-			ctx := context.Background()
-			resp, err := s.agent.AnalyzeFile(ctx, filePath)
-			if err != nil {
-				log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
+	if s.agent != nil {
+		s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
+			// Only trigger for inbox files
+			if !strings.HasPrefix(filePath, "inbox/") {
 				return
 			}
 
-			log.Info().
-				Str("path", filePath).
-				Str("intentionType", resp.Intention.IntentionType).
-				Str("suggestedFolder", resp.Intention.SuggestedFolder).
-				Float64("confidence", resp.Intention.Confidence).
-				Msg("agent analysis complete")
+			// Only trigger if at least one digest was successfully processed
+			if processed == 0 {
+				log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
+				return
+			}
 
-			// Notify UI of new intention
-			s.notifService.NotifyInboxChanged()
-		}()
-	})
+			log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
+
+			// Run agent analysis in background
+			go func() {
+				ctx := context.Background()
+				resp, err := s.agent.AnalyzeFile(ctx, filePath)
+				if err != nil {
+					log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
+					return
+				}
+
+				log.Info().
+					Str("path", filePath).
+					Str("intentionType", resp.Intention.IntentionType).
+					Str("suggestedFolder", resp.Intention.SuggestedFolder).
+					Float64("confidence", resp.Intention.Confidence).
+					Msg("agent analysis complete")
+
+				// Notify UI of new intention
+				s.notifService.NotifyInboxChanged()
+			}()
+		})
+	}
 }
 
 // setupRouter creates and configures the Gin router
