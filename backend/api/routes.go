@@ -84,7 +84,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Stats
 		api.GET("/stats", h.GetStats)
 
-		// Upload (TUS)
+		// Upload (Simple PUT for small files + TUS for large files)
+		api.PUT("/upload/simple/*path", h.SimpleUpload)
 		api.POST("/upload/finalize", h.FinalizeUpload)
 		api.Any("/upload/tus/*path", h.TUSHandler)
 

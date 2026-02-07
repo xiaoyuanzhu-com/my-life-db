@@ -95,7 +95,9 @@ export const QUEUE_CONSTANTS = {
   /** Database version */
   DB_VERSION: 1,
   /** Maximum concurrent uploads */
-  MAX_CONCURRENT_UPLOADS: 2,
+  MAX_CONCURRENT_UPLOADS: 6,
+  /** Size threshold for simple PUT upload vs TUS (1MB) */
+  SIMPLE_UPLOAD_THRESHOLD: 1 * 1024 * 1024,
   /** Lock staleness threshold (1 hour in ms) */
   LOCK_STALE_THRESHOLD_MS: 60 * 60 * 1000,
   /** Heartbeat interval (1 minute in ms) */

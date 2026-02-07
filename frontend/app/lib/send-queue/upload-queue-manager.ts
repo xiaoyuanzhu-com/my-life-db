@@ -30,6 +30,7 @@ import { api } from '~/lib/api';
 
 const {
   MAX_CONCURRENT_UPLOADS,
+  SIMPLE_UPLOAD_THRESHOLD,
   HEARTBEAT_INTERVAL_MS,
   UPLOAD_TIMEOUT_MS,
   RETRY_JITTER_PERCENT,
@@ -525,8 +526,10 @@ export class UploadQueueManager {
       await saveItem(updatedItem);
       await this.notifyProgress();
 
-      // Create TUS upload
-      const serverPath = await this.performTusUpload(updatedItem, activeUpload);
+      // Choose upload strategy: simple PUT for small files, TUS for large files
+      const serverPath = updatedItem.size <= SIMPLE_UPLOAD_THRESHOLD
+        ? await this.performSimpleUpload(updatedItem, activeUpload)
+        : await this.performTusUpload(updatedItem, activeUpload);
 
       // Success! Mark as uploaded
       // Item stays in DB until real file appears in tree (cleaned up by file-tree.tsx)
@@ -555,6 +558,61 @@ export class UploadQueueManager {
       // Process next item
       this.processNext();
     }
+  }
+
+  /**
+   * Perform simple PUT upload for small files
+   * Single request: file body sent directly to server, which saves and registers it.
+   */
+  private async performSimpleUpload(
+    item: PendingInboxItem,
+    activeUpload: ActiveUpload
+  ): Promise<string> {
+    // Build the destination path: destination/filename
+    const destination = item.destination ?? 'inbox';
+    const uploadPath = destination ? `${destination}/${item.filename}` : item.filename;
+    const encodedPath = uploadPath.split('/').map(encodeURIComponent).join('/');
+
+    console.log('[UploadQueue] Starting simple upload:', {
+      filename: item.filename,
+      destination,
+      size: item.size,
+    });
+
+    const response = await api.fetch(`/api/upload/simple/${encodedPath}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': item.type || 'application/octet-stream',
+      },
+      body: item.blob,
+      signal: activeUpload.abortController.signal,
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    const defaultPath = `${destination}/${item.filename}`;
+    const finalPath = result.path || result.paths?.[0] || defaultPath;
+
+    console.log('[UploadQueue] Simple upload completed:', {
+      destination,
+      filename: item.filename,
+      resultPath: result.path,
+      finalPath,
+    });
+
+    // Update progress to 100% (single request, no streaming progress)
+    try {
+      await updateProgress(item.id, 100, item.size);
+      await this.notifyProgress();
+    } catch (err) {
+      console.error('[UploadQueue] Failed to update progress:', err);
+    }
+
+    return finalPath;
   }
 
   /**

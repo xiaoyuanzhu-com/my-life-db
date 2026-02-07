@@ -228,6 +228,84 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	})
 }
 
+// SimpleUpload handles PUT /api/upload/simple/*path
+// Single-request upload for small files, bypassing TUS protocol overhead.
+// The URL path is the destination path (directory + filename).
+// Request body is the raw file content, Content-Type header is the MIME type.
+func (h *Handlers) SimpleUpload(c *gin.Context) {
+	// Extract path from URL param (Gin wildcard includes leading slash)
+	rawPath := strings.TrimPrefix(c.Param("path"), "/")
+	if rawPath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
+	}
+
+	// Split into directory and filename
+	dir := filepath.Dir(rawPath)
+	filename := filepath.Base(rawPath)
+	if filename == "" || filename == "." {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required in path"})
+		return
+	}
+
+	// Sanitize filename
+	filename = utils.SanitizeFilename(filename)
+
+	// Ensure destination directory exists
+	cfg := config.Get()
+	destDir := filepath.Join(cfg.UserDataDir, dir)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		log.Error().Err(err).Str("dir", destDir).Msg("simple upload: failed to create destination directory")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create destination directory"})
+		return
+	}
+
+	// Deduplicate filename if a file already exists at that path
+	filename = utils.DeduplicateFilename(destDir, filename)
+	destPath := filepath.Join(dir, filename)
+
+	// Get MIME type from Content-Type header
+	mimeType := c.ContentType()
+
+	// Write via fs.Service.WriteFile() — same path as FinalizeUpload
+	defer c.Request.Body.Close()
+	result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
+		Path:            destPath,
+		Content:         c.Request.Body,
+		MimeType:        mimeType,
+		Source:          "upload",
+		ComputeMetadata: true,
+		Sync:            true,
+	})
+	if err != nil {
+		log.Error().Err(err).Str("path", destPath).Msg("simple upload: failed to write file")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+		return
+	}
+
+	log.Info().
+		Str("path", destPath).
+		Str("filename", filename).
+		Int64("size", *result.Record.Size).
+		Str("mimeType", *result.Record.MimeType).
+		Bool("isNew", result.IsNew).
+		Bool("hashComputed", result.HashComputed).
+		Msg("simple upload completed")
+
+	// Notify UI
+	if dir == "inbox" || dir == "" || dir == "." {
+		h.server.Notifications().NotifyInboxChanged()
+	} else {
+		h.server.Notifications().NotifyLibraryChanged(destPath, "upload")
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"path":    destPath,
+		"paths":   []string{destPath},
+	})
+}
+
 // Helper functions specific to upload
 
 func copyUploadFile(src, dst string) error {
