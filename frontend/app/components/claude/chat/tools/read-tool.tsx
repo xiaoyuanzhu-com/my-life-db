@@ -9,7 +9,7 @@ interface ReadToolViewProps {
 
 // Map file extensions to Shiki language identifiers
 function getLanguageFromPath(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || ''
+  const ext = (filePath ?? '').split('.').pop()?.toLowerCase() || ''
   const langMap: Record<string, string> = {
     ts: 'typescript',
     tsx: 'tsx',

@@ -11,7 +11,7 @@ const MAX_LINES = 10
 
 // Map file extensions to Shiki language identifiers
 function getLanguageFromPath(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || ''
+  const ext = (filePath ?? '').split('.').pop()?.toLowerCase() || ''
   const langMap: Record<string, string> = {
     ts: 'typescript',
     tsx: 'tsx',
@@ -57,7 +57,7 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
   const [expanded, setExpanded] = useState(false)
   const [html, setHtml] = useState('')
 
-  const lines = params.content.split('\n')
+  const lines = (params.content ?? '').split('\n')
   const isTruncated = lines.length > MAX_LINES
   const displayContent = expanded ? params.content : lines.slice(0, MAX_LINES).join('\n')
   const lang = getLanguageFromPath(params.file_path)

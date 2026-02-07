@@ -14,8 +14,8 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
   const [expanded, setExpanded] = useState(false)
 
   // Split into lines for unified diff view
-  const oldLines = params.old_string.split('\n')
-  const newLines = params.new_string.split('\n')
+  const oldLines = (params.old_string ?? '').split('\n')
+  const newLines = (params.new_string ?? '').split('\n')
 
   // Check if truncation is needed
   const isTruncated = oldLines.length > MAX_OLD_LINES || newLines.length > MAX_NEW_LINES
