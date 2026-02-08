@@ -15,6 +15,7 @@ import {
   isSummaryMessage,
   isTurnDurationMessage,
   isHookStartedMessage,
+  isTaskNotificationMessage,
   type SessionMessage,
   type ExtractedToolResult,
   type SummaryMessage,
@@ -153,6 +154,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const isCompactSummary = isCompactSummaryMessage(message)
   const isTurnDuration = isTurnDurationMessage(message)
   const isHookStarted = isHookStartedMessage(message)
+  const isTaskNotification = isTaskNotificationMessage(message)
   const isSummary = isSummaryMessage(message)
 
   // Determine what to render
@@ -161,7 +163,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -170,7 +172,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -226,6 +228,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
           hookStarted={message}
           hookResponse={message.hook_id ? hookResponseMap?.get(message.hook_id) : undefined}
         />
+      )}
+
+      {/* Task notification: background task completed/failed */}
+      {isTaskNotification && (
+        <TaskNotificationBlock message={message} />
       )}
 
       {/* Summary message: automatic conversation summarization */}
@@ -865,6 +872,31 @@ function HookBlock({
             {hookResponse?.stderr}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Task notification block - shows background task completion/failure
+function TaskNotificationBlock({ message }: { message: SessionMessage }) {
+  // Determine status from message (the JSON has a `status` field on root)
+  const taskStatus = (message as unknown as { status?: string }).status ?? 'completed'
+  const isCompleted = taskStatus === 'completed'
+  const dotStatus = isCompleted ? 'completed' : 'failed'
+
+  // Summary text from the message
+  const summary = message.summary ?? `Background task ${message.task_id ?? 'unknown'} ${taskStatus}`
+
+  return (
+    <div className="flex items-start gap-2">
+      <MessageDot status={dotStatus} lineHeight="mono" />
+      <div className="flex-1 min-w-0">
+        <span
+          className="font-mono text-[13px] leading-[1.5]"
+          style={{ color: 'var(--claude-text-secondary)' }}
+        >
+          {summary}
+        </span>
       </div>
     </div>
   )

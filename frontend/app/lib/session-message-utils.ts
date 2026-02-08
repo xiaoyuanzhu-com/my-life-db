@@ -98,6 +98,12 @@ export interface SessionMessage {
   maxRetries?: number  // For api_error: maximum retries
   durationMs?: number  // For turn_duration: turn duration in ms
 
+  // Task notification fields (when subtype === 'task_notification')
+  // These fields are on the root message object (like all system messages)
+  task_id?: string  // Background task ID (e.g., "bb53ba9")
+  summary?: string  // Human-readable summary (e.g., 'Background command "..." completed (exit code 0)')
+  output_file?: string  // Path to task output file
+
   // Hook started/response fields (when subtype === 'hook_started' or 'hook_response')
   hook_id?: string  // Unique identifier for this hook execution
   hook_name?: string  // Hook name (e.g., "SessionStart:startup")
@@ -192,7 +198,7 @@ export function normalizeMessages<T extends Record<string, unknown>>(msgs: T[]):
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | 'task_notification' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
@@ -541,6 +547,16 @@ export function isHookResponseMessage(msg: SessionMessage): boolean {
  */
 export function isStatusMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'status'
+}
+
+/**
+ * Type guard to check if a message is a task notification message.
+ * Task notifications are sent when a background task (e.g., a background shell command
+ * launched via the Task tool) completes. They include a summary, task_id, status, and
+ * output_file path.
+ */
+export function isTaskNotificationMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'task_notification'
 }
 
 /**
