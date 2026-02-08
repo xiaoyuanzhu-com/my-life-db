@@ -78,6 +78,7 @@ my-life-db/
 │   ├── vite.config.ts  # Vite bundler config
 │   └── package.json
 ├── backend/            # Go 1.25 HTTP server (Gin framework)
+│   ├── agent/          # Inbox agent (AI-driven file intention analysis)
 │   ├── api/            # HTTP handlers (50+ endpoints in routes.go)
 │   │   └── handlers.go # Handlers struct with server reference
 │   ├── auth/           # OAuth/OIDC authentication
@@ -86,7 +87,6 @@ my-life-db/
 │   ├── db/             # SQLite database layer + migrations
 │   ├── fs/             # Filesystem service
 │   ├── log/            # Structured logging (zerolog)
-│   ├── models/         # Domain models
 │   ├── notifications/  # SSE service for real-time updates
 │   ├── server/         # Server struct - owns all components
 │   │   ├── server.go   # Server lifecycle & component management
@@ -107,13 +107,24 @@ The backend uses a **server-centric architecture** where a `server.Server` struc
 ```go
 // server/server.go
 type Server struct {
-    cfg          *Config
-    database     *db.DB
-    fsService    *fs.Service
-    digestWorker *digest.Worker
-    notifService *notifications.Service
-    router       *gin.Engine
-    http         *http.Server
+    cfg *Config
+
+    // Components (owned by server)
+    database      *db.DB
+    fsService     *fs.Service
+    digestWorker  *digest.Worker
+    notifService  *notifications.Service
+    claudeManager *claude.SessionManager
+    agent         *agent.Agent
+
+    // Shutdown context - cancelled when server is shutting down.
+    // Long-running handlers (WebSocket, SSE) should listen to this.
+    shutdownCtx    context.Context
+    shutdownCancel context.CancelFunc
+
+    // HTTP
+    router *gin.Engine
+    http   *http.Server
 }
 ```
 
@@ -123,13 +134,16 @@ type Server struct {
 - **Clear lifecycle** - Server manages initialization order and graceful shutdown
 - **Dependency injection** - API handlers receive Server reference via `api.Handlers` struct
 
-**Component initialization order:**
+**Component initialization order (inside `server.New()`):**
 1. Database (`db.Open()`)
-2. Notifications service (`notifications.NewService()`)
-3. FS service (`fs.NewService()` with db reference)
-4. Digest worker (`digest.NewWorker()` with db + notifications)
-5. Wire event handlers between components
-6. Setup Gin router
+2. Load user settings + apply log level
+3. Notifications service (`notifications.NewService()`)
+4. Claude session manager (`claude.NewSessionManager()`)
+5. FS service (`fs.NewService()` with db reference)
+6. Digest worker (`digest.NewWorker()` with db + notifications)
+7. Agent (`agent.New()`, if `MLD_INBOX_AGENT=1`)
+8. Wire event handlers between components
+9. Setup Gin router
 
 **API handlers pattern:**
 ```go
@@ -147,15 +161,16 @@ func (h *Handlers) GetInbox(c *gin.Context) {
 ```
 
 **Main.go flow:**
-1. Load config from environment
+1. Load config from environment (`config.Get()`)
 2. Create `server.Config`
-3. Create server with `server.New(cfg)`
-4. Initialize Claude manager
+3. Create server with `server.New(cfg)` (initializes all components)
+4. Setup search clients (`db.SetSearchClients()`)
 5. Setup routes with `api.SetupRoutes(srv.Router(), handlers)`
-6. Start server with `srv.Start()`
-7. Graceful shutdown with `srv.Shutdown(ctx)`
+6. Setup static file serving and SPA fallback
+7. Start server with `srv.Start()`
+8. Graceful shutdown with `srv.Shutdown(ctx)`
 
-See the Architecture section in `../my-life-db-docs/` for detailed architecture documentation.
+See the Architecture section in [`../my-life-db-docs/`](../my-life-db-docs/) for detailed architecture documentation.
 
 ### Background Workers
 
@@ -266,11 +281,14 @@ Never create shadcn components manually.
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
 | MEILI_HOST | | Meilisearch URL (optional) |
+| MEILI_API_KEY | | Meilisearch API key (optional) |
+| MEILI_INDEX | mylifedb_files | Meilisearch index name (optional) |
 | OPENAI_API_KEY | | OpenAI API key (optional) |
 | OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
 | OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |
 | HAID_BASE_URL | | HAID service URL for OCR, ASR, etc. (optional) |
 | HAID_API_KEY | | HAID API key (optional) |
+| HAID_CHROME_CDP_URL | | Chrome CDP URL for HAID web crawling (optional) |
 | MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
 | MLD_OAUTH_CLIENT_ID | | OAuth client ID |
 | MLD_OAUTH_CLIENT_SECRET | | OAuth client secret |
@@ -279,6 +297,7 @@ Never create shadcn components manually.
 | MLD_EXPECTED_USERNAME | | Expected username for user instance |
 | MLD_INBOX_AGENT | | Set to `1` to enable inbox agent |
 | DB_LOG_QUERIES | | Set to `1` to enable SQL query logging |
+| DEBUG | | Debug module filter (optional) |
 
 ## API Routes
 
