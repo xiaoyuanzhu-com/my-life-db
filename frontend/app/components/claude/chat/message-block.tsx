@@ -21,7 +21,7 @@ import {
   type SummaryMessage,
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage, ToolUseInfo } from './session-messages'
-import { parseMarkdown, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
+import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")
@@ -435,22 +435,39 @@ function ToolCallGroup({
 
 // Markdown content renderer using marked + shiki
 // Memoized to prevent re-renders on parent scroll
+//
+// SEAMLESS STREAMING TRANSITION:
+// Uses parseMarkdownSync() for immediate initial render (no syntax highlighting),
+// then upgrades to parseMarkdown() (with syntax highlighting) asynchronously.
+// This ensures content is never blank during the streaming→final message transition.
 const MessageContent = memo(function MessageContent({ content }: { content: string }) {
-  const [html, setHtml] = useState('')
+  // Sync-parsed HTML — available immediately for zero-flash rendering.
+  // This is the same parser used by StreamingResponse, ensuring visual consistency
+  // during the streaming→final message transition.
+  const syncHtml = useMemo(() => parseMarkdownSync(content), [content])
+
+  // Async-parsed HTML — upgraded version with syntax highlighting, mermaid, etc.
+  // Tracked alongside the content it was parsed from, so we can invalidate correctly.
+  const [asyncState, setAsyncState] = useState<{ content: string; html: string } | null>(null)
   const [themeKey, setThemeKey] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const lastHtmlRef = useRef<string>('')
+
+  // Use async HTML only if it matches current content, otherwise fall back to sync HTML
+  const html = (asyncState && asyncState.content === content) ? asyncState.html : syncHtml
 
   // Re-render when theme changes (for mermaid diagrams)
   useEffect(() => {
     return onMermaidThemeChange(() => setThemeKey((k) => k + 1))
   }, [])
 
+  // Upgrade to async-parsed HTML (with syntax highlighting, mermaid, etc.)
   useEffect(() => {
     let cancelled = false
+    const contentForParse = content
 
-    parseMarkdown(content).then((parsed) => {
-      if (!cancelled) setHtml(parsed)
+    parseMarkdown(contentForParse).then((parsed) => {
+      if (!cancelled) setAsyncState({ content: contentForParse, html: parsed })
     })
 
     return () => {
@@ -467,7 +484,7 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
     }
   }, [html])
 
-  // Initial render with empty div, innerHTML set via effect
+  // Initial render with sync-parsed content (via syncHtml fallback), upgraded later
   return (
     <div
       ref={containerRef}

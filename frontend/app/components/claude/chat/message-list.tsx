@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
@@ -90,6 +90,19 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     }
   }, [scrollToBottom])
 
+  // Only show StreamingResponse when streaming text exists AND the final assistant
+  // message hasn't been added to the messages list yet. Once the assistant message
+  // appears in the list, MessageBlock renders it with sync-parsed markdown immediately,
+  // so we hide StreamingResponse to avoid showing duplicate content.
+  const showStreaming = useMemo(() => {
+    if (!streamingText) return false
+    // If the last message is an assistant message, the final content is in the list —
+    // MessageBlock will render it with immediate sync-parsed HTML
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg?.type === 'assistant') return false
+    return true
+  }, [streamingText, messages])
+
   return (
     <div
       ref={mergedScrollRef}
@@ -124,8 +137,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
               </div>
             )}
 
-            {/* Streaming response (progressive text as Claude generates) */}
-            {streamingText && <StreamingResponse text={streamingText} />}
+            {/* Streaming response (progressive text as Claude generates)
+              * Hide once the final assistant message is in the list to avoid duplicate content.
+              * The MessageBlock's MessageContent uses parseMarkdownSync for immediate render,
+              * ensuring a seamless visual transition with no flash. */}
+            {showStreaming && <StreamingResponse text={streamingText} />}
 
             {/* Work-in-Progress indicator */}
             {wipText && <ClaudeWIP text={wipText} />}

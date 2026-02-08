@@ -84,6 +84,10 @@ export function ChatInterface({
   // Streaming text - accumulates text from stream_event messages for progressive display
   const [streamingText, setStreamingText] = useState<string>('')
 
+  // Tracks whether streaming has completed (message_stop received) but we're waiting
+  // for the final assistant message to arrive and render before clearing streamingText
+  const streamingCompleteRef = useRef(false)
+
   // Token batching for smooth streaming UX
   // Tokens are buffered and flushed every 40ms to reduce re-renders and smooth visual appearance
   const streamingBufferRef = useRef<string[]>([])
@@ -208,11 +212,18 @@ export function ChatInterface({
           }
         }
 
-        // Clear streaming text on message_stop (response complete)
-        // Also flush any remaining buffer immediately
+        // On message_stop: flush remaining buffer but DON'T clear streamingText yet.
+        // We keep it visible until the final assistant message arrives and renders,
+        // preventing a flash where content disappears between StreamingResponse unmounting
+        // and MessageBlock rendering.
         if (eventType === 'message_stop') {
-          streamingBufferRef.current = []
-          setStreamingText('')
+          // Flush any remaining buffered tokens so streamingText is complete
+          if (streamingBufferRef.current.length > 0) {
+            const remaining = streamingBufferRef.current.join('')
+            streamingBufferRef.current = []
+            setStreamingText((prev) => prev + remaining)
+          }
+          streamingCompleteRef.current = true
         }
 
         return
@@ -335,7 +346,18 @@ export function ChatInterface({
 
       if (sessionMsg.type === 'assistant') {
         setProgressMessage(null)
-        setStreamingText('') // Clear streaming text when full message arrives
+        // Clear streaming text after the assistant message is added to rawMessages.
+        // We use requestAnimationFrame to ensure the MessageBlock has time to render
+        // with its initial sync-parsed content before StreamingResponse unmounts.
+        // This prevents the flash of empty content during the transition.
+        if (streamingCompleteRef.current) {
+          requestAnimationFrame(() => {
+            setStreamingText('')
+            streamingCompleteRef.current = false
+          })
+        } else {
+          setStreamingText('')
+        }
       }
 
       // Only refresh if: inactive session, haven't refreshed yet, AND initial load is complete
@@ -520,6 +542,7 @@ export function ChatInterface({
     setProgressMessage(null)
     setStreamingText('')
     streamingBufferRef.current = [] // Clear buffered tokens on session change
+    streamingCompleteRef.current = false
     setPermissionMode('default')
     permissions.reset()
     hasRefreshedRef.current = false
