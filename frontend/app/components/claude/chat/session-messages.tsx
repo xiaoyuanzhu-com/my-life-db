@@ -480,6 +480,7 @@ export function SessionMessages({
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   // - control_request/control_response (permission protocol messages, handled via modal)
   // - internal events (queue-operation, file-history-snapshot)
+  // - stream_event messages (streaming transport signals, no user-facing content)
   // - subagent messages (rendered inside their parent Task tool via subagentMessagesMap)
   const filteredMessages = useMemo(() => {
     return messages.filter((msg) => {
@@ -513,6 +514,12 @@ export function SessionMessages({
       // Used by isWorking detection (last message type !== 'result'), but not displayed as chat messages.
       // See data-models.md "The result Message (Session Terminator)" section.
       if (msg.type === 'result') return false
+
+      // Skip stream_event messages - these are streaming transport signals from the Claude API
+      // (e.g., message_start, content_block_delta, message_stop). They appear when sessions are
+      // streamed with --include-partial-messages. They carry no user-facing content, only event
+      // lifecycle metadata used by the SDK's streaming protocol.
+      if (msg.type === 'stream_event') return false
 
       // Skip meta messages (system-injected context)
       if (msg.isMeta) return false
