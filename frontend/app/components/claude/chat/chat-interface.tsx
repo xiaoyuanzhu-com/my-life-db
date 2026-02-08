@@ -266,14 +266,20 @@ export function ChatInterface({
             const questions = input?.questions
 
             if (requestId && questions && questions.length > 0) {
-              setPendingQuestions((prev) => [
-                ...prev,
-                {
-                  id: requestId,
-                  toolCallId: requestId, // Use request_id as toolCallId for compatibility
-                  questions,
-                },
-              ])
+              setPendingQuestions((prev) => {
+                // Deduplicate by request_id to prevent duplicate popovers on reconnection.
+                // When WebSocket reconnects, the backend resends all cached messages including
+                // control_requests that are already in pendingQuestions.
+                if (prev.some((q) => q.id === requestId)) return prev
+                return [
+                  ...prev,
+                  {
+                    id: requestId,
+                    toolCallId: requestId, // Use request_id as toolCallId for compatibility
+                    questions,
+                  },
+                ]
+              })
             }
             return
           }
