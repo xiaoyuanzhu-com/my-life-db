@@ -1,12 +1,17 @@
 import { useEffect } from "react";
-import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation } from "react-router";
+import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation, useNavigate } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
 import { Toaster } from "~/components/ui/sonner";
+import { isNativeApp, setupNativeListeners } from "~/lib/native-bridge";
 import "./globals.css";
 
 function useDarkMode() {
   useEffect(() => {
+    // In native app mode, theme is controlled by the native shell via
+    // window.__nativeBridge.setTheme() — skip the media query listener.
+    if (isNativeApp()) return;
+
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
 
     const update = () => {
@@ -47,12 +52,16 @@ function ConditionalHeader() {
 
 export default function Root() {
   useDarkMode();
+  useNativeBridge();
+
+  const native = isNativeApp();
 
   return (
-    <div className="antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden">
+    <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
       <AuthProvider>
-        <ConditionalHeader />
-        <main className="min-h-0 h-full flex flex-col w-full min-w-0 row-start-2">
+        {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
+        {!native && <ConditionalHeader />}
+        <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2'}`}>
           <Outlet />
         </main>
       </AuthProvider>
@@ -60,6 +69,16 @@ export default function Root() {
       <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
+}
+
+/** Set up the Native → Web bridge listeners when running inside WKWebView. */
+function useNativeBridge() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    setupNativeListeners(navigate);
+  }, [navigate]);
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {

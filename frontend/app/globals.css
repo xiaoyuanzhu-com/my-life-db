@@ -632,3 +632,21 @@
   border: none;
   display: block;
 }
+
+/* ============================================
+   Native App Mode (WKWebView)
+   ============================================
+   When embedded in the iOS/macOS native shell,
+   the web header and bottom nav are hidden.
+   The native SwiftUI shell provides tab bar and navigation.
+   ============================================ */
+
+.native-app {
+  /* Single row: content fills full viewport (no header row) */
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+/* Remove bottom safe-area padding — native tab bar handles it */
+.native-app .pb-safe {
+  padding-bottom: 0;
+}
