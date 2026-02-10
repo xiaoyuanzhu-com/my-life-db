@@ -373,34 +373,17 @@ function LibraryContent() {
       {/* ============================================ */}
       {/* Mobile layout: full-screen grid view         */}
       {/* ============================================ */}
-      <div className="md:hidden flex-1 overflow-hidden flex flex-col">
-        {/* Mobile toolbar */}
-        <div className="flex items-center gap-1 p-2 border-b">
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleUploadClick}>
-            <Upload className="w-3.5 h-3.5" />
-            File
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleFolderUploadClick}>
-            <FolderUp className="w-3.5 h-3.5" />
-            Folder
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCreateFolderTrigger((n) => n + 1)}>
-            <FolderPlus className="w-3.5 h-3.5" />
-            New Folder
-          </Button>
-        </div>
-
-        {/* Mobile grid — full screen */}
-        <div className="flex-1 overflow-hidden">
-          <FileGrid
-            onFileOpen={handleMobileFileOpen}
-            selectedFilePath={null}
-            onFileDeleted={handleFileDeleted}
-            onFileRenamed={handleFileRenamed}
-            onFileMoved={handleFileMoved}
-            createFolderTrigger={createFolderTrigger}
-          />
-        </div>
+      <div className="md:hidden flex-1 overflow-hidden">
+        <FileGrid
+          onFileOpen={handleMobileFileOpen}
+          selectedFilePath={null}
+          onFileDeleted={handleFileDeleted}
+          onFileRenamed={handleFileRenamed}
+          onFileMoved={handleFileMoved}
+          createFolderTrigger={createFolderTrigger}
+          onUploadFile={handleUploadClick}
+          onUploadFolder={handleFolderUploadClick}
+        />
       </div>
 
       {/* ============================================ */}

@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderPlus } from 'lucide-react';
+import { FolderPlus, Plus, Upload, FolderUp } from 'lucide-react';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { Input } from '~/components/ui/input';
+import { Button } from '~/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 import {
   type FileNode,
   getNodeName,
@@ -21,6 +28,9 @@ interface FileGridProps {
   onFileRenamed?: (oldPath: string, newPath: string) => void;
   onFileMoved?: (oldPath: string, newPath: string) => void;
   createFolderTrigger?: number;
+  /** Optional action callbacks for integrated toolbar (mobile) */
+  onUploadFile?: () => void;
+  onUploadFolder?: () => void;
 }
 
 export function FileGrid({
@@ -30,6 +40,8 @@ export function FileGrid({
   onFileRenamed,
   onFileMoved,
   createFolderTrigger,
+  onUploadFile,
+  onUploadFolder,
 }: FileGridProps) {
   const [currentPath, setCurrentPath] = useState('');
   const [children, setChildren] = useState<FileNode[]>([]);
@@ -219,11 +231,40 @@ export function FileGrid({
 
   const allNodes = sortNodes([...virtualChildren, ...annotatedChildren]);
 
+  const hasActions = onUploadFile || onUploadFolder;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Breadcrumb navigation */}
-      <div className="shrink-0 px-3 py-2 border-b">
-        <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} />
+      {/* Breadcrumb navigation + action button */}
+      <div className="shrink-0 px-3 py-2 border-b flex items-center gap-2">
+        <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} className="flex-1 min-w-0" />
+        {hasActions && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0">
+                <Plus className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onUploadFile && (
+                <DropdownMenuItem onClick={onUploadFile}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload File
+                </DropdownMenuItem>
+              )}
+              {onUploadFolder && (
+                <DropdownMenuItem onClick={onUploadFolder}>
+                  <FolderUp className="w-4 h-4 mr-2" />
+                  Upload Folder
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setIsCreatingFolder(true)}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                New Folder
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Grid content */}
