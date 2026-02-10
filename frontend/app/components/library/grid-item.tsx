@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Folder, Pencil, Trash2, Copy, Loader2, CircleAlert } from 'lucide-react';
+import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import {
@@ -20,7 +20,8 @@ import {
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
 import { Input } from '~/components/ui/input';
-import { type FileNode, getFileIcon, getNodeName, formatFileSize } from './library-utils';
+import { type FileNode, getNodeName, formatFileSize } from './library-utils';
+import { FileTypeIcon } from './file-type-icon';
 
 interface GridItemProps {
   node: FileNode;
@@ -50,7 +51,6 @@ export function GridItem({
 
   const name = getNodeName(node);
   const isFolder = node.type === 'folder';
-  const Icon = isFolder ? Folder : getFileIcon(name);
 
   const isUploading = node.uploadStatus === 'pending' || node.uploadStatus === 'uploading';
   const hasError = node.uploadStatus === 'error';
@@ -165,12 +165,11 @@ export function GridItem({
           >
             {/* Icon area */}
             <div className="relative flex items-center justify-center w-12 h-12">
-              <Icon
-                className={cn(
-                  'w-10 h-10',
-                  isFolder ? 'text-blue-500 dark:text-blue-400' : 'text-muted-foreground',
-                )}
-              />
+              {isFolder ? (
+                <FolderClosed className="w-10 h-10 text-blue-500 dark:text-blue-400" />
+              ) : (
+                <FileTypeIcon filename={name} size={36} />
+              )}
               {/* Upload indicators */}
               {isUploading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded">
