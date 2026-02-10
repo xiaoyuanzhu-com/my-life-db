@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { Upload, FolderUp, FolderPlus } from "lucide-react";
+import { Upload, FolderUp, FolderPlus, LayoutGrid, List } from "lucide-react";
 import { FileTree } from "~/components/library/file-tree";
+import { FileGrid } from "~/components/library/file-grid";
 import { FileViewer } from "~/components/library/file-viewer";
 import { FileTabs } from "~/components/library/file-tabs";
 import { FileFooterBar } from "~/components/library/file-footer-bar";
@@ -29,6 +30,8 @@ export interface TabState {
   isActive: boolean;
 }
 
+type ViewMode = 'tree' | 'grid';
+
 function LibraryContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -39,6 +42,7 @@ function LibraryContent() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [activeFileMimeType, setActiveFileMimeType] = useState<string | null>(null);
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,12 +70,16 @@ function LibraryContent() {
     try {
       const savedTabs = localStorage.getItem("library:tabs");
       const savedExpandedFolders = localStorage.getItem("library:expandedFolders");
+      const savedViewMode = localStorage.getItem("library:viewMode");
 
       if (savedTabs) {
         setTabs(JSON.parse(savedTabs));
       }
       if (savedExpandedFolders) {
         setExpandedFolders(new Set(JSON.parse(savedExpandedFolders)));
+      }
+      if (savedViewMode === 'tree' || savedViewMode === 'grid') {
+        setViewMode(savedViewMode);
       }
 
       localStorage.removeItem("library:dirtyFiles");
@@ -98,6 +106,16 @@ function LibraryContent() {
       console.error("Failed to save expanded folders to localStorage:", error);
     }
   }, [expandedFolders, isInitialized]);
+
+  // Persist view mode
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      localStorage.setItem("library:viewMode", viewMode);
+    } catch (error) {
+      console.error("Failed to save view mode to localStorage:", error);
+    }
+  }, [viewMode, isInitialized]);
 
   useEffect(() => {
     const openParams = searchParams.getAll("open");
@@ -149,6 +167,11 @@ function LibraryContent() {
     });
     expandParentFolders(path);
   };
+
+  // Mobile: navigate to /file/<path> instead of opening in tabs
+  const handleMobileFileOpen = useCallback((path: string, _name: string) => {
+    navigate(`/file/${path}`);
+  }, [navigate]);
 
   const closeFile = useCallback((path: string) => {
     setTabs((prev) => {
@@ -330,10 +353,64 @@ function LibraryContent() {
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-background w-full">
-      <div className="flex-1 overflow-hidden min-h-0 w-full min-w-0">
+      {/* Hidden file inputs (shared between mobile and desktop) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFolderInputChange}
+        {...{ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
+      />
+
+      {/* ============================================ */}
+      {/* Mobile layout: full-screen grid view         */}
+      {/* ============================================ */}
+      <div className="md:hidden flex-1 overflow-hidden flex flex-col">
+        {/* Mobile toolbar */}
+        <div className="flex items-center gap-1 p-2 border-b">
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleUploadClick}>
+            <Upload className="w-3.5 h-3.5" />
+            File
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleFolderUploadClick}>
+            <FolderUp className="w-3.5 h-3.5" />
+            Folder
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCreateFolderTrigger((n) => n + 1)}>
+            <FolderPlus className="w-3.5 h-3.5" />
+            New Folder
+          </Button>
+        </div>
+
+        {/* Mobile grid — full screen */}
+        <div className="flex-1 overflow-hidden">
+          <FileGrid
+            onFileOpen={handleMobileFileOpen}
+            selectedFilePath={null}
+            onFileDeleted={handleFileDeleted}
+            onFileRenamed={handleFileRenamed}
+            onFileMoved={handleFileMoved}
+            createFolderTrigger={createFolderTrigger}
+          />
+        </div>
+      </div>
+
+      {/* ============================================ */}
+      {/* Desktop layout: resizable panels             */}
+      {/* ============================================ */}
+      <div className="hidden md:flex flex-1 overflow-hidden min-h-0 w-full min-w-0">
         <div className="h-full min-h-0 min-w-0 flex flex-col w-full px-[10%]">
           <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 w-full">
             <ResizablePanel defaultSize={25} minSize={15} className="border-r flex h-full flex-col overflow-hidden min-w-0">
+              {/* Desktop toolbar with view toggle */}
               <div className="flex items-center gap-1 p-2 border-b">
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleUploadClick}>
                   <Upload className="w-3.5 h-3.5" />
@@ -347,33 +424,52 @@ function LibraryContent() {
                   <FolderPlus className="w-3.5 h-3.5" />
                   New Folder
                 </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-                <input
-                  ref={folderInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFolderInputChange}
-                  {...{ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
-                />
+                {/* View mode toggle */}
+                <div className="ml-auto flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-7 w-7 p-0 ${viewMode === 'tree' ? 'bg-accent' : ''}`}
+                    onClick={() => setViewMode('tree')}
+                    title="Tree view"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-7 w-7 p-0 ${viewMode === 'grid' ? 'bg-accent' : ''}`}
+                    onClick={() => setViewMode('grid')}
+                    title="Grid view"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
+
+              {/* Tree or Grid view based on viewMode */}
               <div className="flex-1 overflow-y-auto">
-                <FileTree
-                  onFileOpen={handleFileOpen}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={handleToggleFolder}
-                  selectedFilePath={activeFilePath}
-                  onFileDeleted={handleFileDeleted}
-                  onFileRenamed={handleFileRenamed}
-                  onFileMoved={handleFileMoved}
-                  createFolderTrigger={createFolderTrigger}
-                />
+                {viewMode === 'tree' ? (
+                  <FileTree
+                    onFileOpen={handleFileOpen}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={handleToggleFolder}
+                    selectedFilePath={activeFilePath}
+                    onFileDeleted={handleFileDeleted}
+                    onFileRenamed={handleFileRenamed}
+                    onFileMoved={handleFileMoved}
+                    createFolderTrigger={createFolderTrigger}
+                  />
+                ) : (
+                  <FileGrid
+                    onFileOpen={handleFileOpen}
+                    selectedFilePath={activeFilePath}
+                    onFileDeleted={handleFileDeleted}
+                    onFileRenamed={handleFileRenamed}
+                    onFileMoved={handleFileMoved}
+                    createFolderTrigger={createFolderTrigger}
+                  />
+                )}
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -399,7 +495,7 @@ function LibraryContent() {
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                    Select a file from the tree to view
+                    Select a file to view
                   </div>
                 )}
               </div>
