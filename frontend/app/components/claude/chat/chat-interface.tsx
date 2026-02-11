@@ -628,6 +628,14 @@ export function ChatInterface({
   const sendMessage = useCallback(
     async (content: string) => {
       setOptimisticMessage(content)
+      // Clear stale streaming state from the previous turn immediately.
+      // Without this, the old streamingText can briefly flash when the new user
+      // message makes showStreaming=true (last message is no longer 'assistant')
+      // before the deferred requestAnimationFrame from the previous turn's
+      // assistant message handler has a chance to clear it.
+      setStreamingText('')
+      streamingBufferRef.current = []
+      streamingCompleteRef.current = false
 
       try {
         await ws.sendMessage({
