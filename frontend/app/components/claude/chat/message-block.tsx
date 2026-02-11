@@ -12,6 +12,7 @@ import {
   isCompactBoundaryMessage,
   isMicrocompactBoundaryMessage,
   isCompactSummaryMessage,
+  isStatusMessage,
   isSummaryMessage,
   isTurnDurationMessage,
   isHookStartedMessage,
@@ -157,13 +158,18 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const isTaskNotification = isTaskNotificationMessage(message)
   const isSummary = isSummaryMessage(message)
 
+  // Check for compacting status message (ephemeral, shown during compaction)
+  const isCompactingStatus = isStatusMessage(message) &&
+    ((message as unknown as Record<string, unknown>).status === 'compacting' ||
+     (message as unknown as Record<string, unknown>).content === 'compacting')
+
   // Determine what to render
   const hasUserContent = isUser && userTextContent && !isCompactSummary
   const hasAssistantText = isAssistant && textContent
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isCompactingStatus
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -172,7 +178,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !hasUnknownMessage) {
     return null
   }
 
@@ -188,6 +194,37 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
           <div className="flex-1 min-w-0">
             <SystemInitBlock data={systemInitData!} />
           </div>
+        </div>
+      )}
+
+      {/* Compacting in progress: animated three-dot indicator */}
+      {isCompactingStatus && (
+        <div className="flex items-start gap-2">
+          <MessageDot status="in_progress" lineHeight="mono" />
+          <span className="font-mono text-[13px] leading-[1.5] font-semibold flex items-center gap-0">
+            <span style={{ color: 'var(--claude-text-primary)' }}>Compacting</span>
+            <span className="inline-flex w-[1.5em]">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="inline-block"
+                  style={{
+                    color: 'var(--claude-text-primary)',
+                    animation: `compacting-dots 1.2s step-end ${i * 0.4}s infinite`,
+                  }}
+                >
+                  .
+                </span>
+              ))}
+            </span>
+            <style>{`
+              @keyframes compacting-dots {
+                0% { opacity: 0; }
+                33.33% { opacity: 1; }
+                100% { opacity: 1; }
+              }
+            `}</style>
+          </span>
         </div>
       )}
 

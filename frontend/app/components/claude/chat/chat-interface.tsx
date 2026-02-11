@@ -9,6 +9,7 @@ import type { PermissionMode } from './permission-mode-selector'
 import {
   buildToolResultMap,
   hasToolUseResult,
+  isStatusMessage,
   isToolUseBlock,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -455,6 +456,20 @@ export function ChatInterface({
     return lastMsg?.type !== 'result'
   }, [rawMessages, optimisticMessage, localIsActive])
 
+  // Detect compacting state — suppress WIP "Working..." since message-block shows its own indicator
+  const isCompacting = useMemo(() => {
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+      const msg = rawMessages[i]
+      if (isStatusMessage(msg)) {
+        const raw = msg as unknown as Record<string, unknown>
+        return raw.status === 'compacting' || raw.content === 'compacting'
+      }
+      // Stop searching once we hit a non-status message
+      break
+    }
+    return false
+  }, [rawMessages])
+
   // Only show connection status banner after we've connected at least once
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
@@ -817,7 +832,7 @@ export function ChatInterface({
             optimisticMessage={optimisticMessage}
             streamingText={streamingText}
             wipText={
-              isWorking && !streamingText
+              isWorking && !streamingText && !isCompacting
                 ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
                   progressMessage ||
                   'Working...'
