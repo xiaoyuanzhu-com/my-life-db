@@ -166,7 +166,7 @@ export function GridItem({
             {/* Icon area */}
             <div className="relative flex items-center justify-center w-12 h-12">
               {isFolder ? (
-                <FolderClosed className="w-10 h-10 text-blue-500 dark:text-blue-400" />
+                <FolderClosed className="w-10 h-10 text-muted-foreground" />
               ) : (
                 <FileTypeIcon filename={name} size={36} />
               )}

@@ -1,48 +1,5 @@
 import { cn } from '~/lib/utils';
 
-/**
- * Extension → color mapping for the badge.
- * Groups by category for visual consistency.
- */
-function getExtColor(ext: string): string {
-  // Documents
-  if (ext === 'md' || ext === 'mdx') return 'bg-blue-500';
-  if (ext === 'txt') return 'bg-gray-500';
-  if (ext === 'pdf') return 'bg-red-500';
-  if (ext === 'doc' || ext === 'docx') return 'bg-blue-600';
-  if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'bg-green-600';
-  if (ext === 'ppt' || ext === 'pptx') return 'bg-orange-500';
-  if (ext === 'epub') return 'bg-teal-600';
-
-  // Images
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'heic'].includes(ext))
-    return 'bg-purple-500';
-
-  // Video
-  if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) return 'bg-pink-500';
-
-  // Audio
-  if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) return 'bg-amber-500';
-
-  // Code
-  if (['js', 'ts', 'jsx', 'tsx'].includes(ext)) return 'bg-yellow-500';
-  if (['py'].includes(ext)) return 'bg-blue-500';
-  if (['go'].includes(ext)) return 'bg-cyan-500';
-  if (['rs'].includes(ext)) return 'bg-orange-600';
-  if (['java', 'kt'].includes(ext)) return 'bg-red-600';
-  if (['c', 'cpp', 'h', 'hpp'].includes(ext)) return 'bg-blue-700';
-  if (['swift'].includes(ext)) return 'bg-orange-500';
-  if (['html', 'css', 'scss'].includes(ext)) return 'bg-orange-500';
-  if (['json', 'yaml', 'yml', 'toml', 'xml'].includes(ext)) return 'bg-gray-600';
-  if (['sh', 'bash', 'zsh'].includes(ext)) return 'bg-green-700';
-  if (['sql'].includes(ext)) return 'bg-blue-500';
-
-  // Archives
-  if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return 'bg-yellow-700';
-
-  return 'bg-gray-500';
-}
-
 /** Get a short display label for the extension (max ~4 chars) */
 function getExtLabel(ext: string): string {
   // Shorten long extensions
@@ -70,7 +27,6 @@ interface FileTypeIconProps {
 export function FileTypeIcon({ filename, className, size = 40 }: FileTypeIconProps) {
   const ext = filename.toLowerCase().split('.').pop() || '';
   const label = getExtLabel(ext);
-  const color = getExtColor(ext);
 
   // Scale proportionally
   const w = size;
@@ -106,8 +62,8 @@ export function FileTypeIcon({ filename, className, size = 40 }: FileTypeIconPro
       {ext && (
         <div
           className={cn(
-            'absolute left-1/2 -translate-x-1/2 rounded px-1 text-white font-bold leading-none',
-            color,
+            'absolute left-1/2 -translate-x-1/2 rounded px-1 font-bold leading-none',
+            'bg-muted-foreground/80 text-background',
           )}
           style={{
             bottom: h * 0.18,
