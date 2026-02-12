@@ -112,5 +112,14 @@ export function setupNativeListeners(navigate: NavigateFunction) {
     refresh() {
       window.location.reload();
     },
+
+    /**
+     * Re-check authentication status (called by native after page load).
+     * WKWebView cookies may not be available during the initial React mount,
+     * so native signals the web frontend to re-verify after the page settles.
+     */
+    recheckAuth() {
+      window.dispatchEvent(new Event("native-recheck-auth"));
+    },
   };
 }

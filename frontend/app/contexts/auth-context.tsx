@@ -18,25 +18,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const checkAuth = async () => {
+    try {
+      const response = await api.get('/api/settings');
+      setIsAuthenticated(response.ok);
+    } catch {
+      setIsAuthenticated(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Check authentication status on mount
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Verify token is valid by calling a protected endpoint
-        // Cookie is sent automatically by browser
-        // api.get will try to refresh expired tokens automatically
-        // If refresh fails, it returns 401 (no redirect) and we show login UI
-        const response = await api.get('/api/settings');
-
-        setIsAuthenticated(response.ok);
-      } catch {
-        setIsAuthenticated(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     checkAuth();
+  }, []);
+
+  // Listen for native bridge signal to re-check auth.
+  // WKWebView cookies may not be ready during the initial mount,
+  // so the native shell signals after the page finishes loading.
+  useEffect(() => {
+    const handler = () => { checkAuth(); };
+    window.addEventListener('native-recheck-auth', handler);
+    return () => window.removeEventListener('native-recheck-auth', handler);
   }, []);
 
   const login = () => {
