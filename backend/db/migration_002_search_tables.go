@@ -15,7 +15,7 @@ func init() {
 func migration002Up(db *sql.DB) error {
 	// Create meili_documents table for full-text keyword search (1:1 file mapping)
 	_, err := db.Exec(`
-		CREATE TABLE meili_documents (
+		CREATE TABLE IF NOT EXISTS meili_documents (
 			document_id TEXT PRIMARY KEY,
 			file_path TEXT NOT NULL UNIQUE,
 
@@ -47,17 +47,17 @@ func migration002Up(db *sql.DB) error {
 	}
 
 	// Create indexes for meili_documents
-	_, err = db.Exec(`CREATE INDEX idx_meili_documents_file_path ON meili_documents(file_path)`)
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_meili_documents_file_path ON meili_documents(file_path)`)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec(`CREATE INDEX idx_meili_documents_status ON meili_documents(meili_status)`)
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_meili_documents_status ON meili_documents(meili_status)`)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec(`CREATE INDEX idx_meili_documents_hash ON meili_documents(content_hash)`)
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_meili_documents_hash ON meili_documents(content_hash)`)
 	if err != nil {
 		return err
 	}

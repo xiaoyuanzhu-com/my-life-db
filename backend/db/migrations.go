@@ -39,6 +39,11 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to create schema_version table: %w", err)
 	}
 
+	// Sort migrations by version
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].Version < migrations[j].Version
+	})
+
 	// Get current version
 	var currentVersion int
 	row := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version")
@@ -46,10 +51,22 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	// Sort migrations by version
-	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].Version < migrations[j].Version
-	})
+	// Detect legacy Node.js migration history: if the DB version is higher than
+	// all registered Go migrations, the old version entries would cause every
+	// Go migration to be skipped. Reset the version table so Go migrations run.
+	if len(migrations) > 0 {
+		maxRegistered := migrations[len(migrations)-1].Version
+		if currentVersion > maxRegistered {
+			log.Info().
+				Int("db_version", currentVersion).
+				Int("max_registered", maxRegistered).
+				Msg("legacy migration history detected, resetting schema_version for Go migrations")
+			if _, err := db.Exec("DELETE FROM schema_version"); err != nil {
+				return fmt.Errorf("failed to reset legacy schema_version: %w", err)
+			}
+			currentVersion = 0
+		}
+	}
 
 	// Apply pending migrations
 	for _, m := range migrations {
