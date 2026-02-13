@@ -250,15 +250,13 @@ func (s *Session) ToJSON() map[string]interface{} {
 	defer s.mu.RUnlock()
 	result := map[string]interface{}{
 		"id":             s.ID,
-		"processId":      s.ProcessID,
 		"workingDir":     s.WorkingDir,
 		"createdAt":      s.CreatedAt,
 		"lastActivity":   s.LastActivity,
-		"status":         s.Status,
+		"status":         "active", // Newly created/listed sessions are always active
 		"title":          s.Title,
 		"mode":           s.Mode,
 		"permissionMode": s.PermissionMode,
-		"clients":        len(s.Clients),
 	}
 	if s.Git != nil {
 		result["git"] = s.Git

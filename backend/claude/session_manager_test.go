@@ -422,14 +422,14 @@ func TestListAllSessions_StatusFilter(t *testing.T) {
 	}
 	m.mu.Unlock()
 
-	// Filter active only
+	// Filter active only (non-archived)
 	result := m.ListAllSessions("", 20, "active")
 	if len(result.Entries) != 3 {
 		t.Errorf("expected 3 active entries, got %d", len(result.Entries))
 	}
 	for _, entry := range result.Entries {
-		if !entry.IsActivated {
-			t.Errorf("expected activated entry, got %s", entry.SessionID)
+		if entry.Status != "active" {
+			t.Errorf("expected active status, got %s for %s", entry.Status, entry.SessionID)
 		}
 	}
 
@@ -439,8 +439,8 @@ func TestListAllSessions_StatusFilter(t *testing.T) {
 		t.Errorf("expected 5 archived entries, got %d", len(result.Entries))
 	}
 	for _, entry := range result.Entries {
-		if entry.IsActivated {
-			t.Errorf("expected archived entry, got %s", entry.SessionID)
+		if entry.Status != "archived" {
+			t.Errorf("expected archived status, got %s for %s", entry.Status, entry.SessionID)
 		}
 	}
 }

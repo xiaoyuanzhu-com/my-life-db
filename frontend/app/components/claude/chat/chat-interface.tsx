@@ -18,7 +18,6 @@ interface ChatInterfaceProps {
   sessionId: string
   sessionName?: string
   workingDir?: string
-  isActive?: boolean // Whether session has a running CLI process
   onSessionNameChange?: (name: string) => void
   refreshSessions?: () => void // Called to refresh session list from backend
   initialMessage?: string // Message to send immediately on mount (for new session flow)
@@ -43,7 +42,6 @@ function extractUserMessageText(msg: SessionMessage): string | null {
 
 export function ChatInterface({
   sessionId,
-  isActive,
   refreshSessions,
   initialMessage,
   onInitialMessageSent,
@@ -56,15 +54,6 @@ export function ChatInterface({
   // Raw session messages - store as-is from WebSocket
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
   const [error, setError] = useState<string | null>(null)
-
-  // Track session activation locally - starts from prop, updates when we send a message
-  // This handles the race condition where isActive prop is stale
-  const [localIsActive, setLocalIsActive] = useState(isActive)
-
-  // Sync localIsActive with prop when it changes (e.g., session list refresh)
-  useEffect(() => {
-    setLocalIsActive(isActive)
-  }, [isActive])
 
   // Track if we've seen the init message - this marks the boundary between historical and live messages
   // IMPORTANT: This is the key to distinguishing historical incomplete tool_use from live control_requests
@@ -107,12 +96,10 @@ export function ChatInterface({
   // ChatInput ref for draft lifecycle management
   const chatInputRef = useRef<ChatInputHandle>(null)
 
-  // Track if we've refreshed sessions for this inactive session
+  // Track if we've refreshed sessions for this session
   const hasRefreshedRef = useRef(false)
   // Track if initial message has been sent (to avoid sending twice)
   const initialMessageSentRef = useRef(false)
-  // Keep isActive in a ref so message handler can access latest value
-  const isActiveRef = useRef(isActive)
   // Track if initial history load is complete (avoid refresh during history replay)
   // Uses debounce: marked complete when no messages received for 500ms
   const initialLoadCompleteRef = useRef(false)
@@ -367,10 +354,8 @@ export function ChatInterface({
         }
       }
 
-      // Only refresh if: inactive session, haven't refreshed yet, AND initial load is complete
-      // This avoids refreshing during history replay when clicking on a historical session
+      // Refresh session list once after initial history load completes
       if (
-        isActiveRef.current === false &&
         !hasRefreshedRef.current &&
         initialLoadCompleteRef.current &&
         refreshSessions
@@ -440,9 +425,7 @@ export function ChatInterface({
   // Rule: working = a turn is in progress (started but not completed)
   // - Turn starts when user sends a real message (not tool_result)
   // - Turn ends when 'result' message received
-  // Uses localIsActive instead of isActive to handle race conditions
   const isWorking = useMemo(() => {
-    if (localIsActive === false) return false
     if (optimisticMessage) return true
 
     // Has a turn started? (real user message exists, not tool_result)
@@ -454,7 +437,7 @@ export function ChatInterface({
     // Turn started, check if complete
     const lastMsg = rawMessages[rawMessages.length - 1]
     return lastMsg?.type !== 'result'
-  }, [rawMessages, optimisticMessage, localIsActive])
+  }, [rawMessages, optimisticMessage])
 
   // Detect compacting state — suppress WIP "Working..." since message-block shows its own indicator
   const isCompacting = useMemo(() => {
@@ -549,11 +532,6 @@ export function ChatInterface({
   // Effects
   // ============================================================================
 
-  // Keep isActiveRef in sync with localIsActive
-  useEffect(() => {
-    isActiveRef.current = localIsActive
-  }, [localIsActive])
-
   // Reset state when sessionId changes
   useEffect(() => {
     setRawMessages([])
@@ -642,9 +620,6 @@ export function ChatInterface({
           type: 'user_message',
           content,
         })
-        // Sending a message activates the session on the backend
-        // Update local state to reflect this (handles stale isActive prop)
-        setLocalIsActive(true)
       } catch (error) {
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')

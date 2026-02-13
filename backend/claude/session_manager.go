@@ -63,14 +63,14 @@ type SessionEntry struct {
 	GitBranch            string    `json:"gitBranch,omitempty"`
 	IsSidechain          bool      `json:"isSidechain"`
 
-	// Runtime state
-	IsActivated bool   `json:"isActivated"`
-	ProcessID   int    `json:"processId,omitempty"`
-	Status      string `json:"status"` // "active", "archived", "dead"
-	ClientCount int    `json:"clientCount,omitempty"`
+	// Runtime state (internal, not exposed to API)
+	IsActivated bool `json:"-"`
+	ProcessID   int  `json:"-"`
+	ClientCount int  `json:"-"`
 
-	// User preferences (from database)
-	IsArchived bool `json:"isArchived"`
+	// User preference (from database) — drives Status
+	IsArchived bool   `json:"-"`
+	Status     string `json:"status"` // "active" or "archived" (derived from IsArchived)
 
 	// Git info (for active sessions)
 	Git *GitInfo `json:"git,omitempty"`
@@ -362,14 +362,18 @@ func (m *SessionManager) GetSessionEntry(id string) *SessionEntry {
 		return nil
 	}
 
-	// Copy and add runtime state
+	// Copy and add git info from active session
 	result := *entry
 	if session, ok := m.sessions[id]; ok {
-		result.IsActivated = session.IsActivated()
-		result.ProcessID = session.ProcessID
-		result.Status = session.Status
-		result.ClientCount = len(session.Clients)
 		result.Git = session.Git
+	}
+
+	// Derive status from DB archived state
+	if archived, err := db.IsClaudeSessionArchived(id); err == nil && archived {
+		result.IsArchived = true
+		result.Status = "archived"
+	} else {
+		result.Status = "active"
 	}
 
 	return &result
@@ -408,7 +412,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 
 	m.mu.RLock()
 
-	// Get all entries and add runtime state
+	// Get all entries and add runtime state (internal only)
 	allEntries := make([]*SessionEntry, 0, len(m.entries))
 	seenIDs := make(map[string]bool)
 
@@ -421,16 +425,9 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		entryCopy := *entry
 		seenIDs[entry.SessionID] = true
 
-		// Add runtime state if session is active
+		// Copy git info from active session if available
 		if session, ok := m.sessions[entry.SessionID]; ok {
-			entryCopy.IsActivated = session.IsActivated()
-			entryCopy.ProcessID = session.ProcessID
-			entryCopy.Status = session.Status
-			entryCopy.ClientCount = len(session.Clients)
 			entryCopy.Git = session.Git
-		} else {
-			entryCopy.Status = "archived"
-			entryCopy.IsActivated = false
 		}
 
 		allEntries = append(allEntries, &entryCopy)
@@ -447,10 +444,6 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			DisplayTitle: session.Title,
 			Created:      session.CreatedAt,
 			Modified:     session.LastActivity,
-			IsActivated:  session.IsActivated(),
-			ProcessID:    session.ProcessID,
-			Status:       session.Status,
-			ClientCount:  len(session.Clients),
 			Git:          session.Git,
 		}
 		allEntries = append(allEntries, entry)
@@ -458,16 +451,20 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 
 	m.mu.RUnlock()
 
-	// Load archived session IDs from database
+	// Load archived session IDs from database and derive Status
 	archivedIDs, err := db.GetArchivedClaudeSessionIDs()
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to load archived session IDs")
 		archivedIDs = make(map[string]bool)
 	}
 
-	// Annotate entries with archived status
 	for _, entry := range allEntries {
 		entry.IsArchived = archivedIDs[entry.SessionID]
+		if entry.IsArchived {
+			entry.Status = "archived"
+		} else {
+			entry.Status = "active"
+		}
 	}
 
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
@@ -1100,12 +1097,8 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 				shouldNotify = true
 			}
 
-			// Preserve runtime state
+			// Preserve git info from active session
 			if session, ok := m.sessions[sessionID]; ok {
-				newEntry.IsActivated = session.IsActivated()
-				newEntry.ProcessID = session.ProcessID
-				newEntry.Status = session.Status
-				newEntry.ClientCount = len(session.Clients)
 				newEntry.Git = session.Git
 			}
 

@@ -25,11 +25,9 @@ interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  status: 'active' | 'disconnected' | 'dead' | 'archived'
+  status: 'active' | 'archived'
   createdAt: string
   lastActivity: string
-  isActive?: boolean
-  isArchived?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -350,7 +348,7 @@ export default function ClaudePage() {
       if (response.ok) {
         const newSession = await response.json()
         setSessions((prevSessions) => [
-          { ...newSession, isActive: true },
+          newSession,
           ...prevSessions,
         ])
         // Set the pending message before switching to the session
@@ -403,7 +401,7 @@ export default function ClaudePage() {
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, isArchived: true } : s
+            s.id === sessionId ? { ...s, status: 'archived' as const } : s
           )
         )
       }
@@ -419,7 +417,7 @@ export default function ClaudePage() {
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, isArchived: false } : s
+            s.id === sessionId ? { ...s, status: 'active' as const } : s
           )
         )
       }
@@ -600,7 +598,6 @@ export default function ClaudePage() {
               sessionId={activeSessionId}
               sessionName={effectiveActiveSession.title || 'Session'}
               workingDir={effectiveActiveSession.workingDir}
-              isActive={effectiveActiveSession.isActive}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
               refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}

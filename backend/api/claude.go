@@ -386,17 +386,9 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"lastActivity": entry.Modified,
 			"messageCount": entry.MessageCount,
 			"isSidechain":  entry.IsSidechain,
-			"isActive":     entry.IsActivated,
 			"status":       entry.Status,
-			"isArchived":   entry.IsArchived,
 		}
 
-		if entry.ProcessID != 0 {
-			sessionData["processId"] = entry.ProcessID
-		}
-		if entry.ClientCount > 0 {
-			sessionData["clients"] = entry.ClientCount
-		}
 		if entry.Git != nil {
 			sessionData["git"] = entry.Git
 		} else if entry.GitBranch != "" {

@@ -10,11 +10,9 @@ interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  status: 'active' | 'disconnected' | 'dead' | 'archived'
+  status: 'active' | 'archived'
   createdAt: string
   lastActivity: string
-  isActive?: boolean
-  isArchived?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -192,7 +190,7 @@ export function SessionList({
                         <h3
                           className={cn(
                             'truncate text-sm font-medium text-foreground',
-                            session.isArchived && 'opacity-60'
+                            session.status === 'archived' && 'opacity-60'
                           )}
                           title={getSessionDisplayTitle(session).full}
                         >
@@ -219,11 +217,11 @@ export function SessionList({
                       className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
-                        session.isArchived ? onUnarchive(session.id) : onArchive(session.id)
+                        session.status === 'archived' ? onUnarchive(session.id) : onArchive(session.id)
                       }}
-                      title={session.isArchived ? 'Unarchive session' : 'Archive session'}
+                      title={session.status === 'archived' ? 'Unarchive session' : 'Archive session'}
                     >
-                      {session.isArchived ? (
+                      {session.status === 'archived' ? (
                         <ArchiveRestore className="h-3.5 w-3.5" />
                       ) : (
                         <Archive className="h-3.5 w-3.5" />
