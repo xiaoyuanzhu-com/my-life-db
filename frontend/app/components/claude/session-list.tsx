@@ -14,7 +14,7 @@ interface Session {
   createdAt: string
   lastActivity: string
   isActive?: boolean
-  isHidden?: boolean
+  isArchived?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -192,7 +192,7 @@ export function SessionList({
                         <h3
                           className={cn(
                             'truncate text-sm font-medium text-foreground',
-                            session.isHidden && 'opacity-60'
+                            session.isArchived && 'opacity-60'
                           )}
                           title={getSessionDisplayTitle(session).full}
                         >
@@ -219,11 +219,11 @@ export function SessionList({
                       className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
-                        session.isHidden ? onUnarchive(session.id) : onArchive(session.id)
+                        session.isArchived ? onUnarchive(session.id) : onArchive(session.id)
                       }}
-                      title={session.isHidden ? 'Unarchive session' : 'Archive session'}
+                      title={session.isArchived ? 'Unarchive session' : 'Archive session'}
                     >
-                      {session.isHidden ? (
+                      {session.isArchived ? (
                         <ArchiveRestore className="h-3.5 w-3.5" />
                       ) : (
                         <Archive className="h-3.5 w-3.5" />

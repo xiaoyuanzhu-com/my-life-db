@@ -70,7 +70,7 @@ type SessionEntry struct {
 	ClientCount int    `json:"clientCount,omitempty"`
 
 	// User preferences (from database)
-	IsHidden bool `json:"isHidden"`
+	IsArchived bool `json:"isArchived"`
 
 	// Git info (for active sessions)
 	Git *GitInfo `json:"git,omitempty"`
@@ -458,16 +458,16 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 
 	m.mu.RUnlock()
 
-	// Load hidden session IDs from database
-	hiddenIDs, err := db.GetHiddenClaudeSessionIDs()
+	// Load archived session IDs from database
+	archivedIDs, err := db.GetArchivedClaudeSessionIDs()
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to load hidden session IDs")
-		hiddenIDs = make(map[string]bool)
+		log.Warn().Err(err).Msg("failed to load archived session IDs")
+		archivedIDs = make(map[string]bool)
 	}
 
-	// Annotate entries with hidden status
+	// Annotate entries with archived status
 	for _, entry := range allEntries {
-		entry.IsHidden = hiddenIDs[entry.SessionID]
+		entry.IsArchived = archivedIDs[entry.SessionID]
 	}
 
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
@@ -495,11 +495,11 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		entry := allEntries[i]
 
 		// Apply status filter
-		// "active" = not hidden (default view), "hidden" = hidden only, "all" = everything
-		if statusFilter == "active" && entry.IsHidden {
+		// "active" = not archived (default view), "archived" = archived only, "all" = everything
+		if statusFilter == "active" && entry.IsArchived {
 			continue
 		}
-		if statusFilter == "hidden" && !entry.IsHidden {
+		if statusFilter == "archived" && !entry.IsArchived {
 			continue
 		}
 

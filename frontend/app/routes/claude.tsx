@@ -29,7 +29,7 @@ interface Session {
   createdAt: string
   lastActivity: string
   isActive?: boolean
-  isHidden?: boolean
+  isArchived?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -148,16 +148,13 @@ export default function ClaudePage() {
     })
   }
 
-  // Map frontend filter values to backend API values
-  const apiStatusFilter = statusFilter === 'archived' ? 'hidden' : statusFilter
-
   const loadSessions = useCallback(async () => {
     try {
       setLoading(true)
       // Fetch first page of sessions with pagination
       const params = new URLSearchParams({
         limit: '20',
-        status: apiStatusFilter,
+        status: statusFilter,
       })
 
       const response = await api.get(`/api/claude/sessions/all?${params}`)
@@ -175,7 +172,7 @@ export default function ClaudePage() {
     } finally {
       setLoading(false)
     }
-  }, [apiStatusFilter])
+  }, [statusFilter])
 
   // Background refresh - updates sessions without showing loading state
   // Used for SSE-triggered updates (e.g., title changes)
@@ -183,7 +180,7 @@ export default function ClaudePage() {
     try {
       const params = new URLSearchParams({
         limit: '20',
-        status: apiStatusFilter,
+        status: statusFilter,
       })
 
       const response = await api.get(`/api/claude/sessions/all?${params}`)
@@ -219,7 +216,7 @@ export default function ClaudePage() {
     } catch (error) {
       console.error('Failed to refresh sessions:', error)
     }
-  }, [apiStatusFilter])
+  }, [statusFilter])
 
   // Load sessions on mount or when filter changes
   useEffect(() => {
@@ -311,7 +308,7 @@ export default function ClaudePage() {
       setIsLoadingMore(true)
       const params = new URLSearchParams({
         limit: '20',
-        status: apiStatusFilter,
+        status: statusFilter,
         cursor: pagination.nextCursor,
       })
 
@@ -336,7 +333,7 @@ export default function ClaudePage() {
     } finally {
       setIsLoadingMore(false)
     }
-  }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, apiStatusFilter])
+  }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, statusFilter])
 
   // Create session and send initial message (for empty state flow)
   const createSessionWithMessage = async (message: string) => {
@@ -401,12 +398,12 @@ export default function ClaudePage() {
 
   const archiveSession = async (sessionId: string) => {
     try {
-      const response = await api.post(`/api/claude/sessions/${sessionId}/hide`)
+      const response = await api.post(`/api/claude/sessions/${sessionId}/archive`)
 
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, isHidden: true } : s
+            s.id === sessionId ? { ...s, isArchived: true } : s
           )
         )
       }
@@ -417,12 +414,12 @@ export default function ClaudePage() {
 
   const unarchiveSession = async (sessionId: string) => {
     try {
-      const response = await api.post(`/api/claude/sessions/${sessionId}/unhide`)
+      const response = await api.post(`/api/claude/sessions/${sessionId}/unarchive`)
 
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, isHidden: false } : s
+            s.id === sessionId ? { ...s, isArchived: false } : s
           )
         )
       }
