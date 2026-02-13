@@ -219,6 +219,7 @@ export function ChatInterface({
 
       // Handle result messages
       if (msg.type === 'result') {
+        setTurnInProgress(false)
         setProgressMessage(null)
         setRawMessages((prev) => {
           const resultMsg: SessionMessage = {
@@ -421,23 +422,12 @@ export function ChatInterface({
     })
   }, [rawMessages])
 
-  // Derive working state from message history and session active state
-  // Rule: working = a turn is in progress (started but not completed)
-  // - Turn starts when user sends a real message (not tool_result)
-  // - Turn ends when 'result' message received
-  const isWorking = useMemo(() => {
-    if (optimisticMessage) return true
+  // Whether Claude is actively processing a turn
+  // Set true when user sends a message, set false when 'result' arrives
+  const [turnInProgress, setTurnInProgress] = useState(false)
 
-    // Has a turn started? (real user message exists, not tool_result)
-    const hasStartedTurn = rawMessages.some(
-      (m) => m.type === 'user' && !hasToolUseResult(m)
-    )
-    if (!hasStartedTurn) return false // No turn started = not working
-
-    // Turn started, check if complete
-    const lastMsg = rawMessages[rawMessages.length - 1]
-    return lastMsg?.type !== 'result'
-  }, [rawMessages, optimisticMessage])
+  // Derive working state: either we're waiting for echo (optimistic) or a turn is in progress
+  const isWorking = optimisticMessage != null || turnInProgress
 
   // Detect compacting state — suppress WIP "Working..." since message-block shows its own indicator
   const isCompacting = useMemo(() => {
@@ -536,6 +526,7 @@ export function ChatInterface({
   useEffect(() => {
     setRawMessages([])
     setOptimisticMessage(null)
+    setTurnInProgress(false)
     setActiveTodos([])
     setError(null)
     setProgressMessage(null)
@@ -606,6 +597,7 @@ export function ChatInterface({
   const sendMessage = useCallback(
     async (content: string) => {
       setOptimisticMessage(content)
+      setTurnInProgress(true)
       // Clear stale streaming state from the previous turn immediately.
       // Without this, the old streamingText can briefly flash when the new user
       // message makes showStreaming=true (last message is no longer 'assistant')
@@ -624,6 +616,7 @@ export function ChatInterface({
         console.error('Failed to send message:', error)
         setError('Failed to send message. Please try again.')
         setOptimisticMessage(null)
+        setTurnInProgress(false)
         chatInputRef.current?.restoreDraft()
         setTimeout(() => setError(null), 3000)
       }
