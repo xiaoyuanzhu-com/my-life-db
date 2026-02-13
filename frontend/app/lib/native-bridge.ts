@@ -93,7 +93,7 @@ export function setupNativeListeners(navigate: NavigateFunction) {
      * Uses React Router's navigate() so no page reload occurs.
      */
     navigateTo(path: string) {
-      navigate(path);
+      navigate(path, { replace: true });
     },
 
     /**
