@@ -104,6 +104,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.POST("/claude/sessions/:id/messages", h.SendClaudeMessage)
 		api.PATCH("/claude/sessions/:id", h.UpdateClaudeSession)
 		api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
+		api.POST("/claude/sessions/:id/hide", h.HideClaudeSession)
+		api.POST("/claude/sessions/:id/unhide", h.UnhideClaudeSession)
 		api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
 
 		// ASR routes

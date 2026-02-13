@@ -20,6 +20,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/models"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -67,6 +68,9 @@ type SessionEntry struct {
 	ProcessID   int    `json:"processId,omitempty"`
 	Status      string `json:"status"` // "active", "archived", "dead"
 	ClientCount int    `json:"clientCount,omitempty"`
+
+	// User preferences (from database)
+	IsHidden bool `json:"isHidden"`
 
 	// Git info (for active sessions)
 	Git *GitInfo `json:"git,omitempty"`
@@ -454,6 +458,18 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 
 	m.mu.RUnlock()
 
+	// Load hidden session IDs from database
+	hiddenIDs, err := db.GetHiddenClaudeSessionIDs()
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to load hidden session IDs")
+		hiddenIDs = make(map[string]bool)
+	}
+
+	// Annotate entries with hidden status
+	for _, entry := range allEntries {
+		entry.IsHidden = hiddenIDs[entry.SessionID]
+	}
+
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
 	allEntries = m.deduplicateEntries(allEntries)
 
@@ -479,10 +495,11 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		entry := allEntries[i]
 
 		// Apply status filter
-		if statusFilter == "active" && !entry.IsActivated {
+		// "active" = not hidden (default view), "hidden" = hidden only, "all" = everything
+		if statusFilter == "active" && entry.IsHidden {
 			continue
 		}
-		if statusFilter == "archived" && entry.IsActivated {
+		if statusFilter == "hidden" && !entry.IsHidden {
 			continue
 		}
 

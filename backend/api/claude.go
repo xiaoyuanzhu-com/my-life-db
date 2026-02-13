@@ -16,6 +16,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -147,6 +148,34 @@ func (h *Handlers) DeactivateClaudeSession(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// HideClaudeSession handles POST /api/claude/sessions/:id/hide
+// Marks a session as hidden so it doesn't appear in the default session list
+func (h *Handlers) HideClaudeSession(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	if err := db.HideClaudeSession(sessionID); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to hide session")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hide session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// UnhideClaudeSession handles POST /api/claude/sessions/:id/unhide
+// Removes the hidden mark from a session
+func (h *Handlers) UnhideClaudeSession(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	if err := db.UnhideClaudeSession(sessionID); err != nil {
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to unhide session")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unhide session"})
 		return
 	}
 
@@ -323,7 +352,7 @@ type ChatMessage struct {
 // Supports pagination via query parameters:
 //   - limit: number of sessions to return (default 20, max 100)
 //   - cursor: pagination cursor from previous response
-//   - status: filter by status ("all", "active", "archived", default "all")
+//   - status: filter by status ("all", "active", "hidden", default "all")
 func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// Parse pagination parameters
 	limit := 20
@@ -359,6 +388,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"isSidechain":  entry.IsSidechain,
 			"isActive":     entry.IsActivated,
 			"status":       entry.Status,
+			"isHidden":     entry.IsHidden,
 		}
 
 		if entry.ProcessID != 0 {

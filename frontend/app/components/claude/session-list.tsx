@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Check, X, Archive, Loader2 } from 'lucide-react'
+import { Check, X, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface Session {
@@ -14,6 +14,7 @@ interface Session {
   createdAt: string
   lastActivity: string
   isActive?: boolean
+  isHidden?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -24,7 +25,8 @@ interface SessionListProps {
   onSelect: (sessionId: string) => void
   onDelete: (sessionId: string) => void
   onRename: (sessionId: string, title: string) => void
-  onArchive: (sessionId: string) => void
+  onHide: (sessionId: string) => void
+  onUnhide: (sessionId: string) => void
   // Pagination props
   hasMore?: boolean
   isLoadingMore?: boolean
@@ -68,7 +70,8 @@ export function SessionList({
   onSelect,
   onDelete: _onDelete,
   onRename,
-  onArchive,
+  onHide,
+  onUnhide,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -186,11 +189,11 @@ export function SessionList({
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        {session.isActive && (
-                          <div className="h-2 w-2 rounded-full shrink-0 bg-green-500" />
-                        )}
                         <h3
-                          className="truncate text-sm font-medium text-foreground"
+                          className={cn(
+                            'truncate text-sm font-medium text-foreground',
+                            session.isHidden && 'opacity-60'
+                          )}
                           title={getSessionDisplayTitle(session).full}
                         >
                           {getSessionDisplayTitle(session).display}
@@ -210,20 +213,22 @@ export function SessionList({
                         )}
                       </div>
                     </div>
-                    {session.isActive && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onArchive(session.id)
-                        }}
-                        title="Archive session"
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        session.isHidden ? onUnhide(session.id) : onHide(session.id)
+                      }}
+                      title={session.isHidden ? 'Unhide session' : 'Hide session'}
+                    >
+                      {session.isHidden ? (
+                        <Eye className="h-3.5 w-3.5" />
+                      ) : (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
                   </div>
                 </>
               )}

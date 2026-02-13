@@ -29,6 +29,7 @@ interface Session {
   createdAt: string
   lastActivity: string
   isActive?: boolean
+  isHidden?: boolean
   messageCount?: number
   gitBranch?: string
 }
@@ -39,7 +40,7 @@ interface Pagination {
   totalCount: number
 }
 
-type StatusFilter = 'all' | 'active' | 'archived'
+type StatusFilter = 'all' | 'active' | 'hidden'
 
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -62,11 +63,11 @@ export default function ClaudePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('claude-session-filter')
-      if (saved === 'all' || saved === 'active' || saved === 'archived') {
+      if (saved === 'all' || saved === 'active' || saved === 'hidden') {
         return saved
       }
     }
-    return 'all'
+    return 'active'
   })
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
@@ -140,14 +141,9 @@ export default function ClaudePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
   }, [activeSessionId])
 
-  // Sort sessions: active first, then by last activity
+  // Sort sessions by last activity (most recent first)
   const sortSessions = (sessionList: Session[]): Session[] => {
     return [...sessionList].sort((a: Session, b: Session) => {
-      // Active sessions come first
-      if (a.isActive && !b.isActive) return -1
-      if (!a.isActive && b.isActive) return 1
-
-      // Within same type, sort by lastActivity
       return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
     })
   }
@@ -400,26 +396,35 @@ export default function ClaudePage() {
     }
   }
 
-  const archiveSession = async (sessionId: string) => {
+  const hideSession = async (sessionId: string) => {
     try {
-      const response = await api.post(`/api/claude/sessions/${sessionId}/deactivate`)
+      const response = await api.post(`/api/claude/sessions/${sessionId}/hide`)
 
       if (response.ok) {
-        // Mark session as archived in the UI
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, isActive: false, status: 'archived' as const } : s
+            s.id === sessionId ? { ...s, isHidden: true } : s
           )
         )
-
-        // If archived session was active, switch to first active session or first session
-        if (activeSessionId === sessionId) {
-          const remaining = sessions.filter((s) => s.id !== sessionId && s.isActive)
-          setActiveSessionId(remaining.length > 0 ? remaining[0].id : null)
-        }
       }
     } catch (error) {
-      console.error('Failed to archive session:', error)
+      console.error('Failed to hide session:', error)
+    }
+  }
+
+  const unhideSession = async (sessionId: string) => {
+    try {
+      const response = await api.post(`/api/claude/sessions/${sessionId}/unhide`)
+
+      if (response.ok) {
+        setSessions(
+          sessions.map((s) =>
+            s.id === sessionId ? { ...s, isHidden: false } : s
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Failed to unhide session:', error)
     }
   }
 
@@ -473,9 +478,9 @@ export default function ClaudePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all" className="text-xs">All</SelectItem>
                 <SelectItem value="active" className="text-xs">Active</SelectItem>
-                <SelectItem value="archived" className="text-xs">Archived</SelectItem>
+                <SelectItem value="all" className="text-xs">All</SelectItem>
+                <SelectItem value="hidden" className="text-xs">Hidden</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -506,7 +511,8 @@ export default function ClaudePage() {
             onSelect={setActiveSessionId}
             onDelete={deleteSession}
             onRename={updateSessionTitle}
-            onArchive={archiveSession}
+            onHide={hideSession}
+            onUnhide={unhideSession}
             hasMore={pagination.hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMoreSessions}
@@ -538,9 +544,9 @@ export default function ClaudePage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all" className="text-xs">All</SelectItem>
                   <SelectItem value="active" className="text-xs">Active</SelectItem>
-                  <SelectItem value="archived" className="text-xs">Archived</SelectItem>
+                  <SelectItem value="all" className="text-xs">All</SelectItem>
+                  <SelectItem value="hidden" className="text-xs">Hidden</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -555,7 +561,8 @@ export default function ClaudePage() {
               }}
               onDelete={deleteSession}
               onRename={updateSessionTitle}
-              onArchive={archiveSession}
+              onHide={hideSession}
+              onUnhide={unhideSession}
               hasMore={pagination.hasMore}
               isLoadingMore={isLoadingMore}
               onLoadMore={loadMoreSessions}
