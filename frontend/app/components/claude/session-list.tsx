@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Check, X, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Check, X, Archive, ArchiveRestore, Loader2 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
 interface Session {
@@ -25,8 +25,8 @@ interface SessionListProps {
   onSelect: (sessionId: string) => void
   onDelete: (sessionId: string) => void
   onRename: (sessionId: string, title: string) => void
-  onHide: (sessionId: string) => void
-  onUnhide: (sessionId: string) => void
+  onArchive: (sessionId: string) => void
+  onUnarchive: (sessionId: string) => void
   // Pagination props
   hasMore?: boolean
   isLoadingMore?: boolean
@@ -70,8 +70,8 @@ export function SessionList({
   onSelect,
   onDelete: _onDelete,
   onRename,
-  onHide,
-  onUnhide,
+  onArchive,
+  onUnarchive,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -219,14 +219,14 @@ export function SessionList({
                       className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
-                        session.isHidden ? onUnhide(session.id) : onHide(session.id)
+                        session.isHidden ? onUnarchive(session.id) : onArchive(session.id)
                       }}
-                      title={session.isHidden ? 'Unhide session' : 'Hide session'}
+                      title={session.isHidden ? 'Unarchive session' : 'Archive session'}
                     >
                       {session.isHidden ? (
-                        <Eye className="h-3.5 w-3.5" />
+                        <ArchiveRestore className="h-3.5 w-3.5" />
                       ) : (
-                        <EyeOff className="h-3.5 w-3.5" />
+                        <Archive className="h-3.5 w-3.5" />
                       )}
                     </Button>
                   </div>

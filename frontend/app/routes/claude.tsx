@@ -40,7 +40,7 @@ interface Pagination {
   totalCount: number
 }
 
-type StatusFilter = 'all' | 'active' | 'hidden'
+type StatusFilter = 'all' | 'active' | 'archived'
 
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -63,7 +63,7 @@ export default function ClaudePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('claude-session-filter')
-      if (saved === 'all' || saved === 'active' || saved === 'hidden') {
+      if (saved === 'all' || saved === 'active' || saved === 'archived') {
         return saved
       }
     }
@@ -148,13 +148,16 @@ export default function ClaudePage() {
     })
   }
 
+  // Map frontend filter values to backend API values
+  const apiStatusFilter = statusFilter === 'archived' ? 'hidden' : statusFilter
+
   const loadSessions = useCallback(async () => {
     try {
       setLoading(true)
       // Fetch first page of sessions with pagination
       const params = new URLSearchParams({
         limit: '20',
-        status: statusFilter,
+        status: apiStatusFilter,
       })
 
       const response = await api.get(`/api/claude/sessions/all?${params}`)
@@ -172,7 +175,7 @@ export default function ClaudePage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [apiStatusFilter])
 
   // Background refresh - updates sessions without showing loading state
   // Used for SSE-triggered updates (e.g., title changes)
@@ -180,7 +183,7 @@ export default function ClaudePage() {
     try {
       const params = new URLSearchParams({
         limit: '20',
-        status: statusFilter,
+        status: apiStatusFilter,
       })
 
       const response = await api.get(`/api/claude/sessions/all?${params}`)
@@ -216,7 +219,7 @@ export default function ClaudePage() {
     } catch (error) {
       console.error('Failed to refresh sessions:', error)
     }
-  }, [statusFilter])
+  }, [apiStatusFilter])
 
   // Load sessions on mount or when filter changes
   useEffect(() => {
@@ -308,7 +311,7 @@ export default function ClaudePage() {
       setIsLoadingMore(true)
       const params = new URLSearchParams({
         limit: '20',
-        status: statusFilter,
+        status: apiStatusFilter,
         cursor: pagination.nextCursor,
       })
 
@@ -333,7 +336,7 @@ export default function ClaudePage() {
     } finally {
       setIsLoadingMore(false)
     }
-  }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, statusFilter])
+  }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, apiStatusFilter])
 
   // Create session and send initial message (for empty state flow)
   const createSessionWithMessage = async (message: string) => {
@@ -396,7 +399,7 @@ export default function ClaudePage() {
     }
   }
 
-  const hideSession = async (sessionId: string) => {
+  const archiveSession = async (sessionId: string) => {
     try {
       const response = await api.post(`/api/claude/sessions/${sessionId}/hide`)
 
@@ -408,11 +411,11 @@ export default function ClaudePage() {
         )
       }
     } catch (error) {
-      console.error('Failed to hide session:', error)
+      console.error('Failed to archive session:', error)
     }
   }
 
-  const unhideSession = async (sessionId: string) => {
+  const unarchiveSession = async (sessionId: string) => {
     try {
       const response = await api.post(`/api/claude/sessions/${sessionId}/unhide`)
 
@@ -424,7 +427,7 @@ export default function ClaudePage() {
         )
       }
     } catch (error) {
-      console.error('Failed to unhide session:', error)
+      console.error('Failed to unarchive session:', error)
     }
   }
 
@@ -480,7 +483,7 @@ export default function ClaudePage() {
               <SelectContent>
                 <SelectItem value="active" className="text-xs">Active</SelectItem>
                 <SelectItem value="all" className="text-xs">All</SelectItem>
-                <SelectItem value="hidden" className="text-xs">Hidden</SelectItem>
+                <SelectItem value="archived" className="text-xs">Archived</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -511,8 +514,8 @@ export default function ClaudePage() {
             onSelect={setActiveSessionId}
             onDelete={deleteSession}
             onRename={updateSessionTitle}
-            onHide={hideSession}
-            onUnhide={unhideSession}
+            onArchive={archiveSession}
+            onUnarchive={unarchiveSession}
             hasMore={pagination.hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMoreSessions}
@@ -546,7 +549,7 @@ export default function ClaudePage() {
                 <SelectContent>
                   <SelectItem value="active" className="text-xs">Active</SelectItem>
                   <SelectItem value="all" className="text-xs">All</SelectItem>
-                  <SelectItem value="hidden" className="text-xs">Hidden</SelectItem>
+                  <SelectItem value="archived" className="text-xs">Archived</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -561,8 +564,8 @@ export default function ClaudePage() {
               }}
               onDelete={deleteSession}
               onRename={updateSessionTitle}
-              onHide={hideSession}
-              onUnhide={unhideSession}
+              onArchive={archiveSession}
+              onUnarchive={unarchiveSession}
               hasMore={pagination.hasMore}
               isLoadingMore={isLoadingMore}
               onLoadMore={loadMoreSessions}
