@@ -232,11 +232,9 @@ export default function ClaudePage() {
     }
   }, [activeSessionId, urlSessionId, navigate])
 
-  // Initialize active session from URL on mount
+  // Sync active session from URL (handles both mount and native bridge navigation)
   useEffect(() => {
-    if (urlSessionId) {
-      setActiveSessionId(urlSessionId)
-    }
+    setActiveSessionId(urlSessionId || null)
   }, [urlSessionId])
 
   // Swipe gesture handler for mobile back navigation
