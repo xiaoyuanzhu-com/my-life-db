@@ -487,6 +487,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	// Filter and collect results
 	result := make([]*SessionEntry, 0, limit)
 	totalFiltered := 0
+	filteredAfterCursor := 0
 
 	for i := 0; i < len(allEntries); i++ {
 		entry := allEntries[i]
@@ -506,6 +507,8 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			continue
 		}
 
+		filteredAfterCursor++
+
 		if len(result) < limit {
 			// Enrich on demand
 			entry.Enrich()
@@ -514,7 +517,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}
 
 	// Build pagination info
-	hasMore := len(result) == limit && (startIdx+limit) < totalFiltered
+	hasMore := len(result) == limit && filteredAfterCursor > limit
 	var nextCursor string
 	if hasMore && len(result) > 0 {
 		last := result[len(result)-1]
@@ -861,7 +864,7 @@ func convertToSessionEntry(entry *models.SessionIndexEntry) *SessionEntry {
 		GitBranch:    entry.GitBranch,
 		ProjectPath:  entry.ProjectPath,
 		IsSidechain:  entry.IsSidechain,
-		Status:       "archived",
+		Status:       "active",
 		enriched:     false,
 	}
 	e.DisplayTitle = e.computeDisplayTitle()
@@ -948,7 +951,7 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 		FullPath:     jsonlPath,
 		MessageCount: len(messages),
 		Modified:     fileInfo.ModTime(),
-		Status:       "archived",
+		Status:       "active",
 	}
 
 	for i, msg := range messages {
@@ -1190,7 +1193,7 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 		PermissionMode:        sdk.PermissionModeDefault,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
-		Status:                "archived",
+		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		broadcast:             make(chan []byte, 256),
 		activated:             false,
