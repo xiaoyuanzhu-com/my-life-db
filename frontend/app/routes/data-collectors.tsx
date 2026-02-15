@@ -80,9 +80,9 @@ export default function DataCollectorsPage() {
             className="animate-slide-up-fade"
             style={{ animationDelay: `${catIdx * 50}ms`, animationFillMode: "both" }}
           >
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">{cat.name}</h2>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">{cat.name}</h2>
 
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-7 gap-2">
               {cat.collectors.map((collector) => (
                 <CollectorTile
                   key={collector.id}
@@ -121,8 +121,8 @@ function CollectorTile({ collector, activeColor }: { collector: Collector; activ
         }
         group-hover:bg-card group-hover:border-foreground/10 group-hover:shadow-sm
       `}>
-        <Icon className={`w-6 h-6 ${isActive ? "text-foreground" : "text-muted-foreground/60"}`} />
-        <span className={`text-[13px] text-center leading-tight px-2 ${isActive ? "font-medium" : "text-muted-foreground/80"}`}>
+        <Icon className={`w-5 h-5 ${isActive ? "text-foreground" : "text-muted-foreground/60"}`} />
+        <span className={`text-[11px] text-center leading-tight px-1 ${isActive ? "font-medium" : "text-muted-foreground/80"}`}>
           {collector.name}
         </span>
         {isActive && (
