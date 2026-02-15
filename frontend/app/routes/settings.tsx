@@ -9,6 +9,7 @@ import { LanguageSelector } from "~/components/settings/language-selector";
 import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
+import { DataSourcesTab } from "~/components/settings/data-sources-tab";
 
 interface ModelOption {
   id: string;
@@ -224,6 +225,7 @@ function SettingsContent() {
     { label: "General", value: "general", path: "/settings" },
     { label: "Vendors", value: "vendors", path: "/settings/vendors" },
     { label: "Digest", value: "digest", path: "/settings/digest" },
+    { label: "Data Sources", value: "data-sources", path: "/settings/data-sources" },
     { label: "Stats", value: "stats", path: "/settings/stats" },
   ];
 
@@ -624,8 +626,13 @@ function SettingsContent() {
           </Card>
         )}
 
+        {/* Data Sources Tab */}
+        {activeTab === "data-sources" && (
+          <DataSourcesTab />
+        )}
+
         {/* Save Button */}
-        {activeTab !== "stats" && (
+        {activeTab !== "stats" && activeTab !== "data-sources" && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">

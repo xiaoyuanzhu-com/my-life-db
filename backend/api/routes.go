@@ -81,6 +81,10 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.PUT("/settings", h.UpdateSettings)
 		api.POST("/settings", h.ResetSettings)
 
+		// Collectors
+		api.GET("/collectors", h.GetCollectors)
+		api.PUT("/collectors/:id", h.UpsertCollector)
+
 		// Stats
 		api.GET("/stats", h.GetStats)
 

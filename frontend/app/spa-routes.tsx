@@ -20,8 +20,6 @@ import People from "./routes/people";
 import PeopleDetail from "./routes/people.$id";
 import Settings from "./routes/settings";
 import Claude from "./routes/claude";
-import DataCollectors from "./routes/data-collectors";
-import DataCollectorDetail from "./routes/data-collectors.$id";
 
 export const routes: RouteObject[] = [
   {
@@ -59,14 +57,6 @@ export const routes: RouteObject[] = [
       {
         path: "people/:id",
         Component: PeopleDetail,
-      },
-      {
-        path: "data-collectors",
-        Component: DataCollectors,
-      },
-      {
-        path: "data-collectors/:id",
-        Component: DataCollectorDetail,
       },
       {
         path: "settings/*",

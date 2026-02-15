@@ -54,7 +54,7 @@ export function Header() {
     { href: '/', label: 'Home', icon: Home },
     { href: '/library', label: 'Library', icon: Library },
     { href: '/claude', label: 'Claude', icon: Terminal },
-    { href: '/data-collectors', label: 'Data Collectors', icon: Database },
+    { href: '/settings/data-sources', label: 'Data Sources', icon: Database },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];
 
@@ -126,9 +126,9 @@ export function Header() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem asChild>
-                      <Link to="/data-collectors" className="flex items-center gap-2 cursor-pointer">
+                      <Link to="/settings/data-sources" className="flex items-center gap-2 cursor-pointer">
                         <Database className="h-4 w-4" />
-                        <span>Data Collectors</span>
+                        <span>Data Sources</span>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

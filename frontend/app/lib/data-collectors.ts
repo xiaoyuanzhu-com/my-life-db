@@ -352,32 +352,6 @@ export function findCollector(id: string): { category: CollectorCategory; collec
   return null;
 }
 
-/** Count how many sources are enabled in a category (read from localStorage). */
-export function countEnabled(category: CollectorCategory): { enabled: number; total: number } {
-  let enabled = 0;
-  let total = 0;
-  for (const collector of category.collectors) {
-    for (const source of collector.sources) {
-      total++;
-      if (localStorage.getItem(`dataCollect.${source.id}`) === "true") {
-        enabled++;
-      }
-    }
-  }
-  return { enabled, total };
-}
-
-/** Count how many sources are enabled in a single collector. */
-export function countCollectorEnabled(collector: Collector): { enabled: number; total: number } {
-  let enabled = 0;
-  for (const source of collector.sources) {
-    if (localStorage.getItem(`dataCollect.${source.id}`) === "true") {
-      enabled++;
-    }
-  }
-  return { enabled, total: collector.sources.length };
-}
-
 /** Status display config. */
 export const statusConfig: Record<SourceStatus, { label: string; className: string }> = {
   available: { label: "Available", className: "text-emerald-600 dark:text-emerald-400" },
@@ -386,11 +360,3 @@ export const statusConfig: Record<SourceStatus, { label: string; className: stri
   future: { label: "Future", className: "text-muted-foreground" },
 };
 
-/** Get the dominant status for a collector (highest priority source status). */
-export function dominantStatus(collector: Collector): SourceStatus {
-  const priority: SourceStatus[] = ["available", "limited", "manual", "future"];
-  for (const s of priority) {
-    if (collector.sources.some((src) => src.status === s)) return s;
-  }
-  return "future";
-}
