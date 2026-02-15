@@ -82,7 +82,7 @@ export default function DataCollectorsPage() {
           >
             <h2 className="text-lg font-bold text-foreground mb-3 sticky top-0 z-[5] bg-background py-3 pb-2 -mx-4 px-4 md:-mx-[10%] md:px-[10%]">{cat.name}</h2>
 
-            <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-7 gap-2">
+            <div className="grid grid-cols-5 sm:grid-cols-7 lg:grid-cols-9 gap-0.5">
               {cat.collectors.map((collector) => (
                 <CollectorTile
                   key={collector.id}
@@ -113,20 +113,19 @@ function CollectorTile({ collector, activeColor }: { collector: Collector; activ
       className="group"
     >
       <div className={`
-        aspect-square rounded-xl flex flex-col items-center justify-center gap-2.5 relative
-        transition-all duration-150 border
+        aspect-square rounded-lg flex flex-col items-center justify-center gap-1 relative p-1
+        border transition-colors duration-100
         ${isActive
           ? "bg-card border-foreground/10"
-          : "bg-transparent border-transparent"
+          : "bg-transparent border-transparent hover:bg-muted"
         }
-        group-hover:bg-card group-hover:border-foreground/10 group-hover:shadow-sm
       `}>
-        <Icon className={`w-5 h-5 ${isActive ? "text-foreground" : "text-muted-foreground/60"}`} />
-        <span className={`text-[11px] text-center leading-tight px-1 ${isActive ? "font-medium" : "text-muted-foreground/80"}`}>
+        <Icon className={`w-5 h-5 shrink-0 ${isActive ? "text-foreground" : "text-muted-foreground/60"}`} />
+        <span className={`text-[10px] text-center leading-tight ${isActive ? "font-medium" : "text-muted-foreground/80"}`}>
           {collector.name}
         </span>
         {isActive && (
-          <span className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${activeColor}`} />
+          <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${activeColor}`} />
         )}
       </div>
     </Link>
