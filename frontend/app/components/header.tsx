@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { Settings, Home, Library, CircleUserRound, Terminal } from 'lucide-react';
+import { Settings, Home, Library, CircleUserRound, Terminal, Database } from 'lucide-react';
 import { getGravatarUrlSync } from '~/lib/gravatar';
 import { useAuth } from '~/contexts/auth-context';
 import { api } from '~/lib/api';
@@ -54,6 +54,7 @@ export function Header() {
     { href: '/', label: 'Home', icon: Home },
     { href: '/library', label: 'Library', icon: Library },
     { href: '/claude', label: 'Claude', icon: Terminal },
+    { href: '/data-collectors', label: 'Data Collectors', icon: Database },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];
 
@@ -124,6 +125,12 @@ export function Header() {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem asChild>
+                      <Link to="/data-collectors" className="flex items-center gap-2 cursor-pointer">
+                        <Database className="h-4 w-4" />
+                        <span>Data Collectors</span>
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
                         <Settings className="h-4 w-4" />
