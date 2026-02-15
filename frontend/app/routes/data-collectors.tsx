@@ -80,7 +80,7 @@ export default function DataCollectorsPage() {
             className="animate-slide-up-fade"
             style={{ animationDelay: `${catIdx * 50}ms`, animationFillMode: "both" }}
           >
-            <h2 className="text-sm font-medium text-muted-foreground mb-3">{cat.name}</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3">{cat.name}</h2>
 
             <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-7 gap-2">
               {cat.collectors.map((collector) => (
