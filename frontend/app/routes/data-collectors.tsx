@@ -34,15 +34,13 @@ function getIcon(name: string) {
 // Category accent colors
 // ---------------------------------------------------------------------------
 
-const categoryAccent: Record<string, { icon: string; active: string }> = {
-  time:          { icon: "text-blue-600 dark:text-blue-400",    active: "bg-blue-500" },
-  health:        { icon: "text-emerald-600 dark:text-emerald-400", active: "bg-emerald-500" },
-  diet:          { icon: "text-amber-600 dark:text-amber-400",  active: "bg-amber-500" },
-  communication: { icon: "text-violet-600 dark:text-violet-400", active: "bg-violet-500" },
-  content:       { icon: "text-rose-600 dark:text-rose-400",    active: "bg-rose-500" },
+const categoryAccent: Record<string, string> = {
+  time: "bg-blue-500",
+  health: "bg-emerald-500",
+  diet: "bg-amber-500",
+  communication: "bg-violet-500",
+  content: "bg-rose-500",
 };
-
-const defaultAccent = { icon: "text-muted-foreground", active: "bg-muted-foreground" };
 
 // ---------------------------------------------------------------------------
 // Page
@@ -72,12 +70,9 @@ export default function DataCollectorsPage() {
   }
 
   return (
-    <div className="w-full px-4 py-8 md:px-[10%] space-y-10 pb-20">
-      <h1 className="text-3xl font-bold tracking-tight">Data Collectors</h1>
-
+    <div className="w-full px-4 py-6 md:px-[10%] space-y-10 pb-20">
       {categories.map((cat, catIdx) => {
-        const CatIcon = getIcon(cat.icon);
-        const accent = categoryAccent[cat.id] ?? defaultAccent;
+        const activeColor = categoryAccent[cat.id] ?? "bg-muted-foreground";
 
         return (
           <section
@@ -85,17 +80,14 @@ export default function DataCollectorsPage() {
             className="animate-slide-up-fade"
             style={{ animationDelay: `${catIdx * 50}ms`, animationFillMode: "both" }}
           >
-            <div className="flex items-center gap-2.5 mb-3">
-              <CatIcon className={`w-5 h-5 ${accent.icon}`} />
-              <h2 className="text-base font-semibold">{cat.name}</h2>
-            </div>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">{cat.name}</h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
               {cat.collectors.map((collector) => (
                 <CollectorTile
                   key={collector.id}
                   collector={collector}
-                  activeColor={accent.active}
+                  activeColor={activeColor}
                 />
               ))}
             </div>
@@ -107,7 +99,7 @@ export default function DataCollectorsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Tile
+// Tile (square)
 // ---------------------------------------------------------------------------
 
 function CollectorTile({ collector, activeColor }: { collector: Collector; activeColor: string }) {
@@ -121,21 +113,20 @@ function CollectorTile({ collector, activeColor }: { collector: Collector; activ
       className="group"
     >
       <div className={`
-        rounded-xl px-3 py-2.5 flex items-center gap-2.5
-        transition-all duration-150
-        border
+        aspect-square rounded-xl flex flex-col items-center justify-center gap-2.5 relative
+        transition-all duration-150 border
         ${isActive
           ? "bg-card border-foreground/10"
           : "bg-transparent border-transparent"
         }
         group-hover:bg-card group-hover:border-foreground/10 group-hover:shadow-sm
       `}>
-        <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-foreground" : "text-muted-foreground"}`} />
-        <span className={`text-sm truncate ${isActive ? "font-medium" : "text-muted-foreground"}`}>
+        <Icon className={`w-6 h-6 ${isActive ? "text-foreground" : "text-muted-foreground/60"}`} />
+        <span className={`text-[13px] text-center leading-tight px-2 ${isActive ? "font-medium" : "text-muted-foreground/80"}`}>
           {collector.name}
         </span>
         {isActive && (
-          <span className={`ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeColor}`} />
+          <span className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${activeColor}`} />
         )}
       </div>
     </Link>
