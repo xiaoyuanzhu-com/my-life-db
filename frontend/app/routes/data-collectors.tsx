@@ -1,25 +1,21 @@
-import { useState, useEffect, useMemo, type ComponentType } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import { Link } from "react-router";
 import {
   Clock, Heart, UtensilsCrossed, MessageCircle, BookOpen,
   Monitor, Calendar, Target, Footprints, HeartPulse, Moon,
   Scale, Brain, Dumbbell, Droplets, Coffee, Utensils, Pill,
   MessageSquare, Mail, Phone, Share2, FileText, Play,
-  Headphones, Bot, Music, Terminal, Camera, ChevronRight,
+  Headphones, Bot, Music, Terminal, Camera,
 } from "lucide-react";
 import { useAuth } from "~/contexts/auth-context";
 import {
   categories,
-  countEnabled,
   countCollectorEnabled,
-  dominantStatus,
-  statusConfig,
-  type CollectorCategory,
   type Collector,
 } from "~/lib/data-collectors";
 
 // ---------------------------------------------------------------------------
-// Icon map — maps string names to lucide components
+// Icon map
 // ---------------------------------------------------------------------------
 
 const iconMap: Record<string, ComponentType<{ className?: string }>> = {
@@ -35,27 +31,18 @@ function getIcon(name: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Category accent colors (used for section icon backgrounds)
+// Category accent colors
 // ---------------------------------------------------------------------------
 
-const categoryAccent: Record<string, string> = {
-  time: "bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400",
-  health: "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400",
-  diet: "bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400",
-  communication: "bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400",
-  content: "bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400",
+const categoryAccent: Record<string, { icon: string; active: string }> = {
+  time:          { icon: "text-blue-600 dark:text-blue-400",    active: "bg-blue-500" },
+  health:        { icon: "text-emerald-600 dark:text-emerald-400", active: "bg-emerald-500" },
+  diet:          { icon: "text-amber-600 dark:text-amber-400",  active: "bg-amber-500" },
+  communication: { icon: "text-violet-600 dark:text-violet-400", active: "bg-violet-500" },
+  content:       { icon: "text-rose-600 dark:text-rose-400",    active: "bg-rose-500" },
 };
 
-// ---------------------------------------------------------------------------
-// Collector card accent (dot color)
-// ---------------------------------------------------------------------------
-
-const statusDot: Record<string, string> = {
-  available: "bg-emerald-500",
-  limited: "bg-amber-500",
-  manual: "bg-blue-500",
-  future: "bg-muted-foreground/40",
-};
+const defaultAccent = { icon: "text-muted-foreground", active: "bg-muted-foreground" };
 
 // ---------------------------------------------------------------------------
 // Page
@@ -65,7 +52,6 @@ export default function DataCollectorsPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [_, setTick] = useState(0);
 
-  // Re-render when localStorage toggles change (detail page writes them)
   useEffect(() => {
     const handler = () => setTick((t) => t + 1);
     window.addEventListener("storage", handler);
@@ -86,115 +72,71 @@ export default function DataCollectorsPage() {
   }
 
   return (
-    <div className="w-full px-4 py-6 md:px-[10%] space-y-10 pb-20">
-      {/* Page header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Data Collectors</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage what data flows into your life database
-        </p>
-      </div>
+    <div className="w-full px-4 py-8 md:px-[10%] space-y-10 pb-20">
+      <h1 className="text-3xl font-bold tracking-tight">Data Collectors</h1>
 
-      {/* Category sections */}
-      {categories.map((cat, catIdx) => (
-        <CategorySection key={cat.id} category={cat} index={catIdx} />
-      ))}
+      {categories.map((cat, catIdx) => {
+        const CatIcon = getIcon(cat.icon);
+        const accent = categoryAccent[cat.id] ?? defaultAccent;
+
+        return (
+          <section
+            key={cat.id}
+            className="animate-slide-up-fade"
+            style={{ animationDelay: `${catIdx * 50}ms`, animationFillMode: "both" }}
+          >
+            <div className="flex items-center gap-2.5 mb-3">
+              <CatIcon className={`w-5 h-5 ${accent.icon}`} />
+              <h2 className="text-base font-semibold">{cat.name}</h2>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {cat.collectors.map((collector) => (
+                <CollectorTile
+                  key={collector.id}
+                  collector={collector}
+                  activeColor={accent.active}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Category Section
+// Tile
 // ---------------------------------------------------------------------------
 
-function CategorySection({ category, index }: { category: CollectorCategory; index: number }) {
-  const Icon = getIcon(category.icon);
-  const accent = categoryAccent[category.id] ?? "bg-muted text-muted-foreground";
-  const { enabled, total } = useMemo(() => countEnabled(category), [category]);
-
-  return (
-    <section
-      className="animate-slide-up-fade"
-      style={{ animationDelay: `${index * 60}ms`, animationFillMode: "both" }}
-    >
-      {/* Section header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${accent}`}>
-          <Icon className="w-[18px] h-[18px]" />
-        </div>
-        <h2 className="text-lg font-semibold">{category.name}</h2>
-        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-          {enabled > 0 ? `${enabled} / ${total} active` : `${total} sources`}
-        </span>
-      </div>
-
-      {/* Collector grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {category.collectors.map((collector, i) => (
-          <CollectorCard
-            key={collector.id}
-            collector={collector}
-            categoryId={category.id}
-            delay={index * 60 + (i + 1) * 40}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Collector Card
-// ---------------------------------------------------------------------------
-
-function CollectorCard({
-  collector,
-  categoryId,
-  delay,
-}: {
-  collector: Collector;
-  categoryId: string;
-  delay: number;
-}) {
+function CollectorTile({ collector, activeColor }: { collector: Collector; activeColor: string }) {
   const Icon = getIcon(collector.icon);
-  const status = dominantStatus(collector);
-  const { label, className: statusClassName } = statusConfig[status];
-  const { enabled, total } = countCollectorEnabled(collector);
-  const accent = categoryAccent[categoryId] ?? "bg-muted text-muted-foreground";
+  const { enabled } = countCollectorEnabled(collector);
+  const isActive = enabled > 0;
 
   return (
     <Link
       to={`/data-collectors/${collector.id}`}
-      className="group animate-slide-up-fade"
-      style={{ animationDelay: `${delay}ms`, animationFillMode: "both" }}
+      className="group"
     >
-      <div className="bg-card border rounded-xl p-4 h-full flex items-start gap-3 transition-all duration-200 group-hover:shadow-md group-hover:border-foreground/15 group-hover:-translate-y-0.5">
-        {/* Icon */}
-        <div className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg ${accent} transition-transform duration-200 group-hover:scale-105`}>
-          <Icon className="w-5 h-5" />
-        </div>
-
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">{collector.name}</span>
-            {enabled > 0 && (
-              <span className="flex-shrink-0 text-[10px] font-medium tabular-nums bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-                {enabled}/{total}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-            {collector.description}
-          </p>
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${statusDot[status]}`} />
-            <span className={`text-[11px] ${statusClassName}`}>{label}</span>
-          </div>
-        </div>
-
-        {/* Chevron */}
-        <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+      <div className={`
+        rounded-xl px-3 py-2.5 flex items-center gap-2.5
+        transition-all duration-150
+        border
+        ${isActive
+          ? "bg-card border-foreground/10"
+          : "bg-transparent border-transparent"
+        }
+        group-hover:bg-card group-hover:border-foreground/10 group-hover:shadow-sm
+      `}>
+        <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-foreground" : "text-muted-foreground"}`} />
+        <span className={`text-sm truncate ${isActive ? "font-medium" : "text-muted-foreground"}`}>
+          {collector.name}
+        </span>
+        {isActive && (
+          <span className={`ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeColor}`} />
+        )}
       </div>
     </Link>
   );
