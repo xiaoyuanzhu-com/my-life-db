@@ -474,6 +474,15 @@ func (h *Handlers) SendClaudeMessage(c *gin.Context) {
 		}
 	}
 
+	// Auto-unarchive: sending a message to an archived session means the user is actively using it
+	if archived, err := db.IsClaudeSessionArchived(sessionID); err == nil && archived {
+		if err := db.UnarchiveClaudeSession(sessionID); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to auto-unarchive session")
+		} else {
+			log.Info().Str("sessionId", sessionID).Msg("auto-unarchived session on new message")
+		}
+	}
+
 	log.Info().
 		Str("sessionId", sessionID).
 		Str("content", req.Content).
@@ -909,6 +918,15 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 			session.LastActivity = time.Now()
 			session.LastUserActivity = time.Now()
+
+			// Auto-unarchive: sending a message to an archived session means the user is actively using it
+			if archived, err := db.IsClaudeSessionArchived(sessionID); err == nil && archived {
+				if err := db.UnarchiveClaudeSession(sessionID); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to auto-unarchive session")
+				} else {
+					log.Info().Str("sessionId", sessionID).Msg("auto-unarchived session on new message")
+				}
+			}
 
 			log.Info().
 				Str("sessionId", sessionID).
