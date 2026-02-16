@@ -35,6 +35,17 @@ const (
 	SessionEventDeleted     SessionEventType = "deleted"
 )
 
+// defaultSystemPrompt is the system prompt sent to every new Claude session.
+// This is an internal implementation detail shipped with the app — users customize
+// Claude's behavior through CLAUDE.md files instead.
+const defaultSystemPrompt = `When the user asks for a chart, diagram, or visualization, return it as a fenced code block. The frontend auto-renders these — do not describe the output unless asked.
+
+Two formats are supported:
+- Mermaid code blocks for flowcharts, sequence diagrams, Gantt charts, ER diagrams, etc.
+- HTML code blocks for anything richer or interactive (data-driven charts, styled layouts, computed tables). These render in a sandboxed iframe with scripts enabled.
+
+Prefer mermaid when it can express the visualization. Use HTML when it cannot.`
+
 // SessionEvent represents a change in session state
 type SessionEvent struct {
 	Type      SessionEventType `json:"type"`
@@ -1511,6 +1522,7 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,
+		SystemPrompt:           defaultSystemPrompt,
 		AllowedTools:           allowedTools,
 		PermissionMode:         session.PermissionMode,
 		CanUseTool:             session.CreatePermissionCallback(),
