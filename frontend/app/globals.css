@@ -644,6 +644,11 @@
 .native-app {
   /* Single row: content fills full viewport (no header row) */
   grid-template-rows: minmax(0, 1fr) !important;
+  /* Disable root-level scrolling — individual pages (e.g. MessageList) manage
+     their own scroll containers. Without this the root overflow-y-auto creates
+     a competing scrollable layer that causes content to pan like a draggable
+     image instead of scrolling normally in WKWebView. */
+  overflow: hidden !important;
 }
 
 /* Remove bottom safe-area padding — native tab bar handles it */
