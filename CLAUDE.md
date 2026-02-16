@@ -362,6 +362,14 @@ The backend uses structured logging via zerolog:
 
 Do NOT create git commits automatically. Only commit when explicitly instructed.
 
+Prefer using **git worktrees** for code changes to avoid conflicts with concurrent sessions:
+
+    git worktree add -b <branch> .worktrees/<name> main
+    # work and commit on the branch, then merge when done
+    git checkout main && git pull && git merge <branch> && git push
+    # clean up
+    git worktree remove .worktrees/<name> && git branch -d <branch>
+
 ## Development Server
 
 The user typically has a development server running. Check before starting a new one.
