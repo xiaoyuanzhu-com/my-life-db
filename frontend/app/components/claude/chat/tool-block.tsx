@@ -178,7 +178,8 @@ function getResultMessage(result: unknown): string | null {
 }
 
 function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
-  const [expanded, setExpanded] = useState(false)
+  // ExitPlanMode should be expanded by default to show the full plan
+  const [expanded, setExpanded] = useState(toolCall.name === 'ExitPlanMode')
 
   const params = toolCall.parameters as Record<string, unknown>
   const displayName = formatToolName(toolCall.name)
