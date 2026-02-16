@@ -364,12 +364,14 @@ Do NOT create git commits automatically. Only commit when explicitly instructed.
 
 **Always use git worktrees** for code changes — no exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before making any code changes.** All edits happen inside the worktree directory.
 
+**Never auto-commit or auto-push.** Wait for the user's explicit instruction to commit, merge, or push.
+
     # 1. create worktree BEFORE making changes
     git worktree add -b <branch> .worktrees/<name> main
-    # 2. make all edits inside .worktrees/<name>/, then commit there
-    # 3. merge back to main and push
+    # 2. commit — ONLY when user explicitly asks
+    # 3. merge & push — ONLY when user explicitly asks
     git checkout main && git pull && git merge <branch> && git push
-    # 4. clean up
+    # 4. clean up — ONLY when user explicitly asks (or after merge)
     git worktree remove .worktrees/<name> && git branch -d <branch>
 
 ## Development Server
