@@ -1217,6 +1217,15 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 		mode = ModeUI
 	}
 
+	// Preserve the original LastUserActivity from cached entry if available.
+	// This is a shell session created for viewing — NOT user interaction —
+	// so we must not set LastUserActivity to time.Now() or it will cause
+	// the session to jump to the top of the list when merely viewed.
+	var lastUserActivity time.Time
+	if entry, ok := m.entries[id]; ok {
+		lastUserActivity = entry.LastUserActivity
+	}
+
 	session := &Session{
 		ID:                    id,
 		WorkingDir:            workingDir,
@@ -1225,7 +1234,7 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 		PermissionMode:        sdk.PermissionModeDefault,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
-		LastUserActivity:      time.Now(),
+		LastUserActivity:      lastUserActivity,
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		broadcast:             make(chan []byte, 256),
