@@ -71,6 +71,7 @@ type SessionEntry struct {
 	MessageCount         int       `json:"messageCount"`
 	Created              time.Time `json:"created"`
 	Modified             time.Time `json:"modified"`
+	LastUserActivity     time.Time `json:"lastUserActivity"`
 	GitBranch            string    `json:"gitBranch,omitempty"`
 	IsSidechain          bool      `json:"isSidechain"`
 
@@ -436,9 +437,13 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		entryCopy := *entry
 		seenIDs[entry.SessionID] = true
 
-		// Copy git info from active session if available
+		// Copy runtime state from active session if available
 		if session, ok := m.sessions[entry.SessionID]; ok {
 			entryCopy.Git = session.Git
+			// Use the active session's LastUserActivity if it's newer
+			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
+				entryCopy.LastUserActivity = session.LastUserActivity
+			}
 		}
 
 		allEntries = append(allEntries, &entryCopy)
@@ -450,12 +455,13 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			continue
 		}
 		entry := &SessionEntry{
-			SessionID:    id,
-			ProjectPath:  session.WorkingDir,
-			DisplayTitle: session.Title,
-			Created:      session.CreatedAt,
-			Modified:     session.LastActivity,
-			Git:          session.Git,
+			SessionID:        id,
+			ProjectPath:      session.WorkingDir,
+			DisplayTitle:     session.Title,
+			Created:          session.CreatedAt,
+			Modified:         session.LastActivity,
+			LastUserActivity: session.LastUserActivity,
+			Git:              session.Git,
 		}
 		allEntries = append(allEntries, entry)
 	}
@@ -481,12 +487,13 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
 	allEntries = m.deduplicateEntries(allEntries)
 
-	// Sort by Modified time (descending)
+	// Sort by LastUserActivity time (descending) for stable ordering
+	// This prevents sessions from jumping around when Claude is actively responding
 	sort.Slice(allEntries, func(i, j int) bool {
-		if allEntries[i].Modified.Equal(allEntries[j].Modified) {
+		if allEntries[i].LastUserActivity.Equal(allEntries[j].LastUserActivity) {
 			return allEntries[i].SessionID > allEntries[j].SessionID
 		}
-		return allEntries[i].Modified.After(allEntries[j].Modified)
+		return allEntries[i].LastUserActivity.After(allEntries[j].LastUserActivity)
 	})
 
 	// Find cursor position
@@ -532,7 +539,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	var nextCursor string
 	if hasMore && len(result) > 0 {
 		last := result[len(result)-1]
-		nextCursor = fmt.Sprintf("%s_%s", last.Modified.Format(time.RFC3339Nano), last.SessionID)
+		nextCursor = fmt.Sprintf("%s_%s", last.LastUserActivity.Format(time.RFC3339Nano), last.SessionID)
 	}
 
 	return &SessionPaginationResult{
@@ -588,10 +595,10 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 	cursorSessionID := parts[1]
 
 	for i, entry := range entries {
-		if entry.Modified.After(cursorTime) {
+		if entry.LastUserActivity.After(cursorTime) {
 			continue
 		}
-		if entry.Modified.Equal(cursorTime) && entry.SessionID >= cursorSessionID {
+		if entry.LastUserActivity.Equal(cursorTime) && entry.SessionID >= cursorSessionID {
 			continue
 		}
 		return i
@@ -648,6 +655,7 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		PermissionMode:        permissionMode,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
+		LastUserActivity:      time.Now(),
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		broadcast:             make(chan []byte, 256),
@@ -864,19 +872,20 @@ func convertToSessionEntry(entry *models.SessionIndexEntry) *SessionEntry {
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
 
 	e := &SessionEntry{
-		SessionID:    entry.SessionID,
-		FullPath:     entry.FullPath,
-		FirstPrompt:  entry.FirstPrompt,
-		Summary:      entry.Summary,
-		CustomTitle:  entry.CustomTitle,
-		MessageCount: entry.MessageCount,
-		Created:      created,
-		Modified:     modified,
-		GitBranch:    entry.GitBranch,
-		ProjectPath:  entry.ProjectPath,
-		IsSidechain:  entry.IsSidechain,
-		Status:       "active",
-		enriched:     false,
+		SessionID:        entry.SessionID,
+		FullPath:         entry.FullPath,
+		FirstPrompt:      entry.FirstPrompt,
+		Summary:          entry.Summary,
+		CustomTitle:      entry.CustomTitle,
+		MessageCount:     entry.MessageCount,
+		Created:          created,
+		Modified:         modified,
+		LastUserActivity: modified, // fallback until JSONL is parsed for accurate value
+		GitBranch:        entry.GitBranch,
+		ProjectPath:      entry.ProjectPath,
+		IsSidechain:      entry.IsSidechain,
+		Status:           "active",
+		enriched:         false,
 	}
 	e.DisplayTitle = e.computeDisplayTitle()
 	return e
@@ -991,6 +1000,13 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 				entry.FirstPrompt = userMsg.GetUserPrompt()
 				entry.FirstUserMessageUUID = userMsg.GetUUID()
 			}
+
+			// Track last user message timestamp for stable list ordering
+			if timestamp != "" {
+				if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
+					entry.LastUserActivity = t
+				}
+			}
 		}
 
 		if assistantMsg, ok := msg.(*models.AssistantSessionMessage); ok {
@@ -1017,6 +1033,11 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 
 	entry.DisplayTitle = entry.computeDisplayTitle()
 	entry.enriched = true
+
+	// Fall back to file modification time if no user messages found
+	if entry.LastUserActivity.IsZero() {
+		entry.LastUserActivity = entry.Modified
+	}
 
 	return entry
 }
@@ -1204,6 +1225,7 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 		PermissionMode:        sdk.PermissionModeDefault,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
+		LastUserActivity:      time.Now(),
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		broadcast:             make(chan []byte, 256),

@@ -333,6 +333,7 @@ func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
 		}
 
 		session.LastActivity = time.Now()
+		session.LastUserActivity = time.Now()
 	}
 
 	// Wait for send goroutine to finish
@@ -379,14 +380,15 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
 	for _, entry := range paginationResult.Entries {
 		sessionData := map[string]interface{}{
-			"id":           entry.SessionID,
-			"title":        entry.DisplayTitle,
-			"workingDir":   entry.ProjectPath,
-			"createdAt":    entry.Created,
-			"lastActivity": entry.Modified,
-			"messageCount": entry.MessageCount,
-			"isSidechain":  entry.IsSidechain,
-			"status":       entry.Status,
+			"id":               entry.SessionID,
+			"title":            entry.DisplayTitle,
+			"workingDir":       entry.ProjectPath,
+			"createdAt":        entry.Created,
+			"lastActivity":     entry.Modified,
+			"lastUserActivity": entry.LastUserActivity,
+			"messageCount":     entry.MessageCount,
+			"isSidechain":      entry.IsSidechain,
+			"status":           entry.Status,
 		}
 
 		if entry.Git != nil {
@@ -906,6 +908,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 			session.LastActivity = time.Now()
+			session.LastUserActivity = time.Now()
 
 			log.Info().
 				Str("sessionId", sessionID).

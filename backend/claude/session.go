@@ -61,7 +61,8 @@ type Session struct {
 	ProcessID    int         `json:"processId"`
 	WorkingDir   string      `json:"workingDir"`
 	CreatedAt    time.Time   `json:"createdAt"`
-	LastActivity time.Time   `json:"lastActivity"`
+	LastActivity     time.Time `json:"lastActivity"`
+	LastUserActivity time.Time `json:"lastUserActivity"`
 	Status       string      `json:"status"` // "archived", "active", "dead"
 	Title          string             `json:"title"`
 	Mode           SessionMode        `json:"mode"`           // "cli" or "ui"
@@ -252,7 +253,8 @@ func (s *Session) ToJSON() map[string]interface{} {
 		"id":             s.ID,
 		"workingDir":     s.WorkingDir,
 		"createdAt":      s.CreatedAt,
-		"lastActivity":   s.LastActivity,
+		"lastActivity":     s.LastActivity,
+		"lastUserActivity": s.LastUserActivity,
 		"status":         "active", // Newly created/listed sessions are always active
 		"title":          s.Title,
 		"mode":           s.Mode,
