@@ -69,28 +69,44 @@ export function FileTagPopover({
             </div>
           ) : (
             <div ref={listRef} className="py-1">
-              {files.map((file, index) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  onClick={() => onSelect(file)}
-                  className={cn(
-                    'w-full px-3 py-2 text-left',
-                    'hover:bg-accent transition-colors',
-                    'focus:outline-none focus:bg-accent',
-                    index === focusIndex && 'bg-accent'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    {file.type === 'folder' ? (
-                      <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
-                    ) : (
-                      <File className="h-4 w-4 text-muted-foreground shrink-0" />
+              {files.map((file, index) => {
+                const parts = file.path.split('/')
+                const filename = parts[parts.length - 1] || file.path
+                const parentDir = parts.length > 1 ? parts.slice(0, -1).join('/') : ''
+
+                return (
+                  <button
+                    key={file.path}
+                    type="button"
+                    onClick={() => onSelect(file)}
+                    className={cn(
+                      'w-full px-3 py-2 text-left',
+                      'hover:bg-accent transition-colors',
+                      'focus:outline-none focus:bg-accent',
+                      index === focusIndex && 'bg-accent'
                     )}
-                    <span className="text-sm text-foreground truncate">{file.path}</span>
-                  </div>
-                </button>
-              ))}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {file.type === 'folder' ? (
+                        <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
+                      ) : (
+                        <File className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                      <span className="text-sm text-foreground truncate shrink-0 max-w-[50%]">
+                        {filename}
+                      </span>
+                      {parentDir && (
+                        <span
+                          className="text-sm text-muted-foreground truncate ml-auto"
+                          style={{ direction: 'rtl', textAlign: 'right' }}
+                        >
+                          {parentDir}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
