@@ -193,13 +193,15 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 		textPath := filepath.Join("inbox", textID+".md")
 
 		// Use FS service to write file
+		// Sync: true for text — files are small, and the response should include textPreview
+		// so the client can display content immediately without a refresh
 		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            textPath,
 			Content:         strings.NewReader(text),
 			MimeType:        "text/markdown",
 			Source:          "api_text",
 			ComputeMetadata: true,
-			Sync:            false, // Async metadata computation
+			Sync:            true,
 		})
 
 		if err != nil {
@@ -302,12 +304,13 @@ func (h *Handlers) UpdateInboxItem(c *gin.Context) {
 	}
 
 	// Write via fs.Service (handles filesystem, hash, metadata, digest trigger, logging)
+	// Sync: true for text updates — content is small and preview should be immediately consistent
 	_, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 		Path:            path,
 		Content:         strings.NewReader(body.Content),
 		Source:          "api_update",
 		ComputeMetadata: true,
-		Sync:            false,
+		Sync:            true,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("path", path).Msg("failed to update inbox item")

@@ -71,17 +71,49 @@ func (s *Service) writeFile(ctx context.Context, req WriteRequest) (*WriteResult
 				hashComputed = true
 			}
 		} else {
-			// Asynchronous: start computation in background
+			// Asynchronous: compute metadata in background and persist to DB.
+			// Captures req.Path, req.Source, and oldHash for the goroutine.
+			asyncPath := req.Path
+			asyncSource := req.Source
+			asyncOldHash := oldHash
 			s.wg.Add(1)
 			go func() {
 				defer s.wg.Done()
-				_, err := s.processor.ComputeMetadata(context.Background(), req.Path)
+				result, err := s.processor.ComputeMetadata(context.Background(), asyncPath)
 				if err != nil {
 					log.Warn().
 						Err(err).
-						Str("path", req.Path).
+						Str("path", asyncPath).
 						Msg("failed to compute metadata asynchronously")
 					// TODO: Schedule retry with exponential backoff
+					return
+				}
+
+				// Persist computed metadata (hash + text preview) to the database
+				if err := s.cfg.DB.UpdateFileField(asyncPath, "hash", result.Hash); err != nil {
+					log.Warn().Err(err).Str("path", asyncPath).Msg("failed to persist async hash")
+				}
+				if result.TextPreview != nil {
+					if err := s.cfg.DB.UpdateFileField(asyncPath, "text_preview", *result.TextPreview); err != nil {
+						log.Warn().Err(err).Str("path", asyncPath).Msg("failed to persist async text preview")
+					}
+				}
+
+				log.Info().
+					Str("path", asyncPath).
+					Bool("hasTextPreview", result.TextPreview != nil).
+					Msg("async metadata computed and persisted")
+
+				// Notify digest service if content changed
+				newHash := result.Hash
+				contentChanged := (asyncOldHash == "" && newHash != "") || (asyncOldHash != "" && asyncOldHash != newHash)
+				if contentChanged {
+					s.notifyFileChange(FileChangeEvent{
+						FilePath:       asyncPath,
+						IsNew:          true,
+						ContentChanged: true,
+						Trigger:        asyncSource,
+					})
 				}
 			}()
 		}
