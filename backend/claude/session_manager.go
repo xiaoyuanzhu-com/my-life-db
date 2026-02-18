@@ -1553,6 +1553,13 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 	session.sdkCtx = ctx
 	session.sdkCancel = cancel
 
+	// Enable adaptive thinking (extended thinking) by default.
+	// 32000 matches the Python Claude Agent SDK's hardcoded default for
+	// thinking.type: "adaptive" — the SDK translates adaptive mode into
+	// --max-thinking-tokens 32000 when shelling out to the CLI.
+	// See: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+	maxThinkingTokens := 32000
+
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,
 		SystemPrompt:           defaultSystemPrompt,
@@ -1560,7 +1567,8 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 		PermissionMode:         session.PermissionMode,
 		CanUseTool:             session.CreatePermissionCallback(),
 		SkipInitialization:     true,
-		IncludePartialMessages: true, // Enable progressive streaming updates
+		IncludePartialMessages: true,  // Enable progressive streaming updates
+		MaxThinkingTokens:      &maxThinkingTokens,
 	}
 
 	if resume {
