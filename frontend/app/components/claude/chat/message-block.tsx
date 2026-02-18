@@ -23,6 +23,7 @@ import {
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage, ToolUseInfo } from './session-messages'
 import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
+import { PreviewFullscreen, wrapSvgInHtml } from './preview-fullscreen'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")
@@ -490,6 +491,9 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
   const containerRef = useRef<HTMLDivElement>(null)
   const lastHtmlRef = useRef<string>('')
 
+  // Fullscreen preview state
+  const [fullscreenSrcdoc, setFullscreenSrcdoc] = useState<string | null>(null)
+
   // Use async HTML only if it matches current content, otherwise fall back to sync HTML
   const html = (asyncState && asyncState.content === content) ? asyncState.html : syncHtml
 
@@ -521,12 +525,64 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
     }
   }, [html])
 
-  // Initial render with sync-parsed content (via syncHtml fallback), upgraded later
+  // Event delegation: expand button click + double-click on preview containers
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    function extractFullscreenSrcdoc(previewEl: HTMLElement): string | null {
+      if (previewEl.classList.contains('mermaid-diagram')) {
+        const svg = previewEl.querySelector('svg')
+        if (!svg) return null
+        return wrapSvgInHtml(svg.outerHTML)
+      }
+      if (previewEl.classList.contains('html-preview-container')) {
+        const iframe = previewEl.querySelector('iframe')
+        if (!iframe) return null
+        return iframe.getAttribute('srcdoc') || null
+      }
+      return null
+    }
+
+    function handleClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('.preview-expand-btn')
+      if (!btn) return
+      e.preventDefault()
+      e.stopPropagation()
+      const previewEl = btn.closest('.mermaid-diagram, .html-preview-container') as HTMLElement | null
+      if (!previewEl) return
+      const srcdoc = extractFullscreenSrcdoc(previewEl)
+      if (srcdoc) setFullscreenSrcdoc(srcdoc)
+    }
+
+    function handleDblClick(e: MouseEvent) {
+      const previewEl = (e.target as HTMLElement).closest('.mermaid-diagram, .html-preview-container') as HTMLElement | null
+      if (!previewEl) return
+      const srcdoc = extractFullscreenSrcdoc(previewEl)
+      if (srcdoc) setFullscreenSrcdoc(srcdoc)
+    }
+
+    container.addEventListener('click', handleClick)
+    container.addEventListener('dblclick', handleDblClick)
+    return () => {
+      container.removeEventListener('click', handleClick)
+      container.removeEventListener('dblclick', handleDblClick)
+    }
+  }, [])
+
   return (
-    <div
-      ref={containerRef}
-      className="prose-claude"
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="prose-claude"
+      />
+      {fullscreenSrcdoc && (
+        <PreviewFullscreen
+          srcdoc={fullscreenSrcdoc}
+          onClose={() => setFullscreenSrcdoc(null)}
+        />
+      )}
+    </>
   )
 })
 
