@@ -99,6 +99,7 @@ func (p *metadataProcessor) computeHash(r io.Reader) (string, error) {
 func (p *metadataProcessor) extractTextPreview(r io.Reader) (*string, error) {
 	limited := io.LimitReader(r, maxPreviewBytes)
 	scanner := bufio.NewScanner(limited)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxPreviewBytes)
 
 	var lines []string
 	for scanner.Scan() && len(lines) < maxPreviewLines {
