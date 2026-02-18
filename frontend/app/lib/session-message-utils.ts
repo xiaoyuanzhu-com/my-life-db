@@ -104,6 +104,11 @@ export interface SessionMessage {
   summary?: string  // Human-readable summary (e.g., 'Background command "..." completed (exit code 0)')
   output_file?: string  // Path to task output file
 
+  // Task started fields (when subtype === 'task_started')
+  // These fields are on the root message object (like all system messages)
+  description?: string  // Human-readable description of the task (e.g., "Explore iOS inbox codebase")
+  task_type?: string  // Type of task (e.g., "local_agent")
+
   // Hook started/response fields (when subtype === 'hook_started' or 'hook_response')
   hook_id?: string  // Unique identifier for this hook execution
   hook_name?: string  // Hook name (e.g., "SessionStart:startup")
@@ -211,7 +216,7 @@ export function normalizeMessages<T extends Record<string, unknown>>(msgs: T[]):
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | 'task_notification' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | 'task_notification' | 'task_started' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
@@ -570,6 +575,15 @@ export function isStatusMessage(msg: SessionMessage): boolean {
  */
 export function isTaskNotificationMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'task_notification'
+}
+
+/**
+ * Type guard to check if a message is a task started message.
+ * Task started messages are emitted when a background task (spawned by the Task tool)
+ * begins execution. They include a description, task_id, and task_type.
+ */
+export function isTaskStartedMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'task_started'
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   isSkippedUserMessage,
   isHookResponseMessage,
   isStatusMessage,
+  isTaskStartedMessage,
   isToolUseBlock,
   isSubagentMessage,
   getParentToolUseID,
@@ -496,6 +497,11 @@ export function SessionMessages({
       // Skip status messages - rendered as transient indicator at the end of the message list
       // when status is non-null (e.g., "compacting"), disappears when status becomes null
       if (isStatusMessage(msg)) return false
+
+      // Skip task_started messages - these are redundant with the Task tool_use block that
+      // already shows the same description. The task_started message has no linking field
+      // (task_id ≠ tool_use.id) so it can't be merged into the tool block either.
+      if (isTaskStartedMessage(msg)) return false
 
       // Skip permission protocol messages - these trigger the permission modal,
       // not standalone chat messages. See data-models.md "Permission Handling" section.
