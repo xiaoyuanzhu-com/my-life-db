@@ -4,6 +4,8 @@ import { MessageDot } from './message-dot'
 interface ClaudeWIPProps {
   /** The task text to display (e.g., "Finagling...", "Reading files...") */
   text: string
+  /** Turn counter — when this changes, pick fresh random words */
+  turnId?: number
   /** Optional className for styling */
   className?: string
 }
@@ -119,13 +121,14 @@ function pickRandomWords(count: number): string[] {
  *
  * When the default "Working..." text is passed, randomly picks 5 fun words
  * and cycles through them — advancing to the next word when the current
- * word's typing animation completes.
+ * word's typing animation completes. Words are picked once per turn (keyed
+ * by turnId) so they stay consistent even when WIP hides/shows mid-turn.
  *
  * Example:
- * <ClaudeWIP text="Working..." />       // cycles random fun words
- * <ClaudeWIP text="Running tests..." /> // shows specific text
+ * <ClaudeWIP text="Working..." turnId={3} />  // cycles random fun words
+ * <ClaudeWIP text="Running tests..." />        // shows specific text
  */
-export function ClaudeWIP({ text: rawText, className = '' }: ClaudeWIPProps) {
+export function ClaudeWIP({ text: rawText, turnId, className = '' }: ClaudeWIPProps) {
   // Ensure text is always a string
   const text = typeof rawText === 'string' ? rawText : ''
   const isDefaultWorking = text === DEFAULT_WORKING_TEXT
@@ -134,16 +137,17 @@ export function ClaudeWIP({ text: rawText, className = '' }: ClaudeWIPProps) {
   const [wordIndex, setWordIndex] = useState(0)
   const [charIndex, setCharIndex] = useState(0)
 
-  // Pick random words when entering default working mode
-  const prevIsDefault = useRef(false)
+  // Pick random words once per turn (when turnId changes)
+  // This keeps words stable across WIP hide/show cycles within the same turn
+  const prevTurnId = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (isDefaultWorking && !prevIsDefault.current) {
+    if (turnId !== prevTurnId.current) {
       setWords(pickRandomWords(ROTATE_WORD_COUNT))
       setWordIndex(0)
       setCharIndex(0)
+      prevTurnId.current = turnId
     }
-    prevIsDefault.current = isDefaultWorking
-  }, [isDefaultWorking])
+  }, [turnId])
 
   // Reset charIndex when specific (non-default) text changes
   useEffect(() => {

@@ -14,6 +14,8 @@ interface MessageListProps {
   streamingText?: string
   /** Streaming thinking from stream_event thinking_delta messages (progressive thinking display) */
   streamingThinking?: string
+  /** Turn counter — incremented each turn so ClaudeWIP picks fresh random words per turn */
+  turnId?: number
   wipText?: string | null
   /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
   onScrollElementReady?: (element: HTMLDivElement | null) => void
@@ -40,7 +42,7 @@ interface MessageListProps {
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, wipText, onScrollElementReady }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onScrollElementReady }: MessageListProps) {
   // use-stick-to-bottom with velocity-based spring animations
   // 'smooth' enables natural deceleration for streaming content
   // This adapts scroll speed to distance - faster when far behind, slower when close
@@ -162,7 +164,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
             {showStreaming && <StreamingResponse text={streamingText} />}
 
             {/* Work-in-Progress indicator */}
-            {wipText && <ClaudeWIP text={wipText} />}
+            {wipText && <ClaudeWIP text={wipText} turnId={turnId} />}
           </>
         )}
       </div>

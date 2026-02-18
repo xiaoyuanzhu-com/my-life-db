@@ -354,6 +354,7 @@ export function ChatInterface({
       if (msg.type === 'system' && msg.subtype === 'init') {
         setHasSeenInit(true) // Mark that we've crossed from historical to live messages
         setTurnInProgress(true) // Turn started — result handler will clear when turn completes
+        setTurnId((prev) => prev + 1) // New turn → ClaudeWIP picks fresh random words
         const initMsg: SessionMessage = {
           type: 'system',
           uuid: (msg.uuid as string) || crypto.randomUUID(),
@@ -470,6 +471,10 @@ export function ChatInterface({
   // Whether Claude is actively processing a turn
   // Set true when user sends a message, set false when 'result' arrives
   const [turnInProgress, setTurnInProgress] = useState(false)
+
+  // Turn counter — incremented on each init message so ClaudeWIP picks fresh
+  // random words per turn (not per mount/unmount cycle within the same turn)
+  const [turnId, setTurnId] = useState(0)
 
   // Derive working state: either we're waiting for echo (optimistic) or a turn is in progress
   const isWorking = optimisticMessage != null || turnInProgress
@@ -901,8 +906,9 @@ export function ChatInterface({
             optimisticMessage={optimisticMessage}
             streamingText={streamingText}
             streamingThinking={streamingThinking}
+            turnId={turnId}
             wipText={
-              isWorking && !streamingText && !streamingThinking && !isCompacting
+              isWorking && !streamingText && !isCompacting
                 ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
                   progressMessage ||
                   'Working...'
