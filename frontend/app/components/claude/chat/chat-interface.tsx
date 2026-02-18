@@ -114,10 +114,6 @@ export function ChatInterface({
   // Uses debounce: marked complete when no messages received for 500ms
   const initialLoadCompleteRef = useRef(false)
   const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // State-based trigger for initial load completion (drives working state detection)
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
-  // One-shot: whether we've already detected initial working state for this session
-  const hasDetectedWorkingStateRef = useRef(false)
   // Track if we've connected at least once (to detect reconnections vs initial connection)
   const wasConnectedRef = useRef(false)
   // Track if permission mode has been synced to backend for this session
@@ -140,6 +136,7 @@ export function ChatInterface({
 
       // Debounce initial load detection: reset timer on each message
       // After 500ms of no messages, mark initial load as complete
+      // (Used to gate session-list refresh, not working state detection)
       if (!initialLoadCompleteRef.current) {
         if (initialLoadTimerRef.current) {
           clearTimeout(initialLoadTimerRef.current)
@@ -147,7 +144,6 @@ export function ChatInterface({
         initialLoadTimerRef.current = setTimeout(() => {
           initialLoadCompleteRef.current = true
           initialLoadTimerRef.current = null
-          setInitialLoadComplete(true)
         }, 500)
       }
 
@@ -334,8 +330,13 @@ export function ChatInterface({
       // Handle system init message
       // IMPORTANT: init is the boundary marker between historical and live messages
       // It's stdout-only (never persisted to JSONL), so seeing it means we're receiving live data
+      //
+      // Working state detection: init means a turn has started. During cache replay,
+      // each completed turn's init is followed by its result (which sets false).
+      // For the current mid-turn, init sets true and no result follows → stays true.
       if (msg.type === 'system' && msg.subtype === 'init') {
         setHasSeenInit(true) // Mark that we've crossed from historical to live messages
+        setTurnInProgress(true) // Turn started — result handler will clear when turn completes
         const initMsg: SessionMessage = {
           type: 'system',
           uuid: (msg.uuid as string) || crypto.randomUUID(),
@@ -569,8 +570,6 @@ export function ChatInterface({
     permissions.reset()
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
-    setInitialLoadComplete(false)
-    hasDetectedWorkingStateRef.current = false
     initialMessageSentRef.current = false
     wasConnectedRef.current = false // Reset so initial connection to new session isn't treated as reconnect
     permissionModeSyncedRef.current = false // Reset so permission mode is synced to new session
@@ -591,38 +590,13 @@ export function ChatInterface({
     }
   }, [])
 
-  // Detect mid-turn state after initial message history replay completes.
-  //
-  // When opening a session that is currently working, turnInProgress defaults to
-  // false (it's only set true by sendMessage). After the initial load finishes,
-  // we can detect mid-turn from the message stream:
-  //
-  // 1. init message present → session has a running process (live, not historical)
-  // 2. Scan backward from end: if we find a user message (non-tool-result) before
-  //    finding a result message → turn started but hasn't completed → working
-  //
-  // This is a one-shot detection — once done, live message handlers take over
-  // (sendMessage sets true, result handler sets false).
-  useEffect(() => {
-    if (!initialLoadComplete || hasDetectedWorkingStateRef.current) return
-    hasDetectedWorkingStateRef.current = true
-
-    // Only detect for live sessions (init = process is running)
-    const hasInit = rawMessages.some(
-      (m) => m.type === 'system' && (m as unknown as Record<string, unknown>).subtype === 'init'
-    )
-    if (!hasInit) return
-
-    // Scan backward: if we find a user message before a result, turn is in progress
-    for (let i = rawMessages.length - 1; i >= 0; i--) {
-      const msg = rawMessages[i]
-      if (msg.type === 'result') break // Turn completed, not working
-      if (msg.type === 'user' && !hasToolUseResult(msg)) {
-        setTurnInProgress(true)
-        break
-      }
-    }
-  }, [initialLoadComplete, rawMessages])
+  // Working state detection is handled directly by message handlers:
+  // - init handler sets turnInProgress = true (turn started)
+  // - result handler sets turnInProgress = false (turn completed)
+  // During cache replay, these naturally converge: each completed turn's init/result
+  // pair toggles true→false. For a mid-turn session, init sets true with no result to clear it.
+  // This is simpler and more robust than the previous approach (500ms debounce + backward scan)
+  // which failed when subagent stream events continuously reset the debounce timer.
 
   // Token batching: flush buffer every 40ms for smooth streaming UX
   // This reduces re-renders from ~100/sec to ~25/sec while maintaining perceived responsiveness
