@@ -13,6 +13,7 @@ interface Session {
   status: 'active' | 'archived'
   createdAt: string
   lastActivity: string
+  lastUserActivity?: string
   messageCount?: number
   gitBranch?: string
 }
@@ -202,7 +203,7 @@ export function SessionList({
                           {session.workingDir}
                         </span>
                         <span className="shrink-0">
-                          • {formatRelativeTime(session.lastActivity)}
+                          • {formatRelativeTime(session.lastUserActivity || session.lastActivity)}
                         </span>
                         {session.messageCount !== undefined && session.messageCount > 0 && (
                           <span className="shrink-0">
