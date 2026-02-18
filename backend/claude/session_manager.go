@@ -44,7 +44,9 @@ Two formats are supported:
 - Mermaid code blocks for flowcharts, sequence diagrams, Gantt charts, ER diagrams, etc.
 - HTML code blocks for anything richer or interactive (data-driven charts, styled layouts, computed tables). These render in a sandboxed iframe with scripts enabled.
 
-Prefer mermaid when it can express the visualization. Use HTML when it cannot.`
+Prefer mermaid when it can express the visualization. Use HTML when it cannot.
+
+HTML output must be mobile-friendly and responsive — use relative units, flexbox/grid, and ensure readability on small screens.`
 
 // SessionEvent represents a change in session state
 type SessionEvent struct {
