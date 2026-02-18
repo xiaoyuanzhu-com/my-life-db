@@ -119,6 +119,19 @@ export interface SessionMessage {
   // API error indicator (for assistant messages that represent API errors)
   isApiErrorMessage?: boolean
 
+  // Rate limit event fields (when type === 'rate_limit_event')
+  // Stdout only, not persisted. Skipped in UI rendering.
+  // See docs/claude-code/data-models.md "Rate Limit Event" section.
+  rate_limit_info?: {
+    status: string           // "allowed" or "limited"
+    rateLimitType: string    // e.g., "five_hour"
+    resetsAt: number         // Unix timestamp
+    isUsingOverage: boolean
+    overageStatus: string    // "allowed" or "blocked"
+    overageResetsAt: number  // Unix timestamp
+  }
+  session_id?: string  // Session ID (used by some stdout-only message types)
+
   // Subagent linking - if set, this message belongs to a subagent spawned by the Task tool with this ID
   // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section
   // NOTE: After normalization, this is always camelCase. See normalizeMessage().
