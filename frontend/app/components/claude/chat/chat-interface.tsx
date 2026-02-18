@@ -74,6 +74,9 @@ export function ChatInterface({
   // Streaming text - accumulates text from stream_event messages for progressive display
   const [streamingText, setStreamingText] = useState<string>('')
 
+  // Streaming thinking - accumulates thinking_delta from stream_event messages for progressive display
+  const [streamingThinking, setStreamingThinking] = useState<string>('')
+
   // Tracks whether streaming has completed (message_stop received) but we're waiting
   // for the final assistant message to arrive and render before clearing streamingText
   const streamingCompleteRef = useRef(false)
@@ -81,6 +84,7 @@ export function ChatInterface({
   // Token batching for smooth streaming UX
   // Tokens are buffered and flushed every 40ms to reduce re-renders and smooth visual appearance
   const streamingBufferRef = useRef<string[]>([])
+  const thinkingBufferRef = useRef<string[]>([])
   const streamingFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Permission mode state - tracks current session permission mode
@@ -201,7 +205,7 @@ export function ChatInterface({
 
         const eventType = event.type as string | undefined
 
-        // Handle text deltas from content_block_delta events
+        // Handle text and thinking deltas from content_block_delta events
         // Buffer tokens instead of immediate state update for smoother visual appearance
         if (eventType === 'content_block_delta') {
           const delta = event.delta as Record<string, unknown> | undefined
@@ -210,10 +214,15 @@ export function ChatInterface({
             if (text) {
               streamingBufferRef.current.push(text)
             }
+          } else if (delta?.type === 'thinking_delta') {
+            const thinking = delta.thinking as string | undefined
+            if (thinking) {
+              thinkingBufferRef.current.push(thinking)
+            }
           }
         }
 
-        // On message_stop: flush remaining buffer but DON'T clear streamingText yet.
+        // On message_stop: flush remaining buffers but DON'T clear streaming state yet.
         // We keep it visible until the final assistant message arrives and renders,
         // preventing a flash where content disappears between StreamingResponse unmounting
         // and MessageBlock rendering.
@@ -223,6 +232,12 @@ export function ChatInterface({
             const remaining = streamingBufferRef.current.join('')
             streamingBufferRef.current = []
             setStreamingText((prev) => prev + remaining)
+          }
+          // Flush any remaining thinking tokens
+          if (thinkingBufferRef.current.length > 0) {
+            const remaining = thinkingBufferRef.current.join('')
+            thinkingBufferRef.current = []
+            setStreamingThinking((prev) => prev + remaining)
           }
           streamingCompleteRef.current = true
         }
@@ -234,13 +249,15 @@ export function ChatInterface({
       if (msg.type === 'result') {
         setTurnInProgress(false)
         setProgressMessage(null)
-        // Clear any stale streaming text. During historical replay, messages arrive
-        // rapidly and the assistant message may clear streamingText before message_stop
+        // Clear any stale streaming state. During historical replay, messages arrive
+        // rapidly and the assistant message may clear streaming state before message_stop
         // flushes the remaining buffer — leaving orphaned streaming text that never
         // gets cleared. The result message is the definitive turn terminator, so any
-        // remaining streamingText is stale.
+        // remaining streaming state is stale.
         setStreamingText('')
+        setStreamingThinking('')
         streamingBufferRef.current = []
+        thinkingBufferRef.current = []
         streamingCompleteRef.current = false
         setRawMessages((prev) => {
           const resultMsg: SessionMessage = {
@@ -367,17 +384,19 @@ export function ChatInterface({
 
       if (sessionMsg.type === 'assistant') {
         setProgressMessage(null)
-        // Clear streaming text after the assistant message is added to rawMessages.
+        // Clear streaming state after the assistant message is added to rawMessages.
         // We use requestAnimationFrame to ensure the MessageBlock has time to render
         // with its initial sync-parsed content before StreamingResponse unmounts.
         // This prevents the flash of empty content during the transition.
         if (streamingCompleteRef.current) {
           requestAnimationFrame(() => {
             setStreamingText('')
+            setStreamingThinking('')
             streamingCompleteRef.current = false
           })
         } else {
           setStreamingText('')
+          setStreamingThinking('')
         }
       }
 
@@ -557,7 +576,9 @@ export function ChatInterface({
     setError(null)
     setProgressMessage(null)
     setStreamingText('')
+    setStreamingThinking('')
     streamingBufferRef.current = [] // Clear buffered tokens on session change
+    thinkingBufferRef.current = []
     streamingCompleteRef.current = false
     // Restore permission mode from localStorage (not hardcoded 'default')
     // so switching sessions preserves the user's last-used mode
@@ -606,6 +627,11 @@ export function ChatInterface({
         const bufferedText = streamingBufferRef.current.join('')
         streamingBufferRef.current = []
         setStreamingText((prev) => prev + bufferedText)
+      }
+      if (thinkingBufferRef.current.length > 0) {
+        const bufferedThinking = thinkingBufferRef.current.join('')
+        thinkingBufferRef.current = []
+        setStreamingThinking((prev) => prev + bufferedThinking)
       }
     }, 40) // ~25 updates/second
 
@@ -669,7 +695,9 @@ export function ChatInterface({
       // before the deferred requestAnimationFrame from the previous turn's
       // assistant message handler has a chance to clear it.
       setStreamingText('')
+      setStreamingThinking('')
       streamingBufferRef.current = []
+      thinkingBufferRef.current = []
       streamingCompleteRef.current = false
 
       try {
@@ -872,8 +900,9 @@ export function ChatInterface({
             toolResultMap={toolResultMap}
             optimisticMessage={optimisticMessage}
             streamingText={streamingText}
+            streamingThinking={streamingThinking}
             wipText={
-              isWorking && !streamingText && !isCompacting
+              isWorking && !streamingText && !streamingThinking && !isCompacting
                 ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||
                   progressMessage ||
                   'Working...'

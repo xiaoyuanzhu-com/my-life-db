@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
+import { StreamingThinking } from './streaming-thinking'
 import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
 
 interface MessageListProps {
@@ -11,6 +12,8 @@ interface MessageListProps {
   optimisticMessage?: string | null
   /** Streaming text from stream_event messages (progressive response display) */
   streamingText?: string
+  /** Streaming thinking from stream_event thinking_delta messages (progressive thinking display) */
+  streamingThinking?: string
   wipText?: string | null
   /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
   onScrollElementReady?: (element: HTMLDivElement | null) => void
@@ -37,7 +40,7 @@ interface MessageListProps {
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, wipText, onScrollElementReady }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, wipText, onScrollElementReady }: MessageListProps) {
   // use-stick-to-bottom with velocity-based spring animations
   // 'smooth' enables natural deceleration for streaming content
   // This adapts scroll speed to distance - faster when far behind, slower when close
@@ -103,6 +106,16 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     return true
   }, [streamingText, messages])
 
+  // Only show StreamingThinking when thinking text exists AND the final assistant
+  // message hasn't arrived yet. Same logic as showStreaming — once the assistant
+  // message is in the list, it contains the completed thinking block.
+  const showStreamingThinking = useMemo(() => {
+    if (!streamingThinking) return false
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg?.type === 'assistant') return false
+    return true
+  }, [streamingThinking, messages])
+
   return (
     <div
       ref={mergedScrollRef}
@@ -136,6 +149,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                 </div>
               </div>
             )}
+
+            {/* Streaming thinking (progressive thinking as Claude reasons)
+              * Shown BEFORE streaming text since thinking precedes text in Claude's response.
+              * Hide once the final assistant message arrives (it contains the completed thinking block). */}
+            {showStreamingThinking && <StreamingThinking text={streamingThinking} />}
 
             {/* Streaming response (progressive text as Claude generates)
               * Hide once the final assistant message is in the list to avoid duplicate content.
