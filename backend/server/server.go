@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
+	meiliworker "github.com/xiaoyuanzhu-com/my-life-db/workers/meili"
 )
 
 // Server owns and coordinates all application components
@@ -24,12 +25,13 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	database      *db.DB
-	fsService     *fs.Service
-	digestWorker  *digest.Worker
-	notifService  *notifications.Service
-	claudeManager *claude.SessionManager
-	agent         *agent.Agent
+	database        *db.DB
+	fsService       *fs.Service
+	digestWorker    *digest.Worker
+	meiliSyncWorker *meiliworker.SyncWorker
+	notifService    *notifications.Service
+	claudeManager   *claude.SessionManager
+	agent           *agent.Agent
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -95,6 +97,10 @@ func New(cfg *Config) (*Server, error) {
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
 
+	// 5.5. Create Meilisearch sync worker
+	log.Info().Msg("initializing meili sync worker")
+	s.meiliSyncWorker = meiliworker.NewSyncWorker()
+
 	// 6. Create agent (if enabled)
 	if cfg.InboxAgentEnabled {
 		log.Info().Msg("initializing inbox agent")
@@ -129,43 +135,46 @@ func (s *Server) connectServices() {
 		}
 	})
 
-	// Digest → Agent: When inbox files finish processing, trigger intention recognition
-	if s.agent != nil {
-		s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
-			// Only trigger for inbox files
-			if !strings.HasPrefix(filePath, "inbox/") {
+	// Digest → Meili Sync + Agent: When files finish processing, sync to Meilisearch and trigger agent
+	s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
+		// Always nudge Meilisearch sync worker after digest completion
+		if processed > 0 {
+			s.meiliSyncWorker.Nudge()
+		}
+
+		// Agent analysis only for inbox files
+		if s.agent == nil || !strings.HasPrefix(filePath, "inbox/") {
+			return
+		}
+
+		// Only trigger if at least one digest was successfully processed
+		if processed == 0 {
+			log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
+			return
+		}
+
+		log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
+
+		// Run agent analysis in background
+		go func() {
+			ctx := context.Background()
+			resp, err := s.agent.AnalyzeFile(ctx, filePath)
+			if err != nil {
+				log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
 				return
 			}
 
-			// Only trigger if at least one digest was successfully processed
-			if processed == 0 {
-				log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
-				return
-			}
+			log.Info().
+				Str("path", filePath).
+				Str("intentionType", resp.Intention.IntentionType).
+				Str("suggestedFolder", resp.Intention.SuggestedFolder).
+				Float64("confidence", resp.Intention.Confidence).
+				Msg("agent analysis complete")
 
-			log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
-
-			// Run agent analysis in background
-			go func() {
-				ctx := context.Background()
-				resp, err := s.agent.AnalyzeFile(ctx, filePath)
-				if err != nil {
-					log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
-					return
-				}
-
-				log.Info().
-					Str("path", filePath).
-					Str("intentionType", resp.Intention.IntentionType).
-					Str("suggestedFolder", resp.Intention.SuggestedFolder).
-					Float64("confidence", resp.Intention.Confidence).
-					Msg("agent analysis complete")
-
-				// Notify UI of new intention
-				s.notifService.NotifyInboxChanged()
-			}()
-		})
-	}
+			// Notify UI of new intention
+			s.notifService.NotifyInboxChanged()
+		}()
+	})
 }
 
 // setupRouter creates and configures the Gin router
@@ -284,6 +293,9 @@ func (s *Server) Start() error {
 	// Start digest worker
 	go s.digestWorker.Start()
 
+	// Start Meilisearch sync worker
+	s.meiliSyncWorker.Start()
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -338,6 +350,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// Stop background services (in reverse order of startup)
+	s.meiliSyncWorker.Stop()
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
@@ -354,11 +367,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 // Component accessors for API handlers
-func (s *Server) DB() *db.DB                             { return s.database }
-func (s *Server) FS() *fs.Service                        { return s.fsService }
-func (s *Server) Digest() *digest.Worker                 { return s.digestWorker }
-func (s *Server) Notifications() *notifications.Service  { return s.notifService }
-func (s *Server) Claude() *claude.SessionManager         { return s.claudeManager }
-func (s *Server) Agent() *agent.Agent                    { return s.agent }
-func (s *Server) Router() *gin.Engine                    { return s.router }
-func (s *Server) ShutdownContext() context.Context       { return s.shutdownCtx }
+func (s *Server) DB() *db.DB                                  { return s.database }
+func (s *Server) FS() *fs.Service                             { return s.fsService }
+func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
+func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSyncWorker }
+func (s *Server) Notifications() *notifications.Service       { return s.notifService }
+func (s *Server) Claude() *claude.SessionManager              { return s.claudeManager }
+func (s *Server) Agent() *agent.Agent                         { return s.agent }
+func (s *Server) Router() *gin.Engine                         { return s.router }
+func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
