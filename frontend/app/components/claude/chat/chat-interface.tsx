@@ -84,7 +84,17 @@ export function ChatInterface({
   const streamingFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Permission mode state - tracks current session permission mode
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
+  // Initialize from localStorage so newly created sessions show the correct mode
+  // (the mode was already sent to the backend during session creation)
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('claude-permission-mode')
+      if (saved === 'default' || saved === 'acceptEdits' || saved === 'plan' || saved === 'bypassPermissions') {
+        return saved
+      }
+    }
+    return 'default'
+  })
 
   // Working directory (read-only for existing sessions)
   const workingDir = initialWorkingDir
@@ -110,6 +120,8 @@ export function ChatInterface({
   const hasDetectedWorkingStateRef = useRef(false)
   // Track if we've connected at least once (to detect reconnections vs initial connection)
   const wasConnectedRef = useRef(false)
+  // Track if permission mode has been synced to backend for this session
+  const permissionModeSyncedRef = useRef(false)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -538,7 +550,14 @@ export function ChatInterface({
     setStreamingText('')
     streamingBufferRef.current = [] // Clear buffered tokens on session change
     streamingCompleteRef.current = false
-    setPermissionMode('default')
+    // Restore permission mode from localStorage (not hardcoded 'default')
+    // so switching sessions preserves the user's last-used mode
+    const savedMode = localStorage.getItem('claude-permission-mode')
+    if (savedMode === 'default' || savedMode === 'acceptEdits' || savedMode === 'plan' || savedMode === 'bypassPermissions') {
+      setPermissionMode(savedMode)
+    } else {
+      setPermissionMode('default')
+    }
     permissions.reset()
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
@@ -546,6 +565,7 @@ export function ChatInterface({
     hasDetectedWorkingStateRef.current = false
     initialMessageSentRef.current = false
     wasConnectedRef.current = false // Reset so initial connection to new session isn't treated as reconnect
+    permissionModeSyncedRef.current = false // Reset so permission mode is synced to new session
     setHasSeenInit(false) // Reset init boundary marker for new session
     if (initialLoadTimerRef.current) {
       clearTimeout(initialLoadTimerRef.current)
@@ -627,6 +647,29 @@ export function ChatInterface({
     if (ws.connectionStatus === 'connected') {
       wasConnectedRef.current = true
     }
+  }, [ws.connectionStatus])
+
+  // Sync permission mode to backend on first connection
+  // This ensures the backend session has the correct mode before activation,
+  // especially for reopened/historical sessions where createShellSession defaults to 'default'
+  useEffect(() => {
+    if (ws.connectionStatus === 'connected' && !permissionModeSyncedRef.current) {
+      permissionModeSyncedRef.current = true
+      // Only sync if mode differs from default (avoid unnecessary activation of historical sessions)
+      if (permissionMode !== 'default') {
+        ws.sendMessage({
+          type: 'control_request',
+          request_id: `sync_permission_mode_${Date.now()}`,
+          request: {
+            subtype: 'set_permission_mode',
+            mode: permissionMode,
+          },
+        }).catch((err) => {
+          console.error('[ChatInterface] Failed to sync permission mode:', err)
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on first connection
   }, [ws.connectionStatus])
 
   // ============================================================================
