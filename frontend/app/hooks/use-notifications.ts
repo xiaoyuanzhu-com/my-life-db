@@ -8,12 +8,17 @@ import { refreshAccessToken } from '~/lib/fetch-with-refresh';
 let sharedEventSource: EventSource | null = null;
 let connectionRefCount = 0;
 let reconnectTimeout: NodeJS.Timeout | null = null;
+let consecutiveFailures = 0;
 
 // Event listeners registry
 const listeners: Set<(event: MessageEvent) => void> = new Set();
 
 // Debounce delay for batching rapid notifications
 const DEBOUNCE_MS = 200;
+
+// Reconnect delay: exponential backoff starting at 5s, capping at 60s
+const RECONNECT_BASE_MS = 5_000;
+const RECONNECT_MAX_MS = 60_000;
 
 /**
  * Simple debounce function
@@ -45,21 +50,21 @@ function debounce<T extends (...args: unknown[]) => void>(
 }
 
 /**
- * Connect to SSE stream (shared across all hooks)
+ * Connect to SSE stream (shared across all hooks).
+ * Uses cookie-based auth — the access_token cookie is sent automatically.
  */
 function connectToNotifications() {
   if (sharedEventSource) {
     return; // Already connected
   }
 
-  const accessToken = localStorage.getItem('access_token');
-  let url = '/api/notifications/stream';
-  if (accessToken) {
-    url += `?token=${encodeURIComponent(accessToken)}`;
-  }
-
-  const eventSource = new EventSource(url);
+  const eventSource = new EventSource('/api/notifications/stream');
   sharedEventSource = eventSource;
+
+  eventSource.onopen = () => {
+    // Connection succeeded — reset backoff
+    consecutiveFailures = 0;
+  };
 
   eventSource.onmessage = (event) => {
     // Broadcast to all listeners
@@ -69,17 +74,23 @@ function connectToNotifications() {
   eventSource.onerror = () => {
     disconnectFromNotifications();
 
-    // Attempt reconnection after 5 seconds (only if there are active listeners)
-    // Refresh token first in case 401 was due to expired token
     if (connectionRefCount > 0) {
+      // Exponential backoff: 5s, 10s, 20s, 40s, 60s, 60s, ...
+      consecutiveFailures++;
+      const delay = Math.min(
+        RECONNECT_BASE_MS * Math.pow(2, consecutiveFailures - 1),
+        RECONNECT_MAX_MS,
+      );
+
       reconnectTimeout = setTimeout(async () => {
         try {
           await refreshAccessToken();
         } catch {
-          // Refresh failed, but still try to reconnect
+          // Refresh failed, but still try to reconnect — cookie may have been
+          // updated by another tab or the native shell.
         }
         connectToNotifications();
-      }, 5000);
+      }, delay);
     }
   };
 }
@@ -124,10 +135,12 @@ function subscribe(listener: (event: MessageEvent) => void) {
 }
 
 /**
- * Force reconnect (used by visibility change handler)
+ * Force reconnect (used by visibility change handler).
+ * Resets backoff since user explicitly returned to the page.
  */
 function reconnect() {
   if (connectionRefCount > 0) {
+    consecutiveFailures = 0;
     disconnectFromNotifications();
     connectToNotifications();
   }
