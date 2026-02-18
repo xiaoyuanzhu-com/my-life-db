@@ -238,6 +238,14 @@ export function ChatInterface({
       if (msg.type === 'result') {
         setTurnInProgress(false)
         setProgressMessage(null)
+        // Clear any stale streaming text. During historical replay, messages arrive
+        // rapidly and the assistant message may clear streamingText before message_stop
+        // flushes the remaining buffer — leaving orphaned streaming text that never
+        // gets cleared. The result message is the definitive turn terminator, so any
+        // remaining streamingText is stale.
+        setStreamingText('')
+        streamingBufferRef.current = []
+        streamingCompleteRef.current = false
         setRawMessages((prev) => {
           const resultMsg: SessionMessage = {
             type: 'result',
