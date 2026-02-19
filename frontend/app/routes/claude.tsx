@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '~/components/ui/select'
 import { useAuth } from '~/contexts/auth-context'
+import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
@@ -42,6 +43,7 @@ type StatusFilter = 'all' | 'active' | 'archived'
 
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
   const navigate = useNavigate()
   const { sessionId: urlSessionId } = useParams()
   const [sessions, setSessions] = useState<Session[]>([])
@@ -453,80 +455,15 @@ export default function ClaudePage() {
   return (
     <div className="flex h-full">
       {/* Left Column: Sessions Sidebar */}
-      <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
-        {/* Sessions Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <div className="flex items-center gap-1">
-            <h2
-              className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-              onClick={() => setActiveSessionId(null)}
-              title="Clear selection"
-            >
-              Sessions
-              {pagination.totalCount > 0 && (
-                <span className="ml-1 text-xs text-muted-foreground font-normal">
-                  ({pagination.totalCount})
-                </span>
-              )}
-            </h2>
-            <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-              <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active" className="text-xs">Active</SelectItem>
-                <SelectItem value="all" className="text-xs">All</SelectItem>
-                <SelectItem value="archived" className="text-xs">Archived</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
-              title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
-            >
-              {uiMode === 'chat' ? (
-                <Terminal className="h-4 w-4" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-            </Button>
-            <Button onClick={() => setActiveSessionId(null)} size="sm">
-              New
-            </Button>
-          </div>
-        </div>
-
-        {/* Sessions List */}
-        <div className="flex-1 overflow-hidden">
-          <SessionList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelect={setActiveSessionId}
-            onDelete={deleteSession}
-            onRename={updateSessionTitle}
-            onArchive={archiveSession}
-            onUnarchive={unarchiveSession}
-            hasMore={pagination.hasMore}
-            isLoadingMore={isLoadingMore}
-            onLoadMore={loadMoreSessions}
-          />
-        </div>
-      </div>
-
-      {/* Mobile Sidebar Sheet */}
-      <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
-        <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
-          <SheetHeader className="px-4 py-3 border-b">
+      {sessionSidebar && (
+        <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
+          {/* Sessions Header */}
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-1">
-              <SheetTitle
-                className="cursor-pointer hover:text-primary transition-colors"
-                onClick={() => {
-                  setActiveSessionId(null)
-                  setShowMobileSidebar(false)
-                }}
+              <h2
+                className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
+                onClick={() => setActiveSessionId(null)}
+                title="Clear selection"
               >
                 Sessions
                 {pagination.totalCount > 0 && (
@@ -534,7 +471,7 @@ export default function ClaudePage() {
                     ({pagination.totalCount})
                   </span>
                 )}
-              </SheetTitle>
+              </h2>
               <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
                 <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
                   <SelectValue />
@@ -546,15 +483,33 @@ export default function ClaudePage() {
                 </SelectContent>
               </Select>
             </div>
-          </SheetHeader>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
+                title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
+              >
+                {uiMode === 'chat' ? (
+                  <Terminal className="h-4 w-4" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+              </Button>
+              {sessionCreateNew && (
+                <Button onClick={() => setActiveSessionId(null)} size="sm">
+                  New
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Sessions List */}
           <div className="flex-1 overflow-hidden">
             <SessionList
               sessions={sessions}
               activeSessionId={activeSessionId}
-              onSelect={(id) => {
-                setActiveSessionId(id)
-                setShowMobileSidebar(false)
-              }}
+              onSelect={setActiveSessionId}
               onDelete={deleteSession}
               onRename={updateSessionTitle}
               onArchive={archiveSession}
@@ -564,28 +519,87 @@ export default function ClaudePage() {
               onLoadMore={loadMoreSessions}
             />
           </div>
-        </SheetContent>
-      </Sheet>
+        </div>
+      )}
+
+      {/* Mobile Sidebar Sheet */}
+      {sessionSidebar && (
+        <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
+          <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
+            <SheetHeader className="px-4 py-3 border-b">
+              <div className="flex items-center gap-1">
+                <SheetTitle
+                  className="cursor-pointer hover:text-primary transition-colors"
+                  onClick={() => {
+                    setActiveSessionId(null)
+                    setShowMobileSidebar(false)
+                  }}
+                >
+                  Sessions
+                  {pagination.totalCount > 0 && (
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                      ({pagination.totalCount})
+                    </span>
+                  )}
+                </SheetTitle>
+                <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
+                  <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active" className="text-xs">Active</SelectItem>
+                    <SelectItem value="all" className="text-xs">All</SelectItem>
+                    <SelectItem value="archived" className="text-xs">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </SheetHeader>
+            <div className="flex-1 overflow-hidden">
+              <SessionList
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelect={(id) => {
+                  setActiveSessionId(id)
+                  setShowMobileSidebar(false)
+                }}
+                onDelete={deleteSession}
+                onRename={updateSessionTitle}
+                onArchive={archiveSession}
+                onUnarchive={unarchiveSession}
+                hasMore={pagination.hasMore}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={loadMoreSessions}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* Mobile Action Buttons - Top Right */}
-      <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
-          onClick={() => setShowMobileSidebar(true)}
-        >
-          <Menu className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
-          onClick={() => setActiveSessionId(null)}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
+      {(sessionSidebar || sessionCreateNew) && (
+        <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
+          {sessionSidebar && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
+              onClick={() => setShowMobileSidebar(true)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          )}
+          {sessionCreateNew && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
+              onClick={() => setActiveSessionId(null)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">

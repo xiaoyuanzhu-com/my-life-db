@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation, useNavigate } from "react-router";
 import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
+import { FeatureFlagsProvider } from "~/contexts/feature-flags-context";
 import { Toaster } from "~/components/ui/sonner";
 import { isNativeApp, setupNativeListeners } from "~/lib/native-bridge";
 import "./globals.css";
@@ -57,17 +58,19 @@ export default function Root() {
   const native = isNativeApp();
 
   return (
-    <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
-      <AuthProvider>
-        {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
-        {!native && <ConditionalHeader />}
-        <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2'}`}>
-          <Outlet />
-        </main>
-      </AuthProvider>
-      <ScrollRestoration />
-      <Toaster position="bottom-right" richColors closeButton />
-    </div>
+    <FeatureFlagsProvider>
+      <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
+        <AuthProvider>
+          {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
+          {!native && <ConditionalHeader />}
+          <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2'}`}>
+            <Outlet />
+          </main>
+        </AuthProvider>
+        <ScrollRestoration />
+        <Toaster position="bottom-right" richColors closeButton />
+      </div>
+    </FeatureFlagsProvider>
   );
 }
 
