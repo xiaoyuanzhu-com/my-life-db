@@ -368,11 +368,11 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// SessionManager handles merging file metadata + runtime state internally
 	paginationResult := h.server.Claude().ListAllSessions(cursor, limit, statusFilter)
 
-	// Load read states for unread indicator computation
-	readStates, err := db.GetAllSessionReadStates()
+	// Load read states for unread result tracking
+	readResultCounts, err := db.GetAllSessionReadStates()
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to load session read states")
-		readStates = make(map[string]int)
+		readResultCounts = make(map[string]int)
 	}
 
 	log.Debug().
@@ -386,27 +386,24 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// Convert SessionEntry to response format
 	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
 	for _, entry := range paginationResult.Entries {
-		// Compute unified session state:
+		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
-		//   "working"  — has unread messages, Claude is still working
-		//   "ready"    — has unread messages, Claude finished (needs user input)
-		//   "idle"     — no unread messages
+		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
+		//   "ready"    — turn completed, user hasn't seen the result yet
+		//   "idle"     — nothing happening
 		sessionState := "idle"
 		if entry.IsArchived {
 			sessionState = "archived"
+		} else if entry.IsProcessing {
+			sessionState = "working"
 		} else {
-			lastRead, seen := readStates[entry.SessionID]
-			// Only mark as unread if we have a read-state baseline AND new messages
-			// arrived since. Sessions with no read-state entry (pre-feature or never
-			// opened) default to "idle" — the subscribe WS creates the baseline on
-			// first open, and subsequent messages will correctly show as unread.
-			hasUnread := seen && entry.MessageCount > lastRead
-			if hasUnread {
-				if entry.IsProcessing {
-					sessionState = "working"
-				} else {
-					sessionState = "ready"
-				}
+			lastReadResults, seen := readResultCounts[entry.SessionID]
+			// A turn completed (result message) that the user hasn't seen yet.
+			// Sessions with no read-state entry default to "idle" — the baseline
+			// is created on first open via the subscribe WebSocket.
+			hasUnreadResult := seen && entry.ResultCount > lastReadResults
+			if hasUnreadResult {
+				sessionState = "ready"
 			}
 		}
 
@@ -562,12 +559,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}()
 
 	// Mark session as read when client connects and when the WebSocket disconnects.
-	// Uses the JSONL-based MessageCount (via GetSessionEntry) for consistency
-	// with what ListAllClaudeSessions reports.
+	// Stores the ResultCount (completed turns) so "ready" state clears correctly.
 	claudeManager := h.server.Claude()
 	markAsRead := func() {
 		if entry := claudeManager.GetSessionEntry(sessionID); entry != nil {
-			db.MarkClaudeSessionRead(sessionID, entry.MessageCount)
+			db.MarkClaudeSessionRead(sessionID, entry.ResultCount)
 		}
 	}
 	markAsRead()       // Mark on connect (clears dot on other devices immediately)

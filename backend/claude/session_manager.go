@@ -71,6 +71,7 @@ type SessionEntry struct {
 	Summary              string    `json:"summary,omitempty"`
 	CustomTitle          string    `json:"customTitle,omitempty"`
 	MessageCount         int       `json:"messageCount"`
+	ResultCount          int       `json:"-"` // Number of result messages (completed turns)
 	Created              time.Time `json:"created"`
 	Modified             time.Time `json:"modified"`
 	LastUserActivity     time.Time `json:"lastUserActivity"`
@@ -1043,6 +1044,10 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 			}
 		}
 
+		if msgType == "result" {
+			entry.ResultCount++
+		}
+
 	}
 
 	entry.DisplayTitle = entry.computeDisplayTitle()
@@ -1146,8 +1151,8 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 				if oldEntry.DisplayTitle != newEntry.DisplayTitle {
 					shouldNotify = true
 				}
-				// Notify when message count changes (enables unread dot updates)
-				if oldEntry.MessageCount != newEntry.MessageCount {
+				// Notify when a turn completes (result count changes) — drives "ready" state
+				if oldEntry.ResultCount != newEntry.ResultCount {
 					shouldNotify = true
 				}
 			}
