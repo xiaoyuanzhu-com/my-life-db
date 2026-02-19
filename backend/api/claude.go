@@ -368,6 +368,13 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// SessionManager handles merging file metadata + runtime state internally
 	paginationResult := h.server.Claude().ListAllSessions(cursor, limit, statusFilter)
 
+	// Load read states for unread indicator computation
+	readStates, err := db.GetAllSessionReadStates()
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to load session read states")
+		readStates = make(map[string]int)
+	}
+
 	log.Debug().
 		Int("returnedCount", len(paginationResult.Entries)).
 		Int("totalCount", paginationResult.TotalCount).
@@ -379,6 +386,26 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	// Convert SessionEntry to response format
 	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
 	for _, entry := range paginationResult.Entries {
+		// Compute unified session state:
+		//   "archived" — user explicitly archived this session
+		//   "active"   — has unread messages, Claude is still working
+		//   "waiting"  — has unread messages, Claude finished (needs user input)
+		//   "idle"     — no unread messages
+		sessionState := "idle"
+		if entry.IsArchived {
+			sessionState = "archived"
+		} else {
+			lastRead, seen := readStates[entry.SessionID]
+			hasUnread := entry.MessageCount > 0 && (!seen || entry.MessageCount > lastRead)
+			if hasUnread {
+				if entry.IsActivated && entry.LastTurnMessageType != "result" {
+					sessionState = "active"
+				} else {
+					sessionState = "waiting"
+				}
+			}
+		}
+
 		sessionData := map[string]interface{}{
 			"id":               entry.SessionID,
 			"title":            entry.DisplayTitle,
@@ -388,7 +415,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"lastUserActivity": entry.LastUserActivity,
 			"messageCount":     entry.MessageCount,
 			"isSidechain":      entry.IsSidechain,
-			"status":           entry.Status,
+			"sessionState":     sessionState,
 		}
 
 		if entry.Git != nil {
@@ -521,6 +548,18 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			// Handler is exiting, goroutine can stop
 		}
 	}()
+
+	// Mark session as read when client connects and when the WebSocket disconnects.
+	// Uses the JSONL-based MessageCount (via GetSessionEntry) for consistency
+	// with what ListAllClaudeSessions reports.
+	claudeManager := h.server.Claude()
+	markAsRead := func() {
+		if entry := claudeManager.GetSessionEntry(sessionID); entry != nil {
+			db.MarkClaudeSessionRead(sessionID, entry.MessageCount)
+		}
+	}
+	markAsRead()       // Mark on connect (clears dot on other devices immediately)
+	defer markAsRead() // Mark on disconnect (catches messages received during the session)
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them

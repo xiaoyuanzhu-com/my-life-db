@@ -51,3 +51,47 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 	}
 	return result, nil
 }
+
+// ── Session read status (cross-device unread tracking) ──────────────────────
+
+// MarkClaudeSessionRead records the message count the user has seen for a session.
+// Uses upsert so it works for both first view and subsequent views.
+func MarkClaudeSessionRead(sessionID string, messageCount int) error {
+	_, err := Run(
+		`INSERT INTO session_read_status (session_id, last_read_message_count, updated_at)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(session_id) DO UPDATE SET
+		   last_read_message_count = excluded.last_read_message_count,
+		   updated_at = excluded.updated_at`,
+		sessionID, messageCount, NowUTC(),
+	)
+	return err
+}
+
+// SessionReadState holds the read status for a single session
+type SessionReadState struct {
+	SessionID             string
+	LastReadMessageCount  int
+}
+
+// GetAllSessionReadStates returns the read state for all sessions as a map.
+// Key is session_id, value is last_read_message_count.
+func GetAllSessionReadStates() (map[string]int, error) {
+	rows, err := Select(
+		`SELECT session_id, last_read_message_count FROM session_read_status`,
+		nil,
+		func(rows *sql.Rows) (SessionReadState, error) {
+			var s SessionReadState
+			err := rows.Scan(&s.SessionID, &s.LastReadMessageCount)
+			return s, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]int, len(rows))
+	for _, row := range rows {
+		result[row.SessionID] = row.LastReadMessageCount
+	}
+	return result, nil
+}

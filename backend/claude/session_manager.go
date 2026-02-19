@@ -77,6 +77,11 @@ type SessionEntry struct {
 	GitBranch            string    `json:"gitBranch,omitempty"`
 	IsSidechain          bool      `json:"isSidechain"`
 
+	// Processing state detection — tracks the last "user", "assistant", or "result"
+	// message type seen in the JSONL. Metadata types (summary, tag, etc.) are ignored.
+	// Used with IsActivated to derive isProcessing for the API.
+	LastTurnMessageType string `json:"-"`
+
 	// Runtime state (internal, not exposed to API)
 	IsActivated bool `json:"-"`
 	ProcessID   int  `json:"-"`
@@ -442,6 +447,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		// Copy runtime state from active session if available
 		if session, ok := m.sessions[entry.SessionID]; ok {
 			entryCopy.Git = session.Git
+			entryCopy.IsActivated = true
 			// Use the active session's LastUserActivity if it's newer
 			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
 				entryCopy.LastUserActivity = session.LastUserActivity
@@ -464,6 +470,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			Modified:         session.LastActivity,
 			LastUserActivity: session.LastUserActivity,
 			Git:              session.Git,
+			IsActivated:      true,
 		}
 		allEntries = append(allEntries, entry)
 	}
@@ -1031,6 +1038,12 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 				entry.CustomTitle = titleMsg.CustomTitle
 			}
 		}
+
+		// Track last significant message type for processing state detection
+		// Only "user", "assistant", "result" matter — metadata types are ignored
+		if msgType == "user" || msgType == "assistant" || msgType == "result" {
+			entry.LastTurnMessageType = msgType
+		}
 	}
 
 	entry.DisplayTitle = entry.computeDisplayTitle()
@@ -1130,8 +1143,15 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 
 			// Only notify for meaningful changes
 			shouldNotify := !existed
-			if existed && oldEntry.DisplayTitle != newEntry.DisplayTitle {
-				shouldNotify = true
+			if existed {
+				if oldEntry.DisplayTitle != newEntry.DisplayTitle {
+					shouldNotify = true
+				}
+				// Notify on processing state transitions (e.g., assistant→result, result→user)
+				// This enables real-time unread dot updates in the session list
+				if oldEntry.LastTurnMessageType != newEntry.LastTurnMessageType {
+					shouldNotify = true
+				}
 			}
 
 			// Preserve git info from active session

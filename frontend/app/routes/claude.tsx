@@ -26,7 +26,7 @@ interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  status: 'active' | 'archived'
+  sessionState: 'idle' | 'active' | 'waiting' | 'archived'
   createdAt: string
   lastActivity: string
   messageCount?: number
@@ -401,7 +401,7 @@ export default function ClaudePage() {
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, status: 'archived' as const } : s
+            s.id === sessionId ? { ...s, sessionState: 'archived' as const } : s
           )
         )
       }
@@ -417,7 +417,7 @@ export default function ClaudePage() {
       if (response.ok) {
         setSessions(
           sessions.map((s) =>
-            s.id === sessionId ? { ...s, status: 'active' as const } : s
+            s.id === sessionId ? { ...s, sessionState: 'idle' as const } : s
           )
         )
       }
@@ -425,6 +425,12 @@ export default function ClaudePage() {
       console.error('Failed to unarchive session:', error)
     }
   }
+
+  // Select a session — read state is tracked automatically by the subscribe
+  // WebSocket (mark-as-read on connect + disconnect), so no API call needed here.
+  const handleSelectSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId)
+  }, [])
 
   // Show loading state while checking authentication
   if (authLoading || loading) {
@@ -509,7 +515,7 @@ export default function ClaudePage() {
             <SessionList
               sessions={sessions}
               activeSessionId={activeSessionId}
-              onSelect={setActiveSessionId}
+              onSelect={handleSelectSession}
               onDelete={deleteSession}
               onRename={updateSessionTitle}
               onArchive={archiveSession}
@@ -559,7 +565,7 @@ export default function ClaudePage() {
                 sessions={sessions}
                 activeSessionId={activeSessionId}
                 onSelect={(id) => {
-                  setActiveSessionId(id)
+                  handleSelectSession(id)
                   setShowMobileSidebar(false)
                 }}
                 onDelete={deleteSession}
