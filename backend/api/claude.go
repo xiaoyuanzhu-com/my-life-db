@@ -522,7 +522,14 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		w = unwrapper.Unwrap()
 	}
 
-	// Accept WebSocket connection
+	// Accept WebSocket connection.
+	//
+	// NOTE: WebSocket compression (permessage-deflate) is intentionally disabled.
+	// Per coder/websocket docs: "only enable if you've benchmarked and determined
+	// compression is beneficial." The memory overhead (~1.2 MB/conn with context
+	// takeover) and CPU cost are not justified here — we instead reduce payload
+	// size at the application level by stripping large tool result content
+	// (see claude.StripReadToolContent).
 	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
 	})
@@ -602,6 +609,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 			for _, msg := range initialMessages {
 				if msgBytes, err := json.Marshal(msg); err == nil {
+					msgBytes = claude.StripReadToolContent(msgBytes)
 					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
 						return
@@ -704,6 +712,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					for _, msg := range newMessages {
 						// Send ALL message types (user, assistant, progress, queue-operation, etc.)
 						if msgBytes, err := json.Marshal(msg); err == nil {
+							msgBytes = claude.StripReadToolContent(msgBytes)
 							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 								return
 							}

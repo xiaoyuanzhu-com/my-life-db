@@ -547,6 +547,8 @@ func (s *Session) LoadMessageCache() error {
 		}
 
 		if data, err := json.Marshal(msg); err == nil {
+			// Strip large Read tool content to reduce cache size and transfer payload
+			data = StripReadToolContent(data)
 			s.cachedMessages = append(s.cachedMessages, data)
 
 			// Extract and track UUID for deduplication
@@ -639,6 +641,9 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.seenUUIDs[msgType.UUID] = true
 		s.cacheMu.Unlock()
 	}
+
+	// Strip large Read tool content before caching and broadcasting
+	data = StripReadToolContent(data)
 
 	// Add to cache (all messages including control messages for live session state)
 	s.cacheMu.Lock()
