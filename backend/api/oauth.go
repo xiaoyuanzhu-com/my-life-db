@@ -218,13 +218,20 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 
 // OAuthRefresh handles POST /api/oauth/refresh
 func (h *Handlers) OAuthRefresh(c *gin.Context) {
-	// Get refresh token from cookie
-	refreshToken, err := c.Cookie("refresh_token")
-	if err != nil || refreshToken == "" {
+	// Get refresh token: cookie first (web clients), then JSON body (native clients)
+	refreshToken, _ := c.Cookie("refresh_token")
+	if refreshToken == "" {
+		var body struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil && body.RefreshToken != "" {
+			refreshToken = body.RefreshToken
+		}
+	}
+	if refreshToken == "" {
 		log.Debug().
-			Err(err).
 			Str("cookies", c.Request.Header.Get("Cookie")).
-			Msg("refresh token not found in cookie")
+			Msg("refresh token not found in cookie or body")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "No refresh token provided",
 		})

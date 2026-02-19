@@ -2,13 +2,20 @@
  * Fetch wrapper that automatically refreshes tokens on 401
  *
  * Usage: Use this instead of plain fetch() for API calls that need auth
+ *
+ * In native app context (WebView), refresh is delegated to the native
+ * AuthManager via the bridge. The native side is the single auth owner;
+ * it refreshes tokens, updates the Keychain, and pushes fresh cookies
+ * back into the WebView. This avoids dual-writer race conditions.
  */
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
 /**
- * Attempt to refresh the access token using the refresh token
+ * Attempt to refresh the access token.
+ * - Native WebView: delegates to native bridge (requestTokenRefresh)
+ * - Web browser: cookie-based POST to /api/oauth/refresh
  * Exported for use by WebSocket reconnection logic
  */
 export async function refreshAccessToken(): Promise<boolean> {
@@ -20,6 +27,12 @@ export async function refreshAccessToken(): Promise<boolean> {
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
+      // In native app context, delegate refresh to native via bridge
+      if ((window as any).isNativeApp) {
+        return await refreshViaNativeBridge();
+      }
+
+      // Web: cookie-based refresh
       const response = await fetch('/api/oauth/refresh', {
         method: 'POST',
         credentials: 'same-origin',
@@ -42,6 +55,35 @@ export async function refreshAccessToken(): Promise<boolean> {
   })();
 
   return refreshPromise;
+}
+
+/**
+ * Delegate token refresh to the native app via the bridge URL scheme.
+ * The native side awaits AuthManager.refreshAccessToken(), pushes fresh
+ * cookies into the WebView, and returns { success: true/false }.
+ */
+async function refreshViaNativeBridge(): Promise<boolean> {
+  try {
+    const response = await fetch('nativebridge://message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'requestTokenRefresh' }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        console.log('✅ Token refreshed via native bridge');
+        return true;
+      }
+    }
+
+    console.error('❌ Native bridge token refresh failed');
+    return false;
+  } catch (error) {
+    console.error('❌ Native bridge token refresh error:', error);
+    return false;
+  }
 }
 
 /**
