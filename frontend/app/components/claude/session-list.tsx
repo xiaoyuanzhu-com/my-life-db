@@ -4,7 +4,7 @@ import { Input } from '~/components/ui/input'
 import { Check, X, Archive, ArchiveRestore, Loader2 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
-export type SessionState = 'idle' | 'active' | 'waiting' | 'archived'
+export type SessionState = 'idle' | 'working' | 'ready' | 'archived'
 
 export interface Session {
   id: string
@@ -69,8 +69,8 @@ function formatRelativeTime(dateString: string): string {
 
 // ─── Unread dot indicator ────────────────────────────────────────────────────
 
-function UnreadIndicator({ state }: { state: 'active' | 'waiting' }) {
-  if (state === 'active') {
+function UnreadIndicator({ state }: { state: 'working' | 'ready' }) {
+  if (state === 'working') {
     // Working: amber pulsing dot — Claude is still generating
     return (
       <span className="relative flex h-2 w-2 shrink-0" title="Claude is working">
@@ -167,7 +167,7 @@ export function SessionList({
           {sessions.map((session) => {
             // Show unread dot for active/waiting sessions that aren't currently being viewed
             const { sessionState } = session
-            const showDot = (sessionState === 'active' || sessionState === 'waiting')
+            const showDot = (sessionState === 'working' || sessionState === 'ready')
               && activeSessionId !== session.id
 
             return (
@@ -234,7 +234,7 @@ export function SessionList({
                           {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
                           <span className="w-2 shrink-0 flex items-center">
                             {showDot && (
-                              <UnreadIndicator state={sessionState as 'active' | 'waiting'} />
+                              <UnreadIndicator state={sessionState as 'working' | 'ready'} />
                             )}
                           </span>
                         </div>

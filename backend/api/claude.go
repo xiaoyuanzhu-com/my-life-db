@@ -388,8 +388,8 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	for _, entry := range paginationResult.Entries {
 		// Compute unified session state:
 		//   "archived" — user explicitly archived this session
-		//   "active"   — has unread messages, Claude is still working
-		//   "waiting"  — has unread messages, Claude finished (needs user input)
+		//   "working"  — has unread messages, Claude is still working
+		//   "ready"    — has unread messages, Claude finished (needs user input)
 		//   "idle"     — no unread messages
 		sessionState := "idle"
 		if entry.IsArchived {
@@ -403,9 +403,9 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			hasUnread := seen && entry.MessageCount > lastRead
 			if hasUnread {
 				if entry.IsActivated && entry.LastTurnMessageType != "result" {
-					sessionState = "active"
+					sessionState = "working"
 				} else {
-					sessionState = "waiting"
+					sessionState = "ready"
 				}
 			}
 		}
