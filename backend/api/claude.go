@@ -568,7 +568,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Periodically update read state while connected so that other devices
 	// (e.g., iOS session list) see the session as "read" even while the web
 	// client is actively viewing it and new messages keep arriving.
-	readTicker := time.NewTicker(10 * time.Second)
+	readTicker := time.NewTicker(1 * time.Second)
 	defer readTicker.Stop()
 	go func() {
 		for {
