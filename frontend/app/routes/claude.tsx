@@ -32,6 +32,7 @@ interface Session {
   lastUserActivity?: string
   messageCount?: number
   gitBranch?: string
+  permissionMode?: string // From active session runtime state (empty for historical)
 }
 
 interface Pagination {
@@ -630,6 +631,7 @@ export default function ClaudePage() {
               sessionId={activeSessionId}
               sessionName={effectiveActiveSession.title || 'Session'}
               workingDir={effectiveActiveSession.workingDir}
+              permissionMode={effectiveActiveSession.permissionMode}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
               refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}

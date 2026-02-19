@@ -18,6 +18,7 @@ interface ChatInterfaceProps {
   sessionId: string
   sessionName?: string
   workingDir?: string
+  permissionMode?: string // From session API response (source of truth for existing sessions)
   onSessionNameChange?: (name: string) => void
   refreshSessions?: () => void // Called to refresh session list from backend
   initialMessage?: string // Message to send immediately on mount (for new session flow)
@@ -46,6 +47,7 @@ export function ChatInterface({
   initialMessage,
   onInitialMessageSent,
   workingDir: initialWorkingDir,
+  permissionMode: initialPermissionMode,
 }: ChatInterfaceProps) {
   // ============================================================================
   // State
@@ -88,14 +90,11 @@ export function ChatInterface({
   const streamingFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Permission mode state - tracks current session permission mode
-  // Initialize from localStorage so newly created sessions show the correct mode
-  // (the mode was already sent to the backend during session creation)
+  // Initialize from API response prop (source of truth for existing sessions).
+  // Falls back to 'default' for historical sessions where the backend has no runtime state.
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('claude-permission-mode')
-      if (saved === 'default' || saved === 'acceptEdits' || saved === 'plan' || saved === 'bypassPermissions') {
-        return saved
-      }
+    if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
+      return initialPermissionMode
     }
     return 'default'
   })
@@ -585,11 +584,9 @@ export function ChatInterface({
     streamingBufferRef.current = [] // Clear buffered tokens on session change
     thinkingBufferRef.current = []
     streamingCompleteRef.current = false
-    // Restore permission mode from localStorage (not hardcoded 'default')
-    // so switching sessions preserves the user's last-used mode
-    const savedMode = localStorage.getItem('claude-permission-mode')
-    if (savedMode === 'default' || savedMode === 'acceptEdits' || savedMode === 'plan' || savedMode === 'bypassPermissions') {
-      setPermissionMode(savedMode)
+    // Restore permission mode from API prop (each session has its own mode)
+    if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
+      setPermissionMode(initialPermissionMode)
     } else {
       setPermissionMode('default')
     }

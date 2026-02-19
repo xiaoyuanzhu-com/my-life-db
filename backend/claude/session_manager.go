@@ -78,10 +78,11 @@ type SessionEntry struct {
 	IsSidechain          bool      `json:"isSidechain"`
 
 	// Runtime state (internal, not exposed to API)
-	IsActivated  bool `json:"-"`
-	IsProcessing bool `json:"-"` // Claude is actively generating (mid-turn)
-	ProcessID   int  `json:"-"`
-	ClientCount int  `json:"-"`
+	IsActivated    bool               `json:"-"`
+	IsProcessing   bool               `json:"-"` // Claude is actively generating (mid-turn)
+	ProcessID      int                `json:"-"`
+	ClientCount    int                `json:"-"`
+	PermissionMode sdk.PermissionMode `json:"-"` // From active session (empty for historical)
 
 	// User preference (from database) — drives Status
 	IsArchived bool   `json:"-"`
@@ -445,6 +446,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			entryCopy.Git = session.Git
 			entryCopy.IsActivated = true
 			entryCopy.IsProcessing = session.IsProcessing()
+			entryCopy.PermissionMode = session.PermissionMode
 			// Use the active session's LastUserActivity if it's newer
 			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
 				entryCopy.LastUserActivity = session.LastUserActivity
@@ -469,6 +471,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			Git:              session.Git,
 			IsActivated:      true,
 			IsProcessing:     session.IsProcessing(),
+			PermissionMode:   session.PermissionMode,
 		}
 		allEntries = append(allEntries, entry)
 	}

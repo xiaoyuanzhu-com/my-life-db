@@ -420,6 +420,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"messageCount":     entry.MessageCount,
 			"isSidechain":      entry.IsSidechain,
 			"sessionState":     sessionState,
+			"permissionMode":   string(entry.PermissionMode), // empty for historical sessions
 		}
 
 		if entry.Git != nil {
