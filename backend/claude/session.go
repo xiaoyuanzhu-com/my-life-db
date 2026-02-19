@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -645,6 +646,16 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	// Strip large Read tool content before caching and broadcasting
 	data = StripReadToolContent(data)
 
+	// Evict stream_event messages from cache when the final assistant message arrives.
+	// stream_event messages carry token-by-token deltas (text_delta, thinking_delta) that
+	// are only useful for live streaming. Once the complete assistant message arrives, it
+	// contains all the text/thinking content, making the deltas redundant.
+	// We keep stream_events in cache during streaming so clients reconnecting mid-stream
+	// can resume, but evict them once the final content is available.
+	if msgEnvelope.Type == "assistant" {
+		s.evictStreamEvents()
+	}
+
 	// Add to cache (all messages including control messages for live session state)
 	s.cacheMu.Lock()
 	msgCopy := make([]byte, len(data))
@@ -663,6 +674,51 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 			log.Warn().Str("sessionId", s.ID).Msg("client send buffer full, skipping message")
 		}
 	}
+}
+
+// evictStreamEvents removes all stream_event messages from the cache.
+// Called when the final assistant message arrives, since it contains the complete
+// text/thinking content that the stream_event deltas were building up.
+func (s *Session) evictStreamEvents() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	// Fast path: check if there are any stream_events to evict.
+	// In-place filter to avoid allocation when there's nothing to evict.
+	n := 0
+	for _, msg := range s.cachedMessages {
+		if !isStreamEvent(msg) {
+			s.cachedMessages[n] = msg
+			n++
+		}
+	}
+
+	if n == len(s.cachedMessages) {
+		return // Nothing evicted
+	}
+
+	// Clear trailing references to allow GC
+	for i := n; i < len(s.cachedMessages); i++ {
+		s.cachedMessages[i] = nil
+	}
+	s.cachedMessages = s.cachedMessages[:n]
+}
+
+// isStreamEvent checks if a raw JSON message is a stream_event type.
+// Uses a lightweight prefix check before falling back to JSON parsing.
+func isStreamEvent(data []byte) bool {
+	// Quick check: stream_event messages contain "stream_event" near the start
+	// This avoids JSON parsing for the vast majority of messages
+	if len(data) < 30 || !bytes.Contains(data[:min(100, len(data))], []byte(`"stream_event"`)) {
+		return false
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return false
+	}
+	return envelope.Type == "stream_event"
 }
 
 // RegisterControlRequest registers a pending control request and returns a channel for the response
