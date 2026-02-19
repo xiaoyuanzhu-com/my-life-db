@@ -12,7 +12,7 @@ export interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  sessionState: SessionState // unified state: idle, active (working), waiting (needs input), archived
+  sessionState: SessionState // unified state: idle, working, ready, archived
   createdAt: string
   lastActivity: string
   lastUserActivity?: string
