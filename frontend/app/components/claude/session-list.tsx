@@ -70,21 +70,15 @@ function formatRelativeTime(dateString: string): string {
 // ─── Unread dot indicator ────────────────────────────────────────────────────
 
 function UnreadIndicator({ state }: { state: 'working' | 'ready' }) {
-  if (state === 'working') {
-    // Working: amber pulsing dot — Claude is still generating
-    return (
-      <span className="relative flex h-2 w-2 shrink-0" title="Claude is working">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-      </span>
-    )
-  }
-
-  // Needs attention: solid blue dot — Claude finished, waiting for user
+  // Working: solid amber dot — Claude is still generating
+  // Ready:   solid green dot — Claude finished, waiting for user
   return (
     <span
-      className="h-2 w-2 shrink-0 rounded-full bg-primary"
-      title="New messages — waiting for you"
+      className={cn(
+        'h-2 w-2 shrink-0 rounded-full',
+        state === 'working' ? 'bg-amber-500' : 'bg-emerald-500'
+      )}
+      title={state === 'working' ? 'Claude is working' : 'New messages — waiting for you'}
     />
   )
 }
