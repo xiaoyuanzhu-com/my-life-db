@@ -29,6 +29,7 @@ interface Session {
   sessionState: 'idle' | 'working' | 'ready' | 'archived'
   createdAt: string
   lastActivity: string
+  lastUserActivity?: string
   messageCount?: number
   gitBranch?: string
 }
@@ -141,10 +142,14 @@ export default function ClaudePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
   }, [activeSessionId])
 
-  // Sort sessions by last activity (most recent first)
+  // Sort sessions by last USER activity (most recent first)
+  // Uses lastUserActivity (only updated on user input) instead of lastActivity
+  // (updated on any file write) to prevent sessions from jumping when Claude responds
   const sortSessions = (sessionList: Session[]): Session[] => {
     return [...sessionList].sort((a: Session, b: Session) => {
-      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+      const dateA = new Date(a.lastUserActivity || a.lastActivity).getTime()
+      const dateB = new Date(b.lastUserActivity || b.lastActivity).getTime()
+      return dateB - dateA
     })
   }
 
