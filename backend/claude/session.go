@@ -120,6 +120,11 @@ type Session struct {
 	// Future permission requests for the same tool auto-allow without prompting.
 	alwaysAllowedTools   map[string]bool `json:"-"`
 	alwaysAllowedToolsMu sync.RWMutex    `json:"-"`
+
+	// Processing state — tracked by BroadcastUIMessage from the unified message stream.
+	// init message → true (Claude started a turn), result message → false (turn complete).
+	isProcessing   bool       `json:"-"`
+	onStateChanged func()     `json:"-"` // Called when isProcessing changes; triggers SSE notification
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -232,6 +237,13 @@ func (s *Session) IsActivated() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.activated
+}
+
+// IsProcessing returns whether Claude is actively generating (mid-turn).
+func (s *Session) IsProcessing() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isProcessing
 }
 
 // SignalShutdown marks the session as shutting down.
@@ -578,13 +590,38 @@ func (s *Session) GetCachedMessages() [][]byte {
 // Note: LoadMessageCache() excludes control messages from JSONL because control_response
 // isn't stored there, so we can't determine pending state from history alone.
 func (s *Session) BroadcastUIMessage(data []byte) {
-	var msgType struct {
-		Type string `json:"type"`
-		UUID string `json:"uuid"`
+	var msgEnvelope struct {
+		Type    string `json:"type"`
+		UUID    string `json:"uuid"`
+		Subtype string `json:"subtype"`
 	}
-	if err := json.Unmarshal(data, &msgType); err != nil {
+	if err := json.Unmarshal(data, &msgEnvelope); err != nil {
 		log.Warn().Err(err).Msg("failed to parse message type")
 	}
+
+	// Track processing state from the unified message stream.
+	// init (system subtype) = turn started, result = turn complete.
+	if msgEnvelope.Type == "system" && msgEnvelope.Subtype == "init" {
+		s.mu.Lock()
+		changed := !s.isProcessing
+		s.isProcessing = true
+		cb := s.onStateChanged
+		s.mu.Unlock()
+		if changed && cb != nil {
+			cb()
+		}
+	} else if msgEnvelope.Type == "result" {
+		s.mu.Lock()
+		changed := s.isProcessing
+		s.isProcessing = false
+		cb := s.onStateChanged
+		s.mu.Unlock()
+		if changed && cb != nil {
+			cb()
+		}
+	}
+
+	msgType := msgEnvelope // keep variable name for the rest of the function
 
 	// Deduplicate by UUID (only for messages with UUIDs)
 	// Note: control_request/control_response don't have UUIDs, so they're not deduplicated

@@ -402,7 +402,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			// first open, and subsequent messages will correctly show as unread.
 			hasUnread := seen && entry.MessageCount > lastRead
 			if hasUnread {
-				if entry.IsActivated && entry.LastTurnMessageType != "result" {
+				if entry.IsProcessing {
 					sessionState = "working"
 				} else {
 					sessionState = "ready"
