@@ -221,10 +221,7 @@ export function SessionList({
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {showDot && (
-                            <UnreadIndicator state={sessionState as 'active' | 'waiting'} />
-                          )}
+                        <div className="flex items-center gap-1.5">
                           <h3
                             className={cn(
                               'truncate text-sm font-medium text-foreground',
@@ -234,6 +231,12 @@ export function SessionList({
                           >
                             {getSessionDisplayTitle(session).display}
                           </h3>
+                          {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
+                          <span className="w-2 shrink-0 flex items-center">
+                            {showDot && (
+                              <UnreadIndicator state={sessionState as 'active' | 'waiting'} />
+                            )}
+                          </span>
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                           <span className="truncate">
