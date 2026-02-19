@@ -72,7 +72,7 @@ export function StreamingResponse({ text, className = '' }: StreamingResponsePro
 
   return (
     <div className={`flex gap-2 ${className}`}>
-      <MessageDot status="in_progress" lineHeight="prose" />
+      <MessageDot type="assistant-wip" />
       <div className="flex-1 min-w-0">
         <div className="prose-claude">
           {/* Stable content - no animation */}

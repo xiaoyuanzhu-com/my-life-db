@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, WebSearchToolParams, WebSearchToolResult, WebSearchLinkResult, WebSearchResultsContainer } from '~/types/claude'
 
 interface WebSearchToolViewProps {
@@ -61,7 +61,7 @@ export function WebSearchToolView({ toolCall }: WebSearchToolViewProps) {
         onClick={() => hasContent && setIsExpanded(!isExpanded)}
         className={`flex items-start gap-2 w-full text-left ${hasContent ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
       >
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             WebSearch

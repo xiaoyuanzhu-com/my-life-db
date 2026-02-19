@@ -1,4 +1,4 @@
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, TodoWriteParams, TodoItem } from '~/types/claude'
 
 interface TodoToolViewProps {
@@ -13,7 +13,7 @@ export function TodoToolView({ toolCall }: TodoToolViewProps) {
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "Update Todos" */}
       <div className="flex items-start gap-2 mb-2">
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
           Update Todos
         </span>

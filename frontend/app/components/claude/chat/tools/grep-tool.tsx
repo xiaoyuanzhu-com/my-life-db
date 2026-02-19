@@ -1,4 +1,4 @@
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, GrepToolParams, GrepToolResult } from '~/types/claude'
 
 interface GrepToolViewProps {
@@ -16,7 +16,7 @@ export function GrepToolView({ toolCall }: GrepToolViewProps) {
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "Grep" + pattern */}
       <div className="flex items-start gap-2">
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Grep

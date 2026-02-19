@@ -1,49 +1,56 @@
 import type { ToolStatus } from '~/types/claude'
 
+export type MessageDotType =
+  | 'claude-wip'
+  | 'assistant-wip'
+  | 'assistant'
+  | 'thinking-wip'
+  | 'thinking'
+  | 'tool-pending'
+  | 'tool-completed'
+  | 'tool-failed'
+  | 'compacting'
+  | 'system'
+
 interface MessageDotProps {
-  status?: ToolStatus | 'assistant' | 'user' | 'in_progress'
-  /**
-   * Line height context for alignment:
-   * - 'prose': 24px (15px × 1.6) - for assistant message content
-   * - 'mono': 20px (13px × 1.5) - for tool blocks, thinking, etc.
-   */
-  lineHeight?: 'prose' | 'mono'
+  type: MessageDotType
+}
+
+// Style lookup: type → { color, char, pulse }
+const DOT_STYLES: Record<MessageDotType, { color: string; char: string; pulse: boolean }> = {
+  'claude-wip':    { color: '#E07A5F', char: '●', pulse: true },
+  'assistant-wip': { color: '#5F6368', char: '●', pulse: true },
+  'assistant':     { color: '#5F6368', char: '●', pulse: false },
+  'thinking-wip':  { color: '#5F6368', char: '●', pulse: true },
+  'thinking':      { color: '#5F6368', char: '●', pulse: false },
+  'tool-pending':  { color: '#9CA3AF', char: '○', pulse: true },
+  'tool-completed':{ color: '#22C55E', char: '●', pulse: false },
+  'tool-failed':   { color: '#D92D20', char: '●', pulse: false },
+  'compacting':    { color: '#5F6368', char: '●', pulse: false },
+  'system':        { color: '#22C55E', char: '●', pulse: false },
 }
 
 /**
  * Unified dot/bullet component for all message types.
- * The dot is vertically centered within a container that matches
- * the line-height of the adjacent text.
+ * The dot is vertically centered within a container matching
+ * mono line-height (20px).
  */
-export function MessageDot({ status = 'assistant', lineHeight = 'mono' }: MessageDotProps) {
-  if (status === 'user') {
-    return null
-  }
-
-  const getBulletColor = () => {
-    if (status === 'assistant') return '#5F6368' // Gray for assistant messages
-    if (status === 'failed') return '#D92D20' // Red
-    if (status === 'running') return '#F59E0B' // Orange/Yellow
-    if (status === 'pending') return '#9CA3AF' // Gray
-    if (status === 'permission_required') return '#F59E0B' // Orange
-    if (status === 'in_progress') return '#E07A5F' // Terracotta orange for WIP
-    return '#22C55E' // Green for success/completed
-  }
-
-  const bulletChar = status === 'pending' ? '○' : '●'
-  const isAnimated = status === 'in_progress'
-
-  // Match the line-height of the text context
-  // prose: 15px * 1.6 = 24px, mono: 13px * 1.5 = 19.5px ≈ 20px
-  const heightClass = lineHeight === 'prose' ? 'h-6' : 'h-5'
-  const animationClass = isAnimated ? 'animate-pulse' : ''
+export function MessageDot({ type }: MessageDotProps) {
+  const style = DOT_STYLES[type]
 
   return (
     <span
-      className={`select-none font-mono text-xs ${heightClass} flex items-center shrink-0 ${animationClass}`}
-      style={{ color: getBulletColor() }}
+      className={`select-none font-mono text-xs h-5 flex items-center shrink-0 ${style.pulse ? 'animate-pulse' : ''}`}
+      style={{ color: style.color }}
     >
-      {bulletChar}
+      {style.char}
     </span>
   )
+}
+
+/** Map a ToolStatus from the data model to a MessageDotType. */
+export function toolStatusToDotType(status: ToolStatus): MessageDotType {
+  if (status === 'failed') return 'tool-failed'
+  if (status === 'completed') return 'tool-completed'
+  return 'tool-pending' // pending, running, permission_required
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, BashToolParams, BashToolResult } from '~/types/claude'
 import type { BashProgressMessage } from '../session-messages'
 
@@ -28,12 +28,12 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
   const errorText = toolCall.error || ''
   const hasOutput = outputText || errorText
 
-  // Determine status for dot
-  const dotStatus = (() => {
-    if (toolCall.error || toolCall.status === 'failed') return 'failed' as const
-    if (exitCode !== undefined && exitCode !== 0) return 'failed' as const
-    if (latestProgress && !result) return 'running' as const
-    return toolCall.status
+  // Determine dot type
+  const dotType = (() => {
+    if (toolCall.error || toolCall.status === 'failed') return 'tool-failed' as const
+    if (exitCode !== undefined && exitCode !== 0) return 'tool-failed' as const
+    if (latestProgress && !result) return 'tool-pending' as const
+    return toolStatusToDotType(toolCall.status)
   })()
 
   // Build summary line - show output preview or running status
@@ -65,7 +65,7 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
         onClick={() => hasOutput && setExpanded(!expanded)}
         className={`flex items-start gap-2 w-full text-left ${hasOutput ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
       >
-        <MessageDot status={dotStatus} />
+        <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Bash

@@ -1,7 +1,7 @@
 import { cn } from '~/lib/utils'
 import { Check } from 'lucide-react'
 import type { ToolCall } from '~/types/claude'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 
 interface AskUserQuestionInput {
   questions: Array<{
@@ -51,7 +51,7 @@ export function AskUserQuestionToolView({ toolCall }: { toolCall: ToolCall }) {
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header with status dot */}
       <div className="flex items-start gap-2 mb-2">
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
           Ask User Question
         </span>

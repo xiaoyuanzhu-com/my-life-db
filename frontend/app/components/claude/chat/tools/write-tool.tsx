@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { highlightCode } from '~/lib/markdown'
 import type { ToolCall, WriteToolParams } from '~/types/claude'
 
@@ -80,7 +80,7 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "Write" + file path */}
       <div className="flex items-start gap-2 mb-3">
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Write

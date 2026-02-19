@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { parseMarkdown } from '~/lib/markdown'
 import type { ToolCall } from '~/types/claude'
 
@@ -49,7 +49,7 @@ export function SkillToolView({ toolCall, skillContentMap }: SkillToolViewProps)
         onClick={() => hasContent && setIsExpanded(!isExpanded)}
         className={`flex items-start gap-2 w-full text-left ${hasContent ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
       >
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Skill

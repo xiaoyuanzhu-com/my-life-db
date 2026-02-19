@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { parseMarkdown } from '~/lib/markdown'
 import type { ToolCall, WebFetchToolParams, WebFetchToolResult } from '~/types/claude'
 
@@ -68,7 +68,7 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
         onClick={() => content && setIsExpanded(!isExpanded)}
         className={`flex items-start gap-2 w-full text-left ${content ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
       >
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             WebFetch

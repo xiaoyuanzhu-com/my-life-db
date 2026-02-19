@@ -191,7 +191,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* System init messages: special formatted display */}
       {hasSystemInit && (
         <div className="flex items-start gap-2">
-          <MessageDot status="completed" lineHeight="mono" />
+          <MessageDot type="system" />
           <div className="flex-1 min-w-0">
             <SystemInitBlock data={systemInitData!} />
           </div>
@@ -201,7 +201,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Compacting in progress: animated three-dot indicator */}
       {isCompactingStatus && (
         <div className="flex items-start gap-2">
-          <MessageDot status="in_progress" lineHeight="mono" />
+          <MessageDot type="compacting" />
           <span className="font-mono text-[13px] leading-[1.5] font-semibold flex items-center gap-0">
             <span style={{ color: 'var(--claude-text-primary)' }}>Compacting</span>
             <span className="inline-flex w-[1.5em]">
@@ -232,7 +232,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Compact boundary: system message style (matches Bash tool title) */}
       {isCompactBoundary && (
         <div className="flex items-start gap-2">
-          <MessageDot status="completed" lineHeight="mono" />
+          <MessageDot type="system" />
           <span
             className="font-mono text-[13px] leading-[1.5] font-semibold"
             style={{ color: 'var(--claude-text-primary)' }}
@@ -250,7 +250,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Turn duration: system telemetry showing how long a turn took */}
       {isTurnDuration && (
         <div className="flex items-start gap-2">
-          <MessageDot status="completed" lineHeight="mono" />
+          <MessageDot type="system" />
           <span
             className="font-mono text-[13px] leading-[1.5]"
             style={{ color: 'var(--claude-text-secondary)' }}
@@ -276,7 +276,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Summary message: automatic conversation summarization */}
       {isSummary && (
         <div className="flex items-start gap-2">
-          <MessageDot status="completed" lineHeight="mono" />
+          <MessageDot type="system" />
           <div className="flex-1 min-w-0">
             <span
               className="font-mono text-[13px] leading-[1.5] font-semibold"
@@ -308,7 +308,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Assistant messages: bullet + markdown content */}
       {hasAssistantText && (
         <div className="flex gap-2">
-          <MessageDot status="assistant" lineHeight="prose" />
+          <MessageDot type="assistant" />
           <div className="flex-1 min-w-0">
             <MessageContent content={textContent} />
           </div>
@@ -630,7 +630,7 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="font-mono text-[13px] leading-[1.5] flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
       >
-        <MessageDot status="assistant" lineHeight="mono" />
+        <MessageDot type="thinking" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span
             className="italic"
@@ -695,7 +695,7 @@ function CompactSummaryBlock({ content }: { content: string }) {
 
   return (
     <div className="flex items-start gap-2">
-      <MessageDot status="completed" lineHeight="mono" />
+      <MessageDot type="system" />
       <div className="flex-1 min-w-0">
         <span
           className="font-mono text-[13px] leading-[1.5] font-semibold"
@@ -848,7 +848,7 @@ function UnknownMessageBlock({ message }: { message: SessionMessage }) {
 
   return (
     <div className="flex gap-2">
-      <MessageDot status="assistant" lineHeight="mono" />
+      <MessageDot type="system" />
       <div className="flex-1 min-w-0 font-mono text-[13px] leading-[1.5]">
         {/* Header: message type + subtype */}
         <div className="font-semibold mb-1" style={{ color: 'var(--claude-text-primary)' }}>
@@ -909,7 +909,7 @@ function HookBlock({
   // Determine status based on whether we have a response and its outcome
   const isComplete = !!hookResponse
   const isSuccess = hookResponse?.outcome === 'success'
-  const status = isComplete ? (isSuccess ? 'completed' : 'failed') : 'running'
+  const dotType = isComplete ? (isSuccess ? 'tool-completed' as const : 'tool-failed' as const) : 'tool-pending' as const
 
   // Determine what output to show (prefer stdout, fall back to output field)
   const outputContent = hookResponse?.stdout || hookResponse?.output || ''
@@ -929,7 +929,7 @@ function HookBlock({
         className={`flex items-start gap-2 w-full text-left ${hasOutput ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
         disabled={!hasOutput}
       >
-        <MessageDot status={status} lineHeight="mono" />
+        <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span style={{ color: 'var(--claude-text-secondary)' }}>
             Hook {statusText}: {hookStarted.hook_name ?? 'unknown'}
@@ -992,14 +992,14 @@ function TaskNotificationBlock({ message }: { message: SessionMessage }) {
   // Determine status from message (the JSON has a `status` field on root)
   const taskStatus = (message as unknown as { status?: string }).status ?? 'completed'
   const isCompleted = taskStatus === 'completed'
-  const dotStatus = isCompleted ? 'completed' : 'failed'
+  const dotType = isCompleted ? 'system' as const : 'tool-failed' as const
 
   // Summary text from the message
   const summary = message.summary ?? `Background task ${message.task_id ?? 'unknown'} ${taskStatus}`
 
   return (
     <div className="flex items-start gap-2">
-      <MessageDot status={dotStatus} lineHeight="mono" />
+      <MessageDot type={dotType} />
       <div className="flex-1 min-w-0">
         <span
           className="font-mono text-[13px] leading-[1.5]"
@@ -1048,7 +1048,7 @@ function MicrocompactBlock({
         className={`flex items-start gap-2 w-full text-left ${hasDetails ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
         disabled={!hasDetails}
       >
-        <MessageDot status="completed" lineHeight="mono" />
+        <MessageDot type="system" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span
             className="font-semibold"

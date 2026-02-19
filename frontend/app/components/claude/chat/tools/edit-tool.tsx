@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageDot } from '../message-dot'
+import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, EditToolParams } from '~/types/claude'
 
 interface EditToolViewProps {
@@ -30,7 +30,7 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: Status-colored bullet + "Edit" + file path */}
       <div className="flex items-start gap-2 mb-3">
-        <MessageDot status={toolCall.status} />
+        <MessageDot type={toolStatusToDotType(toolCall.status)} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Edit

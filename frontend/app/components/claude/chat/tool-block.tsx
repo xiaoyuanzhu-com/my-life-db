@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolCall } from '~/types/claude'
 import type { SessionMessage } from '~/lib/session-message-utils'
-import { MessageDot } from './message-dot'
+import { MessageDot, toolStatusToDotType } from './message-dot'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage } from './session-messages'
 
 // Tool-specific visualizations
@@ -201,7 +201,7 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
           onClick={() => setExpanded(!expanded)}
           className="flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
         >
-          <MessageDot status={toolCall.status} />
+          <MessageDot type={toolStatusToDotType(toolCall.status)} />
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
               {displayName}
@@ -216,7 +216,7 @@ function GenericToolView({ toolCall }: { toolCall: ToolCall }) {
         </button>
       ) : (
         <div className="flex items-start gap-2">
-          <MessageDot status={toolCall.status} />
+          <MessageDot type={toolStatusToDotType(toolCall.status)} />
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             {displayName}
           </span>

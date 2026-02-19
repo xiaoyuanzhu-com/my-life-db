@@ -72,7 +72,7 @@ export function StreamingThinking({ text }: StreamingThinkingProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="font-mono text-[13px] leading-[1.5] flex items-start gap-2 w-full text-left hover:opacity-80 transition-opacity cursor-pointer"
       >
-        <MessageDot status="in_progress" lineHeight="mono" />
+        <MessageDot type="thinking-wip" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span
             className="italic"
