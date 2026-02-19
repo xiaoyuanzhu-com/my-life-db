@@ -396,7 +396,11 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			sessionState = "archived"
 		} else {
 			lastRead, seen := readStates[entry.SessionID]
-			hasUnread := entry.MessageCount > 0 && (!seen || entry.MessageCount > lastRead)
+			// Only mark as unread if we have a read-state baseline AND new messages
+			// arrived since. Sessions with no read-state entry (pre-feature or never
+			// opened) default to "idle" — the subscribe WS creates the baseline on
+			// first open, and subsequent messages will correctly show as unread.
+			hasUnread := seen && entry.MessageCount > lastRead
 			if hasUnread {
 				if entry.IsActivated && entry.LastTurnMessageType != "result" {
 					sessionState = "active"

@@ -428,7 +428,16 @@ export default function ClaudePage() {
 
   // Select a session — read state is tracked automatically by the subscribe
   // WebSocket (mark-as-read on connect + disconnect), so no API call needed here.
+  // Optimistically clear the unread dot so it disappears immediately; the next
+  // SSE-triggered refresh will confirm the server state.
   const handleSelectSession = useCallback((sessionId: string) => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId && (s.sessionState === 'active' || s.sessionState === 'waiting')
+          ? { ...s, sessionState: 'idle' as const }
+          : s
+      )
+    )
     setActiveSessionId(sessionId)
   }, [])
 
