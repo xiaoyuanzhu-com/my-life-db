@@ -6,7 +6,8 @@ export type MessageDotType =
   | 'assistant'
   | 'thinking-wip'
   | 'thinking'
-  | 'tool-pending'
+  | 'tool-wip'
+  | 'tool-aborted'
   | 'tool-completed'
   | 'tool-failed'
   | 'compacting'
@@ -23,7 +24,8 @@ const DOT_STYLES: Record<MessageDotType, { color: string; char: string; pulse: b
   'assistant':     { color: '#5F6368', char: '●', pulse: false },
   'thinking-wip':  { color: '#5F6368', char: '●', pulse: true },
   'thinking':      { color: '#5F6368', char: '●', pulse: false },
-  'tool-pending':  { color: '#9CA3AF', char: '○', pulse: true },
+  'tool-wip':      { color: '#9CA3AF', char: '●', pulse: true },
+  'tool-aborted':  { color: '#9CA3AF', char: '○', pulse: false },
   'tool-completed':{ color: '#22C55E', char: '●', pulse: false },
   'tool-failed':   { color: '#D92D20', char: '●', pulse: false },
   'compacting':    { color: '#5F6368', char: '●', pulse: false },
@@ -48,9 +50,16 @@ export function MessageDot({ type }: MessageDotProps) {
   )
 }
 
-/** Map a ToolStatus from the data model to a MessageDotType. */
-export function toolStatusToDotType(status: ToolStatus): MessageDotType {
+/**
+ * Map a ToolStatus from the data model to a MessageDotType.
+ *
+ * @param turnOpen - Whether the tool's turn is still open (no `result` message yet).
+ *   true  → pending tools show as `tool-wip` (actively running)
+ *   false → pending tools show as `tool-aborted` (turn ended without completion)
+ *   Defaults to true for backward compatibility.
+ */
+export function toolStatusToDotType(status: ToolStatus, turnOpen = true): MessageDotType {
   if (status === 'failed') return 'tool-failed'
   if (status === 'completed') return 'tool-completed'
-  return 'tool-pending' // pending, running, permission_required
+  return turnOpen ? 'tool-wip' : 'tool-aborted' // pending, running, permission_required
 }
