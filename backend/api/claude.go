@@ -565,6 +565,22 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	markAsRead()       // Mark on connect (clears dot on other devices immediately)
 	defer markAsRead() // Mark on disconnect (catches messages received during the session)
 
+	// Periodically update read state while connected so that other devices
+	// (e.g., iOS session list) see the session as "read" even while the web
+	// client is actively viewing it and new messages keep arriving.
+	readTicker := time.NewTicker(10 * time.Second)
+	defer readTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-readTicker.C:
+				markAsRead()
+			}
+		}
+	}()
+
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
 	log.Debug().Str("sessionId", sessionID).Str("mode", string(session.Mode)).Msg("Subscribe WebSocket connected (not activated yet)")
