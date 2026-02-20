@@ -125,7 +125,11 @@ type Session struct {
 	// Processing state — tracked by BroadcastUIMessage from the unified message stream.
 	// init message → true (Claude started a turn), result message → false (turn complete).
 	isProcessing   bool       `json:"-"`
-	onStateChanged func()     `json:"-"` // Called when isProcessing changes; triggers SSE notification
+	onStateChanged func()     `json:"-"` // Called when isProcessing/pendingPermissionCount changes; triggers SSE notification
+
+	// Pending permission count — tracked by BroadcastUIMessage from control_request/control_response.
+	// control_request → increment (waiting for user input), control_response → decrement (resolved).
+	pendingPermissionCount int `json:"-"`
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -245,6 +249,14 @@ func (s *Session) IsProcessing() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.isProcessing
+}
+
+// HasPendingPermission returns whether the session is waiting for user permission input.
+// Tracked via control_request/control_response messages in BroadcastUIMessage.
+func (s *Session) HasPendingPermission() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pendingPermissionCount > 0
 }
 
 // SignalShutdown marks the session as shutting down.
@@ -618,6 +630,29 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		cb := s.onStateChanged
 		s.mu.Unlock()
 		if changed && cb != nil {
+			cb()
+		}
+	}
+
+	// Track pending permission count from control messages.
+	// control_request = session is now waiting for user input (working → ready).
+	// control_response = permission resolved, session resumes processing (ready → working).
+	if msgEnvelope.Type == "control_request" {
+		s.mu.Lock()
+		s.pendingPermissionCount++
+		cb := s.onStateChanged
+		s.mu.Unlock()
+		if cb != nil {
+			cb()
+		}
+	} else if msgEnvelope.Type == "control_response" {
+		s.mu.Lock()
+		if s.pendingPermissionCount > 0 {
+			s.pendingPermissionCount--
+		}
+		cb := s.onStateChanged
+		s.mu.Unlock()
+		if cb != nil {
 			cb()
 		}
 	}

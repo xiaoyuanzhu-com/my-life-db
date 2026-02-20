@@ -389,13 +389,17 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
 		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
-		//   "ready"    — turn completed, user hasn't seen the result yet
+		//   "ready"    — turn completed or waiting for user permission input
 		//   "idle"     — nothing happening
 		sessionState := "idle"
 		if entry.IsArchived {
 			sessionState = "archived"
-		} else if entry.IsProcessing {
+		} else if entry.IsProcessing && !entry.HasPendingPermission {
 			sessionState = "working"
+		} else if entry.IsProcessing && entry.HasPendingPermission {
+			// Mid-turn but blocked on user permission — show as "ready"
+			// so the user knows to check this session
+			sessionState = "ready"
 		} else {
 			lastReadResults, seen := readResultCounts[entry.SessionID]
 			// A turn completed (result message) that the user hasn't seen yet.
