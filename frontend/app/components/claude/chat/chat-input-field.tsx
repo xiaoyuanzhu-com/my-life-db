@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, KeyboardEvent } from 'react'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import { cn } from '~/lib/utils'
+import { useMessageInputKeyboard } from '~/hooks/use-message-input-keyboard'
 import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
 import { FileTagPopover } from './file-tag-popover'
@@ -58,6 +59,7 @@ export function ChatInputField({
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const keyboard = useMessageInputKeyboard()
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false)
   const [buttonPopoverOpen, setButtonPopoverOpen] = useState(false)
   const [fileTagPopoverOpen, setFileTagPopoverOpen] = useState(false)
@@ -298,12 +300,13 @@ export function ChatInputField({
       }
     }
 
-    // Send on Enter (without Shift) - only if no permission pending and no popover open
-    if (e.key === 'Enter' && !e.shiftKey && !hasPermission) {
+    // Send on Enter — guarded by IME composition + mobile detection
+    // Desktop: Enter sends, Shift+Enter inserts newline
+    // Mobile:  Return always inserts newline, send via button only
+    if (!hasPermission && keyboard.shouldSend(e)) {
       e.preventDefault()
       onSend()
     }
-    // Shift+Enter: allow default behavior (add newline)
   }
 
   const handleAttachClick = () => {
@@ -356,6 +359,9 @@ export function ChatInputField({
         onClick={handleTextareaClick}
         onSelect={handleSelect}
         onKeyDown={handleKeyDown}
+        onCompositionStart={keyboard.onCompositionStart}
+        onCompositionEnd={keyboard.onCompositionEnd}
+        enterKeyHint={keyboard.enterKeyHint}
         placeholder={hasPermission ? 'Waiting for permission...' : placeholder}
         disabled={disabled || hasPermission}
         rows={1}

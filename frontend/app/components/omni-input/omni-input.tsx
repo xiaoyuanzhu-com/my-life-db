@@ -3,6 +3,7 @@ import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Upload, Plus, Mic } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { useMessageInputKeyboard } from '~/hooks/use-message-input-keyboard';
 import { SearchStatus } from '../search-status';
 import { useSendQueue } from '~/lib/send-queue';
 import type { SearchResponse } from '~/types/api';
@@ -51,6 +52,7 @@ export function OmniInput({
   const [saveAudio, setSaveAudio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const keyboard = useMessageInputKeyboard();
 
   // SessionStorage key for persisting text
   const STORAGE_KEY = 'omni-input:text';
@@ -264,13 +266,16 @@ export function OmniInput({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !voice.isRecording) {
+                if (!voice.isRecording && keyboard.shouldSend(e)) {
                   e.preventDefault();
                   if (content.trim() || files.files.length > 0) {
                     handleSubmit(e);
                   }
                 }
               }}
+              onCompositionStart={keyboard.onCompositionStart}
+              onCompositionEnd={keyboard.onCompositionEnd}
+              enterKeyHint={keyboard.enterKeyHint}
               placeholder={voice.isRecording ? '' : "What's up?"}
               style={maxHeight ? { maxHeight } : undefined}
               className={cn(
