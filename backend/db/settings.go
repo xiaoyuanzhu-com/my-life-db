@@ -39,11 +39,11 @@ func GetSetting(key string) (string, error) {
 func SetSetting(key, value string) error {
 	_, err := GetDB().Exec(`
 		INSERT INTO settings (key, value, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			value = excluded.value,
-			updated_at = CURRENT_TIMESTAMP
-	`, key, value)
+			updated_at = excluded.updated_at
+	`, key, value, NowMs())
 	return err
 }
 
@@ -84,18 +84,19 @@ func UpdateSettings(settings map[string]string) error {
 	return Transaction(func(tx *sql.Tx) error {
 		stmt, err := tx.Prepare(`
 			INSERT INTO settings (key, value, updated_at)
-			VALUES (?, ?, CURRENT_TIMESTAMP)
+			VALUES (?, ?, ?)
 			ON CONFLICT(key) DO UPDATE SET
 				value = excluded.value,
-				updated_at = CURRENT_TIMESTAMP
+				updated_at = excluded.updated_at
 		`)
 		if err != nil {
 			return err
 		}
 		defer stmt.Close()
 
+		now := NowMs()
 		for key, value := range settings {
-			if _, err := stmt.Exec(key, value); err != nil {
+			if _, err := stmt.Exec(key, value, now); err != nil {
 				return err
 			}
 		}

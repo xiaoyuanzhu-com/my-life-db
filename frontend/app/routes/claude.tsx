@@ -27,9 +27,9 @@ interface Session {
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
   sessionState: 'idle' | 'working' | 'ready' | 'archived'
-  createdAt: string
-  lastActivity: string
-  lastUserActivity?: string
+  createdAt: number
+  lastActivity: number
+  lastUserActivity?: number
   messageCount?: number
   gitBranch?: string
   permissionMode?: string // From active session runtime state (empty for historical)
@@ -148,8 +148,8 @@ export default function ClaudePage() {
   // (updated on any file write) to prevent sessions from jumping when Claude responds
   const sortSessions = (sessionList: Session[]): Session[] => {
     return [...sessionList].sort((a: Session, b: Session) => {
-      const dateA = new Date(a.lastUserActivity || a.lastActivity).getTime()
-      const dateB = new Date(b.lastUserActivity || b.lastActivity).getTime()
+      const dateA = a.lastUserActivity || a.lastActivity
+      const dateB = b.lastUserActivity || b.lastActivity
       return dateB - dateA
     })
   }

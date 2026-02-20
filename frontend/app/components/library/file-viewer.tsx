@@ -16,7 +16,7 @@ interface FileData {
   content?: string;
   contentType: string;
   size: number;
-  modifiedAt: string;
+  modifiedAt: number;
 }
 
 function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' | 'pdf' | 'unknown' {
@@ -73,7 +73,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           content: text,
           contentType,
           size: parseInt(response.headers.get('content-length') || '0'),
-          modifiedAt: new Date().toISOString(),
+          modifiedAt: Date.now(),
         });
 
         const initialContent =
@@ -106,7 +106,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
           name: filename,
           contentType,
           size: parseInt(response.headers.get('content-length') || '0'),
-          modifiedAt: new Date().toISOString(),
+          modifiedAt: Date.now(),
         });
 
         // Notify parent component

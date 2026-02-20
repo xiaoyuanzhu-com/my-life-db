@@ -124,7 +124,7 @@ function HomePageContent() {
     setScrollToCursor(undefined);
   }, []);
 
-  const handleLocateInFeed = useCallback((path: string, createdAt: string) => {
+  const handleLocateInFeed = useCallback((path: string, createdAt: number) => {
     // Clear search results and input
     setClearSearchTrigger((prev) => prev + 1);
     setLastSuccessfulResults(null);

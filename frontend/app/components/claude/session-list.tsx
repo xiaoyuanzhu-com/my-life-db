@@ -13,9 +13,9 @@ export interface Session {
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
   sessionState: SessionState // unified state: idle, working, ready, archived
-  createdAt: string
-  lastActivity: string
-  lastUserActivity?: string
+  createdAt: number
+  lastActivity: number
+  lastUserActivity?: number
   messageCount?: number
   gitBranch?: string
 }
@@ -51,8 +51,8 @@ function getSessionDisplayTitle(session: Session): { display: string; full: stri
 }
 
 // Format relative time (e.g., "3h ago", "2d ago")
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
+function formatRelativeTime(epochMs: number): string {
+  const date = new Date(epochMs)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffSec = Math.floor(diffMs / 1000)

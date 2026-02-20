@@ -39,7 +39,7 @@ interface PeopleEmbeddingDisplay {
   sourceOffset: VoiceSourceOffset | null;
   quality: number | null;
   manualAssignment: boolean;
-  createdAt: string;
+  createdAt: number;
   segmentsWithText?: VoiceSegmentWithText[];
 }
 

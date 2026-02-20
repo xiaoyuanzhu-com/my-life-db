@@ -20,7 +20,7 @@ func IsPinned(path string) (bool, error) {
 func AddPin(path string) error {
 	// Generate a unique ID for the pin
 	id := uuid.New().String()
-	now := NowUTC()
+	now := NowMs()
 	_, err := GetDB().Exec(`
 		INSERT INTO pins (id, file_path, pinned_at, created_at)
 		VALUES (?, ?, ?, ?)
@@ -79,7 +79,8 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt, pinCreatedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt, pinCreatedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -96,7 +97,7 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		// Get digests for this file
 		digests, err := GetDigestsForFile(f.Path)

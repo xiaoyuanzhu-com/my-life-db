@@ -32,8 +32,8 @@ type SearchResultItem struct {
 	IsFolder        bool              `json:"isFolder"`
 	Size            *int64            `json:"size,omitempty"`
 	MimeType        *string           `json:"mimeType,omitempty"`
-	ModifiedAt      string            `json:"modifiedAt"`
-	CreatedAt       string            `json:"createdAt"`
+	ModifiedAt      int64             `json:"modifiedAt"`
+	CreatedAt       int64             `json:"createdAt"`
 	Digests         []db.Digest       `json:"digests"`
 	Score           float64           `json:"score"`
 	Snippet         string            `json:"snippet"`

@@ -178,11 +178,15 @@ const getBottomStickThreshold = () => typeof window !== 'undefined' ? window.inn
 
 /**
  * Parse cursor string to extract path
- * Handles both formats: with milliseconds (2026-02-01T15:37:06.123Z) and without (2026-02-01T15:37:06Z)
+ * Cursor format: epoch_ms:path (e.g., "1706799426123:inbox/photo.jpg")
  */
 function parseCursorPath(cursor: string): string | null {
-  const match = cursor.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z:(.+)$/);
-  return match ? match[1] : null;
+  const idx = cursor.indexOf(':')
+  if (idx === -1) return null
+  // Verify the part before : is a number (epoch ms)
+  const ts = cursor.substring(0, idx)
+  if (!/^\d+$/.test(ts)) return null
+  return cursor.substring(idx + 1)
 }
 
 export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: InboxFeedProps) {
@@ -206,7 +210,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   const visiblePendingItems = useMemo(() =>
     pendingItems
       .filter(item => item.status !== 'uploaded')
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      .sort((a, b) => a.createdAt - b.createdAt),
     [pendingItems]
   );
 

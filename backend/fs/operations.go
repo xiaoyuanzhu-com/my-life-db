@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -407,7 +406,7 @@ func (s *Service) createFolder(ctx context.Context, path string) error {
 	}
 
 	// 3. Add to database
-	now := db.NowUTC()
+	now := db.NowMs()
 	_, err := s.cfg.DB.UpsertFile(&db.FileRecord{
 		Path:          path,
 		Name:          filepath.Base(path),
@@ -426,7 +425,7 @@ func (s *Service) createFolder(ctx context.Context, path string) error {
 
 // buildFileRecord creates a FileRecord from file info and metadata
 func (s *Service) buildFileRecord(path string, info os.FileInfo, metadata *MetadataResult) *db.FileRecord {
-	now := db.NowUTC()
+	now := db.NowMs()
 	filename := filepath.Base(path)
 	size := info.Size()
 
@@ -439,7 +438,7 @@ func (s *Service) buildFileRecord(path string, info os.FileInfo, metadata *Metad
 		IsFolder:      info.IsDir(),
 		Size:          &size,
 		MimeType:      &mimeType,
-		ModifiedAt:    info.ModTime().UTC().Format(time.RFC3339),
+		ModifiedAt:    info.ModTime().UnixMilli(),
 		CreatedAt:     now,
 		LastScannedAt: now,
 	}

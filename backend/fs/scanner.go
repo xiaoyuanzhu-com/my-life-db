@@ -185,8 +185,8 @@ func (s *scanner) checkNeedsProcessing(path string, info os.FileInfo) (bool, str
 	}
 
 	// Check if modified_at differs (file changed externally)
-	fileModTime := info.ModTime().UTC().Format(time.RFC3339)
-	if record.ModifiedAt != fileModTime {
+	fileModTimeMs := info.ModTime().UnixMilli()
+	if record.ModifiedAt != fileModTimeMs {
 		return true, "modified_time_changed"
 	}
 

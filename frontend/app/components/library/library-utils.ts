@@ -5,7 +5,7 @@ export interface FileNode {
   path: string;
   type: 'file' | 'folder';
   size?: number;
-  modifiedAt?: string;
+  modifiedAt?: number;
   children?: FileNode[];
   uploadStatus?: 'pending' | 'uploading' | 'error';
   uploadProgress?: number;

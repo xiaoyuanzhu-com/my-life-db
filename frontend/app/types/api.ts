@@ -11,8 +11,8 @@ export interface Digest {
   sqlarName: string | null;
   error: string | null;
   attempts: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface InboxItem {
@@ -22,8 +22,8 @@ export interface InboxItem {
   size: number | null;
   mimeType: string | null;
   hash: string | null;
-  modifiedAt: string;
-  createdAt: string;
+  modifiedAt: number;
+  createdAt: number;
   digests: Digest[];
   textPreview?: string;
   screenshotSqlar?: string;
@@ -78,8 +78,8 @@ export interface SearchResultItem {
   size: number | null;
   mimeType: string | null;
   hash: string | null;
-  modifiedAt: string;
-  createdAt: string;
+  modifiedAt: number;
+  createdAt: number;
   digests: Digest[];
   score: number;
   snippet: string;

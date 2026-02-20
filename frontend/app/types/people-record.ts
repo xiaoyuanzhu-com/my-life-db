@@ -24,11 +24,11 @@ export interface PeopleRecordRow {
   /** Cached representative photo thumbnail (BLOB) */
   avatar: Buffer | null;
 
-  /** ISO 8601 timestamp when created */
-  created_at: string;
+  /** Epoch ms timestamp when created */
+  created_at: number;
 
-  /** ISO 8601 timestamp when last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when last updated */
+  updated_at: number;
 }
 
 /**
@@ -47,11 +47,11 @@ export interface PeopleRecord {
   /** Cached representative photo thumbnail (base64 encoded for API) */
   avatar: string | null;
 
-  /** ISO 8601 timestamp when created */
-  createdAt: string;
+  /** Epoch ms timestamp when created */
+  createdAt: number;
 
-  /** ISO 8601 timestamp when last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when last updated */
+  updatedAt: number;
 
   /** Computed: true if vcfPath is null */
   isPending: boolean;

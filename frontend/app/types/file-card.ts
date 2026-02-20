@@ -12,7 +12,7 @@ export interface DigestSummary {
   content: string | null; // Text content (summary, JSON for tags)
   sqlarName: string | null; // Filename in SQLAR (for binary digests)
   error: string | null;
-  updatedAt: string;
+  updatedAt: number;
 }
 
 /**
@@ -27,8 +27,8 @@ export interface FileWithDigests {
   size: number | null; // null for folders
   mimeType: string | null; // null for folders
   hash: string | null; // SHA256 for small files
-  modifiedAt: string; // ISO date
-  createdAt: string; // ISO date
+  modifiedAt: number;
+  createdAt: number;
 
   // Digests array (from digests table)
   digests: DigestSummary[];

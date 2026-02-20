@@ -9,7 +9,7 @@ func ArchiveClaudeSession(sessionID string) error {
 	_, err := Run(
 		`INSERT OR IGNORE INTO archived_claude_sessions (session_id, hidden_at)
 		 VALUES (?, ?)`,
-		sessionID, NowUTC(),
+		sessionID, NowMs(),
 	)
 	return err
 }
@@ -67,7 +67,7 @@ func MarkClaudeSessionRead(sessionID string, resultCount int) error {
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   last_read_message_count = excluded.last_read_message_count,
 		   updated_at = excluded.updated_at`,
-		sessionID, resultCount, NowUTC(),
+		sessionID, resultCount, NowMs(),
 	)
 	return err
 }

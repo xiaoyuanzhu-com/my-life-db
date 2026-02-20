@@ -38,11 +38,11 @@ export interface DigestRecordRow {
   /** Number of attempts made by this digester */
   attempts: number;
 
-  /** ISO 8601 timestamp when digest was created */
-  created_at: string;
+  /** Epoch ms timestamp when digest was created */
+  created_at: number;
 
-  /** ISO 8601 timestamp when digest was last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when digest was last updated */
+  updated_at: number;
 }
 
 /**
@@ -76,11 +76,11 @@ export interface Digest {
   /** Number of attempts performed for this digester */
   attempts: number;
 
-  /** ISO 8601 timestamp when digest was created */
-  createdAt: string;
+  /** Epoch ms timestamp when digest was created */
+  createdAt: number;
 
-  /** ISO 8601 timestamp when digest was last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when digest was last updated */
+  updatedAt: number;
 }
 
 /**

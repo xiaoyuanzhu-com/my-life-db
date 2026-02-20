@@ -31,8 +31,8 @@ type DigestInput struct {
 	SqlarData []byte // Binary data to store in SQLAR (if SqlarName is set)
 	Error     *string
 	Attempts  int
-	CreatedAt string
-	UpdatedAt string
+	CreatedAt int64
+	UpdatedAt int64
 }
 
 // Digester interface - processes files and produces digest outputs

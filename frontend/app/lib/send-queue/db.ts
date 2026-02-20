@@ -113,7 +113,7 @@ export async function getAllItems(): Promise<PendingInboxItem[]> {
  */
 export async function getNextItemToProcess(tabId: string): Promise<PendingInboxItem | undefined> {
   const db = await openDatabase();
-  const now = new Date().toISOString();
+  const now = Date.now();
   const staleThreshold = Date.now() - LOCK_STALE_THRESHOLD_MS;
 
   return new Promise((resolve, reject) => {
@@ -140,7 +140,7 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
           // Fresh locks mean the upload is actively in progress — skip them.
           if (item.uploadingBy === tabId) {
             if (item.uploadingAt) {
-              const lockTime = new Date(item.uploadingAt).getTime();
+              const lockTime = item.uploadingAt;
               if (lockTime >= staleThreshold) {
                 return false; // Lock is fresh, upload is active — skip
               }
@@ -154,7 +154,7 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
 
           // Check if lock is stale
           if (item.uploadingAt) {
-            const lockTime = new Date(item.uploadingAt).getTime();
+            const lockTime = item.uploadingAt;
             if (lockTime < staleThreshold) {
               // Lock is stale, we can take over
               // Also check nextRetryAt
@@ -167,7 +167,7 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
           // Check if retry is due (for failed uploads)
           if (item.nextRetryAt && item.nextRetryAt <= now) {
             // Check if lock is stale or doesn't exist
-            if (!item.uploadingAt || new Date(item.uploadingAt).getTime() < staleThreshold) {
+            if (!item.uploadingAt || item.uploadingAt < staleThreshold) {
               return true;
             }
           }
@@ -180,14 +180,14 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
       ready.sort((a, b) => {
         // Both have nextRetryAt
         if (a.nextRetryAt && b.nextRetryAt) {
-          return a.nextRetryAt.localeCompare(b.nextRetryAt);
+          return a.nextRetryAt - b.nextRetryAt;
         }
         // a has no nextRetryAt (goes first)
         if (!a.nextRetryAt && b.nextRetryAt) return -1;
         // b has no nextRetryAt (goes first)
         if (a.nextRetryAt && !b.nextRetryAt) return 1;
         // Neither has nextRetryAt - sort by createdAt
-        return a.createdAt.localeCompare(b.createdAt);
+        return a.createdAt - b.createdAt;
       });
 
       resolve(ready[0]);
@@ -201,7 +201,7 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
  */
 export async function getNextItemAndLock(tabId: string): Promise<PendingInboxItem | null> {
   const db = await openDatabase();
-  const now = new Date().toISOString();
+  const now = Date.now();
   const staleThreshold = Date.now() - LOCK_STALE_THRESHOLD_MS;
 
   return new Promise((resolve, reject) => {
@@ -224,7 +224,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
           // Fresh locks mean the upload is actively in progress — skip them.
           if (item.uploadingBy === tabId) {
             if (item.uploadingAt) {
-              const lockTime = new Date(item.uploadingAt).getTime();
+              const lockTime = item.uploadingAt;
               if (lockTime >= staleThreshold) {
                 return false; // Lock is fresh, upload is active — skip
               }
@@ -237,7 +237,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
           }
 
           if (item.uploadingAt) {
-            const lockTime = new Date(item.uploadingAt).getTime();
+            const lockTime = item.uploadingAt;
             if (lockTime < staleThreshold) {
               if (!item.nextRetryAt || item.nextRetryAt <= now) {
                 return true;
@@ -246,7 +246,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
           }
 
           if (item.nextRetryAt && item.nextRetryAt <= now) {
-            if (!item.uploadingAt || new Date(item.uploadingAt).getTime() < staleThreshold) {
+            if (!item.uploadingAt || item.uploadingAt < staleThreshold) {
               return true;
             }
           }
@@ -258,11 +258,11 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
       // Sort by priority
       ready.sort((a, b) => {
         if (a.nextRetryAt && b.nextRetryAt) {
-          return a.nextRetryAt.localeCompare(b.nextRetryAt);
+          return a.nextRetryAt - b.nextRetryAt;
         }
         if (!a.nextRetryAt && b.nextRetryAt) return -1;
         if (a.nextRetryAt && !b.nextRetryAt) return 1;
-        return a.createdAt.localeCompare(b.createdAt);
+        return a.createdAt - b.createdAt;
       });
 
       const item = ready[0];
@@ -273,7 +273,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
 
       // Check if already locked by another tab with fresh lock
       if (item.uploadingBy && item.uploadingBy !== tabId && item.uploadingAt) {
-        const lockTime = new Date(item.uploadingAt).getTime();
+        const lockTime = item.uploadingAt;
         if (lockTime >= staleThreshold) {
           // Already locked by another tab, return null
           resolve(null);
@@ -302,7 +302,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
  */
 export async function acquireLock(id: string, tabId: string): Promise<boolean> {
   const db = await openDatabase();
-  const now = new Date().toISOString();
+  const now = Date.now();
   const staleThreshold = Date.now() - LOCK_STALE_THRESHOLD_MS;
 
   return new Promise((resolve, reject) => {
@@ -322,7 +322,7 @@ export async function acquireLock(id: string, tabId: string): Promise<boolean> {
 
       // Check if locked by another tab with a fresh lock
       if (item.uploadingBy && item.uploadingBy !== tabId && item.uploadingAt) {
-        const lockTime = new Date(item.uploadingAt).getTime();
+        const lockTime = item.uploadingAt;
         if (lockTime >= staleThreshold) {
           // Lock is fresh, cannot acquire
           resolve(false);
@@ -350,7 +350,7 @@ export async function acquireLock(id: string, tabId: string): Promise<boolean> {
  */
 export async function updateHeartbeat(id: string, tabId: string): Promise<void> {
   const db = await openDatabase();
-  const now = new Date().toISOString();
+  const now = Date.now();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -418,7 +418,7 @@ export async function updateProgress(
  */
 export async function markUploaded(id: string, serverPath: string): Promise<void> {
   const db = await openDatabase();
-  const now = new Date().toISOString();
+  const now = Date.now();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');

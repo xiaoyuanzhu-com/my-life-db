@@ -14,8 +14,8 @@ export interface SettingRecordRow {
   /** Setting value (stored as string, may be JSON) */
   value: string;
 
-  /** ISO 8601 timestamp when setting was last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when setting was last updated */
+  updated_at: number;
 }
 
 /**
@@ -28,8 +28,8 @@ export interface Setting {
   /** Setting value (stored as string, may be JSON) */
   value: string;
 
-  /** ISO 8601 timestamp when setting was last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when setting was last updated */
+  updatedAt: number;
 }
 
 /**

@@ -415,9 +415,9 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			"id":               entry.SessionID,
 			"title":            entry.DisplayTitle,
 			"workingDir":       entry.ProjectPath,
-			"createdAt":        entry.Created,
-			"lastActivity":     entry.Modified,
-			"lastUserActivity": entry.LastUserActivity,
+			"createdAt":        entry.Created.UnixMilli(),
+			"lastActivity":     entry.Modified.UnixMilli(),
+			"lastUserActivity": entry.LastUserActivity.UnixMilli(),
 			"messageCount":     entry.MessageCount,
 			"isSidechain":      entry.IsSidechain,
 			"sessionState":     sessionState,
@@ -857,7 +857,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				syntheticMsg := map[string]interface{}{
 					"type":      "user",
 					"uuid":      uuid.New().String(),
-					"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+					"timestamp": time.Now().UnixMilli(),
 					"sessionId": sessionID,
 					"message": map[string]interface{}{
 						"role": "user",

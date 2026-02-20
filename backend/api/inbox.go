@@ -25,8 +25,8 @@ type InboxItem struct {
 	Size            *int64      `json:"size,omitempty"`
 	MimeType        *string     `json:"mimeType,omitempty"`
 	Hash            *string     `json:"hash,omitempty"`
-	ModifiedAt      string      `json:"modifiedAt"`
-	CreatedAt       string      `json:"createdAt"`
+	ModifiedAt      int64       `json:"modifiedAt"`
+	CreatedAt       int64       `json:"createdAt"`
 	Digests         []db.Digest `json:"digests"`
 	TextPreview     *string     `json:"textPreview,omitempty"`
 	ScreenshotSqlar *string     `json:"screenshotSqlar,omitempty"`

@@ -13,9 +13,9 @@ type FileRecord struct {
 	Size           *int64     `json:"size,omitempty"`
 	MimeType       *string    `json:"mimeType,omitempty"`
 	Hash           *string    `json:"hash,omitempty"`
-	ModifiedAt     string     `json:"modifiedAt"`
-	CreatedAt      string     `json:"createdAt"`
-	LastScannedAt  string     `json:"lastScannedAt,omitempty"`
+	ModifiedAt     int64      `json:"modifiedAt"`
+	CreatedAt      int64      `json:"createdAt"`
+	LastScannedAt  int64      `json:"lastScannedAt,omitempty"`
 	TextPreview    *string    `json:"textPreview,omitempty"`
 	ScreenshotSqlar *string   `json:"screenshotSqlar,omitempty"`
 }
@@ -30,8 +30,8 @@ type Digest struct {
 	SqlarName *string `json:"sqlarName,omitempty"`
 	Error     *string `json:"error,omitempty"`
 	Attempts  int     `json:"attempts"`
-	CreatedAt string  `json:"createdAt"`
-	UpdatedAt string  `json:"updatedAt"`
+	CreatedAt int64   `json:"createdAt"`
+	UpdatedAt int64   `json:"updatedAt"`
 }
 
 // DigestStatus constants
@@ -46,22 +46,22 @@ const (
 // Pin represents a pinned file
 type Pin struct {
 	Path      string `json:"path"`
-	CreatedAt string `json:"createdAt"`
+	CreatedAt int64  `json:"createdAt"`
 }
 
 // Setting represents a settings record
 type Setting struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
-	UpdatedAt string `json:"updatedAt,omitempty"`
+	UpdatedAt int64  `json:"updatedAt,omitempty"`
 }
 
 // Person represents a person record
 type Person struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	CreatedAt   int64  `json:"createdAt"`
+	UpdatedAt   int64  `json:"updatedAt"`
 }
 
 // PersonCluster represents a face/voice cluster
@@ -71,16 +71,16 @@ type PersonCluster struct {
 	ClusterType string  `json:"clusterType"`
 	Centroid    []byte  `json:"centroid,omitempty"`
 	SampleCount int     `json:"sampleCount"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	CreatedAt   int64   `json:"createdAt"`
+	UpdatedAt   int64   `json:"updatedAt"`
 }
 
 // Session represents an authentication session record
 type Session struct {
 	ID         string `json:"id"`
-	CreatedAt  string `json:"createdAt"`
-	ExpiresAt  string `json:"expiresAt"`
-	LastUsedAt string `json:"lastUsedAt"`
+	CreatedAt  int64  `json:"createdAt"`
+	ExpiresAt  int64  `json:"expiresAt"`
+	LastUsedAt int64  `json:"lastUsedAt"`
 }
 
 // SqlarFile represents a file in the SQLite Archive
@@ -96,12 +96,14 @@ type SqlarFile struct {
 func scanFileRecord(row interface{ Scan(...any) error }) (FileRecord, error) {
 	var f FileRecord
 	var isFolder int
+	var lastScannedAt sql.NullInt64
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType,
-		&f.Hash, &f.ModifiedAt, &f.CreatedAt, &f.LastScannedAt,
+		&f.Hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
 		&f.TextPreview, &f.ScreenshotSqlar,
 	)
 	f.IsFolder = isFolder == 1
+	f.LastScannedAt = lastScannedAt.Int64
 	return f, err
 }
 
@@ -116,8 +118,14 @@ func scanDigest(row interface{ Scan(...any) error }) (Digest, error) {
 }
 
 // NowUTC returns the current time in RFC3339 format
+// Deprecated: Use NowMs() for epoch millisecond timestamps
 func NowUTC() string {
 	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// NowMs returns the current time as Unix milliseconds (int64)
+func NowMs() int64 {
+	return time.Now().UnixMilli()
 }
 
 // NullString converts *string to sql.NullString

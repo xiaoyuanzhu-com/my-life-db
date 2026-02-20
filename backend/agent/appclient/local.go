@@ -82,7 +82,7 @@ func (c *LocalAppClient) Search(ctx context.Context, req agent.SearchRequest) (*
 	var results []agent.SearchResultItem
 	for rows.Next() {
 		var item agent.SearchResultItem
-		var createdAt string
+		var createdAt int64
 		err := rows.Scan(&item.Path, &item.Name, &item.MimeType, &createdAt)
 		if err != nil {
 			continue
@@ -104,16 +104,13 @@ func (c *LocalAppClient) GetFile(ctx context.Context, path string) (*agent.FileW
 	row := c.database.QueryRow(query, path)
 
 	var file agent.FileWithDigests
-	var createdAtStr string
-	err := row.Scan(&file.Path, &file.Name, &file.MimeType, &file.Size, &createdAtStr)
+	err := row.Scan(&file.Path, &file.Name, &file.MimeType, &file.Size, &file.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("file not found: %s", path)
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	file.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 
 	// Get digests
 	digestQuery := `SELECT digester, status, content, error FROM digests WHERE file_path = ?`
@@ -179,12 +176,10 @@ func (c *LocalAppClient) ListRecentFiles(ctx context.Context, limit int, mimeTyp
 	var files []agent.FileSummary
 	for rows.Next() {
 		var f agent.FileSummary
-		var createdAtStr string
-		err := rows.Scan(&f.Path, &f.Name, &f.MimeType, &f.Size, &createdAtStr)
+		err := rows.Scan(&f.Path, &f.Name, &f.MimeType, &f.Size, &f.CreatedAt)
 		if err != nil {
 			continue
 		}
-		f.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		files = append(files, f)
 	}
 
@@ -288,8 +283,8 @@ func (c *LocalAppClient) SaveFileIntention(ctx context.Context, intention *agent
 		intention.ID = uuid.New().String()
 	}
 
-	now := time.Now().UTC()
-	if intention.CreatedAt.IsZero() {
+	now := time.Now().UnixMilli()
+	if intention.CreatedAt == 0 {
 		intention.CreatedAt = now
 	}
 	intention.UpdatedAt = now
@@ -316,8 +311,8 @@ func (c *LocalAppClient) SaveFileIntention(ctx context.Context, intention *agent
 		intention.Confidence,
 		intention.SuggestedFolder,
 		intention.Reasoning,
-		intention.CreatedAt.Format(time.RFC3339),
-		intention.UpdatedAt.Format(time.RFC3339),
+		intention.CreatedAt,
+		intention.UpdatedAt,
 	)
 
 	return err
@@ -334,7 +329,6 @@ func (c *LocalAppClient) GetFileIntention(ctx context.Context, filePath string) 
 	row := c.database.QueryRow(query, filePath)
 
 	var intention agent.FileIntention
-	var createdAtStr, updatedAtStr string
 	var conversationID, intentionDetails, suggestedFolder, reasoning sql.NullString
 
 	err := row.Scan(
@@ -346,8 +340,8 @@ func (c *LocalAppClient) GetFileIntention(ctx context.Context, filePath string) 
 		&intention.Confidence,
 		&suggestedFolder,
 		&reasoning,
-		&createdAtStr,
-		&updatedAtStr,
+		&intention.CreatedAt,
+		&intention.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -370,9 +364,6 @@ func (c *LocalAppClient) GetFileIntention(ctx context.Context, filePath string) 
 		intention.Reasoning = reasoning.String
 	}
 
-	intention.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-	intention.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-
 	return &intention, nil
 }
 
@@ -382,8 +373,8 @@ func (c *LocalAppClient) CreateSuggestion(ctx context.Context, s *agent.Suggesti
 		s.ID = uuid.New().String()
 	}
 
-	now := time.Now().UTC()
-	if s.CreatedAt.IsZero() {
+	now := time.Now().UnixMilli()
+	if s.CreatedAt == 0 {
 		s.CreatedAt = now
 	}
 
@@ -400,7 +391,7 @@ func (c *LocalAppClient) CreateSuggestion(ctx context.Context, s *agent.Suggesti
 		s.Reasoning,
 		s.Confidence,
 		"pending",
-		s.CreatedAt.Format(time.RFC3339),
+		s.CreatedAt,
 	)
 
 	if err != nil {
@@ -423,8 +414,7 @@ func (c *LocalAppClient) GetPendingSuggestion(ctx context.Context, convID string
 	row := c.database.QueryRow(query, convID)
 
 	var s agent.Suggestion
-	var createdAtStr string
-	var resolvedAtStr sql.NullString
+	var resolvedAt sql.NullInt64
 
 	err := row.Scan(
 		&s.ID,
@@ -434,8 +424,8 @@ func (c *LocalAppClient) GetPendingSuggestion(ctx context.Context, convID string
 		&s.Reasoning,
 		&s.Confidence,
 		&s.Status,
-		&createdAtStr,
-		&resolvedAtStr,
+		&s.CreatedAt,
+		&resolvedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -445,10 +435,8 @@ func (c *LocalAppClient) GetPendingSuggestion(ctx context.Context, convID string
 		return nil, err
 	}
 
-	s.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-	if resolvedAtStr.Valid {
-		t, _ := time.Parse(time.RFC3339, resolvedAtStr.String)
-		s.ResolvedAt = &t
+	if resolvedAt.Valid {
+		s.ResolvedAt = &resolvedAt.Int64
 	}
 
 	return &s, nil
@@ -474,7 +462,7 @@ func (c *LocalAppClient) ResolveSuggestion(ctx context.Context, suggestionID, ac
 	}
 
 	// Update status
-	now := time.Now().UTC()
+	now := time.Now().UnixMilli()
 	updateQuery := `UPDATE organization_suggestions SET status = ?, resolved_at = ? WHERE id = ?`
 
 	if action == "accept" {
@@ -485,9 +473,9 @@ func (c *LocalAppClient) ResolveSuggestion(ctx context.Context, suggestionID, ac
 			return err
 		}
 
-		_, err = c.database.Exec(updateQuery, "accepted", now.Format(time.RFC3339), suggestionID)
+		_, err = c.database.Exec(updateQuery, "accepted", now, suggestionID)
 	} else {
-		_, err = c.database.Exec(updateQuery, "rejected", now.Format(time.RFC3339), suggestionID)
+		_, err = c.database.Exec(updateQuery, "rejected", now, suggestionID)
 	}
 
 	return err
@@ -510,8 +498,8 @@ func (c *LocalAppClient) SaveConversation(ctx context.Context, conv *agent.Conve
 
 	_, err := c.database.Exec(query,
 		conv.ID,
-		conv.CreatedAt.Format(time.RFC3339),
-		conv.UpdatedAt.Format(time.RFC3339),
+		conv.CreatedAt,
+		conv.UpdatedAt,
 		conv.Status,
 		conv.Summary,
 	)
@@ -546,7 +534,7 @@ func (c *LocalAppClient) SaveMessage(ctx context.Context, msg *agent.Message) er
 		msg.Role,
 		msg.Content,
 		metadata,
-		msg.CreatedAt.Format(time.RFC3339),
+		msg.CreatedAt,
 	)
 
 	return err
@@ -559,10 +547,9 @@ func (c *LocalAppClient) GetConversation(ctx context.Context, convID string) (*a
 	row := c.database.QueryRow(query, convID)
 
 	var conv agent.Conversation
-	var createdAtStr, updatedAtStr string
 	var summary sql.NullString
 
-	err := row.Scan(&conv.ID, &createdAtStr, &updatedAtStr, &conv.Status, &summary)
+	err := row.Scan(&conv.ID, &conv.CreatedAt, &conv.UpdatedAt, &conv.Status, &summary)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -570,8 +557,6 @@ func (c *LocalAppClient) GetConversation(ctx context.Context, convID string) (*a
 		return nil, err
 	}
 
-	conv.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-	conv.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
 	if summary.Valid {
 		conv.Summary = summary.String
 	}
@@ -586,15 +571,12 @@ func (c *LocalAppClient) GetConversation(ctx context.Context, convID string) (*a
 
 	for rows.Next() {
 		var msg agent.Message
-		var createdAtStr string
 		var metadata sql.NullString
 
-		err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &metadata, &createdAtStr)
+		err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &metadata, &msg.CreatedAt)
 		if err != nil {
 			continue
 		}
-
-		msg.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 
 		// Deserialize metadata
 		if metadata.Valid && metadata.String != "" {

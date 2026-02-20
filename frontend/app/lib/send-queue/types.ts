@@ -16,8 +16,8 @@ export interface PendingInboxItem {
   // Identity
   /** UUID (client-generated, also used as idempotency key) */
   id: string;
-  /** ISO timestamp, used for ordering */
-  createdAt: string;
+  /** Epoch ms timestamp, used for ordering */
+  createdAt: number;
 
   // Content - each item is ONE file (text or binary)
   /** Generated name (text) or original name (file) */
@@ -42,16 +42,16 @@ export interface PendingInboxItem {
   // Retry metadata
   /** Number of retry attempts */
   retryCount: number;
-  /** ISO timestamp for next retry */
-  nextRetryAt?: string;
-  /** ISO timestamp of last attempt */
-  lastAttemptAt?: string;
+  /** Epoch ms timestamp for next retry */
+  nextRetryAt?: number;
+  /** Epoch ms timestamp of last attempt */
+  lastAttemptAt?: number;
 
   // Multi-tab lock (heartbeat-based)
   /** Tab ID currently uploading */
   uploadingBy?: string;
-  /** Lock timestamp (updated every 1min by uploading tab) */
-  uploadingAt?: string;
+  /** Lock timestamp in epoch ms (updated every 1min by uploading tab) */
+  uploadingAt?: number;
 
   // TUS resumable upload tracking
   /** TUS upload URL for resume */
@@ -62,8 +62,8 @@ export interface PendingInboxItem {
   // Server reference (once uploaded)
   /** Server path (e.g., 'inbox/photo.jpg') */
   serverPath?: string;
-  /** ISO timestamp when uploaded */
-  uploadedAt?: string;
+  /** Epoch ms timestamp when uploaded */
+  uploadedAt?: number;
 }
 
 /**

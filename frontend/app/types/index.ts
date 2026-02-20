@@ -61,14 +61,14 @@ export interface EntryMetadata {
   type: MessageTypeModel; // Type of message
   slug: string | null; // URL-safe slug from AI-generated title, initially null
   title: string | null; // AI-generated title, initially null
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
+  createdAt: number;
+  updatedAt: number;
   tags: string[]; // User or AI-generated tags
 
   // AI-enriched data (populated async during insights/review)
   ai: {
     enriched: boolean;
-    enrichedAt: string | null; // ISO date string
+    enrichedAt: number | null;
     title: string | null; // AI-generated title suggestion
     tags: string[]; // AI-generated tags
     summary: string | null; // Brief AI summary
@@ -125,7 +125,7 @@ export interface Entry {
 export interface DirectoryMetadata {
   name: string;
   description?: string;
-  createdAt: string;
+  createdAt: number;
   color?: string;
   icon?: string;
 }
@@ -232,7 +232,7 @@ export interface DigestStageStatusSummary {
   digester: string;
   status: 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
   error: string | null;
-  updatedAt: string | null;
+  updatedAt: number | null;
 }
 
 // Digest status summary for a file

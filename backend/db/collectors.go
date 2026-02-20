@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
 )
@@ -40,6 +41,8 @@ func UpsertCollector(id string, req *models.UpdateCollectorRequest) (*models.Col
 		configStr = sql.NullString{String: string(*req.Config), Valid: true}
 	}
 
+	now := time.Now().UnixMilli()
+
 	if req.Enabled != nil && req.Config != nil {
 		enabled := 0
 		if *req.Enabled {
@@ -47,12 +50,12 @@ func UpsertCollector(id string, req *models.UpdateCollectorRequest) (*models.Col
 		}
 		_, err := GetDB().Exec(`
 			INSERT INTO collectors (id, enabled, config, updated_at)
-			VALUES (?, ?, ?, datetime('now'))
+			VALUES (?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				enabled = excluded.enabled,
 				config = excluded.config,
-				updated_at = datetime('now')
-		`, id, enabled, configStr)
+				updated_at = ?
+		`, id, enabled, configStr, now, now)
 		if err != nil {
 			return nil, err
 		}
@@ -63,22 +66,22 @@ func UpsertCollector(id string, req *models.UpdateCollectorRequest) (*models.Col
 		}
 		_, err := GetDB().Exec(`
 			INSERT INTO collectors (id, enabled, updated_at)
-			VALUES (?, ?, datetime('now'))
+			VALUES (?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				enabled = excluded.enabled,
-				updated_at = datetime('now')
-		`, id, enabled)
+				updated_at = ?
+		`, id, enabled, now, now)
 		if err != nil {
 			return nil, err
 		}
 	} else if req.Config != nil {
 		_, err := GetDB().Exec(`
 			INSERT INTO collectors (id, config, updated_at)
-			VALUES (?, ?, datetime('now'))
+			VALUES (?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				config = excluded.config,
-				updated_at = datetime('now')
-		`, id, configStr)
+				updated_at = ?
+		`, id, configStr, now, now)
 		if err != nil {
 			return nil, err
 		}

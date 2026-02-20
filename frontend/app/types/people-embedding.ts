@@ -61,8 +61,8 @@ export interface PeopleEmbeddingRow {
   /** If TRUE, skip in auto-clustering */
   manual_assignment: number;
 
-  /** ISO 8601 timestamp when created */
-  created_at: string;
+  /** Epoch ms timestamp when created */
+  created_at: number;
 }
 
 /**
@@ -93,8 +93,8 @@ export interface PeopleEmbedding {
   /** If true, skip in auto-clustering */
   manualAssignment: boolean;
 
-  /** ISO 8601 timestamp when created */
-  createdAt: string;
+  /** Epoch ms timestamp when created */
+  createdAt: number;
 }
 
 /**

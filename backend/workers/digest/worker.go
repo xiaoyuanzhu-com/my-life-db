@@ -151,7 +151,7 @@ func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSki
 	}
 
 	// Mark orphaned digesters as skipped
-	now := db.NowUTC()
+	now := db.NowMs()
 	for _, digest := range existing {
 		if !validTypes[digest.Digester] && (digest.Status == "todo" || digest.Status == "failed") {
 			db.UpdateDigestMap(digest.ID, map[string]interface{}{
@@ -445,7 +445,7 @@ func (w *Worker) notifyPreviewReady(filePath string, digester string) {
 
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
 	id := getOrCreateDigestID(filePath, digester)
-	now := db.NowUTC()
+	now := db.NowMs()
 
 	var errPtr *string
 	if errorMsg != "" {
@@ -461,7 +461,7 @@ func markDigest(filePath, digester string, status DigestStatus, errorMsg string)
 
 func markDigestInProgress(filePath, digester string) {
 	id := getOrCreateDigestID(filePath, digester)
-	now := db.NowUTC()
+	now := db.NowMs()
 
 	existing, _ := db.GetDigestByID(id)
 	attempts := 0
@@ -564,7 +564,7 @@ func triggerCascadingResets(filePath, digesterName string) {
 			Strs("targets", resetTargets).
 			Msg("triggering cascading resets")
 
-		now := db.NowUTC()
+		now := db.NowMs()
 		for _, target := range resetTargets {
 			digest := digestsByName[target]
 			db.UpdateDigestMap(digest.ID, map[string]interface{}{
@@ -585,7 +585,7 @@ func getOrCreateDigestID(filePath, digester string) string {
 	}
 
 	id := uuid.New().String()
-	now := db.NowUTC()
+	now := db.NowMs()
 
 	db.CreateDigest(&db.Digest{
 		ID:        id,

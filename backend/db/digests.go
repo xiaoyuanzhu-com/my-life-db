@@ -111,11 +111,11 @@ func CreateDigest(d *Digest) error {
 	if d.ID == "" {
 		d.ID = uuid.New().String()
 	}
-	now := NowUTC()
-	if d.CreatedAt == "" {
+	now := NowMs()
+	if d.CreatedAt == 0 {
 		d.CreatedAt = now
 	}
-	if d.UpdatedAt == "" {
+	if d.UpdatedAt == 0 {
 		d.UpdatedAt = now
 	}
 
@@ -133,7 +133,7 @@ func CreateDigest(d *Digest) error {
 
 // UpdateDigest updates an existing digest
 func UpdateDigest(d *Digest) error {
-	d.UpdatedAt = NowUTC()
+	d.UpdatedAt = NowMs()
 
 	query := `
 		UPDATE digests
@@ -149,7 +149,7 @@ func UpdateDigest(d *Digest) error {
 
 // UpsertDigest creates or updates a digest
 func UpsertDigest(d *Digest) error {
-	now := NowUTC()
+	now := NowMs()
 	if d.ID == "" {
 		d.ID = GeneratePathHash(d.FilePath) + "-" + d.Digester
 	}
@@ -192,7 +192,7 @@ func ResetDigesterAll(digester string) (int64, error) {
 		UPDATE digests
 		SET status = 'todo', error = NULL, attempts = 0, updated_at = ?
 		WHERE digester = ?
-	`, NowUTC(), digester)
+	`, NowMs(), digester)
 	if err != nil {
 		return 0, err
 	}
@@ -369,7 +369,7 @@ func UpdateDigestMap(id string, fields map[string]interface{}) error {
 	if attempts, ok := fields["attempts"].(int); ok {
 		d.Attempts = attempts
 	}
-	if updatedAt, ok := fields["updated_at"].(string); ok {
+	if updatedAt, ok := fields["updated_at"].(int64); ok {
 		d.UpdatedAt = updatedAt
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -553,7 +554,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	var nextCursor string
 	if hasMore && len(result) > 0 {
 		last := result[len(result)-1]
-		nextCursor = fmt.Sprintf("%s_%s", last.LastUserActivity.Format(time.RFC3339Nano), last.SessionID)
+		nextCursor = fmt.Sprintf("%d_%s", last.LastUserActivity.UnixMilli(), last.SessionID)
 	}
 
 	return &SessionPaginationResult{
@@ -599,13 +600,18 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 		return 0
 	}
 
-	cursorTime, err := time.Parse(time.RFC3339Nano, parts[0])
+	cursorMs, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		cursorTime, err = time.Parse(time.RFC3339, parts[0])
-		if err != nil {
+		// Legacy: try parsing RFC3339
+		if t, parseErr := time.Parse(time.RFC3339Nano, parts[0]); parseErr == nil {
+			cursorMs = t.UnixMilli()
+		} else if t, parseErr := time.Parse(time.RFC3339, parts[0]); parseErr == nil {
+			cursorMs = t.UnixMilli()
+		} else {
 			return 0
 		}
 	}
+	cursorTime := time.UnixMilli(cursorMs)
 	cursorSessionID := parts[1]
 
 	for i, entry := range entries {

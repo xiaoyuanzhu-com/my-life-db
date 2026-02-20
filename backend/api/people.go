@@ -14,8 +14,8 @@ import (
 type PersonResponse struct {
 	ID          string             `json:"id"`
 	DisplayName string             `json:"displayName"`
-	CreatedAt   string             `json:"createdAt"`
-	UpdatedAt   string             `json:"updatedAt"`
+	CreatedAt   int64              `json:"createdAt"`
+	UpdatedAt   int64              `json:"updatedAt"`
 	Clusters    []db.PersonCluster `json:"clusters,omitempty"`
 }
 
@@ -64,7 +64,7 @@ func (h *Handlers) CreatePerson(c *gin.Context) {
 		return
 	}
 
-	now := db.NowUTC()
+	now := db.NowMs()
 	person := PersonResponse{
 		ID:          uuid.New().String(),
 		DisplayName: body.DisplayName,
@@ -148,7 +148,7 @@ func (h *Handlers) UpdatePerson(c *gin.Context) {
 
 	result, err := db.GetDB().Exec(`
 		UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?
-	`, body.DisplayName, db.NowUTC(), id)
+	`, body.DisplayName, db.NowMs(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update person"})
 		return
@@ -240,7 +240,7 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 	_, err := db.GetDB().Exec(`
 		UPDATE people_clusters SET people_id = ?, updated_at = ?
 		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
-	`, body.PersonID, db.NowUTC(), embeddingID)
+	`, body.PersonID, db.NowMs(), embeddingID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign embedding"})
 		return
@@ -256,7 +256,7 @@ func (h *Handlers) UnassignEmbedding(c *gin.Context) {
 	_, err := db.GetDB().Exec(`
 		UPDATE people_clusters SET people_id = NULL, updated_at = ?
 		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
-	`, db.NowUTC(), embeddingID)
+	`, db.NowMs(), embeddingID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign embedding"})
 		return

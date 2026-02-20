@@ -13,8 +13,8 @@ const (
 // CreateSession creates a new session in the database
 func CreateSession(id string) (*Session, error) {
 	db := GetDB()
-	now := NowUTC()
-	expiresAt := time.Now().UTC().Add(SessionDuration).Format(time.RFC3339)
+	now := NowMs()
+	expiresAt := time.Now().Add(SessionDuration).UnixMilli()
 
 	_, err := db.Exec(`
 		INSERT INTO sessions (id, created_at, expires_at, last_used_at)
@@ -41,7 +41,7 @@ func GetSession(id string) (*Session, error) {
 		SELECT id, created_at, expires_at, last_used_at
 		FROM sessions
 		WHERE id = ? AND expires_at > ?
-	`, id, NowUTC()).Scan(&s.ID, &s.CreatedAt, &s.ExpiresAt, &s.LastUsedAt)
+	`, id, NowMs()).Scan(&s.ID, &s.CreatedAt, &s.ExpiresAt, &s.LastUsedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -61,7 +61,7 @@ func TouchSession(id string) error {
 		UPDATE sessions
 		SET last_used_at = ?
 		WHERE id = ?
-	`, NowUTC(), id)
+	`, NowMs(), id)
 
 	return err
 }
@@ -78,7 +78,7 @@ func DeleteSession(id string) error {
 func DeleteExpiredSessions() (int64, error) {
 	db := GetDB()
 
-	result, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, NowUTC())
+	result, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, NowMs())
 	if err != nil {
 		return 0, err
 	}
@@ -89,13 +89,13 @@ func DeleteExpiredSessions() (int64, error) {
 // ExtendSession extends the expiration time of a session
 func ExtendSession(id string) error {
 	db := GetDB()
-	expiresAt := time.Now().UTC().Add(SessionDuration).Format(time.RFC3339)
+	expiresAt := time.Now().Add(SessionDuration).UnixMilli()
 
 	_, err := db.Exec(`
 		UPDATE sessions
 		SET expires_at = ?, last_used_at = ?
 		WHERE id = ?
-	`, expiresAt, NowUTC(), id)
+	`, expiresAt, NowMs(), id)
 
 	return err
 }

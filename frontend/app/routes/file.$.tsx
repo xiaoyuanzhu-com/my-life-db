@@ -32,8 +32,8 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleString();
+function formatDate(timestamp: number | string): string {
+  return new Date(timestamp).toLocaleString();
 }
 
 function getStatusIcon(status: string) {

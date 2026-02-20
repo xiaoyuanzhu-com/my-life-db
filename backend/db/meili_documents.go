@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -20,16 +19,16 @@ type MeiliDocument struct {
 	MetadataJSON   *string
 	MeiliStatus    string
 	MeiliTaskID    *string
-	MeiliIndexedAt *string
+	MeiliIndexedAt *int64
 	MeiliError     *string
-	CreatedAt      string
-	UpdatedAt      string
+	CreatedAt      int64
+	UpdatedAt      int64
 }
 
 // UpsertMeiliDocument creates or updates a meili document
 func UpsertMeiliDocument(doc *MeiliDocument) error {
 	db := GetDB()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := NowMs()
 
 	// Check if document exists for this file path
 	var existing MeiliDocument
@@ -162,9 +161,9 @@ func ListMeiliDocumentsByStatus(status string, limit int) ([]MeiliDocument, erro
 // UpdateMeiliStatus updates the meilisearch status of a document
 func UpdateMeiliStatus(documentID, status string, taskID *string, errorMsg *string) error {
 	db := GetDB()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := NowMs()
 
-	var indexedAt *string
+	var indexedAt *int64
 	if status == "indexed" {
 		indexedAt = &now
 	}

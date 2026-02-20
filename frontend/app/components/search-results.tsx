@@ -11,7 +11,7 @@ interface SearchResultsProps {
   isSemanticSearching: boolean;
   keywordError: string | null;
   semanticError: string | null;
-  onLocateInFeed?: (path: string, createdAt: string) => void;
+  onLocateInFeed?: (path: string, createdAt: number) => void;
 }
 
 const SEARCH_BATCH_SIZE = 30;
@@ -157,7 +157,7 @@ export function SearchResults({
   const orderedResults = useMemo(() => {
     return mergedResults
       .slice()
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      .sort((a, b) => a.createdAt - b.createdAt);
   }, [mergedResults]);
 
   const hasResults = orderedResults.length > 0;

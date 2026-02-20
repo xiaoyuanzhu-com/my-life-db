@@ -32,11 +32,11 @@ export interface PeopleClusterRow {
   /** Number of embeddings in this cluster */
   sample_count: number;
 
-  /** ISO 8601 timestamp when created */
-  created_at: string;
+  /** Epoch ms timestamp when created */
+  created_at: number;
 
-  /** ISO 8601 timestamp when last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when last updated */
+  updated_at: number;
 }
 
 /**
@@ -58,11 +58,11 @@ export interface PeopleCluster {
   /** Number of embeddings in this cluster */
   sampleCount: number;
 
-  /** ISO 8601 timestamp when created */
-  createdAt: string;
+  /** Epoch ms timestamp when created */
+  createdAt: number;
 
-  /** ISO 8601 timestamp when last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when last updated */
+  updatedAt: number;
 }
 
 /**

@@ -22,8 +22,8 @@ import (
 
 // Helper functions
 
-func nowUTC() string {
-	return time.Now().UTC().Format(time.RFC3339)
+func nowUTC() int64 {
+	return time.Now().UnixMilli()
 }
 
 // resolveFilePath converts a relative file path to absolute by joining with DataDir

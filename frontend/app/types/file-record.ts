@@ -29,14 +29,14 @@ export interface FileRecordRow {
   /** SHA256 hash for files <10MB (null for large files and folders) */
   hash: string | null;
 
-  /** ISO 8601 timestamp from file system mtime */
-  modified_at: string;
+  /** Epoch ms timestamp from file system mtime */
+  modified_at: number;
 
-  /** ISO 8601 timestamp when first indexed */
-  created_at: string;
+  /** Epoch ms timestamp when first indexed */
+  created_at: number;
 
-  /** ISO 8601 timestamp of last scan */
-  last_scanned_at: string;
+  /** Epoch ms timestamp of last scan */
+  last_scanned_at: number;
 
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   text_preview: string | null;
@@ -69,14 +69,14 @@ export interface FileRecord {
   /** SHA256 hash for files <10MB (null for large files and folders) */
   hash: string | null;
 
-  /** ISO 8601 timestamp from file system mtime */
-  modifiedAt: string;
+  /** Epoch ms timestamp from file system mtime */
+  modifiedAt: number;
 
-  /** ISO 8601 timestamp when first indexed */
-  createdAt: string;
+  /** Epoch ms timestamp when first indexed */
+  createdAt: number;
 
-  /** ISO 8601 timestamp of last scan */
-  lastScannedAt: string;
+  /** Epoch ms timestamp of last scan */
+  lastScannedAt: number;
 
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   textPreview: string | null;

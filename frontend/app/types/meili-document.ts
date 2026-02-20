@@ -48,17 +48,17 @@ export interface MeiliDocumentRow {
   /** Meilisearch task ID */
   meili_task_id: string | null;
 
-  /** ISO timestamp when indexed */
-  meili_indexed_at: string | null;
+  /** Epoch ms timestamp when indexed */
+  meili_indexed_at: number | null;
 
   /** Error message if failed */
   meili_error: string | null;
 
-  /** ISO timestamp when document was created */
-  created_at: string;
+  /** Epoch ms timestamp when document was created */
+  created_at: number;
 
-  /** ISO timestamp when document was last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when document was last updated */
+  updated_at: number;
 }
 
 /**
@@ -98,17 +98,17 @@ export interface MeiliDocument {
   /** Meilisearch task ID */
   meiliTaskId: string | null;
 
-  /** ISO timestamp when indexed */
-  meiliIndexedAt: string | null;
+  /** Epoch ms timestamp when indexed */
+  meiliIndexedAt: number | null;
 
   /** Error message if failed */
   meiliError: string | null;
 
-  /** ISO timestamp when document was created */
-  createdAt: string;
+  /** Epoch ms timestamp when document was created */
+  createdAt: number;
 
-  /** ISO timestamp when document was last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when document was last updated */
+  updatedAt: number;
 }
 
 /**

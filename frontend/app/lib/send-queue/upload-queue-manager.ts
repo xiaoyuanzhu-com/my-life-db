@@ -235,7 +235,7 @@ export class UploadQueueManager {
    */
   async enqueueText(text: string, destination?: string): Promise<PendingInboxItem> {
     const id = generateUUID();
-    const now = new Date().toISOString();
+    const now = Date.now();
 
     // Generate filename
     const generatedName = generateTextFilename(text);
@@ -272,7 +272,7 @@ export class UploadQueueManager {
    */
   async enqueueFile(file: File, usedNames?: Set<string>, destination?: string): Promise<PendingInboxItem> {
     const id = generateUUID();
-    const now = new Date().toISOString();
+    const now = Date.now();
 
     // Deduplicate filename if needed
     let filename = file.name;
@@ -342,7 +342,7 @@ export class UploadQueueManager {
 
     for (const { file, destination } of files) {
       const id = generateUUID();
-      const now = new Date().toISOString();
+      const now = Date.now();
 
       let filename = file.name;
       // Deduplicate within the batch
@@ -519,7 +519,7 @@ export class UploadQueueManager {
         ...item,
         status: 'uploading',
         uploadProgress: item.tusUploadOffset ? Math.floor((item.tusUploadOffset / item.size) * 100) : 0,
-        lastAttemptAt: new Date().toISOString(),
+        lastAttemptAt: Date.now(),
         errorMessage: undefined,
         nextRetryAt: undefined,
       };
@@ -753,7 +753,7 @@ export class UploadQueueManager {
   private async scheduleRetry(item: PendingInboxItem, errorMessage: string): Promise<void> {
     const retryCount = item.retryCount + 1;
     const delayMs = getRetryDelay(retryCount);
-    const nextRetryAt = new Date(Date.now() + delayMs).toISOString();
+    const nextRetryAt = Date.now() + delayMs;
 
     const updatedItem: PendingInboxItem = {
       ...item,

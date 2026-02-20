@@ -24,7 +24,7 @@ func (h *Handlers) NotificationStream(c *gin.Context) {
 	// Send initial connected event
 	sendSSEEventGin(c, notifications.Event{
 		Type:      notifications.EventConnected,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 	})
 	c.Writer.Flush()
 

@@ -69,17 +69,17 @@ export interface QdrantDocumentRow {
   /** UUID in Qdrant collection */
   qdrant_point_id: string | null;
 
-  /** ISO timestamp when indexed */
-  qdrant_indexed_at: string | null;
+  /** Epoch ms timestamp when indexed */
+  qdrant_indexed_at: number | null;
 
   /** Error message if failed */
   qdrant_error: string | null;
 
-  /** ISO timestamp when document was created */
-  created_at: string;
+  /** Epoch ms timestamp when document was created */
+  created_at: number;
 
-  /** ISO timestamp when document was last updated */
-  updated_at: string;
+  /** Epoch ms timestamp when document was last updated */
+  updated_at: number;
 }
 
 /**
@@ -134,17 +134,17 @@ export interface QdrantDocument {
   /** UUID in Qdrant collection */
   qdrantPointId: string | null;
 
-  /** ISO timestamp when indexed */
-  qdrantIndexedAt: string | null;
+  /** Epoch ms timestamp when indexed */
+  qdrantIndexedAt: number | null;
 
   /** Error message if failed */
   qdrantError: string | null;
 
-  /** ISO timestamp when document was created */
-  createdAt: string;
+  /** Epoch ms timestamp when document was created */
+  createdAt: number;
 
-  /** ISO timestamp when document was last updated */
-  updatedAt: string;
+  /** Epoch ms timestamp when document was last updated */
+  updatedAt: number;
 }
 
 /**

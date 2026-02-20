@@ -21,7 +21,7 @@ const (
 // Event represents a notification event
 type Event struct {
 	Type      EventType `json:"type"`
-	Timestamp string    `json:"timestamp"`
+	Timestamp int64     `json:"timestamp"`
 	Path      string    `json:"path,omitempty"`
 	Data      any       `json:"data,omitempty"`
 }
@@ -66,8 +66,8 @@ func (s *Service) Subscribe() (<-chan Event, func()) {
 
 // Notify broadcasts an event to all subscribers
 func (s *Service) Notify(event Event) {
-	if event.Timestamp == "" {
-		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	if event.Timestamp == 0 {
+		event.Timestamp = time.Now().UnixMilli()
 	}
 
 	s.mu.RLock()
@@ -86,7 +86,7 @@ func (s *Service) Notify(event Event) {
 func (s *Service) NotifyInboxChanged() {
 	s.Notify(Event{
 		Type:      EventInboxChanged,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 	})
 }
 
@@ -95,7 +95,7 @@ func (s *Service) NotifyInboxChanged() {
 func (s *Service) NotifyLibraryChanged(path string, operation string) {
 	s.Notify(Event{
 		Type:      EventLibraryChanged,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 		Path:      path,
 		Data: map[string]interface{}{
 			"operation": operation,
@@ -107,7 +107,7 @@ func (s *Service) NotifyLibraryChanged(path string, operation string) {
 func (s *Service) NotifyPinChanged(path string) {
 	s.Notify(Event{
 		Type:      EventPinChanged,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 		Path:      path,
 	})
 }
@@ -116,7 +116,7 @@ func (s *Service) NotifyPinChanged(path string) {
 func (s *Service) NotifyDigestUpdate(path string, data any) {
 	s.Notify(Event{
 		Type:      EventDigestUpdate,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 		Path:      path,
 		Data:      data,
 	})
@@ -127,7 +127,7 @@ func (s *Service) NotifyDigestUpdate(path string, data any) {
 func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
 	s.Notify(Event{
 		Type:      EventPreviewUpdated,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 		Path:      path,
 		Data: map[string]interface{}{
 			"previewType": previewType,
@@ -140,7 +140,7 @@ func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
 func (s *Service) NotifyClaudeSessionUpdated(sessionID string, operation string) {
 	s.Notify(Event{
 		Type:      EventClaudeSessionUpdated,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UnixMilli(),
 		Data: map[string]interface{}{
 			"sessionId": sessionID,
 			"operation": operation,

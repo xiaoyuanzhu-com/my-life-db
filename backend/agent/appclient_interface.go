@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"time"
 )
 
 // AppClient defines how the agent interacts with MyLifeDB
@@ -97,7 +96,7 @@ type FileWithDigests struct {
 	Name      string                   `json:"name"`
 	MimeType  string                   `json:"mime_type"`
 	Size      int64                    `json:"size"`
-	CreatedAt time.Time                `json:"created_at"`
+	CreatedAt int64                     `json:"created_at"`
 	Digests   map[string]DigestContent `json:"digests"` // key = digester name
 }
 
@@ -114,7 +113,7 @@ type FileSummary struct {
 	Name      string    `json:"name"`
 	MimeType  string    `json:"mime_type"`
 	Size      int64     `json:"size"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt int64 `json:"created_at"`
 }
 
 // FolderNode represents a folder tree node

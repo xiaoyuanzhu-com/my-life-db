@@ -162,8 +162,8 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 				FilePath:  path,
 				Digester:  digester,
 				Status:    db.DigestStatusTodo,
-				CreatedAt: db.NowUTC(),
-				UpdatedAt: db.NowUTC(),
+				CreatedAt: db.NowMs(),
+				UpdatedAt: db.NowMs(),
 			}
 			if err := db.CreateDigest(digest); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create digest"})

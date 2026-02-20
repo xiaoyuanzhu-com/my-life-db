@@ -20,10 +20,8 @@ const SPINNER_DELAY_MS = 3000;
 /**
  * Format time until next retry in human-readable format
  */
-function formatRetryTime(nextRetryAt: string): string {
-  const now = Date.now();
-  const retryTime = new Date(nextRetryAt).getTime();
-  const diffMs = Math.max(0, retryTime - now);
+function formatRetryTime(nextRetryAtMs: number): string {
+  const diffMs = Math.max(0, nextRetryAtMs - Date.now());
 
   const seconds = Math.ceil(diffMs / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -69,13 +67,13 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
 
   // Determine status display
   const hasError = !!item.errorMessage && item.nextRetryAt;
-  const ageMs = Date.now() - new Date(item.createdAt).getTime();
+  const ageMs = Date.now() - item.createdAt;
   const showSpinner = ageMs >= SPINNER_DELAY_MS;
 
   // Render status indicator
   const renderStatusIndicator = () => {
     if (hasError && item.nextRetryAt) {
-      const retryTimeMs = new Date(item.nextRetryAt).getTime() - Date.now();
+      const retryTimeMs = item.nextRetryAt - Date.now();
       if (retryTimeMs <= 0) {
         return <Spinner className="h-3 w-3" />;
       }
@@ -96,7 +94,7 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
     <div className="w-full flex flex-col items-end">
       {/* Custom timestamp row with status and cancel button */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 mr-5 select-none">
-        <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
+        <span>{formatDistanceToNow(item.createdAt, { addSuffix: true })}</span>
         {renderStatusIndicator()}
         <button
           onClick={handleCancel}

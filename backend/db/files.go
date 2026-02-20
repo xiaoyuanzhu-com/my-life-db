@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // GetFileByPath retrieves a file record by path
@@ -23,7 +25,8 @@ func GetFileByPath(path string) (*FileRecord, error) {
 	var f FileRecord
 	var isFolder int
 	var size sql.NullInt64
-	var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+	var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+	var lastScannedAt sql.NullInt64
 
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -43,7 +46,7 @@ func GetFileByPath(path string) (*FileRecord, error) {
 	f.MimeType = StringPtr(mimeType)
 	f.TextPreview = StringPtr(textPreview)
 	f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-	f.LastScannedAt = lastScannedAt.String
+	f.LastScannedAt = lastScannedAt.Int64
 
 	return &f, nil
 }
@@ -207,35 +210,37 @@ func DeleteFile(path string) error {
 
 // Cursor represents a pagination cursor
 type Cursor struct {
-	CreatedAt string
+	CreatedAt int64
 	Path      string
 }
 
 // CreateCursor creates a cursor string from a file record
-// Format: created_at:path (e.g., "2026-02-01T15:37:06Z:inbox/file.md")
+// Format: {epochMs}:{path} (e.g., "1738424226000:inbox/file.md")
 func CreateCursor(f *FileRecord) string {
-	return f.CreatedAt + ":" + f.Path
+	return strconv.FormatInt(f.CreatedAt, 10) + ":" + f.Path
 }
 
 // ParseCursor parses a cursor string
-// Supports both ":" and "|" separators for backwards compatibility
-// The timestamp ends with "Z", so we look for "Z:" or "Z|" to find the split point
+// New format: {epochMs}:{path} (e.g., "1738424226000:inbox/file.md")
+// Legacy format: {RFC3339}:{path} (e.g., "2026-02-01T15:37:06Z:inbox/file.md")
 func ParseCursor(cursor string) *Cursor {
-	// Try colon separator first (new format)
-	if idx := strings.Index(cursor, "Z:"); idx != -1 {
-		return &Cursor{
-			CreatedAt: cursor[:idx+1], // Include the Z
-			Path:      cursor[idx+2:], // Skip "Z:"
-		}
+	// New format: {epochMs}:{path}
+	idx := strings.Index(cursor, ":")
+	if idx == -1 {
+		return nil
 	}
-	// Fall back to pipe separator (legacy format)
-	if idx := strings.Index(cursor, "Z|"); idx != -1 {
-		return &Cursor{
-			CreatedAt: cursor[:idx+1],
-			Path:      cursor[idx+2:],
+	ts, err := strconv.ParseInt(cursor[:idx], 10, 64)
+	if err != nil {
+		// Try legacy RFC3339 format for backwards compatibility
+		if zIdx := strings.Index(cursor, "Z:"); zIdx != -1 {
+			legacyTs, err := time.Parse(time.RFC3339, cursor[:zIdx+1])
+			if err == nil {
+				return &Cursor{CreatedAt: legacyTs.UnixMilli(), Path: cursor[zIdx+2:]}
+			}
 		}
+		return nil
 	}
-	return nil
+	return &Cursor{CreatedAt: ts, Path: cursor[idx+1:]}
 }
 
 // FileListResult represents a paginated list of files
@@ -270,7 +275,8 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -287,7 +293,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
 	}
@@ -327,7 +333,8 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -344,7 +351,7 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
 	}
@@ -383,7 +390,8 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -400,7 +408,7 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
 	}
@@ -456,7 +464,8 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt sql.NullInt64
 
 		err := beforeRows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -473,7 +482,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		beforeItems = append(beforeItems, f)
 	}
@@ -501,7 +510,8 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar, lastScannedAt sql.NullString
+		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var lastScannedAt sql.NullInt64
 
 		err := afterRows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
@@ -518,7 +528,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
-		f.LastScannedAt = lastScannedAt.String
+		f.LastScannedAt = lastScannedAt.Int64
 
 		afterItems = append(afterItems, f)
 	}

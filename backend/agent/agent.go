@@ -41,8 +41,8 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 	convID := "auto-" + uuid.New().String()
 	conv := &Conversation{
 		ID:        convID,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		CreatedAt: time.Now().UnixMilli(),
+		UpdatedAt: time.Now().UnixMilli(),
 		Status:    "active",
 		Summary:   fmt.Sprintf("Analyzing %s", filePath),
 		Messages:  []Message{},
@@ -62,7 +62,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 			"Analyze this new file in the inbox and determine what it is: %s\n\nPlease identify the intention (what kind of file it is) and suggest where it should be organized based on the user's guidelines.",
 			filePath,
 		),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: time.Now().UnixMilli(),
 	}
 	conv.Messages = append(conv.Messages, userMsg)
 
@@ -107,7 +107,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 				ConversationID: convID,
 				Role:           "assistant",
 				Content:        completion.Content,
-				CreatedAt:      time.Now().UTC(),
+				CreatedAt:      time.Now().UnixMilli(),
 			}
 			conv.Messages = append(conv.Messages, assistantMsg)
 
@@ -117,7 +117,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 			}
 
 			// Update conversation status
-			conv.UpdatedAt = time.Now().UTC()
+			conv.UpdatedAt = time.Now().UnixMilli()
 			conv.Status = "completed"
 			if err := a.app.SaveConversation(ctx, conv); err != nil {
 				log.Error().Err(err).Msg("failed to update conversation")
@@ -140,7 +140,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 			Role:           "assistant",
 			Content:        completion.Content,
 			ToolUse:        completion.ToolUse,
-			CreatedAt:      time.Now().UTC(),
+			CreatedAt:      time.Now().UnixMilli(),
 		}
 		conv.Messages = append(conv.Messages, assistantMsg)
 
@@ -165,7 +165,7 @@ func (a *Agent) AnalyzeFile(ctx context.Context, filePath string) (*Response, er
 				Role:           "user",
 				ToolResultID:   tool.ID,
 				Content:        resultContent,
-				CreatedAt:      time.Now().UTC(),
+				CreatedAt:      time.Now().UnixMilli(),
 			}
 			conv.Messages = append(conv.Messages, toolResultMsg)
 
@@ -268,7 +268,7 @@ func (a *Agent) buildSystemPrompt(ctx context.Context, filePath string) (string,
 	fileInfo := "File not found"
 	if file != nil {
 		fileInfo = fmt.Sprintf("Name: %s\nMIME Type: %s\nSize: %d bytes\nCreated: %s\n\n",
-			file.Name, file.MimeType, file.Size, file.CreatedAt.Format(time.RFC3339))
+			file.Name, file.MimeType, file.Size, time.UnixMilli(file.CreatedAt).UTC().Format(time.RFC3339))
 
 		// Add digest content
 		fileInfo += "Extracted Content:\n"

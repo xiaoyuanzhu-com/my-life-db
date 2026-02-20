@@ -18,14 +18,14 @@ export interface PinRecordRow {
   /** File path being pinned (UNIQUE, references files.path) */
   file_path: string;
 
-  /** ISO 8601 timestamp when pinned */
-  pinned_at: string;
+  /** Epoch ms timestamp when pinned */
+  pinned_at: number;
 
   /** Cached display text (first line of textPreview or filename) */
   display_text: string | null;
 
-  /** ISO 8601 timestamp when pin record created */
-  created_at: string;
+  /** Epoch ms timestamp when pin record created */
+  created_at: number;
 }
 
 /**
@@ -40,14 +40,14 @@ export interface PinRecord {
   /** File path being pinned */
   filePath: string;
 
-  /** ISO 8601 timestamp when pinned */
-  pinnedAt: string;
+  /** Epoch ms timestamp when pinned */
+  pinnedAt: number;
 
   /** Cached display text (first line of textPreview or filename) */
   displayText: string | null;
 
-  /** ISO 8601 timestamp when pin record created */
-  createdAt: string;
+  /** Epoch ms timestamp when pin record created */
+  createdAt: number;
 }
 
 /**
@@ -73,8 +73,8 @@ export interface PinnedItem {
   /** Filename */
   name: string;
 
-  /** ISO 8601 timestamp when pinned */
-  pinnedAt: string;
+  /** Epoch ms timestamp when pinned */
+  pinnedAt: number;
 
   /** Display text (first line or filename) */
   displayText: string;
