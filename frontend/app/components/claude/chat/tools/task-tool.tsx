@@ -22,6 +22,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
   const [resultExpanded, setResultExpanded] = useState(false)
   const [convExpanded, setConvExpanded] = useState(false)
   const [resultHtml, setResultHtml] = useState('')
+  const [promptHtml, setPromptHtml] = useState('')
 
   const params = toolCall.parameters as TaskToolParams
 
@@ -137,6 +138,23 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
   // Determine if header should be expandable
   const hasExpandableContent = result || subagentPrompt || nestedMessages.length > 0
 
+  // Parse prompt as markdown (only when prompt section is expanded)
+  useEffect(() => {
+    if (!expanded || !promptExpanded || !subagentPrompt) {
+      setPromptHtml('')
+      return
+    }
+
+    let cancelled = false
+    parseMarkdown(subagentPrompt).then((html) => {
+      if (!cancelled) setPromptHtml(html)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [expanded, promptExpanded, subagentPrompt])
+
   // Parse result as markdown or highlight as JSON (only when result section is expanded)
   useEffect(() => {
     if (!expanded || !resultExpanded || !result) {
@@ -239,15 +257,13 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
               <div className={`collapsible-grid ${promptExpanded ? '' : 'collapsed'}`}>
                 <div className="collapsible-grid-content">
                   <div
-                    className="mt-2 p-3 rounded-md text-[12px] whitespace-pre-wrap overflow-y-auto"
+                    className="mt-2 p-4 rounded-md prose-claude overflow-y-auto"
                     style={{
                       backgroundColor: 'var(--claude-bg-code-block)',
-                      color: 'var(--claude-text-secondary)',
                       maxHeight: '60vh',
                     }}
-                  >
-                    {subagentPrompt}
-                  </div>
+                    dangerouslySetInnerHTML={{ __html: promptHtml }}
+                  />
                 </div>
               </div>
             </div>
