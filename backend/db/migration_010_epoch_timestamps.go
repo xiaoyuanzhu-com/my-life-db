@@ -196,7 +196,10 @@ func migrateDigests(tx *sql.Tx) error {
 			id, file_path, digester, status, content, sqlar_name, error, attempts,
 			%s,
 			%s
-		FROM digests;
+		FROM digests
+		WHERE rowid IN (
+			SELECT MAX(rowid) FROM digests GROUP BY file_path, digester
+		);
 
 		DROP TABLE digests;
 		ALTER TABLE digests_new RENAME TO digests;
