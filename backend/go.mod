@@ -18,6 +18,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/tus/tusd/v2 v2.8.0
+	golang.org/x/crypto v0.46.0
 	golang.org/x/oauth2 v0.34.0
 )
 
@@ -54,7 +55,6 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect

@@ -38,7 +38,7 @@ export function FileGrid({
   selectedFilePath,
   onFileDeleted,
   onFileRenamed,
-  onFileMoved,
+  onFileMoved: _onFileMoved,
   createFolderTrigger,
   onUploadFile,
   onUploadFolder,

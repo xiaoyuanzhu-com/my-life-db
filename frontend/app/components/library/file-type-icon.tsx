@@ -32,7 +32,6 @@ export function FileTypeIcon({ filename, className, size = 40 }: FileTypeIconPro
   const w = size;
   const h = size * 1.2;
   const badgeFontSize = Math.max(7, size * 0.22);
-  const foldSize = size * 0.25;
 
   return (
     <div

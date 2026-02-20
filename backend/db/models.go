@@ -83,6 +83,37 @@ type Session struct {
 	LastUsedAt int64  `json:"lastUsedAt"`
 }
 
+// Machine represents a registered remote machine
+type Machine struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Host        string  `json:"host"`
+	Port        int     `json:"port"`
+	Username    string  `json:"username"`
+	AuthType    string  `json:"authType"`
+	SSHKeyPath  *string `json:"sshKeyPath,omitempty"`
+	SSHPassword *string `json:"-"` // never serialize
+	HasPassword bool    `json:"hasPassword,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Status      string  `json:"status"`
+	LastTestedAt *string `json:"lastTestedAt,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+// Machine auth type constants
+const (
+	MachineAuthKey      = "key"
+	MachineAuthPassword = "password"
+)
+
+// Machine status constants
+const (
+	MachineStatusOnline  = "online"
+	MachineStatusOffline = "offline"
+	MachineStatusUnknown = "unknown"
+)
+
 // SqlarFile represents a file in the SQLite Archive
 type SqlarFile struct {
 	Name  string `json:"name"`

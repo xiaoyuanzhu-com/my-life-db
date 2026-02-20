@@ -252,7 +252,11 @@ export function SessionList({
                         className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                         onClick={(e) => {
                           e.stopPropagation()
-                          sessionState === 'archived' ? onUnarchive(session.id) : onArchive(session.id)
+                          if (sessionState === 'archived') {
+                            onUnarchive(session.id)
+                          } else {
+                            onArchive(session.id)
+                          }
                         }}
                         title={sessionState === 'archived' ? 'Unarchive session' : 'Archive session'}
                       >
