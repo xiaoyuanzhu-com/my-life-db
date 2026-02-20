@@ -325,7 +325,7 @@ type FileNode struct {
 	Path       string     `json:"path,omitempty"`
 	Type       string     `json:"type,omitempty"` // "file" or "folder"
 	Size       *int64     `json:"size,omitempty"`
-	ModifiedAt *string    `json:"modifiedAt,omitempty"`
+	ModifiedAt *int64     `json:"modifiedAt,omitempty"`
 	Children   []FileNode `json:"children,omitempty"`
 }
 
@@ -484,7 +484,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 			node.Size = &s
 		}
 		if fields["modifiedAt"] && info != nil {
-			modTime := info.ModTime().UTC().Format(time.RFC3339)
+			modTime := info.ModTime().UnixMilli()
 			node.ModifiedAt = &modTime
 		}
 
