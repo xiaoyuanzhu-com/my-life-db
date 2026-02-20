@@ -9,20 +9,21 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
   const params = toolCall.parameters as ReadToolParams
   const result = toolCall.result as ReadToolResult | string | undefined
 
-  // Get line count from result metadata
-  const lineCount = typeof result === 'object'
-    ? (result?.file?.totalLines ?? result?.file?.numLines)
-    : undefined
+  // Extract line metadata from result
+  const file = typeof result === 'object' ? result?.file : undefined
+  const numLines = file?.numLines
+  const totalLines = file?.totalLines
+  const startLine = file?.startLine
 
   // Fall back to counting lines from content (for legacy/non-stripped messages)
   const content = typeof result === 'string'
     ? result
-    : result?.file?.content
-  const actualLineCount = lineCount || (content ? content.split('\n').length : 0)
+    : file?.content
+  const fallbackLineCount = content ? content.split('\n').length : 0
+  const linesRead = numLines ?? totalLines ?? fallbackLineCount
 
-  // Check if truncated
-  const isTruncated = typeof result === 'object' && result?.file?.totalLines && result?.file?.numLines &&
-    result.file.numLines < result.file.totalLines
+  // Partial read: only a subset of the file was read
+  const isPartial = !!(totalLines && numLines && numLines < totalLines)
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -39,16 +40,20 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
         </div>
       </div>
 
-      {/* Summary: Read X lines */}
-      {actualLineCount > 0 && (
+      {/* Summary: line range or line count */}
+      {linesRead > 0 && (
         <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
           <span className="select-none">└</span>
           <span>
-            Read {actualLineCount} lines
-            {isTruncated && (
-              <span style={{ color: 'var(--claude-text-tertiary)' }}>
-                {' '}(truncated from {result?.file?.totalLines})
-              </span>
+            {isPartial ? (
+              <>
+                Read line {startLine ?? 1}–{(startLine ?? 1) + numLines! - 1}
+                <span style={{ color: 'var(--claude-text-tertiary)' }}>
+                  {' '}({totalLines} total)
+                </span>
+              </>
+            ) : (
+              <>Read {linesRead} lines</>
             )}
           </span>
         </div>
