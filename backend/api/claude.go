@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -389,25 +390,29 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
 		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
-		//   "ready"    — turn completed or waiting for user permission input
-		//   "idle"     — nothing happening
+		//   "unread"   — there are unread *result* messages (completed turns) or
+		//                a pending permission the user hasn't addressed yet.
+		//                NOTE: "unread" refers specifically to result messages
+		//                (end-of-turn markers), NOT intermediate messages like
+		//                assistant text, tool calls, or progress updates that
+		//                stream while Claude is working.
+		//   "idle"     — nothing happening, user is up to date
 		sessionState := "idle"
 		if entry.IsArchived {
 			sessionState = "archived"
 		} else if entry.IsProcessing && !entry.HasPendingPermission {
 			sessionState = "working"
 		} else if entry.IsProcessing && entry.HasPendingPermission {
-			// Mid-turn but blocked on user permission — show as "ready"
-			// so the user knows to check this session
-			sessionState = "ready"
+			// Mid-turn but waiting on user permission
+			sessionState = "unread"
 		} else {
 			lastReadResults, seen := readResultCounts[entry.SessionID]
-			// A turn completed (result message) that the user hasn't seen yet.
-			// Sessions with no read-state entry default to "idle" — the baseline
-			// is created on first open via the subscribe WebSocket.
-			hasUnreadResult := seen && entry.ResultCount > lastReadResults
+			// A result message (completed turn) that the user hasn't seen yet.
+			// If no read-state row exists (session never opened in UI), treat
+			// any completed turns as unread so the green dot appears.
+			hasUnreadResult := entry.ResultCount > 0 && (!seen || entry.ResultCount > lastReadResults)
 			if hasUnreadResult {
-				sessionState = "ready"
+				sessionState = "unread"
 			}
 		}
 
@@ -562,32 +567,18 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Mark session as read when client connects and when the WebSocket disconnects.
-	// Stores the ResultCount (completed turns) so "ready" state clears correctly.
-	claudeManager := h.server.Claude()
-	markAsRead := func() {
-		if entry := claudeManager.GetSessionEntry(sessionID); entry != nil {
-			db.MarkClaudeSessionRead(sessionID, entry.ResultCount)
-		}
-	}
-	markAsRead()       // Mark on connect (clears dot on other devices immediately)
-	defer markAsRead() // Mark on disconnect (catches messages received during the session)
-
-	// Periodically update read state while connected so that other devices
-	// (e.g., iOS session list) see the session as "read" even while the web
-	// client is actively viewing it and new messages keep arriving.
-	readTicker := time.NewTicker(1 * time.Second)
-	defer readTicker.Stop()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-readTicker.C:
-				markAsRead()
-			}
+	// Track how many "result" messages were actually delivered to this WebSocket
+	// client. A result is "read" if and only if it was sent at least once through
+	// the WebSocket — no snapshots, no timers, no guessing.
+	// On disconnect we persist the count so the sidebar "unread" (green dot) state
+	// accurately reflects what the user has seen.
+	var deliveredResults atomic.Int32
+	defer func() {
+		if n := int(deliveredResults.Load()); n > 0 {
+			db.MarkClaudeSessionRead(sessionID, n)
 		}
 	}()
+	claudeManager := h.server.Claude()
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
@@ -613,6 +604,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
 						return
+					}
+					if msg.GetType() == "result" {
+						deliveredResults.Add(1)
 					}
 				}
 			}
@@ -649,6 +643,10 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
 					return
 				}
+				var mt struct{ Type string `json:"type"` }
+				if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
+					deliveredResults.Add(1)
+				}
 			}
 		}
 
@@ -676,6 +674,10 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 							log.Debug().Err(err).Str("sessionId", sessionID).Msg("UI mode WebSocket write failed")
 						}
 						return
+					}
+					var mt struct{ Type string `json:"type"` }
+					if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
+						deliveredResults.Add(1)
 					}
 				}
 			}
@@ -714,6 +716,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 						if msgBytes, err := json.Marshal(msg); err == nil {
 							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 								return
+							}
+							if msg.GetType() == "result" {
+								deliveredResults.Add(1)
 							}
 						}
 					}

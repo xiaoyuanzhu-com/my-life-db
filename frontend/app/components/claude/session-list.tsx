@@ -4,7 +4,10 @@ import { Input } from '~/components/ui/input'
 import { Check, X, Archive, ArchiveRestore, Loader2 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
-export type SessionState = 'idle' | 'working' | 'ready' | 'archived'
+// "unread" means there are unread *result* messages (completed turns) or a
+// pending permission — NOT intermediate messages (text, tool calls, progress)
+// that stream while Claude is working.
+export type SessionState = 'idle' | 'working' | 'unread' | 'archived'
 
 export interface Session {
   id: string
@@ -12,7 +15,7 @@ export interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  sessionState: SessionState // unified state: idle, working, ready, archived
+  sessionState: SessionState // unified state: idle, working, unread, archived
   createdAt: number
   lastActivity: number
   lastUserActivity?: number
@@ -69,16 +72,16 @@ function formatRelativeTime(epochMs: number): string {
 
 // ─── Unread dot indicator ────────────────────────────────────────────────────
 
-function UnreadIndicator({ state }: { state: 'working' | 'ready' }) {
+function UnreadIndicator({ state }: { state: 'working' | 'unread' }) {
   // Working: solid amber dot — Claude is still generating
-  // Ready:   solid green dot — Claude finished, waiting for user
+  // Unread:  solid green dot — unread result (completed turn) or pending permission
   return (
     <span
       className={cn(
         'h-2 w-2 shrink-0 rounded-full',
         state === 'working' ? 'bg-amber-500' : 'bg-emerald-500'
       )}
-      title={state === 'working' ? 'Claude is working' : 'New messages — waiting for you'}
+      title={state === 'working' ? 'Claude is working' : 'Unread results'}
     />
   )
 }
@@ -161,7 +164,7 @@ export function SessionList({
           {sessions.map((session) => {
             // Show unread dot for active/waiting sessions that aren't currently being viewed
             const { sessionState } = session
-            const showDot = (sessionState === 'working' || sessionState === 'ready')
+            const showDot = (sessionState === 'working' || sessionState === 'unread')
               && activeSessionId !== session.id
 
             return (
@@ -228,7 +231,7 @@ export function SessionList({
                           {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
                           <span className="w-2 shrink-0 flex items-center">
                             {showDot && (
-                              <UnreadIndicator state={sessionState as 'working' | 'ready'} />
+                              <UnreadIndicator state={sessionState as 'working' | 'unread'} />
                             )}
                           </span>
                         </div>

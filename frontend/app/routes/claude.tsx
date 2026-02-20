@@ -26,7 +26,7 @@ interface Session {
   summary?: string // Claude-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  sessionState: 'idle' | 'working' | 'ready' | 'archived'
+  sessionState: 'idle' | 'working' | 'unread' | 'archived'
   createdAt: number
   lastActivity: number
   lastUserActivity?: number
@@ -439,7 +439,7 @@ export default function ClaudePage() {
   const handleSelectSession = useCallback((sessionId: string) => {
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === sessionId && (s.sessionState === 'working' || s.sessionState === 'ready')
+        s.id === sessionId && (s.sessionState === 'working' || s.sessionState === 'unread')
           ? { ...s, sessionState: 'idle' as const }
           : s
       )

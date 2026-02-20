@@ -54,18 +54,19 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 
 // ── Session read status (cross-device unread tracking) ──────────────────────
 
-// MarkClaudeSessionRead records the result count (completed turns) the user
-// has seen for a session. Uses upsert so it works for both first view and
-// subsequent views.
+// MarkClaudeSessionRead records the number of result messages (completed turns)
+// that were delivered to the user via WebSocket. Uses upsert with MAX so that
+// a client disconnecting with a lower count can never regress the value
+// (e.g., when multiple devices view the same session).
 //
 // The DB column is still named last_read_message_count for backwards compat,
-// but the value stored is now the result count (number of completed turns).
+// but the value stored is the result-delivered count.
 func MarkClaudeSessionRead(sessionID string, resultCount int) error {
 	_, err := Run(
 		`INSERT INTO session_read_status (session_id, last_read_message_count, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
-		   last_read_message_count = excluded.last_read_message_count,
+		   last_read_message_count = MAX(excluded.last_read_message_count, session_read_status.last_read_message_count),
 		   updated_at = excluded.updated_at`,
 		sessionID, resultCount, NowMs(),
 	)
