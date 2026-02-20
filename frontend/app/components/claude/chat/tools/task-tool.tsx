@@ -3,7 +3,7 @@ import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { SessionMessages } from '../session-messages'
 import type { AgentProgressMessage } from '../session-messages'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
-import type { SessionMessage } from '~/lib/session-message-utils'
+import type { SessionMessage, TaskToolResult } from '~/lib/session-message-utils'
 import { parseMarkdown } from '~/lib/markdown'
 
 interface TaskToolViewProps {
@@ -18,14 +18,27 @@ interface TaskToolViewProps {
 
 export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, depth = 0 }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
-  const [agentExpanded, setAgentExpanded] = useState(false)
+  const [promptExpanded, setPromptExpanded] = useState(false)
+  const [resultExpanded, setResultExpanded] = useState(false)
+  const [convExpanded, setConvExpanded] = useState(false)
   const [resultHtml, setResultHtml] = useState('')
 
   const params = toolCall.parameters as TaskToolParams
 
-  // Extract result content - Task tool results have structured content blocks
-  // We look for the first text block in toolUseResult.content and render as markdown
-  // Otherwise fall back to JSON display
+  // Extract task metadata from tool_use_result (available for background/local agent results)
+  // Contains description, prompt, output, status, etc. — persisted even when agentProgress is empty
+  const taskMeta = useMemo((): TaskToolResult['task'] | undefined => {
+    if (toolCall.result === undefined || toolCall.result === null || typeof toolCall.result === 'string') {
+      return undefined
+    }
+    return (toolCall.result as TaskToolResult).task
+  }, [toolCall.result])
+
+  // Extract result content - Task tool results come in several formats:
+  // 1. String → render as markdown directly
+  // 2. Object with content[] array → extract first text block as markdown
+  // 3. Object with task.output/task.result → background/local agent result, render output as markdown
+  // 4. Fallback → render as JSON
   const { resultText, resultIsMarkdown } = useMemo(() => {
     if (toolCall.result === undefined || toolCall.result === null) {
       return { resultText: undefined, resultIsMarkdown: false }
@@ -36,8 +49,9 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       return { resultText: toolCall.result, resultIsMarkdown: true }
     }
 
-    // Check for structured content array (Task tool result format)
     const resultObj = toolCall.result as Record<string, unknown>
+
+    // Check for structured content array (Task tool result format)
     const content = resultObj.content as Array<{ type: string; text?: string }> | undefined
 
     if (Array.isArray(content) && content.length > 0) {
@@ -47,9 +61,17 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       }
     }
 
+    // Check for background/local agent result: { task: { output, result } }
+    if (taskMeta) {
+      const taskOutput = taskMeta.output || taskMeta.result
+      if (typeof taskOutput === 'string') {
+        return { resultText: taskOutput, resultIsMarkdown: true }
+      }
+    }
+
     // Fallback: render as JSON
     return { resultText: JSON.stringify(toolCall.result, null, 2), resultIsMarkdown: false }
-  }, [toolCall.result])
+  }, [toolCall.result, taskMeta])
 
   const result = resultText
 
@@ -99,21 +121,25 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
   // See docs/claude-code/data-models.md "Subagent Message Hierarchy" section for details
   const nestedMessages = subagentMessages.length > 0 ? subagentMessages : progressMessages
 
-  // Extract the prompt sent to the subagent from agent_progress messages
+  // Extract the prompt sent to the subagent
+  // Sources (in priority order):
+  // 1. agent_progress messages (live streaming — first progress event has the prompt)
+  // 2. tool_use_result.task.prompt (persisted in completed result metadata)
+  // 3. tool_use input params.prompt (always available from the tool_use block)
   const subagentPrompt = useMemo(() => {
-    if (agentProgress.length === 0) return null
-    // The first progress message typically contains the prompt
-    return agentProgress[0]?.data?.prompt || null
-  }, [agentProgress])
-
-  const hasNestedSession = nestedMessages.length > 0 || subagentPrompt
+    if (agentProgress.length > 0) {
+      const progressPrompt = agentProgress[0]?.data?.prompt
+      if (progressPrompt) return progressPrompt
+    }
+    return taskMeta?.prompt || params.prompt || null
+  }, [agentProgress, taskMeta, params.prompt])
 
   // Determine if header should be expandable
-  const hasExpandableContent = result || hasNestedSession
+  const hasExpandableContent = result || subagentPrompt || nestedMessages.length > 0
 
-  // Parse result as markdown or highlight as JSON (only when expanded)
+  // Parse result as markdown or highlight as JSON (only when result section is expanded)
   useEffect(() => {
-    if (!expanded || !result) {
+    if (!expanded || !resultExpanded || !result) {
       setResultHtml('')
       return
     }
@@ -136,7 +162,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
     return () => {
       cancelled = true
     }
-  }, [expanded, result, resultIsMarkdown])
+  }, [expanded, resultExpanded, result, resultIsMarkdown])
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -189,27 +215,15 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
         </div>
       )}
 
-      {/* Expanded content: result + sub-agent session - smooth collapse */}
+      {/* Expanded content: three peer collapsible sections */}
       <div className={`collapsible-grid ${expanded ? '' : 'collapsed'}`}>
         <div className="collapsible-grid-content">
-          {/* Result content (rendered as markdown or JSON in 60vh scrolling div) */}
-          {result && (
-            <div
-              className={`mt-2 ml-5 p-4 rounded-md overflow-y-auto ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent text-[12px]'}`}
-              style={{
-                backgroundColor: 'var(--claude-bg-code-block)',
-                maxHeight: '60vh',
-              }}
-              dangerouslySetInnerHTML={{ __html: resultHtml }}
-            />
-          )}
-
-          {/* Sub-agent session (separate expandable section) */}
-          {hasNestedSession && (
+          {/* 1. Prompt */}
+          {subagentPrompt && (
             <div className="mt-2 ml-5">
               <button
                 type="button"
-                onClick={() => setAgentExpanded(!agentExpanded)}
+                onClick={() => setPromptExpanded(!promptExpanded)}
                 className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity cursor-pointer"
                 style={{ color: 'var(--claude-text-secondary)' }}
               >
@@ -217,15 +231,82 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                   className="select-none text-[11px]"
                   style={{ color: 'var(--claude-text-tertiary)' }}
                 >
-                  {agentExpanded ? '▾' : '▸'}
+                  {promptExpanded ? '▾' : '▸'}
+                </span>
+                <span className="text-[12px]">Prompt</span>
+              </button>
+
+              <div className={`collapsible-grid ${promptExpanded ? '' : 'collapsed'}`}>
+                <div className="collapsible-grid-content">
+                  <div
+                    className="mt-2 p-3 rounded-md text-[12px] whitespace-pre-wrap overflow-y-auto"
+                    style={{
+                      backgroundColor: 'var(--claude-bg-code-block)',
+                      color: 'var(--claude-text-secondary)',
+                      maxHeight: '60vh',
+                    }}
+                  >
+                    {subagentPrompt}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 2. Output */}
+          {result && (
+            <div className="mt-2 ml-5">
+              <button
+                type="button"
+                onClick={() => setResultExpanded(!resultExpanded)}
+                className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                style={{ color: 'var(--claude-text-secondary)' }}
+              >
+                <span
+                  className="select-none text-[11px]"
+                  style={{ color: 'var(--claude-text-tertiary)' }}
+                >
+                  {resultExpanded ? '▾' : '▸'}
+                </span>
+                <span className="text-[12px]">Output</span>
+              </button>
+
+              <div className={`collapsible-grid ${resultExpanded ? '' : 'collapsed'}`}>
+                <div className="collapsible-grid-content">
+                  <div
+                    className={`mt-2 p-4 rounded-md overflow-y-auto ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent text-[12px]'}`}
+                    style={{
+                      backgroundColor: 'var(--claude-bg-code-block)',
+                      maxHeight: '60vh',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: resultHtml }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 3. Conversation */}
+          {nestedMessages.length > 0 && (
+            <div className="mt-2 ml-5">
+              <button
+                type="button"
+                onClick={() => setConvExpanded(!convExpanded)}
+                className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                style={{ color: 'var(--claude-text-secondary)' }}
+              >
+                <span
+                  className="select-none text-[11px]"
+                  style={{ color: 'var(--claude-text-tertiary)' }}
+                >
+                  {convExpanded ? '▾' : '▸'}
                 </span>
                 <span className="text-[12px]">
-                  Sub-agent conversation ({nestedMessages.length} messages)
+                  Conversation ({nestedMessages.length} messages)
                 </span>
               </button>
 
-              {/* Sub-agent content - smooth collapse */}
-              <div className={`collapsible-grid ${agentExpanded ? '' : 'collapsed'}`}>
+              <div className={`collapsible-grid ${convExpanded ? '' : 'collapsed'}`}>
                 <div className="collapsible-grid-content">
                   <div
                     className="mt-2 pl-3 overflow-y-auto"
@@ -234,30 +315,10 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                       maxHeight: '60vh',
                     }}
                   >
-                    {/* Show the prompt sent to the subagent */}
-                    {subagentPrompt && (
-                      <div
-                        className="mb-3 p-3 rounded text-[12px] whitespace-pre-wrap"
-                        style={{
-                          backgroundColor: 'var(--claude-bg-code-block)',
-                          color: 'var(--claude-text-secondary)',
-                        }}
-                      >
-                        <div
-                          className="text-[10px] uppercase tracking-wide mb-1 font-medium"
-                          style={{ color: 'var(--claude-text-tertiary)' }}
-                        >
-                          Prompt
-                        </div>
-                        {subagentPrompt}
-                      </div>
-                    )}
-                    {nestedMessages.length > 0 && (
-                      <SessionMessages
-                        messages={nestedMessages}
-                        depth={depth + 1}
-                      />
-                    )}
+                    <SessionMessages
+                      messages={nestedMessages}
+                      depth={depth + 1}
+                    />
                   </div>
                 </div>
               </div>

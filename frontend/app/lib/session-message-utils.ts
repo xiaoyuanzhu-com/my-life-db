@@ -340,6 +340,17 @@ export interface WebSearchToolResult {
 export interface TaskToolResult {
   status?: string
   prompt?: string
+  // Background/local agent results have a nested task object with the full output
+  retrieval_status?: string
+  task?: {
+    task_id?: string
+    task_type?: string
+    status?: string
+    description?: string
+    output?: string
+    result?: string
+    prompt?: string
+  }
 }
 
 // ============================================================================
