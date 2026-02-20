@@ -422,12 +422,12 @@ func (h *Handlers) GetPinnedInboxItems(c *gin.Context) {
 			}
 
 			// Create cursor (format: created_at:path)
-			cursor := f.CreatedAt + ":" + f.Path
+			cursor := strconv.FormatInt(f.CreatedAt, 10) + ":" + f.Path
 
 			items = append(items, PinnedItem{
 				Path:        f.Path,
 				Name:        f.Name,
-				PinnedAt:    f.CreatedAt, // Using file's created_at as pinnedAt
+				PinnedAt:    strconv.FormatInt(f.CreatedAt, 10),
 				DisplayText: displayText,
 				Cursor:      cursor,
 			})
