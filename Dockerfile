@@ -12,11 +12,13 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Build Go server
-FROM golang:1.25-alpine AS go-builder
+FROM golang:1.25 AS go-builder
 WORKDIR /app
 
 # Install build dependencies for CGO (SQLite)
-RUN apk add --no-cache gcc musl-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy go files
 COPY backend/go.mod backend/go.sum ./
