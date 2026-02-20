@@ -304,6 +304,29 @@ func migrateSessions(tx *sql.Tx) error {
 
 	log.Info().Msg("migration 010: converting sessions timestamps")
 
+	// PK column is "token" in Node.js legacy databases, "id" in fresh Go databases.
+	// Migration 004 normalizes this for fresh runs, but existing DBs already passed 004.
+	pkCol := "id"
+	rows, err := tx.Query(`PRAGMA table_info(sessions)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dfltValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "token" {
+			pkCol = "token"
+		}
+	}
+	rows.Close()
+
 	_, err = tx.Exec(fmt.Sprintf(`
 		CREATE TABLE sessions_new (
 			id TEXT PRIMARY KEY,
@@ -314,7 +337,7 @@ func migrateSessions(tx *sql.Tx) error {
 
 		INSERT INTO sessions_new
 		SELECT
-			id,
+			%s,
 			%s,
 			%s,
 			%s
@@ -324,7 +347,7 @@ func migrateSessions(tx *sql.Tx) error {
 		ALTER TABLE sessions_new RENAME TO sessions;
 
 		CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
-	`, ts("created_at"), ts("expires_at"), ts("last_used_at")))
+	`, pkCol, ts("created_at"), ts("expires_at"), ts("last_used_at")))
 
 	return err
 }
