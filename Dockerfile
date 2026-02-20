@@ -30,15 +30,16 @@ ENV CGO_ENABLED=1
 RUN go build -o my-life-db .
 
 # Stage 3: Production image
-FROM alpine:3.20 AS runner
+FROM debian:trixie AS runner
 WORKDIR /home/xiaoyuanzhu/my-life-db
 
 # Install runtime dependencies + Claude CLI dependencies
-# libstdc++ and libgcc are required for Claude CLI (C++ runtime)
-RUN apk add --no-cache ca-certificates tzdata curl bash libstdc++ libgcc git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates tzdata curl bash git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with UID/GID 1000 for better host compatibility
-RUN addgroup -g 1000 xiaoyuanzhu && adduser -u 1000 -G xiaoyuanzhu -S xiaoyuanzhu
+RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
 
 # Copy built artifacts maintaining local structure
 COPY --from=go-builder /app/my-life-db ./backend/my-life-db
