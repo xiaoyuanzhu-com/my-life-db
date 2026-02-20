@@ -366,15 +366,19 @@ Do NOT create git commits automatically. Only commit when explicitly instructed.
 
 **Never auto-commit or auto-push.** Wait for the user's explicit instruction to commit, merge, or push.
 
-**Always rebase, never merge** — use `git rebase` + `git merge --ff-only` to keep a linear history. Never create merge commits.
+**Always rebase, never merge** — rebase onto `origin/main` and push directly. Never create merge commits.
 
     # 1. create worktree BEFORE making changes
     git worktree add -b <branch> .worktrees/<name> main
     # 2. commit — ONLY when user explicitly asks
     # 3. rebase & push — ONLY when user explicitly asks
-    cd .worktrees/<name> && git rebase main
-    git checkout main && git merge --ff-only <branch> && git push
+    # Push from WITHIN the worktree — never checkout main (other sessions may have uncommitted work there)
+    cd .worktrees/<name>
+    git fetch origin
+    git rebase origin/main
+    git push origin <branch>:main
     # 4. clean up — ONLY when user explicitly asks (or after merge)
+    cd <repo-root>
     git worktree remove .worktrees/<name> && git branch -d <branch>
 
 ## Development Server
