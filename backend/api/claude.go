@@ -606,7 +606,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 			for _, msg := range initialMessages {
 				if msgBytes, err := json.Marshal(msg); err == nil {
-					msgBytes = claude.StripReadToolContent(msgBytes)
 					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
 						return
@@ -709,7 +708,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					for _, msg := range newMessages {
 						// Send ALL message types (user, assistant, progress, queue-operation, etc.)
 						if msgBytes, err := json.Marshal(msg); err == nil {
-							msgBytes = claude.StripReadToolContent(msgBytes)
 							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 								return
 							}

@@ -548,8 +548,6 @@ func (s *Session) LoadMessageCache() error {
 		}
 
 		if data, err := json.Marshal(msg); err == nil {
-			// Strip large Read tool content to reduce cache size and transfer payload
-			data = StripReadToolContent(data)
 			s.cachedMessages = append(s.cachedMessages, data)
 
 			// Extract and track UUID for deduplication
