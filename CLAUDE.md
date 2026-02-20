@@ -362,7 +362,11 @@ The backend uses structured logging via zerolog:
 
 Do NOT create git commits automatically. Only commit when explicitly instructed.
 
-**Always use git worktrees** for code changes — no exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before making any code changes.** All edits happen inside the worktree directory.
+**Always use git worktrees** for code changes — no exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before making any code changes.** Everything happens inside the worktree directory — edits, builds, tests, linting, dependency installs, and all other commands.
+
+**The main working directory is shared and potentially dirty.** Other sessions may have left uncommitted or untracked files there. Only use it for `git worktree add/remove` — never run builds or other commands from it.
+
+**When launching sub-agents or skills**, always provide the worktree path as the working directory. Never pass the main repo path.
 
 **Never auto-commit or auto-push.** Wait for the user's explicit instruction to commit, merge, or push.
 
