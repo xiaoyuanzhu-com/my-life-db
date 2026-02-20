@@ -596,12 +596,15 @@ export class UploadQueueManager {
     const result = await response.json();
     const defaultPath = `${destination}/${item.filename}`;
     const finalPath = result.path || result.paths?.[0] || defaultPath;
+    const fileStatus = result.results?.[0]?.status;
 
     console.log('[UploadQueue] Simple upload completed:', {
       destination,
       filename: item.filename,
       resultPath: result.path,
       finalPath,
+      status: fileStatus ?? 'created',
+      ...(fileStatus === 'skipped' ? { note: 'identical file already exists' } : {}),
     });
 
     // Update progress to 100% (single request, no streaming progress)
@@ -693,11 +696,14 @@ export class UploadQueueManager {
             const result = await response.json();
             const defaultPath = `${item.destination || 'inbox'}/${item.filename}`;
             const finalPath = result.path || result.paths?.[0] || defaultPath;
+            const fileStatus = result.results?.[0]?.status;
             console.log('[UploadQueue] Upload finalized successfully:', {
               destination: item.destination,
               filename: item.filename,
               resultPath: result.path,
               finalPath,
+              status: fileStatus ?? 'created',
+              ...(fileStatus === 'skipped' ? { note: 'identical file already exists' } : {}),
             });
 
             resolve(finalPath);

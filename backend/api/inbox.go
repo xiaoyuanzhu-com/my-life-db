@@ -186,8 +186,10 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 	}
 
 	var savedPaths []string
+	var fileResults []uploadFileResult
 
 	// Save text file if provided
+	// Text files always get a UUID name, so they never collide — no dedup needed
 	if text != "" {
 		textID := uuid.New().String()
 		textPath := filepath.Join("inbox", textID+".md")
@@ -211,14 +213,42 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 		}
 
 		savedPaths = append(savedPaths, result.Record.Path)
+		fileResults = append(fileResults, uploadFileResult{Path: result.Record.Path, Status: string(utils.DedupActionWrite)})
 	}
 
-	// Save uploaded files
+	// Save uploaded files (with content-aware duplicate detection)
 	for _, fileHeader := range files {
 		filename := utils.SanitizeFilename(fileHeader.Filename)
-		filename = utils.DeduplicateFilename(inboxDir, filename)
 
-		filePath := filepath.Join("inbox", filename)
+		// Compute hash of the incoming file for duplicate detection
+		incomingHash := ""
+		if src, err := fileHeader.Open(); err == nil {
+			incomingHash, _ = utils.ComputeFileHash(src)
+			src.Close()
+		}
+
+		// Content-aware deduplication
+		dedup := utils.DeduplicateFileWithHash(inboxDir, filename, incomingHash, func(name string) string {
+			relPath := filepath.Join("inbox", name)
+			rec, _ := db.GetFileByPath(relPath)
+			if rec != nil && rec.Hash != nil {
+				return *rec.Hash
+			}
+			return ""
+		})
+
+		filePath := filepath.Join("inbox", dedup.Filename)
+
+		if dedup.Action == utils.DedupActionSkip {
+			log.Info().
+				Str("path", filePath).
+				Str("filename", filename).
+				Msg("inbox upload skipped: identical file already exists")
+
+			savedPaths = append(savedPaths, filePath)
+			fileResults = append(fileResults, uploadFileResult{Path: filePath, Status: string(utils.DedupActionSkip)})
+			continue
+		}
 
 		src, err := fileHeader.Open()
 		if err != nil {
@@ -230,7 +260,7 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            filePath,
 			Content:         src,
-			MimeType:        utils.DetectMimeType(filename),
+			MimeType:        utils.DetectMimeType(dedup.Filename),
 			Source:          "api_upload",
 			ComputeMetadata: true,
 			Sync:            false, // Async metadata computation
@@ -243,6 +273,7 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 		}
 
 		savedPaths = append(savedPaths, result.Record.Path)
+		fileResults = append(fileResults, uploadFileResult{Path: result.Record.Path, Status: string(utils.DedupActionWrite)})
 	}
 
 	if len(savedPaths) == 0 {
@@ -259,8 +290,9 @@ func (h *Handlers) CreateInboxItem(c *gin.Context) {
 	h.server.Notifications().NotifyInboxChanged()
 
 	c.JSON(http.StatusCreated, gin.H{
-		"path":  savedPaths[0],
-		"paths": savedPaths,
+		"path":    savedPaths[0],
+		"paths":   savedPaths,
+		"results": fileResults,
 	})
 }
 

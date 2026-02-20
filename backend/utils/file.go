@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -41,6 +44,61 @@ func DeduplicateFilename(dir, filename string) string {
 		result = base + " " + strconv.Itoa(counter) + ext
 		counter++
 	}
+}
+
+// DedupAction describes what should happen with an uploaded file
+type DedupAction string
+
+const (
+	DedupActionWrite DedupAction = "created" // New file or name collision with different content (after rename)
+	DedupActionSkip  DedupAction = "skipped" // Exact duplicate: same name + same content
+)
+
+// DedupResult contains the outcome of duplicate detection
+type DedupResult struct {
+	Action   DedupAction // "created" or "skipped"
+	Filename string      // Final filename to use (may be renamed)
+}
+
+// DeduplicateFileWithHash checks for content-level duplicates before falling back to filename deduplication.
+//
+// Logic:
+//  1. If no file exists at dir/filename → write (no collision)
+//  2. If file exists and incomingHash matches existingHash → skip (exact duplicate)
+//  3. If file exists and hashes differ → auto-rename (macOS-style "file 2.ext")
+//
+// The existingHashFn callback lets callers provide the hash from the database
+// without this package depending on the db package.
+func DeduplicateFileWithHash(dir, filename, incomingHash string, existingHashFn func(relPath string) string) DedupResult {
+	fullPath := filepath.Join(dir, filename)
+
+	// No collision — file doesn't exist yet
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		return DedupResult{Action: DedupActionWrite, Filename: filename}
+	}
+
+	// File exists — check content hash
+	if incomingHash != "" {
+		existingHash := existingHashFn(filename)
+		if existingHash != "" && existingHash == incomingHash {
+			// Exact duplicate: same destination, same name, same content → skip
+			return DedupResult{Action: DedupActionSkip, Filename: filename}
+		}
+	}
+
+	// File exists but content differs (or hash unavailable) → auto-rename
+	renamed := DeduplicateFilename(dir, filename)
+	return DedupResult{Action: DedupActionWrite, Filename: renamed}
+}
+
+// ComputeFileHash computes the SHA-256 hash of the given reader's content.
+// Returns the hex-encoded hash string.
+func ComputeFileHash(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // DetectMimeType detects MIME type based on file extension

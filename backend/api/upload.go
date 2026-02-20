@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -13,10 +14,17 @@ import (
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 )
+
+// uploadFileResult tracks per-file status in batch upload responses
+type uploadFileResult struct {
+	Path   string `json:"path"`
+	Status string `json:"status"` // "created" or "skipped"
+}
 
 var (
 	tusHandler     http.Handler
@@ -137,6 +145,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 
 	// Process each upload
 	var paths []string
+	var results []uploadFileResult
 	for _, upload := range body.Uploads {
 		if upload.UploadID == "" || upload.Filename == "" {
 			log.Warn().
@@ -146,9 +155,8 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 			continue
 		}
 
-		// Get unique filename using utils helpers
+		// Sanitize filename
 		filename := utils.SanitizeFilename(upload.Filename)
-		filename = utils.DeduplicateFilename(destDir, filename)
 
 		// Source file from TUS uploads
 		srcPath := filepath.Join(uploadDir, upload.UploadID)
@@ -165,8 +173,35 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 			}
 		}
 
-		// Destination path for the file
-		destPath := filepath.Join(destination, filename)
+		// Compute hash of the incoming TUS file for duplicate detection
+		incomingHash := computeFileHashFromPath(srcPath)
+
+		// Content-aware deduplication: skip if identical file already exists
+		dedup := utils.DeduplicateFileWithHash(destDir, filename, incomingHash, func(name string) string {
+			relPath := filepath.Join(destination, name)
+			rec, _ := db.GetFileByPath(relPath)
+			if rec != nil && rec.Hash != nil {
+				return *rec.Hash
+			}
+			return ""
+		})
+
+		destPath := filepath.Join(destination, dedup.Filename)
+
+		if dedup.Action == utils.DedupActionSkip {
+			// Exact duplicate — skip write, clean up TUS files
+			os.Remove(srcPath)
+			os.Remove(srcPath + ".info")
+
+			log.Info().
+				Str("path", destPath).
+				Str("filename", filename).
+				Msg("upload skipped: identical file already exists")
+
+			paths = append(paths, destPath)
+			results = append(results, uploadFileResult{Path: destPath, Status: string(utils.DedupActionSkip)})
+			continue
+		}
 
 		// Open uploaded file for reading
 		uploadedFile, err := os.Open(srcPath)
@@ -198,7 +233,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 
 		log.Info().
 			Str("path", destPath).
-			Str("filename", filename).
+			Str("filename", dedup.Filename).
 			Int64("size", *result.Record.Size).
 			Str("mimeType", *result.Record.MimeType).
 			Bool("isNew", result.IsNew).
@@ -206,6 +241,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 			Msg("upload finalized")
 
 		paths = append(paths, destPath)
+		results = append(results, uploadFileResult{Path: destPath, Status: string(utils.DedupActionWrite)})
 	}
 
 	if len(paths) == 0 {
@@ -225,6 +261,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		"success": true,
 		"path":    paths[0],
 		"paths":   paths,
+		"results": results,
 	})
 }
 
@@ -260,37 +297,62 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 		return
 	}
 
-	// Deduplicate filename if a file already exists at that path
-	filename = utils.DeduplicateFilename(destDir, filename)
-	destPath := filepath.Join(dir, filename)
-
-	// Get MIME type from Content-Type header
-	mimeType := c.ContentType()
-
-	// Write via fs.Service.WriteFile() — same path as FinalizeUpload
+	// Buffer the request body so we can compute hash before deciding whether to write.
+	// Simple uploads are small files (typically ≤1MB), so buffering in memory is fine.
 	defer c.Request.Body.Close()
-	result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
-		Path:            destPath,
-		Content:         c.Request.Body,
-		MimeType:        mimeType,
-		Source:          "upload",
-		ComputeMetadata: true,
-		Sync:            true,
-	})
+	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error().Err(err).Str("path", destPath).Msg("simple upload: failed to write file")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+		log.Error().Err(err).Msg("simple upload: failed to read request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
 		return
 	}
 
-	log.Info().
-		Str("path", destPath).
-		Str("filename", filename).
-		Int64("size", *result.Record.Size).
-		Str("mimeType", *result.Record.MimeType).
-		Bool("isNew", result.IsNew).
-		Bool("hashComputed", result.HashComputed).
-		Msg("simple upload completed")
+	// Compute hash of the incoming content for duplicate detection
+	incomingHash, _ := utils.ComputeFileHash(bytes.NewReader(bodyBytes))
+
+	// Content-aware deduplication: skip if identical file already exists
+	dedup := utils.DeduplicateFileWithHash(destDir, filename, incomingHash, func(name string) string {
+		relPath := filepath.Join(dir, name)
+		rec, _ := db.GetFileByPath(relPath)
+		if rec != nil && rec.Hash != nil {
+			return *rec.Hash
+		}
+		return ""
+	})
+
+	destPath := filepath.Join(dir, dedup.Filename)
+	status := string(dedup.Action)
+
+	if dedup.Action == utils.DedupActionSkip {
+		log.Info().
+			Str("path", destPath).
+			Str("filename", filename).
+			Msg("simple upload skipped: identical file already exists")
+	} else {
+		// Write via fs.Service.WriteFile()
+		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
+			Path:            destPath,
+			Content:         bytes.NewReader(bodyBytes),
+			MimeType:        c.ContentType(),
+			Source:          "upload",
+			ComputeMetadata: true,
+			Sync:            true,
+		})
+		if err != nil {
+			log.Error().Err(err).Str("path", destPath).Msg("simple upload: failed to write file")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+			return
+		}
+
+		log.Info().
+			Str("path", destPath).
+			Str("filename", dedup.Filename).
+			Int64("size", *result.Record.Size).
+			Str("mimeType", *result.Record.MimeType).
+			Bool("isNew", result.IsNew).
+			Bool("hashComputed", result.HashComputed).
+			Msg("simple upload completed")
+	}
 
 	// Notify UI
 	if dir == "inbox" || dir == "" || dir == "." {
@@ -303,6 +365,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 		"success": true,
 		"path":    destPath,
 		"paths":   []string{destPath},
+		"results": []uploadFileResult{{Path: destPath, Status: status}},
 	})
 }
 
@@ -323,6 +386,21 @@ func copyUploadFile(src, dst string) error {
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err
+}
+
+// computeFileHashFromPath computes SHA-256 hash of a file on disk.
+// Returns empty string on error (best-effort; dedup falls back to rename).
+func computeFileHashFromPath(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	hash, err := utils.ComputeFileHash(f)
+	if err != nil {
+		return ""
+	}
+	return hash
 }
 
 // parseMetadata parses the Upload-Metadata header
