@@ -667,6 +667,15 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		permissionMode = sdk.PermissionModeDefault
 	}
 
+	// When resuming, preserve LastUserActivity from cached entry so the session
+	// doesn't jump to the top of the list just from being re-activated.
+	lastUserActivity := time.Now()
+	if resumeSessionID != "" {
+		if entry, ok := m.entries[resumeSessionID]; ok {
+			lastUserActivity = entry.LastUserActivity
+		}
+	}
+
 	session := &Session{
 		ID:                    sessionID,
 		WorkingDir:            workingDir,
@@ -675,7 +684,7 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		PermissionMode:        permissionMode,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
-		LastUserActivity:      time.Now(),
+		LastUserActivity:      lastUserActivity,
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		broadcast:             make(chan []byte, 256),
@@ -1024,10 +1033,14 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 				entry.FirstUserMessageUUID = userMsg.GetUUID()
 			}
 
-			// Track last user message timestamp for stable list ordering
-			if timestamp != "" {
-				if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
-					entry.LastUserActivity = t
+			// Track last user message timestamp for stable list ordering.
+			// Only count actual user input — tool use results (auto-generated when
+			// Claude calls tools) and compact summaries are not user activity.
+			if len(userMsg.ToolUseResult) == 0 && !userMsg.IsCompactSummary {
+				if timestamp != "" {
+					if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
+						entry.LastUserActivity = t
+					}
 				}
 			}
 		}
