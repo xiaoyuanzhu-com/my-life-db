@@ -27,21 +27,32 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
     }
   }, [handleKeyDown])
 
+  // The button is rendered as a sibling of the overlay (not a child) so that
+  // iOS WKWebView doesn't route its touch events through the iframe.  Both are
+  // position:fixed — the button at z-index:51 renders above the overlay at z-index:50.
   return createPortal(
-    <div
-      className="preview-fullscreen-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Fullscreen preview"
-    >
-      {/* Collapse button — top right, mirrors the expand button position */}
+    <>
+      <div
+        className="preview-fullscreen-overlay"
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fullscreen preview"
+      >
+        {/* Fullscreen iframe — click inside should NOT close the overlay */}
+        <iframe
+          className="preview-fullscreen-iframe"
+          srcDoc={srcdoc}
+          sandbox="allow-scripts"
+          title="Preview content"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+
+      {/* Collapse button — top right, outside overlay to avoid iOS iframe touch capture */}
       <button
         className="preview-fullscreen-collapse"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClose()
-        }}
+        onClick={onClose}
         aria-label="Collapse preview"
         title="Collapse preview"
       >
@@ -61,16 +72,7 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
           <line x1="3" y1="21" x2="10" y2="14" />
         </svg>
       </button>
-
-      {/* Fullscreen iframe — click inside should NOT close the overlay */}
-      <iframe
-        className="preview-fullscreen-iframe"
-        srcDoc={srcdoc}
-        sandbox="allow-scripts"
-        title="Preview content"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>,
+    </>,
     document.body
   )
 }

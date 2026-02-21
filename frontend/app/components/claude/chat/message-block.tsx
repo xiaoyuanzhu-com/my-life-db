@@ -532,7 +532,9 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
 
     function extractFullscreenSrcdoc(previewEl: HTMLElement): string | null {
       if (previewEl.classList.contains('mermaid-diagram')) {
-        const svg = previewEl.querySelector('svg')
+        // :scope > svg selects only direct-child SVGs, skipping the
+        // expand-button icon SVG nested inside .preview-expand-btn.
+        const svg = previewEl.querySelector(':scope > svg')
         if (!svg) return null
         return wrapSvgInHtml(svg.outerHTML)
       }

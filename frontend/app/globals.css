@@ -729,6 +729,8 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   padding: 0;
   line-height: 0;
   transition: background 0.15s ease, color 0.15s ease;
