@@ -90,25 +90,24 @@ export function SessionHeader({
 
       {/* Right: Status and token usage */}
       <div className="flex items-center gap-4">
-        {/* Token usage bar */}
-        <div className="hidden sm:flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {tokenUsage.used.toLocaleString()} / {tokenUsage.limit.toLocaleString()}
-          </span>
-          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+        {/* Token usage — only shown when context window is over 50% */}
+        {usagePercent > 50 && (
+          <div className="flex items-center gap-2" title={`${tokenUsage.used.toLocaleString()} / ${tokenUsage.limit.toLocaleString()} tokens (${usagePercent}%)`}>
             <div
               className={cn(
-                'h-full rounded-full transition-all',
+                'h-2 w-2 rounded-full',
                 usagePercent > 90
-                  ? 'bg-destructive'
+                  ? 'bg-red-500'
                   : usagePercent > 70
                     ? 'bg-yellow-500'
-                    : 'bg-primary'
+                    : 'bg-orange-500'
               )}
-              style={{ width: `${Math.min(usagePercent, 100)}%` }}
             />
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              {usagePercent}%
+            </span>
           </div>
-        </div>
+        )}
 
         {/* Working indicator */}
         {hasActiveTasks && (
