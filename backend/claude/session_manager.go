@@ -451,6 +451,12 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			entryCopy.IsProcessing = session.IsProcessing()
 			entryCopy.HasPendingPermission = session.HasPendingPermission()
 			entryCopy.PermissionMode = session.PermissionMode
+			// Use live result count if it's ahead of the cached JSONL count.
+			// The live count updates immediately when a result message arrives on stdout,
+			// while the JSONL cache lags behind (updated asynchronously by fsnotify).
+			if rc := session.ResultCount(); rc > entryCopy.ResultCount {
+				entryCopy.ResultCount = rc
+			}
 			// Use the active session's LastUserActivity if it's newer
 			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
 				entryCopy.LastUserActivity = session.LastUserActivity
@@ -466,17 +472,18 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			continue
 		}
 		entry := &SessionEntry{
-			SessionID:        id,
-			ProjectPath:      session.WorkingDir,
-			DisplayTitle:     session.Title,
-			Created:          session.CreatedAt,
-			Modified:         session.LastActivity,
-			LastUserActivity: session.LastUserActivity,
-			Git:              session.Git,
-			IsActivated:      true,
+			SessionID:            id,
+			ProjectPath:          session.WorkingDir,
+			DisplayTitle:         session.Title,
+			Created:              session.CreatedAt,
+			Modified:             session.LastActivity,
+			LastUserActivity:     session.LastUserActivity,
+			Git:                  session.Git,
+			IsActivated:          true,
 			IsProcessing:         session.IsProcessing(),
 			HasPendingPermission: session.HasPendingPermission(),
 			PermissionMode:       session.PermissionMode,
+			ResultCount:          session.ResultCount(),
 		}
 		allEntries = append(allEntries, entry)
 	}

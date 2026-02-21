@@ -127,6 +127,12 @@ type Session struct {
 	isProcessing   bool       `json:"-"`
 	onStateChanged func()     `json:"-"` // Called when isProcessing/pendingPermissionCount changes; triggers SSE notification
 
+	// Result count — number of completed turns, tracked live from the message stream.
+	// Used by the session list to determine "unread" state for active sessions without
+	// waiting for the JSONL file to be re-parsed by fsnotify (which races with the
+	// isProcessing state change notification).
+	resultCount int `json:"-"`
+
 	// Pending permission count — tracked by BroadcastUIMessage from control_request/control_response.
 	// control_request → increment (waiting for user input), control_response → decrement (resolved).
 	pendingPermissionCount int `json:"-"`
@@ -249,6 +255,13 @@ func (s *Session) IsProcessing() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.isProcessing
+}
+
+// ResultCount returns the number of completed turns tracked live from the message stream.
+func (s *Session) ResultCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.resultCount
 }
 
 // HasPendingPermission returns whether the session is waiting for user permission input.
@@ -627,6 +640,7 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.mu.Lock()
 		changed := s.isProcessing
 		s.isProcessing = false
+		s.resultCount++
 		cb := s.onStateChanged
 		s.mu.Unlock()
 		if changed && cb != nil {
