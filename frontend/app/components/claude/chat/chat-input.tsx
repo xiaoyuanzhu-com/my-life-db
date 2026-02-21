@@ -8,6 +8,7 @@ import { QuestionCard } from './question-card'
 import { ChatInputField } from './chat-input-field'
 import type { SlashCommand } from './slash-commands'
 import type { PermissionMode } from './permission-mode-selector'
+import type { ContextUsage } from './context-usage-indicator'
 
 // Re-export ConnectionStatus for backwards compatibility
 export type { ConnectionStatus }
@@ -56,6 +57,10 @@ interface ChatInputProps {
   permissionMode?: PermissionMode
   /** Callback when permission mode changes */
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /** Context window usage data */
+  contextUsage?: ContextUsage | null
+  /** Callback when user clicks the context usage indicator to trigger compact */
+  onCompact?: () => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -78,6 +83,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     slashCommands = [],
     permissionMode = 'default',
     onPermissionModeChange,
+    contextUsage,
+    onCompact,
   },
   ref
 ) {
@@ -211,6 +218,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               slashCommands={slashCommands}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
+              contextUsage={contextUsage}
+              onCompact={onCompact}
             />
           </div>
         </div>

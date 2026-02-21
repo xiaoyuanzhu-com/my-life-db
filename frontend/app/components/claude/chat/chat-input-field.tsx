@@ -6,6 +6,7 @@ import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
 import { FileTagPopover } from './file-tag-popover'
 import { PermissionModeSelector, type PermissionMode } from './permission-mode-selector'
+import { ContextUsageIndicator, type ContextUsage } from './context-usage-indicator'
 import { filterCommands } from './hooks'
 import { useFileTag, useFilteredFiles } from './hooks/use-file-tag'
 import type { SlashCommand } from './slash-commands'
@@ -39,6 +40,10 @@ interface ChatInputFieldProps {
   permissionMode?: PermissionMode
   /** Callback when permission mode changes */
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /** Context window usage data */
+  contextUsage?: ContextUsage | null
+  /** Callback when user clicks context usage indicator to trigger compact */
+  onCompact?: () => void
 }
 
 export function ChatInputField({
@@ -56,6 +61,8 @@ export function ChatInputField({
   slashCommands = [],
   permissionMode = 'default',
   onPermissionModeChange,
+  contextUsage,
+  onCompact,
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -393,6 +400,13 @@ export function ChatInputField({
               onChange={onPermissionModeChange}
               disabled={disabled || hasPermission}
               showLabel
+            />
+          )}
+          {contextUsage && (
+            <ContextUsageIndicator
+              usage={contextUsage}
+              onCompact={onCompact}
+              disabled={disabled || hasPermission}
             />
           )}
         </div>

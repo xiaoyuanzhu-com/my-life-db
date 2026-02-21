@@ -13,6 +13,7 @@ import {
   isToolUseBlock,
   type SessionMessage,
 } from '~/lib/session-message-utils'
+import type { ContextUsage } from './context-usage-indicator'
 
 interface ChatInterfaceProps {
   sessionId: string
@@ -470,6 +471,34 @@ export function ChatInterface({
 
   // Get merged slash commands (built-in + dynamic from init)
   const slashCommands = useSlashCommands(initData)
+
+  // Extract context window usage from the latest assistant message and init message
+  const contextUsage = useMemo<ContextUsage | null>(() => {
+    // Find model from init message
+    const initMsg = rawMessages.find(
+      (m) => m.type === 'system' && (m as unknown as Record<string, unknown>).subtype === 'init'
+    )
+    const model = initMsg
+      ? (initMsg as unknown as Record<string, unknown>).model as string | undefined
+      : undefined
+
+    if (!model) return null
+
+    // Find the latest assistant message with usage data (scan backwards)
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+      const msg = rawMessages[i]
+      if (msg.type === 'assistant' && msg.message?.usage) {
+        const usage = msg.message.usage
+        return {
+          inputTokens: usage.input_tokens || 0,
+          outputTokens: usage.output_tokens || 0,
+          model,
+        }
+      }
+    }
+
+    return null
+  }, [rawMessages])
 
   // Filter messages for rendering
   const renderableMessages = useMemo(() => {
@@ -972,6 +1001,8 @@ export function ChatInterface({
             slashCommands={slashCommands}
             permissionMode={permissionMode}
             onPermissionModeChange={handlePermissionModeChange}
+            contextUsage={contextUsage}
+            onCompact={() => sendMessage('/compact')}
           />
         </div>
 
