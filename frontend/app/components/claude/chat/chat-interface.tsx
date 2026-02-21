@@ -121,6 +121,11 @@ export function ChatInterface({
   const wasConnectedRef = useRef(false)
   // Track if permission mode has been synced to backend for this session
   const permissionModeSyncedRef = useRef(false)
+  // Deferred reconnect clear: when true, rawMessages will be cleared on the next
+  // incoming message (inside handleMessage) rather than immediately in the effect.
+  // This avoids a flash of empty content — React 18 batches the clear and the first
+  // new message into a single render, so the UI goes straight from old → new.
+  const pendingReconnectClearRef = useRef(false)
 
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -136,6 +141,14 @@ export function ChatInterface({
   const handleMessage = useCallback(
     (data: unknown) => {
       const msg = data as Record<string, unknown>
+
+      // Deferred reconnect clear: wipe stale rawMessages on the first incoming message
+      // after reconnection. Done here (not in the effect) so React 18 batches the clear
+      // and the first new message into one render — no flash of empty content.
+      if (pendingReconnectClearRef.current) {
+        pendingReconnectClearRef.current = false
+        setRawMessages([])
+      }
 
       // Debounce initial load detection: reset timer on each message
       // After 500ms of no messages, mark initial load as complete
@@ -584,6 +597,7 @@ export function ChatInterface({
     streamingBufferRef.current = [] // Clear buffered tokens on session change
     thinkingBufferRef.current = []
     streamingCompleteRef.current = false
+    pendingReconnectClearRef.current = false
     // Restore permission mode from API prop (each session has its own mode)
     if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
       setPermissionMode(initialPermissionMode)
@@ -644,19 +658,46 @@ export function ChatInterface({
     }
   }, [])
 
-  // Track reconnection for hasConnected state
+  // Reset state on WebSocket reconnection.
   //
-  // UX REQUIREMENT: Seamless reconnection
-  // - If scrolled to middle: stay at same position after reconnect
-  // - If stuck to bottom: remain stuck to bottom after reconnect
+  // After a server restart, the backend's in-memory state is gone and the JSONL file
+  // becomes the single source of truth. The frontend's rawMessages contain stale
+  // synthetic user messages (generated with uuid.New() during the previous connection)
+  // whose UUIDs don't match the Claude-generated UUIDs in the JSONL file.
+  // UUID-based deduplication fails for these → duplicate user messages.
   //
-  // Messages are NOT cleared on reconnect - the uuid-based deduplication in handleMessage
-  // ensures incoming messages either update existing ones or append new ones seamlessly.
-  // This keeps the scroll position stable and avoids UI flicker.
+  // Fix: defer rawMessages clear until the first message arrives in handleMessage.
+  // React 18 batches the clear + first new message into one render → no empty flash.
+  // Other state is reset immediately since it doesn't affect the message list display.
   useEffect(() => {
     if (ws.connectionStatus === 'connected') {
+      if (wasConnectedRef.current) {
+        // Defer rawMessages clear to handleMessage (avoids flash of empty content)
+        pendingReconnectClearRef.current = true
+        setHasSeenInit(false)
+        setOptimisticMessage(null)
+        setTurnInProgress(false)
+        setActiveTodos([])
+        setProgressMessage(null)
+        setStreamingText('')
+        setStreamingThinking('')
+        streamingBufferRef.current = []
+        thinkingBufferRef.current = []
+        streamingCompleteRef.current = false
+        setPendingQuestions([])
+        permissions.reset()
+        initialLoadCompleteRef.current = false
+        hasRefreshedRef.current = false
+        // Reset so permission mode is re-synced to the new backend session
+        permissionModeSyncedRef.current = false
+        if (initialLoadTimerRef.current) {
+          clearTimeout(initialLoadTimerRef.current)
+          initialLoadTimerRef.current = null
+        }
+      }
       wasConnectedRef.current = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
   }, [ws.connectionStatus])
 
   // Sync permission mode to backend on first connection
