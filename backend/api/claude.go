@@ -578,8 +578,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			db.MarkClaudeSessionRead(sessionID, n)
 		}
 	}()
-	claudeManager := h.server.Claude()
-
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
 	log.Debug().Str("sessionId", sessionID).Str("mode", string(session.Mode)).Msg("Subscribe WebSocket connected (not activated yet)")
