@@ -624,14 +624,14 @@ export default function ClaudePage() {
 
       {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-        {activeSessionId && effectiveActiveSession ? (
+        {activeSessionId ? (
           uiMode === 'chat' ? (
             <ChatInterface
               key={activeSessionId}
               sessionId={activeSessionId}
-              sessionName={effectiveActiveSession.title || 'Session'}
-              workingDir={effectiveActiveSession.workingDir}
-              permissionMode={effectiveActiveSession.permissionMode}
+              sessionName={effectiveActiveSession?.title || 'Session'}
+              workingDir={effectiveActiveSession?.workingDir}
+              permissionMode={effectiveActiveSession?.permissionMode}
               onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
               refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}
