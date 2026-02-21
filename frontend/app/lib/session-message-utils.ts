@@ -462,13 +462,24 @@ export function isSkippedXmlContent(content: string): boolean {
 }
 
 /**
- * Check if a user message should be skipped because it contains only system XML tags.
+ * Check if a user message should be skipped because it contains only system XML tags
+ * or is a system-injected task notification.
+ *
+ * Task notifications are injected by Claude Code when a Task sub-agent completes.
+ * They contain a <task-notification> XML block with nested tags (task-id, tool-use-id,
+ * status, summary, result, usage) plus trailing text outside the XML ("Full transcript
+ * available at: ..."). Since there's content outside the XML tags, the generic
+ * isSkippedXmlContent check won't catch them, so we use a prefix-based check instead.
  */
 export function isSkippedUserMessage(msg: SessionMessage): boolean {
   if (msg.type !== 'user') return false
 
   const content = msg.message?.content
   if (typeof content !== 'string') return false
+
+  // PREFIX-BASED FILTER: Skip task-notification messages (system-injected, not user-typed).
+  // These have trailing text outside the XML, so isSkippedXmlContent won't catch them.
+  if (content.trimStart().startsWith('<task-notification>')) return true
 
   return isSkippedXmlContent(content)
 }

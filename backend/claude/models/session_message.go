@@ -77,7 +77,8 @@ func filterSystemTags(text string) string {
 	// PREFIX-BASED FILTERS: Always filter if content starts with these
 	// These are always system content, never user-typed
 	if strings.HasPrefix(trimmed, "<ide_") ||
-		strings.HasPrefix(trimmed, "<system-reminder>") {
+		strings.HasPrefix(trimmed, "<system-reminder>") ||
+		strings.HasPrefix(trimmed, "<task-notification>") {
 		return ""
 	}
 
