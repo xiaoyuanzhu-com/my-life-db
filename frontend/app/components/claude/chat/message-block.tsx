@@ -211,7 +211,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
                   className="inline-block"
                   style={{
                     color: 'var(--claude-text-primary)',
-                    animation: `compacting-dots 1.2s step-end ${i * 0.4}s infinite`,
+                    animation: `compacting-dot-${i} 1.44s linear infinite`,
                   }}
                 >
                   .
@@ -219,10 +219,19 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
               ))}
             </span>
             <style>{`
-              @keyframes compacting-dots {
-                0% { opacity: 0; }
-                33.33% { opacity: 1; }
-                100% { opacity: 1; }
+              @keyframes compacting-dot-0 {
+                0%, 100% { opacity: 0; }
+                1%, 99% { opacity: 1; }
+              }
+              @keyframes compacting-dot-1 {
+                0%, 33% { opacity: 0; }
+                34%, 99% { opacity: 1; }
+                100% { opacity: 0; }
+              }
+              @keyframes compacting-dot-2 {
+                0%, 66% { opacity: 0; }
+                67%, 99% { opacity: 1; }
+                100% { opacity: 0; }
               }
             `}</style>
           </span>

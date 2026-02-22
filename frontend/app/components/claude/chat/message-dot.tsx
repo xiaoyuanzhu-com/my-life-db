@@ -28,7 +28,7 @@ const DOT_STYLES: Record<MessageDotType, { color: string; char: string; pulse: b
   'tool-aborted':  { color: '#9CA3AF', char: '○', pulse: false },
   'tool-completed':{ color: '#22C55E', char: '●', pulse: false },
   'tool-failed':   { color: '#D92D20', char: '●', pulse: false },
-  'compacting':    { color: '#5F6368', char: '●', pulse: false },
+  'compacting':    { color: '#5F6368', char: '●', pulse: true },
   'system':        { color: '#22C55E', char: '●', pulse: false },
 }
 
