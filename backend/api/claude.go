@@ -570,14 +570,27 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// Track how many "result" messages were actually delivered to this WebSocket
 	// client. A result is "read" if and only if it was sent at least once through
 	// the WebSocket — no snapshots, no timers, no guessing.
-	// On disconnect we persist the count so the sidebar "unread" (green dot) state
-	// accurately reflects what the user has seen.
 	var deliveredResults atomic.Int32
-	defer func() {
+
+	// Persist the delivered-results count to DB and fire an SSE event so that
+	// any session-list refresh (iOS/web) picks up the correct "idle" state.
+	// Called inline after result delivery — not just on disconnect — so the DB
+	// is up-to-date while the user is still viewing the session.
+	// MarkClaudeSessionRead uses MAX() upsert, so repeated/concurrent calls
+	// are safe and can never regress the count.
+	persistReadState := func() {
 		if n := int(deliveredResults.Load()); n > 0 {
-			db.MarkClaudeSessionRead(sessionID, n)
+			if err := db.MarkClaudeSessionRead(sessionID, n); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
+			} else {
+				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+			}
 		}
-	}()
+	}
+
+	// Safety net: persist on disconnect in case inline calls were skipped.
+	defer persistReadState()
+
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
 	log.Debug().Str("sessionId", sessionID).Str("mode", string(session.Mode)).Msg("Subscribe WebSocket connected (not activated yet)")
@@ -609,6 +622,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				}
 			}
 			lastMessageCount = len(initialMessages)
+			persistReadState() // Persist after initial burst (not per-message)
 		} else if err != nil {
 			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
 		}
@@ -646,6 +660,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					deliveredResults.Add(1)
 				}
 			}
+			persistReadState() // Persist after initial burst (not per-message)
 		}
 
 		// UI mode: Create a client to receive broadcasts from readJSON
@@ -676,6 +691,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					var mt struct{ Type string `json:"type"` }
 					if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
 						deliveredResults.Add(1)
+						persistReadState()
 					}
 				}
 			}
@@ -717,6 +733,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 							}
 							if msg.GetType() == "result" {
 								deliveredResults.Add(1)
+								persistReadState()
 							}
 						}
 					}
