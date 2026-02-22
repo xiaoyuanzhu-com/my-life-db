@@ -58,6 +58,16 @@ export function ChatInterface({
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // Pagination state — messages are loaded in aligned pages (page 0 = [0..99], page 1 = [100..199], etc.)
+  // On connect, only the last page is sent. Older pages are loaded on-demand when user scrolls up.
+  const [paginationInfo, setPaginationInfo] = useState<{ totalMessages: number; pageSize: number } | null>(null)
+  const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set())
+  const [isLoadingPage, setIsLoadingPage] = useState(false)
+  // Track whether we're currently receiving a page (between page_start and page_end)
+  const receivingPageRef = useRef<number | null>(null)
+  // Buffer for page messages — collected between page_start and page_end, then applied at once
+  const pageBufferRef = useRef<SessionMessage[]>([])
+
   // Track if we've seen the init message - this marks the boundary between historical and live messages
   // IMPORTANT: This is the key to distinguishing historical incomplete tool_use from live control_requests
   // - Before init: messages are from historical JSONL cache
@@ -162,6 +172,58 @@ export function ChatInterface({
           initialLoadCompleteRef.current = true
           initialLoadTimerRef.current = null
         }, 500)
+      }
+
+      // Handle pagination protocol messages
+      if (msg.type === 'session_info') {
+        setPaginationInfo({
+          totalMessages: (msg.totalMessages as number) || 0,
+          pageSize: (msg.pageSize as number) || 100,
+        })
+        return
+      }
+
+      if (msg.type === 'page_start') {
+        receivingPageRef.current = (msg.page as number) ?? null
+        pageBufferRef.current = []
+        return
+      }
+
+      if (msg.type === 'page_end') {
+        const page = (msg.page as number) ?? 0
+        const bufferedMessages = pageBufferRef.current
+        receivingPageRef.current = null
+        pageBufferRef.current = []
+        setIsLoadingPage(false)
+        setLoadedPages((prev) => new Set([...prev, page]))
+
+        if (bufferedMessages.length > 0) {
+          setRawMessages((prev) => {
+            // Build a set of existing UUIDs for dedup
+            const existingUUIDs = new Set(prev.map((m) => m.uuid))
+            const newMessages = bufferedMessages.filter((m) => !existingUUIDs.has(m.uuid))
+            if (newMessages.length === 0) return prev
+
+            if (prev.length === 0) {
+              // Initial page load (on connect or reconnect) — just set
+              return newMessages
+            }
+            // Older page loaded via scroll-up — prepend
+            // (load_page requests always ask for older pages, so prepend is always correct)
+            return [...newMessages, ...prev]
+          })
+        }
+        return
+      }
+
+      // If we're receiving a page, buffer the message instead of adding to state directly
+      if (receivingPageRef.current !== null) {
+        const sessionMsg = msg as unknown as SessionMessage
+        if (sessionMsg.uuid) {
+          pageBufferRef.current.push(sessionMsg)
+        }
+        // Still process special types (control_request, init, etc.) below
+        // but don't add them to rawMessages via the normal path
       }
 
       // Handle error messages
@@ -424,6 +486,12 @@ export function ChatInterface({
         refreshSessions()
       }
 
+      // Skip adding to rawMessages if this message is being buffered as part of a page.
+      // Page messages are applied in bulk when page_end is received.
+      if (receivingPageRef.current !== null) {
+        return
+      }
+
       setRawMessages((prev) => {
         const existingIndex = prev.findIndex((m) => m.uuid === sessionMsg.uuid)
         if (existingIndex >= 0) {
@@ -567,6 +635,12 @@ export function ChatInterface({
     return false
   }, [rawMessages])
 
+  // Pagination: whether there are more historical pages to load
+  const hasMoreHistory = useMemo(() => {
+    if (loadedPages.size === 0) return false
+    return Math.min(...loadedPages) > 0
+  }, [loadedPages])
+
   // Only show connection status banner after we've connected at least once
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
@@ -660,6 +734,12 @@ export function ChatInterface({
     thinkingBufferRef.current = []
     streamingCompleteRef.current = false
     pendingReconnectClearRef.current = false
+    // Reset pagination state
+    setPaginationInfo(null)
+    setLoadedPages(new Set())
+    setIsLoadingPage(false)
+    receivingPageRef.current = null
+    pageBufferRef.current = []
     // Restore permission mode from API prop (each session has its own mode)
     if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
       setPermissionMode(initialPermissionMode)
@@ -748,6 +828,12 @@ export function ChatInterface({
         streamingCompleteRef.current = false
         setPendingQuestions([])
         permissions.reset()
+        // Reset pagination state for fresh load
+        setPaginationInfo(null)
+        setLoadedPages(new Set())
+        setIsLoadingPage(false)
+        receivingPageRef.current = null
+        pageBufferRef.current = []
         initialLoadCompleteRef.current = false
         hasRefreshedRef.current = false
         // Reset so permission mode is re-synced to the new backend session
@@ -788,6 +874,22 @@ export function ChatInterface({
   // ============================================================================
   // Handlers
   // ============================================================================
+
+  // Load the next older page of messages (triggered by scroll-up)
+  const loadOlderPage = useCallback(async () => {
+    if (isLoadingPage || !hasMoreHistory || loadedPages.size === 0) return
+    const oldestLoaded = Math.min(...loadedPages)
+    if (oldestLoaded <= 0) return
+    const targetPage = oldestLoaded - 1
+    if (loadedPages.has(targetPage)) return
+    setIsLoadingPage(true)
+    try {
+      await ws.sendMessage({ type: 'load_page', page: targetPage })
+    } catch (err) {
+      console.error('[ChatInterface] Failed to request page:', err)
+      setIsLoadingPage(false)
+    }
+  }, [isLoadingPage, hasMoreHistory, loadedPages, ws])
 
   // Send message via WebSocket
   const sendMessage = useCallback(
@@ -1007,6 +1109,9 @@ export function ChatInterface({
             streamingText={streamingText}
             streamingThinking={streamingThinking}
             turnId={turnId}
+            isLoadingPage={isLoadingPage}
+            hasMoreHistory={hasMoreHistory}
+            onLoadOlderPage={loadOlderPage}
             wipText={
               isWorking && !streamingText && !isCompacting
                 ? activeTodos.find((t) => t.status === 'in_progress')?.activeForm ||

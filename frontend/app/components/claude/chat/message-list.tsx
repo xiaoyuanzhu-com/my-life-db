@@ -20,6 +20,12 @@ interface MessageListProps {
   wipText?: string | null
   /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
   onScrollElementReady?: (element: HTMLDivElement | null) => void
+  /** Whether a page of older messages is currently being loaded */
+  isLoadingPage?: boolean
+  /** Whether there are more historical pages available to load */
+  hasMoreHistory?: boolean
+  /** Callback to load the next older page of messages */
+  onLoadOlderPage?: () => void
 }
 
 /**
@@ -30,6 +36,8 @@ interface MessageListProps {
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
+ * - Scroll-up detection for loading older message pages
+ * - Scroll position preservation when prepending older messages
  *
  * The use-stick-to-bottom library automatically handles:
  * - Sticking to bottom when new content is added
@@ -43,7 +51,7 @@ interface MessageListProps {
  * For the actual message rendering, it delegates to SessionMessages,
  * which can be used recursively for nested agent sessions.
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onScrollElementReady }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onScrollElementReady, isLoadingPage, hasMoreHistory, onLoadOlderPage }: MessageListProps) {
   // use-stick-to-bottom with velocity-based spring animations
   // 'smooth' enables natural deceleration for streaming content
   // This adapts scroll speed to distance - faster when far behind, slower when close
@@ -54,6 +62,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   // Track scroll element for parent callback and scroll listeners
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
+
+  // Track previous message count for scroll position preservation on prepend
+  const prevMessageCountRef = useRef(messages.length)
+  const prevScrollHeightRef = useRef(0)
+  const prevScrollTopRef = useRef(0)
 
   // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
   const mergedScrollRef = useCallback(
@@ -95,6 +108,65 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
       element.removeEventListener('scrollend', checkAndReengage)
     }
   }, [scrollToBottom])
+
+  // Scroll-up detection: load older pages when user scrolls near the top
+  useEffect(() => {
+    const element = scrollElementRef.current
+    if (!element) return
+
+    const handleScroll = () => {
+      // Trigger load when within 300px of the top
+      if (element.scrollTop < 300 && hasMoreHistory && !isLoadingPage) {
+        onLoadOlderPage?.()
+      }
+    }
+
+    element.addEventListener('scroll', handleScroll, { passive: true })
+    return () => element.removeEventListener('scroll', handleScroll)
+  }, [hasMoreHistory, isLoadingPage, onLoadOlderPage])
+
+  // Scroll position preservation when older messages are prepended.
+  // Before the message count changes, save scroll state.
+  // After React renders the new messages, adjust scrollTop to maintain visual position.
+  useEffect(() => {
+    const element = scrollElementRef.current
+    if (!element) return
+
+    const prevCount = prevMessageCountRef.current
+    const currentCount = messages.length
+
+    if (currentCount > prevCount && prevScrollHeightRef.current > 0) {
+      // Messages were added. Check if they were prepended (older page loaded)
+      // by comparing scroll heights — if content grew above the viewport, adjust.
+      const heightDelta = element.scrollHeight - prevScrollHeightRef.current
+      if (heightDelta > 0 && prevScrollTopRef.current < 300) {
+        // User was near the top (waiting for older messages) — preserve position
+        element.scrollTop = prevScrollTopRef.current + heightDelta
+      }
+    }
+
+    // Save current state for next comparison
+    prevMessageCountRef.current = currentCount
+    prevScrollHeightRef.current = element.scrollHeight
+    prevScrollTopRef.current = element.scrollTop
+  }, [messages.length])
+
+  // Adaptive viewport fill: if content doesn't fill the viewport after loading a page,
+  // automatically request the next older page
+  useEffect(() => {
+    const element = scrollElementRef.current
+    if (!element || isLoadingPage || !hasMoreHistory || messages.length === 0) return
+
+    // Use requestAnimationFrame to check after the browser has finished layout
+    const rafId = requestAnimationFrame(() => {
+      // If content height is less than viewport, we need more messages
+      if (element.scrollHeight <= element.clientHeight) {
+        onLoadOlderPage?.()
+      }
+    })
+
+    return () => cancelAnimationFrame(rafId)
+  }, [messages.length, isLoadingPage, hasMoreHistory, onLoadOlderPage])
 
   // Only show StreamingResponse when streaming text exists AND the final assistant
   // message (with text content) hasn't been added to the messages list yet.
@@ -142,6 +214,28 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
           <div className="flex-1" />
         ) : (
           <>
+            {/* Loading indicator for older pages */}
+            {isLoadingPage && (
+              <div className="flex justify-center py-4">
+                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--claude-text-tertiary)' }}>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Loading older messages…
+                </div>
+              </div>
+            )}
+
+            {/* Beginning of session indicator */}
+            {!hasMoreHistory && messages.length > 0 && (
+              <div className="flex justify-center py-3 mb-2">
+                <span className="text-xs" style={{ color: 'var(--claude-text-tertiary)' }}>
+                  Beginning of session
+                </span>
+              </div>
+            )}
+
             {/* Messages rendered via SessionMessages (supports recursive nesting) */}
             <SessionMessages
               messages={messages}

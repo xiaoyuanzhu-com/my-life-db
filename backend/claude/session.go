@@ -601,6 +601,46 @@ func (s *Session) GetCachedMessages() [][]byte {
 	return result
 }
 
+// DefaultPageSize is the number of messages per page for WebSocket pagination.
+const DefaultPageSize = 100
+
+// GetCachedMessageCount returns the total number of cached messages.
+func (s *Session) GetCachedMessageCount() int {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	return len(s.cachedMessages)
+}
+
+// GetCachedMessagePage returns a page of cached messages using aligned page boundaries.
+// Page 0 = messages[0..pageSize-1], Page 1 = messages[pageSize..2*pageSize-1], etc.
+// The last page may be partial. Returns nil if page is out of range.
+func (s *Session) GetCachedMessagePage(page, pageSize int) [][]byte {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+
+	total := len(s.cachedMessages)
+	if total == 0 || page < 0 || pageSize <= 0 {
+		return nil
+	}
+
+	start := page * pageSize
+	if start >= total {
+		return nil
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	result := make([][]byte, end-start)
+	for i, msg := range s.cachedMessages[start:end] {
+		msgCopy := make([]byte, len(msg))
+		copy(msgCopy, msg)
+		result[i] = msgCopy
+	}
+	return result
+}
+
 // BroadcastUIMessage handles a message from Claude stdout (UI mode)
 // - Deduplicates by UUID (skip if already seen from JSONL)
 // - Adds new messages to cache (including control messages for live sessions)
