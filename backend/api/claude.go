@@ -1073,7 +1073,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Bool("wasActivated", wasActivated).
 					Msg("permission mode changed")
 
-				// Send control_response confirmation to all clients
+				// Send control_response confirmation to all clients.
+				// Use BroadcastToClients (not BroadcastUIMessage) to avoid caching.
+				// set_permission_mode responses are ephemeral confirmations — each
+				// reconnecting client sends its own sync and gets a fresh response.
+				// Caching them causes accumulation: N responses after N connections.
 				responseMsg := map[string]any{
 					"type":       "control_response",
 					"request_id": controlReq.RequestID,
@@ -1083,7 +1087,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					},
 				}
 				if msgBytes, err := json.Marshal(responseMsg); err == nil {
-					session.BroadcastUIMessage(msgBytes)
+					session.BroadcastToClients(msgBytes)
 				}
 
 			default:

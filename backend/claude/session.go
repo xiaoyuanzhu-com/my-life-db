@@ -610,11 +610,15 @@ func (s *Session) GetCachedMessages() [][]byte {
 // This handles the case where Claude's stdout may replay some messages that
 // are already in the JSONL file.
 //
-// control_request and control_response ARE cached for live sessions.
-// The frontend tracks them by request_id to determine pending vs resolved permissions.
-// This allows new clients connecting mid-session to see pending permission dialogs.
-// Note: LoadMessageCache() excludes control messages from JSONL because control_response
-// isn't stored there, so we can't determine pending state from history alone.
+// Tool permission control_request/control_response (can_use_tool) ARE cached for live
+// sessions. The frontend tracks them by request_id to determine pending vs resolved
+// permissions, allowing new clients connecting mid-session to see pending permission
+// dialogs. Note: LoadMessageCache() excludes control messages from JSONL because
+// control_response isn't stored there, so we can't determine pending state from
+// history alone.
+//
+// Ephemeral responses like set_permission_mode should use BroadcastToClients instead
+// to avoid cache accumulation across reconnections.
 func (s *Session) BroadcastUIMessage(data []byte) {
 	var msgEnvelope struct {
 		Type    string `json:"type"`
@@ -711,6 +715,14 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	s.cacheMu.Unlock()
 
 	// Broadcast to all connected clients
+	s.BroadcastToClients(data)
+}
+
+// BroadcastToClients sends a message to all connected WebSocket clients
+// without adding it to the message cache. Use this for ephemeral messages
+// (e.g. set_permission_mode confirmations) that should not be replayed to
+// reconnecting clients.
+func (s *Session) BroadcastToClients(data []byte) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for client := range s.Clients {
