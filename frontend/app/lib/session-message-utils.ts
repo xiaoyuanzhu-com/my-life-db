@@ -103,11 +103,14 @@ export interface SessionMessage {
   task_id?: string  // Background task ID (e.g., "bb53ba9")
   summary?: string  // Human-readable summary (e.g., 'Background command "..." completed (exit code 0)')
   output_file?: string  // Path to task output file
+  tool_use_id?: string  // Links back to the parent Task tool_use block (also present on task_started)
+  usage?: { duration_ms?: number; tool_uses?: number; total_tokens?: number }  // Execution stats (agent tasks)
 
   // Task started fields (when subtype === 'task_started')
   // These fields are on the root message object (like all system messages)
   description?: string  // Human-readable description of the task (e.g., "Explore iOS inbox codebase")
   task_type?: string  // Type of task (e.g., "local_agent")
+  // Also has: tool_use_id (defined above), task_id (defined above)
 
   // Hook started/response fields (when subtype === 'hook_started' or 'hook_response')
   hook_id?: string  // Unique identifier for this hook execution

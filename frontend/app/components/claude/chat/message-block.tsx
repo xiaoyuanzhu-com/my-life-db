@@ -989,6 +989,12 @@ function HookBlock({
   )
 }
 
+// Format token count to human-readable string (e.g., 61306 → "61K")
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return `${tokens}`
+  return `${Math.round(tokens / 1000)}K`
+}
+
 // Task notification block - shows background task completion/failure
 function TaskNotificationBlock({ message }: { message: SessionMessage }) {
   // Determine status from message (the JSON has a `status` field on root)
@@ -998,6 +1004,14 @@ function TaskNotificationBlock({ message }: { message: SessionMessage }) {
 
   // Summary text from the message
   const summary = message.summary ?? `Background task ${message.task_id ?? 'unknown'} ${taskStatus}`
+
+  // Usage stats (present on agent tasks)
+  const usage = message.usage
+  const usageParts: string[] = []
+  if (usage?.duration_ms != null) usageParts.push(formatDuration(usage.duration_ms))
+  if (usage?.tool_uses != null) usageParts.push(`${usage.tool_uses} tool uses`)
+  if (usage?.total_tokens != null) usageParts.push(`${formatTokens(usage.total_tokens)} tokens`)
+  const usageText = usageParts.length > 0 ? usageParts.join(' · ') : null
 
   return (
     <div className="flex items-start gap-2">
@@ -1009,6 +1023,14 @@ function TaskNotificationBlock({ message }: { message: SessionMessage }) {
         >
           {summary}
         </span>
+        {usageText && (
+          <span
+            className="font-mono text-[12px] leading-[1.5] ml-2"
+            style={{ color: 'var(--claude-text-tertiary, var(--claude-text-secondary))', opacity: 0.6 }}
+          >
+            ({usageText})
+          </span>
+        )}
       </div>
     </div>
   )
