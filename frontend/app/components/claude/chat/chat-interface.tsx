@@ -489,8 +489,14 @@ export function ChatInterface({
       const msg = rawMessages[i]
       if (msg.type === 'assistant' && msg.message?.usage) {
         const usage = msg.message.usage
+        // Total input tokens = non-cached + cache creation + cache read
+        // The API's input_tokens only counts non-cached tokens (typically 1-3),
+        // so we must include cached tokens to get actual context window usage.
+        const totalInputTokens = (usage.input_tokens || 0) +
+          (usage.cache_creation_input_tokens || 0) +
+          (usage.cache_read_input_tokens || 0)
         return {
-          inputTokens: usage.input_tokens || 0,
+          inputTokens: totalInputTokens,
           outputTokens: usage.output_tokens || 0,
           model,
         }

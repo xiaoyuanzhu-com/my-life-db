@@ -64,8 +64,8 @@ export function ContextUsageIndicator({
   if (!usage) return null
 
   const maxTokens = getContextWindowSize(usage.model)
-  // Context window usage = input tokens (which represents the full context sent to API)
-  // This is the most accurate measure: each API call sends the full conversation as input
+  // Context window usage = total input tokens (non-cached + cache creation + cache read)
+  // The inputTokens field is pre-computed to include all cached tokens
   const usedTokens = usage.inputTokens
   const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
 
