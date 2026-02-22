@@ -49,10 +49,16 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
         />
       </div>
 
-      {/* Collapse button — top right, outside overlay to avoid iOS iframe touch capture */}
+      {/* Collapse button — top right, outside overlay to avoid iOS iframe touch capture.
+          onPointerDown fires before onClick and is reliably dispatched on iOS even when
+          the button overlaps an iframe that would otherwise steal the touch event. */}
       <button
         className="preview-fullscreen-collapse"
         onClick={onClose}
+        onPointerDown={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
         aria-label="Collapse preview"
         title="Collapse preview"
       >
