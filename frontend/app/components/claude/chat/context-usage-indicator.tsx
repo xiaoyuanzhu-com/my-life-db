@@ -69,9 +69,9 @@ export function ContextUsageIndicator({
   const usedTokens = usage.inputTokens
   const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
 
-  // SVG circle parameters
-  const size = 22
-  const strokeWidth = 2.5
+  // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)
+  const size = 14
+  const strokeWidth = 2
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference - (percentage / 100) * circumference
@@ -105,8 +105,9 @@ export function ContextUsageIndicator({
           cy={size / 2}
           r={radius}
           fill="none"
-          className="stroke-muted"
+          stroke="currentColor"
           strokeWidth={strokeWidth}
+          opacity={0.2}
         />
         {/* Progress ring */}
         <circle
@@ -114,7 +115,8 @@ export function ContextUsageIndicator({
           cy={size / 2}
           r={radius}
           fill="none"
-          className="stroke-muted-foreground transition-all duration-500"
+          stroke="currentColor"
+          className="transition-all duration-500"
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
