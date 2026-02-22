@@ -10,6 +10,7 @@ import {
   buildToolResultMap,
   hasToolUseResult,
   isStatusMessage,
+  isSubagentMessage,
   isToolUseBlock,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -484,10 +485,11 @@ export function ChatInterface({
 
     if (!model) return null
 
-    // Find the latest assistant message with usage data (scan backwards)
+    // Find the latest main-session assistant message with usage data (scan backwards).
+    // Skip subagent messages — they have their own separate context windows.
     for (let i = rawMessages.length - 1; i >= 0; i--) {
       const msg = rawMessages[i]
-      if (msg.type === 'assistant' && msg.message?.usage) {
+      if (msg.type === 'assistant' && msg.message?.usage && !isSubagentMessage(msg)) {
         const usage = msg.message.usage
         // Total input tokens = non-cached + cache creation + cache read
         // The API's input_tokens only counts non-cached tokens (typically 1-3),
