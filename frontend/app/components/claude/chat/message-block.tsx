@@ -920,7 +920,7 @@ function HookBlock({
   // Determine status based on whether we have a response and its outcome
   const isComplete = !!hookResponse
   const isSuccess = hookResponse?.outcome === 'success'
-  const dotType = isComplete ? (isSuccess ? 'tool-completed' as const : 'tool-failed' as const) : 'tool-pending' as const
+  const dotType = isComplete ? (isSuccess ? 'tool-completed' as const : 'tool-failed' as const) : 'tool-wip' as const
 
   // Determine what output to show (prefer stdout, fall back to output field)
   const outputContent = hookResponse?.stdout || hookResponse?.output || ''
