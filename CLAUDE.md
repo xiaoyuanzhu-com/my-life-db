@@ -372,8 +372,9 @@ Do NOT create git commits automatically. Only commit when explicitly instructed.
 
 **Always rebase, never merge** — rebase onto `origin/main` and push directly. Never create merge commits.
 
-    # 1. create worktree BEFORE making changes
-    git worktree add -b <branch> .worktrees/<name> main
+    # 1. fetch latest and create worktree BEFORE making changes
+    git fetch origin
+    git worktree add -b <branch> .worktrees/<name> origin/main
     # 2. commit — ONLY when user explicitly asks
     # 3. rebase & push — ONLY when user explicitly asks
     # Push from WITHIN the worktree — never checkout main (other sessions may have uncommitted work there)
