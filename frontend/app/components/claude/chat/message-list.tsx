@@ -4,7 +4,8 @@ import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
 import { StreamingThinking } from './streaming-thinking'
-import type { SessionMessage, ExtractedToolResult } from '~/lib/session-message-utils'
+import { isTextBlock } from '~/lib/session-message-utils'
+import type { SessionMessage, ExtractedToolResult, ContentBlock } from '~/lib/session-message-utils'
 
 interface MessageListProps {
   messages: SessionMessage[]
@@ -96,25 +97,38 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   }, [scrollToBottom])
 
   // Only show StreamingResponse when streaming text exists AND the final assistant
-  // message hasn't been added to the messages list yet. Once the assistant message
-  // appears in the list, MessageBlock renders it with sync-parsed markdown immediately,
-  // so we hide StreamingResponse to avoid showing duplicate content.
+  // message (with text content) hasn't been added to the messages list yet.
+  // Once that message appears, MessageBlock renders it with sync-parsed markdown
+  // immediately, so we hide StreamingResponse to avoid duplicate content.
+  //
+  // IMPORTANT: We check for text content specifically because after a tool use,
+  // the last renderable message is an assistant message with only tool_use blocks
+  // (the tool_result user message is filtered from renderableMessages). That
+  // tool_use-only assistant message is NOT the final response — streaming is for
+  // the NEXT response. Without this check, streaming after tool use would be hidden.
   const showStreaming = useMemo(() => {
     if (!streamingText) return false
-    // If the last message is an assistant message, the final content is in the list —
-    // MessageBlock will render it with immediate sync-parsed HTML
     const lastMsg = messages[messages.length - 1]
-    if (lastMsg?.type === 'assistant') return false
+    if (lastMsg?.type === 'assistant') {
+      const content = lastMsg.message?.content
+      if (Array.isArray(content) && content.some((b: ContentBlock) => isTextBlock(b))) {
+        return false
+      }
+    }
     return true
   }, [streamingText, messages])
 
   // Only show StreamingThinking when thinking text exists AND the final assistant
-  // message hasn't arrived yet. Same logic as showStreaming — once the assistant
-  // message is in the list, it contains the completed thinking block.
+  // message (with text content) hasn't arrived yet. Same logic as showStreaming.
   const showStreamingThinking = useMemo(() => {
     if (!streamingThinking) return false
     const lastMsg = messages[messages.length - 1]
-    if (lastMsg?.type === 'assistant') return false
+    if (lastMsg?.type === 'assistant') {
+      const content = lastMsg.message?.content
+      if (Array.isArray(content) && content.some((b: ContentBlock) => isTextBlock(b))) {
+        return false
+      }
+    }
     return true
   }, [streamingThinking, messages])
 
