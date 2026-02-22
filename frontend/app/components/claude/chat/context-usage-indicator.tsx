@@ -1,36 +1,5 @@
 import { cn } from '~/lib/utils'
 
-/** Known model context window sizes (in tokens) */
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  // Claude 4 family
-  'claude-sonnet-4-20250514': 200_000,
-  'claude-opus-4-20250514': 200_000,
-  // Claude 3.5 family
-  'claude-3-5-sonnet-20241022': 200_000,
-  'claude-3-5-haiku-20241022': 200_000,
-  'claude-3-5-sonnet-20240620': 200_000,
-  // Claude 3 family
-  'claude-3-opus-20240229': 200_000,
-  'claude-3-sonnet-20240229': 200_000,
-  'claude-3-haiku-20240307': 200_000,
-}
-
-/** Default context window for unknown models */
-const DEFAULT_CONTEXT_WINDOW = 200_000
-
-/** Get context window size for a model name */
-export function getContextWindowSize(model: string): number {
-  // Direct match
-  if (MODEL_CONTEXT_WINDOWS[model]) return MODEL_CONTEXT_WINDOWS[model]
-
-  // Prefix match (handles version suffixes like "-latest")
-  for (const [key, value] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-    if (model.startsWith(key.split('-20')[0])) return value
-  }
-
-  return DEFAULT_CONTEXT_WINDOW
-}
-
 /** Format token count for compact display */
 function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
@@ -39,16 +8,14 @@ function formatTokens(tokens: number): string {
 }
 
 export interface ContextUsage {
-  /** Input tokens from the latest assistant message */
+  /** Total input tokens (non-cached + cache creation + cache read) */
   inputTokens: number
-  /** Output tokens from the latest assistant message */
-  outputTokens: number
-  /** Model name from the init message */
-  model: string
+  /** Context window size from the API */
+  contextWindow: number
 }
 
 interface ContextUsageIndicatorProps {
-  /** Context usage data (null if no data available yet) */
+  /** Context usage data (null if no result message received yet) */
   usage: ContextUsage | null
   /** Called when user clicks the indicator to trigger compact */
   onCompact?: () => void
@@ -63,10 +30,8 @@ export function ContextUsageIndicator({
 }: ContextUsageIndicatorProps) {
   if (!usage) return null
 
-  const maxTokens = getContextWindowSize(usage.model)
-  // Context window usage = total input tokens (non-cached + cache creation + cache read)
-  // The inputTokens field is pre-computed to include all cached tokens
   const usedTokens = usage.inputTokens
+  const maxTokens = usage.contextWindow
   const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
 
   // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)

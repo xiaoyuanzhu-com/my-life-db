@@ -10,7 +10,6 @@ import {
   buildToolResultMap,
   hasToolUseResult,
   isStatusMessage,
-  isSubagentMessage,
   isToolUseBlock,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -473,35 +472,61 @@ export function ChatInterface({
   // Get merged slash commands (built-in + dynamic from init)
   const slashCommands = useSlashCommands(initData)
 
-  // Extract context window usage from the latest assistant message and init message
+  // Extract context window usage from result or assistant messages.
+  // Result messages (live sessions only, not saved to JSONL) have:
+  //   - Root `usage`: main model's token counts (excludes subagent cumulative totals)
+  //   - `modelUsage`: per-model breakdown with `contextWindow` from the API
+  // Falls back to assistant message usage for historical sessions.
   const contextUsage = useMemo<ContextUsage | null>(() => {
-    // Find model from init message
-    const initMsg = rawMessages.find(
-      (m) => m.type === 'system' && (m as unknown as Record<string, unknown>).subtype === 'init'
-    )
-    const model = initMsg
-      ? (initMsg as unknown as Record<string, unknown>).model as string | undefined
-      : undefined
-
-    if (!model) return null
-
-    // Find the latest main-session assistant message with usage data (scan backwards).
-    // Skip subagent messages — they have their own separate context windows.
+    // Try result messages first (live sessions only).
+    // Stop at compact_boundary — data before compaction is stale.
     for (let i = rawMessages.length - 1; i >= 0; i--) {
       const msg = rawMessages[i]
-      if (msg.type === 'assistant' && msg.message?.usage && !isSubagentMessage(msg)) {
+      if (msg.type === 'system' && msg.subtype === 'compact_boundary') break
+      if (msg.type !== 'result') continue
+
+      const raw = msg as unknown as Record<string, unknown>
+
+      // Root `usage` has the main model's tokens (not cumulative across subagent models).
+      // `modelUsage` entries sum ALL API calls per model in a turn, which inflates
+      // subagent model counts (e.g., 50 haiku calls summed together).
+      const rootUsage = raw.usage as {
+        input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number
+      } | undefined
+      if (!rootUsage) continue
+
+      const totalInput = (rootUsage.input_tokens || 0) +
+        (rootUsage.cache_creation_input_tokens || 0) +
+        (rootUsage.cache_read_input_tokens || 0)
+      if (totalInput === 0) continue
+
+      // Get contextWindow from modelUsage (pick the largest — that's the main model)
+      let contextWindow = 200_000 // fallback
+      const modelUsage = raw.modelUsage as
+        Record<string, { contextWindow?: number }> | undefined
+      if (modelUsage) {
+        for (const usage of Object.values(modelUsage)) {
+          if ((usage.contextWindow || 0) > contextWindow) {
+            contextWindow = usage.contextWindow || 0
+          }
+        }
+      }
+
+      return { inputTokens: totalInput, contextWindow }
+    }
+
+    // Fallback: use latest main-session assistant message (historical sessions).
+    // Stop at compact_boundary — data before compaction is stale.
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+      const msg = rawMessages[i]
+      if (msg.type === 'system' && msg.subtype === 'compact_boundary') break
+      if (msg.type === 'assistant' && msg.message?.usage && !msg.parentToolUseID) {
         const usage = msg.message.usage
-        // Total input tokens = non-cached + cache creation + cache read
-        // The API's input_tokens only counts non-cached tokens (typically 1-3),
-        // so we must include cached tokens to get actual context window usage.
-        const totalInputTokens = (usage.input_tokens || 0) +
+        const totalInput = (usage.input_tokens || 0) +
           (usage.cache_creation_input_tokens || 0) +
           (usage.cache_read_input_tokens || 0)
-        return {
-          inputTokens: totalInputTokens,
-          outputTokens: usage.output_tokens || 0,
-          model,
-        }
+        if (totalInput === 0) continue
+        return { inputTokens: totalInput, contextWindow: 200_000 }
       }
     }
 
