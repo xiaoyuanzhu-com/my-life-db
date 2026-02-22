@@ -346,7 +346,7 @@ export default function ClaudePage() {
     setIsCreatingSession(true)
     try {
       const response = await api.post('/api/claude/sessions', {
-        title: `Session ${sessions.length + 1}`,
+        title: message,
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
       })
