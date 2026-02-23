@@ -408,19 +408,21 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Track how many "result" messages were actually delivered to this WebSocket
-	// client. A result is "read" if and only if it was sent at least once through
-	// the WebSocket — no snapshots, no timers, no guessing.
-	var deliveredResults atomic.Int32
+	// How many result messages the user has "seen" via this WebSocket connection.
+	// Initialized to session.ResultCount() on connect (opening = seen all historical),
+	// then incremented by 1 for each new live result delivered.
+	// Compared against entry.ResultCount in ListAllClaudeSessions to determine
+	// "unread" state: entry.ResultCount > seenResultCount → unread.
+	var seenResultCount atomic.Int32
 
-	// Persist the delivered-results count to DB and fire an SSE event so that
+	// Persist seenResultCount to DB and fire an SSE event so that
 	// any session-list refresh (iOS/web) picks up the correct "idle" state.
 	// Called inline after result delivery — not just on disconnect — so the DB
 	// is up-to-date while the user is still viewing the session.
 	// MarkClaudeSessionRead uses MAX() upsert, so repeated/concurrent calls
 	// are safe and can never regress the count.
 	persistReadState := func() {
-		if n := int(deliveredResults.Load()); n > 0 {
+		if n := int(seenResultCount.Load()); n > 0 {
 			if err := db.MarkClaudeSessionRead(sessionID, n); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
 			} else {
@@ -451,16 +453,16 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// LoadRawMessages(), then incremented by live stdout results. No need to re-scan
 	// raw messages here.
 	// New live turns that complete while connected are tracked incrementally
-	// by deliveredResults and the inline persistReadState call after each live result.
+	// by seenResultCount and the inline persistReadState call after each live result.
 	if rc := session.ResultCount(); rc > 0 {
 		if err := db.MarkClaudeSessionRead(sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
 		} else {
 			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
 		}
-		// Initialize deliveredResults so subsequent persistReadState calls
+		// Initialize seenResultCount so subsequent persistReadState calls
 		// reflect at least the historical count. MAX() upsert prevents regression.
-		deliveredResults.Store(int32(rc))
+		seenResultCount.Store(int32(rc))
 	}
 
 	// Page-based initial burst (§4.1, §6.3).
@@ -500,7 +502,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send burst message")
 				return
 			}
-			// NOTE: Do NOT count results here — deliveredResults was already initialized
+			// NOTE: Do NOT count results here — seenResultCount was already initialized
 			// from session.ResultCount() above, which includes all historical results.
 			// Counting burst results again would inflate the DB read count, preventing
 			// future results from ever showing as "unread".
@@ -535,7 +537,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				}
 				var mt struct{ Type string `json:"type"` }
 				if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
-					deliveredResults.Add(1)
+					seenResultCount.Add(1)
 					persistReadState()
 				}
 			}
