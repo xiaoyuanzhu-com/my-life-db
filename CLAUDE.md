@@ -386,10 +386,28 @@ The backend uses structured logging via zerolog:
     # After a successful push, bring the main working directory up to date
     cd <repo-root>
     git pull --rebase origin main
-    # If conflicts arise, resolve them before continuing
-    # 4. clean up — ONLY when user explicitly asks (or after merge)
+    # If it fails due to dirty main dir: git checkout -- . && git pull --rebase origin main
+    # If rebase conflicts arise: resolve them, then git rebase --continue
+    # 4. clean up — ONLY when user explicitly asks
     cd <repo-root>
     git worktree remove .worktrees/<name> && git branch -d <branch>
+
+## House Cleaning (periodic, not per-session)
+
+Stale worktrees and branches accumulate naturally — that's fine. Tidy up periodically when things feel cluttered, not after every session:
+
+    # See what worktrees and branches exist
+    git worktree list
+    git branch
+
+    # Remove a worktree
+    git worktree remove .worktrees/<name>          # safe: refuses if uncommitted changes exist
+    git worktree remove --force .worktrees/<name>  # discard changes and remove
+    git worktree prune                             # fix broken refs after accidental rm -rf
+
+    # Delete stale local branches
+    git branch -d <branch>   # safe: refuses if not fully pushed
+    git branch -D <branch>   # force delete
 
 ## Development Server
 
