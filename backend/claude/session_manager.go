@@ -69,7 +69,10 @@ type SessionEntry struct {
 	Summary              string    `json:"summary,omitempty"`
 	CustomTitle          string    `json:"customTitle,omitempty"`
 	MessageCount         int       `json:"messageCount"`
-	ResultCount          int       `json:"-"` // Number of result messages (completed turns)
+	// ResultCount from JSONL cache — STALE for active sessions due to fsnotify delay.
+	// For active sessions, GetAllSessionEntries() overwrites this with Session.ResultCount()
+	// which is the source of truth. Do not read this field directly for active sessions.
+	ResultCount int `json:"-"`
 	Created              time.Time `json:"created"`
 	Modified             time.Time `json:"modified"`
 	LastUserActivity     time.Time `json:"lastUserActivity"`

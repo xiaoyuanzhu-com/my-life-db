@@ -61,9 +61,13 @@ type Session struct {
 	Clients map[*Client]bool `json:"-"`
 	mu      sync.RWMutex     `json:"-"`
 
-	// Raw message list — the single source of truth for session messages (D1).
+	// Raw message list — the SINGLE SOURCE OF TRUTH for all session message data (D1).
 	// Append-only (R1): messages are never reordered or mutated.
-	// Populated from JSONL on first activation, then merged with stdout (deduped by UUID).
+	// Populated from JSONL on first activation, then extended with stdout (deduped by UUID).
+	//
+	// ALL message reads, counts, and derived state for active sessions MUST come from
+	// this list (or from fields derived from it, like resultCount below).
+	// Do NOT read from JSONL files, JSONL cache (SessionEntry), or stdout directly.
 	rawMessages [][]byte         `json:"-"`
 	seenUUIDs   map[string]bool  `json:"-"` // Track seen message UUIDs for deduplication
 	rawLoaded   bool             `json:"-"`
@@ -109,10 +113,11 @@ type Session struct {
 	isProcessing   bool       `json:"-"`
 	onStateChanged func()     `json:"-"` // Called when isProcessing/pendingPermissionCount changes; triggers SSE notification
 
-	// Result count — number of completed turns, tracked live from the message stream.
-	// Used by the session list to determine "unread" state for active sessions without
-	// waiting for the JSONL file to be re-parsed by fsnotify (which races with the
-	// isProcessing state change notification).
+	// Result count — total number of completed turns (historical + live).
+	// Initialized from JSONL in LoadRawMessages(), then incremented by live stdout
+	// results in BroadcastUIMessage(). This is the authoritative count for active
+	// sessions — do NOT use SessionEntry.ResultCount (JSONL cache) instead, as it
+	// lags behind due to fsnotify delay and will miss the "unread" state window.
 	resultCount int `json:"-"`
 
 	// Pending permission count — tracked by BroadcastUIMessage from control_request/control_response.
@@ -197,7 +202,9 @@ func (s *Session) IsProcessing() bool {
 	return s.isProcessing
 }
 
-// ResultCount returns the number of completed turns tracked live from the message stream.
+// ResultCount returns the total number of completed turns (historical + live).
+// This is the source of truth for active sessions. Do not re-derive from
+// rawMessages iteration or from the JSONL cache (SessionEntry.ResultCount).
 func (s *Session) ResultCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
