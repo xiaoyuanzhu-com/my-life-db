@@ -162,16 +162,19 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     prevScrollTopRef.current = element.scrollTop
   }, [messages.length])
 
-  // Adaptive viewport fill: if content doesn't fill the viewport after loading a page,
-  // automatically request the next older page
+  // Adaptive viewport fill + stuck-at-top recovery:
+  // After a page load completes (isLoadingPage false→true→false), check if we
+  // still need more content. This covers two cases:
+  // 1. Content doesn't fill the viewport — keep loading until it does
+  // 2. User scrolled to top fast and is stuck there — no scroll event will fire,
+  //    so we re-trigger the load if still near the top
   useEffect(() => {
     const element = scrollElementRef.current
     if (!element || isLoadingPage || !hasMoreHistory || messages.length === 0) return
 
     // Use requestAnimationFrame to check after the browser has finished layout
     const rafId = requestAnimationFrame(() => {
-      // If content height is less than viewport, we need more messages
-      if (element.scrollHeight <= element.clientHeight) {
+      if (element.scrollHeight <= element.clientHeight || element.scrollTop < 300) {
         onLoadOlderPage?.()
       }
     })

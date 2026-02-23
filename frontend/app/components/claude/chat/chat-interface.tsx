@@ -78,6 +78,7 @@ export function ChatInterface({
   // Initialized from session_info.lowestBurstPage on connect.
   const [lowestLoadedPage, setLowestLoadedPage] = useState<number>(0)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const isLoadingHistoryRef = useRef(false)
 
   // Track if we've seen the init message - this marks the boundary between historical and live messages
   // IMPORTANT: This is the key to distinguishing historical incomplete tool_use from live control_requests
@@ -855,7 +856,8 @@ export function ChatInterface({
   // Load older page via HTTP (triggered by scroll-up).
   // Serialized: only one page load at a time (§6.6).
   const loadOlderMessages = useCallback(async () => {
-    if (isLoadingHistory || lowestLoadedPage <= 0) return
+    if (isLoadingHistoryRef.current || lowestLoadedPage <= 0) return
+    isLoadingHistoryRef.current = true
     setIsLoadingHistory(true)
     try {
       const targetPage = lowestLoadedPage - 1
@@ -875,9 +877,10 @@ export function ChatInterface({
     } catch (err) {
       console.error('[ChatInterface] Failed to load older page:', err)
     } finally {
+      isLoadingHistoryRef.current = false
       setIsLoadingHistory(false)
     }
-  }, [sessionId, lowestLoadedPage, isLoadingHistory])
+  }, [sessionId, lowestLoadedPage])
 
   // Send message via WebSocket
   const sendMessage = useCallback(
