@@ -15,6 +15,14 @@ export interface ContextUsage {
   inputTokens: number
   /** Context window size from the API */
   contextWindow: number
+  /** Non-cached input tokens (usage.input_tokens) */
+  rawInputTokens: number
+  /** Tokens being cached this call (usage.cache_creation_input_tokens) */
+  cacheCreationTokens: number
+  /** Tokens served from cache (usage.cache_read_input_tokens) */
+  cacheReadTokens: number
+  /** Model identifier, e.g. "claude-sonnet-4-6-20250514" */
+  modelName?: string
 }
 
 interface ContextUsageIndicatorProps {

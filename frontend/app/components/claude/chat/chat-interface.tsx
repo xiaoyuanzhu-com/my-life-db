@@ -584,11 +584,19 @@ export function ChatInterface({
       if (msg.type === 'system' && msg.subtype === 'compact_boundary') break
       if (msg.type === 'assistant' && msg.message?.usage && !msg.parentToolUseID) {
         const usage = msg.message.usage
-        const totalInput = (usage.input_tokens || 0) +
-          (usage.cache_creation_input_tokens || 0) +
-          (usage.cache_read_input_tokens || 0)
+        const rawInputTokens = usage.input_tokens || 0
+        const cacheCreationTokens = usage.cache_creation_input_tokens || 0
+        const cacheReadTokens = usage.cache_read_input_tokens || 0
+        const totalInput = rawInputTokens + cacheCreationTokens + cacheReadTokens
         if (totalInput === 0) continue
-        return { inputTokens: totalInput, contextWindow }
+        return {
+          inputTokens: totalInput,
+          contextWindow,
+          rawInputTokens,
+          cacheCreationTokens,
+          cacheReadTokens,
+          modelName: msg.message.model,
+        }
       }
     }
 
