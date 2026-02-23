@@ -371,12 +371,16 @@ export function ChatInterface({
 
             if (requestId && questions && questions.length > 0) {
               setPendingQuestions((prev) => {
+                // When a live control_request arrives, evict any historically-detected entries
+                // (non-sdk-perm- ids). They represent the same unanswered AskUserQuestion but
+                // were detected via rawMessages scan — the live control_request supersedes them.
+                const withoutHistorical = prev.filter((q) => q.id.startsWith('sdk-perm-'))
                 // Deduplicate by request_id to prevent duplicate popovers on reconnection.
                 // When WebSocket reconnects, the backend resends all cached messages including
                 // control_requests that are already in pendingQuestions.
-                if (prev.some((q) => q.id === requestId)) return prev
+                if (withoutHistorical.some((q) => q.id === requestId)) return withoutHistorical
                 return [
-                  ...prev,
+                  ...withoutHistorical,
                   {
                     id: requestId,
                     toolCallId: requestId, // Use request_id as toolCallId for compatibility
@@ -698,6 +702,13 @@ export function ChatInterface({
     // For historical sessions, merge detected questions with any existing control_request questions
     setPendingQuestions((prev) => {
       const controlRequestQuestions = prev.filter((q) => q.id.startsWith('sdk-perm-'))
+      // If live control_request questions already exist, don't add historical detections.
+      // A live control_request for AskUserQuestion supersedes the historical tool_use detection —
+      // the same question would otherwise appear twice (once per detection path).
+      // The hasSeenInit→true transition will clean up any stale historical entries shortly after.
+      if (controlRequestQuestions.length > 0) {
+        return controlRequestQuestions
+      }
       // Deduplicate by id
       const merged = [...controlRequestQuestions]
       for (const q of detectedQuestions) {
