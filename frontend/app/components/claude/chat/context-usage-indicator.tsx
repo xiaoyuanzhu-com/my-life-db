@@ -10,6 +10,21 @@ function formatTokens(tokens: number): string {
   return tokens.toString()
 }
 
+/** Format percentage for display */
+function formatPercent(tokens: number, total: number): string {
+  if (total === 0) return '0%'
+  const pct = (tokens / total) * 100
+  if (pct < 1 && pct > 0) return '<1%'
+  return `${Math.round(pct)}%`
+}
+
+/** Format model name for display: claude-sonnet-4-6-20250514 → claude-sonnet-4-6 */
+function formatModelName(model?: string): string | undefined {
+  if (!model) return undefined
+  // Strip date suffix (e.g. -20250514)
+  return model.replace(/-\d{8}$/, '')
+}
+
 export interface ContextUsage {
   /** Total input tokens (non-cached + cache creation + cache read) */
   inputTokens: number
@@ -53,13 +68,6 @@ export function ContextUsageIndicator({
 
   // Combined percentage (tokens + buffer) — matches CLI status bar behavior
   const percentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
-  // Token-only percentage for two-segment popover ring
-  const usedPct = Math.min((usedTokens / maxTokens) * 100, 100)
-  const bufferPct = (autocompactBuffer / maxTokens) * 100
-
-  // Color thresholds (based on combined percentage including buffer)
-  const isWarning = percentage >= 75
-  const isDanger = percentage >= 90
 
   // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)
   const size = 14
@@ -68,23 +76,7 @@ export function ContextUsageIndicator({
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference - (percentage / 100) * circumference
 
-  // SVG circle parameters (larger ring for popover)
-  const popoverSize = 48
-  const popoverStrokeWidth = 4
-  const popoverRadius = (popoverSize - popoverStrokeWidth) / 2
-  const popoverCircumference = 2 * Math.PI * popoverRadius
-  // Combined arc (used + buffer) — buffer portion visible beyond the used arc
-  const popoverCombinedDashOffset =
-    popoverCircumference - (Math.min(usedPct + bufferPct, 100) / 100) * popoverCircumference
-  // Used-only arc (covers used portion with bright color)
-  const popoverUsedDashOffset =
-    popoverCircumference - (usedPct / 100) * popoverCircumference
-
-  const progressColorClass = isDanger
-    ? 'stroke-destructive'
-    : isWarning
-      ? 'stroke-yellow-500'
-      : 'stroke-muted-foreground'
+  const displayModel = formatModelName(usage.modelName)
 
   const handleCompact = () => {
     setOpen(false)
@@ -151,81 +143,43 @@ export function ContextUsageIndicator({
         side="top"
         sideOffset={8}
       >
-        <div className="flex items-start gap-3">
-          {/* Larger progress ring with percentage inside — two segments */}
-          <div className="relative flex-shrink-0">
-            <svg
-              width={popoverSize}
-              height={popoverSize}
-              viewBox={`0 0 ${popoverSize} ${popoverSize}`}
-              className="-rotate-90"
-            >
-              {/* Background ring */}
-              <circle
-                cx={popoverSize / 2}
-                cy={popoverSize / 2}
-                r={popoverRadius}
-                fill="none"
-                className="stroke-muted"
-                strokeWidth={popoverStrokeWidth}
-              />
-              {/* Buffer arc (combined used+buffer — buffer portion visible beyond used arc) */}
-              <circle
-                cx={popoverSize / 2}
-                cy={popoverSize / 2}
-                r={popoverRadius}
-                fill="none"
-                className="stroke-muted-foreground opacity-30 transition-all duration-500"
-                strokeWidth={popoverStrokeWidth}
-                strokeLinecap="round"
-                strokeDasharray={popoverCircumference}
-                strokeDashoffset={popoverCombinedDashOffset}
-              />
-              {/* Used arc (on top, bright color) */}
-              <circle
-                cx={popoverSize / 2}
-                cy={popoverSize / 2}
-                r={popoverRadius}
-                fill="none"
-                className={cn(
-                  progressColorClass,
-                  'transition-all duration-500',
-                )}
-                strokeWidth={popoverStrokeWidth}
-                strokeLinecap="round"
-                strokeDasharray={popoverCircumference}
-                strokeDashoffset={popoverUsedDashOffset}
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold tabular-nums">
-              {percentage}%
-            </span>
-          </div>
+        {/* Header: model + summary */}
+        <div className="text-sm font-medium text-foreground">
+          {displayModel && (
+            <span>{displayModel} &middot; </span>
+          )}
+          <span className="tabular-nums">
+            {formatTokens(usedTokens)} / {formatTokens(maxTokens)} tokens ({percentage}%)
+          </span>
+        </div>
 
-          {/* Details */}
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="text-sm font-medium text-foreground">
-              Context Window
-            </div>
-            <div className="text-xs text-muted-foreground tabular-nums space-y-0.5">
-              <div className="flex justify-between">
-                <span>Used</span>
-                <span>{formatTokens(usedTokens)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Buffer</span>
-                <span>{formatTokens(autocompactBuffer)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Free</span>
-                <span>{formatTokens(freeTokens)}</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-0.5 font-medium text-foreground">
-                <span>Total</span>
-                <span>{formatTokens(maxTokens)}</span>
-              </div>
-            </div>
+        {/* Breakdown rows */}
+        <div className="mt-2 text-xs text-muted-foreground tabular-nums space-y-0.5">
+          <div className="flex justify-between">
+            <span>Cache read</span>
+            <span>{formatTokens(usage.cacheReadTokens)} ({formatPercent(usage.cacheReadTokens, maxTokens)})</span>
           </div>
+          <div className="flex justify-between">
+            <span>Cache write</span>
+            <span>{formatTokens(usage.cacheCreationTokens)} ({formatPercent(usage.cacheCreationTokens, maxTokens)})</span>
+          </div>
+          <div className="flex justify-between">
+            <span>New input</span>
+            <span>{formatTokens(usage.rawInputTokens)} ({formatPercent(usage.rawInputTokens, maxTokens)})</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Free space</span>
+            <span>{formatTokens(freeTokens)} ({formatPercent(freeTokens, maxTokens)})</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Autocompact buffer</span>
+            <span>{formatTokens(autocompactBuffer)} ({formatPercent(autocompactBuffer, maxTokens)})</span>
+          </div>
+        </div>
+
+        {/* Footnote */}
+        <div className="mt-2 text-[11px] text-muted-foreground/60">
+          New input = uncached tokens (latest messages, ephemeral content)
         </div>
 
         {/* Compact button */}
