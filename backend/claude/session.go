@@ -61,13 +61,13 @@ type Session struct {
 	Clients map[*Client]bool `json:"-"`
 	mu      sync.RWMutex     `json:"-"`
 
-	// Message cache - stores all messages for clients connecting at any time
-	// Before activation: loaded from JSONL file
-	// After activation: merged with Claude's stdout (deduped by UUID)
-	cachedMessages [][]byte         `json:"-"`
-	seenUUIDs      map[string]bool  `json:"-"` // Track seen message UUIDs for deduplication
-	cacheLoaded    bool             `json:"-"`
-	cacheMu        sync.RWMutex     `json:"-"`
+	// Raw message list — the single source of truth for session messages (D1).
+	// Append-only (R1): messages are never reordered or mutated.
+	// Populated from JSONL on first activation, then merged with stdout (deduped by UUID).
+	rawMessages [][]byte         `json:"-"`
+	seenUUIDs   map[string]bool  `json:"-"` // Track seen message UUIDs for deduplication
+	rawLoaded   bool             `json:"-"`
+	rawMu       sync.RWMutex     `json:"-"`
 
 	// Pending control requests - maps request_id to response channel
 	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
@@ -147,8 +147,8 @@ func (s *Session) EnsureActivated() error {
 	// Reset message cache before starting new process.
 	// This clears any accumulated ephemeral messages (like init) from previous runs
 	// and reloads persisted history from JSONL.
-	s.mu.Unlock() // Unlock before ResetMessageCache (it acquires cacheMu)
-	s.ResetMessageCache()
+	s.mu.Unlock() // Unlock before ResetMessageCache (it acquires rawMu)
+	s.ResetRawMessages()
 	s.mu.Lock()
 
 	log.Info().
@@ -394,27 +394,27 @@ func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID st
 	}
 }
 
-// ResetMessageCache clears the message cache and reloads from JSONL.
+// ResetRawMessages clears the raw message list and reloads from JSONL.
 // This should be called when the process restarts to ensure a fresh state.
 // It clears any accumulated ephemeral messages (like init) that don't persist to JSONL.
-func (s *Session) ResetMessageCache() {
-	s.cacheMu.Lock()
-	oldCount := len(s.cachedMessages)
-	s.cachedMessages = nil
+func (s *Session) ResetRawMessages() {
+	s.rawMu.Lock()
+	oldCount := len(s.rawMessages)
+	s.rawMessages = nil
 	s.seenUUIDs = make(map[string]bool)
-	s.cacheLoaded = false
-	s.cacheMu.Unlock()
+	s.rawLoaded = false
+	s.rawMu.Unlock()
 
 	log.Debug().
 		Str("sessionId", s.ID).
 		Int("clearedMessages", oldCount).
-		Msg("reset message cache before activation")
+		Msg("reset raw messages before activation")
 
 	// Reload from JSONL
-	s.LoadMessageCache()
+	s.LoadRawMessages()
 }
 
-// LoadMessageCache loads messages from JSONL file into cache.
+// LoadRawMessages loads messages from JSONL file into the raw message list.
 // Only loads once; subsequent calls are no-op.
 //
 // IMPORTANT: Uses ReadSessionHistoryRaw to preserve all message fields.
@@ -426,11 +426,11 @@ func (s *Session) ResetMessageCache() {
 // control_request comes from Claude CLI stdout but control_response is only broadcast
 // live (not stored in JSONL). Loading stale control_requests would show phantom
 // permission dialogs for already-completed tool calls.
-func (s *Session) LoadMessageCache() error {
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+func (s *Session) LoadRawMessages() error {
+	s.rawMu.Lock()
+	defer s.rawMu.Unlock()
 
-	if s.cacheLoaded {
+	if s.rawLoaded {
 		return nil
 	}
 
@@ -443,7 +443,7 @@ func (s *Session) LoadMessageCache() error {
 	messages, err := ReadSessionHistoryRaw(s.ID, s.WorkingDir)
 	if err != nil {
 		// Not an error if file doesn't exist (new session)
-		s.cacheLoaded = true
+		s.rawLoaded = true
 		return nil
 	}
 
@@ -459,7 +459,7 @@ func (s *Session) LoadMessageCache() error {
 		}
 
 		if data, err := json.Marshal(msg); err == nil {
-			s.cachedMessages = append(s.cachedMessages, data)
+			s.rawMessages = append(s.rawMessages, data)
 
 			// Extract and track UUID for deduplication
 			uuid := msg.GetUUID()
@@ -469,17 +469,17 @@ func (s *Session) LoadMessageCache() error {
 		}
 	}
 
-	s.cacheLoaded = true
+	s.rawLoaded = true
 	return nil
 }
 
-// GetCachedMessages returns a copy of all cached messages
-func (s *Session) GetCachedMessages() [][]byte {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
+// GetRawMessages returns a copy of all raw messages
+func (s *Session) GetRawMessages() [][]byte {
+	s.rawMu.RLock()
+	defer s.rawMu.RUnlock()
 
-	result := make([][]byte, len(s.cachedMessages))
-	for i, msg := range s.cachedMessages {
+	result := make([][]byte, len(s.rawMessages))
+	for i, msg := range s.rawMessages {
 		msgCopy := make([]byte, len(msg))
 		copy(msgCopy, msg)
 		result[i] = msgCopy
@@ -490,11 +490,11 @@ func (s *Session) GetCachedMessages() [][]byte {
 // DefaultPageSize is the number of messages per page for WebSocket pagination.
 const DefaultPageSize = 100
 
-// GetCachedMessageCount returns the total number of cached messages.
-func (s *Session) GetCachedMessageCount() int {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
-	return len(s.cachedMessages)
+// GetRawMessageCount returns the total number of raw messages.
+func (s *Session) GetRawMessageCount() int {
+	s.rawMu.RLock()
+	defer s.rawMu.RUnlock()
+	return len(s.rawMessages)
 }
 
 // GetDisplayableMessageCount returns the number of cached messages that are
@@ -502,10 +502,10 @@ func (s *Session) GetCachedMessageCount() int {
 // This count is used for pagination math so that historyOffset reflects the last
 // page of real content rather than transport noise.
 func (s *Session) GetDisplayableMessageCount() int {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
+	s.rawMu.RLock()
+	defer s.rawMu.RUnlock()
 	n := 0
-	for _, msg := range s.cachedMessages {
+	for _, msg := range s.rawMessages {
 		if !IsNonDisplayableMessage(msg) {
 			n++
 		}
@@ -539,6 +539,13 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	}
 	if err := json.Unmarshal(data, &msgEnvelope); err != nil {
 		log.Warn().Err(err).Msg("failed to parse message type")
+	}
+
+	// Drop types that no consumer needs (§3.2). These never enter the raw list
+	// and are never broadcast. This is an intentional optimisation — like large
+	// content stripping — to keep the raw list lean.
+	if msgEnvelope.Type == "queue-operation" || msgEnvelope.Type == "file-history-snapshot" {
+		return
 	}
 
 	// Track processing state from the unified message stream.
@@ -592,18 +599,18 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	// Deduplicate by UUID (only for messages with UUIDs)
 	// Note: control_request/control_response don't have UUIDs, so they're not deduplicated
 	if msgType.UUID != "" {
-		s.cacheMu.Lock()
+		s.rawMu.Lock()
 		if s.seenUUIDs == nil {
 			s.seenUUIDs = make(map[string]bool)
 		}
 		if s.seenUUIDs[msgType.UUID] {
 			// Already seen this message, skip
-			s.cacheMu.Unlock()
+			s.rawMu.Unlock()
 			log.Debug().Str("uuid", msgType.UUID).Str("sessionId", s.ID).Msg("skipping duplicate message")
 			return
 		}
 		s.seenUUIDs[msgType.UUID] = true
-		s.cacheMu.Unlock()
+		s.rawMu.Unlock()
 	}
 
 	// Strip large Read tool content before caching and broadcasting
@@ -620,11 +627,11 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	}
 
 	// Add to cache (all messages including control messages for live session state)
-	s.cacheMu.Lock()
+	s.rawMu.Lock()
 	msgCopy := make([]byte, len(data))
 	copy(msgCopy, data)
-	s.cachedMessages = append(s.cachedMessages, msgCopy)
-	s.cacheMu.Unlock()
+	s.rawMessages = append(s.rawMessages, msgCopy)
+	s.rawMu.Unlock()
 
 	// Broadcast to all connected clients
 	s.BroadcastToClients(data)
@@ -651,28 +658,28 @@ func (s *Session) BroadcastToClients(data []byte) {
 // Called when the final assistant message arrives, since it contains the complete
 // text/thinking content that the stream_event deltas were building up.
 func (s *Session) evictStreamEvents() {
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+	s.rawMu.Lock()
+	defer s.rawMu.Unlock()
 
 	// Fast path: check if there are any stream_events to evict.
 	// In-place filter to avoid allocation when there's nothing to evict.
 	n := 0
-	for _, msg := range s.cachedMessages {
+	for _, msg := range s.rawMessages {
 		if !isStreamEvent(msg) {
-			s.cachedMessages[n] = msg
+			s.rawMessages[n] = msg
 			n++
 		}
 	}
 
-	if n == len(s.cachedMessages) {
+	if n == len(s.rawMessages) {
 		return // Nothing evicted
 	}
 
 	// Clear trailing references to allow GC
-	for i := n; i < len(s.cachedMessages); i++ {
-		s.cachedMessages[i] = nil
+	for i := n; i < len(s.rawMessages); i++ {
+		s.rawMessages[i] = nil
 	}
-	s.cachedMessages = s.cachedMessages[:n]
+	s.rawMessages = s.rawMessages[:n]
 }
 
 // isStreamEvent checks if a raw JSON message is a stream_event type.
@@ -692,54 +699,16 @@ func isStreamEvent(data []byte) bool {
 	return envelope.Type == "stream_event"
 }
 
-// nonDisplayableTypes lists message types that are never rendered in the UI and
-// are not needed for any frontend map-building (toolResultMap, agentProgressMap, etc.).
-// These types are filtered from HTTP pagination responses and from the totalMessages
-// count reported in session_info, so that:
-//   - Pagination offsets reflect real content, not transport noise
-//   - historyOffset in session_info correctly points to the last page of visible content
+// IsStreamEvent checks if a raw JSON message is a stream_event type.
+// Used by the page materialization layer to exclude closed stream_events
+// from served pages and seal counts. See §7 of the design doc.
 //
-// Types kept (even though filtered in filteredMessages on the frontend):
-//   - progress: needed for agentProgressMap, bashProgressMap, hookProgressMap
-//   - hook_response: needed for hookResponseMap
-//   - result: needed for contextUsage computation
-//   - control_request: needed for live permission dialog state
-var nonDisplayableTypes = map[string]bool{
-	"stream_event":          true,
-	"queue-operation":       true,
-	"file-history-snapshot": true,
-	// rate_limit_event is intentionally NOT listed here:
-	// it must be cached and replayed to all clients (same as any displayable message),
-	// and rendered as a message block in the conversation thread.
-}
-
-// IsNonDisplayableMessage reports whether a raw JSON message is a type that
-// the frontend never renders and does not use for map-building.
-// These messages should be excluded from HTTP pagination responses and from
-// the displayable-count used for historyOffset calculation.
-//
-// Uses fast byte scanning before JSON parsing, same pattern as isStreamEvent.
+// Note: queue-operation and file-history-snapshot are dropped at ingest (§3.2)
+// and never enter the raw list. rate_limit_event is a regular message that
+// counts toward page sealing and is served to clients (frontend intercepts
+// it for the warning banner per D6).
 func IsNonDisplayableMessage(data []byte) bool {
-	if len(data) < 10 {
-		return false
-	}
-	// Fast path: scan the first 100 bytes for known type strings.
-	// Most messages don't match any of these, so we avoid JSON parsing entirely.
-	prefix := data[:min(100, len(data))]
-	found := bytes.Contains(prefix, []byte(`"stream_event"`)) ||
-		bytes.Contains(prefix, []byte(`"queue-operation"`)) ||
-		bytes.Contains(prefix, []byte(`"file-history-snapshot"`))
-	if !found {
-		return false
-	}
-	// Confirm with full type parse
-	var envelope struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(data, &envelope); err != nil {
-		return false
-	}
-	return nonDisplayableTypes[envelope.Type]
+	return isStreamEvent(data)
 }
 
 // RegisterControlRequest registers a pending control request and returns a channel for the response
