@@ -35,23 +35,13 @@ const SKIP_TYPES = ['file-history-snapshot', 'result']
 // Message types that are purely internal / transport-layer and must never enter
 // rawMessages state. Adding them to rawMessages causes unnecessary map rebuilds
 // (toolResultMap, agentProgressMap, …) and full MessageBlock re-renders.
+// Note: rate_limit_event is intentionally NOT listed here — it is rendered as a
+// message block and cached for replay to all clients.
 const NON_DISPLAYABLE_TYPES = new Set([
   'stream_event',
-  'rate_limit_event',
   'queue-operation',
   'file-history-snapshot',
 ])
-
-// Rate limit info from the API (carried in rate_limit_event messages).
-// utilization ∈ [0, 1]; resetsAt is a Unix timestamp (seconds).
-interface RateLimitInfo {
-  status: string            // "allowed" | "allowed_warning" | "limited"
-  rateLimitType: string     // "seven_day" | "five_hour" | etc.
-  resetsAt: number          // Unix timestamp (seconds)
-  isUsingOverage: boolean
-  utilization: number       // 0–1
-  surpassedThreshold?: number // threshold that was crossed, e.g. 0.75
-}
 
 /** Extract text content from a user message (for draft comparison) */
 function extractUserMessageText(msg: SessionMessage): string | null {
@@ -104,10 +94,10 @@ export function ChatInterface({
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
-  // Rate limit warning — set when Claude API reports high quota utilization.
-  // Only shown for "allowed_warning" status (utilization ≥ threshold); cleared when
-  // a subsequent event drops back below or the user dismisses the banner.
-  const [rateLimitWarning, setRateLimitWarning] = useState<RateLimitInfo | null>(null)
+  // When the user dismisses the rate limit banner, store the UUID of the dismissed
+  // event so the banner doesn't reappear for the same event.
+  // Resets automatically when a new (different UUID) rate_limit_event arrives.
+  const [dismissedRateLimitUUID, setDismissedRateLimitUUID] = useState<string | null>(null)
 
   // Streaming text - accumulates text from stream_event messages for progressive display
   const [streamingText, setStreamingText] = useState<string>('')
@@ -249,22 +239,6 @@ export function ChatInterface({
         }
 
         setProgressMessage(progressMsg)
-        return
-      }
-
-      // Handle rate_limit_event — API quota metadata from Claude stdout.
-      // Never add to rawMessages (would trigger 8 map rebuilds + full re-render per event).
-      // Show a dismissible warning banner when utilization is high ("allowed_warning" status).
-      if (msg.type === 'rate_limit_event') {
-        const info = msg.rate_limit_info as RateLimitInfo | undefined
-        if (info) {
-          if (info.status === 'allowed_warning' || (info.utilization ?? 0) >= 0.75) {
-            setRateLimitWarning(info)
-          } else {
-            // Status dropped back to "allowed" — clear any existing warning
-            setRateLimitWarning(null)
-          }
-        }
         return
       }
 
@@ -523,6 +497,24 @@ export function ChatInterface({
 
   // Build tool result map from raw messages
   const toolResultMap = useMemo(() => buildToolResultMap(rawMessages), [rawMessages])
+
+  // Derive rate limit warning from the most recent rate_limit_event in rawMessages.
+  // The banner is shown for "allowed_warning" status (utilization ≥ threshold).
+  // It stays hidden if the user dismissed it (dismissedRateLimitUUID matches the event UUID).
+  const rateLimitWarning = useMemo(() => {
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+      const msg = rawMessages[i]
+      if (msg.type !== 'rate_limit_event') continue
+      if (msg.uuid === dismissedRateLimitUUID) return null
+      const info = msg.rate_limit_info
+      if (!info) return null
+      if (info.status === 'allowed_warning' || (info.utilization ?? 0) >= 0.75) {
+        return { uuid: msg.uuid, ...info }
+      }
+      return null
+    }
+    return null
+  }, [rawMessages, dismissedRateLimitUUID])
 
   // Extract init data from system:init message for slash commands
   const initData = useMemo<InitData | null>(() => {
@@ -1127,7 +1119,7 @@ export function ChatInterface({
               utilization={rateLimitWarning.utilization}
               rateLimitType={rateLimitWarning.rateLimitType}
               resetsAt={rateLimitWarning.resetsAt}
-              onDismiss={() => setRateLimitWarning(null)}
+              onDismiss={() => setDismissedRateLimitUUID(rateLimitWarning.uuid)}
             />
           )}
 

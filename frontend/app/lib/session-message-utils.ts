@@ -128,15 +128,17 @@ export interface SessionMessage {
   isApiErrorMessage?: boolean
 
   // Rate limit event fields (when type === 'rate_limit_event')
-  // Stdout only, not persisted. Skipped in UI rendering.
+  // Cached and replayed to all clients; rendered as a message block in the thread.
   // See docs/claude-code/data-models.md "Rate Limit Event" section.
   rate_limit_info?: {
-    status: string           // "allowed" or "limited"
-    rateLimitType: string    // e.g., "five_hour"
-    resetsAt: number         // Unix timestamp
+    status: string            // "allowed" | "allowed_warning" | "limited"
+    rateLimitType: string     // e.g., "seven_day" | "five_hour"
+    resetsAt: number          // Unix timestamp (seconds)
     isUsingOverage: boolean
-    overageStatus: string    // "allowed" or "blocked"
-    overageResetsAt: number  // Unix timestamp
+    utilization: number       // 0–1, e.g. 0.95 = 95% used
+    surpassedThreshold?: number  // Threshold that was crossed (e.g. 0.75)
+    overageStatus?: string    // "allowed" or "blocked" (if using overage)
+    overageResetsAt?: number  // Unix timestamp (if using overage)
   }
   session_id?: string  // Session ID (used by some stdout-only message types)
 
@@ -625,6 +627,13 @@ export interface SummaryMessage extends SessionMessage {
  */
 export function isSummaryMessage(msg: SessionMessage): msg is SummaryMessage {
   return msg.type === 'summary' && 'summary' in msg
+}
+
+/**
+ * Type guard to check if a message is a rate_limit_event
+ */
+export function isRateLimitEvent(msg: SessionMessage): boolean {
+  return msg.type === 'rate_limit_event'
 }
 
 /**

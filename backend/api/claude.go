@@ -491,9 +491,10 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	// Filtering here ensures pagination math is consistent with session_info totalMessages,
 	// which also excludes these types. Types filtered:
 	//   - stream_event: live-streaming only, already handled by WebSocket; evicted after turn
-	//   - rate_limit_event: API quota metadata, surfaced as a UI warning, not a chat message
 	//   - queue-operation: internal session queue management
 	//   - file-history-snapshot: internal file versioning for undo/redo
+	// Note: rate_limit_event is NOT filtered — it is cached, synced to all clients,
+	// and rendered as a message block in the conversation thread.
 	// Types kept even though not directly rendered (needed for frontend map-building):
 	//   - progress: agentProgressMap, bashProgressMap, hookProgressMap
 	//   - hook_response: hookResponseMap
@@ -661,7 +662,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			pageSize := claude.DefaultPageSize
 			total := len(initialMessages)
 
-			// Count displayable messages (excluding stream_event, rate_limit_event, etc.)
+			// Count displayable messages (excluding stream_event, queue-operation, etc.)
 			// for accurate pagination math — same logic as GetClaudeSessionMessages.
 			// Also count result messages for immediate read-state update (see below).
 			displayableCount := 0
@@ -783,7 +784,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		pageSize := claude.DefaultPageSize
 		total := session.GetCachedMessageCount()
 
-		// Use the displayable count (excluding stream_event, rate_limit_event, etc.) for
+		// Use the displayable count (excluding stream_event, queue-operation, etc.) for
 		// pagination math. This ensures historyOffset reflects the last page of real content
 		// rather than being inflated by transport-layer noise (e.g. token-by-token
 		// stream_events during an active streaming turn).

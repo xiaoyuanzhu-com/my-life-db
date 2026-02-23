@@ -527,11 +527,7 @@ export function SessionMessages({
       // lifecycle metadata used by the SDK's streaming protocol.
       if (msg.type === 'stream_event') return false
 
-      // Skip rate_limit_event messages - operational metadata about API quota state (stdout only,
-      // not persisted). When status is "allowed" it's noise; when rate-limited, Claude Code handles
-      // it at the CLI level (pausing/retrying) which surfaces as separate messages.
-      // See data-models.md "Rate Limit Event" section.
-      if (msg.type === 'rate_limit_event') return false
+      // rate_limit_event is now rendered as a message block — do not skip it here.
 
       // Skip meta messages (system-injected context)
       if (msg.isMeta) return false

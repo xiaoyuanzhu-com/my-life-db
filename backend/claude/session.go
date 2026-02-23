@@ -612,9 +612,9 @@ func (s *Session) GetCachedMessageCount() int {
 }
 
 // GetDisplayableMessageCount returns the number of cached messages that are
-// displayable (i.e. not stream_event, rate_limit_event, queue-operation, or
-// file-history-snapshot). This count is used for pagination math so that
-// historyOffset reflects the last page of real content rather than transport noise.
+// displayable (i.e. not stream_event, queue-operation, or file-history-snapshot).
+// This count is used for pagination math so that historyOffset reflects the last
+// page of real content rather than transport noise.
 func (s *Session) GetDisplayableMessageCount() int {
 	s.cacheMu.RLock()
 	defer s.cacheMu.RUnlock()
@@ -819,10 +819,12 @@ func isStreamEvent(data []byte) bool {
 //   - result: needed for contextUsage computation
 //   - control_request: needed for live permission dialog state
 var nonDisplayableTypes = map[string]bool{
-	"stream_event":        true,
-	"rate_limit_event":    true,
-	"queue-operation":     true,
+	"stream_event":          true,
+	"queue-operation":       true,
 	"file-history-snapshot": true,
+	// rate_limit_event is intentionally NOT listed here:
+	// it must be cached and replayed to all clients (same as any displayable message),
+	// and rendered as a message block in the conversation thread.
 }
 
 // IsNonDisplayableMessage reports whether a raw JSON message is a type that
@@ -839,7 +841,6 @@ func IsNonDisplayableMessage(data []byte) bool {
 	// Most messages don't match any of these, so we avoid JSON parsing entirely.
 	prefix := data[:min(100, len(data))]
 	found := bytes.Contains(prefix, []byte(`"stream_event"`)) ||
-		bytes.Contains(prefix, []byte(`"rate_limit_event"`)) ||
 		bytes.Contains(prefix, []byte(`"queue-operation"`)) ||
 		bytes.Contains(prefix, []byte(`"file-history-snapshot"`))
 	if !found {

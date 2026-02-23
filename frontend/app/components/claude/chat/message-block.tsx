@@ -17,6 +17,7 @@ import {
   isTurnDurationMessage,
   isHookStartedMessage,
   isTaskNotificationMessage,
+  isRateLimitEvent,
   type SessionMessage,
   type ExtractedToolResult,
   type SummaryMessage,
@@ -158,6 +159,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const isHookStarted = isHookStartedMessage(message)
   const isTaskNotification = isTaskNotificationMessage(message)
   const isSummary = isSummaryMessage(message)
+  const isRateLimitBlock = isRateLimitEvent(message)
 
   // Check for compacting status message (ephemeral, shown during compaction)
   const isCompactingStatus = isStatusMessage(message) &&
@@ -174,12 +176,12 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
-  // Note: summary messages have dedicated rendering
-  const isUnknownType = !isUser && !isAssistant && !isSystem && !isSummary
+  // Note: summary and rate_limit_event messages have dedicated rendering
+  const isUnknownType = !isUser && !isAssistant && !isSystem && !isSummary && !isRateLimitBlock
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
     return null
   }
 
@@ -307,6 +309,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Compact summary: collapsible markdown content */}
       {isCompactSummary && userTextContent && (
         <CompactSummaryBlock content={userTextContent} />
+      )}
+
+      {/* Rate limit event: inline quota-usage block */}
+      {isRateLimitBlock && (
+        <RateLimitEventBlock message={message} />
       )}
 
       {/* Unknown message types: render as syntax-highlighted JSON with show more/less */}
@@ -825,6 +832,49 @@ function UserMessageBlock({ content }: { content: string }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Rate limit event block — shown inline in the conversation thread
+function RateLimitEventBlock({ message }: { message: SessionMessage }) {
+  const info = message.rate_limit_info
+  if (!info) return null
+
+  const utilPct = Math.round((info.utilization ?? 0) * 100)
+  const isWarning = info.status === 'allowed_warning'
+  const isLimited = info.status === 'limited'
+  const colorClass = isLimited
+    ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-300'
+    : 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300'
+  const barColor = isLimited ? 'bg-red-500' : 'bg-amber-500'
+  const label = info.rateLimitType === 'seven_day' ? '7-day' : info.rateLimitType === 'five_hour' ? '5-hour' : info.rateLimitType
+
+  // Format reset time as relative (e.g. "resets in 2 days")
+  const resetsIn = (() => {
+    const diffMs = info.resetsAt * 1000 - Date.now()
+    if (diffMs <= 0) return 'resetting soon'
+    const diffH = Math.floor(diffMs / 3_600_000)
+    if (diffH < 1) return `resets in ${Math.ceil(diffMs / 60_000)} min`
+    if (diffH < 24) return `resets in ${diffH}h`
+    return `resets in ${Math.floor(diffH / 24)}d`
+  })()
+
+  if (!isWarning && !isLimited) return null
+
+  return (
+    <div className={`flex items-center gap-3 rounded border px-3 py-2 text-sm ${colorClass}`}>
+      <div className="flex-1 min-w-0">
+        <span className="font-medium">{utilPct}% of {label} limit used</span>
+        <span className="ml-2 opacity-70">({resetsIn})</span>
+        {/* Utilization bar */}
+        <div className="mt-1.5 h-1.5 w-full rounded-full bg-current opacity-20 overflow-hidden">
+          <div
+            className={`h-full rounded-full ${barColor}`}
+            style={{ width: `${utilPct}%`, opacity: 1 }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
