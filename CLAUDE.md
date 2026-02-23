@@ -360,7 +360,7 @@ The backend uses structured logging via zerolog:
 
 ## Git Workflow
 
-**Always use worktrees for ANY task involving code.** Use the `using-git-worktrees` skill to create one — it handles directory selection, `.gitignore` verification, project setup, and baseline tests.
+**Always use worktrees for ANY task involving code.** Create the worktree FIRST — before reading, editing, building, or running any code. The main directory's files may be stale; never read or act on them. Use the `using-git-worktrees` skill to set one up — it handles directory selection, `.gitignore` verification, project setup, and baseline tests.
 
 **Project-specific rules that extend the skill:**
 
