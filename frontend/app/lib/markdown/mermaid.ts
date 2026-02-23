@@ -31,6 +31,7 @@ function initMermaid() {
     startOnLoad: false,
     theme,
     securityLevel: 'loose',
+    suppressErrorRendering: true,
   })
   mermaidTheme = theme
 }
@@ -81,7 +82,6 @@ export async function renderMermaidBlock(code: string): Promise<string> {
     const { svg } = await mermaid.render(id, code)
     return `<div class="mermaid-diagram">${EXPAND_BTN_HTML}${svg}</div>`
   } catch (error) {
-    // On error, show the code with error message
     const errorMsg = error instanceof Error ? error.message : 'Failed to render diagram'
     return `<div class="mermaid-error"><pre><code>${escapeHtml(code)}</code></pre><p class="text-destructive text-sm">${escapeHtml(errorMsg)}</p></div>`
   }
