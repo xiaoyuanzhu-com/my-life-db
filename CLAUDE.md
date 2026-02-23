@@ -360,54 +360,42 @@ The backend uses structured logging via zerolog:
 
 ## Git Workflow
 
-**Always use git worktrees for ANY task that involves code — changes, investigation, debugging, code reading.** No exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before doing anything with code.** Everything happens inside the worktree directory — reading files, editing, builds, tests, linting, dependency installs, and all other commands. The main directory's files may be arbitrarily stale — never read or run code from it directly.
+**Always use worktrees for ANY task involving code.** Use the `using-git-worktrees` skill to create one — it handles directory selection, `.gitignore` verification, project setup, and baseline tests.
 
-**Always `git fetch origin` before creating a worktree — every single time, no exceptions.** This guarantees the worktree starts from the latest remote state. Skipping the fetch means working with stale code.
+**Project-specific rules that extend the skill:**
 
-**The main working directory is shared and potentially dirty.** Other sessions may have left uncommitted or untracked files there. Only use it for `git worktree add/remove` — never run builds or other commands from it.
+- **`git fetch origin` first — every time, no exceptions.** Branch from `origin/main`, not HEAD:
+  `git worktree add -b <branch> .worktrees/<name> origin/main`
+- **Main directory is off-limits** — only `git worktree add/remove` there; everything else (reads, edits, builds) happens inside the worktree.
+- **Sub-agents get the worktree path** — never pass the main repo path.
+- **Never auto-commit or auto-push** — wait for explicit user instruction.
+- **Always rebase, never merge** — push `<branch>:main` directly; no PRs, no merge commits.
 
-**When launching sub-agents or skills**, always provide the worktree path as the working directory. Never pass the main repo path.
+**Each worktree has one lifecycle: create → work → push → clean up.**
+A worktree may accumulate multiple commits before pushing. After every push, clean up immediately.
+If continuing work in the same session, create a new worktree and repeat.
 
-**Never auto-commit or auto-push.** Wait for the user's explicit instruction to commit, merge, or push.
+**Workflow (commit only when user asks; push + sync + clean up after every push):**
 
-**Always rebase, never merge** — rebase onto `origin/main` and push directly. Never create merge commits.
-
-    # 1. fetch latest and create worktree BEFORE doing anything with code
+    # --- start of work ---
     cd <repo-root>
     git fetch origin
     git worktree add -b <branch> .worktrees/<name> origin/main
-    # 2. commit — ONLY when user explicitly asks
-    # 3. rebase & push — ONLY when user explicitly asks
-    # Push from WITHIN the worktree — never checkout main (other sessions may have uncommitted work there)
+
+    # --- commit (repeat as needed before pushing) ---
     cd .worktrees/<name>
-    git fetch origin
-    git rebase origin/main
+    # ... git add, git commit ...
+
+    # --- push + sync + clean up (after every push) ---
+    git fetch origin && git rebase origin/main
     git push origin <branch>:main
-    # After a successful push, bring the main working directory up to date
+    # Sync main working directory
     cd <repo-root>
     git pull --rebase origin main
-    # If it fails due to dirty main dir: git checkout -- . && git pull --rebase origin main
-    # If rebase conflicts arise: resolve them, then git rebase --continue
-    # 4. clean up — ONLY when user explicitly asks
-    cd <repo-root>
-    git worktree remove .worktrees/<name> && git branch -d <branch>
-
-## House Cleaning (periodic, not per-session)
-
-Stale worktrees and branches accumulate naturally — that's fine. Tidy up periodically when things feel cluttered, not after every session:
-
-    # See what worktrees and branches exist
-    git worktree list
-    git branch
-
-    # Remove a worktree
-    git worktree remove .worktrees/<name>          # safe: refuses if uncommitted changes exist
-    git worktree remove --force .worktrees/<name>  # discard changes and remove
-    git worktree prune                             # fix broken refs after accidental rm -rf
-
-    # Delete stale local branches
-    git branch -d <branch>   # safe: refuses if not fully pushed
-    git branch -D <branch>   # force delete
+    # If dirty main dir: git checkout -- . && git pull --rebase origin main
+    # Clean up
+    git worktree remove .worktrees/<name>
+    git branch -d <branch>
 
 ## Development Server
 
