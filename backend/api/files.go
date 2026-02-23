@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/zlib"
 	"fmt"
@@ -228,6 +229,103 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	h.server.Notifications().NotifyLibraryChanged(path, "delete")
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// DownloadLibraryPath handles GET /api/library/download
+// Files: serves with Content-Disposition attachment
+// Folders: streams a zip archive
+func (h *Handlers) DownloadLibraryPath(c *gin.Context) {
+	path := c.Query("path")
+	if path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
+	}
+
+	// Security: prevent directory traversal
+	if strings.Contains(path, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		return
+	}
+
+	cfg := config.Get()
+	fullPath := filepath.Join(cfg.UserDataDir, path)
+
+	info, err := os.Stat(fullPath)
+	if os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stat path"})
+		return
+	}
+
+	if info.IsDir() {
+		h.downloadFolder(c, fullPath, filepath.Base(path))
+	} else {
+		h.downloadFile(c, fullPath, filepath.Base(path))
+	}
+}
+
+func (h *Handlers) downloadFile(c *gin.Context, fullPath, name string) {
+	f, err := os.Open(fullPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer f.Close()
+
+	info, _ := f.Stat()
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+	http.ServeContent(c.Writer, c.Request, name, info.ModTime(), f)
+}
+
+func (h *Handlers) downloadFolder(c *gin.Context, fullPath, name string) {
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, name))
+
+	zw := zip.NewWriter(c.Writer)
+	defer zw.Close()
+
+	err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// Skip directories as entries (they're implied by file paths)
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(fullPath, path)
+		if err != nil {
+			return err
+		}
+
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.Join(name, relPath)
+		header.Method = zip.Deflate
+
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		_, err = io.Copy(w, f)
+		return err
+	})
+
+	if err != nil {
+		log.Error().Err(err).Str("path", fullPath).Msg("failed to create zip archive")
+	}
 }
 
 // GetLibraryFileInfo handles GET /api/library/file-info
