@@ -227,15 +227,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
               </div>
             )}
 
-            {/* Beginning of session indicator */}
-            {!hasMoreHistory && messages.length > 0 && (
-              <div className="flex justify-center py-3 mb-2">
-                <span className="text-xs" style={{ color: 'var(--claude-text-tertiary)' }}>
-                  Beginning of session
-                </span>
-              </div>
-            )}
-
             {/* Messages rendered via SessionMessages (supports recursive nesting) */}
             <SessionMessages
               messages={messages}
