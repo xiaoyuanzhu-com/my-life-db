@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
+import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -251,6 +252,15 @@ function TreeNode({
     }
   };
 
+  const handleDownload = () => {
+    const name = getNodeName(node);
+    if (node.type === 'folder') {
+      downloadFolder(fullPath, name);
+    } else {
+      downloadFile(fullPath, name);
+    }
+  };
+
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent) => {
     e.stopPropagation();
@@ -442,6 +452,11 @@ function TreeNode({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onClick={handleDownload}>
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem onClick={startRename}>
             <Pencil className="w-4 h-4 mr-2" />
             Rename
