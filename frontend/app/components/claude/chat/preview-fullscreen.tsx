@@ -27,58 +27,53 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
     }
   }, [handleKeyDown])
 
-  // The button is rendered as a sibling of the overlay (not a child) so that
-  // iOS WKWebView doesn't route its touch events through the iframe.  Both are
-  // position:fixed — the button at z-index:51 renders above the overlay at z-index:50.
+  // Single container with flex-column layout.  The button lives in a header
+  // row that never overlaps the iframe — no z-index tricks, no floating, so
+  // WKWebView touch routing can't mis-route taps between layers.
   return createPortal(
-    <>
-      <div
-        className="preview-fullscreen-overlay"
-        onClick={onClose}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Fullscreen preview"
-      >
-        {/* Fullscreen iframe — click inside should NOT close the overlay */}
-        <iframe
-          className="preview-fullscreen-iframe"
-          srcDoc={srcdoc}
-          sandbox="allow-scripts"
-          title="Preview content"
-          onClick={(e) => e.stopPropagation()}
-        />
+    <div
+      className="preview-fullscreen-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Fullscreen preview"
+    >
+      {/* Header — contains collapse button */}
+      <div className="preview-fullscreen-header">
+        <button
+          className="preview-fullscreen-collapse"
+          onClick={onClose}
+          onPointerDown={(e) => {
+            e.preventDefault()
+            onClose()
+          }}
+          aria-label="Collapse preview"
+          title="Collapse preview"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="4 14 10 14 10 20" />
+            <polyline points="20 10 14 10 14 4" />
+            <line x1="14" y1="10" x2="21" y2="3" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
       </div>
 
-      {/* Collapse button — top right, outside overlay to avoid iOS iframe touch capture.
-          onPointerDown fires before onClick and is reliably dispatched on iOS even when
-          the button overlaps an iframe that would otherwise steal the touch event. */}
-      <button
-        className="preview-fullscreen-collapse"
-        onClick={onClose}
-        onPointerDown={(e) => {
-          e.preventDefault()
-          onClose()
-        }}
-        aria-label="Collapse preview"
-        title="Collapse preview"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="4 14 10 14 10 20" />
-          <polyline points="20 10 14 10 14 4" />
-          <line x1="14" y1="10" x2="21" y2="3" />
-          <line x1="3" y1="21" x2="10" y2="14" />
-        </svg>
-      </button>
-    </>,
+      <iframe
+        className="preview-fullscreen-iframe"
+        srcDoc={srcdoc}
+        sandbox="allow-scripts"
+        title="Preview content"
+      />
+    </div>,
     document.body
   )
 }
