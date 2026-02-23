@@ -448,12 +448,10 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			entryCopy.IsProcessing = session.IsProcessing()
 			entryCopy.HasPendingPermission = session.HasPendingPermission()
 			entryCopy.PermissionMode = session.PermissionMode
-			// Use live result count if it's ahead of the cached JSONL count.
-			// The live count updates immediately when a result message arrives on stdout,
-			// while the JSONL cache lags behind (updated asynchronously by fsnotify).
-			if rc := session.ResultCount(); rc > entryCopy.ResultCount {
-				entryCopy.ResultCount = rc
-			}
+			// For active sessions, always use the live result count — it's the source
+			// of truth (initialized from JSONL in LoadRawMessages, then incremented by
+			// live stdout results). The JSONL cache lags behind due to fsnotify delay.
+			entryCopy.ResultCount = session.ResultCount()
 			// Use the active session's LastUserActivity if it's newer
 			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
 				entryCopy.LastUserActivity = session.LastUserActivity

@@ -446,34 +446,21 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}
 
 	// Mark session as read immediately on connect.
-	//
-	// Problem: "result" messages (end-of-turn markers) may live in older pages
-	// that are NOT included in the initial WebSocket burst.
-	// In that case deliveredResults stays 0, persistReadState never writes to DB, and
-	// the session remains "unread" indefinitely — even while the user is actively
-	// viewing it.
-	//
-	// Fix: on connect, count ALL result messages in the full raw list and write to DB now.
-	// Opening the session in the UI is sufficient to consider the historical turns
-	// "seen". New live turns that complete while connected are tracked incrementally
+	// Opening the session in the UI is sufficient to consider all existing turns "seen".
+	// session.ResultCount() is the source of truth — initialized from JSONL in
+	// LoadRawMessages(), then incremented by live stdout results. No need to re-scan
+	// raw messages here.
+	// New live turns that complete while connected are tracked incrementally
 	// by deliveredResults and the inline persistReadState call after each live result.
-	rawMessages := session.GetRawMessages()
-	rawResultCount := 0
-	for _, msgBytes := range rawMessages {
-		var mt struct{ Type string `json:"type"` }
-		if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
-			rawResultCount++
-		}
-	}
-	if rawResultCount > 0 {
-		if err := db.MarkClaudeSessionRead(sessionID, rawResultCount); err != nil {
+	if rc := session.ResultCount(); rc > 0 {
+		if err := db.MarkClaudeSessionRead(sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
 		} else {
 			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
 		}
 		// Initialize deliveredResults so subsequent persistReadState calls
 		// reflect at least the historical count. MAX() upsert prevents regression.
-		deliveredResults.Store(int32(rawResultCount))
+		deliveredResults.Store(int32(rc))
 	}
 
 	// Page-based initial burst (§4.1, §6.3).
