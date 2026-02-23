@@ -69,6 +69,13 @@ type Session struct {
 	rawLoaded   bool             `json:"-"`
 	rawMu       sync.RWMutex     `json:"-"`
 
+	// Page model (§6) — partitions the raw message list into bounded pages.
+	// All fields protected by rawMu.
+	pageBreaks       []int `json:"-"` // Raw-list indices where each sealed page ends
+	currentPageStart int   `json:"-"` // Raw-list index where current (open) page begins
+	currentPageCount int   `json:"-"` // Non-closed-stream-event count in current page
+	hasOpenStream    bool  `json:"-"` // True if stream_events exist without a following assistant
+
 	// Pending control requests - maps request_id to response channel
 	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
 	pendingRequestsMu sync.RWMutex                           `json:"-"`
@@ -403,6 +410,10 @@ func (s *Session) ResetRawMessages() {
 	s.rawMessages = nil
 	s.seenUUIDs = make(map[string]bool)
 	s.rawLoaded = false
+	s.pageBreaks = nil
+	s.currentPageStart = 0
+	s.currentPageCount = 0
+	s.hasOpenStream = false
 	s.rawMu.Unlock()
 
 	log.Debug().
@@ -469,6 +480,11 @@ func (s *Session) LoadRawMessages() error {
 		}
 	}
 
+	// Derive page breaks from loaded messages (§6.5).
+	// JSONL doesn't contain stream_events (ephemeral), so hasOpenStream is always
+	// false during re-derivation — the algorithm reduces to sealing every 100 messages.
+	s.derivePageBreaks()
+
 	s.rawLoaded = true
 	return nil
 }
@@ -497,20 +513,163 @@ func (s *Session) GetRawMessageCount() int {
 	return len(s.rawMessages)
 }
 
-// GetDisplayableMessageCount returns the number of cached messages that are
-// displayable (i.e. not stream_event, queue-operation, or file-history-snapshot).
-// This count is used for pagination math so that historyOffset reflects the last
-// page of real content rather than transport noise.
-func (s *Session) GetDisplayableMessageCount() int {
+// TotalPages returns the total number of pages (sealed + 1 open page).
+// The open page always exists, even if empty.
+func (s *Session) TotalPages() int {
 	s.rawMu.RLock()
 	defer s.rawMu.RUnlock()
-	n := 0
-	for _, msg := range s.rawMessages {
-		if !IsNonDisplayableMessage(msg) {
-			n++
+	return len(s.pageBreaks) + 1
+}
+
+// GetPage returns the materialized messages for a given page number.
+// Materialization excludes closed stream_events from sealed pages (§7.3).
+// For the open (last) page, active stream_events are included for mid-stream reconnect.
+// Returns nil if the page number is out of range.
+func (s *Session) GetPage(page int) (messages [][]byte, sealed bool) {
+	s.rawMu.RLock()
+	defer s.rawMu.RUnlock()
+
+	totalPages := len(s.pageBreaks) + 1
+	if page < 0 || page >= totalPages {
+		return nil, false
+	}
+
+	// Determine raw-list slice for this page
+	start := 0
+	if page > 0 {
+		start = s.pageBreaks[page-1]
+	}
+	end := len(s.rawMessages)
+	if page < len(s.pageBreaks) {
+		end = s.pageBreaks[page]
+		sealed = true
+	}
+
+	// Materialize: for sealed pages, exclude all stream_events (they're closed).
+	// For the open page, include everything (active stream_events needed for reconnect).
+	if sealed {
+		for i := start; i < end; i++ {
+			if !isStreamEvent(s.rawMessages[i]) {
+				messages = append(messages, s.rawMessages[i])
+			}
+		}
+	} else {
+		messages = make([][]byte, end-start)
+		copy(messages, s.rawMessages[start:end])
+	}
+	return messages, sealed
+}
+
+// GetPageRange returns materialized messages for a range of pages [fromPage, toPage).
+// Used for the WS burst (last 2 pages).
+func (s *Session) GetPageRange(fromPage, toPage int) [][]byte {
+	s.rawMu.RLock()
+	defer s.rawMu.RUnlock()
+
+	totalPages := len(s.pageBreaks) + 1
+	if fromPage < 0 {
+		fromPage = 0
+	}
+	if toPage > totalPages {
+		toPage = totalPages
+	}
+
+	var result [][]byte
+	for page := fromPage; page < toPage; page++ {
+		start := 0
+		if page > 0 {
+			start = s.pageBreaks[page-1]
+		}
+		end := len(s.rawMessages)
+		sealed := false
+		if page < len(s.pageBreaks) {
+			end = s.pageBreaks[page]
+			sealed = true
+		}
+
+		if sealed {
+			for i := start; i < end; i++ {
+				if !isStreamEvent(s.rawMessages[i]) {
+					result = append(result, s.rawMessages[i])
+				}
+			}
+		} else {
+			result = append(result, s.rawMessages[start:end]...)
 		}
 	}
-	return n
+	return result
+}
+
+// checkPageSeal checks if the current page should be sealed after an append.
+// Must be called with rawMu held.
+func (s *Session) checkPageSeal() {
+	if s.currentPageCount >= DefaultPageSize && !s.hasOpenStream {
+		// Seal the current page
+		s.pageBreaks = append(s.pageBreaks, len(s.rawMessages))
+		s.currentPageStart = len(s.rawMessages)
+		s.currentPageCount = 0
+		// hasOpenStream is already false
+	}
+}
+
+// derivePageBreaks re-derives page breaks by running the sealing algorithm
+// over the full raw message list. Called on load from JSONL.
+// Must be called with rawMu held.
+func (s *Session) derivePageBreaks() {
+	s.pageBreaks = nil
+	s.currentPageStart = 0
+	s.currentPageCount = 0
+	s.hasOpenStream = false
+
+	for i, msg := range s.rawMessages {
+		msgType := fastMessageType(msg)
+		switch msgType {
+		case "stream_event":
+			s.hasOpenStream = true
+		case "assistant":
+			s.hasOpenStream = false
+			s.currentPageCount++
+		default:
+			s.currentPageCount++
+		}
+
+		// Check seal after processing this message
+		if s.currentPageCount >= DefaultPageSize && !s.hasOpenStream {
+			s.pageBreaks = append(s.pageBreaks, i+1)
+			s.currentPageStart = i + 1
+			s.currentPageCount = 0
+		}
+	}
+}
+
+// fastMessageType extracts the "type" field from raw JSON bytes.
+// Uses fast byte scanning before falling back to JSON parsing.
+func fastMessageType(data []byte) string {
+	// Quick extraction: find "type":" and read the value
+	prefix := data[:min(120, len(data))]
+
+	// Try common types with fast byte check
+	if bytes.Contains(prefix, []byte(`"stream_event"`)) {
+		return "stream_event"
+	}
+	if bytes.Contains(prefix, []byte(`"assistant"`)) {
+		// Confirm with JSON parse to avoid false positives
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(data, &envelope) == nil {
+			return envelope.Type
+		}
+	}
+
+	// Fall back to JSON parse for other types
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(data, &envelope) == nil {
+		return envelope.Type
+	}
+	return ""
 }
 
 // BroadcastUIMessage handles a message from Claude stdout
@@ -613,24 +772,29 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.rawMu.Unlock()
 	}
 
-	// Strip large Read tool content before caching and broadcasting
+	// Strip large Read tool content before storing and broadcasting
 	data = StripReadToolContent(data)
 
-	// Evict stream_event messages from cache when the final assistant message arrives.
-	// stream_event messages carry token-by-token deltas (text_delta, thinking_delta) that
-	// are only useful for live streaming. Once the complete assistant message arrives, it
-	// contains all the text/thinking content, making the deltas redundant.
-	// We keep stream_events in cache during streaming so clients reconnecting mid-stream
-	// can resume, but evict them once the final content is available.
-	if msgEnvelope.Type == "assistant" {
-		s.evictStreamEvents()
-	}
-
-	// Add to cache (all messages including control messages for live session state)
+	// Append to raw list (R1: append-only, never mutated).
+	// Stream event eviction is handled at the view/materialization layer (§7.3),
+	// not by modifying the raw list.
 	s.rawMu.Lock()
 	msgCopy := make([]byte, len(data))
 	copy(msgCopy, data)
 	s.rawMessages = append(s.rawMessages, msgCopy)
+
+	// Update page counters and check seal (§6.2, §6.5).
+	switch msgEnvelope.Type {
+	case "stream_event":
+		s.hasOpenStream = true
+		// stream_events don't count toward seal threshold
+	case "assistant":
+		s.hasOpenStream = false
+		s.currentPageCount++
+	default:
+		s.currentPageCount++
+	}
+	s.checkPageSeal()
 	s.rawMu.Unlock()
 
 	// Broadcast to all connected clients
@@ -652,34 +816,6 @@ func (s *Session) BroadcastToClients(data []byte) {
 			log.Warn().Str("sessionId", s.ID).Msg("client send buffer full, skipping message")
 		}
 	}
-}
-
-// evictStreamEvents removes all stream_event messages from the cache.
-// Called when the final assistant message arrives, since it contains the complete
-// text/thinking content that the stream_event deltas were building up.
-func (s *Session) evictStreamEvents() {
-	s.rawMu.Lock()
-	defer s.rawMu.Unlock()
-
-	// Fast path: check if there are any stream_events to evict.
-	// In-place filter to avoid allocation when there's nothing to evict.
-	n := 0
-	for _, msg := range s.rawMessages {
-		if !isStreamEvent(msg) {
-			s.rawMessages[n] = msg
-			n++
-		}
-	}
-
-	if n == len(s.rawMessages) {
-		return // Nothing evicted
-	}
-
-	// Clear trailing references to allow GC
-	for i := n; i < len(s.rawMessages); i++ {
-		s.rawMessages[i] = nil
-	}
-	s.rawMessages = s.rawMessages[:n]
 }
 
 // isStreamEvent checks if a raw JSON message is a stream_event type.

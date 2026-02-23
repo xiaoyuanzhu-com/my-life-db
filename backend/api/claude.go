@@ -495,34 +495,19 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		deliveredResults.Store(int32(rawResultCount))
 	}
 
-	// Send last page of raw messages directly (no page_start/page_end wrapping).
-	// Older history is loaded on-demand via the HTTP /messages endpoint.
-	pageSize := claude.DefaultPageSize
-	total := session.GetRawMessageCount()
-
-	// Use the displayable count (excluding stream_event, rate_limit_event, etc.) for
-	// pagination math. This ensures historyOffset reflects the last page of real content
-	// rather than being inflated by transport-layer noise (e.g. token-by-token
-	// stream_events during an active streaming turn).
-	//
-	// The WebSocket initial burst still sends from the raw historyOffset so that clients
-	// reconnecting mid-stream receive the live stream_events they need. Those events are
-	// handled in the frontend via the streaming buffer, not rawMessages.
-	displayableCount := session.GetDisplayableMessageCount()
-
-	// Compute history offset (aligned page start of the last page of displayable messages)
-	historyOffset := 0
-	if displayableCount > pageSize {
-		historyOffset = ((displayableCount - 1) / pageSize) * pageSize
+	// Page-based initial burst (§4.1, §6.3).
+	// Send last 2 pages: previous sealed page (~100 msgs) + current open page.
+	totalPages := session.TotalPages()
+	lowestBurstPage := totalPages - 2
+	if lowestBurstPage < 0 {
+		lowestBurstPage = 0
 	}
 
 	// Send session_info metadata frame.
-	// totalMessages reflects displayable count so the frontend's pagination math
-	// (historyOffset, hasMoreHistory) is based on real content, not transport noise.
 	sessionInfo := map[string]interface{}{
-		"type":           "session_info",
-		"totalMessages":  displayableCount,
-		"historyOffset":  historyOffset,
+		"type":            "session_info",
+		"totalPages":      totalPages,
+		"lowestBurstPage": lowestBurstPage,
 	}
 	if infoBytes, err := json.Marshal(sessionInfo); err == nil {
 		if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
@@ -530,20 +515,21 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 	}
 
-	if total > 0 {
+	// Send materialized messages from last 2 pages.
+	// Sealed pages have closed stream_events excluded; the open page includes
+	// active stream_events for mid-stream reconnection recovery.
+	burstMessages := session.GetPageRange(lowestBurstPage, totalPages)
+	if len(burstMessages) > 0 {
 		log.Debug().
 			Str("sessionId", sessionID).
-			Int("totalMessages", total).
-			Int("displayableCount", displayableCount).
-			Int("historyOffset", historyOffset).
-			Msg("sending initial messages to new client")
+			Int("totalPages", totalPages).
+			Int("lowestBurstPage", lowestBurstPage).
+			Int("burstMessages", len(burstMessages)).
+			Msg("sending initial burst to new client")
 
-		// Send messages from historyOffset to end (last page).
-		// Uses raw index (not displayable index) so stream_events at the tail
-		// are included for live streaming reconnection.
-		for _, msgBytes := range rawMessages[historyOffset:] {
+		for _, msgBytes := range burstMessages {
 			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send raw message")
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send burst message")
 				return
 			}
 			var mt struct{ Type string `json:"type"` }
