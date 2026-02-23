@@ -360,9 +360,9 @@ The backend uses structured logging via zerolog:
 
 ## Git Workflow
 
-Do NOT create git commits automatically. Only commit when explicitly instructed.
+**Always use git worktrees for ANY task that involves code — changes, investigation, debugging, code reading.** No exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before doing anything with code.** Everything happens inside the worktree directory — reading files, editing, builds, tests, linting, dependency installs, and all other commands. The main directory's files may be arbitrarily stale — never read or run code from it directly.
 
-**Always use git worktrees** for code changes — no exceptions, even for small changes. Never commit directly on `main`. **Create the worktree first, before making any code changes.** Everything happens inside the worktree directory — edits, builds, tests, linting, dependency installs, and all other commands.
+**Always `git fetch origin` before creating a worktree — every single time, no exceptions.** This guarantees the worktree starts from the latest remote state. Skipping the fetch means working with stale code.
 
 **The main working directory is shared and potentially dirty.** Other sessions may have left uncommitted or untracked files there. Only use it for `git worktree add/remove` — never run builds or other commands from it.
 
@@ -372,7 +372,8 @@ Do NOT create git commits automatically. Only commit when explicitly instructed.
 
 **Always rebase, never merge** — rebase onto `origin/main` and push directly. Never create merge commits.
 
-    # 1. fetch latest and create worktree BEFORE making changes
+    # 1. fetch latest and create worktree BEFORE doing anything with code
+    cd <repo-root>
     git fetch origin
     git worktree add -b <branch> .worktrees/<name> origin/main
     # 2. commit — ONLY when user explicitly asks
@@ -382,6 +383,10 @@ Do NOT create git commits automatically. Only commit when explicitly instructed.
     git fetch origin
     git rebase origin/main
     git push origin <branch>:main
+    # After a successful push, bring the main working directory up to date
+    cd <repo-root>
+    git pull --rebase origin main
+    # If conflicts arise, resolve them before continuing
     # 4. clean up — ONLY when user explicitly asks (or after merge)
     cd <repo-root>
     git worktree remove .worktrees/<name> && git branch -d <branch>
