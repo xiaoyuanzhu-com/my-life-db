@@ -1,5 +1,5 @@
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { SessionMessages } from './session-messages'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
@@ -126,9 +126,20 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   }, [hasMoreHistory, isLoadingPage, onLoadOlderPage])
 
   // Scroll position preservation when older messages are prepended.
-  // Before the message count changes, save scroll state.
-  // After React renders the new messages, adjust scrollTop to maintain visual position.
-  useEffect(() => {
+  //
+  // Uses useLayoutEffect (not useEffect) so the scroll adjustment happens
+  // synchronously after DOM mutations but BEFORE the browser paints the frame.
+  // With useEffect the browser would paint the post-prepend layout (scroll jumps
+  // to top) before the effect ran — causing a visible flash. useLayoutEffect
+  // eliminates that single-frame jump entirely.
+  //
+  // How it works:
+  //   prevScrollHeightRef / prevScrollTopRef hold values from the *last* layout.
+  //   When messages are prepended, scrollHeight grows by the height of the new
+  //   content. We shift scrollTop by the same delta so the visible content stays
+  //   in place. Only triggered when the user was near the top (scrollTop < 300),
+  //   which is the condition that triggered the older-page load in the first place.
+  useLayoutEffect(() => {
     const element = scrollElementRef.current
     if (!element) return
 

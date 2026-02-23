@@ -487,6 +487,17 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 		return
 	}
 
+	// allMessages holds the displayable messages (non-displayable types filtered out).
+	// Filtering here ensures pagination math is consistent with session_info totalMessages,
+	// which also excludes these types. Types filtered:
+	//   - stream_event: live-streaming only, already handled by WebSocket; evicted after turn
+	//   - rate_limit_event: API quota metadata, surfaced as a UI warning, not a chat message
+	//   - queue-operation: internal session queue management
+	//   - file-history-snapshot: internal file versioning for undo/redo
+	// Types kept even though not directly rendered (needed for frontend map-building):
+	//   - progress: agentProgressMap, bashProgressMap, hookProgressMap
+	//   - hook_response: hookResponseMap
+	//   - result: contextUsage computation
 	var allMessages []json.RawMessage
 
 	if session.Mode == claude.ModeUI {
@@ -497,7 +508,9 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 
 		cachedMessages := session.GetCachedMessages()
 		for _, msgBytes := range cachedMessages {
-			allMessages = append(allMessages, json.RawMessage(msgBytes))
+			if !claude.IsNonDisplayableMessage(msgBytes) {
+				allMessages = append(allMessages, json.RawMessage(msgBytes))
+			}
 		}
 	} else {
 		// CLI mode: Read from JSONL file including subagent messages
@@ -507,7 +520,9 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 		} else {
 			for _, msg := range rawMessages {
 				if msgBytes, err := json.Marshal(msg); err == nil {
-					allMessages = append(allMessages, json.RawMessage(msgBytes))
+					if !claude.IsNonDisplayableMessage(msgBytes) {
+						allMessages = append(allMessages, json.RawMessage(msgBytes))
+					}
 				}
 			}
 		}
@@ -646,16 +661,45 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			pageSize := claude.DefaultPageSize
 			total := len(initialMessages)
 
-			// Compute history offset (aligned page start of the last page)
-			historyOffset := 0
-			if total > pageSize {
-				historyOffset = ((total - 1) / pageSize) * pageSize
+			// Count displayable messages (excluding stream_event, rate_limit_event, etc.)
+			// for accurate pagination math — same logic as GetClaudeSessionMessages.
+			// Also count result messages for immediate read-state update (see below).
+			displayableCount := 0
+			cliResultCount := 0
+			for _, msg := range initialMessages {
+				if msg.GetType() == "result" {
+					cliResultCount++
+				}
+				if msgBytes, err := json.Marshal(msg); err == nil {
+					if !claude.IsNonDisplayableMessage(msgBytes) {
+						displayableCount++
+					}
+				}
 			}
 
-			// Send session_info metadata frame
+			// Mark session as read immediately on connect — same rationale as UI mode.
+			// result messages in older pages would otherwise never be delivered through
+			// the WebSocket burst, leaving the session permanently "unread".
+			if cliResultCount > 0 {
+				if err := db.MarkClaudeSessionRead(sessionID, cliResultCount); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark CLI session read on connect")
+				} else {
+					h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+				}
+				deliveredResults.Store(int32(cliResultCount))
+			}
+
+			// Compute history offset from displayable count (aligned page start of the last page)
+			historyOffset := 0
+			if displayableCount > pageSize {
+				historyOffset = ((displayableCount - 1) / pageSize) * pageSize
+			}
+
+			// Send session_info metadata frame.
+			// totalMessages = displayable count so frontend pagination is consistent with HTTP endpoint.
 			sessionInfo := map[string]interface{}{
 				"type":           "session_info",
-				"totalMessages":  total,
+				"totalMessages":  displayableCount,
 				"historyOffset":  historyOffset,
 			}
 			if infoBytes, err := json.Marshal(sessionInfo); err == nil {
@@ -667,6 +711,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Debug().
 				Str("sessionId", sessionID).
 				Int("totalMessages", total).
+				Int("displayableCount", displayableCount).
 				Int("historyOffset", historyOffset).
 				Msg("sending initial messages (CLI mode)")
 
@@ -702,21 +747,64 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
 		}
 
+		// Mark session as read immediately on connect.
+		//
+		// Problem: "result" messages (end-of-turn markers) may live in older cache pages
+		// that are NOT included in the initial WebSocket burst (historyOffset to end).
+		// In that case deliveredResults stays 0, persistReadState never writes to DB, and
+		// the session remains "unread" indefinitely — even while the user is actively
+		// viewing it.
+		//
+		// Fix: on connect, count ALL result messages in the full cache and write to DB now.
+		// Opening the session in the UI is sufficient to consider the historical turns
+		// "seen". New live turns that complete while connected are tracked incrementally
+		// by deliveredResults and the inline persistReadState call after each live result.
+		cachedMessages := session.GetCachedMessages()
+		cacheResultCount := 0
+		for _, msgBytes := range cachedMessages {
+			var mt struct{ Type string `json:"type"` }
+			if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
+				cacheResultCount++
+			}
+		}
+		if cacheResultCount > 0 {
+			if err := db.MarkClaudeSessionRead(sessionID, cacheResultCount); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
+			} else {
+				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+			}
+			// Initialize deliveredResults so subsequent persistReadState calls
+			// reflect at least the historical count. MAX() upsert prevents regression.
+			deliveredResults.Store(int32(cacheResultCount))
+		}
+
 		// Send last page of cached messages directly (no page_start/page_end wrapping).
 		// Older history is loaded on-demand via the HTTP /messages endpoint.
 		pageSize := claude.DefaultPageSize
 		total := session.GetCachedMessageCount()
 
-		// Compute history offset (aligned page start of the last page)
+		// Use the displayable count (excluding stream_event, rate_limit_event, etc.) for
+		// pagination math. This ensures historyOffset reflects the last page of real content
+		// rather than being inflated by transport-layer noise (e.g. token-by-token
+		// stream_events during an active streaming turn).
+		//
+		// The WebSocket initial burst still sends from the raw historyOffset so that clients
+		// reconnecting mid-stream receive the live stream_events they need. Those events are
+		// handled in the frontend via the streaming buffer, not rawMessages.
+		displayableCount := session.GetDisplayableMessageCount()
+
+		// Compute history offset (aligned page start of the last page of displayable messages)
 		historyOffset := 0
-		if total > pageSize {
-			historyOffset = ((total - 1) / pageSize) * pageSize
+		if displayableCount > pageSize {
+			historyOffset = ((displayableCount - 1) / pageSize) * pageSize
 		}
 
-		// Send session_info metadata frame
+		// Send session_info metadata frame.
+		// totalMessages reflects displayable count so the frontend's pagination math
+		// (historyOffset, hasMoreHistory) is based on real content, not transport noise.
 		sessionInfo := map[string]interface{}{
 			"type":           "session_info",
-			"totalMessages":  total,
+			"totalMessages":  displayableCount,
 			"historyOffset":  historyOffset,
 		}
 		if infoBytes, err := json.Marshal(sessionInfo); err == nil {
@@ -729,11 +817,16 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Debug().
 				Str("sessionId", sessionID).
 				Int("totalMessages", total).
+				Int("displayableCount", displayableCount).
 				Int("historyOffset", historyOffset).
 				Msg("sending initial messages to new client (UI mode)")
 
-			// Send messages from historyOffset to end (last page)
-			cachedMessages := session.GetCachedMessages()
+			// Send messages from historyOffset to end (last page).
+			// Uses raw cache index (not displayable index) so stream_events at the tail
+			// are included for live streaming reconnection.
+			// Note: cachedMessages was already fetched above for the result-count scan;
+			// re-use it here (the cache may have grown since, but that's fine — new messages
+			// arrive via BroadcastToClients after uiClient is registered below).
 			for _, msgBytes := range cachedMessages[historyOffset:] {
 				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")

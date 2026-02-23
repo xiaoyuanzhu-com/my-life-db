@@ -611,6 +611,22 @@ func (s *Session) GetCachedMessageCount() int {
 	return len(s.cachedMessages)
 }
 
+// GetDisplayableMessageCount returns the number of cached messages that are
+// displayable (i.e. not stream_event, rate_limit_event, queue-operation, or
+// file-history-snapshot). This count is used for pagination math so that
+// historyOffset reflects the last page of real content rather than transport noise.
+func (s *Session) GetDisplayableMessageCount() int {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	n := 0
+	for _, msg := range s.cachedMessages {
+		if !IsNonDisplayableMessage(msg) {
+			n++
+		}
+	}
+	return n
+}
+
 // BroadcastUIMessage handles a message from Claude stdout (UI mode)
 // - Deduplicates by UUID (skip if already seen from JSONL)
 // - Adds new messages to cache (including control messages for live sessions)
@@ -788,6 +804,55 @@ func isStreamEvent(data []byte) bool {
 		return false
 	}
 	return envelope.Type == "stream_event"
+}
+
+// nonDisplayableTypes lists message types that are never rendered in the UI and
+// are not needed for any frontend map-building (toolResultMap, agentProgressMap, etc.).
+// These types are filtered from HTTP pagination responses and from the totalMessages
+// count reported in session_info, so that:
+//   - Pagination offsets reflect real content, not transport noise
+//   - historyOffset in session_info correctly points to the last page of visible content
+//
+// Types kept (even though filtered in filteredMessages on the frontend):
+//   - progress: needed for agentProgressMap, bashProgressMap, hookProgressMap
+//   - hook_response: needed for hookResponseMap
+//   - result: needed for contextUsage computation
+//   - control_request: needed for live permission dialog state
+var nonDisplayableTypes = map[string]bool{
+	"stream_event":        true,
+	"rate_limit_event":    true,
+	"queue-operation":     true,
+	"file-history-snapshot": true,
+}
+
+// IsNonDisplayableMessage reports whether a raw JSON message is a type that
+// the frontend never renders and does not use for map-building.
+// These messages should be excluded from HTTP pagination responses and from
+// the displayable-count used for historyOffset calculation.
+//
+// Uses fast byte scanning before JSON parsing, same pattern as isStreamEvent.
+func IsNonDisplayableMessage(data []byte) bool {
+	if len(data) < 10 {
+		return false
+	}
+	// Fast path: scan the first 100 bytes for known type strings.
+	// Most messages don't match any of these, so we avoid JSON parsing entirely.
+	prefix := data[:min(100, len(data))]
+	found := bytes.Contains(prefix, []byte(`"stream_event"`)) ||
+		bytes.Contains(prefix, []byte(`"rate_limit_event"`)) ||
+		bytes.Contains(prefix, []byte(`"queue-operation"`)) ||
+		bytes.Contains(prefix, []byte(`"file-history-snapshot"`))
+	if !found {
+		return false
+	}
+	// Confirm with full type parse
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return false
+	}
+	return nonDisplayableTypes[envelope.Type]
 }
 
 // RegisterControlRequest registers a pending control request and returns a channel for the response

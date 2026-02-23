@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
+import { RateLimitWarning } from './rate-limit-warning'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
 import { useSessionWebSocket, usePermissions, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
 import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
@@ -30,6 +31,27 @@ interface ChatInterfaceProps {
 
 // Types that should not be rendered as messages
 const SKIP_TYPES = ['file-history-snapshot', 'result']
+
+// Message types that are purely internal / transport-layer and must never enter
+// rawMessages state. Adding them to rawMessages causes unnecessary map rebuilds
+// (toolResultMap, agentProgressMap, …) and full MessageBlock re-renders.
+const NON_DISPLAYABLE_TYPES = new Set([
+  'stream_event',
+  'rate_limit_event',
+  'queue-operation',
+  'file-history-snapshot',
+])
+
+// Rate limit info from the API (carried in rate_limit_event messages).
+// utilization ∈ [0, 1]; resetsAt is a Unix timestamp (seconds).
+interface RateLimitInfo {
+  status: string            // "allowed" | "allowed_warning" | "limited"
+  rateLimitType: string     // "seven_day" | "five_hour" | etc.
+  resetsAt: number          // Unix timestamp (seconds)
+  isUsingOverage: boolean
+  utilization: number       // 0–1
+  surpassedThreshold?: number // threshold that was crossed, e.g. 0.75
+}
 
 /** Extract text content from a user message (for draft comparison) */
 function extractUserMessageText(msg: SessionMessage): string | null {
@@ -81,6 +103,11 @@ export function ChatInterface({
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
+
+  // Rate limit warning — set when Claude API reports high quota utilization.
+  // Only shown for "allowed_warning" status (utilization ≥ threshold); cleared when
+  // a subsequent event drops back below or the user dismisses the banner.
+  const [rateLimitWarning, setRateLimitWarning] = useState<RateLimitInfo | null>(null)
 
   // Streaming text - accumulates text from stream_event messages for progressive display
   const [streamingText, setStreamingText] = useState<string>('')
@@ -222,6 +249,29 @@ export function ChatInterface({
         }
 
         setProgressMessage(progressMsg)
+        return
+      }
+
+      // Handle rate_limit_event — API quota metadata from Claude stdout.
+      // Never add to rawMessages (would trigger 8 map rebuilds + full re-render per event).
+      // Show a dismissible warning banner when utilization is high ("allowed_warning" status).
+      if (msg.type === 'rate_limit_event') {
+        const info = msg.rate_limit_info as RateLimitInfo | undefined
+        if (info) {
+          if (info.status === 'allowed_warning' || (info.utilization ?? 0) >= 0.75) {
+            setRateLimitWarning(info)
+          } else {
+            // Status dropped back to "allowed" — clear any existing warning
+            setRateLimitWarning(null)
+          }
+        }
+        return
+      }
+
+      // Handle internal transport/housekeeping messages — never needed in rawMessages.
+      // queue-operation: session queue management (enqueue/dequeue)
+      // file-history-snapshot: internal file versioning for undo/redo
+      if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot') {
         return
       }
 
@@ -823,9 +873,12 @@ export function ChatInterface({
         `/api/claude/sessions/${sessionId}/messages?offset=${offset}&limit=${limit}`
       )
       const data = await res.json()
-      const olderMessages = ((data.messages || []) as Record<string, unknown>[]).map(
-        (m) => normalizeMessage(m) as unknown as SessionMessage
-      )
+      // Filter non-displayable types before adding to rawMessages.
+      // The backend already excludes these, but this defensive filter also handles any
+      // edge cases (e.g., active streaming injecting stream_events into the cache).
+      const olderMessages = ((data.messages || []) as Record<string, unknown>[])
+        .map((m) => normalizeMessage(m) as unknown as SessionMessage)
+        .filter((m) => !NON_DISPLAYABLE_TYPES.has((m.type as string) ?? ''))
       setHistoryOffset(offset)
       setRawMessages((prev) => {
         const existingUUIDs = new Set(prev.map((m) => m.uuid))
@@ -1070,6 +1123,16 @@ export function ChatInterface({
             }
             onScrollElementReady={setScrollElement}
           />
+
+          {/* Rate limit warning banner — shown when API quota nears the limit */}
+          {rateLimitWarning && (
+            <RateLimitWarning
+              utilization={rateLimitWarning.utilization}
+              rateLimitType={rateLimitWarning.rateLimitType}
+              resetsAt={rateLimitWarning.resetsAt}
+              onDismiss={() => setRateLimitWarning(null)}
+            />
+          )}
 
           <ChatInput
             ref={chatInputRef}
