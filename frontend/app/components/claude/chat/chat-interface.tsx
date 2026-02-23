@@ -540,36 +540,24 @@ export function ChatInterface({
   // Get merged slash commands (built-in + dynamic from init)
   const slashCommands = useSlashCommands(initData)
 
-  // Extract context window usage from result or assistant messages.
-  // Result messages (live sessions only, not saved to JSONL) have:
-  //   - Root `usage`: main model's token counts (excludes subagent cumulative totals)
-  //   - `modelUsage`: per-model breakdown with `contextWindow` from the API
-  // Falls back to assistant message usage for historical sessions.
+  // Extract context window usage from assistant + result messages.
+  //
+  // inputTokens: from the LAST assistant message's per-API-call usage.
+  //   Result message root `usage` is cumulative across all API calls in a turn
+  //   (e.g., 40 tool-use cycles × 200k = 8M), so it massively overcounts.
+  //   Assistant messages have per-call usage which reflects the actual context size.
+  //
+  // contextWindow: from result message's `modelUsage` (has contextWindow from API),
+  //   falling back to 200k.
   const contextUsage = useMemo<ContextUsage | null>(() => {
-    // Try result messages first (live sessions only).
-    // Stop at compact_boundary — data before compaction is stale.
+    // 1. Extract contextWindow from the latest result message's modelUsage
+    let contextWindow = 200_000 // fallback
     for (let i = rawMessages.length - 1; i >= 0; i--) {
       const msg = rawMessages[i]
       if (msg.type === 'system' && msg.subtype === 'compact_boundary') break
       if (msg.type !== 'result') continue
 
       const raw = msg as unknown as Record<string, unknown>
-
-      // Root `usage` has the main model's tokens (not cumulative across subagent models).
-      // `modelUsage` entries sum ALL API calls per model in a turn, which inflates
-      // subagent model counts (e.g., 50 haiku calls summed together).
-      const rootUsage = raw.usage as {
-        input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number
-      } | undefined
-      if (!rootUsage) continue
-
-      const totalInput = (rootUsage.input_tokens || 0) +
-        (rootUsage.cache_creation_input_tokens || 0) +
-        (rootUsage.cache_read_input_tokens || 0)
-      if (totalInput === 0) continue
-
-      // Get contextWindow from modelUsage (pick the largest — that's the main model)
-      let contextWindow = 200_000 // fallback
       const modelUsage = raw.modelUsage as
         Record<string, { contextWindow?: number }> | undefined
       if (modelUsage) {
@@ -579,12 +567,10 @@ export function ChatInterface({
           }
         }
       }
-
-      return { inputTokens: totalInput, contextWindow }
+      break // only need the latest result message
     }
 
-    // Fallback: use latest main-session assistant message (historical sessions).
-    // Stop at compact_boundary — data before compaction is stale.
+    // 2. Get inputTokens from the last main-session assistant message (per-API-call)
     for (let i = rawMessages.length - 1; i >= 0; i--) {
       const msg = rawMessages[i]
       if (msg.type === 'system' && msg.subtype === 'compact_boundary') break
@@ -594,7 +580,7 @@ export function ChatInterface({
           (usage.cache_creation_input_tokens || 0) +
           (usage.cache_read_input_tokens || 0)
         if (totalInput === 0) continue
-        return { inputTokens: totalInput, contextWindow: 200_000 }
+        return { inputTokens: totalInput, contextWindow }
       }
     }
 
