@@ -500,12 +500,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send burst message")
 				return
 			}
-			var mt struct{ Type string `json:"type"` }
-			if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
-				deliveredResults.Add(1)
-			}
+			// NOTE: Do NOT count results here — deliveredResults was already initialized
+			// from session.ResultCount() above, which includes all historical results.
+			// Counting burst results again would inflate the DB read count, preventing
+			// future results from ever showing as "unread".
 		}
-		persistReadState() // Persist after initial burst (not per-message)
 	}
 
 	// Register as a broadcast client to receive real-time JSON messages
