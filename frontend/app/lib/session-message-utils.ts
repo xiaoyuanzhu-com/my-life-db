@@ -93,6 +93,7 @@ export interface SessionMessage {
   compactMetadata?: CompactMetadata
   microcompactMetadata?: MicrocompactMetadata  // For microcompact_boundary subtype
   error?: ApiErrorDetails  // For api_error subtype
+  cause?: ApiErrorCause  // For api_error network errors: top-level error cause (same as error.cause)
   retryInMs?: number  // For api_error: milliseconds until retry
   retryAttempt?: number  // For api_error: current retry attempt
   maxRetries?: number  // For api_error: maximum retries
@@ -238,9 +239,20 @@ export interface MicrocompactMetadata {
   clearedAttachmentUUIDs: string[]
 }
 
-// API error details for api_error messages
+// Network-level error cause (used for TLS, DNS, connection errors)
+export interface ApiErrorCause {
+  code: string    // e.g. "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR", "ECONNREFUSED"
+  path?: string   // URL that was requested
+  errno?: number  // OS-level error number
+}
+
+// API error details for api_error messages.
+// Two variants depending on the failure mode:
+//   - HTTP errors (e.g. 529 overloaded): have status, headers, requestID, error.type
+//   - Network errors (e.g. TLS cert failure): have cause.code, cause.path, cause.errno
 export interface ApiErrorDetails {
-  status: number
+  // HTTP error fields
+  status?: number
   headers?: Record<string, string>
   requestID?: string
   error?: {
@@ -250,6 +262,8 @@ export interface ApiErrorDetails {
       message: string
     }
   }
+  // Network error fields
+  cause?: ApiErrorCause
 }
 
 // Tool use result types - varies by tool

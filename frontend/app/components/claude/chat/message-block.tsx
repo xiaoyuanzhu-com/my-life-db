@@ -17,6 +17,7 @@ import {
   isTurnDurationMessage,
   isHookStartedMessage,
   isTaskNotificationMessage,
+  isApiErrorMessage,
   isRateLimitEvent,
   type SessionMessage,
   type ExtractedToolResult,
@@ -158,6 +159,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const isTurnDuration = isTurnDurationMessage(message)
   const isHookStarted = isHookStartedMessage(message)
   const isTaskNotification = isTaskNotificationMessage(message)
+  const isApiError = isApiErrorMessage(message)
   const isSummary = isSummaryMessage(message)
   const isRateLimitBlock = isRateLimitEvent(message)
 
@@ -172,7 +174,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
   const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isCompactingStatus
+  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isCompactingStatus
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -181,7 +183,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
     return null
   }
 
@@ -282,6 +284,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Task notification: background task completed/failed */}
       {isTaskNotification && (
         <TaskNotificationBlock message={message} />
+      )}
+
+      {/* API error: Claude Code failed to reach the Anthropic API, retrying */}
+      {isApiError && (
+        <ApiErrorBlock message={message} />
       )}
 
       {/* Summary message: automatic conversation summarization */}
@@ -874,6 +881,64 @@ function RateLimitEventBlock({ message }: { message: SessionMessage }) {
             style={{ width: `${utilPct}%`, opacity: 1 }}
           />
         </div>
+      </div>
+    </div>
+  )
+}
+
+// API error block — shown when Claude Code fails to reach the Anthropic API.
+// Displays error description + retry progress (e.g. "Retrying (3/10) in 2.3s").
+//
+// Two structural variants (see ApiErrorDetails):
+//   - Network errors: cause.code = "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR" etc.
+//   - HTTP errors:    error.status = 529 + error.error.error.message = "Overloaded"
+
+function getApiErrorDescription(message: SessionMessage): string {
+  // Network error: show the raw code (e.g. "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR")
+  const causeCode = (message.error?.cause ?? message.cause)?.code
+  if (causeCode) return causeCode
+
+  // HTTP error: show status + message
+  const apiError = message.error
+  if (apiError?.status) {
+    const msg = apiError.error?.error?.message
+    return msg ? `HTTP ${apiError.status}: ${msg}` : `HTTP ${apiError.status}`
+  }
+
+  return ''
+}
+
+function ApiErrorBlock({ message }: { message: SessionMessage }) {
+  const retryAttempt = message.retryAttempt
+  const maxRetries = message.maxRetries
+  const retryInMs = message.retryInMs
+
+  const description = getApiErrorDescription(message)
+
+  const retryText = retryAttempt != null && maxRetries != null
+    ? `Retrying (${retryAttempt}/${maxRetries})${retryInMs != null ? ` in ${(retryInMs / 1000).toFixed(1)}s` : ''}`
+    : null
+
+  return (
+    <div className="flex items-start gap-2 font-mono text-[13px] leading-[1.5]">
+      <MessageDot type="tool-failed" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold" style={{ color: 'var(--claude-status-alert)' }}>
+            API error
+          </span>
+          {description && (
+            <span style={{ color: 'var(--claude-text-secondary)' }}>
+              {description}
+            </span>
+          )}
+        </div>
+        {retryText && (
+          <div className="mt-0.5 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+            <span className="select-none">└</span>
+            <span>{retryText}</span>
+          </div>
+        )}
       </div>
     </div>
   )
