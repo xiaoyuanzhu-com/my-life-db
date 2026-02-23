@@ -416,6 +416,11 @@ func (s *Session) ResetRawMessages() {
 	s.hasOpenStream = false
 	s.rawMu.Unlock()
 
+	// Reset resultCount so LoadRawMessages() re-derives it from JSONL.
+	s.mu.Lock()
+	s.resultCount = 0
+	s.mu.Unlock()
+
 	log.Debug().
 		Str("sessionId", s.ID).
 		Int("clearedMessages", oldCount).
@@ -459,6 +464,7 @@ func (s *Session) LoadRawMessages() error {
 	}
 
 	// Convert to [][]byte and track UUIDs for deduplication
+	loadedResultCount := 0
 	for _, msg := range messages {
 		// Skip control_request/control_response - these are ephemeral permission protocol
 		// messages that only matter during live sessions. control_response is never stored
@@ -477,8 +483,22 @@ func (s *Session) LoadRawMessages() error {
 			if uuid != "" {
 				s.seenUUIDs[uuid] = true
 			}
+
+			// Count result messages so resultCount reflects total (historical + live).
+			// Without this, resultCount only tracks live stdout results (from BroadcastUIMessage),
+			// causing the session list to miss the "unread" state when a new result arrives
+			// before fsnotify updates the JSONL cache.
+			if msgType == "result" {
+				loadedResultCount++
+			}
 		}
 	}
+
+	// Initialize resultCount from JSONL-loaded results so the session list can
+	// correctly detect unread state even before fsnotify updates the JSONL cache.
+	s.mu.Lock()
+	s.resultCount = loadedResultCount
+	s.mu.Unlock()
 
 	// Derive page breaks from loaded messages (§6.5).
 	// JSONL doesn't contain stream_events (ephemeral), so hasOpenStream is always
