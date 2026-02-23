@@ -225,8 +225,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
           <div className="flex-1" />
         ) : (
           <>
-            {/* Loading indicator for older pages */}
-            {isLoadingPage && (
+            {/* Loading indicator / end-of-history marker */}
+            {isLoadingPage ? (
               <div className="flex justify-center py-4">
                 <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--claude-text-tertiary)' }}>
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -236,7 +236,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                   Loading older messages…
                 </div>
               </div>
-            )}
+            ) : !hasMoreHistory && messages.length > 0 ? (
+              <div className="flex justify-center py-3">
+                <span className="text-xs" style={{ color: 'var(--claude-text-tertiary)' }}>Beginning of conversation</span>
+              </div>
+            ) : null}
 
             {/* Messages rendered via SessionMessages (supports recursive nesting) */}
             <SessionMessages
