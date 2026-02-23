@@ -42,7 +42,6 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		WorkingDir      string `json:"workingDir"`
 		Title           string `json:"title"`
 		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
-		Mode            string `json:"mode"`            // Optional: "ui" (default) or "cli"
 		PermissionMode  string `json:"permissionMode"`  // Optional: "default", "acceptEdits", "plan", "bypassPermissions"
 	}
 
@@ -54,12 +53,6 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	// Use data directory as default working dir
 	if body.WorkingDir == "" {
 		body.WorkingDir = config.Get().UserDataDir
-	}
-
-	// Parse mode (default to UI)
-	mode := claude.ModeUI
-	if body.Mode == "cli" {
-		mode = claude.ModeCLI
 	}
 
 	// Parse permission mode (default to "default")
@@ -74,7 +67,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	}
 
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := h.server.Claude().CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, mode, permissionMode)
+	session, err := h.server.Claude().CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, permissionMode)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
@@ -181,165 +174,6 @@ func (h *Handlers) UnarchiveClaudeSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// ClaudeWebSocket handles WebSocket connection for terminal I/O
-func (h *Handlers) ClaudeWebSocket(c *gin.Context) {
-	sessionID := c.Param("id")
-
-	// GetSession will auto-resume from history if not active
-	session, err := h.server.Claude().GetSession(sessionID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-		return
-	}
-
-	// Get the underlying http.ResponseWriter from Gin's wrapper
-	// Gin wraps the response writer to track state, but WebSocket needs the raw writer
-	var w http.ResponseWriter = c.Writer
-
-	// Try to unwrap to get the actual response writer
-	// Gin's ResponseWriter may wrap the original, we need the original for hijacking
-	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
-		w = unwrapper.Unwrap()
-	}
-
-	// Accept WebSocket connection (coder/websocket)
-	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,                              // Skip origin check - auth is handled at higher layer
-		CompressionMode:    websocket.CompressionContextTakeover, // Enable permessage-deflate compression
-	})
-	if err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket upgrade failed")
-		return
-	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
-
-	// Abort Gin context to prevent middleware from writing headers on hijacked connection
-	c.Abort()
-
-	// Create a cancellable context that responds to:
-	// 1. Server shutdown (graceful termination)
-	// 2. WebSocket connection close
-	// This ensures clean shutdown without "response.WriteHeader on hijacked connection" warnings.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Monitor server shutdown context
-	go func() {
-		select {
-		case <-h.server.ShutdownContext().Done():
-			log.Debug().Str("sessionId", sessionID).Msg("server shutdown, closing WebSocket")
-			cancel()
-		case <-ctx.Done():
-			// Handler is exiting, goroutine can stop
-		}
-	}()
-
-	// Ensure session is activated before connecting client
-	if err := session.EnsureActivated(); err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
-		conn.Close(websocket.StatusInternalError, "Failed to activate session")
-		return
-	}
-
-	// Create a new client and register it with the session
-	client := &claude.Client{
-		Conn: conn,
-		Send: make(chan []byte, 256),
-	}
-	session.AddClient(client)
-	defer session.RemoveClient(client)
-
-	// Goroutine to send data from client.Send channel to WebSocket
-	sendDone := make(chan struct{})
-	go func() {
-		defer close(sendDone)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data, ok := <-client.Send:
-				if !ok {
-					return // Channel closed
-				}
-				if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
-					// Only log as error if context wasn't cancelled
-					if ctx.Err() == nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Msg("WebSocket write failed")
-					}
-					return
-				}
-			}
-		}
-	}()
-
-	// Goroutine to send periodic pings to keep connection alive
-	pingTicker := time.NewTicker(30 * time.Second)
-	defer pingTicker.Stop()
-
-	pingDone := make(chan struct{})
-	go func() {
-		defer close(pingDone)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-pingTicker.C:
-				if err := conn.Ping(ctx); err != nil {
-					log.Debug().Err(err).Msg("WebSocket ping failed")
-					return
-				}
-			}
-		}
-	}()
-
-	// WebSocket → PTY (read from browser, send to claude process)
-	for {
-		msgType, msg, err := conn.Read(ctx)
-		if err != nil {
-			// Normal closures (page refresh, navigation, switching sessions) → DEBUG
-			// Unexpected errors → INFO
-			closeStatus := websocket.CloseStatus(err)
-			if closeStatus == websocket.StatusGoingAway ||
-			   closeStatus == websocket.StatusNormalClosure ||
-			   closeStatus == websocket.StatusNoStatusRcvd {
-				log.Debug().Str("sessionId", sessionID).Int("closeStatus", int(closeStatus)).Msg("Terminal WebSocket closed normally")
-			} else {
-				log.Info().Err(err).Str("sessionId", sessionID).Msg("Terminal WebSocket read error")
-			}
-			cancel() // Signal goroutines to stop
-			break
-		}
-
-		// Only handle binary messages (terminal I/O)
-		if msgType != websocket.MessageBinary {
-			continue
-		}
-
-		// Log what xterm is sending (debug level - very noisy)
-		log.Debug().
-			Str("sessionId", sessionID).
-			Str("source", "xterm").
-			Str("data", string(msg)).
-			Int("length", len(msg)).
-			Str("hex", fmt.Sprintf("%x", msg)).
-			Msg("xterm → PTY")
-
-		if _, err := session.PTY.Write(msg); err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed")
-			cancel() // Signal goroutines to stop
-			conn.Close(websocket.StatusInternalError, "PTY write error")
-			break
-		}
-
-		session.LastActivity = time.Now()
-		session.LastUserActivity = time.Now()
-	}
-
-	// Wait for send goroutine to finish
-	<-sendDone
-	<-pingDone
 }
 
 // ChatMessage represents a message in the chat WebSocket protocol
@@ -462,7 +296,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 //   - offset: start index (default 0)
 //   - limit: max messages to return (default 0 = all)
 //
-// Response: { sessionId, mode, messages, totalCount, offset, limit }
+// Response: { sessionId, messages, totalCount, offset, limit }
 func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	sessionID := c.Param("id")
 
@@ -487,45 +321,19 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 		return
 	}
 
-	// allMessages holds the displayable messages (non-displayable types filtered out).
-	// Filtering here ensures pagination math is consistent with session_info totalMessages,
-	// which also excludes these types. Types filtered:
-	//   - stream_event: live-streaming only, already handled by WebSocket; evicted after turn
-	//   - queue-operation: internal session queue management
-	//   - file-history-snapshot: internal file versioning for undo/redo
-	// Note: rate_limit_event is NOT filtered — it is cached, synced to all clients,
-	// and rendered as a message block in the conversation thread.
-	// Types kept even though not directly rendered (needed for frontend map-building):
-	//   - progress: agentProgressMap, bashProgressMap, hookProgressMap
-	//   - hook_response: hookResponseMap
-	//   - result: contextUsage computation
+	// Load from cache (same as WebSocket)
+	if err := session.LoadMessageCache(); err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
+	}
+
+	// Filter non-displayable messages for consistent pagination math.
+	// Types filtered: stream_event, rate_limit_event, queue-operation, file-history-snapshot
+	// Types kept (needed for frontend map-building): progress, hook_response, result, control_request
 	var allMessages []json.RawMessage
-
-	if session.Mode == claude.ModeUI {
-		// UI mode: Load from cache (same as WebSocket)
-		if err := session.LoadMessageCache(); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
-		}
-
-		cachedMessages := session.GetCachedMessages()
-		for _, msgBytes := range cachedMessages {
-			if !claude.IsNonDisplayableMessage(msgBytes) {
-				allMessages = append(allMessages, json.RawMessage(msgBytes))
-			}
-		}
-	} else {
-		// CLI mode: Read from JSONL file including subagent messages
-		rawMessages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
-		if err != nil {
-			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no history found")
-		} else {
-			for _, msg := range rawMessages {
-				if msgBytes, err := json.Marshal(msg); err == nil {
-					if !claude.IsNonDisplayableMessage(msgBytes) {
-						allMessages = append(allMessages, json.RawMessage(msgBytes))
-					}
-				}
-			}
+	cachedMessages := session.GetCachedMessages()
+	for _, msgBytes := range cachedMessages {
+		if !claude.IsNonDisplayableMessage(msgBytes) {
+			allMessages = append(allMessages, json.RawMessage(msgBytes))
 		}
 	}
 
@@ -551,7 +359,6 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"sessionId":  sessionID,
-		"mode":       session.Mode,
 		"totalCount": totalCount,
 		"offset":     offset,
 		"limit":      limit,
@@ -560,7 +367,6 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 }
 
 // ClaudeSubscribeWebSocket handles WebSocket connection for real-time session updates
-// Similar to claude.ai/code's /v1/sessions/ws/:id/subscribe endpoint
 // This provides structured message streaming with tool calls, thinking blocks, etc.
 func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
@@ -647,336 +453,141 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 	// DON'T activate on connection - wait for first message
 	// This allows viewing historical sessions without activating them
-	log.Debug().Str("sessionId", sessionID).Str("mode", string(session.Mode)).Msg("Subscribe WebSocket connected (not activated yet)")
+	log.Debug().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
 
-	// Track last known message count to detect new messages (CLI mode only)
-	lastMessageCount := 0
-	lastTodoCount := 0
-	var updateMutex sync.Mutex // Protect concurrent access to lastMessageCount/lastTodoCount
+	var updateMutex sync.Mutex // Protect concurrent access
+	_ = updateMutex // Used implicitly by goroutines
 
-	// For CLI mode only: Send existing messages from JSONL file on connect
-	// For UI mode: Claude outputs history on stdout when session activates, so no need to read JSONL
-	if session.Mode == claude.ModeCLI {
-		initialMessages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
-		if err == nil && len(initialMessages) > 0 {
-			pageSize := claude.DefaultPageSize
-			total := len(initialMessages)
+	// Load message cache from JSONL (if not already loaded or activated)
+	// This allows viewing history before activation
+	if err := session.LoadMessageCache(); err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
+	}
 
-			// Count displayable messages (excluding stream_event, queue-operation, etc.)
-			// for accurate pagination math — same logic as GetClaudeSessionMessages.
-			// Also count result messages for immediate read-state update (see below).
-			displayableCount := 0
-			cliResultCount := 0
-			for _, msg := range initialMessages {
-				if msg.GetType() == "result" {
-					cliResultCount++
-				}
-				if msgBytes, err := json.Marshal(msg); err == nil {
-					if !claude.IsNonDisplayableMessage(msgBytes) {
-						displayableCount++
-					}
-				}
-			}
+	// Mark session as read immediately on connect.
+	//
+	// Problem: "result" messages (end-of-turn markers) may live in older cache pages
+	// that are NOT included in the initial WebSocket burst (historyOffset to end).
+	// In that case deliveredResults stays 0, persistReadState never writes to DB, and
+	// the session remains "unread" indefinitely — even while the user is actively
+	// viewing it.
+	//
+	// Fix: on connect, count ALL result messages in the full cache and write to DB now.
+	// Opening the session in the UI is sufficient to consider the historical turns
+	// "seen". New live turns that complete while connected are tracked incrementally
+	// by deliveredResults and the inline persistReadState call after each live result.
+	cachedMessages := session.GetCachedMessages()
+	cacheResultCount := 0
+	for _, msgBytes := range cachedMessages {
+		var mt struct{ Type string `json:"type"` }
+		if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
+			cacheResultCount++
+		}
+	}
+	if cacheResultCount > 0 {
+		if err := db.MarkClaudeSessionRead(sessionID, cacheResultCount); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
+		} else {
+			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+		}
+		// Initialize deliveredResults so subsequent persistReadState calls
+		// reflect at least the historical count. MAX() upsert prevents regression.
+		deliveredResults.Store(int32(cacheResultCount))
+	}
 
-			// Mark session as read immediately on connect — same rationale as UI mode.
-			// result messages in older pages would otherwise never be delivered through
-			// the WebSocket burst, leaving the session permanently "unread".
-			if cliResultCount > 0 {
-				if err := db.MarkClaudeSessionRead(sessionID, cliResultCount); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark CLI session read on connect")
-				} else {
-					h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
-				}
-				deliveredResults.Store(int32(cliResultCount))
-			}
+	// Send last page of cached messages directly (no page_start/page_end wrapping).
+	// Older history is loaded on-demand via the HTTP /messages endpoint.
+	pageSize := claude.DefaultPageSize
+	total := session.GetCachedMessageCount()
 
-			// Compute history offset from displayable count (aligned page start of the last page)
-			historyOffset := 0
-			if displayableCount > pageSize {
-				historyOffset = ((displayableCount - 1) / pageSize) * pageSize
-			}
+	// Use the displayable count (excluding stream_event, rate_limit_event, etc.) for
+	// pagination math. This ensures historyOffset reflects the last page of real content
+	// rather than being inflated by transport-layer noise (e.g. token-by-token
+	// stream_events during an active streaming turn).
+	//
+	// The WebSocket initial burst still sends from the raw historyOffset so that clients
+	// reconnecting mid-stream receive the live stream_events they need. Those events are
+	// handled in the frontend via the streaming buffer, not rawMessages.
+	displayableCount := session.GetDisplayableMessageCount()
 
-			// Send session_info metadata frame.
-			// totalMessages = displayable count so frontend pagination is consistent with HTTP endpoint.
-			sessionInfo := map[string]interface{}{
-				"type":           "session_info",
-				"totalMessages":  displayableCount,
-				"historyOffset":  historyOffset,
-			}
-			if infoBytes, err := json.Marshal(sessionInfo); err == nil {
-				if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
-					return
-				}
-			}
+	// Compute history offset (aligned page start of the last page of displayable messages)
+	historyOffset := 0
+	if displayableCount > pageSize {
+		historyOffset = ((displayableCount - 1) / pageSize) * pageSize
+	}
 
-			log.Debug().
-				Str("sessionId", sessionID).
-				Int("totalMessages", total).
-				Int("displayableCount", displayableCount).
-				Int("historyOffset", historyOffset).
-				Msg("sending initial messages (CLI mode)")
-
-			// Send messages from historyOffset to end (last page, no page_start/page_end wrapping)
-			for _, msg := range initialMessages[historyOffset:] {
-				if msgBytes, err := json.Marshal(msg); err == nil {
-					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
-						return
-					}
-					if msg.GetType() == "result" {
-						deliveredResults.Add(1)
-					}
-				}
-			}
-
-			lastMessageCount = len(initialMessages)
-			persistReadState() // Persist after initial burst (not per-message)
-		} else if err != nil {
-			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no initial history found (new session)")
+	// Send session_info metadata frame.
+	// totalMessages reflects displayable count so the frontend's pagination math
+	// (historyOffset, hasMoreHistory) is based on real content, not transport noise.
+	sessionInfo := map[string]interface{}{
+		"type":           "session_info",
+		"totalMessages":  displayableCount,
+		"historyOffset":  historyOffset,
+	}
+	if infoBytes, err := json.Marshal(sessionInfo); err == nil {
+		if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
+			return
 		}
 	}
 
-	// For UI mode: Register as a broadcast client to receive real-time JSON messages
-	// For CLI mode: Use file watcher/polling for updates
-	var uiClient *claude.Client
-	pollDone := make(chan struct{})
+	if total > 0 {
+		log.Debug().
+			Str("sessionId", sessionID).
+			Int("totalMessages", total).
+			Int("displayableCount", displayableCount).
+			Int("historyOffset", historyOffset).
+			Msg("sending initial messages to new client")
 
-	if session.Mode == claude.ModeUI {
-		// Load message cache from JSONL (if not already loaded or activated)
-		// This allows viewing history before activation
-		if err := session.LoadMessageCache(); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
-		}
-
-		// Mark session as read immediately on connect.
-		//
-		// Problem: "result" messages (end-of-turn markers) may live in older cache pages
-		// that are NOT included in the initial WebSocket burst (historyOffset to end).
-		// In that case deliveredResults stays 0, persistReadState never writes to DB, and
-		// the session remains "unread" indefinitely — even while the user is actively
-		// viewing it.
-		//
-		// Fix: on connect, count ALL result messages in the full cache and write to DB now.
-		// Opening the session in the UI is sufficient to consider the historical turns
-		// "seen". New live turns that complete while connected are tracked incrementally
-		// by deliveredResults and the inline persistReadState call after each live result.
-		cachedMessages := session.GetCachedMessages()
-		cacheResultCount := 0
-		for _, msgBytes := range cachedMessages {
-			var mt struct{ Type string `json:"type"` }
-			if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
-				cacheResultCount++
-			}
-		}
-		if cacheResultCount > 0 {
-			if err := db.MarkClaudeSessionRead(sessionID, cacheResultCount); err != nil {
-				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
-			} else {
-				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
-			}
-			// Initialize deliveredResults so subsequent persistReadState calls
-			// reflect at least the historical count. MAX() upsert prevents regression.
-			deliveredResults.Store(int32(cacheResultCount))
-		}
-
-		// Send last page of cached messages directly (no page_start/page_end wrapping).
-		// Older history is loaded on-demand via the HTTP /messages endpoint.
-		pageSize := claude.DefaultPageSize
-		total := session.GetCachedMessageCount()
-
-		// Use the displayable count (excluding stream_event, queue-operation, etc.) for
-		// pagination math. This ensures historyOffset reflects the last page of real content
-		// rather than being inflated by transport-layer noise (e.g. token-by-token
-		// stream_events during an active streaming turn).
-		//
-		// The WebSocket initial burst still sends from the raw historyOffset so that clients
-		// reconnecting mid-stream receive the live stream_events they need. Those events are
-		// handled in the frontend via the streaming buffer, not rawMessages.
-		displayableCount := session.GetDisplayableMessageCount()
-
-		// Compute history offset (aligned page start of the last page of displayable messages)
-		historyOffset := 0
-		if displayableCount > pageSize {
-			historyOffset = ((displayableCount - 1) / pageSize) * pageSize
-		}
-
-		// Send session_info metadata frame.
-		// totalMessages reflects displayable count so the frontend's pagination math
-		// (historyOffset, hasMoreHistory) is based on real content, not transport noise.
-		sessionInfo := map[string]interface{}{
-			"type":           "session_info",
-			"totalMessages":  displayableCount,
-			"historyOffset":  historyOffset,
-		}
-		if infoBytes, err := json.Marshal(sessionInfo); err == nil {
-			if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
+		// Send messages from historyOffset to end (last page).
+		// Uses raw cache index (not displayable index) so stream_events at the tail
+		// are included for live streaming reconnection.
+		for _, msgBytes := range cachedMessages[historyOffset:] {
+			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
 				return
 			}
+			var mt struct{ Type string `json:"type"` }
+			if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
+				deliveredResults.Add(1)
+			}
 		}
+		persistReadState() // Persist after initial burst (not per-message)
+	}
 
-		if total > 0 {
-			log.Debug().
-				Str("sessionId", sessionID).
-				Int("totalMessages", total).
-				Int("displayableCount", displayableCount).
-				Int("historyOffset", historyOffset).
-				Msg("sending initial messages to new client (UI mode)")
+	// Register as a broadcast client to receive real-time JSON messages
+	uiClient := &claude.Client{
+		Conn: conn,
+		Send: make(chan []byte, 256),
+	}
+	session.AddClient(uiClient)
+	defer session.RemoveClient(uiClient)
 
-			// Send messages from historyOffset to end (last page).
-			// Uses raw cache index (not displayable index) so stream_events at the tail
-			// are included for live streaming reconnection.
-			// Note: cachedMessages was already fetched above for the result-count scan;
-			// re-use it here (the cache may have grown since, but that's fine — new messages
-			// arrive via BroadcastToClients after uiClient is registered below).
-			for _, msgBytes := range cachedMessages[historyOffset:] {
-				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
+	// Start goroutine to forward broadcasts to WebSocket
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-uiClient.Send:
+				if !ok {
+					return
+				}
+				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+					if ctx.Err() == nil {
+						log.Debug().Err(err).Str("sessionId", sessionID).Msg("WebSocket write failed")
+					}
 					return
 				}
 				var mt struct{ Type string `json:"type"` }
-				if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
+				if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
 					deliveredResults.Add(1)
-				}
-			}
-			persistReadState() // Persist after initial burst (not per-message)
-		}
-
-		// UI mode: Create a client to receive broadcasts from readJSON
-		uiClient = &claude.Client{
-			Conn: conn,
-			Send: make(chan []byte, 256),
-		}
-		session.AddClient(uiClient)
-		defer session.RemoveClient(uiClient)
-
-		// Start goroutine to forward broadcasts to WebSocket
-		go func() {
-			defer close(pollDone) // Reuse pollDone for consistency
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case data, ok := <-uiClient.Send:
-					if !ok {
-						return
-					}
-					if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-						if ctx.Err() == nil {
-							log.Debug().Err(err).Str("sessionId", sessionID).Msg("UI mode WebSocket write failed")
-						}
-						return
-					}
-					var mt struct{ Type string `json:"type"` }
-					if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
-						deliveredResults.Add(1)
-						persistReadState()
-					}
-				}
-			}
-		}()
-	} else {
-		// CLI mode: Setup hybrid watcher (fsnotify + polling fallback)
-		watcher, err := claude.NewSessionWatcher(sessionID, session.WorkingDir)
-		if err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session watcher, falling back to polling only")
-			watcher = nil // Explicitly set to nil for safety
-		} else {
-			defer watcher.Close()
-			if err := watcher.Start(ctx); err != nil {
-				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to start session watcher")
-				watcher.Close()
-				watcher = nil
-			}
-		}
-
-		// Helper function to send updates (CLI mode only)
-		sendUpdates := func(updateType string) {
-			updateMutex.Lock()
-			defer updateMutex.Unlock()
-
-			if updateType == "messages" || updateType == "all" {
-				// Read session history (use Raw version for passthrough serialization)
-				messages, err := claude.ReadSessionHistoryRaw(sessionID, session.WorkingDir)
-				if err != nil {
-					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read session history")
-				} else if len(messages) > lastMessageCount {
-					// Send any new messages (including progress messages)
-					newMessages := messages[lastMessageCount:]
-
-					for _, msg := range newMessages {
-						// Send ALL message types (user, assistant, progress, queue-operation, etc.)
-						if msgBytes, err := json.Marshal(msg); err == nil {
-							if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-								return
-							}
-							if msg.GetType() == "result" {
-								deliveredResults.Add(1)
-								persistReadState()
-							}
-						}
-					}
-					lastMessageCount = len(messages)
-				}
-			}
-
-			if updateType == "todos" || updateType == "all" {
-				// Read todos
-				todos, err := claude.ReadSessionTodos(sessionID)
-				if err != nil {
-					log.Debug().Err(err).Str("sessionId", sessionID).Msg("failed to read todos")
-				} else if len(todos) != lastTodoCount {
-					// Send todos if they changed
-					todoMsg := map[string]interface{}{
-						"type": "todo_update",
-						"data": map[string]interface{}{
-							"todos": todos,
-						},
-					}
-					if msgBytes, err := json.Marshal(todoMsg); err == nil {
-						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-							log.Debug().Err(err).Str("sessionId", sessionID).Msg("Subscribe WebSocket write failed")
-							return
-						}
-					}
-					lastTodoCount = len(todos)
+					persistReadState()
 				}
 			}
 		}
-
-		// Polling + fsnotify goroutine (hybrid approach) - CLI mode only
-		pollTicker := time.NewTicker(5 * time.Second) // Reduced frequency - fsnotify handles most updates
-
-		go func() {
-			defer close(pollDone)
-			defer pollTicker.Stop()
-
-			// Get update channel (nil-safe)
-			var updateChan <-chan string
-			if watcher != nil {
-				updateChan = watcher.Updates()
-			}
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-
-				case updateType, ok := <-updateChan:
-					// Fast path: fsnotify detected a change
-					if !ok {
-						return
-					}
-					if updateType != "" {
-						sendUpdates(updateType)
-					}
-
-				case <-pollTicker.C:
-					// Slow path: safety net polling to catch anything fsnotify missed
-					sendUpdates("all")
-				}
-			}
-		}()
-	}
+	}()
 
 	// Ping goroutine
 	pingTicker := time.NewTicker(30 * time.Second)
@@ -1034,74 +645,36 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// Send message based on mode
-			if session.Mode == claude.ModeUI {
-				// UI mode: SendInputUI handles activation internally
-				if err := session.SendInputUI(inMsg.Content); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
-					errMsg := map[string]interface{}{
-						"type":  "error",
-						"error": "Failed to send message to session",
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						conn.Write(ctx, websocket.MessageText, msgBytes)
-					}
-					break
+			// SendInputUI handles activation internally
+			if err := session.SendInputUI(inMsg.Content); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
+				errMsg := map[string]interface{}{
+					"type":  "error",
+					"error": "Failed to send message to session",
 				}
+				if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
+					conn.Write(ctx, websocket.MessageText, msgBytes)
+				}
+				break
+			}
 
-				// Broadcast synthetic user message back to clients
-				// This unifies behavior with CLI mode where user messages come from JSONL.
-				// Claude stdin doesn't echo user messages to stdout, so we synthesize one.
-				syntheticMsg := map[string]interface{}{
-					"type":      "user",
-					"uuid":      uuid.New().String(),
-					"timestamp": time.Now().UnixMilli(),
-					"sessionId": sessionID,
-					"message": map[string]interface{}{
-						"role": "user",
-						"content": []map[string]interface{}{
-							{"type": "text", "text": inMsg.Content},
-						},
+			// Broadcast synthetic user message back to clients
+			// This unifies behavior — Claude stdin doesn't echo user messages to stdout,
+			// so we synthesize one.
+			syntheticMsg := map[string]interface{}{
+				"type":      "user",
+				"uuid":      uuid.New().String(),
+				"timestamp": time.Now().UnixMilli(),
+				"sessionId": sessionID,
+				"message": map[string]interface{}{
+					"role": "user",
+					"content": []map[string]interface{}{
+						{"type": "text", "text": inMsg.Content},
 					},
-				}
-				if msgBytes, err := json.Marshal(syntheticMsg); err == nil {
-					session.BroadcastUIMessage(msgBytes)
-				}
-			} else {
-				// CLI mode: ensure activated, then send to PTY
-				if err := session.EnsureActivated(); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session")
-					errMsg := map[string]interface{}{
-						"type":  "error",
-						"error": "Failed to activate session",
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						conn.Write(ctx, websocket.MessageText, msgBytes)
-					}
-					break
-				}
-				// CLI mode: Send message to Claude by writing to PTY
-				// Send each character separately to avoid readline paste detection
-				for _, ch := range inMsg.Content {
-					charByte := []byte(string(ch))
-					if _, err := session.PTY.Write(charByte); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (char)")
-						errMsg := map[string]interface{}{
-							"type":  "error",
-							"error": "Failed to send message to session",
-						}
-						if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-							conn.Write(ctx, websocket.MessageText, msgBytes)
-						}
-						break
-					}
-				}
-
-				// Small delay before Enter to ensure readline processes the input correctly
-				time.Sleep(50 * time.Millisecond)
-				if _, err := session.PTY.Write([]byte("\r")); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("PTY write failed (enter)")
-				}
+				},
+			}
+			if msgBytes, err := json.Marshal(syntheticMsg); err == nil {
+				session.BroadcastUIMessage(msgBytes)
 			}
 
 			session.LastActivity = time.Now()
@@ -1119,16 +692,9 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Info().
 				Str("sessionId", sessionID).
 				Str("content", inMsg.Content).
-				Str("mode", string(session.Mode)).
 				Msg("message sent to claude session via WebSocket")
 
 		case "control_request":
-			// UI mode only: Handle control requests (interrupt, etc.)
-			if session.Mode != claude.ModeUI {
-				log.Debug().Str("sessionId", sessionID).Msg("control_request received for non-UI session, ignoring")
-				break
-			}
-
 			// Parse the control request
 			var controlReq struct {
 				Type      string `json:"type"`
@@ -1170,10 +736,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				// 2. Active session (already running):
 				//    - Send set_permission_mode control request to Claude via SDK
 				//    - Claude updates its permission mode mid-conversation
-				//
-				// This unified approach means the frontend always sends permission mode changes,
-				// and the backend handles activation transparently. No need for frontend to track
-				// whether a session is active or not.
 
 				// Parse mode from request
 				var modeReq struct {
@@ -1253,9 +815,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 				// Send control_response confirmation to all clients.
 				// Use BroadcastToClients (not BroadcastUIMessage) to avoid caching.
-				// set_permission_mode responses are ephemeral confirmations — each
-				// reconnecting client sends its own sync and gets a fresh response.
-				// Caching them causes accumulation: N responses after N connections.
 				responseMsg := map[string]any{
 					"type":       "control_response",
 					"request_id": controlReq.RequestID,
@@ -1273,12 +832,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 		case "control_response":
-			// UI mode only: Handle permission responses from the frontend
-			if session.Mode != claude.ModeUI {
-				log.Debug().Str("sessionId", sessionID).Msg("control_response received for non-UI session, ignoring")
-				break
-			}
-
 			// Parse the control response (nested structure from frontend)
 			var controlResp struct {
 				Type      string `json:"type"`
@@ -1301,12 +854,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 			// Ensure session is activated before sending control_response
-			// This handles the case where user answers a historical AskUserQuestion:
-			// 1. Session is inactive (no Claude CLI process running)
-			// 2. User submits answer via control_response
-			// 3. We need to activate the session first so Claude can receive the answer
-			// NOTE: For historical questions, Claude may create a NEW tool_use with different ID
-			// after resuming, so the user might need to answer again. This is expected behavior.
 			if err := session.EnsureActivated(); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session for control_response")
 				errMsg := map[string]interface{}{
@@ -1342,12 +889,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			}
 
 		case "tool_result":
-			// UI mode only: Handle tool results from the frontend (e.g., AskUserQuestion answers)
-			if session.Mode != claude.ModeUI {
-				log.Debug().Str("sessionId", sessionID).Msg("tool_result received for non-UI session, ignoring")
-				break
-			}
-
 			// Parse the tool_result message
 			var toolResult struct {
 				Type      string `json:"type"`
@@ -1384,4 +925,3 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	<-pollDone
 	<-pingDone
 }
-

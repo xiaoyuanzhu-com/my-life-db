@@ -1,12 +1,10 @@
 package claude
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -15,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/models"
@@ -362,11 +359,11 @@ func (m *SessionManager) GetSession(id string) (*Session, error) {
 			return nil, ErrSessionNotFound
 		}
 		// Create shell session for this archived session
-		return m.createShellSession(id, workingDir, "Archived Session", ModeUI)
+		return m.createShellSession(id, workingDir, "Archived Session")
 	}
 
 	// Create shell session from cached metadata
-	return m.createShellSession(id, entry.ProjectPath, entry.DisplayTitle, ModeUI)
+	return m.createShellSession(id, entry.ProjectPath, entry.DisplayTitle)
 }
 
 // GetSessionEntry retrieves a session entry by ID (metadata only, no process)
@@ -638,12 +635,12 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 // =============================================================================
 
 // CreateSession spawns a new Claude Code process
-func (m *SessionManager) CreateSession(workingDir, title string, mode SessionMode, permissionMode sdk.PermissionMode) (*Session, error) {
-	return m.CreateSessionWithID(workingDir, title, "", mode, permissionMode)
+func (m *SessionManager) CreateSession(workingDir, title string, permissionMode sdk.PermissionMode) (*Session, error) {
+	return m.CreateSessionWithID(workingDir, title, "", permissionMode)
 }
 
 // CreateSessionWithID spawns a new Claude Code process with optional resume
-func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, mode SessionMode, permissionMode sdk.PermissionMode) (*Session, error) {
+func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, permissionMode sdk.PermissionMode) (*Session, error) {
 	m.mu.Lock()
 
 	var sessionID string
@@ -666,10 +663,6 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		}
 	}
 
-	if mode == "" {
-		mode = ModeUI
-	}
-
 	if permissionMode == "" {
 		permissionMode = sdk.PermissionModeDefault
 	}
@@ -687,14 +680,12 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		ID:                    sessionID,
 		WorkingDir:            workingDir,
 		Title:                 title,
-		Mode:                  mode,
 		PermissionMode:        permissionMode,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
 		LastUserActivity:      lastUserActivity,
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
-		broadcast:             make(chan []byte, 256),
 		activated:             true,
 		pendingSDKPermissions: make(map[string]*pendingPermission),
 		Git:                   GetGitInfo(workingDir),
@@ -706,47 +697,19 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 	m.sessions[session.ID] = session
 	m.mu.Unlock()
 
-	// Start the process
-	if mode == ModeUI {
-		if err := m.createSessionWithSDK(session, resumeSessionID != ""); err != nil {
-			m.mu.Lock()
-			delete(m.sessions, session.ID)
-			m.mu.Unlock()
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create SDK session")
-			return nil, fmt.Errorf("failed to create SDK session: %w", err)
-		}
-	} else {
-		args := buildClaudeArgs(sessionID, resumeSessionID != "", mode)
-		cmd := exec.Command("claude", args...)
-		cmd.Dir = workingDir
-
-		ptmx, err := pty.Start(cmd)
-		if err != nil {
-			m.mu.Lock()
-			delete(m.sessions, session.ID)
-			m.mu.Unlock()
-			log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to start claude process")
-			return nil, fmt.Errorf("failed to start claude: %w", err)
-		}
-
-		session.PTY = ptmx
-		session.Cmd = cmd
-		session.ProcessID = cmd.Process.Pid
-
-		m.trackProcessStart()
-
-		m.wg.Add(1)
-		go m.readPTY(session)
-
-		m.wg.Add(1)
-		go m.monitorProcess(session)
+	// Start the SDK process
+	if err := m.createSessionWithSDK(session, resumeSessionID != ""); err != nil {
+		m.mu.Lock()
+		delete(m.sessions, session.ID)
+		m.mu.Unlock()
+		log.Error().Err(err).Str("workingDir", workingDir).Msg("failed to create SDK session")
+		return nil, fmt.Errorf("failed to create SDK session: %w", err)
 	}
 
 	log.Info().
 		Str("sessionId", sessionID).
 		Int("pid", session.ProcessID).
 		Str("workingDir", workingDir).
-		Str("mode", string(mode)).
 		Msg("created claude session")
 
 	// Emit events
@@ -1249,26 +1212,17 @@ func (m *SessionManager) forceKillAllSessions() {
 				session.sdkCancel()
 			}
 			session.sdkClient.Close()
-			continue
-		}
-
-		if session.Cmd != nil && session.Cmd.Process != nil {
-			session.Cmd.Process.Kill()
 		}
 	}
 }
 
 // createShellSession creates a non-activated session (metadata only)
-func (m *SessionManager) createShellSession(id, workingDir, title string, mode SessionMode) (*Session, error) {
+func (m *SessionManager) createShellSession(id, workingDir, title string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if existing, ok := m.sessions[id]; ok {
 		return existing, nil
-	}
-
-	if mode == "" {
-		mode = ModeUI
 	}
 
 	// Preserve the original LastUserActivity from cached entry if available.
@@ -1284,14 +1238,12 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 		ID:                    id,
 		WorkingDir:            workingDir,
 		Title:                 title,
-		Mode:                  mode,
 		PermissionMode:        sdk.PermissionModeDefault,
 		CreatedAt:             time.Now(),
 		LastActivity:          time.Now(),
 		LastUserActivity:      lastUserActivity,
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
-		broadcast:             make(chan []byte, 256),
 		activated:             false,
 		pendingSDKPermissions: make(map[string]*pendingPermission),
 		Git:                   GetGitInfo(workingDir),
@@ -1306,7 +1258,7 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 
 	m.sessions[id] = session
 
-	log.Debug().Str("sessionId", id).Str("mode", string(mode)).Msg("created shell session (not activated)")
+	log.Debug().Str("sessionId", id).Msg("created shell session (not activated)")
 
 	return session, nil
 }
@@ -1315,42 +1267,17 @@ func (m *SessionManager) createShellSession(id, workingDir, title string, mode S
 func (m *SessionManager) activateSession(session *Session) error {
 	session.ready = make(chan struct{})
 
-	if session.Mode == ModeUI {
-		if err := m.createSessionWithSDK(session, true); err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to activate SDK session")
-			return fmt.Errorf("failed to activate SDK session: %w", err)
-		}
-
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			if session.ready != nil {
-				close(session.ready)
-			}
-		}()
-	} else {
-		args := buildClaudeArgs(session.ID, true, session.Mode)
-		cmd := exec.Command("claude", args...)
-		cmd.Dir = session.WorkingDir
-
-		ptmx, err := pty.Start(cmd)
-		if err != nil {
-			log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to start claude process")
-			return fmt.Errorf("failed to start claude: %w", err)
-		}
-
-		session.PTY = ptmx
-		session.Cmd = cmd
-		session.ProcessID = cmd.Process.Pid
-		session.Status = "active"
-
-		m.trackProcessStart()
-
-		m.wg.Add(1)
-		go m.readPTY(session)
-
-		m.wg.Add(1)
-		go m.monitorProcess(session)
+	if err := m.createSessionWithSDK(session, true); err != nil {
+		log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to activate SDK session")
+		return fmt.Errorf("failed to activate SDK session: %w", err)
 	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		if session.ready != nil {
+			close(session.ready)
+		}
+	}()
 
 	// Note: Event emission is handled by the public ActivateSession() method
 	// to avoid duplicate events when called via session.EnsureActivated()
@@ -1358,16 +1285,12 @@ func (m *SessionManager) activateSession(session *Session) error {
 	return nil
 }
 
-// cleanupSession terminates a Claude CLI session and releases resources.
-//
-// Two shutdown paths based on session type:
-//   - SDK mode (UI): sdkClient.Close() → SIGINT → 5s timeout → SIGKILL
-//   - PTY mode (CLI): gracefulTerminate() → SIGINT → 5s timeout → SIGKILL
+// cleanupSession terminates a Claude session and releases resources.
+// Shutdown path: sdkClient.Close() → SIGINT → 5s timeout → SIGKILL
 //
 // Note: Claude CLI (Node.js) responds to SIGINT but ignores SIGTERM.
 // See docs/agent/components/claude-code.md for details.
 func (m *SessionManager) cleanupSession(session *Session, id string) {
-	// SDK mode (UI sessions) - uses transport.Close() which sends SIGINT
 	if session.sdkClient != nil {
 		if session.sdkCancel != nil {
 			session.sdkCancel()
@@ -1375,28 +1298,6 @@ func (m *SessionManager) cleanupSession(session *Session, id string) {
 		session.sdkClient.Close()
 		log.Info().Str("sessionId", id).Msg("deactivated SDK claude session")
 		return
-	}
-
-	// PTY mode (CLI sessions) - close PTY/stdin, then send SIGINT via gracefulTerminate
-	if session.Mode == ModeUI {
-		if session.Stdin != nil {
-			session.Stdin.Close()
-		}
-	} else {
-		if session.PTY != nil {
-			session.PTY.Close()
-		}
-	}
-
-	gracefulTerminate(session.Cmd, 5*time.Second) // Sends SIGINT, falls back to SIGKILL
-
-	if session.Mode == ModeUI {
-		if session.Stdout != nil {
-			session.Stdout.Close()
-		}
-		if session.Stderr != nil {
-			session.Stderr.Close()
-		}
 	}
 
 	log.Info().Str("sessionId", id).Msg("deactivated claude session")
@@ -1416,189 +1317,15 @@ func (m *SessionManager) cleanupWorker() {
 		case <-ticker.C:
 			m.mu.Lock()
 			for id, session := range m.sessions {
-				if session.Cmd != nil && session.Cmd.ProcessState != nil && session.Cmd.ProcessState.Exited() {
+				session.mu.RLock()
+				isDead := session.Status == "dead"
+				session.mu.RUnlock()
+				if isDead {
 					log.Info().Str("sessionId", id).Msg("cleaning up dead session")
-
-					if session.PTY != nil {
-						session.PTY.Close()
-					}
-
 					delete(m.sessions, id)
 				}
 			}
 			m.mu.Unlock()
-		}
-	}
-}
-
-func (m *SessionManager) monitorProcess(session *Session) {
-	defer m.wg.Done()
-
-	if session.Cmd == nil {
-		return
-	}
-
-	defer m.trackProcessExit()
-
-	err := session.Cmd.Wait()
-
-	session.mu.Lock()
-	session.Status = "dead"
-	session.mu.Unlock()
-
-	if err != nil {
-		log.Warn().Err(err).Str("sessionId", session.ID).Int("pid", session.ProcessID).Msg("claude process exited with error")
-	} else {
-		log.Info().Str("sessionId", session.ID).Int("pid", session.ProcessID).Msg("claude process exited normally")
-	}
-
-	session.Broadcast([]byte("\r\n\x1b[33mSession process has ended\x1b[0m\r\n"))
-
-	m.mu.Lock()
-	delete(m.sessions, session.ID)
-	m.mu.Unlock()
-
-	log.Info().Str("sessionId", session.ID).Msg("removed dead session from pool")
-}
-
-func (m *SessionManager) readPTY(session *Session) {
-	defer m.wg.Done()
-
-	buf := make([]byte, 4096)
-
-	var readyOnce sync.Once
-	lastOutputTime := time.Now()
-	firstOutputReceived := false
-	var lastOutputMu sync.Mutex
-
-	if session.ready != nil {
-		go func() {
-			ticker := time.NewTicker(50 * time.Millisecond)
-			defer ticker.Stop()
-
-			maxWaitTime := 3 * time.Second
-			startTime := time.Now()
-
-			for {
-				select {
-				case <-m.ctx.Done():
-					return
-				case <-ticker.C:
-					lastOutputMu.Lock()
-					timeSinceLastOutput := time.Since(lastOutputTime)
-					hadOutput := firstOutputReceived
-					lastOutputMu.Unlock()
-
-					if time.Since(startTime) >= maxWaitTime {
-						readyOnce.Do(func() {
-							close(session.ready)
-						})
-						return
-					}
-
-					if hadOutput && timeSinceLastOutput >= 300*time.Millisecond {
-						readyOnce.Do(func() {
-							close(session.ready)
-						})
-						return
-					}
-				}
-			}
-		}()
-	}
-
-	for {
-		select {
-		case <-m.ctx.Done():
-			log.Debug().Str("sessionId", session.ID).Msg("PTY reader stopping (shutdown)")
-			return
-		default:
-		}
-
-		n, err := session.PTY.Read(buf)
-		if err != nil {
-			session.mu.Lock()
-			session.Status = "dead"
-			session.mu.Unlock()
-			return
-		}
-
-		lastOutputMu.Lock()
-		lastOutputTime = time.Now()
-		firstOutputReceived = true
-		lastOutputMu.Unlock()
-
-		data := make([]byte, n)
-		copy(data, buf[:n])
-
-		session.Broadcast(data)
-		session.LastActivity = time.Now()
-	}
-}
-
-func (m *SessionManager) readJSON(session *Session) {
-	defer m.wg.Done()
-
-	if session.Stdout == nil {
-		log.Error().Str("sessionId", session.ID).Msg("readJSON called but stdout is nil")
-		return
-	}
-
-	scanner := bufio.NewScanner(session.Stdout)
-	buf := make([]byte, 10*1024*1024)
-	scanner.Buffer(buf, 10*1024*1024)
-
-	for scanner.Scan() {
-		select {
-		case <-m.ctx.Done():
-			log.Debug().Str("sessionId", session.ID).Msg("JSON reader stopping (shutdown)")
-			return
-		default:
-		}
-
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		log.Debug().Str("sessionId", session.ID).Str("stdout", string(line)).Msg("claude stdout raw")
-
-		jsonObjects := splitConcatenatedJSON(line)
-
-		for _, jsonData := range jsonObjects {
-			session.BroadcastUIMessage(jsonData)
-		}
-
-		session.LastActivity = time.Now()
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Debug().Err(err).Str("sessionId", session.ID).Msg("JSON scanner error")
-	}
-
-	session.mu.Lock()
-	session.Status = "dead"
-	session.mu.Unlock()
-}
-
-func (m *SessionManager) readStderr(session *Session) {
-	defer m.wg.Done()
-
-	if session.Stderr == nil {
-		return
-	}
-
-	scanner := bufio.NewScanner(session.Stderr)
-	for scanner.Scan() {
-		select {
-		case <-m.ctx.Done():
-			return
-		default:
-		}
-
-		line := scanner.Text()
-		if line != "" {
-			log.Debug().Str("sessionId", session.ID).Str("stderr", line).Msg("claude stderr")
 		}
 	}
 }

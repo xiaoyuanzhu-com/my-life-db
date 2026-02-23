@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -40,16 +38,6 @@ type GitInfo struct {
 	RemoteURL string `json:"remoteUrl,omitempty"` // Origin remote URL
 }
 
-// SessionMode defines how a session communicates with the Claude CLI
-type SessionMode string
-
-const (
-	// ModeCLI uses PTY for raw terminal I/O (xterm.js rendering)
-	ModeCLI SessionMode = "cli"
-	// ModeUI uses JSON streaming over stdin/stdout (structured chat UI)
-	ModeUI SessionMode = "ui"
-)
-
 // Client represents a WebSocket connection to a session
 type Client struct {
 	Conn *websocket.Conn
@@ -66,27 +54,14 @@ type Session struct {
 	LastUserActivity time.Time `json:"lastUserActivity"`
 	Status       string      `json:"status"` // "archived", "active", "dead"
 	Title          string             `json:"title"`
-	Mode           SessionMode        `json:"mode"`           // "cli" or "ui"
 	PermissionMode sdk.PermissionMode `json:"permissionMode"` // "default", "acceptEdits", "plan", "bypassPermissions"
 	Git            *GitInfo           `json:"git"`            // Git repository metadata (nil if not a repo)
 
 	// Internal fields (not serialized)
-	Cmd     *exec.Cmd        `json:"-"`
 	Clients map[*Client]bool `json:"-"`
 	mu      sync.RWMutex     `json:"-"`
 
-	// CLI mode (PTY-based)
-	PTY       *os.File     `json:"-"`
-	broadcast chan []byte  `json:"-"`
-	backlog   []byte       `json:"-"` // Recent output for new clients
-	backlogMu sync.RWMutex `json:"-"`
-
-	// UI mode (JSON streaming)
-	Stdin  io.WriteCloser `json:"-"`
-	Stdout io.ReadCloser  `json:"-"`
-	Stderr io.ReadCloser  `json:"-"`
-
-	// UI mode message cache - stores all messages for clients connecting at any time
+	// Message cache - stores all messages for clients connecting at any time
 	// Before activation: loaded from JSONL file
 	// After activation: merged with Claude's stdout (deduped by UUID)
 	cachedMessages [][]byte         `json:"-"`
@@ -94,7 +69,7 @@ type Session struct {
 	cacheLoaded    bool             `json:"-"`
 	cacheMu        sync.RWMutex     `json:"-"`
 
-	// Pending control requests (UI mode) - maps request_id to response channel
+	// Pending control requests - maps request_id to response channel
 	pendingRequests   map[string]chan map[string]interface{} `json:"-"`
 	pendingRequestsMu sync.RWMutex                           `json:"-"`
 
@@ -103,12 +78,12 @@ type Session struct {
 	activateFn func() error  `json:"-"` // Function to activate this session
 	ready      chan struct{} `json:"-"` // Closed when Claude is ready to receive input
 
-	// SDK-based UI mode (replaces direct subprocess management)
+	// SDK-based session (replaces direct subprocess management)
 	sdkClient  *sdk.ClaudeSDKClient `json:"-"`
 	sdkCtx     context.Context      `json:"-"`
 	sdkCancel  context.CancelFunc   `json:"-"`
 
-	// Permission bridging for async WebSocket flow (SDK mode only)
+	// Permission bridging for async WebSocket flow
 	// When SDK's CanUseTool callback is invoked, it blocks waiting for a response.
 	// We broadcast a control_request to WebSocket clients and wait for the response here.
 	// The map stores tool name alongside the channel so "always allow" can auto-approve
@@ -116,7 +91,7 @@ type Session struct {
 	pendingSDKPermissions   map[string]*pendingPermission `json:"-"`
 	pendingSDKPermissionsMu sync.RWMutex                  `json:"-"`
 
-	// Always-allowed tools for this session (SDK mode only)
+	// Always-allowed tools for this session
 	// When user clicks "Always allow", the tool name is added here.
 	// Future permission requests for the same tool auto-allow without prompting.
 	alwaysAllowedTools   map[string]bool `json:"-"`
@@ -139,27 +114,10 @@ type Session struct {
 }
 
 // AddClient registers a new WebSocket client to this session
-// and sends the backlog to catch up
 func (s *Session) AddClient(client *Client) {
 	s.mu.Lock()
 	s.Clients[client] = true
 	s.mu.Unlock()
-
-	// Send backlog to new client so they see recent history
-	s.backlogMu.RLock()
-	if len(s.backlog) > 0 {
-		backlogCopy := make([]byte, len(s.backlog))
-		copy(backlogCopy, s.backlog)
-		s.backlogMu.RUnlock()
-
-		// Send backlog (non-blocking)
-		select {
-		case client.Send <- backlogCopy:
-		default:
-		}
-	} else {
-		s.backlogMu.RUnlock()
-	}
 }
 
 // RemoveClient unregisters a WebSocket client from this session
@@ -169,25 +127,6 @@ func (s *Session) RemoveClient(client *Client) {
 	if _, ok := s.Clients[client]; ok {
 		delete(s.Clients, client)
 		close(client.Send)
-	}
-}
-
-// Broadcast sends data to all connected clients and appends to backlog
-func (s *Session) Broadcast(data []byte) {
-	// Append to backlog (keep everything for full session history)
-	s.backlogMu.Lock()
-	s.backlog = append(s.backlog, data...)
-	s.backlogMu.Unlock()
-
-	// Broadcast to all connected clients
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for client := range s.Clients {
-		select {
-		case client.Send <- data:
-		default:
-			// Client's send buffer is full, skip
-		}
 	}
 }
 
@@ -205,8 +144,8 @@ func (s *Session) EnsureActivated() error {
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
-	// Reset message cache before starting new CLI process.
-	// This clears any accumulated ephemeral messages (like init) from previous CLI runs
+	// Reset message cache before starting new process.
+	// This clears any accumulated ephemeral messages (like init) from previous runs
 	// and reloads persisted history from JSONL.
 	s.mu.Unlock() // Unlock before ResetMessageCache (it acquires cacheMu)
 	s.ResetMessageCache()
@@ -214,9 +153,8 @@ func (s *Session) EnsureActivated() error {
 
 	log.Info().
 		Str("sessionId", s.ID).
-		Str("mode", string(s.Mode)).
 		Str("workingDir", s.WorkingDir).
-		Msg("activating session (starting new CLI process)")
+		Msg("activating session (starting new process)")
 
 	if err := s.activateFn(); err != nil {
 		s.mu.Unlock()
@@ -227,17 +165,12 @@ func (s *Session) EnsureActivated() error {
 	readyChan := s.ready
 	s.mu.Unlock()
 
-	// Wait for readiness (UI mode: 100ms timer, CLI mode: first output)
+	// Wait for readiness
 	if readyChan != nil {
 		select {
 		case <-readyChan:
 		case <-time.After(5 * time.Second):
 		}
-	}
-
-	// Brief additional delay for CLI mode to ensure readline is fully initialized
-	if s.Mode == ModeCLI {
-		time.Sleep(200 * time.Millisecond)
 	}
 
 	return nil
@@ -295,7 +228,6 @@ func (s *Session) ToJSON() map[string]interface{} {
 		"lastUserActivity": s.LastUserActivity,
 		"status":         "active", // Newly created/listed sessions are always active
 		"title":          s.Title,
-		"mode":           s.Mode,
 		"permissionMode": s.PermissionMode,
 	}
 	if s.Git != nil {
@@ -304,42 +236,24 @@ func (s *Session) ToJSON() map[string]interface{} {
 	return result
 }
 
-// SendInputUI sends a user message to Claude via JSON stdin (UI mode only).
+// SendInputUI sends a user message to Claude via the SDK client.
 // Automatically activates the session if needed.
-// For SDK mode, uses the SDK client; for legacy mode, writes directly to stdin.
 func (s *Session) SendInputUI(content string) error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("SendInputUI called on non-UI session")
-	}
-
 	// Ensure session is activated and ready
 	if err := s.EnsureActivated(); err != nil {
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
-	// SDK mode: use SDK client
-	if s.sdkClient != nil {
-		return s.sdkClient.SendMessage(content)
+	if s.sdkClient == nil {
+		return fmt.Errorf("session not active (no SDK client)")
 	}
 
-	// Legacy mode: write directly to stdin
-	if s.Stdin == nil {
-		return fmt.Errorf("session stdin not available")
-	}
-
-	// Format as JSON user message
-	msg := fmt.Sprintf(`{"type":"user","message":{"role":"user","content":%q}}`, content)
-	_, err := s.Stdin.Write([]byte(msg + "\n"))
-	return err
+	return s.sdkClient.SendMessage(content)
 }
 
-// Interrupt sends an interrupt signal to stop the current operation (UI mode only).
-// For SDK mode, uses the SDK client's interrupt mechanism.
+// Interrupt sends an interrupt signal to stop the current operation.
+// Uses the SDK client's interrupt mechanism.
 func (s *Session) Interrupt() error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("Interrupt called on non-UI session")
-	}
-
 	if s.sdkClient == nil {
 		return fmt.Errorf("Cannot interrupt: session not active (no running process)")
 	}
@@ -347,13 +261,9 @@ func (s *Session) Interrupt() error {
 	return s.sdkClient.Interrupt()
 }
 
-// SetModel changes the AI model during conversation (UI mode only).
-// For SDK mode, uses the SDK client's SetModel mechanism.
+// SetModel changes the AI model during conversation.
+// Uses the SDK client's SetModel mechanism.
 func (s *Session) SetModel(model string) error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("SetModel called on non-UI session")
-	}
-
 	if s.sdkClient == nil {
 		return fmt.Errorf("Cannot set model: session not active (no running process)")
 	}
@@ -361,14 +271,10 @@ func (s *Session) SetModel(model string) error {
 	return s.sdkClient.SetModel(model)
 }
 
-// SendToolResult sends a tool result back to Claude (UI mode only).
+// SendToolResult sends a tool result back to Claude.
 // This is used for interactive tools like AskUserQuestion that require user input.
 // The toolUseID must match the id from the tool_use block.
 func (s *Session) SendToolResult(toolUseID string, content string) error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("SendToolResult called on non-UI session")
-	}
-
 	if s.sdkClient == nil {
 		return fmt.Errorf("Cannot send tool result: session not active (no running process)")
 	}
@@ -376,8 +282,8 @@ func (s *Session) SendToolResult(toolUseID string, content string) error {
 	return s.sdkClient.SendToolResult(toolUseID, content)
 }
 
-// SetPermissionMode changes the permission mode during conversation (UI mode only).
-// For SDK mode, uses the SDK client's SetPermissionMode mechanism.
+// SetPermissionMode changes the permission mode during conversation.
+// Uses the SDK client's SetPermissionMode mechanism.
 //
 // Valid modes:
 //   - sdk.PermissionModeDefault: Standard permission behavior
@@ -385,10 +291,6 @@ func (s *Session) SendToolResult(toolUseID string, content string) error {
 //   - sdk.PermissionModePlan: Planning mode (no tool execution)
 //   - sdk.PermissionModeBypassPermissions: Allow all tools (use with caution)
 func (s *Session) SetPermissionMode(mode sdk.PermissionMode) error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("SetPermissionMode called on non-UI session")
-	}
-
 	if s.sdkClient == nil {
 		return fmt.Errorf("Cannot set permission mode: session not active (no running process)")
 	}
@@ -396,17 +298,13 @@ func (s *Session) SetPermissionMode(mode sdk.PermissionMode) error {
 	return s.sdkClient.SetPermissionMode(mode)
 }
 
-// SendControlResponse sends a response to a control request (UI mode only)
+// SendControlResponse sends a response to a control request.
 // For SDK mode, routes to pendingSDKPermissions channel.
 // For legacy mode, writes directly to stdin.
 // If alwaysAllow is true and behavior is "allow", the tool is remembered for auto-approval.
 // The message parameter is required for "deny" behavior - it will be included in the tool_result error.
 // The updatedInput parameter is used by AskUserQuestion to inject user answers into the tool input.
 func (s *Session) SendControlResponse(requestID string, subtype string, behavior string, message string, toolName string, alwaysAllow bool, updatedInput map[string]any) error {
-	if s.Mode != ModeUI {
-		return fmt.Errorf("SendControlResponse called on non-UI session")
-	}
-
 	// If "always allow" is requested and we're allowing, remember this tool
 	if alwaysAllow && behavior == "allow" && toolName != "" {
 		s.alwaysAllowedToolsMu.Lock()
@@ -456,19 +354,7 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 		}
 	}
 
-	// Legacy mode: write directly to stdin
-	if s.Stdin == nil {
-		return fmt.Errorf("session stdin not available")
-	}
-
-	// Format as control response JSON
-	data := fmt.Sprintf(`{"type":"control_response","request_id":%q,"response":{"subtype":%q,"response":{"behavior":%q}}}`,
-		requestID,
-		subtype,
-		behavior,
-	)
-	_, err := s.Stdin.Write([]byte(data + "\n"))
-	return err
+	return fmt.Errorf("no pending SDK permission for request_id: %s", requestID)
 }
 
 // autoApprovePendingForTool auto-approves all other pending permission requests for the same tool.
@@ -509,7 +395,7 @@ func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID st
 }
 
 // ResetMessageCache clears the message cache and reloads from JSONL.
-// This should be called when the CLI restarts to ensure a fresh state.
+// This should be called when the process restarts to ensure a fresh state.
 // It clears any accumulated ephemeral messages (like init) that don't persist to JSONL.
 func (s *Session) ResetMessageCache() {
 	s.cacheMu.Lock()
@@ -522,14 +408,14 @@ func (s *Session) ResetMessageCache() {
 	log.Debug().
 		Str("sessionId", s.ID).
 		Int("clearedMessages", oldCount).
-		Msg("reset message cache before CLI activation")
+		Msg("reset message cache before activation")
 
 	// Reload from JSONL
 	s.LoadMessageCache()
 }
 
-// LoadMessageCache loads messages from JSONL file into cache (UI mode)
-// Only loads once; subsequent calls are no-op
+// LoadMessageCache loads messages from JSONL file into cache.
+// Only loads once; subsequent calls are no-op.
 //
 // IMPORTANT: Uses ReadSessionHistoryRaw to preserve all message fields.
 // The SessionMessageI interface's MarshalJSON() returns raw bytes from the JSONL file,
@@ -587,7 +473,7 @@ func (s *Session) LoadMessageCache() error {
 	return nil
 }
 
-// GetCachedMessages returns a copy of all cached messages (UI mode)
+// GetCachedMessages returns a copy of all cached messages
 func (s *Session) GetCachedMessages() [][]byte {
 	s.cacheMu.RLock()
 	defer s.cacheMu.RUnlock()
@@ -627,7 +513,7 @@ func (s *Session) GetDisplayableMessageCount() int {
 	return n
 }
 
-// BroadcastUIMessage handles a message from Claude stdout (UI mode)
+// BroadcastUIMessage handles a message from Claude stdout
 // - Deduplicates by UUID (skip if already seen from JSONL)
 // - Adds new messages to cache (including control messages for live sessions)
 // - Broadcasts new messages to all connected clients
@@ -1064,4 +950,3 @@ func GetGitInfo(workingDir string) *GitInfo {
 
 	return info
 }
-

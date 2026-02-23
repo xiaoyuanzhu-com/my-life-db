@@ -118,7 +118,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// WebSocket routes - need auth but registered on main router
 	// Apply auth middleware individually
 	wsAuth := AuthMiddleware()
-	r.GET("/api/claude/sessions/:id/ws", wsAuth, h.ClaudeWebSocket)
 	r.GET("/api/claude/sessions/:id/subscribe", wsAuth, h.ClaudeSubscribeWebSocket)
 	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
 

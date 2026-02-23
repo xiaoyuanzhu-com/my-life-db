@@ -3,9 +3,8 @@ import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
-import { ClaudeTerminal } from '~/components/claude/terminal'
 import { Button } from '~/components/ui/button'
-import { Plus, Menu, MessageSquare, Terminal } from 'lucide-react'
+import { Plus, Menu } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import {
   Select,
@@ -52,7 +51,6 @@ export default function ClaudePage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId || null)
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [uiMode, setUiMode] = useState<'chat' | 'terminal'>('chat')
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -505,18 +503,6 @@ export default function ClaudePage() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setUiMode(uiMode === 'chat' ? 'terminal' : 'chat')}
-                title={uiMode === 'chat' ? 'Switch to Terminal' : 'Switch to Chat'}
-              >
-                {uiMode === 'chat' ? (
-                  <Terminal className="h-4 w-4" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-              </Button>
               {sessionCreateNew && (
                 <Button onClick={() => setActiveSessionId(null)} size="sm">
                   New
@@ -625,7 +611,6 @@ export default function ClaudePage() {
       {/* Right Column: Chat Interface or Terminal */}
       <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
         {activeSessionId ? (
-          uiMode === 'chat' ? (
             <ChatInterface
               key={activeSessionId}
               sessionId={activeSessionId}
@@ -637,9 +622,6 @@ export default function ClaudePage() {
               initialMessage={pendingInitialMessage ?? undefined}
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
-          ) : (
-            <ClaudeTerminal key={activeSessionId} sessionId={activeSessionId} />
-          )
         ) : (
           <div className="flex flex-1 flex-col claude-bg">
             {/* Empty message area */}

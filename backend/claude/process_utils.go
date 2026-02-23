@@ -1,13 +1,8 @@
 package claude
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -206,113 +201,5 @@ func matchBashPattern(pattern, command string) bool {
 	return false
 }
 
-// gracefulTerminate attempts to gracefully terminate a Claude CLI process.
-//
-// Signal behavior (Claude CLI is Node.js):
-//   - SIGINT (Ctrl+C): ✅ Works - Node.js has built-in handler for graceful exit
-//   - SIGTERM:         ❌ Ignored - No default handler in Node.js CLI apps
-//   - SIGKILL:         ✅ Works - Kernel-level force kill (last resort)
-//
-// This function sends SIGINT first, waits for the timeout period, then falls back
-// to SIGKILL if the process doesn't exit. This allows Claude to finish writing
-// any pending data (like JSONL session files).
-//
-// Used by: PTY mode sessions (legacy CLI mode)
-func gracefulTerminate(cmd *exec.Cmd, timeout time.Duration) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-
-	// Send SIGINT for graceful shutdown (Claude CLI responds to SIGINT, not SIGTERM)
-	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
-		// Process might already be dead, try Kill anyway
-		cmd.Process.Kill()
-		return
-	}
-
-	// Wait for process to exit gracefully
-	done := make(chan struct{})
-	go func() {
-		cmd.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Process exited gracefully
-		return
-	case <-time.After(timeout):
-		// Timeout, force kill
-		log.Warn().Int("pid", cmd.Process.Pid).Msg("process didn't exit gracefully, sending SIGKILL")
-		cmd.Process.Kill()
-	}
-}
-
-// buildClaudeArgs constructs the command-line arguments for launching Claude
-// with appropriate permission settings for web UI usage
-func buildClaudeArgs(sessionID string, resume bool, mode SessionMode) []string {
-	var args []string
-
-	if mode == ModeUI {
-		// UI mode: JSON streaming with interactive permission handling
-		args = []string{
-			"--output-format", "stream-json",
-			"--input-format", "stream-json",
-			"--permission-mode", "default", // Enable control_request for permission handling
-			"--verbose",
-		}
-
-		// Add allowed tools (comma-separated, matching Python SDK format)
-		if len(allowedTools) > 0 {
-			args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
-		}
-	} else {
-		// CLI mode: PTY with skipped permissions (legacy behavior)
-		args = []string{
-			"--dangerously-skip-permissions", // Skip interactive permission prompts
-		}
-
-		// Add allowed tools (comma-separated, matching Python SDK format)
-		if len(allowedTools) > 0 {
-			args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
-		}
-
-		// Add disallowed tools (comma-separated, matching Python SDK format)
-		if len(disallowedTools) > 0 {
-			args = append(args, "--disallowedTools", strings.Join(disallowedTools, ","))
-		}
-	}
-
-	// Add session flag
-	if resume {
-		args = append(args, "--resume", sessionID)
-	} else {
-		args = append(args, "--session-id", sessionID)
-	}
-
-	return args
-}
-
-// splitConcatenatedJSON splits a byte slice containing concatenated JSON objects
-// e.g., `{"a":1}{"b":2}` becomes `[{"a":1}, {"b":2}]`
-func splitConcatenatedJSON(data []byte) [][]byte {
-	if len(data) == 0 {
-		return nil
-	}
-
-	var result [][]byte
-	decoder := json.NewDecoder(bytes.NewReader(data))
-
-	for {
-		var raw json.RawMessage
-		if err := decoder.Decode(&raw); err != nil {
-			break
-		}
-		// Make a copy since raw may be backed by the original slice
-		obj := make([]byte, len(raw))
-		copy(obj, raw)
-		result = append(result, obj)
-	}
-
-	return result
-}
+// Ensure log is used (referenced in other files but compiler may warn)
+var _ = log.Info
