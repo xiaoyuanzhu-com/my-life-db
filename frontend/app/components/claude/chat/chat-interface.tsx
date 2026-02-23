@@ -32,16 +32,16 @@ interface ChatInterfaceProps {
 // Types that should not be rendered as messages
 const SKIP_TYPES = ['file-history-snapshot', 'result']
 
-// Message types that are purely internal / transport-layer and must never enter
-// rawMessages state. Adding them to rawMessages causes unnecessary map rebuilds
-// (toolResultMap, agentProgressMap, …) and full MessageBlock re-renders.
-// Note: rate_limit_event is intentionally NOT listed here — it is rendered as a
-// message block and cached for replay to all clients.
-const NON_DISPLAYABLE_TYPES = new Set([
-  'stream_event',
-  'queue-operation',
-  'file-history-snapshot',
-])
+// Rate limit info from the API (carried in rate_limit_event messages).
+// utilization ∈ [0, 1]; resetsAt is a Unix timestamp (seconds).
+interface RateLimitInfo {
+  status: string            // "allowed" | "allowed_warning" | "limited"
+  rateLimitType: string     // "seven_day" | "five_hour" | etc.
+  resetsAt: number          // Unix timestamp (seconds)
+  isUsingOverage: boolean
+  utilization: number       // 0–1
+  surpassedThreshold?: number // threshold that was crossed, e.g. 0.75
+}
 
 /** Extract text content from a user message (for draft comparison) */
 function extractUserMessageText(msg: SessionMessage): string | null {
@@ -72,10 +72,11 @@ export function ChatInterface({
   const [rawMessages, setRawMessages] = useState<SessionMessage[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // Pagination state — on connect, WebSocket sends the last page of messages.
-  // Older history is loaded on-demand via HTTP when user scrolls up.
-  // historyOffset = index of the oldest message received from WebSocket (from session_info)
-  const [historyOffset, setHistoryOffset] = useState<number>(0)
+  // Pagination state — on connect, WebSocket sends the last 2 pages.
+  // Older pages are loaded on-demand via HTTP when user scrolls up.
+  // lowestLoadedPage = page number of the oldest page currently in rawMessages.
+  // Initialized from session_info.lowestBurstPage on connect.
+  const [lowestLoadedPage, setLowestLoadedPage] = useState<number>(0)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
   // Track if we've seen the init message - this marks the boundary between historical and live messages
@@ -189,9 +190,9 @@ export function ChatInterface({
         }, 500)
       }
 
-      // Handle session_info metadata (simplified — just stores history offset)
+      // Handle session_info metadata — stores lowestBurstPage from backend (§6.3)
       if (msg.type === 'session_info') {
-        setHistoryOffset((msg.historyOffset as number) ?? 0)
+        setLowestLoadedPage((msg.lowestBurstPage as number) ?? 0)
         return
       }
 
@@ -613,8 +614,8 @@ export function ChatInterface({
     return false
   }, [rawMessages])
 
-  // Pagination: whether there are more historical messages to load via HTTP
-  const hasMoreHistory = historyOffset > 0
+  // Pagination: whether there are more historical pages to load via HTTP
+  const hasMoreHistory = lowestLoadedPage > 0
 
   // Only show connection status banner after we've connected at least once
   const effectiveConnectionStatus: ConnectionStatus =
@@ -717,7 +718,7 @@ export function ChatInterface({
     streamingCompleteRef.current = false
     pendingReconnectClearRef.current = false
     // Reset pagination state
-    setHistoryOffset(0)
+    setLowestLoadedPage(0)
     setIsLoadingHistory(false)
     // Restore permission mode from API prop (each session has its own mode)
     if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
@@ -808,7 +809,7 @@ export function ChatInterface({
         setPendingQuestions([])
         permissions.reset()
         // Reset pagination state for fresh load
-        setHistoryOffset(0)
+        setLowestLoadedPage(0)
         setIsLoadingHistory(false)
         initialLoadCompleteRef.current = false
         hasRefreshedRef.current = false
@@ -851,24 +852,20 @@ export function ChatInterface({
   // Handlers
   // ============================================================================
 
-  // Load older messages via HTTP (triggered by scroll-up)
+  // Load older page via HTTP (triggered by scroll-up).
+  // Serialized: only one page load at a time (§6.6).
   const loadOlderMessages = useCallback(async () => {
-    if (isLoadingHistory || historyOffset <= 0) return
+    if (isLoadingHistory || lowestLoadedPage <= 0) return
     setIsLoadingHistory(true)
     try {
-      const limit = 100
-      const offset = Math.max(0, historyOffset - limit)
+      const targetPage = lowestLoadedPage - 1
       const res = await fetchWithRefresh(
-        `/api/claude/sessions/${sessionId}/messages?offset=${offset}&limit=${limit}`
+        `/api/claude/sessions/${sessionId}/messages?page=${targetPage}`
       )
       const data = await res.json()
-      // Filter non-displayable types before adding to rawMessages.
-      // The backend already excludes these, but this defensive filter also handles any
-      // edge cases (e.g., active streaming injecting stream_events into the cache).
       const olderMessages = ((data.messages || []) as Record<string, unknown>[])
         .map((m) => normalizeMessage(m) as unknown as SessionMessage)
-        .filter((m) => !NON_DISPLAYABLE_TYPES.has((m.type as string) ?? ''))
-      setHistoryOffset(offset)
+      setLowestLoadedPage(targetPage)
       setRawMessages((prev) => {
         const existingUUIDs = new Set(prev.map((m) => m.uuid))
         const newMsgs = olderMessages.filter((m) => !existingUUIDs.has(m.uuid))
@@ -876,11 +873,11 @@ export function ChatInterface({
         return [...newMsgs, ...prev]
       })
     } catch (err) {
-      console.error('[ChatInterface] Failed to load older messages:', err)
+      console.error('[ChatInterface] Failed to load older page:', err)
     } finally {
       setIsLoadingHistory(false)
     }
-  }, [sessionId, historyOffset, isLoadingHistory])
+  }, [sessionId, lowestLoadedPage, isLoadingHistory])
 
   // Send message via WebSocket
   const sendMessage = useCallback(

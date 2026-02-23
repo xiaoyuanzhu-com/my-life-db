@@ -291,27 +291,24 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 }
 
 // GetClaudeSessionMessages handles GET /api/claude/sessions/:id/messages
-// Returns raw messages for a session with optional pagination.
+// Returns materialized messages for a specific page (§6.4).
 // Query params:
-//   - offset: start index (default 0)
-//   - limit: max messages to return (default 0 = all)
+//   - page: page number (required, 0-indexed)
 //
-// Response: { sessionId, messages, totalCount, offset, limit }
+// Response: { sessionId, page, totalPages, messages, sealed }
 func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	// Parse pagination params
-	offset := 0
-	if o := c.Query("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
+	// Parse page param (required)
+	pageStr := c.Query("page")
+	if pageStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "page parameter is required"})
+		return
 	}
-	limit := 0 // 0 = all
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page parameter"})
+		return
 	}
 
 	// GetSession will auto-resume from history if not active
@@ -326,43 +323,27 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load raw messages")
 	}
 
-	// Filter non-displayable messages for consistent pagination math.
-	// Types filtered: stream_event, rate_limit_event, queue-operation, file-history-snapshot
-	// Types kept (needed for frontend map-building): progress, hook_response, result, control_request
-	var allMessages []json.RawMessage
-	rawMessages := session.GetRawMessages()
-	for _, msgBytes := range rawMessages {
-		if !claude.IsNonDisplayableMessage(msgBytes) {
-			allMessages = append(allMessages, json.RawMessage(msgBytes))
-		}
+	totalPages := session.TotalPages()
+	if page >= totalPages {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page out of range"})
+		return
 	}
 
-	totalCount := len(allMessages)
+	// GetPage returns materialized messages (closed stream_events excluded from sealed pages)
+	pageMessages, sealed := session.GetPage(page)
 
-	// Apply pagination if requested
-	var messages []json.RawMessage
-	if limit > 0 {
-		// Clamp offset
-		if offset >= totalCount {
-			messages = []json.RawMessage{}
-		} else {
-			end := offset + limit
-			if end > totalCount {
-				end = totalCount
-			}
-			messages = allMessages[offset:end]
-		}
-	} else {
-		messages = allMessages
-		offset = 0
+	// Convert to json.RawMessage for response
+	messages := make([]json.RawMessage, len(pageMessages))
+	for i, msg := range pageMessages {
+		messages[i] = json.RawMessage(msg)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"sessionId":  sessionID,
-		"totalCount": totalCount,
-		"offset":     offset,
-		"limit":      limit,
+		"page":       page,
+		"totalPages": totalPages,
 		"messages":   messages,
+		"sealed":     sealed,
 	})
 }
 

@@ -151,10 +151,10 @@ func (s *Session) EnsureActivated() error {
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
-	// Reset message cache before starting new process.
+	// Reset raw messages before starting new process.
 	// This clears any accumulated ephemeral messages (like init) from previous runs
 	// and reloads persisted history from JSONL.
-	s.mu.Unlock() // Unlock before ResetMessageCache (it acquires rawMu)
+	s.mu.Unlock() // Unlock before ResetRawMessages (it acquires rawMu)
 	s.ResetRawMessages()
 	s.mu.Lock()
 
@@ -506,13 +506,6 @@ func (s *Session) GetRawMessages() [][]byte {
 // DefaultPageSize is the number of messages per page for WebSocket pagination.
 const DefaultPageSize = 100
 
-// GetRawMessageCount returns the total number of raw messages.
-func (s *Session) GetRawMessageCount() int {
-	s.rawMu.RLock()
-	defer s.rawMu.RUnlock()
-	return len(s.rawMessages)
-}
-
 // TotalPages returns the total number of pages (sealed + 1 open page).
 // The open page always exists, even if empty.
 func (s *Session) TotalPages() int {
@@ -673,23 +666,24 @@ func fastMessageType(data []byte) string {
 }
 
 // BroadcastUIMessage handles a message from Claude stdout
+// - Drops queue-operation and file-history-snapshot (never stored)
 // - Deduplicates by UUID (skip if already seen from JSONL)
-// - Adds new messages to cache (including control messages for live sessions)
+// - Appends new messages to rawMessages and updates page counters
 // - Broadcasts new messages to all connected clients
 //
 // NOTE: We merge JSONL messages with stdout messages, deduplicating by UUID.
 // This handles the case where Claude's stdout may replay some messages that
 // are already in the JSONL file.
 //
-// Tool permission control_request/control_response (can_use_tool) ARE cached for live
+// Tool permission control_request/control_response (can_use_tool) ARE stored for live
 // sessions. The frontend tracks them by request_id to determine pending vs resolved
 // permissions, allowing new clients connecting mid-session to see pending permission
-// dialogs. Note: LoadMessageCache() excludes control messages from JSONL because
+// dialogs. Note: LoadRawMessages() excludes control messages from JSONL because
 // control_response isn't stored there, so we can't determine pending state from
 // history alone.
 //
 // Ephemeral responses like set_permission_mode should use BroadcastToClients instead
-// to avoid cache accumulation across reconnections.
+// to avoid accumulation across reconnections.
 func (s *Session) BroadcastUIMessage(data []byte) {
 	var msgEnvelope struct {
 		Type    string `json:"type"`
@@ -802,7 +796,7 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 }
 
 // BroadcastToClients sends a message to all connected WebSocket clients
-// without adding it to the message cache. Use this for ephemeral messages
+// without adding it to rawMessages. Use this for ephemeral messages
 // (e.g. set_permission_mode confirmations) that should not be replayed to
 // reconnecting clients.
 func (s *Session) BroadcastToClients(data []byte) {
@@ -835,17 +829,6 @@ func isStreamEvent(data []byte) bool {
 	return envelope.Type == "stream_event"
 }
 
-// IsStreamEvent checks if a raw JSON message is a stream_event type.
-// Used by the page materialization layer to exclude closed stream_events
-// from served pages and seal counts. See §7 of the design doc.
-//
-// Note: queue-operation and file-history-snapshot are dropped at ingest (§3.2)
-// and never enter the raw list. rate_limit_event is a regular message that
-// counts toward page sealing and is served to clients (frontend intercepts
-// it for the warning banner per D6).
-func IsNonDisplayableMessage(data []byte) bool {
-	return isStreamEvent(data)
-}
 
 // RegisterControlRequest registers a pending control request and returns a channel for the response
 func (s *Session) RegisterControlRequest(requestID string) chan map[string]interface{} {
