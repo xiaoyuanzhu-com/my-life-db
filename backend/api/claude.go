@@ -457,10 +457,28 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 }
 
 // GetClaudeSessionMessages handles GET /api/claude/sessions/:id/messages
-// Returns cached messages for a session (same as WebSocket initial payload)
-// This is useful for debugging without needing a WebSocket connection
+// Returns cached messages for a session with optional pagination.
+// Query params:
+//   - offset: start index (default 0)
+//   - limit: max messages to return (default 0 = all)
+//
+// Response: { sessionId, mode, messages, totalCount, offset, limit }
 func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 	sessionID := c.Param("id")
+
+	// Parse pagination params
+	offset := 0
+	if o := c.Query("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+	limit := 0 // 0 = all
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
 
 	// GetSession will auto-resume from history if not active
 	session, err := h.server.Claude().GetSession(sessionID)
@@ -469,7 +487,7 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 		return
 	}
 
-	var messages []json.RawMessage
+	var allMessages []json.RawMessage
 
 	if session.Mode == claude.ModeUI {
 		// UI mode: Load from cache (same as WebSocket)
@@ -479,29 +497,49 @@ func (h *Handlers) GetClaudeSessionMessages(c *gin.Context) {
 
 		cachedMessages := session.GetCachedMessages()
 		for _, msgBytes := range cachedMessages {
-			messages = append(messages, json.RawMessage(msgBytes))
+			allMessages = append(allMessages, json.RawMessage(msgBytes))
 		}
 	} else {
 		// CLI mode: Read from JSONL file including subagent messages
-		// ReadSessionWithSubagents loads both main session and subagent JSONL files,
-		// injecting parentToolUseID into subagent messages for proper linking
 		rawMessages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
 		if err != nil {
 			log.Debug().Err(err).Str("sessionId", sessionID).Msg("no history found")
 		} else {
 			for _, msg := range rawMessages {
 				if msgBytes, err := json.Marshal(msg); err == nil {
-					messages = append(messages, json.RawMessage(msgBytes))
+					allMessages = append(allMessages, json.RawMessage(msgBytes))
 				}
 			}
 		}
 	}
 
+	totalCount := len(allMessages)
+
+	// Apply pagination if requested
+	var messages []json.RawMessage
+	if limit > 0 {
+		// Clamp offset
+		if offset >= totalCount {
+			messages = []json.RawMessage{}
+		} else {
+			end := offset + limit
+			if end > totalCount {
+				end = totalCount
+			}
+			messages = allMessages[offset:end]
+		}
+	} else {
+		messages = allMessages
+		offset = 0
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"sessionId": sessionID,
-		"mode":      session.Mode,
-		"count":     len(messages),
-		"messages":  messages,
+		"sessionId":  sessionID,
+		"mode":       session.Mode,
+		"totalCount": totalCount,
+		"offset":     offset,
+		"limit":      limit,
+		"messages":   messages,
 	})
 }
 
@@ -608,11 +646,17 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			pageSize := claude.DefaultPageSize
 			total := len(initialMessages)
 
+			// Compute history offset (aligned page start of the last page)
+			historyOffset := 0
+			if total > pageSize {
+				historyOffset = ((total - 1) / pageSize) * pageSize
+			}
+
 			// Send session_info metadata frame
 			sessionInfo := map[string]interface{}{
-				"type":          "session_info",
-				"totalMessages": total,
-				"pageSize":      pageSize,
+				"type":           "session_info",
+				"totalMessages":  total,
+				"historyOffset":  historyOffset,
 			}
 			if infoBytes, err := json.Marshal(sessionInfo); err == nil {
 				if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
@@ -620,28 +664,14 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				}
 			}
 
-			// Compute last page (aligned boundaries)
-			lastPage := 0
-			if total > 0 {
-				lastPage = (total - 1) / pageSize
-			}
-			start := lastPage * pageSize
-
 			log.Debug().
 				Str("sessionId", sessionID).
 				Int("totalMessages", total).
-				Int("page", lastPage).
-				Int("pageStart", start).
-				Msg("sending initial page (CLI mode)")
+				Int("historyOffset", historyOffset).
+				Msg("sending initial messages (CLI mode)")
 
-			// Send page_start marker
-			pageStart := map[string]interface{}{"type": "page_start", "page": lastPage}
-			if startBytes, err := json.Marshal(pageStart); err == nil {
-				conn.Write(ctx, websocket.MessageText, startBytes)
-			}
-
-			// Send messages for the last page only
-			for _, msg := range initialMessages[start:] {
+			// Send messages from historyOffset to end (last page, no page_start/page_end wrapping)
+			for _, msg := range initialMessages[historyOffset:] {
 				if msgBytes, err := json.Marshal(msg); err == nil {
 					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial message")
@@ -651,12 +681,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 						deliveredResults.Add(1)
 					}
 				}
-			}
-
-			// Send page_end marker
-			pageEnd := map[string]interface{}{"type": "page_end", "page": lastPage}
-			if endBytes, err := json.Marshal(pageEnd); err == nil {
-				conn.Write(ctx, websocket.MessageText, endBytes)
 			}
 
 			lastMessageCount = len(initialMessages)
@@ -678,16 +702,22 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load message cache")
 		}
 
-		// Send paginated cached messages to this client (last page only)
-		// Additional pages are loaded on-demand via "load_page" requests.
+		// Send last page of cached messages directly (no page_start/page_end wrapping).
+		// Older history is loaded on-demand via the HTTP /messages endpoint.
 		pageSize := claude.DefaultPageSize
 		total := session.GetCachedMessageCount()
 
+		// Compute history offset (aligned page start of the last page)
+		historyOffset := 0
+		if total > pageSize {
+			historyOffset = ((total - 1) / pageSize) * pageSize
+		}
+
 		// Send session_info metadata frame
 		sessionInfo := map[string]interface{}{
-			"type":          "session_info",
-			"totalMessages": total,
-			"pageSize":      pageSize,
+			"type":           "session_info",
+			"totalMessages":  total,
+			"historyOffset":  historyOffset,
 		}
 		if infoBytes, err := json.Marshal(sessionInfo); err == nil {
 			if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
@@ -696,25 +726,15 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		}
 
 		if total > 0 {
-			// Compute last page (aligned boundaries)
-			lastPage := (total - 1) / pageSize
-
 			log.Debug().
 				Str("sessionId", sessionID).
 				Int("totalMessages", total).
-				Int("page", lastPage).
-				Int("pageStart", lastPage*pageSize).
-				Msg("sending initial page to new client (UI mode)")
+				Int("historyOffset", historyOffset).
+				Msg("sending initial messages to new client (UI mode)")
 
-			// Send page_start marker
-			pageStart := map[string]interface{}{"type": "page_start", "page": lastPage}
-			if startBytes, err := json.Marshal(pageStart); err == nil {
-				conn.Write(ctx, websocket.MessageText, startBytes)
-			}
-
-			// Send messages for the last page only
-			pageMessages := session.GetCachedMessagePage(lastPage, pageSize)
-			for _, msgBytes := range pageMessages {
+			// Send messages from historyOffset to end (last page)
+			cachedMessages := session.GetCachedMessages()
+			for _, msgBytes := range cachedMessages[historyOffset:] {
 				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send cached message")
 					return
@@ -723,12 +743,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
 					deliveredResults.Add(1)
 				}
-			}
-
-			// Send page_end marker
-			pageEnd := map[string]interface{}{"type": "page_end", "page": lastPage}
-			if endBytes, err := json.Marshal(pageEnd); err == nil {
-				conn.Write(ctx, websocket.MessageText, endBytes)
 			}
 			persistReadState() // Persist after initial burst (not per-message)
 		}
@@ -916,7 +930,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		var inMsg struct {
 			Type    string `json:"type"`
 			Content string `json:"content"`
-			Page    int    `json:"page"` // For load_page requests
 		}
 		if err := json.Unmarshal(msg, &inMsg); err != nil {
 			log.Debug().Err(err).Msg("Failed to parse subscribe message")
@@ -926,91 +939,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		log.Debug().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("Received subscribe message")
 
 		switch inMsg.Type {
-		case "load_page":
-			// Client requests a specific page of historical messages
-			pageSize := claude.DefaultPageSize
-			requestedPage := inMsg.Page
-
-			if session.Mode == claude.ModeUI {
-				pageMessages := session.GetCachedMessagePage(requestedPage, pageSize)
-				if pageMessages == nil {
-					log.Debug().
-						Str("sessionId", sessionID).
-						Int("page", requestedPage).
-						Msg("requested page out of range")
-					break
-				}
-
-				log.Debug().
-					Str("sessionId", sessionID).
-					Int("page", requestedPage).
-					Int("messageCount", len(pageMessages)).
-					Msg("sending requested page")
-
-				// Send page_start marker
-				pageStart := map[string]interface{}{"type": "page_start", "page": requestedPage}
-				if startBytes, err := json.Marshal(pageStart); err == nil {
-					conn.Write(ctx, websocket.MessageText, startBytes)
-				}
-
-				for _, msgBytes := range pageMessages {
-					if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send page message")
-						return
-					}
-					var mt struct{ Type string `json:"type"` }
-					if json.Unmarshal(msgBytes, &mt) == nil && mt.Type == "result" {
-						deliveredResults.Add(1)
-					}
-				}
-
-				// Send page_end marker
-				pageEnd := map[string]interface{}{"type": "page_end", "page": requestedPage}
-				if endBytes, err := json.Marshal(pageEnd); err == nil {
-					conn.Write(ctx, websocket.MessageText, endBytes)
-				}
-				persistReadState()
-			} else {
-				// CLI mode: read from JSONL and paginate
-				messages, err := claude.ReadSessionWithSubagents(sessionID, session.WorkingDir)
-				if err != nil || len(messages) == 0 {
-					break
-				}
-				total := len(messages)
-				start := requestedPage * pageSize
-				if start >= total {
-					break
-				}
-				end := start + pageSize
-				if end > total {
-					end = total
-				}
-
-				// Send page_start marker
-				pageStart := map[string]interface{}{"type": "page_start", "page": requestedPage}
-				if startBytes, err := json.Marshal(pageStart); err == nil {
-					conn.Write(ctx, websocket.MessageText, startBytes)
-				}
-
-				for _, msg := range messages[start:end] {
-					if msgBytes, err := json.Marshal(msg); err == nil {
-						if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-							return
-						}
-						if msg.GetType() == "result" {
-							deliveredResults.Add(1)
-						}
-					}
-				}
-
-				// Send page_end marker
-				pageEnd := map[string]interface{}{"type": "page_end", "page": requestedPage}
-				if endBytes, err := json.Marshal(pageEnd); err == nil {
-					conn.Write(ctx, websocket.MessageText, endBytes)
-				}
-				persistReadState()
-			}
-
 		case "user_message":
 			// Send message based on mode
 			if session.Mode == claude.ModeUI {
