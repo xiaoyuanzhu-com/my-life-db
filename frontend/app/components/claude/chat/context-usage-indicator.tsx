@@ -26,6 +26,9 @@ interface ContextUsageIndicatorProps {
   disabled?: boolean
 }
 
+/** Claude Code reserves ~16.5% of the context window as autocompact buffer */
+const AUTOCOMPACT_BUFFER_RATIO = 0.165
+
 export function ContextUsageIndicator({
   usage,
   onCompact,
@@ -37,11 +40,18 @@ export function ContextUsageIndicator({
 
   const usedTokens = usage.inputTokens
   const maxTokens = usage.contextWindow
-  const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
+  const autocompactBuffer = Math.round(maxTokens * AUTOCOMPACT_BUFFER_RATIO)
+  const freeTokens = Math.max(0, maxTokens - usedTokens - autocompactBuffer)
 
-  // Color thresholds
-  const isWarning = percentage >= 60
-  const isDanger = percentage >= 85
+  // Combined percentage (tokens + buffer) — matches CLI status bar behavior
+  const percentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
+  // Token-only percentage for two-segment popover ring
+  const usedPct = Math.min((usedTokens / maxTokens) * 100, 100)
+  const bufferPct = (autocompactBuffer / maxTokens) * 100
+
+  // Color thresholds (based on combined percentage including buffer)
+  const isWarning = percentage >= 75
+  const isDanger = percentage >= 90
 
   // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)
   const size = 14
@@ -55,8 +65,12 @@ export function ContextUsageIndicator({
   const popoverStrokeWidth = 4
   const popoverRadius = (popoverSize - popoverStrokeWidth) / 2
   const popoverCircumference = 2 * Math.PI * popoverRadius
-  const popoverDashOffset =
-    popoverCircumference - (percentage / 100) * popoverCircumference
+  // Combined arc (used + buffer) — buffer portion visible beyond the used arc
+  const popoverCombinedDashOffset =
+    popoverCircumference - (Math.min(usedPct + bufferPct, 100) / 100) * popoverCircumference
+  // Used-only arc (covers used portion with bright color)
+  const popoverUsedDashOffset =
+    popoverCircumference - (usedPct / 100) * popoverCircumference
 
   const progressColorClass = isDanger
     ? 'stroke-destructive'
@@ -130,7 +144,7 @@ export function ContextUsageIndicator({
         sideOffset={8}
       >
         <div className="flex items-start gap-3">
-          {/* Larger progress ring with percentage inside */}
+          {/* Larger progress ring with percentage inside — two segments */}
           <div className="relative flex-shrink-0">
             <svg
               width={popoverSize}
@@ -138,6 +152,7 @@ export function ContextUsageIndicator({
               viewBox={`0 0 ${popoverSize} ${popoverSize}`}
               className="-rotate-90"
             >
+              {/* Background ring */}
               <circle
                 cx={popoverSize / 2}
                 cy={popoverSize / 2}
@@ -146,6 +161,19 @@ export function ContextUsageIndicator({
                 className="stroke-muted"
                 strokeWidth={popoverStrokeWidth}
               />
+              {/* Buffer arc (combined used+buffer — buffer portion visible beyond used arc) */}
+              <circle
+                cx={popoverSize / 2}
+                cy={popoverSize / 2}
+                r={popoverRadius}
+                fill="none"
+                className="stroke-muted-foreground opacity-30 transition-all duration-500"
+                strokeWidth={popoverStrokeWidth}
+                strokeLinecap="round"
+                strokeDasharray={popoverCircumference}
+                strokeDashoffset={popoverCombinedDashOffset}
+              />
+              {/* Used arc (on top, bright color) */}
               <circle
                 cx={popoverSize / 2}
                 cy={popoverSize / 2}
@@ -158,7 +186,7 @@ export function ContextUsageIndicator({
                 strokeWidth={popoverStrokeWidth}
                 strokeLinecap="round"
                 strokeDasharray={popoverCircumference}
-                strokeDashoffset={popoverDashOffset}
+                strokeDashoffset={popoverUsedDashOffset}
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold tabular-nums">
@@ -177,8 +205,12 @@ export function ContextUsageIndicator({
                 <span>{formatTokens(usedTokens)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Remaining</span>
-                <span>{formatTokens(maxTokens - usedTokens)}</span>
+                <span>Buffer</span>
+                <span>{formatTokens(autocompactBuffer)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Free</span>
+                <span>{formatTokens(freeTokens)}</span>
               </div>
               <div className="flex justify-between border-t border-border pt-0.5 font-medium text-foreground">
                 <span>Total</span>
