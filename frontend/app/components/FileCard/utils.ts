@@ -182,6 +182,18 @@ export function downloadFile(path: string, filename: string): void {
 }
 
 /**
+ * Download a folder as a zip archive
+ */
+export function downloadFolder(path: string, folderName: string): void {
+  const link = document.createElement('a');
+  link.href = `/api/library/download?path=${encodeURIComponent(path)}`;
+  link.download = `${folderName}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
  * Check if Web Share API is available
  * Uses navigator.canShare when available for better detection
  */
