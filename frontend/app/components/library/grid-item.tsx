@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert } from 'lucide-react';
+import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
+import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -128,6 +129,14 @@ export function GridItem({
     }
   };
 
+  const handleDownload = () => {
+    if (isFolder) {
+      downloadFolder(fullPath, name);
+    } else {
+      downloadFile(fullPath, name);
+    }
+  };
+
   // Long press for mobile context menu
   const handleTouchStart = () => {
     longPressTimer.current = setTimeout(() => {
@@ -218,6 +227,11 @@ export function GridItem({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onClick={handleDownload}>
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem onClick={startRename}>
             <Pencil className="w-4 h-4 mr-2" />
             Rename
