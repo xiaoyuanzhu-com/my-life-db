@@ -34,11 +34,11 @@ func TestAskUserQuestionWithSDK(t *testing.T) {
 		toolResultContent   string
 	)
 
-	maxTurns := 3
+	maxTurnsValue := "3"
 	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
 		Cwd:                "/tmp",
 		SkipInitialization: true,
-		MaxTurns:           &maxTurns,
+		ExtraArgs:          map[string]*string{"max-turns": &maxTurnsValue},
 		// CanUseTool callback - this is where we handle AskUserQuestion
 		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {
 			t.Logf("CanUseTool called: tool=%s", toolName)
@@ -249,11 +249,11 @@ func TestVerifiedBehavior_AskUserQuestion_TriggersCanUseTool(t *testing.T) {
 		receivedQuestions  []any
 	)
 
-	maxTurns := 2
+	maxTurnsValue := "2"
 	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
 		Cwd:                "/tmp",
 		SkipInitialization: true,
-		MaxTurns:           &maxTurns,
+		ExtraArgs:          map[string]*string{"max-turns": &maxTurnsValue},
 		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {
 			if toolName == "AskUserQuestion" {
 				mu.Lock()
@@ -352,11 +352,11 @@ func TestVerifiedBehavior_AskUserQuestion_UpdatedInputPassesAnswers(t *testing.T
 		toolResultString string
 	)
 
-	maxTurns := 2
+	maxTurnsValue := "2"
 	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
 		Cwd:                "/tmp",
 		SkipInitialization: true,
-		MaxTurns:           &maxTurns,
+		ExtraArgs:          map[string]*string{"max-turns": &maxTurnsValue},
 		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {
 			if toolName == "AskUserQuestion" {
 				// Inject our answer via UpdatedInput

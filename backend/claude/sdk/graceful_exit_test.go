@@ -13,10 +13,6 @@ import (
 	claudesdk "github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
 )
 
-func intPtr(i int) *int {
-	return &i
-}
-
 // TestGracefulExitSIGINT verifies that Claude CLI responds to SIGINT (not SIGTERM).
 // This is a low-level test that directly spawns the process.
 // Run with: go test -v -run TestGracefulExitSIGINT ./claude/sdk/
@@ -112,9 +108,10 @@ func TestGracefulExitSDK(t *testing.T) {
 	ctx := context.Background()
 
 	// Create SDK client similar to production (with SkipInitialization and CanUseTool)
+	maxTurnsValue := "1"
 	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
 		SystemPrompt:       "You are helpful. Be very brief. One word answers only.",
-		MaxTurns:           intPtr(1),
+		ExtraArgs:          map[string]*string{"max-turns": &maxTurnsValue},
 		Cwd:                "/tmp",
 		SkipInitialization: true,
 		CanUseTool: func(toolName string, input map[string]any, ctx claudesdk.ToolPermissionContext) (claudesdk.PermissionResult, error) {

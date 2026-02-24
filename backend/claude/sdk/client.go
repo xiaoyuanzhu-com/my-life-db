@@ -468,27 +468,22 @@ func (o ClaudeAgentOptions) ToTransportOptions() transport.TransportOptions {
 	}
 
 	return transport.TransportOptions{
-		Tools:                   o.Tools,
-		AllowedTools:            o.AllowedTools,
-		DisallowedTools:         o.DisallowedTools,
-		SystemPrompt:            o.SystemPrompt,
-		PermissionMode:          permMode,
+		AllowedTools:             o.AllowedTools,
+		DisallowedTools:          o.DisallowedTools,
+		SystemPrompt:             o.SystemPrompt,
+		PermissionMode:           permMode,
 		PermissionPromptToolName: o.PermissionPromptToolName,
-		ContinueConversation:    o.ContinueConversation,
-		Resume:                  o.Resume,
-		MaxTurns:                o.MaxTurns,
-		Model:                   o.Model,
-		FallbackModel:           o.FallbackModel,
-		Cwd:                     o.Cwd,
-		CliPath:                 o.CliPath,
-		AddDirs:                 o.AddDirs,
-		Env:                     o.Env,
-		ExtraArgs:               o.ExtraArgs,
-		IncludePartialMessages:  o.IncludePartialMessages,
-		MaxBufferSize:           o.MaxBufferSize,
-		MaxThinkingTokens:       o.MaxThinkingTokens,
-		EnableFileCheckpointing: o.EnableFileCheckpointing,
-		Stderr:                  o.Stderr,
+		Resume:                   o.Resume,
+		Model:                    o.Model,
+		Cwd:                      o.Cwd,
+		CliPath:                  o.CliPath,
+		Env:                      o.Env,
+		ExtraArgs:                o.ExtraArgs,
+		IncludePartialMessages:   o.IncludePartialMessages,
+		MaxBufferSize:            o.MaxBufferSize,
+		MaxThinkingTokens:        o.MaxThinkingTokens,
+		EnableFileCheckpointing:  o.EnableFileCheckpointing,
+		Stderr:                   o.Stderr,
 	}
 }
 
@@ -497,9 +492,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 	result := ClaudeAgentOptions{}
 
 	for _, opt := range opts {
-		if len(opt.Tools) > 0 {
-			result.Tools = opt.Tools
-		}
 		if len(opt.AllowedTools) > 0 {
 			result.AllowedTools = append(result.AllowedTools, opt.AllowedTools...)
 		}
@@ -518,9 +510,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 		if opt.Model != "" {
 			result.Model = opt.Model
 		}
-		if opt.FallbackModel != "" {
-			result.FallbackModel = opt.FallbackModel
-		}
 		if opt.Cwd != "" {
 			result.Cwd = opt.Cwd
 		}
@@ -529,9 +518,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 		}
 		if opt.Resume != "" {
 			result.Resume = opt.Resume
-		}
-		if opt.MaxTurns != nil {
-			result.MaxTurns = opt.MaxTurns
 		}
 		if opt.MaxBudgetUSD != nil {
 			result.MaxBudgetUSD = opt.MaxBudgetUSD
@@ -545,9 +531,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 		if opt.Stderr != nil {
 			result.Stderr = opt.Stderr
 		}
-		if opt.ContinueConversation {
-			result.ContinueConversation = true
-		}
 		if opt.ForkSession {
 			result.ForkSession = true
 		}
@@ -556,9 +539,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 		}
 		if opt.EnableFileCheckpointing {
 			result.EnableFileCheckpointing = true
-		}
-		if len(opt.AddDirs) > 0 {
-			result.AddDirs = append(result.AddDirs, opt.AddDirs...)
 		}
 		if len(opt.Env) > 0 {
 			if result.Env == nil {

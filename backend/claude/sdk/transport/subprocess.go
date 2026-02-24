@@ -133,7 +133,7 @@ func NewSubprocessCLITransportWithPrompt(prompt string, options TransportOptions
 
 // buildCommand constructs the CLI command with all arguments
 func (t *SubprocessCLITransport) buildCommand() []string {
-	cmd := []string{t.cliPath, "--output-format", "stream-json", "--verbose"}
+	cmd := []string{t.cliPath, "--output-format", "stream-json", "--verbose", "--debug", "--debug-to-stderr"}
 
 	opts := t.options
 
@@ -142,11 +142,6 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--system-prompt", "")
 	} else {
 		cmd = append(cmd, "--system-prompt", opts.SystemPrompt)
-	}
-
-	// Tools configuration
-	if len(opts.Tools) > 0 {
-		cmd = append(cmd, "--tools", strings.Join(opts.Tools, ","))
 	}
 
 	// Allowed tools (comma-separated, matching Python SDK format)
@@ -171,34 +166,14 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--permission-prompt-tool", opts.PermissionPromptToolName)
 	}
 
-	// Max turns
-	if opts.MaxTurns != nil {
-		cmd = append(cmd, "--max-turns", strconv.Itoa(*opts.MaxTurns))
-	}
-
 	// Model
 	if opts.Model != "" {
 		cmd = append(cmd, "--model", opts.Model)
 	}
 
-	// Fallback model
-	if opts.FallbackModel != "" {
-		cmd = append(cmd, "--fallback-model", opts.FallbackModel)
-	}
-
 	// Resume session
 	if opts.Resume != "" {
 		cmd = append(cmd, "--resume", opts.Resume)
-	}
-
-	// Continue conversation
-	if opts.ContinueConversation {
-		cmd = append(cmd, "--continue")
-	}
-
-	// Additional directories
-	for _, dir := range opts.AddDirs {
-		cmd = append(cmd, "--add-dir", dir)
 	}
 
 	// Include partial messages (enables stream_event messages with text deltas)

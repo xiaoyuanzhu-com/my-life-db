@@ -1393,11 +1393,9 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 	session.sdkCancel = cancel
 
 	// Enable adaptive thinking (extended thinking) by default.
-	// 32000 matches the Python Claude Agent SDK's hardcoded default for
-	// thinking.type: "adaptive" — the SDK translates adaptive mode into
-	// --max-thinking-tokens 32000 when shelling out to the CLI.
+	// 31999 aligns with the VSCode extension's hardcoded default.
 	// See: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
-	maxThinkingTokens := 32000
+	maxThinkingTokens := 31999
 
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,

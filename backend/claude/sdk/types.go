@@ -247,8 +247,7 @@ type SandboxSettings struct {
 // ClaudeAgentOptions configures the Claude SDK client
 type ClaudeAgentOptions struct {
 	// Tools configuration
-	Tools          []string `json:"tools,omitempty"`
-	AllowedTools   []string `json:"allowedTools,omitempty"`
+	AllowedTools    []string `json:"allowedTools,omitempty"`
 	DisallowedTools []string `json:"disallowedTools,omitempty"`
 
 	// Prompts
@@ -263,22 +262,18 @@ type ClaudeAgentOptions struct {
 	CanUseTool               CanUseToolFunc `json:"-"`
 
 	// Session management
-	ContinueConversation bool   `json:"continueConversation,omitempty"`
-	Resume               string `json:"resume,omitempty"`
-	ForkSession          bool   `json:"forkSession,omitempty"`
+	Resume      string `json:"resume,omitempty"`
+	ForkSession bool   `json:"forkSession,omitempty"`
 
 	// Limits
-	MaxTurns     *int     `json:"maxTurns,omitempty"`
 	MaxBudgetUSD *float64 `json:"maxBudgetUsd,omitempty"`
 
 	// Model configuration
-	Model         string `json:"model,omitempty"`
-	FallbackModel string `json:"fallbackModel,omitempty"`
+	Model string `json:"model,omitempty"`
 
 	// Paths
 	Cwd     string `json:"cwd,omitempty"`
 	CliPath string `json:"cliPath,omitempty"`
-	AddDirs []string `json:"addDirs,omitempty"`
 
 	// Environment
 	Env       map[string]string  `json:"env,omitempty"`
