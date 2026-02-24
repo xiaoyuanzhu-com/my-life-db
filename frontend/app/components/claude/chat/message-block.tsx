@@ -60,13 +60,11 @@ interface MessageBlockProps {
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
-  /** Set of TaskOutput tool_use IDs absorbed into parent Task blocks (should not render standalone) */
-  absorbedToolUseIds?: Set<string>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, absorbedToolUseIds, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -94,9 +92,10 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
     const texts = content.filter(isTextBlock).map((block) => block.text)
     const thinking = content.filter(isThinkingBlock)
-    // Filter out TaskOutput tool_use blocks that have been absorbed into their parent Task block
+    // Filter out TaskOutput tool_use blocks — they are always absorbed into parent Task blocks.
+    // TaskOutput has zero standalone value; its result is merged into the parent Task via asyncTaskOutputMap.
     const toolUses = content.filter(isToolUseBlock).filter(
-      (block) => !absorbedToolUseIds || !absorbedToolUseIds.has(block.id)
+      (block) => block.name !== 'TaskOutput'
     )
 
     return {
@@ -104,7 +103,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       thinkingBlocks: thinking,
       toolUseBlocks: toolUses,
     }
-  }, [isAssistant, content, absorbedToolUseIds])
+  }, [isAssistant, content])
 
   // Convert tool_use blocks to ToolCall format with results from map
   const toolCalls = useMemo((): ToolCall[] => {

@@ -47,13 +47,6 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
     return toolCall.result
   }, [asyncTaskOutput, toolCall.result])
 
-  // Is the async task still pending? (no TaskOutput result yet, or not ready)
-  const isAsyncPending = isAsyncLaunch && (
-    !asyncTaskOutput ||
-    asyncTaskOutput.retrieval_status === 'not_ready' ||
-    asyncTaskOutput.task?.status === 'running'
-  )
-
   // Extract task metadata from tool_use_result (available for background/local agent results)
   // Contains description, prompt, output, status, etc. — persisted even when agentProgress is empty
   const taskMeta = useMemo((): TaskToolResult['task'] | undefined => {
@@ -264,14 +257,6 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
         <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
           <span className="select-none">└</span>
           <span>Agent is working...</span>
-        </div>
-      )}
-
-      {/* Status for async background launches — shows until TaskOutput result is merged */}
-      {isAsyncPending && (
-        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
-          <span className="select-none">└</span>
-          <span>Agent launched in background</span>
         </div>
       )}
 

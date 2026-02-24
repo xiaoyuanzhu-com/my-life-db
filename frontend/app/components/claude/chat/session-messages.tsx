@@ -501,10 +501,6 @@ interface SessionMessagesProps {
    */
   asyncTaskOutputMap?: Map<string, TaskToolResult>
   /**
-   * Pre-built set of TaskOutput tool_use IDs absorbed into parent Task blocks.
-   * These tool_use blocks should not be rendered standalone.
-   */
-  absorbedToolUseIds?: Set<string>
   /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
@@ -534,7 +530,6 @@ export function SessionMessages({
   skillContentMap: providedSkillContentMap,
   subagentMessagesMap: providedSubagentMessagesMap,
   asyncTaskOutputMap: providedAsyncTaskOutputMap,
-  absorbedToolUseIds: providedAbsorbedToolUseIds,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -587,13 +582,10 @@ export function SessionMessages({
 
   // Build async task output map if not provided
   // This links background async Task tool_use blocks to their TaskOutput results
-  const { asyncTaskOutputMap, absorbedToolUseIds } = useMemo(() => {
-    if (providedAsyncTaskOutputMap && providedAbsorbedToolUseIds) {
-      return { asyncTaskOutputMap: providedAsyncTaskOutputMap, absorbedToolUseIds: providedAbsorbedToolUseIds }
-    }
-    const built = buildAsyncTaskOutputMap(messages, toolResultMap)
-    return { asyncTaskOutputMap: built.resultMap, absorbedToolUseIds: built.absorbedToolUseIds }
-  }, [messages, toolResultMap, providedAsyncTaskOutputMap, providedAbsorbedToolUseIds])
+  const asyncTaskOutputMap = useMemo(() => {
+    if (providedAsyncTaskOutputMap) return providedAsyncTaskOutputMap
+    return buildAsyncTaskOutputMap(messages, toolResultMap).resultMap
+  }, [messages, toolResultMap, providedAsyncTaskOutputMap])
 
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
@@ -704,7 +696,6 @@ export function SessionMessages({
           skillContentMap={skillContentMap}
           subagentMessagesMap={subagentMessagesMap}
           asyncTaskOutputMap={asyncTaskOutputMap}
-          absorbedToolUseIds={absorbedToolUseIds}
           depth={depth}
         />
       ))}
