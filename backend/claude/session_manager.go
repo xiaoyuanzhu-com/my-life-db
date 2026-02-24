@@ -465,9 +465,10 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}
 
 	// Add any active sessions not in cache (just created).
-	// Skip phantom (warm) sessions — they are invisible until promoted.
+	// Skip empty sessions (no completed turns, no connected clients) — these are
+	// warm sessions created for slash command discovery that haven't been used yet.
 	for id, session := range m.sessions {
-		if seenIDs[id] || session.Phantom {
+		if seenIDs[id] || (session.ResultCount() == 0 && session.ClientCount() == 0) {
 			continue
 		}
 		entry := &SessionEntry{
@@ -638,12 +639,11 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 
 // CreateSession spawns a new Claude Code process
 func (m *SessionManager) CreateSession(workingDir, title string, permissionMode sdk.PermissionMode) (*Session, error) {
-	return m.CreateSessionWithID(workingDir, title, "", permissionMode, false)
+	return m.CreateSessionWithID(workingDir, title, "", permissionMode)
 }
 
 // CreateSessionWithID spawns a new Claude Code process with optional resume.
-// If phantom is true, the session is excluded from listings and SSE events until promoted.
-func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, permissionMode sdk.PermissionMode, phantom bool) (*Session, error) {
+func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, permissionMode sdk.PermissionMode) (*Session, error) {
 	m.mu.Lock()
 
 	var sessionID string
@@ -692,7 +692,6 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		activated:             true,
 		pendingSDKPermissions: make(map[string]*pendingPermission),
 		Git:                   GetGitInfo(workingDir),
-		Phantom:               phantom,
 		onStateChanged: func() {
 			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: sessionID})
 		},
@@ -716,10 +715,10 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		Str("workingDir", workingDir).
 		Msg("created claude session")
 
-	// Emit events (phantom sessions are silent until promoted)
+	// Emit events
 	if resumeSessionID != "" {
 		m.notify(SessionEvent{Type: SessionEventActivated, SessionID: sessionID})
-	} else if !phantom {
+	} else {
 		m.notify(SessionEvent{Type: SessionEventCreated, SessionID: sessionID})
 	}
 
@@ -803,32 +802,6 @@ func (m *SessionManager) UpdateSession(id string, title string) error {
 
 	// Emit event
 	m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: id})
-
-	return nil
-}
-
-// PromoteSession transitions a phantom (warm) session to a normal visible session.
-// Sets the title, clears the phantom flag, and emits a SessionEventCreated so the
-// session appears in listings and triggers SSE notifications.
-func (m *SessionManager) PromoteSession(id string, title string) error {
-	m.mu.Lock()
-
-	session, ok := m.sessions[id]
-	if !ok {
-		m.mu.Unlock()
-		return ErrSessionNotFound
-	}
-
-	session.Phantom = false
-	if title != "" {
-		session.Title = title
-	}
-	session.LastUserActivity = time.Now()
-
-	m.mu.Unlock()
-
-	// Emit created event so the session appears in listings and triggers SSE refresh
-	m.notify(SessionEvent{Type: SessionEventCreated, SessionID: id})
 
 	return nil
 }
@@ -1336,15 +1309,20 @@ func (m *SessionManager) cleanupSession(session *Session, id string) {
 func (m *SessionManager) cleanupWorker() {
 	defer m.wg.Done()
 
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
+	// Dead session cleanup runs every minute; idle session GC runs hourly.
+	deadTicker := time.NewTicker(1 * time.Minute)
+	defer deadTicker.Stop()
+
+	gcTicker := time.NewTicker(1 * time.Hour)
+	defer gcTicker.Stop()
 
 	for {
 		select {
 		case <-m.ctx.Done():
 			log.Debug().Msg("cleanup worker stopping")
 			return
-		case <-ticker.C:
+
+		case <-deadTicker.C:
 			m.mu.Lock()
 			for id, session := range m.sessions {
 				session.mu.RLock()
@@ -1356,6 +1334,84 @@ func (m *SessionManager) cleanupWorker() {
 				}
 			}
 			m.mu.Unlock()
+
+		case <-gcTicker.C:
+			m.gcIdleSessions()
+		}
+	}
+}
+
+// gcIdleSessions deactivates sessions that have been idle too long.
+//
+// Two tiers based on session state:
+//   - Idle sessions (not processing, no pending permissions, user has read all results):
+//     GC after 1 day of no LastActivity.
+//   - Other sessions (processing, has unread results, or has pending permissions):
+//     GC after 7 days of no LastActivity.
+//
+// Sessions with connected WebSocket clients are never GC'd.
+func (m *SessionManager) gcIdleSessions() {
+	now := time.Now()
+
+	const (
+		idleTimeout  = 24 * time.Hour     // 1 day for idle sessions
+		otherTimeout = 7 * 24 * time.Hour // 7 days for working/unread sessions
+	)
+
+	// Collect sessions to deactivate (can't modify map while iterating with lock held
+	// and calling DeactivateSession which also acquires the lock).
+	type gcCandidate struct {
+		id      string
+		reason  string
+		session *Session
+	}
+	var candidates []gcCandidate
+
+	m.mu.RLock()
+	for id, session := range m.sessions {
+		// Never GC sessions with connected clients
+		if session.ClientCount() > 0 {
+			continue
+		}
+
+		age := now.Sub(session.LastActivity)
+
+		// Determine if session is "idle" (not working, user read everything)
+		isProcessing := session.IsProcessing()
+		hasPending := session.HasPendingPermission()
+
+		if !isProcessing && !hasPending {
+			// Idle session — 1 day timeout
+			if age > idleTimeout {
+				candidates = append(candidates, gcCandidate{
+					id:      id,
+					reason:  fmt.Sprintf("idle for %s", age.Round(time.Minute)),
+					session: session,
+				})
+			}
+		} else {
+			// Working/unread session — 7 day timeout
+			if age > otherTimeout {
+				candidates = append(candidates, gcCandidate{
+					id:      id,
+					reason:  fmt.Sprintf("inactive for %s (processing=%v, pending=%v)", age.Round(time.Minute), isProcessing, hasPending),
+					session: session,
+				})
+			}
+		}
+	}
+	m.mu.RUnlock()
+
+	if len(candidates) == 0 {
+		return
+	}
+
+	log.Info().Int("count", len(candidates)).Msg("GC: deactivating idle sessions")
+
+	for _, c := range candidates {
+		log.Info().Str("sessionId", c.id).Str("reason", c.reason).Msg("GC: deactivating session")
+		if err := m.DeactivateSession(c.id); err != nil {
+			log.Warn().Err(err).Str("sessionId", c.id).Msg("GC: failed to deactivate session")
 		}
 	}
 }

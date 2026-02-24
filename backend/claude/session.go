@@ -127,9 +127,6 @@ type Session struct {
 	// control_request → increment (waiting for user input), control_response → decrement (resolved).
 	pendingPermissionCount int `json:"-"`
 
-	// Phantom session — warm session created eagerly for slash command discovery.
-	// Excluded from session listings and SSE events until promoted by first user message.
-	Phantom bool `json:"-"`
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -224,6 +221,13 @@ func (s *Session) HasPendingPermission() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pendingPermissionCount > 0
+}
+
+// ClientCount returns the number of connected WebSocket clients.
+func (s *Session) ClientCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.Clients)
 }
 
 // SignalShutdown marks the session as shutting down.

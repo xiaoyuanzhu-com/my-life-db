@@ -111,7 +111,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.POST("/claude/sessions/:id/archive", h.ArchiveClaudeSession)
 		api.POST("/claude/sessions/:id/unarchive", h.UnarchiveClaudeSession)
 		api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
-		api.POST("/claude/sessions/:id/promote", h.PromoteClaudeSession)
 
 		// ASR routes
 		api.POST("/asr", h.ASRHandler)

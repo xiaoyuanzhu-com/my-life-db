@@ -2,41 +2,30 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '~/lib/api'
 import type { InitData } from './use-slash-commands'
 
-/**
- * Session data returned by the promote API, matching the backend Session.ToJSON() shape.
- */
-interface PromotedSession {
-  id: string
-  title: string
-  workingDir: string
-  createdAt: number
-  lastActivity: number
-  lastUserActivity: number
-  sessionState: string
-  git?: { isRepo: boolean; branch?: string; remoteUrl?: string }
-  permissionMode?: string
-}
-
 export interface UseWarmSessionResult {
   /** InitData extracted from the system:init message, or null if not yet received. */
   initData: InitData | null
   /** Awaitable — resolves to session ID once creation completes. Rejects if creation failed. */
   getSessionId: () => Promise<string>
-  /** Promote the phantom session: set title, make visible, return session data. */
-  promote: (title: string) => Promise<PromotedSession>
+  /** Activate the warm session: set title via PATCH, mark as used so cleanup won't delete it. */
+  activate: (title: string) => Promise<string>
 }
 
 /**
- * Eagerly creates a phantom Claude session and connects a WebSocket to receive
+ * Eagerly creates a Claude session and connects a WebSocket to receive
  * the system:init message (which contains skills and slash commands).
  *
- * The session is invisible ("phantom") — excluded from session listings and SSE
- * events — until promoted via `promote()` when the user sends their first message.
+ * The session is a normal session — it stays out of listings because it has
+ * no completed turns (ResultCount == 0) and no connected clients. Once the
+ * user sends their first message, `activate()` sets the title via PATCH and
+ * marks it so cleanup won't delete it.
+ *
+ * Idle session GC on the backend will eventually clean up abandoned sessions.
  *
  * Lifecycle:
- * - On mount (when enabled): creates phantom session, connects WebSocket
+ * - On mount (when enabled): creates session, connects WebSocket
  * - On workingDir/permissionMode change: tears down old session, creates new one
- * - On disable or unmount: closes WebSocket, deletes phantom session (unless promoted)
+ * - On disable or unmount: closes WebSocket, deletes session (unless activated)
  *
  * @param workingDir - Working directory for the session
  * @param permissionMode - Permission mode for the session
@@ -52,10 +41,10 @@ export function useWarmSession(
   // Refs for cross-render coordination
   const creationPromiseRef = useRef<Promise<string> | null>(null)
   const sessionIdRef = useRef<string | null>(null)
-  const promotedRef = useRef(false)
+  const activatedRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
 
-  // Create phantom session and connect WebSocket
+  // Create session and connect WebSocket
   useEffect(() => {
     if (!enabled) {
       // Reset state when disabled (e.g., when a session becomes active)
@@ -65,14 +54,13 @@ export function useWarmSession(
     }
 
     let cancelled = false
-    promotedRef.current = false
+    activatedRef.current = false
     setInitData(null)
 
     const promise = (async (): Promise<string> => {
       const response = await api.post('/api/claude/sessions', {
         workingDir,
         permissionMode,
-        phantom: true,
       })
 
       if (!response.ok) {
@@ -116,7 +104,7 @@ export function useWarmSession(
               output_style: data.output_style ?? data.outputStyle,
             })
             // Got what we need — close the WebSocket. ChatInterface will open its own
-            // when the session is promoted, and will get init in the burst.
+            // when the session becomes active, and will get init in the burst.
             ws.close()
             wsRef.current = null
           }
@@ -134,7 +122,7 @@ export function useWarmSession(
 
     creationPromiseRef.current = promise
 
-    // Cleanup: close WebSocket and delete phantom session (unless promoted)
+    // Cleanup: close WebSocket and delete session (unless activated)
     return () => {
       cancelled = true
 
@@ -144,8 +132,8 @@ export function useWarmSession(
         wsRef.current = null
       }
 
-      // Delete phantom session unless it was promoted
-      if (sessionIdRef.current && !promotedRef.current) {
+      // Delete warm session unless it was activated by user's first message
+      if (sessionIdRef.current && !activatedRef.current) {
         const idToDelete = sessionIdRef.current
         api.delete(`/api/claude/sessions/${idToDelete}`).catch(() => {
           // 404 is expected if the session already died — ignore all errors
@@ -164,21 +152,22 @@ export function useWarmSession(
     return creationPromiseRef.current
   }, [])
 
-  const promote = useCallback(async (title: string): Promise<PromotedSession> => {
+  const activate = useCallback(async (title: string): Promise<string> => {
     const sessionId = await getSessionId()
 
-    // Mark as promoted BEFORE the API call to prevent cleanup race
-    promotedRef.current = true
+    // Mark as activated BEFORE the API call to prevent cleanup race
+    activatedRef.current = true
 
-    const response = await api.post(`/api/claude/sessions/${sessionId}/promote`, { title })
+    // Set title via the existing PATCH endpoint
+    const response = await api.patch(`/api/claude/sessions/${sessionId}`, { title })
     if (!response.ok) {
-      // Revert promotion flag on failure so cleanup can still delete it
-      promotedRef.current = false
-      throw new Error(`Failed to promote session: ${response.status}`)
+      // Revert activation flag on failure so cleanup can still delete it
+      activatedRef.current = false
+      throw new Error(`Failed to activate session: ${response.status}`)
     }
 
-    return await response.json()
+    return sessionId
   }, [getSessionId])
 
-  return { initData, getSessionId, promote }
+  return { initData, getSessionId, activate }
 }

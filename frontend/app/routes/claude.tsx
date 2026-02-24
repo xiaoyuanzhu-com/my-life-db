@@ -143,8 +143,8 @@ export default function ClaudePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
   }, [activeSessionId])
 
-  // Warm session: eagerly create a phantom session to discover skills/slash commands.
-  // The session is invisible until the user sends their first message (promote).
+  // Warm session: eagerly create a session to discover skills/slash commands.
+  // Hidden from listings (ResultCount==0, no clients). Activated on first message.
   const warmSession = useWarmSession(
     newSessionWorkingDir,
     newSessionPermissionMode,
@@ -350,27 +350,39 @@ export default function ClaudePage() {
     }
   }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, statusFilter])
 
-  // Send first message: promote the warm session (or fallback to creating one inline).
+  // Send first message: activate the warm session (or fallback to creating one inline).
   // The warm session was already created eagerly in the background — this just sets
-  // the title, makes it visible, and transitions to the ChatInterface view.
+  // the title via PATCH and transitions to the ChatInterface view.
   const createSessionWithMessage = async (message: string) => {
     if (!message || isCreatingSession) return
 
     setIsCreatingSession(true)
     try {
-      // Promote the warm phantom session — awaits creation if still in-flight
-      const promotedSession = await warmSession.promote(message)
+      // Activate the warm session — awaits creation if still in-flight, sets title via PATCH
+      const sessionId = await warmSession.activate(message)
+
+      // Build a minimal session object for the sidebar
+      const newSession: Session = {
+        id: sessionId,
+        title: message,
+        workingDir: newSessionWorkingDir,
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        lastUserActivity: Date.now(),
+        sessionState: 'idle',
+        permissionMode: newSessionPermissionMode,
+      }
 
       setSessions((prevSessions) =>
-        sortSessions([promotedSession as unknown as Session, ...prevSessions])
+        sortSessions([newSession, ...prevSessions])
       )
       // Set the pending message before switching to the session
       setPendingInitialMessage(message)
-      setActiveSessionId(promotedSession.id)
+      setActiveSessionId(sessionId)
       // Clear the new-session draft from localStorage since message is now queued
       localStorage.removeItem('claude-input:new-session')
     } catch (error) {
-      console.error('Warm session promote failed, creating inline:', error)
+      console.error('Warm session activate failed, creating inline:', error)
       // Fallback: create session the old way (handles case where warm session failed)
       try {
         const response = await api.post('/api/claude/sessions', {
