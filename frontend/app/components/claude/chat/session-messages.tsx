@@ -6,6 +6,7 @@ import {
   isHookResponseMessage,
   isStatusMessage,
   isTaskStartedMessage,
+  isSystemInitMessage,
   isToolUseBlock,
   isSubagentMessage,
   getParentToolUseID,
@@ -502,6 +503,11 @@ export function SessionMessages({
       // already shows the same description. The task_started message has no linking field
       // (task_id ≠ tool_use.id) so it can't be merged into the tool block either.
       if (isTaskStartedMessage(msg)) return false
+
+      // Skip system init messages - these are session-level metadata (model, tools, agents, etc.)
+      // not user-facing content. The metadata is extracted in chat-interface.tsx and exposed
+      // via initData for use by slash commands, session info display, etc.
+      if (isSystemInitMessage(msg)) return false
 
       // Skip permission protocol messages - these trigger the permission modal,
       // not standalone chat messages. See data-models.md "Permission Handling" section.

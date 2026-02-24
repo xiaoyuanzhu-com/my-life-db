@@ -519,7 +519,9 @@ export function ChatInterface({
     return null
   }, [rawMessages, dismissedRateLimitUUID])
 
-  // Extract init data from system:init message for slash commands
+  // Extract init data from system:init message.
+  // The init message is session-level metadata (model, tools, agents, etc.) — not rendered
+  // in the chat, but its fields are exposed via InitData for slash commands, session info, etc.
   const initData = useMemo<InitData | null>(() => {
     const initMsg = rawMessages.find(
       (m) => m.type === 'system' && (m as unknown as Record<string, unknown>).subtype === 'init'
@@ -527,8 +529,19 @@ export function ChatInterface({
     if (!initMsg) return null
     const data = initMsg as unknown as Record<string, unknown>
     return {
-      slash_commands: data.slash_commands as string[] | undefined,
+      session_id: data.session_id as string | undefined,
+      model: data.model as string | undefined,
+      claude_code_version: data.claude_code_version as string | undefined,
+      tools: data.tools as string[] | undefined,
+      agents: data.agents as string[] | undefined,
       skills: data.skills as string[] | undefined,
+      slash_commands: data.slash_commands as string[] | undefined,
+      mcp_servers: data.mcp_servers as Array<{ name: string; status: string }> | undefined,
+      plugins: data.plugins as Array<{ name: string; path: string }> | undefined,
+      cwd: data.cwd as string | undefined,
+      permissionMode: data.permissionMode as string | undefined,
+      apiKeySource: data.apiKeySource as string | undefined,
+      output_style: data.output_style as string | undefined,
     }
   }, [rawMessages])
 

@@ -1,8 +1,7 @@
 import { ToolBlock } from './tool-block'
 import { MessageDot } from './message-dot'
 import { splitMessageContent } from './file-ref'
-import { SystemInitBlock } from './system-init-block'
-import type { ToolCall, SystemInitData, ToolStatus } from '~/types/claude'
+import type { ToolCall, ToolStatus } from '~/types/claude'
 import {
   isTextBlock,
   isThinkingBlock,
@@ -142,16 +141,6 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     })
   }, [toolUseBlocks, toolResultMap])
 
-  // Parse system init data
-  const systemInitData = useMemo((): SystemInitData | null => {
-    if (!isSystem) return null
-    // System init messages have the data spread on the message itself
-    if ((message as unknown as { subtype?: string }).subtype === 'init') {
-      return message as unknown as SystemInitData
-    }
-    return null
-  }, [isSystem, message])
-
   // Check for compact boundary, microcompact boundary, compact summary, turn duration, hook started, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
   const isMicrocompactBoundary = isMicrocompactBoundaryMessage(message)
@@ -173,8 +162,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasAssistantText = isAssistant && textContent
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
-  const hasSystemInit = systemInitData !== null
-  const hasUnknownSystem = isSystem && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isCompactingStatus
+  const hasUnknownSystem = isSystem && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isCompactingStatus
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -183,7 +171,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !hasSystemInit && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
     return null
   }
 
@@ -191,16 +179,6 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     <div className="mb-4">
       {/* User messages: gray background pill, right-aligned */}
       {hasUserContent && <UserMessageBlock content={userTextContent!} />}
-
-      {/* System init messages: special formatted display */}
-      {hasSystemInit && (
-        <div className="flex items-start gap-2">
-          <MessageDot type="system" />
-          <div className="flex-1 min-w-0">
-            <SystemInitBlock data={systemInitData!} />
-          </div>
-        </div>
-      )}
 
       {/* Compacting in progress: animated three-dot indicator */}
       {isCompactingStatus && (

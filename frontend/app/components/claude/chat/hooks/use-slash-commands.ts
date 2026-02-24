@@ -1,9 +1,32 @@
 import { useMemo } from 'react'
 import { BUILTIN_COMMANDS, type SlashCommand } from '../slash-commands'
 
+/**
+ * Metadata extracted from the system:init message.
+ *
+ * The init message is a session-level metadata envelope (not rendered in the chat).
+ * It captures the environment and available capabilities at session start time.
+ * See docs/claude-code/data-models.md "System: init" section.
+ */
 export interface InitData {
-  slash_commands?: string[]
+  // Session identity
+  session_id?: string
+  model?: string
+  claude_code_version?: string
+
+  // Available capabilities (names/counts)
+  tools?: string[]
+  agents?: string[]
   skills?: string[]
+  slash_commands?: string[]
+  mcp_servers?: Array<{ name: string; status: string }>
+  plugins?: Array<{ name: string; path: string }>
+
+  // Environment
+  cwd?: string
+  permissionMode?: string
+  apiKeySource?: string
+  output_style?: string
 }
 
 /**
