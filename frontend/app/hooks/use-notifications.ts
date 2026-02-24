@@ -64,6 +64,14 @@ function connectToNotifications() {
   eventSource.onopen = () => {
     // Connection succeeded — reset backoff
     consecutiveFailures = 0;
+
+    // Notify all listeners that the SSE connection was (re)established.
+    // Subscribers use this to refresh stale data — events may have been
+    // missed during the disconnect (buffer overflow, network drop, sleep/wake).
+    const reconnectEvent = new MessageEvent('message', {
+      data: JSON.stringify({ type: 'sse-reconnected' }),
+    });
+    listeners.forEach(listener => listener(reconnectEvent));
   };
 
   eventSource.onmessage = (event) => {
@@ -322,6 +330,9 @@ interface UseClaudeSessionNotificationsOptions {
  * 3-4 SSE events (created, JSONL write, title PATCH, isProcessing change). Without
  * debounce, each triggers a separate API call. The debounce is an efficiency measure;
  * correctness is handled by refreshSessions using authoritative replacement (not merge).
+ *
+ * Also triggers on SSE reconnection (sse-reconnected) to catch up on events that
+ * may have been missed during disconnect (network drop, sleep/wake, buffer overflow).
  */
 export function useClaudeSessionNotifications(options: UseClaudeSessionNotificationsOptions) {
   const { onSessionUpdated, enabled = true } = options;
@@ -338,7 +349,7 @@ export function useClaudeSessionNotifications(options: UseClaudeSessionNotificat
     const listener = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'claude-session-updated') {
+        if (data.type === 'claude-session-updated' || data.type === 'sse-reconnected') {
           debouncedOnSessionUpdated();
         }
       } catch {

@@ -44,7 +44,7 @@ func NewService() *Service {
 // Subscribe creates a new subscription channel
 // Returns the event channel and an unsubscribe function
 func (s *Service) Subscribe() (<-chan Event, func()) {
-	ch := make(chan Event, 10)
+	ch := make(chan Event, 32)
 
 	s.mu.Lock()
 	s.subscribers[ch] = struct{}{}
