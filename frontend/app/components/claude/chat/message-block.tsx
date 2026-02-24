@@ -333,7 +333,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} depth={depth} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} depth={depth} />
         </div>
       )}
     </div>
@@ -349,6 +349,7 @@ function ToolCallGroups({
   hookProgressMap,
   skillContentMap,
   subagentMessagesMap,
+  asyncTaskOutputMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -357,6 +358,7 @@ function ToolCallGroups({
   hookProgressMap?: Map<string, HookProgressMessage[]>
   skillContentMap?: Map<string, string>
   subagentMessagesMap?: Map<string, SessionMessage[]>
+  asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
   depth: number
 }) {
   // Group consecutive tool calls by name
@@ -413,6 +415,7 @@ function ToolCallGroups({
             hookProgressMap={hookProgressMap}
             skillContentMap={skillContentMap}
             subagentMessagesMap={subagentMessagesMap}
+            asyncTaskOutputMap={asyncTaskOutputMap}
             depth={depth}
           />
         )
@@ -429,6 +432,7 @@ function ToolCallGroup({
   hookProgressMap,
   skillContentMap,
   subagentMessagesMap,
+  asyncTaskOutputMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -437,6 +441,7 @@ function ToolCallGroup({
   hookProgressMap?: Map<string, HookProgressMessage[]>
   skillContentMap?: Map<string, string>
   subagentMessagesMap?: Map<string, SessionMessage[]>
+  asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
   depth: number
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
@@ -470,6 +475,7 @@ function ToolCallGroup({
                 hookProgressMap={hookProgressMap}
                 skillContentMap={skillContentMap}
                 subagentMessagesMap={subagentMessagesMap}
+                asyncTaskOutputMap={asyncTaskOutputMap}
                 depth={depth}
               />
             ))}
