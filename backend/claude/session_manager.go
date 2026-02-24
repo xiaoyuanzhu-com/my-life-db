@@ -467,10 +467,12 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}
 
 	// Add any active sessions not in cache (just created).
-	// Skip empty sessions (no completed turns, no connected clients) — these are
-	// warm sessions created for slash command discovery that haven't been used yet.
+	// Skip empty sessions (no completed turns and not currently processing) —
+	// these are warm sessions created for slash command discovery or idle sessions
+	// that haven't been used yet. Previously we also required ClientCount == 0,
+	// but that let empty sessions with connected viewers slip through.
 	for id, session := range m.sessions {
-		if seenIDs[id] || (session.ResultCount() == 0 && session.ClientCount() == 0) {
+		if seenIDs[id] || (session.ResultCount() == 0 && !session.IsProcessing()) {
 			continue
 		}
 		entry := &SessionEntry{
