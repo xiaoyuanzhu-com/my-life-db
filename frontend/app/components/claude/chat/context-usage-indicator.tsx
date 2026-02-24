@@ -177,11 +177,6 @@ export function ContextUsageIndicator({
           </div>
         </div>
 
-        {/* Footnote */}
-        <div className="mt-2 text-[11px] text-muted-foreground/60">
-          New input = uncached tokens (latest messages, ephemeral content)
-        </div>
-
         {/* Compact button */}
         {onCompact && (
           <button
