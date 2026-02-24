@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
 import { parseMarkdownSync } from '~/lib/markdown'
+import { findSafeSplitPoint } from '~/lib/markdown/safe-split'
 import { MessageDot } from './message-dot'
 
 interface StreamingThinkingProps {
@@ -44,7 +45,10 @@ export function StreamingThinking({ text }: StreamingThinkingProps) {
 
     if (text.length > stableText.length) {
       stabilizeTimerRef.current = setTimeout(() => {
-        setStableText(text)
+        // Split at a safe boundary that doesn't fall inside an open code
+        // fence — prevents raw HTML from leaking into the page when the
+        // "new" portion is parsed independently.
+        setStableText(text.slice(0, findSafeSplitPoint(text)))
       }, 150)
     }
 

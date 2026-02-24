@@ -683,19 +683,14 @@
 /* Safe area fallback: --native-sat/sar/sab/sal are injected by the iOS native
    shell because .ignoresSafeArea() zeroes out CSS env() values in WKWebView.
    In Safari / desktop browsers the native vars are absent, so env() is used. */
-/* Fullscreen preview — flex-column layout so the button and iframe never
-   overlap, avoiding WKWebView touch-routing issues entirely. */
+/* Fullscreen preview — true full-bleed layout. The iframe fills the entire
+   viewport; the close button floats above it with a gradient scrim for contrast.
+   Safe area offsets are applied only to the close button position. */
 .preview-fullscreen-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
   background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  flex-direction: column;
-  padding: max(16px, calc(var(--native-sat, env(safe-area-inset-top, 0px)) + 12px))
-           max(16px, calc(var(--native-sar, env(safe-area-inset-right, 0px)) + 12px))
-           max(16px, calc(var(--native-sab, env(safe-area-inset-bottom, 0px)) + 12px))
-           max(16px, calc(var(--native-sal, env(safe-area-inset-left, 0px)) + 12px));
   animation: preview-fullscreen-in 0.2s ease-out;
 }
 
@@ -704,15 +699,24 @@
   to   { opacity: 1; }
 }
 
-/* Header row — holds the collapse button, no iframe here */
-.preview-fullscreen-header {
-  display: flex;
-  justify-content: flex-end;
-  flex-shrink: 0;
-  padding-bottom: 8px;
+/* Gradient scrim behind close button — ensures button contrast against
+   any iframe content.  pointer-events: none lets clicks pass to the iframe. */
+.preview-fullscreen-scrim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .preview-fullscreen-collapse {
+  position: absolute;
+  top: calc(var(--native-sat, env(safe-area-inset-top, 0px)) + 8px);
+  right: calc(var(--native-sar, env(safe-area-inset-right, 0px)) + 8px);
+  z-index: 2;
   width: 44px;
   height: 44px;
   border-radius: 8px;
@@ -738,11 +742,12 @@
 }
 
 .preview-fullscreen-iframe {
-  flex: 1;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 0;
+  height: 100%;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: white;
 }
 

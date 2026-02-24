@@ -8,6 +8,25 @@ interface PreviewFullscreenProps {
   onClose: () => void
 }
 
+/**
+ * Inject an Escape key listener into iframe srcdoc content.
+ * When Escape is pressed inside the sandboxed iframe, it sends a postMessage
+ * to the parent so the fullscreen overlay can close — even though
+ * sandbox="allow-scripts" prevents direct DOM access, postMessage always works.
+ */
+function injectEscapeHandler(srcdoc: string): string {
+  const script =
+    '<script>document.addEventListener("keydown",function(e){' +
+    'if(e.key==="Escape")window.parent.postMessage({type:"preview-close"},"*")' +
+    '});<\\/script>'
+  // Prefer injecting before </body> for well-formed HTML
+  if (srcdoc.includes('</body>')) {
+    return srcdoc.replace('</body>', script + '</body>')
+  }
+  // Fallback: append at end (works for HTML fragments too)
+  return srcdoc + script
+}
+
 export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -17,19 +36,29 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
   )
 
   useEffect(() => {
+    // Parent-document Escape handler (for when iframe does NOT have focus)
     document.addEventListener('keydown', handleKeyDown)
+
+    // Listen for Escape postMessage from inside the sandboxed iframe
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === 'preview-close') onClose()
+    }
+    window.addEventListener('message', handleMessage)
+
     // Lock body scroll while fullscreen is open
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('message', handleMessage)
       document.body.style.overflow = prev
     }
   }, [handleKeyDown])
 
-  // Single container with flex-column layout.  The button lives in a header
-  // row that never overlaps the iframe — no z-index tricks, no floating, so
-  // WKWebView touch routing can't mis-route taps between layers.
+  // True full-bleed layout: iframe fills the entire viewport, close button
+  // floats above it with a gradient scrim for contrast.  Safe area offsets
+  // are applied only to the button position via CSS.
   return createPortal(
     <div
       className="preview-fullscreen-overlay"
@@ -37,39 +66,39 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
       aria-modal="true"
       aria-label="Fullscreen preview"
     >
-      {/* Header — contains collapse button */}
-      <div className="preview-fullscreen-header">
-        <button
-          className="preview-fullscreen-collapse"
-          onClick={onClose}
-          onPointerDown={(e) => {
-            e.preventDefault()
-            onClose()
-          }}
-          aria-label="Collapse preview"
-          title="Collapse preview"
+      {/* Gradient scrim — ensures close button is visible over any content */}
+      <div className="preview-fullscreen-scrim" />
+
+      <button
+        className="preview-fullscreen-collapse"
+        onClick={onClose}
+        onPointerDown={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+        aria-label="Collapse preview"
+        title="Collapse preview"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="4 14 10 14 10 20" />
-            <polyline points="20 10 14 10 14 4" />
-            <line x1="14" y1="10" x2="21" y2="3" />
-            <line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
-        </button>
-      </div>
+          <polyline points="4 14 10 14 10 20" />
+          <polyline points="20 10 14 10 14 4" />
+          <line x1="14" y1="10" x2="21" y2="3" />
+          <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+      </button>
 
       <iframe
         className="preview-fullscreen-iframe"
-        srcDoc={srcdoc}
+        srcDoc={injectEscapeHandler(srcdoc)}
         sandbox="allow-scripts"
         title="Preview content"
       />
