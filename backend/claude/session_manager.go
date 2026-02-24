@@ -437,8 +437,8 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	seenIDs := make(map[string]bool)
 
 	for _, entry := range m.entries {
-		// Skip sessions with no useful content
-		if entry.MessageCount == 0 && entry.DisplayTitle == "Untitled" {
+		// Skip empty sessions (no messages ever sent)
+		if entry.MessageCount == 0 {
 			continue
 		}
 

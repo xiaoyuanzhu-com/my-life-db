@@ -548,9 +548,15 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 
 	m.mu.Lock()
 	m.initialized = true
-	m.entries["empty"] = &SessionEntry{
-		SessionID:    "empty",
+	m.entries["empty-untitled"] = &SessionEntry{
+		SessionID:    "empty-untitled",
 		DisplayTitle: "Untitled",
+		MessageCount: 0,
+		Modified:     time.Now(),
+	}
+	m.entries["empty-titled"] = &SessionEntry{
+		SessionID:    "empty-titled",
+		DisplayTitle: "Session 10",
 		MessageCount: 0,
 		Modified:     time.Now(),
 	}
@@ -564,7 +570,7 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 
 	result := m.ListAllSessions("", 10, "")
 	if len(result.Entries) != 1 {
-		t.Errorf("expected 1 entry (empty skipped), got %d", len(result.Entries))
+		t.Errorf("expected 1 entry (both empty sessions skipped), got %d", len(result.Entries))
 	}
 	if result.Entries[0].SessionID != "has-content" {
 		t.Errorf("expected has-content, got %s", result.Entries[0].SessionID)
