@@ -442,20 +442,21 @@ export function ChatInterface({
 
       if (sessionMsg.type === 'assistant') {
         setProgressMessage(null)
-        // Clear streaming state after the assistant message is added to rawMessages.
-        // We use requestAnimationFrame to ensure the MessageBlock has time to render
-        // with its initial sync-parsed content before StreamingResponse unmounts.
-        // This prevents the flash of empty content during the transition.
-        if (streamingCompleteRef.current) {
-          requestAnimationFrame(() => {
-            setStreamingText('')
-            setStreamingThinking('')
-            streamingCompleteRef.current = false
-          })
-        } else {
-          setStreamingText('')
-          setStreamingThinking('')
-        }
+        // Clear streaming state immediately — React 18's automatic batching
+        // ensures this and setRawMessages (below) are applied in the same render,
+        // so MessageBlock mounts with sync-parsed content atomically as
+        // StreamingResponse unmounts. No flash, no timing window.
+        //
+        // The previous requestAnimationFrame approach deferred the clear by one
+        // frame, creating a window where a fast-arriving message (e.g. progress
+        // from tool execution) could push the assistant out of the "last message"
+        // position in renderableMessages, causing showStreaming to return true
+        // and rendering duplicate text.
+        setStreamingText('')
+        setStreamingThinking('')
+        streamingBufferRef.current = []
+        thinkingBufferRef.current = []
+        streamingCompleteRef.current = false
       }
 
       // Refresh session list once after initial history load completes
