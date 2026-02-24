@@ -368,12 +368,12 @@ The backend uses structured logging via zerolog:
   `git worktree add -b <branch> .worktrees/<name> origin/main`
 - **Main directory is off-limits** — only `git worktree add/remove` there; everything else (reads, edits, builds) happens inside the worktree.
 - **Sub-agents get the worktree path** — never pass the main repo path.
-- **Never auto-commit or auto-push** — wait for explicit user instruction. Consent applies to the current batch of changes only; after each push + clean up cycle, wait for the user's next explicit instruction.
+- **Never auto-commit or auto-push** — when changes are ready (tests pass, work complete), prompt: *"Ready to commit, push, and clean up?"* so the user can reply **"go"** to confirm. Consent applies to the current batch only; after each push + clean up cycle, wait for the user's next instruction.
 - **Always rebase, never merge** — push `<branch>:main` directly; no PRs, no merge commits.
 
 **Each worktree has one lifecycle: create → work → push → clean up.**
 A worktree may accumulate multiple commits before pushing. After every push, clean up immediately.
-If continuing work in the same session, create a new worktree and repeat.
+To continue work in the same session, start a **new worktree** — the full cycle (including commit/push consent) resets.
 
 **Workflow (commit only when user asks; push + sync + clean up after every push):**
 
