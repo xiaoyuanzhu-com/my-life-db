@@ -318,11 +318,19 @@ interface UseClaudeSessionNotificationsOptions {
  * Hook for Claude session update notifications.
  * Triggers when session metadata changes (title updates, new sessions, deletions).
  *
- * Note: The backend only sends notifications when display titles actually change,
- * not on every message write. This is already filtered server-side.
+ * Debounced (200ms) to batch rapid SSE events — a single session creation can fire
+ * 3-4 SSE events (created, JSONL write, title PATCH, isProcessing change). Without
+ * debounce, each triggers a separate API call. The debounce is an efficiency measure;
+ * correctness is handled by refreshSessions using authoritative replacement (not merge).
  */
 export function useClaudeSessionNotifications(options: UseClaudeSessionNotificationsOptions) {
   const { onSessionUpdated, enabled = true } = options;
+
+  // Debounce the callback to batch rapid notifications (matches useInboxNotifications pattern)
+  const debouncedOnSessionUpdated = useMemo(
+    () => debounce(onSessionUpdated, DEBOUNCE_MS),
+    [onSessionUpdated]
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -331,7 +339,7 @@ export function useClaudeSessionNotifications(options: UseClaudeSessionNotificat
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'claude-session-updated') {
-          onSessionUpdated();
+          debouncedOnSessionUpdated();
         }
       } catch {
         // Ignore parse errors
@@ -339,6 +347,9 @@ export function useClaudeSessionNotifications(options: UseClaudeSessionNotificat
     };
 
     const unsubscribe = subscribe(listener);
-    return unsubscribe;
-  }, [enabled, onSessionUpdated]);
+    return () => {
+      unsubscribe();
+      debouncedOnSessionUpdated.cancel();
+    };
+  }, [enabled, debouncedOnSessionUpdated]);
 }

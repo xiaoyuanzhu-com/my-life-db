@@ -191,8 +191,13 @@ export default function ClaudePage() {
     }
   }, [statusFilter])
 
-  // Background refresh - updates sessions without showing loading state
-  // Used for SSE-triggered updates (e.g., title changes)
+  // Background refresh - updates sessions without showing loading state.
+  // Used for SSE-triggered updates (e.g., title changes, new sessions, state changes).
+  //
+  // Design: the API response is authoritative. This is a full replacement of the
+  // first page, not an accumulator merge. Sessions loaded via scroll-up pagination
+  // (older than the API window) are preserved; everything else is replaced.
+  // This ensures all tabs converge to the same state after each SSE event.
   const refreshSessions = useCallback(async () => {
     try {
       const params = new URLSearchParams({
@@ -204,25 +209,33 @@ export default function ClaudePage() {
       const data = await response.json()
       const newSessionList: Session[] = data.sessions || []
 
-      // Merge: update existing sessions, add new ones
       setSessions((prevSessions) => {
-        const prevMap = new Map(prevSessions.map((s) => [s.id, s]))
         const newMap = new Map(newSessionList.map((s) => [s.id, s]))
 
-        // Update existing sessions with new data, preserve ones not in new list
-        const merged = prevSessions.map((s) => {
-          const updated = newMap.get(s.id)
-          return updated ? { ...s, ...updated } : s
-        })
+        // API response is the source of truth for the first page.
+        const result = [...newSessionList]
 
-        // Add any new sessions that weren't in the previous list
-        for (const newSession of newSessionList) {
-          if (!prevMap.has(newSession.id)) {
-            merged.unshift(newSession)
+        // Preserve sessions loaded via scroll-up pagination — these are older
+        // than the API's first page and would be lost on a simple replacement.
+        // Heuristic: if a previous session is NOT in the API response and its
+        // activity is older than the oldest session in the response, it was
+        // loaded via pagination. Anything newer but missing is stale (phantom
+        // warm sessions, optimistic adds the API hasn't caught up to yet).
+        if (newSessionList.length > 0) {
+          const oldestInResponse = Math.min(
+            ...newSessionList.map(s => s.lastUserActivity || s.lastActivity)
+          )
+          for (const s of prevSessions) {
+            if (!newMap.has(s.id)) {
+              const activity = s.lastUserActivity || s.lastActivity
+              if (activity < oldestInResponse) {
+                result.push(s)
+              }
+            }
           }
         }
 
-        return sortSessions(merged)
+        return sortSessions(result)
       })
 
       setPagination({
@@ -373,9 +386,14 @@ export default function ClaudePage() {
         permissionMode: newSessionPermissionMode,
       }
 
-      setSessions((prevSessions) =>
-        sortSessions([newSession, ...prevSessions])
-      )
+      // Deduplicate: the session may already be in the list from an SSE-triggered
+      // refresh that raced ahead of this optimistic add (warm session's JSONL write
+      // fires an SSE event that can complete a full refresh cycle before the PATCH
+      // response returns here). Filter first, then prepend.
+      setSessions((prevSessions) => {
+        const without = prevSessions.filter((s) => s.id !== newSession.id)
+        return sortSessions([newSession, ...without])
+      })
       // Set the pending message before switching to the session
       setPendingInitialMessage(message)
       setActiveSessionId(sessionId)
@@ -393,7 +411,10 @@ export default function ClaudePage() {
 
         if (response.ok) {
           const newSession = await response.json()
-          setSessions((prevSessions) => [newSession, ...prevSessions])
+          setSessions((prevSessions) => {
+            const without = prevSessions.filter((s) => s.id !== newSession.id)
+            return sortSessions([newSession, ...without])
+          })
           setPendingInitialMessage(message)
           setActiveSessionId(newSession.id)
           localStorage.removeItem('claude-input:new-session')
