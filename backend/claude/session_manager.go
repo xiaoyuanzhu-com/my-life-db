@@ -1400,7 +1400,6 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,
 		SystemPrompt:           defaultSystemPrompt,
-		AllowedTools:           allowedTools,
 		PermissionMode:         session.PermissionMode,
 		CanUseTool:             session.CreatePermissionCallback(),
 		SkipInitialization:     true,

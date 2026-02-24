@@ -25,9 +25,7 @@
 //
 // For interactive conversations:
 //
-//	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
-//	    AllowedTools: []string{"Read", "Glob", "Grep"},
-//	})
+//	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{})
 //
 //	if err := client.Connect(ctx, "Hello!"); err != nil {
 //	    log.Fatal(err)

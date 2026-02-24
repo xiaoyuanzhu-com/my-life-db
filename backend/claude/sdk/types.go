@@ -246,10 +246,6 @@ type SandboxSettings struct {
 
 // ClaudeAgentOptions configures the Claude SDK client
 type ClaudeAgentOptions struct {
-	// Tools configuration
-	AllowedTools    []string `json:"allowedTools,omitempty"`
-	DisallowedTools []string `json:"disallowedTools,omitempty"`
-
 	// Prompts
 	SystemPrompt string `json:"systemPrompt,omitempty"`
 

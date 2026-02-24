@@ -425,13 +425,6 @@ func QueryOnce(ctx context.Context, prompt string, options ClaudeAgentOptions) (
 
 // --- Convenience Helpers ---
 
-// WithAllowedTools returns options with the specified allowed tools
-func WithAllowedTools(tools ...string) ClaudeAgentOptions {
-	return ClaudeAgentOptions{
-		AllowedTools: tools,
-	}
-}
-
 // WithPermissionMode returns options with the specified permission mode
 func WithPermissionMode(mode PermissionMode) ClaudeAgentOptions {
 	return ClaudeAgentOptions{
@@ -468,8 +461,6 @@ func (o ClaudeAgentOptions) ToTransportOptions() transport.TransportOptions {
 	}
 
 	return transport.TransportOptions{
-		AllowedTools:             o.AllowedTools,
-		DisallowedTools:          o.DisallowedTools,
 		SystemPrompt:             o.SystemPrompt,
 		PermissionMode:           permMode,
 		PermissionPromptToolName: o.PermissionPromptToolName,
@@ -492,12 +483,6 @@ func MergeOptions(opts ...ClaudeAgentOptions) ClaudeAgentOptions {
 	result := ClaudeAgentOptions{}
 
 	for _, opt := range opts {
-		if len(opt.AllowedTools) > 0 {
-			result.AllowedTools = append(result.AllowedTools, opt.AllowedTools...)
-		}
-		if len(opt.DisallowedTools) > 0 {
-			result.DisallowedTools = append(result.DisallowedTools, opt.DisallowedTools...)
-		}
 		if opt.SystemPrompt != "" {
 			result.SystemPrompt = opt.SystemPrompt
 		}

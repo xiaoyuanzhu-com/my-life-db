@@ -15,8 +15,7 @@ func ExampleClaudeSDKClient_simple() {
 
 	// Create client with basic options
 	client := claudesdk.NewClaudeSDKClient(claudesdk.ClaudeAgentOptions{
-		AllowedTools: []string{"Read", "Glob", "Grep"},
-		Cwd:          "/path/to/project",
+		Cwd: "/path/to/project",
 	})
 
 	// Connect with an initial prompt

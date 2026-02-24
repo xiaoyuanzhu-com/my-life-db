@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -142,16 +141,6 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		cmd = append(cmd, "--system-prompt", "")
 	} else {
 		cmd = append(cmd, "--system-prompt", opts.SystemPrompt)
-	}
-
-	// Allowed tools (comma-separated, matching Python SDK format)
-	if len(opts.AllowedTools) > 0 {
-		cmd = append(cmd, "--allowedTools", strings.Join(opts.AllowedTools, ","))
-	}
-
-	// Disallowed tools (comma-separated, matching Python SDK format)
-	if len(opts.DisallowedTools) > 0 {
-		cmd = append(cmd, "--disallowedTools", strings.Join(opts.DisallowedTools, ","))
 	}
 
 	// Permission mode

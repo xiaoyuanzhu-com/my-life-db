@@ -3,10 +3,6 @@ package transport
 // TransportOptions contains options for the subprocess transport.
 // This is a subset of ClaudeAgentOptions relevant to the transport layer.
 type TransportOptions struct {
-	// Tools configuration
-	AllowedTools    []string
-	DisallowedTools []string
-
 	// Prompts
 	SystemPrompt string
 
