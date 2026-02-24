@@ -25,3 +25,17 @@
 - Height changes after render — collapsible sections (thinking, tool results, Task conversations) change height when toggled
 - Nested recursion — `SessionMessages` renders recursively at `depth > 0` inside Task tool blocks
 - `react-virtuoso` handles dynamic heights better than `react-window`, but collapsible state changes require re-measurement
+
+## Offload file serving from API server
+
+**Pain point:** Large file downloads through `/raw/` saturate server resources, slowing all API endpoints.
+
+**Preferred approach:** Pre-signed URLs via S3-compatible storage (MinIO self-hosted or Cloudflare R2). Client gets a signed URL from the API and downloads/uploads directly — bytes never touch the Go server.
+
+- **Downloads:** API returns pre-signed GET URL → client fetches from storage
+- **Uploads:** API returns pre-signed PUT URL → client uploads to storage → confirms completion → API saves metadata
+- **Local processing (e.g. Claude analyzing files):** Decouple via job queue — API enqueues, separate worker streams from storage and calls LLM
+
+**Rejected quick win:** Per-connection bandwidth throttling middleware on `/raw/` (rate-limited `ResponseWriter` wrapper). Works but treats the symptom, not the cause.
+
+**Decision:** Go with storage offload when the pain justifies the effort.
