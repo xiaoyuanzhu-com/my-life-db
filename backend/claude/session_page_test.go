@@ -37,6 +37,24 @@ func makeMsgWithUUID(msgType, uuid string) []byte {
 	return data
 }
 
+// makeLargeMsg creates a raw JSON message with the given type and at least
+// minBytes in total size by including a padding field.
+func makeLargeMsg(msgType string, minBytes int) []byte {
+	// First, marshal without padding to measure the fixed overhead.
+	base, _ := json.Marshal(map[string]string{"type": msgType, "padding": ""})
+	overhead := len(base) // e.g. {"padding":"","type":"user"} ≈ 28 bytes
+	padLen := minBytes - overhead
+	if padLen < 0 {
+		padLen = 0
+	}
+	padding := make([]byte, padLen)
+	for i := range padding {
+		padding[i] = 'x'
+	}
+	data, _ := json.Marshal(map[string]string{"type": msgType, "padding": string(padding)})
+	return data
+}
+
 // msgTypes extracts the "type" field from each raw JSON message for easy assertion.
 func msgTypes(msgs [][]byte) []string {
 	var types []string
@@ -449,6 +467,151 @@ func TestGetPageRange_ClampsBounds(t *testing.T) {
 	msgs = s.GetPageRange(0, 100)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message, got %d", len(msgs))
+	}
+}
+
+// =============================================================================
+// checkPageSeal / derivePageBreaks Tests
+// =============================================================================
+
+func TestCheckPageSeal_CountThreshold(t *testing.T) {
+	s := createTestSession()
+
+	// Append DefaultPageSize messages (user/assistant pairs).
+	for i := 0; i < DefaultPageSize; i++ {
+		msg := makeMsg("user")
+		s.rawMessages = append(s.rawMessages, msg)
+		s.currentPageCount++
+		s.currentPageBytes += len(msg)
+		s.checkPageSeal()
+	}
+
+	if len(s.pageBreaks) != 1 {
+		t.Fatalf("expected 1 page break after %d messages, got %d", DefaultPageSize, len(s.pageBreaks))
+	}
+	if s.currentPageCount != 0 {
+		t.Errorf("expected currentPageCount reset to 0, got %d", s.currentPageCount)
+	}
+	if s.currentPageBytes != 0 {
+		t.Errorf("expected currentPageBytes reset to 0, got %d", s.currentPageBytes)
+	}
+}
+
+func TestCheckPageSeal_BytesThreshold(t *testing.T) {
+	s := createTestSession()
+
+	// Append a few large messages that exceed DefaultPageBytes before DefaultPageSize.
+	msgSize := 200 * 1024 // 200 KB each
+	for i := 0; i < 3; i++ {
+		msg := makeLargeMsg("user", msgSize)
+		s.rawMessages = append(s.rawMessages, msg)
+		s.currentPageCount++
+		s.currentPageBytes += len(msg)
+		s.checkPageSeal()
+	}
+
+	// 3 * 200KB = 600KB > 500KB → should have sealed
+	if len(s.pageBreaks) != 1 {
+		t.Fatalf("expected 1 page break from byte threshold (3 msgs × %d bytes), got %d page breaks", msgSize, len(s.pageBreaks))
+	}
+	if s.currentPageCount != 0 {
+		t.Errorf("expected currentPageCount reset to 0, got %d", s.currentPageCount)
+	}
+	if s.currentPageBytes != 0 {
+		t.Errorf("expected currentPageBytes reset to 0, got %d", s.currentPageBytes)
+	}
+}
+
+func TestCheckPageSeal_BytesThreshold_BeforeCount(t *testing.T) {
+	// Ensure size seals the page even when count is well below DefaultPageSize.
+	s := createTestSession()
+
+	msg := makeLargeMsg("user", DefaultPageBytes+1)
+	s.rawMessages = append(s.rawMessages, msg)
+	s.currentPageCount++
+	s.currentPageBytes += len(msg)
+	s.checkPageSeal()
+
+	if len(s.pageBreaks) != 1 {
+		t.Fatalf("expected seal from single large message exceeding byte limit, got %d page breaks", len(s.pageBreaks))
+	}
+	if s.currentPageCount != 0 {
+		t.Errorf("expected currentPageCount reset to 0, got %d", s.currentPageCount)
+	}
+}
+
+func TestCheckPageSeal_BlockedByOpenStream(t *testing.T) {
+	s := createTestSession()
+
+	// Exceed both thresholds but with an open stream.
+	msg := makeLargeMsg("user", DefaultPageBytes+1)
+	s.rawMessages = append(s.rawMessages, msg)
+	s.currentPageCount = DefaultPageSize + 1
+	s.currentPageBytes = len(msg)
+	s.hasOpenStream = true
+	s.checkPageSeal()
+
+	if len(s.pageBreaks) != 0 {
+		t.Fatal("expected no seal while hasOpenStream is true")
+	}
+
+	// Close the stream → should seal.
+	s.hasOpenStream = false
+	s.checkPageSeal()
+
+	if len(s.pageBreaks) != 1 {
+		t.Fatal("expected seal after stream closed")
+	}
+}
+
+func TestDerivePageBreaks_SizeBasedSealing(t *testing.T) {
+	s := createTestSession()
+
+	// Build a message list: 3 large messages (200KB each) then 2 small messages.
+	// First 3 should form a sealed page (600KB > 500KB), remaining 2 are open page.
+	msgSize := 200 * 1024
+	for i := 0; i < 3; i++ {
+		s.rawMessages = append(s.rawMessages, makeLargeMsg("user", msgSize))
+	}
+	s.rawMessages = append(s.rawMessages, makeMsg("user"))
+	s.rawMessages = append(s.rawMessages, makeMsg("assistant"))
+
+	s.derivePageBreaks()
+
+	if len(s.pageBreaks) != 1 {
+		t.Fatalf("expected 1 page break, got %d", len(s.pageBreaks))
+	}
+	if s.pageBreaks[0] != 3 {
+		t.Errorf("expected page break at index 3, got %d", s.pageBreaks[0])
+	}
+	if s.currentPageCount != 2 {
+		t.Errorf("expected 2 messages in open page, got %d", s.currentPageCount)
+	}
+}
+
+func TestDerivePageBreaks_StreamEventsCountTowardBytes(t *testing.T) {
+	// stream_events don't count toward message count but DO contribute bytes.
+	// This tests that large stream_events push toward the byte threshold,
+	// and the page seals once the stream is closed.
+	s := createTestSession()
+
+	// Add large stream events + assistant that closes them, exceeding byte limit.
+	s.rawMessages = append(s.rawMessages, makeLargeMsg("stream_event", 300*1024))
+	s.rawMessages = append(s.rawMessages, makeLargeMsg("stream_event", 300*1024))
+	s.rawMessages = append(s.rawMessages, makeMsg("assistant")) // closes stream, count=1
+
+	// Add a trailing message so we can verify the page split.
+	s.rawMessages = append(s.rawMessages, makeMsg("user"))
+
+	s.derivePageBreaks()
+
+	// 600KB from stream events + small assistant > 500KB, and count=1 (assistant).
+	// Should seal after assistant since stream is closed and bytes exceeded.
+	if len(s.pageBreaks) != 1 {
+		t.Fatalf("expected 1 page break (bytes from stream_events), got %d", len(s.pageBreaks))
+	}
+	if s.pageBreaks[0] != 3 {
+		t.Errorf("expected page break at index 3, got %d", s.pageBreaks[0])
 	}
 }
 

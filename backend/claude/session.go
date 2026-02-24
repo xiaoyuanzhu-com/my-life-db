@@ -74,10 +74,13 @@ type Session struct {
 	rawMu       sync.RWMutex     `json:"-"`
 
 	// Page model (§6) — partitions the raw message list into bounded pages.
+	// A page seals when either the message count or byte size threshold is
+	// reached (and no open stream is in progress).
 	// All fields protected by rawMu.
 	pageBreaks       []int `json:"-"` // Raw-list indices where each sealed page ends
 	currentPageStart int   `json:"-"` // Raw-list index where current (open) page begins
 	currentPageCount int   `json:"-"` // Non-closed-stream-event count in current page
+	currentPageBytes int   `json:"-"` // Total byte size of messages in current page
 	hasOpenStream    bool  `json:"-"` // True if stream_events exist without a following assistant
 
 	// Pending control requests - maps request_id to response channel
@@ -424,6 +427,7 @@ func (s *Session) ResetRawMessages() {
 	s.pageBreaks = nil
 	s.currentPageStart = 0
 	s.currentPageCount = 0
+	s.currentPageBytes = 0
 	s.hasOpenStream = false
 	s.rawMu.Unlock()
 
@@ -534,8 +538,12 @@ func (s *Session) GetRawMessages() [][]byte {
 	return result
 }
 
-// DefaultPageSize is the number of messages per page for WebSocket pagination.
-const DefaultPageSize = 100
+// DefaultPageSize is the message-count threshold per page for WebSocket pagination.
+const DefaultPageSize = 500
+
+// DefaultPageBytes is the byte-size threshold per page for WebSocket pagination.
+// A page seals when either DefaultPageSize or DefaultPageBytes is reached.
+const DefaultPageBytes = 500 * 1024 // 500 KB
 
 // TotalPages returns the total number of pages (sealed + 1 open page).
 // The open page always exists, even if empty.
@@ -660,13 +668,16 @@ func materializePageSlice(slice [][]byte, sealed bool) [][]byte {
 }
 
 // checkPageSeal checks if the current page should be sealed after an append.
+// A page seals when either the message count or byte size threshold is reached,
+// provided no stream is open.
 // Must be called with rawMu held.
 func (s *Session) checkPageSeal() {
-	if s.currentPageCount >= DefaultPageSize && !s.hasOpenStream {
+	if (s.currentPageCount >= DefaultPageSize || s.currentPageBytes >= DefaultPageBytes) && !s.hasOpenStream {
 		// Seal the current page
 		s.pageBreaks = append(s.pageBreaks, len(s.rawMessages))
 		s.currentPageStart = len(s.rawMessages)
 		s.currentPageCount = 0
+		s.currentPageBytes = 0
 		// hasOpenStream is already false
 	}
 }
@@ -678,6 +689,7 @@ func (s *Session) derivePageBreaks() {
 	s.pageBreaks = nil
 	s.currentPageStart = 0
 	s.currentPageCount = 0
+	s.currentPageBytes = 0
 	s.hasOpenStream = false
 
 	for i, msg := range s.rawMessages {
@@ -691,12 +703,14 @@ func (s *Session) derivePageBreaks() {
 		default:
 			s.currentPageCount++
 		}
+		s.currentPageBytes += len(msg)
 
 		// Check seal after processing this message
-		if s.currentPageCount >= DefaultPageSize && !s.hasOpenStream {
+		if (s.currentPageCount >= DefaultPageSize || s.currentPageBytes >= DefaultPageBytes) && !s.hasOpenStream {
 			s.pageBreaks = append(s.pageBreaks, i+1)
 			s.currentPageStart = i + 1
 			s.currentPageCount = 0
+			s.currentPageBytes = 0
 		}
 	}
 }
@@ -854,6 +868,7 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	default:
 		s.currentPageCount++
 	}
+	s.currentPageBytes += len(msgCopy)
 	s.checkPageSeal()
 	s.rawMu.Unlock()
 
