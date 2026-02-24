@@ -542,8 +542,9 @@ func (s *Session) TotalPages() int {
 }
 
 // GetPage returns the materialized messages for a given page number.
-// Materialization excludes closed stream_events from sealed pages (§7.3).
-// For the open (last) page, active stream_events are included for mid-stream reconnect.
+// Materialization excludes closed stream_events from ALL pages (§7.3).
+// Active stream_events (trailing run with no following assistant) are kept
+// on the open page for mid-stream reconnection recovery.
 // Returns nil if the page number is out of range.
 func (s *Session) GetPage(page int) (messages [][]byte, sealed bool) {
 	s.rawMu.RLock()
@@ -565,18 +566,7 @@ func (s *Session) GetPage(page int) (messages [][]byte, sealed bool) {
 		sealed = true
 	}
 
-	// Materialize: for sealed pages, exclude all stream_events (they're closed).
-	// For the open page, include everything (active stream_events needed for reconnect).
-	if sealed {
-		for i := start; i < end; i++ {
-			if !isStreamEvent(s.rawMessages[i]) {
-				messages = append(messages, s.rawMessages[i])
-			}
-		}
-	} else {
-		messages = make([][]byte, end-start)
-		copy(messages, s.rawMessages[start:end])
-	}
+	messages = materializePageSlice(s.rawMessages[start:end], sealed)
 	return messages, sealed
 }
 
@@ -607,17 +597,62 @@ func (s *Session) GetPageRange(fromPage, toPage int) [][]byte {
 			sealed = true
 		}
 
-		if sealed {
-			for i := start; i < end; i++ {
-				if !isStreamEvent(s.rawMessages[i]) {
-					result = append(result, s.rawMessages[i])
-				}
-			}
-		} else {
-			result = append(result, s.rawMessages[start:end]...)
-		}
+		result = append(result, materializePageSlice(s.rawMessages[start:end], sealed)...)
 	}
 	return result
+}
+
+// materializePageSlice filters a raw page slice for serving.
+// Excludes closed stream_events (those followed by an assistant message).
+// Keeps active stream_events (trailing run with no assistant after them)
+// on the open page for mid-stream reconnection recovery.
+//
+// For sealed pages, all streams are closed (seal requires !hasOpenStream),
+// so ALL stream_events are excluded — the fast path skips the boundary scan.
+//
+// For the open page, we scan backward from the end to find the boundary:
+// the trailing run of stream_events with no assistant after them is active.
+// Everything before that boundary is filtered (closed stream_events excluded).
+func materializePageSlice(slice [][]byte, sealed bool) [][]byte {
+	if sealed {
+		// Fast path: all stream_events are closed on sealed pages.
+		var out [][]byte
+		for _, msg := range slice {
+			if !isStreamEvent(msg) {
+				out = append(out, msg)
+			}
+		}
+		return out
+	}
+
+	// Open page: find the boundary between closed and active stream_events.
+	// Scan backward from the end. Active stream_events are a trailing run
+	// of stream_events with no assistant (or any non-stream_event) after them.
+	//
+	// Example:
+	//   [se, se, assistant, result, user, se, se, assistant, result, se, se]
+	//                                                                ^--- activeFrom = 9
+	//   Served: [assistant, result, user, assistant, result, se, se]
+	activeFrom := len(slice) // index where active stream_events begin (= len means none)
+	for i := len(slice) - 1; i >= 0; i-- {
+		if isStreamEvent(slice[i]) {
+			activeFrom = i
+		} else {
+			break
+		}
+	}
+
+	var out [][]byte
+	for i, msg := range slice {
+		if i >= activeFrom {
+			// Active stream_event — keep it
+			out = append(out, msg)
+		} else if !isStreamEvent(msg) {
+			// Non-stream_event or closed stream_event — keep non-stream, skip stream
+			out = append(out, msg)
+		}
+	}
+	return out
 }
 
 // checkPageSeal checks if the current page should be sealed after an append.
