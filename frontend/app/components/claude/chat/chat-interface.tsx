@@ -4,14 +4,13 @@ import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { RateLimitWarning } from './rate-limit-warning'
 import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
-import { useSessionWebSocket, usePermissions, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
-import type { TodoItem, UserQuestion, PermissionDecision } from '~/types/claude'
+import { useSessionWebSocket, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
+import type { TodoItem, UserQuestion, PermissionRequest, PermissionDecision, ControlResponse } from '~/types/claude'
 import type { PermissionMode } from './permission-mode-selector'
 import {
   buildToolResultMap,
   hasToolUseResult,
   isStatusMessage,
-  isToolUseBlock,
   normalizeMessage,
   type SessionMessage,
 } from '~/lib/session-message-utils'
@@ -91,7 +90,6 @@ export function ChatInterface({
 
   // Tool state
   const [activeTodos, setActiveTodos] = useState<TodoItem[]>([])
-  const [pendingQuestions, setPendingQuestions] = useState<UserQuestion[]>([])
 
   // Progress state - shows WIP indicator when Claude is working
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
@@ -161,9 +159,6 @@ export function ChatInterface({
   // ============================================================================
   // Hooks
   // ============================================================================
-
-  // Permission tracking hook
-  const permissions = usePermissions()
 
   // WebSocket message handler
   const handleMessage = useCallback(
@@ -326,79 +321,15 @@ export function ChatInterface({
         return
       }
 
-      // Handle control_request - delegate to permissions hook
-      // Special case: AskUserQuestion is handled via the standard permission protocol
-      // but we show the question UI instead of the permission UI
-      if (msg.type === 'control_request') {
-        const request = msg.request as { subtype?: string; tool_name?: string; input?: Record<string, unknown> } | undefined
-        if (request?.subtype === 'can_use_tool') {
-          const requestId = msg.request_id as string
-          const toolName = request.tool_name || ''
-
-          // AskUserQuestion: show question UI instead of permission UI
-          if (toolName === 'AskUserQuestion') {
-            const input = request.input as { questions?: Array<{
-              question: string
-              header: string
-              options: Array<{ label: string; description: string }>
-              multiSelect: boolean
-            }> } | undefined
-            const questions = input?.questions
-
-            if (requestId && questions && questions.length > 0) {
-              setPendingQuestions((prev) => {
-                // When a live control_request arrives, evict any historically-detected entries
-                // (non-sdk-perm- ids). They represent the same unanswered AskUserQuestion but
-                // were detected via rawMessages scan — the live control_request supersedes them.
-                const withoutHistorical = prev.filter((q) => q.id.startsWith('sdk-perm-'))
-                // Deduplicate by request_id to prevent duplicate popovers on reconnection.
-                // When WebSocket reconnects, the backend resends all cached messages including
-                // control_requests that are already in pendingQuestions.
-                if (withoutHistorical.some((q) => q.id === requestId)) return withoutHistorical
-                return [
-                  ...withoutHistorical,
-                  {
-                    id: requestId,
-                    toolCallId: requestId, // Use request_id as toolCallId for compatibility
-                    questions,
-                  },
-                ]
-              })
-            }
-            return
-          }
-
-          // Regular tools: show permission UI
-          permissions.handleControlRequest({
-            request_id: requestId,
-            request: {
-              tool_name: toolName,
-              input: request.input,
-            },
-          })
-        }
-        return
-      }
-
-      // Handle control_response - for permission tool responses and permission mode changes
+      // control_request and control_response enter rawMessages (single source of truth).
+      // Pending permissions/questions are derived via useMemo below.
+      // Special handling: extract set_permission_mode from control_response.
       if (msg.type === 'control_response') {
-        const requestId = msg.request_id as string
-
-        // Check if this is a set_permission_mode response
         const response = msg.response as { subtype?: string; mode?: string } | undefined
         if (response?.subtype === 'set_permission_mode' && response.mode) {
           setPermissionMode(response.mode as PermissionMode)
         }
-
-        // Remove from pendingQuestions if this response is for an AskUserQuestion
-        // (AskUserQuestion uses pendingQuestions, not pendingPermissions)
-        setPendingQuestions((prev) => prev.filter((q) => q.id !== requestId))
-
-        // Also delegate to permissions hook (for can_use_tool responses)
-        permissions.handleControlResponse({
-          request_id: requestId,
-        })
-        return
+        // Fall through to append to rawMessages
       }
 
       // Handle system init message
@@ -479,10 +410,8 @@ export function ChatInterface({
         return [...prev, sessionMsg]
       })
     },
-    // Use specific stable functions, not the whole permissions object
-    // handleControlRequest and handleControlResponse have empty deps, so they're stable
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [permissions.handleControlRequest, permissions.handleControlResponse, refreshSessions]
+    [refreshSessions]
   )
 
   // WebSocket connection hook
@@ -603,10 +532,73 @@ export function ChatInterface({
     return null
   }, [rawMessages])
 
+  // Derive pending permissions and questions from control_request/control_response in rawMessages.
+  // Single source of truth (D5): no separate state, no dual writers.
+  // A control_request is resolved if a matching control_response exists or a result follows it.
+  const { pendingPermissions, pendingQuestions } = useMemo(() => {
+    const requests = new Map<string, { msg: Record<string, unknown>; index: number }>()
+    const responses = new Set<string>()
+    let lastResultIndex = -1
+
+    for (let i = 0; i < rawMessages.length; i++) {
+      const msg = rawMessages[i] as unknown as Record<string, unknown>
+      if (msg.type === 'control_request') {
+        const reqId = msg.request_id as string
+        if (reqId) requests.set(reqId, { msg, index: i })
+      }
+      if (msg.type === 'control_response') {
+        const reqId = msg.request_id as string
+        if (reqId) responses.add(reqId)
+      }
+      if (msg.type === 'result') {
+        lastResultIndex = i
+      }
+    }
+
+    const unresolvedPermissions: PermissionRequest[] = []
+    const unresolvedQuestions: UserQuestion[] = []
+
+    for (const [reqId, { msg, index }] of requests) {
+      // Resolved if a matching control_response exists or a result message follows
+      if (responses.has(reqId) || lastResultIndex > index) continue
+
+      const request = msg.request as { subtype?: string; tool_name?: string; input?: Record<string, unknown> } | undefined
+      if (request?.subtype !== 'can_use_tool') continue
+
+      const toolName = request.tool_name || ''
+
+      if (toolName === 'AskUserQuestion') {
+        const input = request.input as { questions?: Array<{
+          question: string
+          header: string
+          options: Array<{ label: string; description: string }>
+          multiSelect: boolean
+        }> } | undefined
+        if (input?.questions && input.questions.length > 0) {
+          unresolvedQuestions.push({
+            id: reqId,
+            toolCallId: reqId,
+            questions: input.questions,
+          })
+        }
+      } else {
+        unresolvedPermissions.push({
+          requestId: reqId,
+          toolName,
+          input: request.input || {},
+        })
+      }
+    }
+
+    return { pendingPermissions: unresolvedPermissions, pendingQuestions: unresolvedQuestions }
+  }, [rawMessages])
+
   // Filter messages for rendering
   const renderableMessages = useMemo(() => {
     return rawMessages.filter((msg) => {
       if (SKIP_TYPES.includes(msg.type)) return false
+      // control_request/response are in rawMessages for derivation, not display
+      if (msg.type === 'control_request' || msg.type === 'control_response') return false
       if (msg.type === 'user' && hasToolUseResult(msg)) return false
       return true
     })
@@ -644,84 +636,6 @@ export function ChatInterface({
   const effectiveConnectionStatus: ConnectionStatus =
     ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
 
-  // Detect AskUserQuestion tool_use blocks that need user response
-  //
-  // BOUNDARY MARKER: hasSeenInit
-  // - Before init: messages are historical (from JSONL cache)
-  // - After init: messages are live (from Claude CLI stdout)
-  //
-  // POPOVER BEHAVIOR:
-  // - !hasSeenInit (historical session): Show popover for detected tool_use without result
-  //   → Allows user to answer and activate the session (Case 1)
-  // - hasSeenInit (live session): Only show popover for control_request questions
-  //   → Historical tool_use are shown in message list as incomplete (○ gray) but no popover (Case 2)
-  //   → Live control_requests show popover (Case 3)
-  //
-  // NOTE: Message list always renders tool_use status correctly - this only affects popover behavior
-  useEffect(() => {
-    // For live sessions (after init), only use control_request questions
-    // These are added via the control_request handler and have sdk-perm-xxx format
-    if (hasSeenInit) {
-      setPendingQuestions((prev) => prev.filter((q) => q.id.startsWith('sdk-perm-')))
-      return
-    }
-
-    // For historical sessions (before init), detect tool_use blocks without results
-    const detectedQuestions: UserQuestion[] = []
-
-    for (const msg of rawMessages) {
-      if (msg.type !== 'assistant') continue
-      const content = msg.message?.content
-      if (!Array.isArray(content)) continue
-
-      for (const block of content) {
-        if (!isToolUseBlock(block)) continue
-        if (block.name !== 'AskUserQuestion') continue
-
-        // Check if this tool_use already has a result
-        if (toolResultMap.has(block.id)) continue
-
-        // Extract question data from input
-        const input = block.input as {
-          questions?: Array<{
-            question: string
-            header: string
-            options: Array<{ label: string; description: string }>
-            multiSelect: boolean
-          }>
-        }
-
-        if (input.questions && input.questions.length > 0) {
-          detectedQuestions.push({
-            id: block.id,
-            toolCallId: block.id,
-            questions: input.questions,
-          })
-        }
-      }
-    }
-
-    // For historical sessions, merge detected questions with any existing control_request questions
-    setPendingQuestions((prev) => {
-      const controlRequestQuestions = prev.filter((q) => q.id.startsWith('sdk-perm-'))
-      // If live control_request questions already exist, don't add historical detections.
-      // A live control_request for AskUserQuestion supersedes the historical tool_use detection —
-      // the same question would otherwise appear twice (once per detection path).
-      // The hasSeenInit→true transition will clean up any stale historical entries shortly after.
-      if (controlRequestQuestions.length > 0) {
-        return controlRequestQuestions
-      }
-      // Deduplicate by id
-      const merged = [...controlRequestQuestions]
-      for (const q of detectedQuestions) {
-        if (!merged.some((m) => m.id === q.id)) {
-          merged.push(q)
-        }
-      }
-      return merged
-    })
-  }, [rawMessages, toolResultMap, hasSeenInit])
-
   // ============================================================================
   // Effects
   // ============================================================================
@@ -749,7 +663,6 @@ export function ChatInterface({
     } else {
       setPermissionMode('default')
     }
-    permissions.reset()
     hasRefreshedRef.current = false
     initialLoadCompleteRef.current = false
     initialMessageSentRef.current = false
@@ -760,7 +673,6 @@ export function ChatInterface({
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
   }, [sessionId])
 
   // Cleanup initial load timer on unmount
@@ -829,8 +741,6 @@ export function ChatInterface({
         streamingBufferRef.current = []
         thinkingBufferRef.current = []
         streamingCompleteRef.current = false
-        setPendingQuestions([])
-        permissions.reset()
         // Reset pagination state for fresh load
         setLowestLoadedPage(0)
         setIsLoadingHistory(false)
@@ -845,7 +755,6 @@ export function ChatInterface({
       }
       wasConnectedRef.current = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions.reset is stable
   }, [ws.connectionStatus])
 
   // Sync permission mode to backend on first connection
@@ -937,40 +846,56 @@ export function ChatInterface({
     [ws]
   )
 
-  // Handle permission decision
+  // Handle permission decision — build control_response and send via WebSocket.
+  // The useMemo derivation will automatically clear the UI when the matching
+  // control_response enters rawMessages.
   const handlePermissionDecision = useCallback(
     async (requestId: string, decision: PermissionDecision) => {
-      const response = permissions.buildPermissionResponse(requestId, decision)
-      if (!response) return
+      // Find the pending permission to get tool name
+      const request = pendingPermissions.find((p) => p.requestId === requestId)
+      if (!request) return
+
+      const behavior = decision === 'deny' ? 'deny' : 'allow'
+      const alwaysAllow = decision === 'allowSession'
+
+      const response: ControlResponse = {
+        type: 'control_response',
+        request_id: requestId,
+        response: {
+          subtype: 'success',
+          response: {
+            behavior,
+            ...(behavior === 'deny' && {
+              message: `Permission denied by user for tool: ${request.toolName}`,
+            }),
+          },
+        },
+        tool_name: request.toolName,
+        always_allow: alwaysAllow,
+      }
 
       try {
         await ws.sendMessage(response)
-        // Add to responses locally for immediate UI feedback
-        permissions.handleControlResponse({ request_id: requestId })
       } catch (error) {
         console.error('[ChatInterface] Failed to send permission response:', error)
-        // Still mark as responded locally to clear the UI
-        permissions.handleControlResponse({ request_id: requestId })
       }
     },
-    // Using specific stable functions to avoid unnecessary re-renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [permissions.buildPermissionResponse, permissions.handleControlResponse, ws.sendMessage]
+    [pendingPermissions, ws.sendMessage]
   )
 
-  // Handle question answer - send control_response with updated_input back to backend
-  // AskUserQuestion uses the standard permission protocol with updated_input for answers
+  // Handle question answer - send control_response with updated_input back to backend.
+  // The useMemo derivation will automatically clear the UI when the matching
+  // control_response enters rawMessages.
   const handleQuestionAnswer = useCallback(
     async (questionId: string, answers: Record<string, string | string[]>) => {
       try {
-        // Find the pending question to get the original questions array
         const pendingQuestion = pendingQuestions.find((q) => q.id === questionId)
         if (!pendingQuestion) {
           console.error('[ChatInterface] Question not found:', questionId)
           return
         }
 
-        // Send control_response with updated_input containing questions and answers
         await ws.sendMessage({
           type: 'control_response',
           request_id: questionId,
@@ -987,23 +912,22 @@ export function ChatInterface({
           tool_name: 'AskUserQuestion',
           always_allow: false,
         })
-        // Remove from pending questions
-        setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
       } catch (error) {
-        console.error('[ChatInterface] Failed to send question answer:', error)
-        setError('Failed to send answer')
+        console.error('[ChatInterface] Failed to send question skip:', error)
+        setError('Failed to skip question')
         setTimeout(() => setError(null), 3000)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ws.sendMessage, pendingQuestions]
+    [ws.sendMessage]
   )
 
-  // Handle question skip - send control_response with behavior=deny
+  // Handle question skip - send control_response with deny behavior.
+  // The useMemo derivation will automatically clear the UI when the matching
+  // control_response enters rawMessages.
   const handleQuestionSkip = useCallback(
     async (questionId: string) => {
       try {
-        // Send control_response with deny behavior
         await ws.sendMessage({
           type: 'control_response',
           request_id: questionId,
@@ -1017,8 +941,6 @@ export function ChatInterface({
           tool_name: 'AskUserQuestion',
           always_allow: false,
         })
-        // Remove from pending questions
-        setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId))
       } catch (error) {
         console.error('[ChatInterface] Failed to send question skip:', error)
         setError('Failed to skip question')
@@ -1149,7 +1071,7 @@ export function ChatInterface({
             ref={chatInputRef}
             sessionId={sessionId}
             onSend={sendMessage}
-            pendingPermissions={permissions.pendingPermissions}
+            pendingPermissions={pendingPermissions}
             onPermissionDecision={handlePermissionDecision}
             pendingQuestions={pendingQuestions}
             onQuestionAnswer={handleQuestionAnswer}

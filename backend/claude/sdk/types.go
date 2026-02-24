@@ -114,6 +114,13 @@ type PermissionResultDeny struct {
 
 func (PermissionResultDeny) isPermissionResult() {}
 
+// PermissionResultAsk indicates the SDK should forward the control_request
+// to the message channel for external handling (e.g., UI prompt).
+// The caller must later call RespondToPermission() with the decision.
+type PermissionResultAsk struct{}
+
+func (PermissionResultAsk) isPermissionResult() {}
+
 // CanUseToolFunc is the callback type for tool permission checks
 type CanUseToolFunc func(toolName string, input map[string]any, ctx ToolPermissionContext) (PermissionResult, error)
 

@@ -695,7 +695,7 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		activated:             true,
-		pendingSDKPermissions: make(map[string]*pendingPermission),
+		pendingToolNames: make(map[string]string),
 		Git:                   GetGitInfo(workingDir),
 		onStateChanged: func() {
 			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: sessionID})
@@ -1253,7 +1253,7 @@ func (m *SessionManager) createShellSession(id, workingDir, title string) (*Sess
 		Status:                "active",
 		Clients:               make(map[*Client]bool),
 		activated:             false,
-		pendingSDKPermissions: make(map[string]*pendingPermission),
+		pendingToolNames: make(map[string]string),
 		Git:                   GetGitInfo(workingDir),
 		onStateChanged: func() {
 			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: id})
@@ -1453,6 +1453,22 @@ func (m *SessionManager) forwardSDKMessages(session *Session) {
 		case msg, ok := <-msgs:
 			if !ok {
 				goto processExited
+			}
+
+			// Track tool names for forwarded control_requests (needed for "always allow" auto-approve)
+			if msgType, _ := msg["type"].(string); msgType == "control_request" {
+				if reqID, _ := msg["request_id"].(string); reqID != "" {
+					if request, _ := msg["request"].(map[string]any); request != nil {
+						if toolName, _ := request["tool_name"].(string); toolName != "" {
+							session.pendingToolNamesMu.Lock()
+							if session.pendingToolNames == nil {
+								session.pendingToolNames = make(map[string]string)
+							}
+							session.pendingToolNames[reqID] = toolName
+							session.pendingToolNamesMu.Unlock()
+						}
+					}
+				}
 			}
 
 			data, err := json.Marshal(msg)

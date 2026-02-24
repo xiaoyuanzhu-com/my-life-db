@@ -223,6 +223,31 @@ func (c *ClaudeSDKClient) RawMessages() <-chan map[string]any {
 	return c.query.Messages()
 }
 
+// RespondToPermission provides the permission decision for a forwarded control_request.
+// Called by the backend when the frontend/user has made a decision.
+func (c *ClaudeSDKClient) RespondToPermission(requestID string, result PermissionResult) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.query == nil {
+		return ErrNotConnected
+	}
+
+	return c.query.RespondToPermission(requestID, result)
+}
+
+// PendingPermissionIDs returns the request IDs of all pending (forwarded) permission requests.
+func (c *ClaudeSDKClient) PendingPermissionIDs() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.query == nil {
+		return nil
+	}
+
+	return c.query.PendingPermissionIDs()
+}
+
 // Interrupt sends an interrupt signal to stop the current operation
 func (c *ClaudeSDKClient) Interrupt() error {
 	c.mu.RLock()

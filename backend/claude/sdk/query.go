@@ -44,6 +44,10 @@ type Query struct {
 	// Request counter for unique IDs
 	requestCounter atomic.Int64
 
+	// Forwarded permissions waiting for external response via RespondToPermission()
+	pendingPermissions   map[string]chan PermissionResult
+	pendingPermissionsMu sync.Mutex
+
 	// State
 	closed   bool
 	closedMu sync.RWMutex
@@ -75,11 +79,12 @@ func NewQuery(opts QueryOptions) *Query {
 		canUseTool:        opts.CanUseTool,
 		hooks:             opts.Hooks,
 		initializeTimeout: opts.InitializeTimeout,
-		pendingResponses:  make(map[string]chan map[string]any),
-		pendingResults:    make(map[string]any),
-		hookCallbacks:     make(map[string]HookCallback),
-		messages:          make(chan map[string]any, 100),
-		firstResultEvent:  make(chan struct{}),
+		pendingResponses:   make(map[string]chan map[string]any),
+		pendingResults:     make(map[string]any),
+		pendingPermissions: make(map[string]chan PermissionResult),
+		hookCallbacks:      make(map[string]HookCallback),
+		messages:           make(chan map[string]any, 100),
+		firstResultEvent:   make(chan struct{}),
 	}
 }
 
@@ -317,7 +322,13 @@ func (q *Query) handleControlRequest(data []byte) {
 
 	switch subtype {
 	case "can_use_tool":
+		// Try callback for fast-path (auto-allow/deny)
 		responseData, respErr = q.handleCanUseTool(request)
+
+		if responseData == nil && respErr == nil {
+			// PermissionResultAsk — forward to message channel, wait for external decision
+			responseData, respErr = q.forwardAndWaitForPermission(requestID, request, data)
+		}
 
 	case "hook_callback":
 		responseData, respErr = q.handleHookCallback(request)
@@ -326,7 +337,45 @@ func (q *Query) handleControlRequest(data []byte) {
 		respErr = fmt.Errorf("unknown control request subtype: %s", subtype)
 	}
 
-	// Send response
+	// Send response back to Claude CLI
+	q.sendControlResponse(requestID, responseData, respErr)
+}
+
+// forwardAndWaitForPermission forwards a control_request to the message channel
+// and blocks until RespondToPermission() is called with the decision.
+func (q *Query) forwardAndWaitForPermission(requestID string, request map[string]any, rawData []byte) (map[string]any, error) {
+	// Register pending permission channel
+	ch := make(chan PermissionResult, 1)
+	q.pendingPermissionsMu.Lock()
+	q.pendingPermissions[requestID] = ch
+	q.pendingPermissionsMu.Unlock()
+
+	defer func() {
+		q.pendingPermissionsMu.Lock()
+		delete(q.pendingPermissions, requestID)
+		q.pendingPermissionsMu.Unlock()
+	}()
+
+	// Forward the original control_request to the message channel
+	log.Debug().
+		Str("requestId", requestID).
+		Msg("forwarding control_request to message channel for external handling")
+	q.forwardMessage(rawData)
+
+	// Block until external response or shutdown
+	select {
+	case result := <-ch:
+		log.Debug().
+			Str("requestId", requestID).
+			Msg("received external permission response")
+		return q.permissionResultToResponse(result, request)
+	case <-q.ctx.Done():
+		return nil, q.ctx.Err()
+	}
+}
+
+// sendControlResponse sends a control_response back to Claude CLI via stdin.
+func (q *Query) sendControlResponse(requestID string, responseData map[string]any, respErr error) {
 	response := ControlResponse{
 		Type: "control_response",
 	}
@@ -351,10 +400,13 @@ func (q *Query) handleControlRequest(data []byte) {
 	}
 }
 
-// handleCanUseTool handles tool permission requests
+// handleCanUseTool handles tool permission requests via the canUseTool callback.
+// Returns (nil, nil) when the callback returns PermissionResultAsk, signaling
+// that the request should be forwarded to the message channel.
 func (q *Query) handleCanUseTool(request map[string]any) (map[string]any, error) {
 	if q.canUseTool == nil {
-		return nil, fmt.Errorf("canUseTool callback is not provided")
+		// No callback — forward all permission requests
+		return nil, nil
 	}
 
 	toolName, _ := request["tool_name"].(string)
@@ -367,7 +419,6 @@ func (q *Query) handleCanUseTool(request map[string]any) (map[string]any, error)
 	}
 	for _, s := range suggestions {
 		if sMap, ok := s.(map[string]any); ok {
-			// Parse PermissionUpdate from map
 			update := PermissionUpdate{}
 			if t, ok := sMap["type"].(string); ok {
 				update.Type = PermissionUpdateType(t)
@@ -382,7 +433,19 @@ func (q *Query) handleCanUseTool(request map[string]any) (map[string]any, error)
 		return nil, err
 	}
 
-	// Convert result to response format
+	// PermissionResultAsk — signal caller to forward
+	if _, ok := result.(PermissionResultAsk); ok {
+		return nil, nil
+	}
+
+	return q.permissionResultToResponse(result, request)
+}
+
+// permissionResultToResponse converts a PermissionResult into the response map
+// format expected by the Claude CLI control protocol.
+func (q *Query) permissionResultToResponse(result PermissionResult, request map[string]any) (map[string]any, error) {
+	input, _ := request["input"].(map[string]any)
+
 	switch r := result.(type) {
 	case PermissionResultAllow:
 		resp := map[string]any{
@@ -591,6 +654,39 @@ func (q *Query) generateRequestID() string {
 	randBytes := make([]byte, 4)
 	rand.Read(randBytes)
 	return fmt.Sprintf("req_%d_%s", counter, hex.EncodeToString(randBytes))
+}
+
+// RespondToPermission provides the permission decision for a forwarded control_request.
+// Called by the backend when the frontend/user has made a decision.
+// The requestID must match the request_id from the original control_request.
+func (q *Query) RespondToPermission(requestID string, result PermissionResult) error {
+	q.pendingPermissionsMu.Lock()
+	ch, ok := q.pendingPermissions[requestID]
+	q.pendingPermissionsMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no pending permission for request_id: %s", requestID)
+	}
+
+	select {
+	case ch <- result:
+		return nil
+	default:
+		return fmt.Errorf("permission channel full for request_id: %s", requestID)
+	}
+}
+
+// PendingPermissionIDs returns the request IDs of all pending (forwarded) permission requests.
+// Used by the backend to find requests to auto-approve when "always allow" is selected.
+func (q *Query) PendingPermissionIDs() []string {
+	q.pendingPermissionsMu.Lock()
+	defer q.pendingPermissionsMu.Unlock()
+
+	ids := make([]string, 0, len(q.pendingPermissions))
+	for id := range q.pendingPermissions {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // Interrupt sends an interrupt signal to stop the current operation
