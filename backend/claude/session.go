@@ -123,6 +123,10 @@ type Session struct {
 	// Pending permission count — tracked by BroadcastUIMessage from control_request/control_response.
 	// control_request → increment (waiting for user input), control_response → decrement (resolved).
 	pendingPermissionCount int `json:"-"`
+
+	// Phantom session — warm session created eagerly for slash command discovery.
+	// Excluded from session listings and SSE events until promoted by first user message.
+	Phantom bool `json:"-"`
 }
 
 // AddClient registers a new WebSocket client to this session

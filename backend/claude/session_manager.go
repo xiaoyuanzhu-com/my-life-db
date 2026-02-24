@@ -464,9 +464,10 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		allEntries = append(allEntries, &entryCopy)
 	}
 
-	// Add any active sessions not in cache (just created)
+	// Add any active sessions not in cache (just created).
+	// Skip phantom (warm) sessions — they are invisible until promoted.
 	for id, session := range m.sessions {
-		if seenIDs[id] {
+		if seenIDs[id] || session.Phantom {
 			continue
 		}
 		entry := &SessionEntry{
@@ -637,11 +638,12 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 
 // CreateSession spawns a new Claude Code process
 func (m *SessionManager) CreateSession(workingDir, title string, permissionMode sdk.PermissionMode) (*Session, error) {
-	return m.CreateSessionWithID(workingDir, title, "", permissionMode)
+	return m.CreateSessionWithID(workingDir, title, "", permissionMode, false)
 }
 
-// CreateSessionWithID spawns a new Claude Code process with optional resume
-func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, permissionMode sdk.PermissionMode) (*Session, error) {
+// CreateSessionWithID spawns a new Claude Code process with optional resume.
+// If phantom is true, the session is excluded from listings and SSE events until promoted.
+func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID string, permissionMode sdk.PermissionMode, phantom bool) (*Session, error) {
 	m.mu.Lock()
 
 	var sessionID string
@@ -690,6 +692,7 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		activated:             true,
 		pendingSDKPermissions: make(map[string]*pendingPermission),
 		Git:                   GetGitInfo(workingDir),
+		Phantom:               phantom,
 		onStateChanged: func() {
 			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: sessionID})
 		},
@@ -713,10 +716,10 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		Str("workingDir", workingDir).
 		Msg("created claude session")
 
-	// Emit events
+	// Emit events (phantom sessions are silent until promoted)
 	if resumeSessionID != "" {
 		m.notify(SessionEvent{Type: SessionEventActivated, SessionID: sessionID})
-	} else {
+	} else if !phantom {
 		m.notify(SessionEvent{Type: SessionEventCreated, SessionID: sessionID})
 	}
 
@@ -800,6 +803,32 @@ func (m *SessionManager) UpdateSession(id string, title string) error {
 
 	// Emit event
 	m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: id})
+
+	return nil
+}
+
+// PromoteSession transitions a phantom (warm) session to a normal visible session.
+// Sets the title, clears the phantom flag, and emits a SessionEventCreated so the
+// session appears in listings and triggers SSE notifications.
+func (m *SessionManager) PromoteSession(id string, title string) error {
+	m.mu.Lock()
+
+	session, ok := m.sessions[id]
+	if !ok {
+		m.mu.Unlock()
+		return ErrSessionNotFound
+	}
+
+	session.Phantom = false
+	if title != "" {
+		session.Title = title
+	}
+	session.LastUserActivity = time.Now()
+
+	m.mu.Unlock()
+
+	// Emit created event so the session appears in listings and triggers SSE refresh
+	m.notify(SessionEvent{Type: SessionEventCreated, SessionID: id})
 
 	return nil
 }

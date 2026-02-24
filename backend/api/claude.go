@@ -43,6 +43,7 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 		Title           string `json:"title"`
 		ResumeSessionID string `json:"resumeSessionId"` // Optional: resume from this session ID
 		PermissionMode  string `json:"permissionMode"`  // Optional: "default", "acceptEdits", "plan", "bypassPermissions"
+		Phantom         bool   `json:"phantom"`          // Optional: warm session excluded from listings until promoted
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -67,10 +68,42 @@ func (h *Handlers) CreateClaudeSession(c *gin.Context) {
 	}
 
 	// Create session (will resume if resumeSessionId is provided)
-	session, err := h.server.Claude().CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, permissionMode)
+	session, err := h.server.Claude().CreateSessionWithID(body.WorkingDir, body.Title, body.ResumeSessionID, permissionMode, body.Phantom)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, session.ToJSON())
+}
+
+// PromoteClaudeSession handles POST /api/claude/sessions/:id/promote
+// Transitions a phantom (warm) session to a normal visible session.
+func (h *Handlers) PromoteClaudeSession(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		// Title is optional, allow empty body
+		body.Title = ""
+	}
+
+	if err := h.server.Claude().PromoteSession(sessionID, body.Title); err != nil {
+		if err == claude.ErrSessionNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to promote session")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to promote session"})
+		return
+	}
+
+	session, err := h.server.Claude().GetSession(sessionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session promoted but failed to retrieve"})
 		return
 	}
 
