@@ -8,10 +8,12 @@ import {
   isTaskStartedMessage,
   isSystemInitMessage,
   isToolUseBlock,
+  isToolResultBlock,
   isSubagentMessage,
   getParentToolUseID,
   type SessionMessage,
   type ExtractedToolResult,
+  type TaskToolResult,
 } from '~/lib/session-message-utils'
 
 // Tool use info for mapping tool IDs to their names and titles
@@ -218,6 +220,99 @@ export function buildSubagentMessagesMap(messages: SessionMessage[]): Map<string
 }
 
 /**
+ * Result of building the async task output map.
+ * Returned by buildAsyncTaskOutputMap().
+ */
+export interface AsyncTaskOutputMapResult {
+  /** Map from original Task tool_use.id → latest TaskOutput result (merged into Task block) */
+  resultMap: Map<string, TaskToolResult>
+  /** Set of TaskOutput tool_use.ids that have been absorbed into a parent Task block */
+  absorbedToolUseIds: Set<string>
+}
+
+/**
+ * Build a map linking background async Task tool_use blocks to their TaskOutput results.
+ *
+ * Background Tasks (run_in_background: true) return immediately with async launch metadata
+ * ({ isAsync: true, agentId: "..." }). The actual output is retrieved later via separate
+ * TaskOutput tool calls. This function links them so the Task block can render the output
+ * as if it were a foreground task.
+ *
+ * Linking chain:
+ *   Task result.agentId → TaskOutput input.task_id → TaskOutput result.task.output
+ *
+ * @param messages - All session messages
+ * @param toolResultMap - Pre-built tool result map (to look up TaskOutput results)
+ * @returns resultMap (Task tool_use.id → TaskToolResult) and absorbedToolUseIds (TaskOutput IDs to skip)
+ */
+export function buildAsyncTaskOutputMap(
+  messages: SessionMessage[],
+  toolResultMap: Map<string, ExtractedToolResult>,
+): AsyncTaskOutputMapResult {
+  const resultMap = new Map<string, TaskToolResult>()
+  const absorbedToolUseIds = new Set<string>()
+
+  // Step 1: Find async Task launches → map agentId → Task tool_use.id
+  const agentIdToTaskToolId = new Map<string, string>()
+
+  for (const msg of messages) {
+    if (msg.type !== 'user') continue
+    const tur = msg.toolUseResult
+    if (!tur || typeof tur !== 'object' || (tur as Record<string, unknown>).isAsync !== true) continue
+    const agentId = (tur as Record<string, unknown>).agentId as string | undefined
+    if (!agentId) continue
+
+    const content = msg.message?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (isToolResultBlock(block)) {
+        agentIdToTaskToolId.set(agentId, block.tool_use_id)
+      }
+    }
+  }
+
+  if (agentIdToTaskToolId.size === 0) return { resultMap, absorbedToolUseIds }
+
+  // Step 2: Find TaskOutput tool_use blocks, look up their results, map back to parent Task
+  for (const msg of messages) {
+    if (msg.type !== 'assistant') continue
+    const content = msg.message?.content
+    if (!Array.isArray(content)) continue
+
+    for (const block of content) {
+      if (!isToolUseBlock(block) || block.name !== 'TaskOutput') continue
+
+      const taskId = (block.input as Record<string, unknown>)?.task_id as string | undefined
+      if (!taskId) continue
+
+      const taskToolId = agentIdToTaskToolId.get(taskId)
+      if (!taskToolId) continue
+
+      // This TaskOutput is for an async Task we know about — absorb it
+      absorbedToolUseIds.add(block.id)
+
+      // Look up the TaskOutput's result
+      const extractedResult = toolResultMap.get(block.id)
+      if (!extractedResult?.toolUseResult || typeof extractedResult.toolUseResult === 'string') continue
+
+      const taskToolResult = extractedResult.toolUseResult as TaskToolResult
+
+      // Prefer completed results — later TaskOutput calls override earlier ones
+      const existing = resultMap.get(taskToolId)
+      if (
+        !existing ||
+        taskToolResult.retrieval_status === 'completed' ||
+        taskToolResult.task?.status === 'completed'
+      ) {
+        resultMap.set(taskToolId, taskToolResult)
+      }
+    }
+  }
+
+  return { resultMap, absorbedToolUseIds }
+}
+
+/**
  * Build a map from sourceToolUseID to skill content
  * This allows Skill tools to find their associated skill prompt content
  */
@@ -275,6 +370,9 @@ function getToolTitle(name: string, input: Record<string, unknown>): string {
 
     case 'Task':
       return truncate(input.description as string | undefined, 40) || name
+
+    case 'TaskOutput':
+      return truncate(input.task_id as string | undefined, 20) || name
 
     case 'TodoWrite':
       return 'update todos'
@@ -398,6 +496,16 @@ interface SessionMessagesProps {
    */
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /**
+   * Pre-built async task output map. If not provided, will be built from messages.
+   * Maps Task tool_use.id to merged TaskOutput result (for background async Tasks).
+   */
+  asyncTaskOutputMap?: Map<string, TaskToolResult>
+  /**
+   * Pre-built set of TaskOutput tool_use IDs absorbed into parent Task blocks.
+   * These tool_use blocks should not be rendered standalone.
+   */
+  absorbedToolUseIds?: Set<string>
+  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -425,6 +533,8 @@ export function SessionMessages({
   toolUseMap: providedToolUseMap,
   skillContentMap: providedSkillContentMap,
   subagentMessagesMap: providedSubagentMessagesMap,
+  asyncTaskOutputMap: providedAsyncTaskOutputMap,
+  absorbedToolUseIds: providedAbsorbedToolUseIds,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -474,6 +584,16 @@ export function SessionMessages({
     if (providedSubagentMessagesMap) return providedSubagentMessagesMap
     return buildSubagentMessagesMap(messages)
   }, [messages, providedSubagentMessagesMap])
+
+  // Build async task output map if not provided
+  // This links background async Task tool_use blocks to their TaskOutput results
+  const { asyncTaskOutputMap, absorbedToolUseIds } = useMemo(() => {
+    if (providedAsyncTaskOutputMap && providedAbsorbedToolUseIds) {
+      return { asyncTaskOutputMap: providedAsyncTaskOutputMap, absorbedToolUseIds: providedAbsorbedToolUseIds }
+    }
+    const built = buildAsyncTaskOutputMap(messages, toolResultMap)
+    return { asyncTaskOutputMap: built.resultMap, absorbedToolUseIds: built.absorbedToolUseIds }
+  }, [messages, toolResultMap, providedAsyncTaskOutputMap, providedAbsorbedToolUseIds])
 
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
@@ -583,6 +703,8 @@ export function SessionMessages({
           toolUseMap={toolUseMap}
           skillContentMap={skillContentMap}
           subagentMessagesMap={subagentMessagesMap}
+          asyncTaskOutputMap={asyncTaskOutputMap}
+          absorbedToolUseIds={absorbedToolUseIds}
           depth={depth}
         />
       ))}

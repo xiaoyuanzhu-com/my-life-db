@@ -12,11 +12,13 @@ interface TaskToolViewProps {
   agentProgressMap?: Map<string, AgentProgressMessage[]>
   /** Map from parentToolUseID to subagent messages */
   subagentMessagesMap?: Map<string, SessionMessage[]>
+  /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
+  asyncTaskOutputMap?: Map<string, TaskToolResult>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, depth = 0 }: TaskToolViewProps) {
+export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [resultExpanded, setResultExpanded] = useState(false)
@@ -26,31 +28,58 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
 
   const params = toolCall.parameters as TaskToolParams
 
+  // Detect async launch — the original result is just metadata, the actual output comes via TaskOutput
+  const isAsyncLaunch = useMemo(() => {
+    if (!toolCall.result || typeof toolCall.result !== 'object') return false
+    return (toolCall.result as Record<string, unknown>).isAsync === true
+  }, [toolCall.result])
+
+  // Get merged TaskOutput result for async launches (if available)
+  const asyncTaskOutput = useMemo(() => {
+    if (!isAsyncLaunch || !asyncTaskOutputMap) return undefined
+    return asyncTaskOutputMap.get(toolCall.id)
+  }, [isAsyncLaunch, asyncTaskOutputMap, toolCall.id])
+
+  // Effective result: use merged TaskOutput result if available, otherwise original
+  // This allows all downstream extraction logic to work uniformly for both sync and async Tasks
+  const effectiveResult = useMemo(() => {
+    if (asyncTaskOutput) return asyncTaskOutput
+    return toolCall.result
+  }, [asyncTaskOutput, toolCall.result])
+
+  // Is the async task still pending? (no TaskOutput result yet, or not ready)
+  const isAsyncPending = isAsyncLaunch && (
+    !asyncTaskOutput ||
+    asyncTaskOutput.retrieval_status === 'not_ready' ||
+    asyncTaskOutput.task?.status === 'running'
+  )
+
   // Extract task metadata from tool_use_result (available for background/local agent results)
   // Contains description, prompt, output, status, etc. — persisted even when agentProgress is empty
   const taskMeta = useMemo((): TaskToolResult['task'] | undefined => {
-    if (toolCall.result === undefined || toolCall.result === null || typeof toolCall.result === 'string') {
+    if (effectiveResult === undefined || effectiveResult === null || typeof effectiveResult === 'string') {
       return undefined
     }
-    return (toolCall.result as TaskToolResult).task
-  }, [toolCall.result])
+    return (effectiveResult as TaskToolResult).task
+  }, [effectiveResult])
 
   // Extract result content - Task tool results come in several formats:
   // 1. String → render as markdown directly
   // 2. Object with content[] array → extract first text block as markdown
   // 3. Object with task.output/task.result → background/local agent result, render output as markdown
-  // 4. Fallback → render as JSON
+  // 4. Async launch with no merged output yet → suppress (no JSON dump)
+  // 5. Fallback → render as JSON
   const { resultText, resultIsMarkdown } = useMemo(() => {
-    if (toolCall.result === undefined || toolCall.result === null) {
+    if (effectiveResult === undefined || effectiveResult === null) {
       return { resultText: undefined, resultIsMarkdown: false }
     }
 
     // Handle string result directly
-    if (typeof toolCall.result === 'string') {
-      return { resultText: toolCall.result, resultIsMarkdown: true }
+    if (typeof effectiveResult === 'string') {
+      return { resultText: effectiveResult, resultIsMarkdown: true }
     }
 
-    const resultObj = toolCall.result as Record<string, unknown>
+    const resultObj = effectiveResult as Record<string, unknown>
 
     // Check for structured content array (Task tool result format)
     const content = resultObj.content as Array<{ type: string; text?: string }> | undefined
@@ -70,9 +99,14 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       }
     }
 
+    // Async launch result with no merged output yet — suppress the output section
+    if (resultObj.isAsync === true) {
+      return { resultText: undefined, resultIsMarkdown: false }
+    }
+
     // Fallback: render as JSON
-    return { resultText: JSON.stringify(toolCall.result, null, 2), resultIsMarkdown: false }
-  }, [toolCall.result, taskMeta])
+    return { resultText: JSON.stringify(effectiveResult, null, 2), resultIsMarkdown: false }
+  }, [effectiveResult, taskMeta])
 
   const result = resultText
 
@@ -226,10 +260,18 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       )}
 
       {/* Status indicator when running */}
-      {toolCall.status === 'running' && !result && (
+      {toolCall.status === 'running' && !result && !isAsyncLaunch && (
         <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
           <span className="select-none">└</span>
           <span>Agent is working...</span>
+        </div>
+      )}
+
+      {/* Status for async background launches — shows until TaskOutput result is merged */}
+      {isAsyncPending && (
+        <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
+          <span className="select-none">└</span>
+          <span>Agent launched in background</span>
         </div>
       )}
 

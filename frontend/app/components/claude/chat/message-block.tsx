@@ -58,11 +58,15 @@ interface MessageBlockProps {
   skillContentMap?: Map<string, string>
   /** Map from parentToolUseID to subagent messages (for Task tools) */
   subagentMessagesMap?: Map<string, SessionMessage[]>
+  /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
+  asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  /** Set of TaskOutput tool_use IDs absorbed into parent Task blocks (should not render standalone) */
+  absorbedToolUseIds?: Set<string>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, absorbedToolUseIds, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -90,14 +94,17 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
     const texts = content.filter(isTextBlock).map((block) => block.text)
     const thinking = content.filter(isThinkingBlock)
-    const toolUses = content.filter(isToolUseBlock)
+    // Filter out TaskOutput tool_use blocks that have been absorbed into their parent Task block
+    const toolUses = content.filter(isToolUseBlock).filter(
+      (block) => !absorbedToolUseIds || !absorbedToolUseIds.has(block.id)
+    )
 
     return {
       textContent: texts.join('\n'),
       thinkingBlocks: thinking,
       toolUseBlocks: toolUses,
     }
-  }, [isAssistant, content])
+  }, [isAssistant, content, absorbedToolUseIds])
 
   // Convert tool_use blocks to ToolCall format with results from map
   const toolCalls = useMemo((): ToolCall[] => {
@@ -390,6 +397,7 @@ function ToolCallGroups({
               hookProgressMap={hookProgressMap}
               skillContentMap={skillContentMap}
               subagentMessagesMap={subagentMessagesMap}
+              asyncTaskOutputMap={asyncTaskOutputMap}
               depth={depth}
             />
           )

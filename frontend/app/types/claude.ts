@@ -98,6 +98,12 @@ export interface TaskToolParams {
   resume?: string
 }
 
+export interface TaskOutputToolParams {
+  task_id: string
+  block: boolean
+  timeout: number
+}
+
 export interface AskUserQuestionParams {
   questions: {
     question: string
@@ -132,6 +138,7 @@ export type ToolParams =
   | WebFetchToolParams
   | WebSearchToolParams
   | TaskToolParams
+  | TaskOutputToolParams
   | AskUserQuestionParams
   | TodoWriteParams
   | Record<string, unknown>
