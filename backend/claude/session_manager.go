@@ -1341,63 +1341,32 @@ func (m *SessionManager) cleanupWorker() {
 	}
 }
 
-// gcIdleSessions deactivates sessions that have been idle too long.
-//
-// Two tiers based on session state:
-//   - Idle sessions (not processing, no pending permissions, user has read all results):
-//     GC after 1 day of no LastActivity.
-//   - Other sessions (processing, has unread results, or has pending permissions):
-//     GC after 7 days of no LastActivity.
-//
-// Sessions with connected WebSocket clients are never GC'd.
+// gcIdleSessions deactivates sessions that have been idle for more than 1 hour
+// with no connected WebSocket clients. Re-activation is transparent via
+// EnsureActivated(), so GC has zero user-facing downside — it just frees
+// the CLI process memory.
 func (m *SessionManager) gcIdleSessions() {
 	now := time.Now()
+	const gcTimeout = 1 * time.Hour
 
-	const (
-		idleTimeout  = 24 * time.Hour     // 1 day for idle sessions
-		otherTimeout = 7 * 24 * time.Hour // 7 days for working/unread sessions
-	)
-
-	// Collect sessions to deactivate (can't modify map while iterating with lock held
-	// and calling DeactivateSession which also acquires the lock).
+	// Collect candidates first (DeactivateSession acquires m.mu).
 	type gcCandidate struct {
-		id      string
-		reason  string
-		session *Session
+		id     string
+		reason string
 	}
 	var candidates []gcCandidate
 
 	m.mu.RLock()
 	for id, session := range m.sessions {
-		// Never GC sessions with connected clients
 		if session.ClientCount() > 0 {
 			continue
 		}
-
 		age := now.Sub(session.LastActivity)
-
-		// Determine if session is "idle" (not working, user read everything)
-		isProcessing := session.IsProcessing()
-		hasPending := session.HasPendingPermission()
-
-		if !isProcessing && !hasPending {
-			// Idle session — 1 day timeout
-			if age > idleTimeout {
-				candidates = append(candidates, gcCandidate{
-					id:      id,
-					reason:  fmt.Sprintf("idle for %s", age.Round(time.Minute)),
-					session: session,
-				})
-			}
-		} else {
-			// Working/unread session — 7 day timeout
-			if age > otherTimeout {
-				candidates = append(candidates, gcCandidate{
-					id:      id,
-					reason:  fmt.Sprintf("inactive for %s (processing=%v, pending=%v)", age.Round(time.Minute), isProcessing, hasPending),
-					session: session,
-				})
-			}
+		if age > gcTimeout {
+			candidates = append(candidates, gcCandidate{
+				id:     id,
+				reason: fmt.Sprintf("no clients, idle for %s", age.Round(time.Minute)),
+			})
 		}
 	}
 	m.mu.RUnlock()
@@ -1407,7 +1376,6 @@ func (m *SessionManager) gcIdleSessions() {
 	}
 
 	log.Info().Int("count", len(candidates)).Msg("GC: deactivating idle sessions")
-
 	for _, c := range candidates {
 		log.Info().Str("sessionId", c.id).Str("reason", c.reason).Msg("GC: deactivating session")
 		if err := m.DeactivateSession(c.id); err != nil {

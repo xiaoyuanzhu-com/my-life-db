@@ -517,6 +517,15 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	session.AddClient(uiClient)
 	defer session.RemoveClient(uiClient)
 
+	// Auto-activate: start Claude process so the init message (with slash
+	// commands, skills, tools) arrives via broadcast. Non-blocking — the read
+	// loop can already accept user messages while activation is in progress.
+	go func() {
+		if err := session.EnsureActivated(); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("auto-activation failed (non-fatal)")
+		}
+	}()
+
 	// Start goroutine to forward broadcasts to WebSocket
 	pollDone := make(chan struct{})
 	go func() {
