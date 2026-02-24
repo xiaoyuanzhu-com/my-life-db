@@ -103,9 +103,9 @@ func parseTypedMessage(lineBytes []byte, lineNum int, sessionID string) models.S
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			log.Warn().Err(err).Int("line", lineNum).Str("type", typeOnly.Type).Msg("failed to parse user message")
 		}
-		// Strip large Read tool content at the source — all downstream consumers
-		// (HTTP endpoint, WebSocket, cache) get stripped messages via MarshalJSON().
-		msg.Raw = StripReadToolContent(rawCopy)
+		// ⚠️ Mutates raw message — reviewed perf exception to raw-message-integrity principle.
+		// See StripHeavyToolContent doc comment for rationale and list of stripped fields.
+		msg.Raw = StripHeavyToolContent(rawCopy)
 		return &msg
 
 	case "assistant":

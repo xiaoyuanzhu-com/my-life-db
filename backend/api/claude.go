@@ -377,7 +377,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// compression is beneficial." The memory overhead (~1.2 MB/conn with context
 	// takeover) and CPU cost are not justified here — we instead reduce payload
 	// size at the application level by stripping large tool result content
-	// (see claude.StripReadToolContent).
+	// (see claude.StripHeavyToolContent).
 	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // Skip origin check - auth is handled at higher layer
 	})

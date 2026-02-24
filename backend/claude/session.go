@@ -850,8 +850,9 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.rawMu.Unlock()
 	}
 
-	// Strip large Read tool content before storing and broadcasting
-	data = StripReadToolContent(data)
+	// ⚠️ Mutates raw message — reviewed perf exception to raw-message-integrity principle.
+	// See StripHeavyToolContent doc comment for rationale and list of stripped fields.
+	data = StripHeavyToolContent(data)
 
 	// Append to raw list (R1: append-only, never mutated).
 	// Stream event eviction is handled at the view/materialization layer (§7.3),

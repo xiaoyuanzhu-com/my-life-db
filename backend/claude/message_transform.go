@@ -5,15 +5,31 @@ import (
 	"strings"
 )
 
-// StripReadToolContent removes file content from Read tool results in a message.
-// This reduces message size significantly — Read results can be 50–65 KB each due to
-// full file contents embedded in both toolUseResult.file.content and message.content[].
+// StripHeavyToolContent removes large payloads from tool results in user messages.
 //
-// After stripping, the message retains line count metadata (numLines, totalLines) so
-// the frontend can still render "Read N lines" summaries.
+// ⚠️  DESIGN VIOLATION: Raw message integrity
 //
-// Non-user messages and non-Read tool results are returned unchanged.
-func StripReadToolContent(data []byte) []byte {
+// Our principle is to pass Claude Code messages through as raw as possible.
+// This function is a reviewed exception — we mutate messages before they reach
+// the frontend to avoid shipping large, unrenderable payloads over WebSocket
+// and holding them in memory.
+//
+// Each case was reviewed and agreed upon for performance reasons:
+//
+//   - Read tool file content (toolUseResult.file.content): 50–65 KB per result.
+//     Stripped; line-count metadata (numLines, totalLines) preserved for summaries.
+//
+//   - Image base64 (toolUseResult.file.base64): 100 KB+ per screenshot.
+//     Stripped; dimensions, originalSize, MIME type preserved.
+//
+//   - Raw tool_result content blocks (message.content[]): duplicates the above.
+//     Stripped to empty string for any message where toolUseResult was stripped.
+//
+// Do NOT add new cases here without explicit review. If the frontend needs
+// the data, find another way (e.g., lazy loading, separate endpoint).
+//
+// Non-user messages and non-heavy tool results are returned unchanged.
+func StripHeavyToolContent(data []byte) []byte {
 	// Quick-check: only transform "user" type messages (most messages are skipped here)
 	var envelope struct {
 		Type string `json:"type"`
@@ -30,14 +46,18 @@ func StripReadToolContent(data []byte) []byte {
 
 	stripped := false
 
-	// Strip toolUseResult.file.content for Read results
-	if stripped = stripToolUseResult(msg); !stripped {
-		return data
-	}
+	// Strip toolUseResult content for Read results and image base64
+	stripped = stripToolUseResult(msg)
 
 	// Also strip the raw tool_result content in message.content[] —
-	// this is the API-level content block that also contains the full file text.
-	stripToolResultBlocks(msg)
+	// these blocks duplicate the data already in toolUseResult.
+	if stripped {
+		stripToolResultBlocks(msg)
+	}
+
+	if !stripped {
+		return data
+	}
 
 	// Re-serialize
 	result, err := json.Marshal(msg)
@@ -47,24 +67,36 @@ func StripReadToolContent(data []byte) []byte {
 	return result
 }
 
-// stripToolUseResult checks if toolUseResult is a Read result and strips file content.
-// Returns true if the message was a Read result (regardless of whether content was present).
+// stripToolUseResult checks if toolUseResult contains heavy content and strips it.
+// Handles:
+//   - Read results (type: "text"): strips file.content, preserves numLines/totalLines
+//   - Image results (type: "image"): strips file.base64, preserves dimensions/originalSize
+//
+// Returns true if content was stripped.
 func stripToolUseResult(msg map[string]interface{}) bool {
 	toolUseResult, ok := msg["toolUseResult"].(map[string]interface{})
 	if !ok {
 		return false
 	}
 
-	// Read results have { type: "text", file: { ... } }
-	if toolUseResult["type"] != "text" {
+	switch toolUseResult["type"] {
+	case "text":
+		return stripReadToolUseResult(toolUseResult)
+	case "image":
+		return stripImageToolUseResult(toolUseResult)
+	default:
 		return false
 	}
+}
+
+// stripReadToolUseResult strips file content from Read tool results.
+// Preserves numLines/totalLines metadata for frontend summary rendering.
+func stripReadToolUseResult(toolUseResult map[string]interface{}) bool {
 	fileObj, ok := toolUseResult["file"].(map[string]interface{})
 	if !ok {
 		return false
 	}
 
-	// Extract content to count lines before stripping
 	content, _ := fileObj["content"].(string)
 	if content == "" {
 		// No content to strip, but still a Read result
@@ -86,8 +118,25 @@ func stripToolUseResult(msg map[string]interface{}) bool {
 	return true
 }
 
+// stripImageToolUseResult strips base64 data from image tool results.
+// Preserves dimensions, originalSize, and MIME type for potential future use.
+func stripImageToolUseResult(toolUseResult map[string]interface{}) bool {
+	fileObj, ok := toolUseResult["file"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	if _, hasBase64 := fileObj["base64"]; !hasBase64 {
+		// No base64 to strip, but still an image result
+		return true
+	}
+
+	delete(fileObj, "base64")
+	return true
+}
+
 // stripToolResultBlocks replaces the content of tool_result blocks in message.content[].
-// These blocks contain the same file text as toolUseResult and are used only as a fallback.
+// These blocks contain the same data as toolUseResult and are used only as a fallback.
 func stripToolResultBlocks(msg map[string]interface{}) {
 	msgObj, ok := msg["message"].(map[string]interface{})
 	if !ok {
