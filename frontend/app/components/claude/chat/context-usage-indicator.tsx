@@ -144,13 +144,11 @@ export function ContextUsageIndicator({
         sideOffset={8}
       >
         {/* Header: model + summary */}
-        <div className="text-sm font-medium text-foreground">
+        <div className="text-xs font-medium text-foreground whitespace-nowrap tabular-nums">
           {displayModel && (
             <span>{displayModel} &middot; </span>
           )}
-          <span className="tabular-nums">
-            {formatTokens(usedTokens)} / {formatTokens(maxTokens)} tokens ({percentage}%)
-          </span>
+          {formatTokens(usedTokens)} / {formatTokens(maxTokens)} ({percentage}%)
         </div>
 
         {/* Breakdown rows */}
