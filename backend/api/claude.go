@@ -224,21 +224,23 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
 		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
-		//   "unread"   — there are unread *result* messages (completed turns) or
-		//                a pending permission the user hasn't addressed yet.
-		//                NOTE: "unread" refers specifically to result messages
-		//                (end-of-turn markers), NOT intermediate messages like
-		//                assistant text, tool calls, or progress updates that
-		//                stream while Claude is working.
+		//   "unread"   — there are unseen *result* messages (completed turns) or
+		//                unseen pending permissions the user hasn't viewed yet.
+		//                Both result messages and permissions use the same "seen"
+		//                pattern: opening the session marks everything as seen;
+		//                new items arriving after the user closes make it unread again.
 		//   "idle"     — nothing happening, user is up to date
 		sessionState := "idle"
 		if entry.IsArchived {
 			sessionState = "archived"
 		} else if entry.IsProcessing && !entry.HasPendingPermission {
 			sessionState = "working"
-		} else if entry.IsProcessing && entry.HasPendingPermission {
-			// Mid-turn but waiting on user permission
+		} else if entry.IsProcessing && entry.HasUnseenPermission {
+			// Mid-turn, waiting on user permission, and user hasn't seen it yet
 			sessionState = "unread"
+		} else if entry.IsProcessing && entry.HasPendingPermission {
+			// Mid-turn, waiting on user permission, but user has already seen it
+			sessionState = "idle"
 		} else {
 			lastReadResults, seen := readResultCounts[entry.SessionID]
 			// A result message (completed turn) that the user hasn't seen yet.
@@ -448,12 +450,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}
 
 	// Mark session as read immediately on connect.
-	// Opening the session in the UI is sufficient to consider all existing turns "seen".
-	// session.ResultCount() is the source of truth — initialized from JSONL in
-	// LoadRawMessages(), then incremented by live stdout results. No need to re-scan
-	// raw messages here.
-	// New live turns that complete while connected are tracked incrementally
-	// by seenResultCount and the inline persistReadState call after each live result.
+	// Opening the session in the UI is sufficient to consider all existing content "seen" —
+	// both completed turns (result messages) and pending permissions (control_requests).
+	// This is the unified "I've seen it" signal for the session list's unread indicator.
+
+	// 1. Mark result messages as seen (persisted to DB for cross-session consistency).
 	if rc := session.ResultCount(); rc > 0 {
 		if err := db.MarkClaudeSessionRead(sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
@@ -464,6 +465,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 		// reflect at least the historical count. MAX() upsert prevents regression.
 		seenResultCount.Store(int32(rc))
 	}
+
+	// 2. Mark pending permissions as seen (in-memory only — permissions are ephemeral).
+	// After this, HasUnseenPermission() returns false until a new control_request arrives.
+	session.MarkPermissionsSeen()
+	h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
 
 	// Page-based initial burst (§4.1, §6.3).
 	// Send last 2 pages: previous sealed page (~100 msgs) + current open page.

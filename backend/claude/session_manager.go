@@ -83,6 +83,7 @@ type SessionEntry struct {
 	IsActivated          bool               `json:"-"`
 	IsProcessing         bool               `json:"-"` // Claude is actively generating (mid-turn)
 	HasPendingPermission bool               `json:"-"` // Waiting for user permission input
+	HasUnseenPermission  bool               `json:"-"` // Pending permissions the user hasn't seen yet
 	ProcessID            int                `json:"-"`
 	ClientCount          int                `json:"-"`
 	PermissionMode       sdk.PermissionMode `json:"-"` // From active session (empty for historical)
@@ -450,6 +451,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			entryCopy.IsActivated = true
 			entryCopy.IsProcessing = session.IsProcessing()
 			entryCopy.HasPendingPermission = session.HasPendingPermission()
+			entryCopy.HasUnseenPermission = session.HasUnseenPermission()
 			entryCopy.PermissionMode = session.PermissionMode
 			// For active sessions, always use the live result count — it's the source
 			// of truth (initialized from JSONL in LoadRawMessages, then incremented by
@@ -482,6 +484,7 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 			IsActivated:          true,
 			IsProcessing:         session.IsProcessing(),
 			HasPendingPermission: session.HasPendingPermission(),
+			HasUnseenPermission:  session.HasUnseenPermission(),
 			PermissionMode:       session.PermissionMode,
 			ResultCount:          session.ResultCount(),
 		}

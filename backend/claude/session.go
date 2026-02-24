@@ -127,6 +127,15 @@ type Session struct {
 	// control_request → increment (waiting for user input), control_response → decrement (resolved).
 	pendingPermissionCount int `json:"-"`
 
+	// Seen permission count — how many pending permissions the user has "seen" by opening
+	// the session in the UI. Mirrors the result read-state pattern: when the user connects
+	// via WebSocket, seenPermissionCount is set to pendingPermissionCount (all current
+	// permissions are now "seen"). New control_requests that arrive after the user closes
+	// the session will push pendingPermissionCount above seenPermissionCount, making the
+	// session "unread" again. control_responses that resolve permissions decrement both
+	// counters (clamped to 0) to stay consistent.
+	seenPermissionCount int `json:"-"`
+
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -221,6 +230,25 @@ func (s *Session) HasPendingPermission() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pendingPermissionCount > 0
+}
+
+// HasUnseenPermission returns whether there are pending permissions the user hasn't seen yet.
+// A permission is "seen" when the user opens the session in the UI (WebSocket connect).
+// New permissions that arrive after the user closes the session are "unseen".
+// This mirrors the result read-state pattern (resultCount vs lastReadResultCount).
+func (s *Session) HasUnseenPermission() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pendingPermissionCount > s.seenPermissionCount
+}
+
+// MarkPermissionsSeen records that the user has "seen" all currently pending permissions.
+// Called when a WebSocket client connects (user opens the session in the UI).
+// After this call, HasUnseenPermission() returns false until a new control_request arrives.
+func (s *Session) MarkPermissionsSeen() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seenPermissionCount = s.pendingPermissionCount
 }
 
 // ClientCount returns the number of connected WebSocket clients.
@@ -436,8 +464,12 @@ func (s *Session) ResetRawMessages() {
 	s.rawMu.Unlock()
 
 	// Reset resultCount so LoadRawMessages() re-derives it from JSONL.
+	// Also reset permission counters — control_request/control_response are ephemeral
+	// and not reloaded from JSONL, so any pending/seen state is stale.
 	s.mu.Lock()
 	s.resultCount = 0
+	s.pendingPermissionCount = 0
+	s.seenPermissionCount = 0
 	s.mu.Unlock()
 
 	log.Debug().
@@ -809,8 +841,12 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 	}
 
 	// Track pending permission count from control messages.
-	// control_request = session is now waiting for user input (working → ready).
-	// control_response = permission resolved, session resumes processing (ready → working).
+	// control_request → increment pendingPermissionCount (session is waiting for user input).
+	//   NOTE: seenPermissionCount is NOT incremented here — the new permission is "unseen"
+	//   until the user opens the session (MarkPermissionsSeen). This mirrors the result
+	//   read-state pattern where new results are "unread" until the user connects.
+	// control_response → decrement both pendingPermissionCount and seenPermissionCount
+	//   (resolved permission is no longer pending or seen).
 	if msgEnvelope.Type == "control_request" {
 		s.mu.Lock()
 		s.pendingPermissionCount++
@@ -823,6 +859,15 @@ func (s *Session) BroadcastUIMessage(data []byte) {
 		s.mu.Lock()
 		if s.pendingPermissionCount > 0 {
 			s.pendingPermissionCount--
+		}
+		// Decrement seenPermissionCount in lockstep so that resolving a seen
+		// permission doesn't create a false "unseen" state. Clamp to 0 and
+		// never exceed pendingPermissionCount.
+		if s.seenPermissionCount > 0 {
+			s.seenPermissionCount--
+		}
+		if s.seenPermissionCount > s.pendingPermissionCount {
+			s.seenPermissionCount = s.pendingPermissionCount
 		}
 		cb := s.onStateChanged
 		s.mu.Unlock()
