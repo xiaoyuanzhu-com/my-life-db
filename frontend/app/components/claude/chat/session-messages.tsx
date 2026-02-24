@@ -4,6 +4,7 @@ import {
   buildToolResultMap,
   isSkippedUserMessage,
   isHookResponseMessage,
+  isHookStartedMessage,
   isStatusMessage,
   isTaskStartedMessage,
   isSystemInitMessage,
@@ -149,35 +150,8 @@ export function buildHookProgressMap(messages: SessionMessage[]): Map<string, Ho
   return map
 }
 
-// Hook response message structure (pairs with hook_started)
-export interface HookResponseMessage extends SessionMessage {
-  type: 'system'
-  subtype: 'hook_response'
-  hook_id: string
-  hook_name: string
-  hook_event: string
-  output?: string
-  stdout?: string
-  stderr?: string
-  exit_code?: number
-  outcome?: 'success' | 'error' | string
-}
-
-/**
- * Build a map from hook_id to hook_response message
- * This allows hook_started messages to find their paired response
- */
-export function buildHookResponseMap(messages: SessionMessage[]): Map<string, HookResponseMessage> {
-  const map = new Map<string, HookResponseMessage>()
-
-  for (const msg of messages) {
-    if (isHookResponseMessage(msg) && msg.hook_id) {
-      map.set(msg.hook_id, msg as HookResponseMessage)
-    }
-  }
-
-  return map
-}
+// HookResponseMessage and buildHookResponseMap removed — hook messages are now fully skipped
+// (hooks are infrastructure plumbing; their side effects appear as system-reminders)
 
 // Skill content message structure (isMeta messages linked to Skill tool via sourceToolUseID)
 export interface SkillContentMessage extends SessionMessage {
@@ -478,10 +452,6 @@ interface SessionMessagesProps {
    */
   hookProgressMap?: Map<string, HookProgressMessage[]>
   /**
-   * Pre-built hook response map. If not provided, will be built from messages.
-   */
-  hookResponseMap?: Map<string, HookResponseMessage>
-  /**
    * Pre-built tool use map. If not provided, will be built from messages.
    */
   toolUseMap?: Map<string, ToolUseInfo>
@@ -525,7 +495,6 @@ export function SessionMessages({
   agentProgressMap: providedAgentProgressMap,
   bashProgressMap: providedBashProgressMap,
   hookProgressMap: providedHookProgressMap,
-  hookResponseMap: providedHookResponseMap,
   toolUseMap: providedToolUseMap,
   skillContentMap: providedSkillContentMap,
   subagentMessagesMap: providedSubagentMessagesMap,
@@ -556,11 +525,8 @@ export function SessionMessages({
     return buildHookProgressMap(messages)
   }, [messages, providedHookProgressMap])
 
-  // Build hook response map if not provided
-  const hookResponseMap = useMemo(() => {
-    if (providedHookResponseMap) return providedHookResponseMap
-    return buildHookResponseMap(messages)
-  }, [messages, providedHookResponseMap])
+  // hookResponseMap removed — hook_started/hook_response messages are now fully skipped
+  // (hooks are infrastructure plumbing; their side effects appear as system-reminders)
 
   // Build tool use map if not provided
   const toolUseMap = useMemo(() => {
@@ -589,7 +555,7 @@ export function SessionMessages({
 
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
-  // - hook_response messages (rendered inside hook_started via hookResponseMap)
+  // - hook messages (hook_started + hook_response are infrastructure plumbing; side effects appear as system-reminders)
   // - isMeta messages (system-injected context, not user-visible)
   // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
   // - control_request/control_response (permission protocol messages, handled via modal)
@@ -604,7 +570,10 @@ export function SessionMessages({
       // - hook_progress, query_update, search_results_received → future support
       if (msg.type === 'progress') return false
 
-      // Skip hook_response messages - they're rendered inside hook_started via hookResponseMap
+      // Skip hook messages - hooks are infrastructure plumbing (SessionStart, PreToolUse, etc.)
+      // whose side effects (e.g., additional_context injection) are already visible as
+      // system-reminder messages. Showing the raw hook output adds noise, not signal.
+      if (isHookStartedMessage(msg)) return false
       if (isHookResponseMessage(msg)) return false
 
       // Skip status messages - rendered as transient indicator at the end of the message list
@@ -691,7 +660,6 @@ export function SessionMessages({
           agentProgressMap={agentProgressMap}
           bashProgressMap={bashProgressMap}
           hookProgressMap={hookProgressMap}
-          hookResponseMap={hookResponseMap}
           toolUseMap={toolUseMap}
           skillContentMap={skillContentMap}
           subagentMessagesMap={subagentMessagesMap}

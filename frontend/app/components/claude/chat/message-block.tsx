@@ -14,7 +14,6 @@ import {
   isStatusMessage,
   isSummaryMessage,
   isTurnDurationMessage,
-  isHookStartedMessage,
   isTaskNotificationMessage,
   isApiErrorMessage,
   isRateLimitEvent,
@@ -22,7 +21,7 @@ import {
   type ExtractedToolResult,
   type SummaryMessage,
 } from '~/lib/session-message-utils'
-import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, HookResponseMessage, ToolUseInfo } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, ToolUseInfo } from './session-messages'
 import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
 import { PreviewFullscreen, wrapSvgInHtml } from './preview-fullscreen'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
@@ -50,8 +49,6 @@ interface MessageBlockProps {
   bashProgressMap?: Map<string, BashProgressMessage[]>
   /** Map from tool_use ID to hook progress messages (for tools with post-hooks) */
   hookProgressMap?: Map<string, HookProgressMessage[]>
-  /** Map from hook_id to hook_response messages (for pairing hook_started with hook_response) */
-  hookResponseMap?: Map<string, HookResponseMessage>
   /** Map from tool_use ID to tool info (for microcompact_boundary) */
   toolUseMap?: Map<string, ToolUseInfo>
   /** Map from tool_use ID to skill content (for Skill tools) */
@@ -64,7 +61,7 @@ interface MessageBlockProps {
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, hookResponseMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -147,12 +144,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
     })
   }, [toolUseBlocks, toolResultMap])
 
-  // Check for compact boundary, microcompact boundary, compact summary, turn duration, hook started, and summary messages
+  // Check for compact boundary, microcompact boundary, compact summary, turn duration, and summary messages
   const isCompactBoundary = isCompactBoundaryMessage(message)
   const isMicrocompactBoundary = isMicrocompactBoundaryMessage(message)
   const isCompactSummary = isCompactSummaryMessage(message)
   const isTurnDuration = isTurnDurationMessage(message)
-  const isHookStarted = isHookStartedMessage(message)
   const isTaskNotification = isTaskNotificationMessage(message)
   const isApiError = isApiErrorMessage(message)
   const isSummary = isSummaryMessage(message)
@@ -168,7 +164,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasAssistantText = isAssistant && textContent
   const hasThinking = thinkingBlocks.length > 0
   const hasToolCalls = toolCalls.length > 0
-  const hasUnknownSystem = isSystem && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isCompactingStatus
+  const hasUnknownSystem = isSystem && !isCompactBoundary && !isMicrocompactBoundary && !isTurnDuration && !isTaskNotification && !isApiError && !isCompactingStatus
 
   // Unknown message type - render as raw JSON
   // Note: agent_progress messages are filtered out in SessionMessages and rendered inside Task tools
@@ -177,7 +173,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
   const hasUnknownMessage = isUnknownType || hasUnknownSystem
 
   // Skip rendering if there's nothing to show
-  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isHookStarted && !isTaskNotification && !isApiError && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
+  if (!hasUserContent && !hasAssistantText && !hasThinking && !hasToolCalls && !isCompactBoundary && !isMicrocompactBoundary && !isCompactSummary && !isCompactingStatus && !isTurnDuration && !isTaskNotification && !isApiError && !isSummary && !isRateLimitBlock && !hasUnknownMessage) {
     return null
   }
 
@@ -257,13 +253,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
         </div>
       )}
 
-      {/* Hook started: paired with hook_response via hookResponseMap */}
-      {isHookStarted && (
-        <HookBlock
-          hookStarted={message}
-          hookResponse={message.hook_id ? hookResponseMap?.get(message.hook_id) : undefined}
-        />
-      )}
+      {/* Hook messages (hook_started + hook_response) are filtered out in session-messages.tsx */}
 
       {/* Task notification: background task completed/failed */}
       {isTaskNotification && (
@@ -1013,96 +1003,9 @@ function UnknownMessageBlock({ message }: { message: SessionMessage }) {
   )
 }
 
-// Hook block - renders hook_started paired with optional hook_response
-function HookBlock({
-  hookStarted,
-  hookResponse,
-}: {
-  hookStarted: SessionMessage
-  hookResponse?: HookResponseMessage
-}) {
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  // Determine status based on whether we have a response and its outcome
-  const isComplete = !!hookResponse
-  const isSuccess = hookResponse?.outcome === 'success'
-  const dotType = isComplete ? (isSuccess ? 'tool-completed' as const : 'tool-failed' as const) : 'tool-wip' as const
-
-  // Determine what output to show (prefer stdout, fall back to output field)
-  const outputContent = hookResponse?.stdout || hookResponse?.output || ''
-  const hasOutput = outputContent.trim().length > 0
-
-  // Format the status text
-  const statusText = isComplete
-    ? (isSuccess ? 'completed' : 'failed')
-    : 'running'
-
-  return (
-    <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header line - clickable to expand/collapse when there's output */}
-      <button
-        type="button"
-        onClick={() => hasOutput && setIsExpanded(!isExpanded)}
-        className={`flex items-start gap-2 w-full text-left ${hasOutput ? 'hover:opacity-80 transition-opacity cursor-pointer' : ''}`}
-        disabled={!hasOutput}
-      >
-        <MessageDot type={dotType} />
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span style={{ color: 'var(--claude-text-secondary)' }}>
-            Hook {statusText}: {hookStarted.hook_name ?? 'unknown'}
-          </span>
-          {hookResponse?.exit_code !== undefined && hookResponse.exit_code !== 0 && (
-            <span style={{ color: 'var(--claude-status-alert)' }}>
-              (exit {hookResponse.exit_code})
-            </span>
-          )}
-          {hasOutput && (
-            <span
-              className="select-none text-[11px]"
-              style={{ color: 'var(--claude-text-tertiary)' }}
-            >
-              {isExpanded ? '▾' : '▸'}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Expanded output content with smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded && hasOutput ? '' : 'collapsed'}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
-            style={{
-              backgroundColor: 'var(--claude-bg-code-block)',
-              maxHeight: '40vh',
-              color: 'var(--claude-text-secondary)',
-            }}
-          >
-            {outputContent}
-          </div>
-        </div>
-      </div>
-
-      {/* Show stderr if present and different from stdout */}
-      <div className={`collapsible-grid ${isExpanded && hookResponse?.stderr && hookResponse.stderr.trim() && hookResponse.stderr !== hookResponse.stdout ? '' : 'collapsed'}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-words text-[12px]"
-            style={{
-              backgroundColor: 'var(--claude-bg-code-block)',
-              maxHeight: '20vh',
-              color: 'var(--claude-status-alert)',
-              border: '1px solid var(--claude-status-alert)',
-            }}
-          >
-            <div className="font-semibold mb-1">stderr:</div>
-            {hookResponse?.stderr}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// HookBlock removed — hook messages (hook_started + hook_response) are now filtered out
+// in session-messages.tsx. Hooks are infrastructure plumbing; their side effects
+// (e.g., additional_context injection) appear as system-reminder messages.
 
 // Format token count to human-readable string (e.g., 61306 → "61K")
 function formatTokens(tokens: number): string {
