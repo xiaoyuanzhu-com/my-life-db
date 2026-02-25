@@ -360,6 +360,16 @@ export function ChatInterface({
       // Handle SessionMessage format
       const sessionMsg = msg as unknown as SessionMessage
 
+      // Ensure every message has a uuid for deduplication.
+      // control_request and control_response lack uuid but have unique request_id.
+      // Without this, messages sharing undefined uuid overwrite each other —
+      // e.g., a set_permission_mode control_response can clobber an unrelated
+      // AskUserQuestion control_request, preventing the QuestionCard from rendering.
+      if (!sessionMsg.uuid) {
+        const reqId = (msg as Record<string, unknown>).request_id as string | undefined
+        sessionMsg.uuid = reqId ? `${sessionMsg.type}:${reqId}` : crypto.randomUUID()
+      }
+
       if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {
         // Synthetic user message received - check if it matches our draft
         const msgText = extractUserMessageText(sessionMsg)
