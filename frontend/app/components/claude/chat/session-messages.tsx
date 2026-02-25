@@ -590,11 +590,12 @@ export function SessionMessages({
       // via initData for use by slash commands, session info display, etc.
       if (isSystemInitMessage(msg)) return false
 
-      // Skip permission protocol messages - these trigger the permission modal,
-      // not standalone chat messages. See data-models.md "Permission Handling" section.
-      // - control_request: Claude asks for permission to use a tool
+      // Skip control protocol messages - internal communication between UI and Claude CLI.
+      // These are not standalone chat messages. See data-models.md "Permission Handling" section.
+      // - control_request: Claude asks for permission to use a tool (triggers permission modal)
       // - control_response: UI responds with allow/deny (sent via stdin, not displayed)
-      if (msg.type === 'control_request' || msg.type === 'control_response') return false
+      // - control_cancel_request: UI cancels a pending request (e.g., user pressed Escape)
+      if (msg.type === 'control_request' || msg.type === 'control_response' || msg.type === 'control_cancel_request') return false
 
       // Skip internal events - these are metadata messages that provide no user-facing value.
       // See data-models.md "Internal Events" section.
