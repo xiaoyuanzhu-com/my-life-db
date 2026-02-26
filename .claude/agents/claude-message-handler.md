@@ -70,14 +70,14 @@ Choose the right UI pattern based on the data characteristics:
 **Always update documentation at the end.** This is a long-term effort to keep our Claude Code integration well-documented.
 
 Required doc updates:
-- `docs/claude-code/data-models.md` - Message format, fields, JSON examples
-- `docs/claude-code/ui.md` - Rendering behavior, UI patterns, component specs
+- `docs/claude-code/claude-code-data-directory.md` - Message format, fields, JSON examples
+- `docs/claude-code/claude-code-ui-design.md` - Rendering behavior, UI patterns, component specs
 
 ## Architecture Overview
 
 ### Documentation
-- `docs/claude-code/data-models.md` - Message format specifications, field definitions, examples
-- `docs/claude-code/ui.md` - UI rendering rules, skipped types, component specs
+- `docs/claude-code/claude-code-data-directory.md` - Message format specifications, field definitions, examples
+- `docs/claude-code/claude-code-ui-design.md` - UI rendering rules, skipped types, component specs
 
 ### Backend (Go)
 - `backend/claude/models/base_message.go` - `BaseMessage` and `EnvelopeFields` structs (common fields)
@@ -142,7 +142,7 @@ Determine the message category:
 
 2. **For new field-based skip** - Edit `session-messages.tsx` filter logic
 
-3. **Update docs** - Add to `docs/claude-code/ui.md` Section 6.2 "Skipped Message Types"
+3. **Update docs** - Add to `docs/claude-code/claude-code-ui-design.md` Section 6.2 "Skipped Message Types"
 
 ### Step 2B: If Needs Rendering (Standalone)
 
@@ -151,14 +151,14 @@ Determine the message category:
 1. **Frontend types** - Add field to `SessionMessage` interface in `session-message-utils.ts`
 2. **Frontend rendering** - Update `message-block.tsx` or relevant component
 3. **Backend** - Add field to appropriate struct in `backend/claude/models/` (if needed for parsing)
-4. **Docs** - Add field to appropriate table in `docs/claude-code/data-models.md`
+4. **Docs** - Add field to appropriate table in `docs/claude-code/claude-code-data-directory.md`
 
 **For new message types:**
 
 1. **Frontend types** - Add type to `SessionMessage.type` union, add type guard
 2. **Frontend rendering** - Add case in `message-block.tsx` or create new component
 3. **Backend** - Create new model file in `backend/claude/models/` (if needed)
-4. **Docs** - Add section in `docs/claude-code/data-models.md`, add rendering spec in `ui.md`
+4. **Docs** - Add section in `docs/claude-code/claude-code-data-directory.md`, add rendering spec in `claude-code-ui-design.md`
 
 ### Step 2C: If Needs Rendering (Inside Parent Tool)
 
@@ -176,7 +176,7 @@ For messages that provide data for a tool (progress, content, status):
 3. **Build map** - Create builder function to map linking ID → messages/content
 4. **Pass through** - Add map to props chain: `SessionMessages` → `MessageBlock` → `ToolBlock` → Tool component
 5. **Render in tool** - Use the mapped data in the tool component
-6. **Docs** - Update `ui.md` with rendering spec
+6. **Docs** - Update `claude-code-ui-design.md` with rendering spec
 
 **Existing implementations to reference:**
 
@@ -191,8 +191,8 @@ For messages that provide data for a tool (progress, content, status):
 ### Step 3: Update Documentation (Required)
 
 Always update relevant docs:
-- `docs/claude-code/data-models.md` - Message format, fields, examples
-- `docs/claude-code/ui.md` - Rendering behavior, skip rules
+- `docs/claude-code/claude-code-data-directory.md` - Message format, fields, examples
+- `docs/claude-code/claude-code-ui-design.md` - Rendering behavior, skip rules
 
 ## Testing Considerations
 
@@ -247,8 +247,8 @@ Always update relevant docs:
 | Message rendering | `frontend/app/components/claude/chat/message-block.tsx` |
 | Tool rendering | `frontend/app/components/claude/chat/tool-block.tsx`, `tools/*.tsx` |
 | Backend models | `backend/claude/models/*.go` |
-| Data docs | `docs/claude-code/data-models.md` |
-| UI docs | `docs/claude-code/ui.md` |
+| Data docs | `docs/claude-code/claude-code-data-directory.md` |
+| UI docs | `docs/claude-code/claude-code-ui-design.md` |
 
 ## Output Format
 
@@ -275,13 +275,13 @@ Always update relevant docs:
 
 ### 2. Documentation Status
 
-**data-models.md:**
+**claude-code-data-directory.md:**
 - [ ] Message type documented in "Message Types" table
 - [ ] Subtype documented in "Subtype Reference" table (if applicable)
 - [ ] Detailed section with fields table and JSON example
 - Location: [section name and line numbers, or "Not documented"]
 
-**ui.md:**
+**claude-code-ui-design.md:**
 - [ ] Listed in "Session-Level Messages" table (Section 6.2)
 - [ ] Rendering spec documented
 - [ ] Skipped types section updated (if skipped)
@@ -330,8 +330,8 @@ Always update relevant docs:
 - [ ] Frontend types updated (session-message-utils.ts)
 - [ ] Frontend rendering updated (message-block.tsx)
 - [ ] Progress map added (if progress message)
-- [ ] data-models.md updated (if not already documented)
-- [ ] ui.md updated
+- [ ] claude-code-data-directory.md updated (if not already documented)
+- [ ] claude-code-ui-design.md updated
 - [ ] Build passes (`npm run build`)
 
 ### 8. Notes
