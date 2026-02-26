@@ -928,8 +928,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 3000)
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ws.sendMessage]
+    [pendingQuestions, ws.sendMessage]
   )
 
   // Handle question skip - send control_response with deny behavior.
