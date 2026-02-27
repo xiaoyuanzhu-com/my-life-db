@@ -148,7 +148,7 @@ export function ContextUsageIndicator({
           {displayModel && (
             <span>{displayModel} &middot; </span>
           )}
-          {formatTokens(usedTokens)}/{formatTokens(maxTokens)} ({percentage}%)
+          {formatTokens(usedTokens)}/{formatTokens(maxTokens)}
         </div>
 
         {/* Breakdown rows */}
