@@ -66,15 +66,17 @@ export function ContextUsageIndicator({
   const autocompactBuffer = Math.round(maxTokens * AUTOCOMPACT_BUFFER_RATIO)
   const freeTokens = Math.max(0, maxTokens - usedTokens - autocompactBuffer)
 
-  // Combined percentage (tokens + buffer) — matches CLI status bar behavior
-  const percentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
+  // Display percentage — tokens only, no buffer (matches CLI /context behavior)
+  const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
+  // Ring percentage — includes buffer to show true fullness
+  const ringPercentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
 
   // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)
   const size = 14
   const strokeWidth = 2
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference - (percentage / 100) * circumference
+  const dashOffset = circumference - (ringPercentage / 100) * circumference
 
   const displayModel = formatModelName(usage.modelName)
 
@@ -148,25 +150,17 @@ export function ContextUsageIndicator({
           {displayModel && (
             <span>{displayModel} &middot; </span>
           )}
-          {formatTokens(usedTokens)} / {formatTokens(maxTokens)} ({percentage}%)
+          {formatTokens(usedTokens)}/{formatTokens(maxTokens)} tokens ({percentage}%)
         </div>
 
         {/* Breakdown rows */}
         <div className="mt-2 text-xs text-muted-foreground tabular-nums space-y-0.5">
           <div className="flex justify-between">
-            <span>Cache read</span>
-            <span>{formatTokens(usage.cacheReadTokens)} ({formatPercent(usage.cacheReadTokens, maxTokens)})</span>
+            <span>Used</span>
+            <span>{formatTokens(usedTokens)} ({formatPercent(usedTokens, maxTokens)})</span>
           </div>
           <div className="flex justify-between">
-            <span>Cache write</span>
-            <span>{formatTokens(usage.cacheCreationTokens)} ({formatPercent(usage.cacheCreationTokens, maxTokens)})</span>
-          </div>
-          <div className="flex justify-between">
-            <span>New input</span>
-            <span>{formatTokens(usage.rawInputTokens)} ({formatPercent(usage.rawInputTokens, maxTokens)})</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Free space</span>
+            <span>Free</span>
             <span>{formatTokens(freeTokens)} ({formatPercent(freeTokens, maxTokens)})</span>
           </div>
           <div className="flex justify-between">
