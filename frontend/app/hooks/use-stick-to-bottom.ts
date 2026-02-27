@@ -49,10 +49,33 @@ export function useStickToBottom() {
     }
   }, [scrollToBottom])
 
+  // Store event handlers in refs so the same function identity is used for
+  // addEventListener and removeEventListener, even if the scroll element changes.
+  // All closed-over values (scrollElementRef, isAtBottomRef, rafRef, checkIsAtBottom)
+  // are refs or stable callbacks, so the handlers are correct across renders.
+  const handleScrollRef = useRef(function handleScroll() {
+    if (rafRef.current !== null) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      const el = scrollElementRef.current
+      if (!el) return
+      isAtBottomRef.current = checkIsAtBottom(el)
+    })
+  })
+
+  const handleScrollEndRef = useRef(function handleScrollEnd() {
+    const el = scrollElementRef.current
+    if (!el) return
+    isAtBottomRef.current = checkIsAtBottom(el)
+  })
+
   /**
    * Callback ref — sets up scroll listeners when element is assigned.
    */
   const setScrollElement = useCallback((el: HTMLDivElement | null) => {
+    const handleScroll = handleScrollRef.current
+    const handleScrollEnd = handleScrollEndRef.current
+
     // Clean up old listeners
     const prevEl = scrollElementRef.current
     if (prevEl && prevEl !== el) {
@@ -69,46 +92,20 @@ export function useStickToBottom() {
 
     el.addEventListener('scroll', handleScroll, { passive: true })
     el.addEventListener('scrollend', handleScrollEnd, { passive: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  /**
-   * Handle scroll events — use rAF debounce to avoid excessive checks
-   * during momentum scrolling.
-   */
-  function handleScroll() {
-    if (rafRef.current !== null) return
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null
-      const el = scrollElementRef.current
-      if (!el) return
-      isAtBottomRef.current = checkIsAtBottom(el)
-    })
-  }
-
-  /**
-   * Handle scrollend — fires once after momentum scrolling settles.
-   * This is the definitive check on mobile Safari/iOS WebView.
-   */
-  function handleScrollEnd() {
-    const el = scrollElementRef.current
-    if (!el) return
-    isAtBottomRef.current = checkIsAtBottom(el)
-  }
+  }, [checkIsAtBottom])
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
       const el = scrollElementRef.current
       if (el) {
-        el.removeEventListener('scroll', handleScroll)
-        el.removeEventListener('scrollend', handleScrollEnd)
+        el.removeEventListener('scroll', handleScrollRef.current)
+        el.removeEventListener('scrollend', handleScrollEndRef.current)
       }
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return {
