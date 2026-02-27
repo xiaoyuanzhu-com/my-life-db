@@ -176,56 +176,22 @@ func TestConcurrent_SubscribeUnsubscribe(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConcurrent_GetSessionEntry(t *testing.T) {
-	m, cleanup := createTestManager(t)
-	defer cleanup()
-
-	// Add some entries
-	m.mu.Lock()
-	m.initialized = true
-	for i := 0; i < 10; i++ {
-		id := "session-" + string(rune('a'+i))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
-			DisplayTitle: "Test Session " + id,
-			MessageCount: i + 1,
-			Modified:     time.Now(),
-		}
-	}
-	m.mu.Unlock()
-
-	var wg sync.WaitGroup
-	const numReaders = 100
-
-	for i := 0; i < numReaders; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			id := "session-" + string(rune('a'+(idx%10)))
-			entry := m.GetSessionEntry(id)
-			if entry == nil {
-				t.Errorf("expected entry for %s", id)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-}
-
 func TestConcurrent_ListAllSessions(t *testing.T) {
 	m, cleanup := createTestManager(t)
 	defer cleanup()
 
-	// Add entries
+	// Add sessions directly (one store)
 	m.mu.Lock()
 	m.initialized = true
 	for i := 0; i < 50; i++ {
 		id := "session-" + string(rune('a'+(i%26))) + string(rune('0'+(i/26)))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
+		m.sessions[id] = &Session{
+			ID:           id,
 			DisplayTitle: "Test Session",
 			MessageCount: i + 1,
-			Modified:     time.Now().Add(time.Duration(-i) * time.Minute),
+			LastActivity: time.Now().Add(time.Duration(-i) * time.Minute),
+			Status:       "active",
+			Clients:      make(map[*Client]bool),
 		}
 	}
 	m.mu.Unlock()
@@ -286,25 +252,28 @@ func TestListAllSessions_Pagination(t *testing.T) {
 	m, cleanup := createTestManager(t)
 	defer cleanup()
 
-	// Add 25 entries
+	// Add 25 sessions
 	m.mu.Lock()
 	m.initialized = true
 	baseTime := time.Now()
 	for i := 0; i < 25; i++ {
 		id := "session-" + string(rune('a'+i))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
-			DisplayTitle: "Test Session " + string(rune('A'+i)),
-			MessageCount: i + 1,
-			Modified:     baseTime.Add(time.Duration(-i) * time.Minute), // Older as index increases
+		m.sessions[id] = &Session{
+			ID:               id,
+			DisplayTitle:     "Test Session " + string(rune('A'+i)),
+			MessageCount:     i + 1,
+			LastActivity:     baseTime.Add(time.Duration(-i) * time.Minute),
+			LastUserActivity: baseTime.Add(time.Duration(-i) * time.Minute),
+			Status:           "active",
+			Clients:          make(map[*Client]bool),
 		}
 	}
 	m.mu.Unlock()
 
 	// First page
 	result := m.ListAllSessions("", 10, "")
-	if len(result.Entries) != 10 {
-		t.Errorf("expected 10 entries, got %d", len(result.Entries))
+	if len(result.Sessions) != 10 {
+		t.Errorf("expected 10 sessions, got %d", len(result.Sessions))
 	}
 	if !result.HasMore {
 		t.Error("expected HasMore to be true")
@@ -318,8 +287,8 @@ func TestListAllSessions_Pagination(t *testing.T) {
 
 	// Second page
 	result2 := m.ListAllSessions(result.NextCursor, 10, "")
-	if len(result2.Entries) != 10 {
-		t.Errorf("expected 10 entries, got %d", len(result2.Entries))
+	if len(result2.Sessions) != 10 {
+		t.Errorf("expected 10 sessions, got %d", len(result2.Sessions))
 	}
 	if !result2.HasMore {
 		t.Error("expected HasMore to be true")
@@ -327,8 +296,8 @@ func TestListAllSessions_Pagination(t *testing.T) {
 
 	// Third page (last)
 	result3 := m.ListAllSessions(result2.NextCursor, 10, "")
-	if len(result3.Entries) != 5 {
-		t.Errorf("expected 5 entries, got %d", len(result3.Entries))
+	if len(result3.Sessions) != 5 {
+		t.Errorf("expected 5 sessions, got %d", len(result3.Sessions))
 	}
 	if result3.HasMore {
 		t.Error("expected HasMore to be false")
@@ -336,13 +305,13 @@ func TestListAllSessions_Pagination(t *testing.T) {
 
 	// Verify no duplicates across pages
 	seen := make(map[string]bool)
-	allEntries := append(result.Entries, result2.Entries...)
-	allEntries = append(allEntries, result3.Entries...)
-	for _, entry := range allEntries {
-		if seen[entry.SessionID] {
-			t.Errorf("duplicate session ID: %s", entry.SessionID)
+	allSessions := append(result.Sessions, result2.Sessions...)
+	allSessions = append(allSessions, result3.Sessions...)
+	for _, s := range allSessions {
+		if seen[s.ID] {
+			t.Errorf("duplicate session ID: %s", s.ID)
 		}
-		seen[entry.SessionID] = true
+		seen[s.ID] = true
 	}
 	if len(seen) != 25 {
 		t.Errorf("expected 25 unique sessions, got %d", len(seen))
@@ -357,31 +326,33 @@ func TestListAllSessions_LimitBounds(t *testing.T) {
 	m.initialized = true
 	for i := 0; i < 150; i++ {
 		id := "session-" + string(rune('a'+(i%26))) + string(rune('0'+(i/26)%10))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
+		m.sessions[id] = &Session{
+			ID:           id,
 			DisplayTitle: "Test",
 			MessageCount: 1,
-			Modified:     time.Now(),
+			LastActivity: time.Now(),
+			Status:       "active",
+			Clients:      make(map[*Client]bool),
 		}
 	}
 	m.mu.Unlock()
 
 	// Test limit 0 -> defaults to 20
 	result := m.ListAllSessions("", 0, "")
-	if len(result.Entries) != 20 {
-		t.Errorf("expected default limit of 20, got %d", len(result.Entries))
+	if len(result.Sessions) != 20 {
+		t.Errorf("expected default limit of 20, got %d", len(result.Sessions))
 	}
 
 	// Test limit > 100 -> capped to 100
 	result = m.ListAllSessions("", 200, "")
-	if len(result.Entries) != 100 {
-		t.Errorf("expected max limit of 100, got %d", len(result.Entries))
+	if len(result.Sessions) != 100 {
+		t.Errorf("expected max limit of 100, got %d", len(result.Sessions))
 	}
 
 	// Test negative limit -> defaults to 20
 	result = m.ListAllSessions("", -5, "")
-	if len(result.Entries) != 20 {
-		t.Errorf("expected default limit of 20 for negative, got %d", len(result.Entries))
+	if len(result.Sessions) != 20 {
+		t.Errorf("expected default limit of 20 for negative, got %d", len(result.Sessions))
 	}
 }
 
@@ -392,55 +363,55 @@ func TestListAllSessions_StatusFilter(t *testing.T) {
 	m.mu.Lock()
 	m.initialized = true
 
-	// Add archived entries
+	// Add sessions that will be "archived" (IsArchived is set per-query from DB,
+	// but for testing we set it directly since tests don't have a real DB)
 	for i := 0; i < 5; i++ {
 		id := "archived-" + string(rune('a'+i))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
+		m.sessions[id] = &Session{
+			ID:           id,
 			DisplayTitle: "Archived",
 			MessageCount: 1,
-			Modified:     time.Now(),
-			IsActivated:  false,
+			LastActivity: time.Now(),
+			Status:       "active",
+			Clients:      make(map[*Client]bool),
+			IsArchived:   true,
 		}
 	}
 
-	// Add active entries (simulated via sessions map)
+	// Add active sessions
 	for i := 0; i < 3; i++ {
 		id := "active-" + string(rune('a'+i))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
+		m.sessions[id] = &Session{
+			ID:           id,
 			DisplayTitle: "Active",
 			MessageCount: 1,
-			Modified:     time.Now(),
-			IsActivated:  true,
-		}
-		m.sessions[id] = &Session{
-			ID:        id,
-			Status:    "active",
-			activated: true,
+			LastActivity: time.Now(),
+			Status:       "active",
+			Clients:      make(map[*Client]bool),
+			activated:    true,
 		}
 	}
 	m.mu.Unlock()
 
 	// Filter active only (non-archived)
 	result := m.ListAllSessions("", 20, "active")
-	if len(result.Entries) != 3 {
-		t.Errorf("expected 3 active entries, got %d", len(result.Entries))
+	if len(result.Sessions) != 3 {
+		t.Errorf("expected 3 active sessions, got %d", len(result.Sessions))
 	}
-	for _, entry := range result.Entries {
-		if entry.Status != "active" {
-			t.Errorf("expected active status, got %s for %s", entry.Status, entry.SessionID)
+	for _, s := range result.Sessions {
+		if s.IsArchived {
+			t.Errorf("expected non-archived, got archived for %s", s.ID)
 		}
 	}
 
 	// Filter archived only
 	result = m.ListAllSessions("", 20, "archived")
-	if len(result.Entries) != 5 {
-		t.Errorf("expected 5 archived entries, got %d", len(result.Entries))
+	if len(result.Sessions) != 5 {
+		t.Errorf("expected 5 archived sessions, got %d", len(result.Sessions))
 	}
-	for _, entry := range result.Entries {
-		if entry.Status != "archived" {
-			t.Errorf("expected archived status, got %s for %s", entry.Status, entry.SessionID)
+	for _, s := range result.Sessions {
+		if !s.IsArchived {
+			t.Errorf("expected archived, got non-archived for %s", s.ID)
 		}
 	}
 }
@@ -452,39 +423,48 @@ func TestListAllSessions_SortsByModifiedDescending(t *testing.T) {
 	baseTime := time.Now()
 	m.mu.Lock()
 	m.initialized = true
-	m.entries["oldest"] = &SessionEntry{
-		SessionID:    "oldest",
-		DisplayTitle: "Oldest",
-		MessageCount: 1,
-		Modified:     baseTime.Add(-3 * time.Hour),
+	m.sessions["oldest"] = &Session{
+		ID:               "oldest",
+		DisplayTitle:     "Oldest",
+		MessageCount:     1,
+		LastActivity:     baseTime.Add(-3 * time.Hour),
+		LastUserActivity: baseTime.Add(-3 * time.Hour),
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
 	}
-	m.entries["middle"] = &SessionEntry{
-		SessionID:    "middle",
-		DisplayTitle: "Middle",
-		MessageCount: 1,
-		Modified:     baseTime.Add(-1 * time.Hour),
+	m.sessions["middle"] = &Session{
+		ID:               "middle",
+		DisplayTitle:     "Middle",
+		MessageCount:     1,
+		LastActivity:     baseTime.Add(-1 * time.Hour),
+		LastUserActivity: baseTime.Add(-1 * time.Hour),
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
 	}
-	m.entries["newest"] = &SessionEntry{
-		SessionID:    "newest",
-		DisplayTitle: "Newest",
-		MessageCount: 1,
-		Modified:     baseTime,
+	m.sessions["newest"] = &Session{
+		ID:               "newest",
+		DisplayTitle:     "Newest",
+		MessageCount:     1,
+		LastActivity:     baseTime,
+		LastUserActivity: baseTime,
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
 	}
 	m.mu.Unlock()
 
 	result := m.ListAllSessions("", 10, "")
-	if len(result.Entries) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(result.Entries))
+	if len(result.Sessions) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(result.Sessions))
 	}
 
-	if result.Entries[0].SessionID != "newest" {
-		t.Errorf("expected first entry to be newest, got %s", result.Entries[0].SessionID)
+	if result.Sessions[0].ID != "newest" {
+		t.Errorf("expected first session to be newest, got %s", result.Sessions[0].ID)
 	}
-	if result.Entries[1].SessionID != "middle" {
-		t.Errorf("expected second entry to be middle, got %s", result.Entries[1].SessionID)
+	if result.Sessions[1].ID != "middle" {
+		t.Errorf("expected second session to be middle, got %s", result.Sessions[1].ID)
 	}
-	if result.Entries[2].SessionID != "oldest" {
-		t.Errorf("expected third entry to be oldest, got %s", result.Entries[2].SessionID)
+	if result.Sessions[2].ID != "oldest" {
+		t.Errorf("expected third session to be oldest, got %s", result.Sessions[2].ID)
 	}
 }
 
@@ -496,44 +476,53 @@ func TestListAllSessions_DeduplicatesByFirstUserMessageUUID(t *testing.T) {
 	m.initialized = true
 
 	// Two sessions with same FirstUserMessageUUID (keep the one with more messages)
-	m.entries["session-1"] = &SessionEntry{
-		SessionID:            "session-1",
+	m.sessions["session-1"] = &Session{
+		ID:                   "session-1",
 		DisplayTitle:         "Session 1",
 		FirstUserMessageUUID: "same-uuid",
 		MessageCount:         5,
-		Modified:             time.Now(),
+		LastActivity:         time.Now(),
+		LastUserActivity:     time.Now(),
+		Status:               "active",
+		Clients:              make(map[*Client]bool),
 	}
-	m.entries["session-2"] = &SessionEntry{
-		SessionID:            "session-2",
+	m.sessions["session-2"] = &Session{
+		ID:                   "session-2",
 		DisplayTitle:         "Session 2",
 		FirstUserMessageUUID: "same-uuid",
 		MessageCount:         10, // More messages
-		Modified:             time.Now(),
+		LastActivity:         time.Now(),
+		LastUserActivity:     time.Now(),
+		Status:               "active",
+		Clients:              make(map[*Client]bool),
 	}
 	// A unique session
-	m.entries["session-3"] = &SessionEntry{
-		SessionID:            "session-3",
+	m.sessions["session-3"] = &Session{
+		ID:                   "session-3",
 		DisplayTitle:         "Session 3",
 		FirstUserMessageUUID: "unique-uuid",
 		MessageCount:         3,
-		Modified:             time.Now(),
+		LastActivity:         time.Now(),
+		LastUserActivity:     time.Now(),
+		Status:               "active",
+		Clients:              make(map[*Client]bool),
 	}
 	m.mu.Unlock()
 
 	result := m.ListAllSessions("", 10, "")
 
-	// Should have 2 entries (one from deduplicated pair, one unique)
-	if len(result.Entries) != 2 {
-		t.Errorf("expected 2 entries after dedup, got %d", len(result.Entries))
+	// Should have 2 sessions (one from deduplicated pair, one unique)
+	if len(result.Sessions) != 2 {
+		t.Errorf("expected 2 sessions after dedup, got %d", len(result.Sessions))
 	}
 
-	// The deduplicated entry should be session-2 (more messages)
+	// The deduplicated session should be session-2 (more messages)
 	found := false
-	for _, entry := range result.Entries {
-		if entry.SessionID == "session-2" {
+	for _, s := range result.Sessions {
+		if s.ID == "session-2" {
 			found = true
 		}
-		if entry.SessionID == "session-1" {
+		if s.ID == "session-1" {
 			t.Error("session-1 should have been deduplicated (fewer messages)")
 		}
 	}
@@ -548,32 +537,39 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 
 	m.mu.Lock()
 	m.initialized = true
-	m.entries["empty-untitled"] = &SessionEntry{
-		SessionID:    "empty-untitled",
+	m.sessions["empty-untitled"] = &Session{
+		ID:           "empty-untitled",
 		DisplayTitle: "Untitled",
 		MessageCount: 0,
-		Modified:     time.Now(),
+		LastActivity: time.Now(),
+		Status:       "active",
+		Clients:      make(map[*Client]bool),
 	}
-	m.entries["empty-titled"] = &SessionEntry{
-		SessionID:    "empty-titled",
+	m.sessions["empty-titled"] = &Session{
+		ID:           "empty-titled",
 		DisplayTitle: "Session 10",
 		MessageCount: 0,
-		Modified:     time.Now(),
+		LastActivity: time.Now(),
+		Status:       "active",
+		Clients:      make(map[*Client]bool),
 	}
-	m.entries["has-content"] = &SessionEntry{
-		SessionID:    "has-content",
-		DisplayTitle: "Has Content",
-		MessageCount: 5,
-		Modified:     time.Now(),
+	m.sessions["has-content"] = &Session{
+		ID:               "has-content",
+		DisplayTitle:     "Has Content",
+		MessageCount:     5,
+		LastActivity:     time.Now(),
+		LastUserActivity: time.Now(),
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
 	}
 	m.mu.Unlock()
 
 	result := m.ListAllSessions("", 10, "")
-	if len(result.Entries) != 1 {
-		t.Errorf("expected 1 entry (both empty sessions skipped), got %d", len(result.Entries))
+	if len(result.Sessions) != 1 {
+		t.Errorf("expected 1 session (both empty sessions skipped), got %d", len(result.Sessions))
 	}
-	if result.Entries[0].SessionID != "has-content" {
-		t.Errorf("expected has-content, got %s", result.Entries[0].SessionID)
+	if result.Sessions[0].ID != "has-content" {
+		t.Errorf("expected has-content, got %s", result.Sessions[0].ID)
 	}
 }
 
@@ -585,19 +581,22 @@ func TestListAllSessions_InvalidCursor(t *testing.T) {
 	m.initialized = true
 	for i := 0; i < 5; i++ {
 		id := "session-" + string(rune('a'+i))
-		m.entries[id] = &SessionEntry{
-			SessionID:    id,
-			DisplayTitle: "Test",
-			MessageCount: 1,
-			Modified:     time.Now(),
+		m.sessions[id] = &Session{
+			ID:               id,
+			DisplayTitle:     "Test",
+			MessageCount:     1,
+			LastActivity:     time.Now(),
+			LastUserActivity: time.Now(),
+			Status:           "active",
+			Clients:          make(map[*Client]bool),
 		}
 	}
 	m.mu.Unlock()
 
 	// Invalid cursor should start from beginning
 	result := m.ListAllSessions("invalid-cursor", 10, "")
-	if len(result.Entries) != 5 {
-		t.Errorf("expected 5 entries with invalid cursor, got %d", len(result.Entries))
+	if len(result.Sessions) != 5 {
+		t.Errorf("expected 5 sessions with invalid cursor, got %d", len(result.Sessions))
 	}
 }
 
@@ -611,7 +610,6 @@ func createTestManager(t *testing.T) (*SessionManager, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &SessionManager{
-		entries:       make(map[string]*SessionEntry),
 		sessions:      make(map[string]*Session),
 		subscribers:   make(map[chan SessionEvent]struct{}),
 		projectsDir:   t.TempDir(),

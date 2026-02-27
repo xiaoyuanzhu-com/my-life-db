@@ -51,7 +51,7 @@ type Session struct {
 	//
 	// ALL message reads, counts, and derived state for active sessions MUST come from
 	// this list (or from fields derived from it, like resultCount below).
-	// Do NOT read from JSONL files, JSONL cache (SessionEntry), or stdout directly.
+	// Do NOT read from JSONL files or stdout directly.
 	rawMessages [][]byte         `json:"-"`
 	seenUUIDs   map[string]bool  `json:"-"` // Track seen message UUIDs for deduplication
 	rawLoaded   bool             `json:"-"`
@@ -101,8 +101,8 @@ type Session struct {
 	// Result count — total number of completed turns (historical + live).
 	// Initialized from JSONL in LoadRawMessages(), then incremented by live stdout
 	// results in BroadcastUIMessage(). This is the authoritative count for active
-	// sessions — do NOT use SessionEntry.ResultCount (JSONL cache) instead, as it
-	// lags behind due to fsnotify delay and will miss the "unread" state window.
+	// sessions — the JSONL cache lags behind due to fsnotify delay and will miss
+	// the "unread" state window.
 	resultCount int `json:"-"`
 
 	// Pending permission count — tracked by BroadcastUIMessage from control_request/control_response.
@@ -118,6 +118,20 @@ type Session struct {
 	// counters (clamped to 0) to stay consistent.
 	seenPermissionCount int `json:"-"`
 
+	// Metadata fields (populated from JSONL on startup/fsnotify, not serialized).
+	// These are the source of truth for the session list (ListAllSessions).
+	// Written under SessionManager.mu; read under SessionManager.mu.RLock().
+	FullPath             string `json:"-"` // Path to JSONL file
+	DisplayTitle         string `json:"-"` // Computed: CustomTitle → Summary → FirstPrompt → "Untitled"
+	FirstPrompt          string `json:"-"`
+	FirstUserMessageUUID string `json:"-"`
+	Summary              string `json:"-"`
+	CustomTitle          string `json:"-"`
+	MessageCount         int    `json:"-"`
+	GitBranch            string `json:"-"`
+	IsSidechain          bool   `json:"-"`
+	IsArchived           bool   `json:"-"` // From DB (set per-query in ListAllSessions)
+	enriched             bool   `json:"-"` // Whether JSONL has been fully parsed
 }
 
 // AddClient registers a new WebSocket client to this session
@@ -199,7 +213,7 @@ func (s *Session) IsProcessing() bool {
 
 // ResultCount returns the total number of completed turns (historical + live).
 // This is the source of truth for active sessions. Do not re-derive from
-// rawMessages iteration or from the JSONL cache (SessionEntry.ResultCount).
+// rawMessages iteration or from the JSONL cache.
 func (s *Session) ResultCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -229,8 +243,79 @@ func (s *Session) HasUnseenPermission() bool {
 // After this call, HasUnseenPermission() returns false until a new control_request arrives.
 func (s *Session) MarkPermissionsSeen() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	changed := s.pendingPermissionCount > s.seenPermissionCount
 	s.seenPermissionCount = s.pendingPermissionCount
+	cb := s.onStateChanged
+	s.mu.Unlock()
+	if changed && cb != nil {
+		cb()
+	}
+}
+
+// ComputeDisplayTitle derives the display title from metadata fields.
+func (s *Session) ComputeDisplayTitle() string {
+	if s.CustomTitle != "" {
+		return s.CustomTitle
+	}
+	if s.Summary != "" {
+		return s.Summary
+	}
+	if s.FirstPrompt != "" {
+		return s.FirstPrompt
+	}
+	return "Untitled"
+}
+
+// Enrich loads accurate FirstPrompt and FirstUserMessageUUID from the JSONL file.
+// Called lazily when sessions are about to be paginated in ListAllSessions.
+func (s *Session) Enrich() bool {
+	if s.enriched {
+		return false
+	}
+
+	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(s.ID, s.WorkingDir)
+	if firstPrompt != "" {
+		s.FirstPrompt = firstPrompt
+		s.DisplayTitle = s.ComputeDisplayTitle()
+	}
+	s.FirstUserMessageUUID = firstUUID
+	s.enriched = true
+	return true
+}
+
+// mergeMetadata updates metadata fields from a parsed JSONL file.
+// Called by handleFSEvent when a JSONL file changes.
+// Caller must hold SessionManager.mu.
+func (s *Session) mergeMetadata(meta *sessionMetadata) {
+	s.FullPath = meta.FullPath
+	if meta.ProjectPath != "" {
+		s.WorkingDir = meta.ProjectPath
+	}
+	s.DisplayTitle = meta.DisplayTitle
+	s.FirstPrompt = meta.FirstPrompt
+	s.FirstUserMessageUUID = meta.FirstUserMessageUUID
+	s.Summary = meta.Summary
+	s.CustomTitle = meta.CustomTitle
+	s.MessageCount = meta.MessageCount
+	s.GitBranch = meta.GitBranch
+	s.IsSidechain = meta.IsSidechain
+	s.enriched = meta.enriched
+	if !meta.Created.IsZero() {
+		s.CreatedAt = meta.Created
+	}
+	if meta.Modified.After(s.LastActivity) {
+		s.LastActivity = meta.Modified
+	}
+	if meta.LastUserActivity.After(s.LastUserActivity) {
+		s.LastUserActivity = meta.LastUserActivity
+	}
+	// For inactive sessions, update result count from JSONL.
+	// Active sessions derive resultCount from live stdout — don't overwrite.
+	s.mu.Lock()
+	if !s.activated {
+		s.resultCount = meta.ResultCount
+	}
+	s.mu.Unlock()
 }
 
 // ClientCount returns the number of connected WebSocket clients.

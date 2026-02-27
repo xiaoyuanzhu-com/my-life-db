@@ -57,78 +57,24 @@ type SessionEvent struct {
 // SessionEventCallback is called when session state changes
 type SessionEventCallback func(event SessionEvent)
 
-// SessionEntry represents unified session data combining file metadata and runtime state
-type SessionEntry struct {
-	// Identity
-	SessionID   string `json:"id"`
-	FullPath    string `json:"fullPath,omitempty"` // Path to JSONL file
-	ProjectPath string `json:"projectPath"`        // Working directory
-
-	// Metadata (from filesystem)
-	DisplayTitle         string    `json:"displayTitle"`
-	FirstPrompt          string    `json:"firstPrompt,omitempty"`
-	FirstUserMessageUUID string    `json:"firstUserMessageUuid,omitempty"`
-	Summary              string    `json:"summary,omitempty"`
-	CustomTitle          string    `json:"customTitle,omitempty"`
-	MessageCount         int       `json:"messageCount"`
-	// ResultCount from JSONL cache — STALE for active sessions due to fsnotify delay.
-	// For active sessions, GetAllSessionEntries() overwrites this with Session.ResultCount()
-	// which is the source of truth. Do not read this field directly for active sessions.
-	ResultCount int `json:"-"`
-	Created              time.Time `json:"created"`
-	Modified             time.Time `json:"modified"`
-	LastUserActivity     time.Time `json:"lastUserActivity"`
-	GitBranch            string    `json:"gitBranch,omitempty"`
-	IsSidechain          bool      `json:"isSidechain"`
-
-	// Runtime state (internal, not exposed to API)
-	IsActivated          bool               `json:"-"`
-	IsProcessing         bool               `json:"-"` // Claude is actively generating (mid-turn)
-	HasPendingPermission bool               `json:"-"` // Waiting for user permission input
-	HasUnseenPermission  bool               `json:"-"` // Pending permissions the user hasn't seen yet
-	ProcessID            int                `json:"-"`
-	ClientCount          int                `json:"-"`
-	PermissionMode       sdk.PermissionMode `json:"-"` // From active session (empty for historical)
-
-	// User preference (from database) — drives Status
-	IsArchived bool   `json:"-"`
-	Status     string `json:"status"` // "active" or "archived" (derived from IsArchived)
-
-	// Git info (for active sessions)
-	Git *GitInfo `json:"git,omitempty"`
-
-	// Internal: whether metadata has been enriched from JSONL
-	enriched bool
-}
-
-// computeDisplayTitle computes the display title from available fields
-func (e *SessionEntry) computeDisplayTitle() string {
-	if e.CustomTitle != "" {
-		return e.CustomTitle
-	}
-	if e.Summary != "" {
-		return e.Summary
-	}
-	if e.FirstPrompt != "" {
-		return e.FirstPrompt
-	}
-	return "Untitled"
-}
-
-// Enrich loads accurate FirstPrompt and FirstUserMessageUUID from the JSONL file.
-func (e *SessionEntry) Enrich() bool {
-	if e.enriched {
-		return false
-	}
-
-	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(e.SessionID, e.ProjectPath)
-	if firstPrompt != "" {
-		e.FirstPrompt = firstPrompt
-		e.DisplayTitle = e.computeDisplayTitle()
-	}
-	e.FirstUserMessageUUID = firstUUID
-	e.enriched = true
-	return true
+// sessionMetadata is a package-private struct for transferring parsed JSONL data
+// into Session objects. Used by parseJSONLFile and handleFSEvent.
+type sessionMetadata struct {
+	FullPath             string
+	ProjectPath          string // Working directory from JSONL
+	DisplayTitle         string
+	FirstPrompt          string
+	FirstUserMessageUUID string
+	Summary              string
+	CustomTitle          string
+	MessageCount         int
+	ResultCount          int
+	Created              time.Time
+	Modified             time.Time
+	LastUserActivity     time.Time
+	GitBranch            string
+	IsSidechain          bool
+	enriched             bool
 }
 
 // SessionManager is the single source of truth for all session state.
@@ -142,12 +88,11 @@ func (e *SessionEntry) Enrich() bool {
 type SessionManager struct {
 	mu sync.RWMutex
 
-	// File-based metadata cache (from JSONL files)
-	entries     map[string]*SessionEntry
+	// All sessions — the single store for both active and historical sessions.
+	// Active sessions have activated=true and sdkClient set.
+	// Historical sessions have activated=false and metadata from JSONL.
+	sessions    map[string]*Session
 	initialized bool
-
-	// Active session processes
-	sessions map[string]*Session
 
 	// Event subscribers
 	subscribersMu sync.RWMutex
@@ -175,7 +120,6 @@ func NewSessionManager() (*SessionManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &SessionManager{
-		entries:       make(map[string]*SessionEntry),
 		sessions:      make(map[string]*Session),
 		subscribers:   make(map[chan SessionEvent]struct{}),
 		projectsDir:   projectsDir,
@@ -339,9 +283,9 @@ func (m *SessionManager) Shutdown(ctx context.Context) error {
 // Query Methods
 // =============================================================================
 
-// GetSession retrieves a session by ID.
-// Returns the merged session entry with both metadata and runtime state.
-// If session is archived but exists in history, creates a shell session for viewing.
+// GetSession retrieves a session by ID from the single store.
+// All sessions (active + historical) are in m.sessions.
+// If not found in memory, searches for JSONL on disk as a fallback.
 func (m *SessionManager) GetSession(id string) (*Session, error) {
 	m.ensureInitialized()
 
@@ -353,52 +297,15 @@ func (m *SessionManager) GetSession(id string) (*Session, error) {
 		return session, nil
 	}
 
-	// Session not active - check if it exists in metadata cache
-	m.mu.RLock()
-	entry, exists := m.entries[id]
-	m.mu.RUnlock()
-
-	if !exists {
-		// Not in cache - search for JSONL file directly
-		workingDir, found := findSessionByJSONL(id)
-		if !found {
-			return nil, ErrSessionNotFound
-		}
-		// Create shell session for this archived session
-		return m.createShellSession(id, workingDir, "Archived Session")
+	// Not in the store — could be a session that wasn't picked up during init.
+	// Search for the JSONL file on disk.
+	workingDir, found := findSessionByJSONL(id)
+	if !found {
+		return nil, ErrSessionNotFound
 	}
 
-	// Create shell session from cached metadata
-	return m.createShellSession(id, entry.ProjectPath, entry.DisplayTitle)
-}
-
-// GetSessionEntry retrieves a session entry by ID (metadata only, no process)
-func (m *SessionManager) GetSessionEntry(id string) *SessionEntry {
-	m.ensureInitialized()
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	entry := m.entries[id]
-	if entry == nil {
-		return nil
-	}
-
-	// Copy and add git info from active session
-	result := *entry
-	if session, ok := m.sessions[id]; ok {
-		result.Git = session.Git
-	}
-
-	// Derive status from DB archived state
-	if archived, err := db.IsClaudeSessionArchived(id); err == nil && archived {
-		result.IsArchived = true
-		result.Status = "archived"
-	} else {
-		result.Status = "active"
-	}
-
-	return &result
+	// Create a historical session and add it to the store.
+	return m.createShellSession(id, workingDir, "Archived Session")
 }
 
 // ListSessions returns active sessions (processes in memory)
@@ -415,13 +322,14 @@ func (m *SessionManager) ListSessions() []*Session {
 
 // SessionPaginationResult holds the result of a paginated session query
 type SessionPaginationResult struct {
-	Entries    []*SessionEntry
+	Sessions   []*Session
 	HasMore    bool
 	NextCursor string
 	TotalCount int
 }
 
-// ListAllSessions returns paginated session entries with optional filters
+// ListAllSessions returns paginated sessions with optional filters.
+// Reads from the single m.sessions store — no overlay or sync needed.
 func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter string) *SessionPaginationResult {
 	m.ensureInitialized()
 
@@ -433,118 +341,79 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}
 
 	m.mu.RLock()
-
-	// Get all entries and add runtime state (internal only)
-	allEntries := make([]*SessionEntry, 0, len(m.entries))
-	seenIDs := make(map[string]bool)
-
-	for _, entry := range m.entries {
-		// Skip empty sessions (no messages ever sent)
-		if entry.MessageCount == 0 {
+	all := make([]*Session, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		// Skip empty inactive sessions (no messages, not currently processing).
+		// These are warm sessions created for slash command discovery or idle
+		// sessions that haven't been used yet.
+		if session.MessageCount == 0 && !session.IsProcessing() && session.ResultCount() == 0 {
 			continue
 		}
-
-		entryCopy := *entry
-		seenIDs[entry.SessionID] = true
-
-		// Copy runtime state from active session if available
-		if session, ok := m.sessions[entry.SessionID]; ok {
-			entryCopy.Git = session.Git
-			entryCopy.IsActivated = true
-			entryCopy.IsProcessing = session.IsProcessing()
-			entryCopy.HasPendingPermission = session.HasPendingPermission()
-			entryCopy.HasUnseenPermission = session.HasUnseenPermission()
-			entryCopy.PermissionMode = session.PermissionMode
-			// For active sessions, always use the live result count — it's the source
-			// of truth (initialized from JSONL in LoadRawMessages, then incremented by
-			// live stdout results). The JSONL cache lags behind due to fsnotify delay.
-			entryCopy.ResultCount = session.ResultCount()
-			// Use the active session's LastUserActivity if it's newer
-			if !session.LastUserActivity.IsZero() && session.LastUserActivity.After(entryCopy.LastUserActivity) {
-				entryCopy.LastUserActivity = session.LastUserActivity
-			}
-		}
-
-		allEntries = append(allEntries, &entryCopy)
+		all = append(all, session)
 	}
-
-	// Add any active sessions not in cache (just created).
-	// Skip empty sessions (no completed turns and not currently processing) —
-	// these are warm sessions created for slash command discovery or idle sessions
-	// that haven't been used yet. Previously we also required ClientCount == 0,
-	// but that let empty sessions with connected viewers slip through.
-	for id, session := range m.sessions {
-		if seenIDs[id] || (session.ResultCount() == 0 && !session.IsProcessing()) {
-			continue
-		}
-		entry := &SessionEntry{
-			SessionID:            id,
-			ProjectPath:          session.WorkingDir,
-			DisplayTitle:         session.Title,
-			Created:              session.CreatedAt,
-			Modified:             session.LastActivity,
-			LastUserActivity:     session.LastUserActivity,
-			Git:                  session.Git,
-			IsActivated:          true,
-			IsProcessing:         session.IsProcessing(),
-			HasPendingPermission: session.HasPendingPermission(),
-			HasUnseenPermission:  session.HasUnseenPermission(),
-			PermissionMode:       session.PermissionMode,
-			ResultCount:          session.ResultCount(),
-		}
-		allEntries = append(allEntries, entry)
-	}
-
 	m.mu.RUnlock()
 
-	// Load archived session IDs from database and derive Status
-	archivedIDs, err := db.GetArchivedClaudeSessionIDs()
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to load archived session IDs")
-		archivedIDs = make(map[string]bool)
-	}
-
-	for _, entry := range allEntries {
-		entry.IsArchived = archivedIDs[entry.SessionID]
-		if entry.IsArchived {
-			entry.Status = "archived"
+	// Load archived session IDs from database.
+	// Protected with recover() because db.GetArchivedClaudeSessionIDs panics
+	// when the DB is not initialized (e.g., in tests).
+	// If the DB call fails, preserve existing IsArchived values on sessions.
+	var archivedIDs map[string]bool
+	dbOK := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warn().Msgf("recovered from panic loading archived sessions: %v", r)
+			}
+		}()
+		var err error
+		archivedIDs, err = db.GetArchivedClaudeSessionIDs()
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to load archived session IDs")
 		} else {
-			entry.Status = "active"
+			dbOK = true
+		}
+	}()
+
+	if dbOK {
+		for _, session := range all {
+			session.IsArchived = archivedIDs[session.ID]
 		}
 	}
+	// If DB failed, preserve existing IsArchived values set by the caller (tests)
+	// or from previous successful queries.
 
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
-	allEntries = m.deduplicateEntries(allEntries)
+	all = m.deduplicateSessions(all)
 
-	// Sort by LastUserActivity time (descending) for stable ordering
-	// This prevents sessions from jumping around when Claude is actively responding
-	sort.Slice(allEntries, func(i, j int) bool {
-		if allEntries[i].LastUserActivity.Equal(allEntries[j].LastUserActivity) {
-			return allEntries[i].SessionID > allEntries[j].SessionID
+	// Sort by LastUserActivity time (descending) for stable ordering.
+	// This prevents sessions from jumping around when Claude is actively responding.
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].LastUserActivity.Equal(all[j].LastUserActivity) {
+			return all[i].ID > all[j].ID
 		}
-		return allEntries[i].LastUserActivity.After(allEntries[j].LastUserActivity)
+		return all[i].LastUserActivity.After(all[j].LastUserActivity)
 	})
 
 	// Find cursor position
 	startIdx := 0
 	if cursor != "" {
-		startIdx = m.findCursorIndex(allEntries, cursor)
+		startIdx = m.findSessionCursorIndex(all, cursor)
 	}
 
 	// Filter and collect results
-	result := make([]*SessionEntry, 0, limit)
+	result := make([]*Session, 0, limit)
 	totalFiltered := 0
 	filteredAfterCursor := 0
 
-	for i := 0; i < len(allEntries); i++ {
-		entry := allEntries[i]
+	for i := 0; i < len(all); i++ {
+		session := all[i]
 
 		// Apply status filter
 		// "active" = not archived (default view), "archived" = archived only, "all" = everything
-		if statusFilter == "active" && entry.IsArchived {
+		if statusFilter == "active" && session.IsArchived {
 			continue
 		}
-		if statusFilter == "archived" && !entry.IsArchived {
+		if statusFilter == "archived" && !session.IsArchived {
 			continue
 		}
 
@@ -558,8 +427,8 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 
 		if len(result) < limit {
 			// Enrich on demand
-			entry.Enrich()
-			result = append(result, entry)
+			session.Enrich()
+			result = append(result, session)
 		}
 	}
 
@@ -568,36 +437,36 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	var nextCursor string
 	if hasMore && len(result) > 0 {
 		last := result[len(result)-1]
-		nextCursor = fmt.Sprintf("%d_%s", last.LastUserActivity.UnixMilli(), last.SessionID)
+		nextCursor = fmt.Sprintf("%d_%s", last.LastUserActivity.UnixMilli(), last.ID)
 	}
 
 	return &SessionPaginationResult{
-		Entries:    result,
+		Sessions:   result,
 		HasMore:    hasMore,
 		NextCursor: nextCursor,
 		TotalCount: totalFiltered,
 	}
 }
 
-// deduplicateEntries removes duplicate sessions (same FirstUserMessageUUID)
-func (m *SessionManager) deduplicateEntries(entries []*SessionEntry) []*SessionEntry {
-	groups := make(map[string][]*SessionEntry)
-	for _, entry := range entries {
-		key := entry.FirstUserMessageUUID
-		groups[key] = append(groups[key], entry)
+// deduplicateSessions removes duplicate sessions (same FirstUserMessageUUID)
+func (m *SessionManager) deduplicateSessions(sessions []*Session) []*Session {
+	groups := make(map[string][]*Session)
+	for _, session := range sessions {
+		key := session.FirstUserMessageUUID
+		groups[key] = append(groups[key], session)
 	}
 
-	result := make([]*SessionEntry, 0, len(entries))
+	result := make([]*Session, 0, len(sessions))
 	for uuid, group := range groups {
 		if uuid == "" {
 			result = append(result, group...)
 			continue
 		}
-		// Keep entry with most messages
-		var best *SessionEntry
-		for _, e := range group {
-			if best == nil || e.MessageCount > best.MessageCount {
-				best = e
+		// Keep session with most messages
+		var best *Session
+		for _, s := range group {
+			if best == nil || s.MessageCount > best.MessageCount {
+				best = s
 			}
 		}
 		if best != nil {
@@ -607,8 +476,8 @@ func (m *SessionManager) deduplicateEntries(entries []*SessionEntry) []*SessionE
 	return result
 }
 
-// findCursorIndex finds the index after the cursor position
-func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string) int {
+// findSessionCursorIndex finds the index after the cursor position
+func (m *SessionManager) findSessionCursorIndex(sessions []*Session, cursor string) int {
 	parts := strings.SplitN(cursor, "_", 2)
 	if len(parts) != 2 {
 		return 0
@@ -628,16 +497,16 @@ func (m *SessionManager) findCursorIndex(entries []*SessionEntry, cursor string)
 	cursorTime := time.UnixMilli(cursorMs)
 	cursorSessionID := parts[1]
 
-	for i, entry := range entries {
-		if entry.LastUserActivity.After(cursorTime) {
+	for i, session := range sessions {
+		if session.LastUserActivity.After(cursorTime) {
 			continue
 		}
-		if entry.LastUserActivity.Equal(cursorTime) && entry.SessionID >= cursorSessionID {
+		if session.LastUserActivity.Equal(cursorTime) && session.ID >= cursorSessionID {
 			continue
 		}
 		return i
 	}
-	return len(entries)
+	return len(sessions)
 }
 
 // =============================================================================
@@ -677,12 +546,12 @@ func (m *SessionManager) CreateSessionWithID(workingDir, title, resumeSessionID 
 		permissionMode = sdk.PermissionModeDefault
 	}
 
-	// When resuming, preserve LastUserActivity from cached entry so the session
+	// When resuming, preserve LastUserActivity from existing session so it
 	// doesn't jump to the top of the list just from being re-activated.
 	lastUserActivity := time.Now()
 	if resumeSessionID != "" {
-		if entry, ok := m.entries[resumeSessionID]; ok {
-			lastUserActivity = entry.LastUserActivity
+		if existing, ok := m.sessions[resumeSessionID]; ok {
+			lastUserActivity = existing.LastUserActivity
 		}
 	}
 
@@ -753,18 +622,28 @@ func (m *SessionManager) ActivateSession(id string) error {
 	return nil
 }
 
-// DeactivateSession stops a session process but keeps it in history
+// DeactivateSession stops a session process but keeps it in the store.
+// The session remains in m.sessions with activated=false so it still appears in the list.
 func (m *SessionManager) DeactivateSession(id string) error {
-	m.mu.Lock()
+	m.mu.RLock()
 	session, ok := m.sessions[id]
+	m.mu.RUnlock()
+
 	if !ok {
-		m.mu.Unlock()
 		return ErrSessionNotFound
 	}
-	delete(m.sessions, id)
-	m.mu.Unlock()
 
-	// Cleanup in background
+	session.mu.Lock()
+	if !session.activated {
+		session.mu.Unlock()
+		return nil // Already deactivated
+	}
+	// Prevent re-activation until process is fully dead (processExited re-enables it)
+	session.activated = false
+	session.activateFn = nil
+	session.mu.Unlock()
+
+	// Cleanup in background (kills the process; forwardSDKMessages handles state reset)
 	go m.cleanupSession(session, id)
 
 	// Emit event
@@ -773,7 +652,8 @@ func (m *SessionManager) DeactivateSession(id string) error {
 	return nil
 }
 
-// DeleteSession kills a session and removes it completely
+// DeleteSession kills a session and removes it from the store entirely.
+// This is the only mutation that removes from m.sessions (user explicitly deletes).
 func (m *SessionManager) DeleteSession(id string) error {
 	m.mu.Lock()
 	session, ok := m.sessions[id]
@@ -781,7 +661,7 @@ func (m *SessionManager) DeleteSession(id string) error {
 		m.mu.Unlock()
 		return ErrSessionNotFound
 	}
-	delete(m.sessions, id)
+	delete(m.sessions, id) // Actually remove — user explicitly deleted
 	m.mu.Unlock()
 
 	// Cleanup in background
@@ -848,10 +728,10 @@ func (m *SessionManager) ensureInitialized() {
 
 	m.initialized = true
 
-	log.Info().Int("sessionCount", len(m.entries)).Msg("SessionManager initialized")
+	log.Info().Int("sessionCount", len(m.sessions)).Msg("SessionManager initialized")
 }
 
-// loadFromIndexFiles reads all sessions-index.json files
+// loadFromIndexFiles reads all sessions-index.json files into m.sessions
 func (m *SessionManager) loadFromIndexFiles() {
 	entries, err := os.ReadDir(m.projectsDir)
 	if err != nil {
@@ -859,6 +739,7 @@ func (m *SessionManager) loadFromIndexFiles() {
 		return
 	}
 
+	loadedCount := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -871,39 +752,49 @@ func (m *SessionManager) loadFromIndexFiles() {
 		}
 
 		for _, indexEntry := range index.Entries {
-			m.entries[indexEntry.SessionID] = convertToSessionEntry(&indexEntry)
+			session := m.newHistoricalSessionFromIndex(&indexEntry)
+			m.sessions[session.ID] = session
+			loadedCount++
 		}
 	}
 
-	log.Debug().Int("count", len(m.entries)).Msg("loaded sessions from index files")
+	log.Debug().Int("count", loadedCount).Msg("loaded sessions from index files")
 }
 
-// convertToSessionEntry converts a SessionIndexEntry to SessionEntry
-func convertToSessionEntry(entry *models.SessionIndexEntry) *SessionEntry {
+// newHistoricalSessionFromIndex creates a historical Session from a session index entry.
+func (m *SessionManager) newHistoricalSessionFromIndex(entry *models.SessionIndexEntry) *Session {
 	created, _ := time.Parse(time.RFC3339, entry.Created)
 	modified, _ := time.Parse(time.RFC3339, entry.Modified)
 
-	e := &SessionEntry{
-		SessionID:        entry.SessionID,
-		FullPath:         entry.FullPath,
-		FirstPrompt:      entry.FirstPrompt,
-		Summary:          entry.Summary,
-		CustomTitle:      entry.CustomTitle,
-		MessageCount:     entry.MessageCount,
-		Created:          created,
-		Modified:         modified,
+	session := &Session{
+		ID:               entry.SessionID,
+		WorkingDir:       entry.ProjectPath,
+		CreatedAt:        created,
+		LastActivity:     modified,
 		LastUserActivity: modified, // fallback until JSONL is parsed for accurate value
-		GitBranch:        entry.GitBranch,
-		ProjectPath:      entry.ProjectPath,
-		IsSidechain:      entry.IsSidechain,
 		Status:           "active",
-		enriched:         false,
+		Clients:          make(map[*Client]bool),
+		pendingToolNames: make(map[string]string),
+		// Metadata
+		FullPath:     entry.FullPath,
+		FirstPrompt:  entry.FirstPrompt,
+		Summary:      entry.Summary,
+		CustomTitle:  entry.CustomTitle,
+		MessageCount: entry.MessageCount,
+		GitBranch:    entry.GitBranch,
+		IsSidechain:  entry.IsSidechain,
 	}
-	e.DisplayTitle = e.computeDisplayTitle()
-	return e
+	session.DisplayTitle = session.ComputeDisplayTitle()
+	session.activateFn = func() error {
+		return m.activateSession(session)
+	}
+	session.onStateChanged = func() {
+		m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: session.ID})
+	}
+	return session
 }
 
-// scanForMissingJSONL scans for JSONL files not in the cache
+// scanForMissingJSONL scans for JSONL files not already in m.sessions
 func (m *SessionManager) scanForMissingJSONL() {
 	entries, err := os.ReadDir(m.projectsDir)
 	if err != nil {
@@ -928,13 +819,14 @@ func (m *SessionManager) scanForMissingJSONL() {
 			}
 
 			sessionID := strings.TrimSuffix(file.Name(), ".jsonl")
-			if _, exists := m.entries[sessionID]; exists {
+			if _, exists := m.sessions[sessionID]; exists {
 				continue
 			}
 
 			jsonlPath := filepath.Join(projectDir, file.Name())
-			if entry := m.parseJSONLFile(sessionID, jsonlPath); entry != nil {
-				m.entries[sessionID] = entry
+			if meta := m.parseJSONLFile(sessionID, jsonlPath); meta != nil {
+				session := m.newHistoricalSessionFromMetadata(sessionID, meta)
+				m.sessions[sessionID] = session
 				addedCount++
 			}
 		}
@@ -943,6 +835,39 @@ func (m *SessionManager) scanForMissingJSONL() {
 	if addedCount > 0 {
 		log.Debug().Int("count", addedCount).Msg("added sessions from JSONL scan")
 	}
+}
+
+// newHistoricalSessionFromMetadata creates a historical Session from parsed JSONL metadata.
+func (m *SessionManager) newHistoricalSessionFromMetadata(id string, meta *sessionMetadata) *Session {
+	session := &Session{
+		ID:               id,
+		WorkingDir:       meta.ProjectPath,
+		CreatedAt:        meta.Created,
+		LastActivity:     meta.Modified,
+		LastUserActivity: meta.LastUserActivity,
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
+		pendingToolNames: make(map[string]string),
+		// Metadata
+		FullPath:             meta.FullPath,
+		DisplayTitle:         meta.DisplayTitle,
+		FirstPrompt:          meta.FirstPrompt,
+		FirstUserMessageUUID: meta.FirstUserMessageUUID,
+		Summary:              meta.Summary,
+		CustomTitle:          meta.CustomTitle,
+		MessageCount:         meta.MessageCount,
+		GitBranch:            meta.GitBranch,
+		IsSidechain:          meta.IsSidechain,
+		enriched:             meta.enriched,
+	}
+	session.resultCount = meta.ResultCount
+	session.activateFn = func() error {
+		return m.activateSession(session)
+	}
+	session.onStateChanged = func() {
+		m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: session.ID})
+	}
+	return session
 }
 
 // hasUsefulMessages checks if the session has at least one useful message.
@@ -956,8 +881,9 @@ func hasUsefulMessages(messages []models.SessionMessageI) bool {
 	return false
 }
 
-// parseJSONLFile parses a JSONL file and extracts session metadata
-func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEntry {
+// parseJSONLFile parses a JSONL file and extracts session metadata.
+// Returns a sessionMetadata struct (not a Session) for data transfer.
+func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *sessionMetadata {
 	messages, err := ReadSessionHistoryRaw(sessionID, "")
 	if err != nil {
 		log.Debug().Err(err).Str("path", jsonlPath).Msg("failed to parse JSONL file")
@@ -978,12 +904,11 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 		return nil
 	}
 
-	entry := &SessionEntry{
-		SessionID:    sessionID,
+	meta := &sessionMetadata{
 		FullPath:     jsonlPath,
 		MessageCount: len(messages),
 		Modified:     fileInfo.ModTime(),
-		Status:       "active",
+		enriched:     true,
 	}
 
 	for i, msg := range messages {
@@ -992,25 +917,25 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 
 		if i == 0 && timestamp != "" {
 			if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
-				entry.Created = t
+				meta.Created = t
 			}
 		}
 
 		if userMsg, ok := msg.(*models.UserSessionMessage); ok {
-			if i == 0 || entry.ProjectPath == "" {
+			if i == 0 || meta.ProjectPath == "" {
 				if userMsg.CWD != "" {
-					entry.ProjectPath = userMsg.CWD
+					meta.ProjectPath = userMsg.CWD
 				}
 				if userMsg.GitBranch != "" {
-					entry.GitBranch = userMsg.GitBranch
+					meta.GitBranch = userMsg.GitBranch
 				}
 				if userMsg.IsSidechain != nil {
-					entry.IsSidechain = *userMsg.IsSidechain
+					meta.IsSidechain = *userMsg.IsSidechain
 				}
 			}
-			if entry.FirstPrompt == "" && !userMsg.IsCompactSummary {
-				entry.FirstPrompt = userMsg.GetUserPrompt()
-				entry.FirstUserMessageUUID = userMsg.GetUUID()
+			if meta.FirstPrompt == "" && !userMsg.IsCompactSummary {
+				meta.FirstPrompt = userMsg.GetUserPrompt()
+				meta.FirstUserMessageUUID = userMsg.GetUUID()
 			}
 
 			// Track last user message timestamp for stable list ordering.
@@ -1019,48 +944,55 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *SessionEnt
 			if len(userMsg.ToolUseResult) == 0 && !userMsg.IsCompactSummary {
 				if timestamp != "" {
 					if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
-						entry.LastUserActivity = t
+						meta.LastUserActivity = t
 					}
 				}
 			}
 		}
 
 		if assistantMsg, ok := msg.(*models.AssistantSessionMessage); ok {
-			if entry.ProjectPath == "" && assistantMsg.CWD != "" {
-				entry.ProjectPath = assistantMsg.CWD
+			if meta.ProjectPath == "" && assistantMsg.CWD != "" {
+				meta.ProjectPath = assistantMsg.CWD
 			}
-			if entry.GitBranch == "" && assistantMsg.GitBranch != "" {
-				entry.GitBranch = assistantMsg.GitBranch
+			if meta.GitBranch == "" && assistantMsg.GitBranch != "" {
+				meta.GitBranch = assistantMsg.GitBranch
 			}
 		}
 
 		if msgType == "summary" {
 			if summaryMsg, ok := msg.(*models.SummarySessionMessage); ok && summaryMsg.Summary != "" {
-				entry.Summary = summaryMsg.Summary
+				meta.Summary = summaryMsg.Summary
 			}
 		}
 
 		if msgType == "custom-title" {
 			if titleMsg, ok := msg.(*models.CustomTitleSessionMessage); ok && titleMsg.CustomTitle != "" {
-				entry.CustomTitle = titleMsg.CustomTitle
+				meta.CustomTitle = titleMsg.CustomTitle
 			}
 		}
 
 		if msgType == "result" {
-			entry.ResultCount++
+			meta.ResultCount++
 		}
-
 	}
 
-	entry.DisplayTitle = entry.computeDisplayTitle()
-	entry.enriched = true
+	// Compute display title
+	if meta.CustomTitle != "" {
+		meta.DisplayTitle = meta.CustomTitle
+	} else if meta.Summary != "" {
+		meta.DisplayTitle = meta.Summary
+	} else if meta.FirstPrompt != "" {
+		meta.DisplayTitle = meta.FirstPrompt
+	} else {
+		meta.DisplayTitle = "Untitled"
+	}
 
 	// Fall back to file modification time if no user messages found
-	if entry.LastUserActivity.IsZero() {
-		entry.LastUserActivity = entry.Modified
+	if meta.LastUserActivity.IsZero() {
+		meta.LastUserActivity = meta.Modified
 	}
 
-	return entry
+	return meta
 }
 
 // startWatcher starts the fsnotify watcher
@@ -1143,35 +1075,30 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 
 	switch {
 	case event.Op&fsnotify.Create != 0, event.Op&fsnotify.Write != 0:
-		if newEntry := m.parseJSONLFile(sessionID, event.Name); newEntry != nil {
+		if meta := m.parseJSONLFile(sessionID, event.Name); meta != nil {
 			m.mu.Lock()
-			oldEntry, existed := m.entries[sessionID]
+			session, existed := m.sessions[sessionID]
 
-			// Only notify for meaningful changes
 			shouldNotify := !existed
 			if existed {
-				if oldEntry.DisplayTitle != newEntry.DisplayTitle {
+				// Only notify for meaningful changes
+				if session.DisplayTitle != meta.DisplayTitle {
 					shouldNotify = true
 				}
-				// Notify when a turn completes (result count changes) — drives "ready" state
-				if oldEntry.ResultCount != newEntry.ResultCount {
-					shouldNotify = true
-				}
+				// Merge metadata into existing session
+				session.mergeMetadata(meta)
+			} else {
+				// New session from disk — create historical Session
+				session = m.newHistoricalSessionFromMetadata(sessionID, meta)
+				m.sessions[sessionID] = session
 			}
-
-			// Preserve git info from active session
-			if session, ok := m.sessions[sessionID]; ok {
-				newEntry.Git = session.Git
-			}
-
-			m.entries[sessionID] = newEntry
 			m.mu.Unlock()
 
 			eventType := SessionEventUpdated
 			if !existed {
 				eventType = SessionEventCreated
 			}
-			log.Debug().Str("sessionId", sessionID).Str("op", event.Op.String()).Str("event", string(eventType)).Bool("notify", shouldNotify).Msg("updated session in cache")
+			log.Debug().Str("sessionId", sessionID).Str("op", event.Op.String()).Str("event", string(eventType)).Bool("notify", shouldNotify).Msg("updated session in store")
 
 			if shouldNotify {
 				m.notify(SessionEvent{Type: eventType, SessionID: sessionID})
@@ -1179,12 +1106,14 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 		}
 
 	case event.Op&fsnotify.Remove != 0, event.Op&fsnotify.Rename != 0:
-		m.mu.Lock()
-		delete(m.entries, sessionID)
-		m.mu.Unlock()
-		log.Debug().Str("sessionId", sessionID).Msg("removed session from cache")
-
-		m.notify(SessionEvent{Type: SessionEventDeleted, SessionID: sessionID})
+		// Don't delete — session might still be active or have connected clients.
+		// Just clear the FullPath to indicate the file is gone.
+		m.mu.RLock()
+		if session, ok := m.sessions[sessionID]; ok {
+			session.FullPath = ""
+		}
+		m.mu.RUnlock()
+		log.Debug().Str("sessionId", sessionID).Msg("JSONL file removed, cleared FullPath")
 	}
 }
 
@@ -1226,7 +1155,8 @@ func (m *SessionManager) forceKillAllSessions() {
 	}
 }
 
-// createShellSession creates a non-activated session (metadata only)
+// createShellSession creates a non-activated session for a session found on disk
+// but not yet in m.sessions. This is the fallback path in GetSession.
 func (m *SessionManager) createShellSession(id, workingDir, title string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1235,35 +1165,25 @@ func (m *SessionManager) createShellSession(id, workingDir, title string) (*Sess
 		return existing, nil
 	}
 
-	// Preserve the original LastUserActivity from cached entry if available.
-	// This is a shell session created for viewing — NOT user interaction —
-	// so we must not set LastUserActivity to time.Now() or it will cause
-	// the session to jump to the top of the list when merely viewed.
-	var lastUserActivity time.Time
-	if entry, ok := m.entries[id]; ok {
-		lastUserActivity = entry.LastUserActivity
-	}
-
 	session := &Session{
-		ID:                    id,
-		WorkingDir:            workingDir,
-		Title:                 title,
-		PermissionMode:        sdk.PermissionModeDefault,
-		CreatedAt:             time.Now(),
-		LastActivity:          time.Now(),
-		LastUserActivity:      lastUserActivity,
-		Status:                "active",
-		Clients:               make(map[*Client]bool),
-		activated:             false,
+		ID:               id,
+		WorkingDir:       workingDir,
+		Title:            title,
+		DisplayTitle:     title,
+		PermissionMode:   sdk.PermissionModeDefault,
+		CreatedAt:        time.Now(),
+		LastActivity:     time.Now(),
+		Status:           "active",
+		Clients:          make(map[*Client]bool),
+		activated:        false,
 		pendingToolNames: make(map[string]string),
-		Git:                   GetGitInfo(workingDir),
-		onStateChanged: func() {
-			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: id})
-		},
+		Git:              GetGitInfo(workingDir),
 	}
-
 	session.activateFn = func() error {
 		return m.activateSession(session)
+	}
+	session.onStateChanged = func() {
+		m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: id})
 	}
 
 	m.sessions[id] = session
@@ -1330,17 +1250,19 @@ func (m *SessionManager) cleanupWorker() {
 			return
 
 		case <-deadTicker.C:
-			m.mu.Lock()
+			// Safety net: if a session is stuck as "dead" (should be handled by
+			// forwardSDKMessages processExited), reset its state.
+			m.mu.RLock()
 			for id, session := range m.sessions {
 				session.mu.RLock()
 				isDead := session.Status == "dead"
 				session.mu.RUnlock()
 				if isDead {
-					log.Info().Str("sessionId", id).Msg("cleaning up dead session")
-					delete(m.sessions, id)
+					log.Warn().Str("sessionId", id).Msg("found dead session not cleaned up by processExited, resetting")
+					m.resetProcessState(session)
 				}
 			}
-			m.mu.Unlock()
+			m.mu.RUnlock()
 
 		case <-gcTicker.C:
 			m.gcIdleSessions()
@@ -1501,13 +1423,36 @@ processExited:
 
 	log.Info().Str("sessionId", session.ID).Msg("SDK process exited")
 
+	// Reset process state — session stays in m.sessions with activated=false.
+	m.resetProcessState(session)
+
+	m.notify(SessionEvent{Type: SessionEventDeactivated, SessionID: session.ID})
+
+	log.Info().Str("sessionId", session.ID).Msg("reset session state after process exit")
+}
+
+// resetProcessState clears all process-related state from a session,
+// returning it to a historical (non-activated) state that can be re-activated.
+// Must be called after the process has exited.
+func (m *SessionManager) resetProcessState(session *Session) {
 	session.mu.Lock()
-	session.Status = "dead"
+	session.activated = false
+	session.isProcessing = false
+	session.pendingPermissionCount = 0
+	session.seenPermissionCount = 0
+	session.Status = "active"
+	session.sdkClient = nil
+	session.sdkCtx = nil
+	session.sdkCancel = nil
+	session.ready = nil
+	// Re-enable lazy activation now that the process is fully dead
+	session.activateFn = func() error {
+		return m.activateSession(session)
+	}
+	cb := session.onStateChanged
 	session.mu.Unlock()
 
-	m.mu.Lock()
-	delete(m.sessions, session.ID)
-	m.mu.Unlock()
-
-	log.Info().Str("sessionId", session.ID).Msg("removed dead SDK session from pool")
+	if cb != nil {
+		cb()
+	}
 }

@@ -519,9 +519,11 @@ export default function ClaudePage() {
   // Optimistically clear the unread dot so it disappears immediately; the next
   // SSE-triggered refresh will confirm the server state.
   const handleSelectSession = useCallback((sessionId: string) => {
+    // Only clear "unread" optimistically — not "working".
+    // Clicking a working session should keep the amber dot visible.
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === sessionId && (s.sessionState === 'working' || s.sessionState === 'unread')
+        s.id === sessionId && s.sessionState === 'unread'
           ? { ...s, sessionState: 'idle' as const }
           : s
       )

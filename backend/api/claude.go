@@ -211,16 +211,16 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 	}
 
 	log.Debug().
-		Int("returnedCount", len(paginationResult.Entries)).
+		Int("returnedCount", len(paginationResult.Sessions)).
 		Int("totalCount", paginationResult.TotalCount).
 		Bool("hasMore", paginationResult.HasMore).
 		Str("cursor", cursor).
 		Str("statusFilter", statusFilter).
 		Msg("ListAllClaudeSessions: fetching sessions with pagination")
 
-	// Convert SessionEntry to response format
-	result := make([]map[string]interface{}, 0, len(paginationResult.Entries))
-	for _, entry := range paginationResult.Entries {
+	// Convert Session to response format
+	result := make([]map[string]interface{}, 0, len(paginationResult.Sessions))
+	for _, session := range paginationResult.Sessions {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
 		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
@@ -231,46 +231,47 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		//                new items arriving after the user closes make it unread again.
 		//   "idle"     — nothing happening, user is up to date
 		sessionState := "idle"
-		if entry.IsArchived {
+		if session.IsArchived {
 			sessionState = "archived"
-		} else if entry.IsProcessing && !entry.HasPendingPermission {
+		} else if session.IsProcessing() && !session.HasPendingPermission() {
 			sessionState = "working"
-		} else if entry.IsProcessing && entry.HasUnseenPermission {
+		} else if session.IsProcessing() && session.HasUnseenPermission() {
 			// Mid-turn, waiting on user permission, and user hasn't seen it yet
 			sessionState = "unread"
-		} else if entry.IsProcessing && entry.HasPendingPermission {
+		} else if session.IsProcessing() && session.HasPendingPermission() {
 			// Mid-turn, waiting on user permission, but user has already seen it
 			sessionState = "idle"
 		} else {
-			lastReadResults, seen := readResultCounts[entry.SessionID]
+			lastReadResults, seen := readResultCounts[session.ID]
 			// A result message (completed turn) that the user hasn't seen yet.
 			// If no read-state row exists (session never opened in UI), treat
 			// any completed turns as unread so the green dot appears.
-			hasUnreadResult := entry.ResultCount > 0 && (!seen || entry.ResultCount > lastReadResults)
+			resultCount := session.ResultCount()
+			hasUnreadResult := resultCount > 0 && (!seen || resultCount > lastReadResults)
 			if hasUnreadResult {
 				sessionState = "unread"
 			}
 		}
 
 		sessionData := map[string]interface{}{
-			"id":               entry.SessionID,
-			"title":            entry.DisplayTitle,
-			"workingDir":       entry.ProjectPath,
-			"createdAt":        entry.Created.UnixMilli(),
-			"lastActivity":     entry.Modified.UnixMilli(),
-			"lastUserActivity": entry.LastUserActivity.UnixMilli(),
-			"messageCount":     entry.MessageCount,
-			"isSidechain":      entry.IsSidechain,
+			"id":               session.ID,
+			"title":            session.DisplayTitle,
+			"workingDir":       session.WorkingDir,
+			"createdAt":        session.CreatedAt.UnixMilli(),
+			"lastActivity":     session.LastActivity.UnixMilli(),
+			"lastUserActivity": session.LastUserActivity.UnixMilli(),
+			"messageCount":     session.MessageCount,
+			"isSidechain":      session.IsSidechain,
 			"sessionState":     sessionState,
-			"permissionMode":   string(entry.PermissionMode), // empty for historical sessions
+			"permissionMode":   string(session.PermissionMode), // empty for historical sessions
 		}
 
-		if entry.Git != nil {
-			sessionData["git"] = entry.Git
-		} else if entry.GitBranch != "" {
+		if session.Git != nil {
+			sessionData["git"] = session.Git
+		} else if session.GitBranch != "" {
 			sessionData["git"] = map[string]interface{}{
 				"isRepo": true,
-				"branch": entry.GitBranch,
+				"branch": session.GitBranch,
 			}
 		}
 
