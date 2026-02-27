@@ -17,6 +17,7 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
   const [pendingAction, setPendingAction] = useState<'submit' | 'skip' | null>(null)
   const [activeTab, setActiveTab] = useState(0)
   const [isMinimized, setIsMinimized] = useState(false)
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // State for each question's selected answer(s)
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({})
@@ -29,8 +30,14 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
   ) => {
     const key = `q${questionIndex}`
 
+    // Clear any pending auto-advance
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current)
+      autoAdvanceRef.current = null
+    }
+
     if (multiSelect) {
-      // Multi-select: toggle option in array
+      // Multi-select: toggle option in array — no auto-advance
       const current = (answers[key] as string[]) || []
       if (current.includes(optionLabel)) {
         setAnswers({
@@ -45,10 +52,19 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
       }
     } else {
       // Single select: toggle (click again to unselect)
+      const isDeselecting = answers[key] === optionLabel
       setAnswers({
         ...answers,
-        [key]: answers[key] === optionLabel ? '' : optionLabel,
+        [key]: isDeselecting ? '' : optionLabel,
       })
+
+      // Auto-advance to next question after 300ms (only on selection, not deselection)
+      if (!isDeselecting && questionIndex < question.questions.length - 1) {
+        autoAdvanceRef.current = setTimeout(() => {
+          setActiveTab(questionIndex + 1)
+          autoAdvanceRef.current = null
+        }, 300)
+      }
     }
   }
 
@@ -133,6 +149,15 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isFirst, isDismissing, isValid, handleSkip, handleSubmit])
 
+  // Cleanup auto-advance timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current)
+      }
+    }
+  }, [])
+
   // Get current question based on active tab
   const currentQuestion = question.questions[activeTab]
   const currentKey = `q${activeTab}`
@@ -181,7 +206,13 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
             <button
               key={index}
               type="button"
-              onClick={() => setActiveTab(index)}
+              onClick={() => {
+                if (autoAdvanceRef.current) {
+                  clearTimeout(autoAdvanceRef.current)
+                  autoAdvanceRef.current = null
+                }
+                setActiveTab(index)
+              }}
               disabled={isDismissing}
               className={cn(
                 'text-[13px] font-medium px-2 py-1 rounded transition-colors whitespace-nowrap',
