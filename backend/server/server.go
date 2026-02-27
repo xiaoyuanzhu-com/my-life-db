@@ -102,7 +102,7 @@ func New(cfg *Config) (*Server, error) {
 	// 5. Create digest worker
 	log.Info().Msg("initializing digest worker")
 	digestCfg := cfg.ToDigestConfig()
-	s.digestWorker = digest.NewWorker(digestCfg, s.database, s.notifService)
+	s.digestWorker = digest.NewWorker(digestCfg, s.database)
 
 	// 5.5. Create Meilisearch sync worker
 	log.Info().Msg("initializing meili sync worker")

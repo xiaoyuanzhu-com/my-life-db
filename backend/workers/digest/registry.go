@@ -71,8 +71,6 @@ var digesterOrder = []Digester{
 	// Phase 1: Content extraction (run first)
 	&URLCrawlDigester{},
 	&DocToMarkdownDigester{},
-	&DocToScreenshotDigester{},
-	&ImagePreviewDigester{},
 	&ImageOCRDigester{},
 	&ImageCaptioningDigester{},
 	&ImageObjectsDigester{},

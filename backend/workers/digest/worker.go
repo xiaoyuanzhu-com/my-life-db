@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 )
 
 // FileCompletionHandler is called when a file finishes processing
@@ -15,9 +14,8 @@ type FileCompletionHandler func(filePath string, processed int, failed int)
 
 // Worker manages digest processing
 type Worker struct {
-	cfg   Config
-	db    *db.DB
-	notif *notifications.Service
+	cfg Config
+	db  *db.DB
 
 	stopChan          chan struct{}
 	wg                sync.WaitGroup
@@ -28,7 +26,7 @@ type Worker struct {
 }
 
 // NewWorker creates a new digest worker with dependencies
-func NewWorker(cfg Config, database *db.DB, notifService *notifications.Service) *Worker {
+func NewWorker(cfg Config, database *db.DB) *Worker {
 	if cfg.QueueSize == 0 {
 		cfg.QueueSize = 1000
 	}
@@ -39,7 +37,6 @@ func NewWorker(cfg Config, database *db.DB, notifService *notifications.Service)
 	return &Worker{
 		cfg:      cfg,
 		db:       database,
-		notif:    notifService,
 		stopChan: make(chan struct{}),
 		queue:    make(chan string, cfg.QueueSize),
 	}
@@ -419,30 +416,6 @@ func getOutputNames(d Digester) []string {
 	return []string{d.Name()}
 }
 
-func isScreenshotDigester(digester string) bool {
-	// Digesters that produce screenshots/previews for display
-	return digester == "url-crawl-screenshot" ||
-		digester == "doc-to-screenshot" ||
-		digester == "image-preview"
-}
-
-// notifyPreviewReady sends a notification when a preview/screenshot is ready
-func (w *Worker) notifyPreviewReady(filePath string, digester string) {
-	// Determine preview type based on digester
-	previewType := "screenshot"
-	if digester == "image-preview" {
-		previewType = "image"
-	}
-
-	w.notif.NotifyPreviewUpdated(filePath, previewType)
-
-	log.Debug().
-		Str("filePath", filePath).
-		Str("digester", digester).
-		Str("previewType", previewType).
-		Msg("preview updated notification sent")
-}
-
 func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
 	id := getOrCreateDigestID(filePath, digester)
 	now := db.NowMs()
@@ -498,14 +471,6 @@ func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
 			fileHash := db.GeneratePathHash(filePath)
 			sqlarPath := fileHash + "/" + output.Digester + "/" + *output.SqlarName
 			db.SqlarStore(sqlarPath, output.SqlarData, 0644)
-
-			// Update files.preview_sqlar for screenshot digesters
-			if output.Status == DigestStatusCompleted && isScreenshotDigester(output.Digester) {
-				db.UpdateFileField(filePath, "preview_sqlar", sqlarPath)
-
-				// Notify clients that preview is ready
-				w.notifyPreviewReady(filePath, output.Digester)
-			}
 		}
 	}
 	if output.Error != nil {

@@ -1,20 +1,15 @@
 package digest
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image/jpeg"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/gen2brain/heic"
-	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
@@ -24,16 +19,6 @@ import (
 
 func nowUTC() int64 {
 	return time.Now().UnixMilli()
-}
-
-// resolveFilePath converts a relative file path to absolute by joining with DataDir
-// If the path is already absolute, returns it unchanged
-func resolveFilePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	cfg := config.Get()
-	return filepath.Join(cfg.UserDataDir, path)
 }
 
 func isURL(path string) bool {
@@ -281,119 +266,6 @@ func (d *DocToMarkdownDigester) Digest(filePath string, file *db.FileRecord, _ [
 		Digester:  "doc-to-markdown",
 		Status:    DigestStatusCompleted,
 		Content:   &markdown,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}}, nil
-}
-
-// ==================== Doc to Screenshot Digester ====================
-
-type DocToScreenshotDigester struct{}
-
-func (d *DocToScreenshotDigester) Name() string        { return "doc-to-screenshot" }
-func (d *DocToScreenshotDigester) Label() string       { return "Document Screenshot" }
-func (d *DocToScreenshotDigester) Description() string { return "Generate screenshot of document first page" }
-func (d *DocToScreenshotDigester) GetOutputDigesters() []string { return nil }
-
-func (d *DocToScreenshotDigester) CanDigest(filePath string, file *db.FileRecord, _ *sql.DB) (bool, error) {
-	mimeType := getMimeType(file)
-	return isDocument(mimeType), nil
-}
-
-func (d *DocToScreenshotDigester) Digest(filePath string, file *db.FileRecord, _ []db.Digest, _ *sql.DB) ([]DigestInput, error) {
-	now := nowUTC()
-
-	haid := vendors.GetHAID()
-	if haid == nil {
-		errMsg := "HAID service not configured"
-		return []DigestInput{{FilePath: filePath, Digester: "doc-to-screenshot", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	screenshot, err := haid.GenerateDocScreenshot(filePath)
-	if err != nil {
-		errMsg := err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "doc-to-screenshot", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	sqlarName := "screenshot.png"
-
-	return []DigestInput{{
-		FilePath:  filePath,
-		Digester:  "doc-to-screenshot",
-		Status:    DigestStatusCompleted,
-		SqlarName: &sqlarName,
-		SqlarData: screenshot,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}}, nil
-}
-
-// ==================== Image Preview Digester ====================
-
-type ImagePreviewDigester struct{}
-
-func (d *ImagePreviewDigester) Name() string        { return "image-preview" }
-func (d *ImagePreviewDigester) Label() string       { return "Image Preview" }
-func (d *ImagePreviewDigester) Description() string { return "Convert HEIC/HEIF images to JPEG for browser compatibility" }
-func (d *ImagePreviewDigester) GetOutputDigesters() []string { return nil }
-
-func (d *ImagePreviewDigester) CanDigest(filePath string, file *db.FileRecord, _ *sql.DB) (bool, error) {
-	mimeType := getMimeType(file)
-	// Only process HEIC/HEIF images that need conversion
-	return mimeType == "image/heic" || mimeType == "image/heif", nil
-}
-
-func (d *ImagePreviewDigester) Digest(filePath string, file *db.FileRecord, _ []db.Digest, _ *sql.DB) ([]DigestInput, error) {
-	now := nowUTC()
-
-	// Resolve relative path to absolute
-	fullPath := resolveFilePath(filePath)
-
-	// Open the HEIC file
-	fileHandle, err := os.Open(fullPath)
-	if err != nil {
-		errMsg := "failed to open image file: " + err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "image-preview", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-	defer fileHandle.Close()
-
-	// Decode HEIC to image.Image
-	img, err := heic.Decode(fileHandle)
-	if err != nil {
-		errMsg := "failed to decode HEIC image: " + err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "image-preview", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	// Encode to JPEG with high quality
-	var buf bytes.Buffer
-	options := &jpeg.Options{Quality: 90}
-	if err := jpeg.Encode(&buf, img, options); err != nil {
-		errMsg := "failed to encode JPEG: " + err.Error()
-		return []DigestInput{{FilePath: filePath, Digester: "image-preview", Status: DigestStatusFailed, Error: &errMsg, CreatedAt: now, UpdatedAt: now}}, nil
-	}
-
-	convertedBytes := buf.Bytes()
-	sqlarName := "preview.jpg"
-
-	// Get original file size for logging
-	fileInfo, _ := fileHandle.Stat()
-	originalSize := int64(0)
-	if fileInfo != nil {
-		originalSize = fileInfo.Size()
-	}
-
-	log.Info().
-		Str("filePath", filePath).
-		Int64("originalSize", originalSize).
-		Int("jpegSize", len(convertedBytes)).
-		Msg("converted HEIC to JPEG preview")
-
-	return []DigestInput{{
-		FilePath:  filePath,
-		Digester:  "image-preview",
-		Status:    DigestStatusCompleted,
-		SqlarName: &sqlarName,
-		SqlarData: convertedBytes,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}}, nil
