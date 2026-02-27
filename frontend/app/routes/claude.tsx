@@ -6,15 +6,17 @@ import { useWarmSession } from '~/components/claude/chat/hooks'
 import { useSlashCommands } from '~/components/claude/chat/hooks/use-slash-commands'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import { Button } from '~/components/ui/button'
-import { Plus, Menu } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft } from 'lucide-react'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '~/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '~/components/ui/resizable'
+import type { ImperativePanelHandle } from 'react-resizable-panels'
+import { cn } from '~/lib/utils'
 import { useAuth } from '~/contexts/auth-context'
 import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
@@ -51,7 +53,6 @@ export default function ClaudePage() {
   const { sessionId: urlSessionId } = useParams()
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId || null)
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
@@ -72,6 +73,16 @@ export default function ClaudePage() {
     return 'active'
   })
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+
+  // Sidebar collapse state (desktop)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('claude-sidebar-collapsed') === 'true'
+    }
+    return false
+  })
+
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null)
 
   // New session state (for empty state)
   // Initialize from localStorage if available
@@ -130,6 +141,22 @@ export default function ClaudePage() {
   useEffect(() => {
     localStorage.setItem('claude-permission-mode', newSessionPermissionMode)
   }, [newSessionPermissionMode])
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem('claude-sidebar-collapsed', String(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
+
+  // Sync sidebar panel with collapse state
+  useEffect(() => {
+    const panel = sidebarPanelRef.current
+    if (!panel) return
+    if (isSidebarCollapsed) {
+      panel.collapse()
+    } else {
+      panel.expand()
+    }
+  }, [isSidebarCollapsed])
 
   // Sync permission mode from localStorage when returning to new-session view
   // (mode may have been changed inside an active session's ChatInterface)
@@ -293,10 +320,10 @@ export default function ClaudePage() {
     const handleTouchEnd = () => {
       // Only navigate if:
       // 1. We started from the left edge (touchStartX > 0)
-      // 2. Swipe was leftward (start X > end X)
+      // 2. Swipe was rightward (end X > start X)
       // 3. Swipe distance was significant (> 100px)
-      if (touchStartX.current > 0 && touchStartX.current - touchEndX.current > 100) {
-        navigate(-1)
+      if (touchStartX.current > 0 && touchEndX.current - touchStartX.current > 100) {
+        setActiveSessionId(null)
       }
 
       // Reset for next gesture
@@ -304,22 +331,20 @@ export default function ClaudePage() {
       touchEndX.current = 0
     }
 
-    // Only add listeners on mobile
+    // Only add listeners on mobile when viewing a session detail
     const isMobile = window.innerWidth < 768
-    if (isMobile) {
+    if (isMobile && activeSessionId) {
       document.addEventListener('touchstart', handleTouchStart, { passive: true })
       document.addEventListener('touchmove', handleTouchMove, { passive: true })
       document.addEventListener('touchend', handleTouchEnd)
     }
 
     return () => {
-      if (isMobile) {
-        document.removeEventListener('touchstart', handleTouchStart)
-        document.removeEventListener('touchmove', handleTouchMove)
-        document.removeEventListener('touchend', handleTouchEnd)
-      }
+      document.removeEventListener('touchstart', handleTouchStart)
+      document.removeEventListener('touchmove', handleTouchMove)
+      document.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [navigate])
+  }, [activeSessionId])
 
   // Refresh session list when titles change (SSE from backend)
   // Uses refreshSessions for seamless background updates without loading flash
@@ -530,146 +555,198 @@ export default function ClaudePage() {
     )
   }
 
+  // ─── Shared header for desktop sidebar and mobile list view ────────────────
+  const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
+    <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+      {/* Left: collapse toggle (desktop only) */}
+      <div className="w-8 flex items-center">
+        {showCollapseButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setIsSidebarCollapsed(true)}
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {/* Center: filter dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-muted/50">
+            Sessions · {statusFilter === 'active' ? 'Active' : statusFilter === 'archived' ? 'Archived' : 'All'}
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center">
+          <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+            <DropdownMenuRadioItem value="active">Active</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="archived">Archived</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Right: new button */}
+      <div className="w-8 flex items-center justify-end">
+        {sessionCreateNew && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setActiveSessionId(null)}
+            title="New session"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="flex h-full">
-      {/* Left Column: Sessions Sidebar */}
-      {sessionSidebar && (
-        <div className="hidden md:flex md:w-[30rem] border-r border-border flex-col bg-muted/30">
-          {/* Sessions Header */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-1">
-              <h2
-                className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-                onClick={() => setActiveSessionId(null)}
-                title="Clear selection"
-              >
-                Sessions
-                {pagination.totalCount > 0 && (
-                  <span className="ml-1 text-xs text-muted-foreground font-normal">
-                    ({pagination.totalCount})
-                  </span>
-                )}
-              </h2>
-              <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active" className="text-xs">Active</SelectItem>
-                  <SelectItem value="all" className="text-xs">All</SelectItem>
-                  <SelectItem value="archived" className="text-xs">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              {sessionCreateNew && (
-                <Button onClick={() => setActiveSessionId(null)} size="sm">
-                  New
-                </Button>
+      {/* ── Desktop: Resizable sidebar + chat ── */}
+      <div className="hidden md:flex md:flex-1 h-full">
+        {sessionSidebar ? (
+          <ResizablePanelGroup
+            direction="horizontal"
+            autoSaveId="claude-sidebar"
+          >
+            {/* Sidebar panel */}
+            <ResizablePanel
+              ref={sidebarPanelRef}
+              defaultSize={30}
+              minSize={20}
+              maxSize={50}
+              collapsible
+              collapsedSize={0}
+              onCollapse={() => setIsSidebarCollapsed(true)}
+              onExpand={() => setIsSidebarCollapsed(false)}
+              className={cn(
+                'flex flex-col bg-muted/30',
+                isSidebarCollapsed && 'hidden'
               )}
-            </div>
-          </div>
-
-          {/* Sessions List */}
-          <div className="flex-1 overflow-hidden">
-            <SessionList
-              sessions={sessions}
-              activeSessionId={activeSessionId}
-              onSelect={handleSelectSession}
-              onDelete={deleteSession}
-              onRename={updateSessionTitle}
-              onArchive={archiveSession}
-              onUnarchive={unarchiveSession}
-              hasMore={pagination.hasMore}
-              isLoadingMore={isLoadingMore}
-              onLoadMore={loadMoreSessions}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Mobile Sidebar Sheet */}
-      {sessionSidebar && (
-        <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
-          <SheetContent side="left" className="w-[280px] p-0 md:hidden flex flex-col">
-            <SheetHeader className="px-4 py-3 border-b">
-              <div className="flex items-center gap-1">
-                <SheetTitle
-                  className="cursor-pointer hover:text-primary transition-colors"
-                  onClick={() => {
-                    setActiveSessionId(null)
-                    setShowMobileSidebar(false)
-                  }}
-                >
-                  Sessions
-                  {pagination.totalCount > 0 && (
-                    <span className="ml-1 text-xs text-muted-foreground font-normal">
-                      ({pagination.totalCount})
-                    </span>
-                  )}
-                </SheetTitle>
-                <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                  <SelectTrigger className="h-6 w-20 text-xs px-2 gap-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active" className="text-xs">Active</SelectItem>
-                    <SelectItem value="all" className="text-xs">All</SelectItem>
-                    <SelectItem value="archived" className="text-xs">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </SheetHeader>
-            <div className="flex-1 overflow-hidden">
-              <SessionList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                onSelect={(id) => {
-                  handleSelectSession(id)
-                  setShowMobileSidebar(false)
-                }}
-                onDelete={deleteSession}
-                onRename={updateSessionTitle}
-                onArchive={archiveSession}
-                onUnarchive={unarchiveSession}
-                hasMore={pagination.hasMore}
-                isLoadingMore={isLoadingMore}
-                onLoadMore={loadMoreSessions}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
-
-      {/* Mobile Action Buttons - Top Right */}
-      {(sessionSidebar || sessionCreateNew) && (
-        <div className="md:hidden fixed top-12 right-2 z-20 flex gap-2">
-          {sessionSidebar && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
-              onClick={() => setShowMobileSidebar(true)}
             >
-              <Menu className="h-4 w-4" />
-            </Button>
-          )}
-          {sessionCreateNew && (
+              <SessionsHeader showCollapseButton />
+              <div className="flex-1 overflow-hidden">
+                <SessionList
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  onSelect={handleSelectSession}
+                  onDelete={deleteSession}
+                  onRename={updateSessionTitle}
+                  onArchive={archiveSession}
+                  onUnarchive={unarchiveSession}
+                  hasMore={pagination.hasMore}
+                  isLoadingMore={isLoadingMore}
+                  onLoadMore={loadMoreSessions}
+                />
+              </div>
+            </ResizablePanel>
+
+            {/* Resize handle (hidden when collapsed) */}
+            {!isSidebarCollapsed && <ResizableHandle />}
+
+            {/* Main content panel */}
+            <ResizablePanel defaultSize={70} minSize={40}>
+              <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
+                {/* Expand button when sidebar is collapsed */}
+                {isSidebarCollapsed && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 left-2 z-20 h-8 w-8"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    title="Expand sidebar"
+                  >
+                    <PanelLeftOpen className="h-4 w-4" />
+                  </Button>
+                )}
+                {activeSessionId ? (
+                  <ChatInterface
+                    key={activeSessionId}
+                    sessionId={activeSessionId}
+                    sessionName={effectiveActiveSession?.title || 'Session'}
+                    workingDir={effectiveActiveSession?.workingDir}
+                    permissionMode={effectiveActiveSession?.permissionMode}
+                    onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                    refreshSessions={refreshSessions}
+                    initialMessage={pendingInitialMessage ?? undefined}
+                    onInitialMessageSent={() => setPendingInitialMessage(null)}
+                  />
+                ) : (
+                  <div className="flex flex-1 flex-col claude-bg">
+                    <div className="flex-1" />
+                    <ChatInput
+                      onSend={createSessionWithMessage}
+                      disabled={isCreatingSession}
+                      placeholder="Start a new conversation..."
+                      workingDir={newSessionWorkingDir}
+                      onWorkingDirChange={setNewSessionWorkingDir}
+                      slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
+                        ? warmSlashCommands
+                        : BUILTIN_COMMANDS}
+                      permissionMode={newSessionPermissionMode}
+                      onPermissionModeChange={setNewSessionPermissionMode}
+                    />
+                  </div>
+                )}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          /* No sidebar — just the chat area */
+          <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
+            {activeSessionId ? (
+              <ChatInterface
+                key={activeSessionId}
+                sessionId={activeSessionId}
+                sessionName={effectiveActiveSession?.title || 'Session'}
+                workingDir={effectiveActiveSession?.workingDir}
+                permissionMode={effectiveActiveSession?.permissionMode}
+                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                refreshSessions={refreshSessions}
+                initialMessage={pendingInitialMessage ?? undefined}
+                onInitialMessageSent={() => setPendingInitialMessage(null)}
+              />
+            ) : (
+              <div className="flex flex-1 flex-col claude-bg">
+                <div className="flex-1" />
+                <ChatInput
+                  onSend={createSessionWithMessage}
+                  disabled={isCreatingSession}
+                  placeholder="Start a new conversation..."
+                  workingDir={newSessionWorkingDir}
+                  onWorkingDirChange={setNewSessionWorkingDir}
+                  slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
+                    ? warmSlashCommands
+                    : BUILTIN_COMMANDS}
+                  permissionMode={newSessionPermissionMode}
+                  onPermissionModeChange={setNewSessionPermissionMode}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Mobile: Stack navigation ── */}
+      <div className="flex md:hidden flex-1 h-full">
+        {activeSessionId ? (
+          /* Detail view: full-screen chat with floating back button */
+          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
             <Button
-              size="icon"
               variant="ghost"
-              className="h-10 w-10 rounded-md bg-background/80 backdrop-blur"
+              size="icon"
+              className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
               onClick={() => setActiveSessionId(null)}
             >
-              <Plus className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-          )}
-        </div>
-      )}
-
-      {/* Right Column: Chat Interface or Terminal */}
-      <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-        {activeSessionId ? (
             <ChatInterface
               key={activeSessionId}
               sessionId={activeSessionId}
@@ -681,23 +758,42 @@ export default function ClaudePage() {
               initialMessage={pendingInitialMessage ?? undefined}
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
+          </div>
         ) : (
-          <div className="flex flex-1 flex-col claude-bg">
-            {/* Empty message area */}
-            <div className="flex-1" />
-            {/* Input at bottom */}
-            <ChatInput
-              onSend={createSessionWithMessage}
-              disabled={isCreatingSession}
-              placeholder="Start a new conversation..."
-              workingDir={newSessionWorkingDir}
-              onWorkingDirChange={setNewSessionWorkingDir}
-              slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
-                ? warmSlashCommands
-                : BUILTIN_COMMANDS}
-              permissionMode={newSessionPermissionMode}
-              onPermissionModeChange={setNewSessionPermissionMode}
-            />
+          /* List view: full-screen session list */
+          <div className="flex flex-1 flex-col bg-muted/30">
+            <SessionsHeader />
+            <div className="flex-1 overflow-hidden">
+              <SessionList
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelect={handleSelectSession}
+                onDelete={deleteSession}
+                onRename={updateSessionTitle}
+                onArchive={archiveSession}
+                onUnarchive={unarchiveSession}
+                hasMore={pagination.hasMore}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={loadMoreSessions}
+              />
+            </div>
+            {/* New session input at bottom of list view */}
+            {sessionCreateNew && !activeSessionId && (
+              <div className="border-t border-border">
+                <ChatInput
+                  onSend={createSessionWithMessage}
+                  disabled={isCreatingSession}
+                  placeholder="Start a new conversation..."
+                  workingDir={newSessionWorkingDir}
+                  onWorkingDirChange={setNewSessionWorkingDir}
+                  slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
+                    ? warmSlashCommands
+                    : BUILTIN_COMMANDS}
+                  permissionMode={newSessionPermissionMode}
+                  onPermissionModeChange={setNewSessionPermissionMode}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
