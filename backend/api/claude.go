@@ -784,6 +784,11 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					Bool("wasActivated", wasActivated).
 					Msg("permission mode changed")
 
+				// Persist to database (fire-and-forget; don't block the WebSocket response)
+				if err := db.SaveClaudeSessionPermissionMode(sessionID, modeReq.Request.Mode); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist permission mode")
+				}
+
 				// Send control_response confirmation to all clients.
 				// Use BroadcastToClients (not BroadcastUIMessage) to avoid caching.
 				responseMsg := map[string]any{
