@@ -175,23 +175,28 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           )}
 
           {/* Popup cards (permissions and questions) - limited to MAX_POPUPS */}
-          {visiblePopups.map((item, index) =>
-            item.type === 'permission' ? (
-              <PermissionCard
-                key={item.data.requestId}
-                request={item.data}
-                onDecision={(decision) => onPermissionDecision!(item.data.requestId, decision)}
-                isFirst={index === 0}
-              />
-            ) : (
-              <QuestionCard
-                key={item.data.id}
-                question={item.data}
-                onAnswer={(answers) => onQuestionAnswer!(item.data.id, answers)}
-                onSkip={() => onQuestionSkip!(item.data.id)}
-                isFirst={index === 0}
-              />
-            )
+          {/* Constrain total height so cards never push buttons off-screen on mobile */}
+          {visiblePopups.length > 0 && (
+            <div className="max-h-[60vh] overflow-y-auto">
+              {visiblePopups.map((item, index) =>
+                item.type === 'permission' ? (
+                  <PermissionCard
+                    key={item.data.requestId}
+                    request={item.data}
+                    onDecision={(decision) => onPermissionDecision!(item.data.requestId, decision)}
+                    isFirst={index === 0}
+                  />
+                ) : (
+                  <QuestionCard
+                    key={item.data.id}
+                    question={item.data}
+                    onAnswer={(answers) => onQuestionAnswer!(item.data.id, answers)}
+                    onSkip={() => onQuestionSkip!(item.data.id)}
+                    isFirst={index === 0}
+                  />
+                )
+              )}
+            </div>
           )}
 
           {/* Queued indicator when more items are waiting */}

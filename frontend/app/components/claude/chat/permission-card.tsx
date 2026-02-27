@@ -148,13 +148,13 @@ export function PermissionCard({ request, onDecision, isFirst = true }: Permissi
       {/* Content block - markdown for ExitPlanMode, code block for others */}
       {isExitPlanMode ? (
         <div
-          className="rounded-lg border border-border p-4 mb-3 max-h-96 overflow-y-auto prose-claude"
+          className="rounded-lg border border-border p-4 mb-3 max-h-48 md:max-h-96 overflow-y-auto prose-claude"
           style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
           dangerouslySetInnerHTML={{ __html: planHtml }}
         />
       ) : (
         <div
-          className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-32 overflow-y-auto"
+          className="rounded-lg border border-border p-2 font-mono text-[12px] text-foreground overflow-x-auto mb-3 max-h-24 md:max-h-32 overflow-y-auto"
           style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
         >
           <pre className="whitespace-pre-wrap break-all">{previewText}</pre>
