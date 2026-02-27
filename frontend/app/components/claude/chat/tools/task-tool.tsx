@@ -34,9 +34,11 @@ interface TaskToolViewProps {
   taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
-export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: TaskToolViewProps) {
+export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0, onHeightChange }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [resultExpanded, setResultExpanded] = useState(false)
@@ -303,7 +305,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
       )}
 
       {/* Expanded content: three peer collapsible sections */}
-      <div className={`collapsible-grid ${expanded ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${expanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           {/* 1. Prompt */}
           {subagentPrompt && (
@@ -323,7 +325,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                 <span className="text-[12px]">Prompt</span>
               </button>
 
-              <div className={`collapsible-grid ${promptExpanded ? '' : 'collapsed'}`}>
+              <div className={`collapsible-grid ${promptExpanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
                 <div className="collapsible-grid-content">
                   <div
                     className="mt-2 p-4 rounded-md prose-claude overflow-y-auto"
@@ -356,7 +358,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                 <span className="text-[12px]">Output</span>
               </button>
 
-              <div className={`collapsible-grid ${resultExpanded ? '' : 'collapsed'}`}>
+              <div className={`collapsible-grid ${resultExpanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
                 <div className="collapsible-grid-content">
                   <div
                     className={`mt-2 p-4 rounded-md overflow-y-auto ${resultIsMarkdown ? 'prose-claude' : '[&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent text-[12px]'}`}
@@ -391,7 +393,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
                 </span>
               </button>
 
-              <div className={`collapsible-grid ${convExpanded ? '' : 'collapsed'}`}>
+              <div className={`collapsible-grid ${convExpanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
                 <div className="collapsible-grid-content">
                   <div
                     className="mt-2 pl-3 overflow-y-auto"

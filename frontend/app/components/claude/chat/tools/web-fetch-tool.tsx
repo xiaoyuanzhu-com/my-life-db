@@ -5,6 +5,8 @@ import type { ToolCall, WebFetchToolParams, WebFetchToolResult } from '~/types/c
 
 interface WebFetchToolViewProps {
   toolCall: ToolCall
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
 /**
@@ -24,7 +26,7 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
+export function WebFetchToolView({ toolCall, onHeightChange }: WebFetchToolViewProps) {
   const params = toolCall.parameters as WebFetchToolParams
   const result = toolCall.result as WebFetchToolResult | string | undefined
   const [isExpanded, setIsExpanded] = useState(false)
@@ -107,7 +109,7 @@ export function WebFetchToolView({ toolCall }: WebFetchToolViewProps) {
       )}
 
       {/* Expanded markdown content (like thinking block) - smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded && content ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded && content ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"

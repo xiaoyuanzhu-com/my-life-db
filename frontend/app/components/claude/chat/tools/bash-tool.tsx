@@ -7,9 +7,11 @@ interface BashToolViewProps {
   toolCall: ToolCall
   /** Map from tool_use ID to bash progress messages */
   bashProgressMap?: Map<string, BashProgressMessage[]>
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
-export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
+export function BashToolView({ toolCall, bashProgressMap, onHeightChange }: BashToolViewProps) {
   const params = (toolCall.parameters || {}) as BashToolParams
   const result = toolCall.result as BashToolResult | string | undefined
   const [expanded, setExpanded] = useState(false)
@@ -99,7 +101,7 @@ export function BashToolView({ toolCall, bashProgressMap }: BashToolViewProps) {
       )}
 
       {/* Expanded output - smooth collapse */}
-      <div className={`collapsible-grid ${expanded && hasOutput ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${expanded && hasOutput ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all"

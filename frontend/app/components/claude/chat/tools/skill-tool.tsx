@@ -12,9 +12,11 @@ interface SkillToolViewProps {
   toolCall: ToolCall
   /** Map from tool_use ID to skill content (from isMeta messages) */
   skillContentMap?: Map<string, string>
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
-export function SkillToolView({ toolCall, skillContentMap }: SkillToolViewProps) {
+export function SkillToolView({ toolCall, skillContentMap, onHeightChange }: SkillToolViewProps) {
   const params = toolCall.parameters as SkillToolParams
   const skillName = params.skill || 'unknown'
   const [isExpanded, setIsExpanded] = useState(false)
@@ -76,7 +78,7 @@ export function SkillToolView({ toolCall, skillContentMap }: SkillToolViewProps)
       </div>
 
       {/* Expanded markdown content (like thinking block) - smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded && hasContent ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded && hasContent ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"

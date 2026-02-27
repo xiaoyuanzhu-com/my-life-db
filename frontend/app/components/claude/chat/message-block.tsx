@@ -60,9 +60,11 @@ interface MessageBlockProps {
   taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0, onHeightChange }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -193,7 +195,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
       {/* Microcompact boundary: collapsible showing which tools were compacted */}
       {isMicrocompactBoundary && (
-        <MicrocompactBlock message={message} toolUseMap={toolUseMap} />
+        <MicrocompactBlock message={message} toolUseMap={toolUseMap} onHeightChange={onHeightChange} />
       )}
 
       {/* Turn duration: system telemetry showing how long a turn took */}
@@ -271,14 +273,14 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Thinking blocks: rendered separately with mono styling */}
       {hasThinking && (
         <div className={textContent ? 'mt-2' : ''}>
-          <ThinkingBlocks thinking={thinkingBlocks} />
+          <ThinkingBlocks thinking={thinkingBlocks} onHeightChange={onHeightChange} />
         </div>
       )}
 
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} onHeightChange={onHeightChange} />
         </div>
       )}
     </div>
@@ -297,6 +299,7 @@ function ToolCallGroups({
   asyncTaskOutputMap,
   taskProgressMap,
   depth,
+  onHeightChange,
 }: {
   toolCalls: ToolCall[]
   agentProgressMap?: Map<string, AgentProgressMessage[]>
@@ -307,6 +310,7 @@ function ToolCallGroups({
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
   taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
+  onHeightChange?: () => void
 }) {
   // Group consecutive tool calls by name
   const groups: ToolCall[][] = []
@@ -349,6 +353,7 @@ function ToolCallGroups({
               asyncTaskOutputMap={asyncTaskOutputMap}
               taskProgressMap={taskProgressMap}
               depth={depth}
+              onHeightChange={onHeightChange}
             />
           )
         }
@@ -366,6 +371,7 @@ function ToolCallGroups({
             asyncTaskOutputMap={asyncTaskOutputMap}
             taskProgressMap={taskProgressMap}
             depth={depth}
+            onHeightChange={onHeightChange}
           />
         )
       })}
@@ -384,6 +390,7 @@ function ToolCallGroup({
   asyncTaskOutputMap,
   taskProgressMap,
   depth,
+  onHeightChange,
 }: {
   toolCalls: ToolCall[]
   agentProgressMap?: Map<string, AgentProgressMessage[]>
@@ -394,6 +401,7 @@ function ToolCallGroup({
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
   taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
+  onHeightChange?: () => void
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
   const toolName = toolCalls[0].name
@@ -414,7 +422,7 @@ function ToolCallGroup({
       </button>
 
       {/* Individual tool calls - indented with smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div className="ml-6 mt-2 space-y-2">
             {toolCalls.map((toolCall) => (
@@ -429,6 +437,7 @@ function ToolCallGroup({
                 asyncTaskOutputMap={asyncTaskOutputMap}
                 taskProgressMap={taskProgressMap}
                 depth={depth}
+                onHeightChange={onHeightChange}
               />
             ))}
           </div>
@@ -562,19 +571,19 @@ interface ThinkingBlock {
   signature?: string
 }
 
-function ThinkingBlocks({ thinking }: { thinking: ThinkingBlock[] }) {
+function ThinkingBlocks({ thinking, onHeightChange }: { thinking: ThinkingBlock[]; onHeightChange?: () => void }) {
   if (thinking.length === 0) return null
 
   return (
     <div className="space-y-2">
       {thinking.map((block, index) => (
-        <ThinkingBlockItem key={index} block={block} />
+        <ThinkingBlockItem key={index} block={block} onHeightChange={onHeightChange} />
       ))}
     </div>
   )
 }
 
-function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
+function ThinkingBlockItem({ block, onHeightChange }: { block: ThinkingBlock; onHeightChange?: () => void }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [html, setHtml] = useState('')
 
@@ -617,7 +626,7 @@ function ThinkingBlockItem({ block }: { block: ThinkingBlock }) {
       </button>
 
       {/* Expanded content - rendered as markdown with smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 p-4 rounded-md prose-claude overflow-y-auto"
@@ -1021,9 +1030,11 @@ function TaskNotificationBlock({ message }: { message: SessionMessage }) {
 function MicrocompactBlock({
   message,
   toolUseMap,
+  onHeightChange,
 }: {
   message: SessionMessage
   toolUseMap?: Map<string, ToolUseInfo>
+  onHeightChange?: () => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -1076,7 +1087,7 @@ function MicrocompactBlock({
       </button>
 
       {/* Expanded content - list of compacted tools with smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded && hasDetails ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded && hasDetails ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 flex flex-col gap-1"

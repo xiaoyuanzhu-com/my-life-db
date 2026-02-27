@@ -4,6 +4,8 @@ import type { ToolCall, WebSearchToolParams, WebSearchToolResult, WebSearchLinkR
 
 interface WebSearchToolViewProps {
   toolCall: ToolCall
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
 /**
@@ -42,7 +44,7 @@ function formatDuration(seconds: number): string {
   return `${seconds.toFixed(1)}s`
 }
 
-export function WebSearchToolView({ toolCall }: WebSearchToolViewProps) {
+export function WebSearchToolView({ toolCall, onHeightChange }: WebSearchToolViewProps) {
   const params = toolCall.parameters as WebSearchToolParams
   const result = toolCall.result as WebSearchToolResult | undefined
   const [isExpanded, setIsExpanded] = useState(false)
@@ -100,7 +102,7 @@ export function WebSearchToolView({ toolCall }: WebSearchToolViewProps) {
       ) : null}
 
       {/* Expanded content: List of links - smooth collapse */}
-      <div className={`collapsible-grid ${isExpanded && hasContent ? '' : 'collapsed'}`}>
+      <div className={`collapsible-grid ${isExpanded && hasContent ? '' : 'collapsed'}`} onTransitionEnd={() => onHeightChange?.()}>
         <div className="collapsible-grid-content">
           <div
             className="mt-2 ml-5 p-3 rounded-md overflow-y-auto space-y-2"

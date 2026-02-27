@@ -36,6 +36,8 @@ interface ToolBlockProps {
   taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
+  /** Callback when this block's height changes (for virtualizer re-measurement) */
+  onHeightChange?: () => void
 }
 
 // Get tool summary for collapsed view
@@ -72,10 +74,10 @@ function _getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0, onHeightChange }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} onHeightChange={onHeightChange} />
 }
 
 function ToolContent({
@@ -88,6 +90,7 @@ function ToolContent({
   asyncTaskOutputMap,
   taskProgressMap,
   depth,
+  onHeightChange,
 }: {
   toolCall: ToolCall
   agentProgressMap?: Map<string, AgentProgressMessage[]>
@@ -98,6 +101,7 @@ function ToolContent({
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
   taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
+  onHeightChange?: () => void
 }) {
   // Render tool-specific view based on tool name
   switch (toolCall.name) {
@@ -108,21 +112,21 @@ function ToolContent({
     case 'Edit':
       return <EditToolView toolCall={toolCall} />
     case 'Bash':
-      return <BashToolView toolCall={toolCall} bashProgressMap={bashProgressMap} />
+      return <BashToolView toolCall={toolCall} bashProgressMap={bashProgressMap} onHeightChange={onHeightChange} />
     case 'Glob':
       return <GlobToolView toolCall={toolCall} />
     case 'Grep':
       return <GrepToolView toolCall={toolCall} />
     case 'WebFetch':
-      return <WebFetchToolView toolCall={toolCall} />
+      return <WebFetchToolView toolCall={toolCall} onHeightChange={onHeightChange} />
     case 'WebSearch':
-      return <WebSearchToolView toolCall={toolCall} />
+      return <WebSearchToolView toolCall={toolCall} onHeightChange={onHeightChange} />
     case 'Task':
-      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
+      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} onHeightChange={onHeightChange} />
     case 'TodoWrite':
       return <TodoToolView toolCall={toolCall} />
     case 'Skill':
-      return <SkillToolView toolCall={toolCall} skillContentMap={skillContentMap} />
+      return <SkillToolView toolCall={toolCall} skillContentMap={skillContentMap} onHeightChange={onHeightChange} />
     case 'AskUserQuestion':
       return <AskUserQuestionToolView toolCall={toolCall} />
     default:
