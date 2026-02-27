@@ -44,7 +44,9 @@ Two formats are supported:
 
 Prefer mermaid when it can express the visualization. Use HTML when it cannot.
 
-HTML output must be mobile-friendly and responsive — use relative units, flexbox/grid, and ensure readability on small screens.`
+HTML output must be mobile-friendly and responsive — use relative units, flexbox/grid, and ensure readability on small screens.
+
+This applies even when your workflow generates intermediate files (e.g., a script that outputs HTML to a temp file). The pipeline is fine — but present the final result as a fenced code block in your response, not as a file path. Users may be on mobile where opening local files is inconvenient.`
 
 // SessionEvent represents a change in session state
 type SessionEvent struct {
