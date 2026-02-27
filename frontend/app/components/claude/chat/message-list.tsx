@@ -1,6 +1,9 @@
-import { useStickToBottom } from 'use-stick-to-bottom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { SessionMessages } from './session-messages'
+import { useStickToBottom } from '~/hooks/use-stick-to-bottom'
+import { useFilteredMessages } from './use-filtered-messages'
+import { TransientStatusBlock } from './session-messages'
+import { MessageBlock } from './message-block'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
 import { StreamingThinking } from './streaming-thinking'
@@ -29,85 +32,82 @@ interface MessageListProps {
 }
 
 /**
- * MessageList - Top-level message container with scroll behavior
+ * MessageList - Top-level message container with virtual scrolling
  *
  * This component handles:
- * - Scroll container with stick-to-bottom behavior (via use-stick-to-bottom library)
+ * - Virtual scrolling via @tanstack/react-virtual (only visible items are in the DOM)
+ * - Scroll container with stick-to-bottom behavior (via custom useStickToBottom hook)
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
  * - Scroll-up detection for loading older message pages
  * - Scroll position preservation when prepending older messages
+ * - Adaptive viewport fill (loads more pages if content doesn't fill viewport)
+ * - Streaming display (StreamingResponse, StreamingThinking, ClaudeWIP)
+ * - TransientStatusBlock for ephemeral session status (e.g., compacting)
  *
- * The use-stick-to-bottom library automatically handles:
+ * The useStickToBottom hook handles:
  * - Sticking to bottom when new content is added
  * - Allowing user to scroll up to break sticky behavior
  * - Re-engaging sticky when user scrolls back to bottom
+ * - Mobile momentum scrolling via scroll + scrollend events
  *
- * Additional mobile fix:
- * - Manual scroll listener re-engages sticky when user scrolls to the bottom
- * - Fixes issue where library doesn't re-engage after mobile momentum scrolling
- *
- * For the actual message rendering, it delegates to SessionMessages,
- * which can be used recursively for nested agent sessions.
+ * For actual message rendering, each virtual item renders a MessageBlock directly.
+ * SessionMessages is still used for nested Task tool conversations (depth > 0).
  */
 export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onScrollElementReady, isLoadingPage, hasMoreHistory, onLoadOlderPage }: MessageListProps) {
-  // use-stick-to-bottom with velocity-based spring animations
-  // 'smooth' enables natural deceleration for streaming content
-  // This adapts scroll speed to distance - faster when far behind, slower when close
-  const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
-    initial: 'smooth',
-    resize: 'smooth',
-  })
+  // Filter messages and build lookup maps (same logic as SessionMessages uses for depth > 0)
+  const { filteredMessages, maps, currentStatus } = useFilteredMessages(
+    messages,
+    toolResultMap,
+    0, // depth = 0 for top-level
+  )
+
+  // Stick-to-bottom: replaces the `use-stick-to-bottom` npm library
+  const { isAtBottom, scrollToBottom, setScrollElement, onContentChange } = useStickToBottom()
 
   // Track scroll element for parent callback and scroll listeners
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
 
   // Track previous message count for scroll position preservation on prepend
-  const prevMessageCountRef = useRef(messages.length)
+  const prevMessageCountRef = useRef(filteredMessages.length)
   const prevScrollHeightRef = useRef(0)
   const prevScrollTopRef = useRef(0)
 
-  // Merge refs: assign to useStickToBottom's scrollRef AND notify parent
+  // Merged ref callback: assigns to useStickToBottom's setScrollElement AND stores locally
   const mergedScrollRef = useCallback(
     (element: HTMLDivElement | null) => {
       scrollElementRef.current = element
-      // Assign to useStickToBottom's ref
-      if (typeof scrollRef === 'function') {
-        scrollRef(element)
-      } else if (scrollRef) {
-        ;(scrollRef as React.RefObject<HTMLDivElement | null>).current = element
-      }
+      // Assign to useStickToBottom's callback ref (sets up scroll/scrollend listeners)
+      setScrollElement(element)
       // Notify parent for hide-on-scroll
       onScrollElementReady?.(element)
     },
-    [scrollRef, onScrollElementReady]
+    [setScrollElement, onScrollElementReady]
   )
 
-  // Re-engage sticky when user scrolls to the bottom
-  // The library doesn't always re-engage on mobile after momentum scrolling
+  // ============================================================================
+  // Virtualizer
+  // ============================================================================
+
+  const virtualizer = useVirtualizer({
+    count: filteredMessages.length,
+    getScrollElement: () => scrollElementRef.current,
+    estimateSize: () => 120,
+    overscan: 5,
+    getItemKey: (index) => filteredMessages[index]?.uuid ?? index,
+    // measureElement is used as a ref callback on each virtual item wrapper.
+    // It uses ResizeObserver internally to detect size changes dynamically.
+  })
+
+  // Auto-scroll when new content arrives and user is at bottom
   useEffect(() => {
-    const element = scrollElementRef.current
-    if (!element) return
+    onContentChange()
+  }, [filteredMessages.length, streamingText, streamingThinking, wipText, optimisticMessage, currentStatus, onContentChange])
 
-    const checkAndReengage = () => {
-      const { scrollTop, scrollHeight, clientHeight } = element
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-
-      // Re-engage sticky when at the very bottom (within 1px for rounding)
-      if (distanceFromBottom <= 1) {
-        scrollToBottom({ animation: 'instant' })
-      }
-    }
-
-    element.addEventListener('scroll', checkAndReengage, { passive: true })
-    element.addEventListener('scrollend', checkAndReengage, { passive: true })
-
-    return () => {
-      element.removeEventListener('scroll', checkAndReengage)
-      element.removeEventListener('scrollend', checkAndReengage)
-    }
-  }, [scrollToBottom])
+  // ============================================================================
+  // Scroll event handlers
+  // ============================================================================
 
   // Scroll-up detection: load older pages when user scrolls near the top
   useEffect(() => {
@@ -125,8 +125,10 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     return () => element.removeEventListener('scroll', handleScroll)
   }, [hasMoreHistory, isLoadingPage, onLoadOlderPage])
 
-  // Scroll position preservation when older messages are prepended.
-  //
+  // ============================================================================
+  // Scroll position preservation on prepend
+  // ============================================================================
+
   // Uses useLayoutEffect (not useEffect) so the scroll adjustment happens
   // synchronously after DOM mutations but BEFORE the browser paints the frame.
   // With useEffect the browser would paint the post-prepend layout (scroll jumps
@@ -144,7 +146,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     if (!element) return
 
     const prevCount = prevMessageCountRef.current
-    const currentCount = messages.length
+    const currentCount = filteredMessages.length
 
     if (currentCount > prevCount && prevScrollHeightRef.current > 0) {
       // Messages were added. Check if they were prepended (older page loaded)
@@ -160,9 +162,12 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     prevMessageCountRef.current = currentCount
     prevScrollHeightRef.current = element.scrollHeight
     prevScrollTopRef.current = element.scrollTop
-  }, [messages.length])
+  }, [filteredMessages.length])
 
-  // Adaptive viewport fill + stuck-at-top recovery:
+  // ============================================================================
+  // Adaptive viewport fill + stuck-at-top recovery
+  // ============================================================================
+
   // After a page load completes (isLoadingPage false→true→false), check if we
   // still need more content. This covers two cases:
   // 1. Content doesn't fill the viewport — keep loading until it does
@@ -170,7 +175,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   //    so we re-trigger the load if still near the top
   useEffect(() => {
     const element = scrollElementRef.current
-    if (!element || isLoadingPage || !hasMoreHistory || messages.length === 0) return
+    if (!element || isLoadingPage || !hasMoreHistory || filteredMessages.length === 0) return
 
     // Use requestAnimationFrame to check after the browser has finished layout
     const rafId = requestAnimationFrame(() => {
@@ -180,7 +185,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     })
 
     return () => cancelAnimationFrame(rafId)
-  }, [messages.length, isLoadingPage, hasMoreHistory, onLoadOlderPage])
+  }, [filteredMessages.length, isLoadingPage, hasMoreHistory, onLoadOlderPage])
+
+  // ============================================================================
+  // Streaming visibility logic
+  // ============================================================================
 
   // Only show StreamingResponse when streaming text exists AND the final assistant
   // message (with text content) hasn't been added to the messages list yet.
@@ -218,13 +227,32 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     return true
   }, [streamingThinking, messages])
 
+  // ============================================================================
+  // onHeightChange callback for virtualizer re-measurement
+  // ============================================================================
+
+  // When a collapsible section expands/collapses, the virtualizer's ResizeObserver
+  // should catch the size change via measureElement. This callback is a safety net
+  // that also triggers onContentChange to auto-scroll if at bottom.
+  const handleHeightChange = useCallback(() => {
+    onContentChange()
+  }, [onContentChange])
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+
+  const hasMessages = filteredMessages.length > 0 || !!optimisticMessage
+  const virtualItems = virtualizer.getVirtualItems()
+  const totalSize = virtualizer.getTotalSize()
+
   return (
     <div
       ref={mergedScrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
     >
-      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
-        {messages.length === 0 && !optimisticMessage ? (
+      <div className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
+        {!hasMessages ? (
           <div className="flex-1" />
         ) : (
           <>
@@ -241,12 +269,52 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
               </div>
             )}
 
-            {/* Messages rendered via SessionMessages (supports recursive nesting) */}
-            <SessionMessages
-              messages={messages}
-              toolResultMap={toolResultMap}
-              depth={0}
-            />
+            {/* Virtualized message list */}
+            {filteredMessages.length > 0 && (
+              <div
+                style={{
+                  height: totalSize,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualItems.map((virtualItem) => {
+                  const message = filteredMessages[virtualItem.index]
+                  return (
+                    <div
+                      key={virtualItem.key}
+                      ref={virtualizer.measureElement}
+                      data-index={virtualItem.index}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                    >
+                      <MessageBlock
+                        message={message}
+                        toolResultMap={maps.toolResultMap}
+                        agentProgressMap={maps.agentProgressMap}
+                        bashProgressMap={maps.bashProgressMap}
+                        hookProgressMap={maps.hookProgressMap}
+                        toolUseMap={maps.toolUseMap}
+                        skillContentMap={maps.skillContentMap}
+                        subagentMessagesMap={maps.subagentMessagesMap}
+                        asyncTaskOutputMap={maps.asyncTaskOutputMap}
+                        taskProgressMap={maps.taskProgressMap}
+                        depth={0}
+                        onHeightChange={handleHeightChange}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Transient status indicator (e.g., "Compacting...") - after virtualized list */}
+            {currentStatus && <TransientStatusBlock status={currentStatus} />}
 
             {/* Optimistic user message (shown before server confirms) */}
             {optimisticMessage && (
@@ -268,13 +336,13 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
             {/* Streaming thinking (progressive thinking as Claude reasons)
               * Shown BEFORE streaming text since thinking precedes text in Claude's response.
               * Hide once the final assistant message arrives (it contains the completed thinking block). */}
-            {showStreamingThinking && <StreamingThinking text={streamingThinking} />}
+            {showStreamingThinking && <StreamingThinking text={streamingThinking!} />}
 
             {/* Streaming response (progressive text as Claude generates)
               * Hide once the final assistant message is in the list to avoid duplicate content.
               * The MessageBlock's MessageContent uses parseMarkdownSync for immediate render,
               * ensuring a seamless visual transition with no flash. */}
-            {showStreaming && <StreamingResponse text={streamingText} />}
+            {showStreaming && <StreamingResponse text={streamingText!} />}
 
             {/* Work-in-Progress indicator */}
             {wipText && <ClaudeWIP text={wipText} turnId={turnId} />}
