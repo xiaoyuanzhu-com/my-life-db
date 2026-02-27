@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { MessageBlock } from './message-block'
+import { MessageDot } from './message-dot'
 import {
   buildToolResultMap,
   isSkippedUserMessage,
@@ -435,33 +436,55 @@ export function buildToolUseMap(messages: SessionMessage[]): Map<string, ToolUse
 }
 
 /**
- * Map status values to human-readable labels
+ * Map status values to human-readable labels (base text, without trailing dots)
  */
 const STATUS_LABELS: Record<string, string> = {
-  compacting: 'Compacting...',
+  compacting: 'Compacting',
 }
 
 /**
  * TransientStatusBlock - Shows ephemeral session status (e.g., "Compacting...")
- * Disappears when status is cleared (null) and compact_boundary takes over
+ * Uses a pulsing MessageDot and progressive three-dot animation.
+ * Disappears when status is cleared (null) and compact_boundary takes over.
  */
 function TransientStatusBlock({ status }: { status: string }) {
-  const label = STATUS_LABELS[status] || `${status}...`
+  const label = STATUS_LABELS[status] || status
 
   return (
     <div className="mb-4 flex items-start gap-2">
-      {/* Orange dot indicates running/in-progress state */}
-      <span
-        className="select-none font-mono text-[13px] leading-[1.5]"
-        style={{ color: 'var(--claude-status-warn, #F59E0B)' }}
-      >
-        ●
-      </span>
-      <span
-        className="font-mono text-[13px] leading-[1.5]"
-        style={{ color: 'var(--claude-text-secondary)' }}
-      >
-        {label}
+      <MessageDot type="compacting" />
+      <span className="font-mono text-[13px] leading-[1.5] font-semibold flex items-center gap-0">
+        <span style={{ color: 'var(--claude-text-primary)' }}>{label}</span>
+        <span className="inline-flex w-[1.5em]">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="inline-block"
+              style={{
+                color: 'var(--claude-text-primary)',
+                animation: `compacting-dot-${i} 1.44s linear infinite`,
+              }}
+            >
+              .
+            </span>
+          ))}
+        </span>
+        <style>{`
+          @keyframes compacting-dot-0 {
+            0%, 100% { opacity: 0; }
+            1%, 99% { opacity: 1; }
+          }
+          @keyframes compacting-dot-1 {
+            0%, 33% { opacity: 0; }
+            34%, 99% { opacity: 1; }
+            100% { opacity: 0; }
+          }
+          @keyframes compacting-dot-2 {
+            0%, 66% { opacity: 0; }
+            67%, 99% { opacity: 1; }
+            100% { opacity: 0; }
+          }
+        `}</style>
       </span>
     </div>
   )
