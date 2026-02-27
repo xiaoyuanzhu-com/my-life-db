@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn } from '~/lib/utils'
 import { Input } from '~/components/ui/input'
-import { Check, X } from 'lucide-react'
+import { Check, X, Minus, ChevronRight } from 'lucide-react'
 import type { UserQuestion } from '~/types/claude'
 
 interface QuestionCardProps {
@@ -16,6 +16,7 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
   const [isDismissing, setIsDismissing] = useState(false)
   const [pendingAction, setPendingAction] = useState<'submit' | 'skip' | null>(null)
   const [activeTab, setActiveTab] = useState(0)
+  const [isMinimized, setIsMinimized] = useState(false)
 
   // State for each question's selected answer(s)
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({})
@@ -168,16 +169,30 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
           ))}
         </div>
 
-        {/* Close button */}
-        <button
-          type="button"
-          onClick={handleSkip}
-          disabled={isDismissing}
-          className="flex-shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {/* Action buttons */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Minimize button */}
+          <button
+            type="button"
+            onClick={() => setIsMinimized(true)}
+            disabled={isDismissing}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Minimize"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={isDismissing}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Current Question Content */}
