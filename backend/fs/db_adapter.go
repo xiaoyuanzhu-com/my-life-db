@@ -61,3 +61,13 @@ func (a *dbAdapter) DeleteFileWithCascade(path string) error {
 func (a *dbAdapter) DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	return db.DeleteFilesWithCascadePrefix(pathPrefix)
 }
+
+// SqlarStore stores data in the SQLAR table
+func (a *dbAdapter) SqlarStore(name string, data []byte, mode int) bool {
+	return db.SqlarStore(name, data, mode)
+}
+
+// SqlarExists checks if a name exists in the SQLAR table
+func (a *dbAdapter) SqlarExists(name string) bool {
+	return db.SqlarExists(name)
+}

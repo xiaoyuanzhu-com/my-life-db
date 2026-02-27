@@ -66,4 +66,8 @@ type Database interface {
 	ListAllFilePaths() ([]string, error)
 	DeleteFileWithCascade(path string) error
 	DeleteFilesWithCascadePrefix(pathPrefix string) error
+
+	// SQLAR operations (for preview storage)
+	SqlarStore(name string, data []byte, mode int) bool
+	SqlarExists(name string) bool
 }
