@@ -136,6 +136,33 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
   // Get current question based on active tab
   const currentQuestion = question.questions[activeTab]
   const currentKey = `q${activeTab}`
+  const totalQuestions = question.questions.length
+
+  if (isMinimized) {
+    return (
+      <div
+        className={cn(
+          !isFirst && 'border-t border-border'
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setIsMinimized(false)}
+          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+        >
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <span className="text-[13px] font-medium text-foreground truncate">
+            {currentQuestion.header}
+          </span>
+          {totalQuestions > 1 && (
+            <span className="text-[12px] text-muted-foreground flex-shrink-0">
+              · {activeTab + 1} of {totalQuestions} questions
+            </span>
+          )}
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div
