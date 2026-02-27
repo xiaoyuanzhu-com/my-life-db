@@ -52,6 +52,11 @@ type Config struct {
 
 	// Preview notification callback (optional, for SSE)
 	PreviewNotifier PreviewNotifier
+
+	// DocScreenshotter generates screenshots of documents (optional, nil = skip doc previews)
+	DocScreenshotter interface {
+		GenerateDocScreenshot(docPath string) ([]byte, error)
+	}
 }
 
 // Database interface defines required database operations

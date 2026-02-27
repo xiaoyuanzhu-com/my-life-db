@@ -15,6 +15,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 	meiliworker "github.com/xiaoyuanzhu-com/my-life-db/workers/meili"
@@ -92,6 +93,9 @@ func New(cfg *Config) (*Server, error) {
 	fsCfg.DB = fs.NewDBAdapter() // Inject database adapter
 	fsCfg.PreviewNotifier = func(filePath, previewType string) {
 		s.notifService.NotifyPreviewUpdated(filePath, previewType)
+	}
+	if haid := vendors.GetHAID(); haid != nil {
+		fsCfg.DocScreenshotter = haid
 	}
 	s.fsService = fs.NewService(fsCfg)
 
