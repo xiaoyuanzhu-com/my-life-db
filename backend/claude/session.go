@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude/sdk"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
@@ -442,12 +443,23 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 			s.alwaysAllowedTools = make(map[string]bool)
 		}
 		s.alwaysAllowedTools[toolName] = true
+
+		// Snapshot tool list for persistence while holding the lock
+		tools := make([]string, 0, len(s.alwaysAllowedTools))
+		for t := range s.alwaysAllowedTools {
+			tools = append(tools, t)
+		}
 		s.alwaysAllowedToolsMu.Unlock()
 
 		log.Info().
 			Str("sessionId", s.ID).
 			Str("toolName", toolName).
 			Msg("tool added to always-allowed list")
+
+		// Persist to database (fire-and-forget)
+		if err := db.SaveClaudeSessionAllowedTools(s.ID, tools); err != nil {
+			log.Warn().Err(err).Str("sessionId", s.ID).Msg("failed to persist always-allowed tools")
+		}
 	}
 
 	// Build SDK permission result
