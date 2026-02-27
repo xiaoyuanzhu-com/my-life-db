@@ -66,17 +66,15 @@ export function ContextUsageIndicator({
   const autocompactBuffer = Math.round(maxTokens * AUTOCOMPACT_BUFFER_RATIO)
   const freeTokens = Math.max(0, maxTokens - usedTokens - autocompactBuffer)
 
-  // Display percentage — tokens only, no buffer (matches CLI /context behavior)
-  const percentage = Math.min(Math.round((usedTokens / maxTokens) * 100), 100)
-  // Ring percentage — includes buffer to show true fullness
-  const ringPercentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
+  // Display & ring percentage — includes buffer to show true fullness
+  const percentage = Math.min(Math.round(((usedTokens + autocompactBuffer) / maxTokens) * 100), 100)
 
   // SVG circle parameters — sized to match other bar icons (h-3/h-3.5 = 12/14px)
   const size = 14
   const strokeWidth = 2
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference - (ringPercentage / 100) * circumference
+  const dashOffset = circumference - (percentage / 100) * circumference
 
   const displayModel = formatModelName(usage.modelName)
 
@@ -150,7 +148,7 @@ export function ContextUsageIndicator({
           {displayModel && (
             <span>{displayModel} &middot; </span>
           )}
-          {formatTokens(usedTokens)}/{formatTokens(maxTokens)} tokens ({percentage}%)
+          {formatTokens(usedTokens)}/{formatTokens(maxTokens)} ({percentage}%)
         </div>
 
         {/* Breakdown rows */}
