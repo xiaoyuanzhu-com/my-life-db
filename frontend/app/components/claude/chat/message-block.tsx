@@ -21,7 +21,7 @@ import {
   type ExtractedToolResult,
   type SummaryMessage,
 } from '~/lib/session-message-utils'
-import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, ToolUseInfo } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, TaskProgressMessage, ToolUseInfo } from './session-messages'
 import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
 import { PreviewFullscreen, wrapSvgInHtml } from './preview-fullscreen'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
@@ -57,11 +57,13 @@ interface MessageBlockProps {
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  /** Map from tool_use_id to latest task progress message (for running Task tools) */
+  taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -322,7 +324,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
       {/* Tool calls */}
       {hasToolCalls && (
         <div className="mt-3 space-y-2">
-          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} depth={depth} />
+          <ToolCallGroups toolCalls={toolCalls} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
         </div>
       )}
     </div>
@@ -339,6 +341,7 @@ function ToolCallGroups({
   skillContentMap,
   subagentMessagesMap,
   asyncTaskOutputMap,
+  taskProgressMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -348,6 +351,7 @@ function ToolCallGroups({
   skillContentMap?: Map<string, string>
   subagentMessagesMap?: Map<string, SessionMessage[]>
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
 }) {
   // Group consecutive tool calls by name
@@ -389,6 +393,7 @@ function ToolCallGroups({
               skillContentMap={skillContentMap}
               subagentMessagesMap={subagentMessagesMap}
               asyncTaskOutputMap={asyncTaskOutputMap}
+              taskProgressMap={taskProgressMap}
               depth={depth}
             />
           )
@@ -405,6 +410,7 @@ function ToolCallGroups({
             skillContentMap={skillContentMap}
             subagentMessagesMap={subagentMessagesMap}
             asyncTaskOutputMap={asyncTaskOutputMap}
+            taskProgressMap={taskProgressMap}
             depth={depth}
           />
         )
@@ -422,6 +428,7 @@ function ToolCallGroup({
   skillContentMap,
   subagentMessagesMap,
   asyncTaskOutputMap,
+  taskProgressMap,
   depth,
 }: {
   toolCalls: ToolCall[]
@@ -431,6 +438,7 @@ function ToolCallGroup({
   skillContentMap?: Map<string, string>
   subagentMessagesMap?: Map<string, SessionMessage[]>
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
@@ -465,6 +473,7 @@ function ToolCallGroup({
                 skillContentMap={skillContentMap}
                 subagentMessagesMap={subagentMessagesMap}
                 asyncTaskOutputMap={asyncTaskOutputMap}
+                taskProgressMap={taskProgressMap}
                 depth={depth}
               />
             ))}

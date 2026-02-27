@@ -7,6 +7,7 @@ import {
   isHookStartedMessage,
   isStatusMessage,
   isTaskStartedMessage,
+  isTaskProgressMessage,
   isSystemInitMessage,
   isToolUseBlock,
   isToolResultBlock,
@@ -152,6 +153,41 @@ export function buildHookProgressMap(messages: SessionMessage[]): Map<string, Ho
 
 // HookResponseMessage and buildHookResponseMap removed — hook messages are now fully skipped
 // (hooks are infrastructure plumbing; their side effects appear as system-reminders)
+
+// Task progress message structure (periodic updates from running Task subagents)
+export interface TaskProgressMessage extends SessionMessage {
+  type: 'system'
+  subtype: 'task_progress'
+  description: string      // Current activity (e.g., "Reading ~/path/file.md")
+  last_tool_name: string   // Last tool used by subagent (e.g., "Read", "Bash")
+  task_id: string          // Agent task ID
+  tool_use_id: string      // Links to parent Task tool_use block
+  session_id: string
+  usage: { duration_ms?: number; tool_uses?: number; total_tokens?: number }
+}
+
+/**
+ * Build a map from tool_use_id to the latest task_progress message.
+ * This allows Task tools to show live status while their subagent is running.
+ *
+ * NOTE: Unlike other progress maps (keyed by parentToolUseID), task_progress
+ * messages link to the parent via `tool_use_id` (same linking field as task_started
+ * and task_notification).
+ *
+ * Only the latest message per tool_use_id is kept (cumulative stats grow over time).
+ */
+export function buildTaskProgressMap(messages: SessionMessage[]): Map<string, TaskProgressMessage> {
+  const map = new Map<string, TaskProgressMessage>()
+
+  for (const msg of messages) {
+    if (isTaskProgressMessage(msg) && msg.tool_use_id) {
+      // Always overwrite — later messages have more up-to-date stats
+      map.set(msg.tool_use_id, msg as TaskProgressMessage)
+    }
+  }
+
+  return map
+}
 
 // Skill content message structure (isMeta messages linked to Skill tool via sourceToolUseID)
 export interface SkillContentMessage extends SessionMessage {
@@ -471,6 +507,11 @@ interface SessionMessagesProps {
    */
   asyncTaskOutputMap?: Map<string, TaskToolResult>
   /**
+   * Pre-built task progress map. If not provided, will be built from messages.
+   * Maps tool_use_id to the latest task_progress message (for running Task tools).
+   */
+  taskProgressMap?: Map<string, TaskProgressMessage>
+  /**
   /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
@@ -499,6 +540,7 @@ export function SessionMessages({
   skillContentMap: providedSkillContentMap,
   subagentMessagesMap: providedSubagentMessagesMap,
   asyncTaskOutputMap: providedAsyncTaskOutputMap,
+  taskProgressMap: providedTaskProgressMap,
   depth = 0,
 }: SessionMessagesProps) {
   // Build tool result map if not provided (for nested sessions)
@@ -553,6 +595,13 @@ export function SessionMessages({
     return buildAsyncTaskOutputMap(messages, toolResultMap).resultMap
   }, [messages, toolResultMap, providedAsyncTaskOutputMap])
 
+  // Build task progress map if not provided
+  // This provides live status updates for running Task subagents
+  const taskProgressMap = useMemo(() => {
+    if (providedTaskProgressMap) return providedTaskProgressMap
+    return buildTaskProgressMap(messages)
+  }, [messages, providedTaskProgressMap])
+
   // Filter out:
   // - progress messages (rendered inside their parent tools, not as standalone messages)
   // - hook messages (hook_started + hook_response are infrastructure plumbing; side effects appear as system-reminders)
@@ -584,6 +633,10 @@ export function SessionMessages({
       // already shows the same description. The task_started message has no linking field
       // (task_id ≠ tool_use.id) so it can't be merged into the tool block either.
       if (isTaskStartedMessage(msg)) return false
+
+      // Skip task_progress messages - rendered inside the parent Task tool via taskProgressMap.
+      // These are periodic updates from running subagents (description, last_tool_name, usage stats).
+      if (isTaskProgressMessage(msg)) return false
 
       // Skip system init messages - these are session-level metadata (model, tools, agents, etc.)
       // not user-facing content. The metadata is extracted in chat-interface.tsx and exposed
@@ -665,6 +718,7 @@ export function SessionMessages({
           skillContentMap={skillContentMap}
           subagentMessagesMap={subagentMessagesMap}
           asyncTaskOutputMap={asyncTaskOutputMap}
+          taskProgressMap={taskProgressMap}
           depth={depth}
         />
       ))}
@@ -674,4 +728,4 @@ export function SessionMessages({
   )
 }
 
-export type { BashProgressMessage }
+export type { BashProgressMessage, TaskProgressMessage }

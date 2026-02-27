@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToolCall } from '~/types/claude'
 import type { SessionMessage } from '~/lib/session-message-utils'
 import { MessageDot, toolStatusToDotType } from './message-dot'
-import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage } from './session-messages'
+import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, TaskProgressMessage } from './session-messages'
 
 // Tool-specific visualizations
 import { ReadToolView } from './tools/read-tool'
@@ -32,6 +32,8 @@ interface ToolBlockProps {
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  /** Map from tool_use_id to latest task progress message (for running Task tools) */
+  taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
@@ -70,10 +72,10 @@ function _getToolSummary(toolCall: ToolCall): string {
   }
 }
 
-export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: ToolBlockProps) {
+export function ToolBlock({ toolCall, agentProgressMap, bashProgressMap, hookProgressMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: ToolBlockProps) {
   // Tool components are now self-contained with their own headers and collapse/expand logic
   // Just render them directly
-  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} depth={depth} />
+  return <ToolContent toolCall={toolCall} agentProgressMap={agentProgressMap} bashProgressMap={bashProgressMap} hookProgressMap={hookProgressMap} skillContentMap={skillContentMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
 }
 
 function ToolContent({
@@ -84,6 +86,7 @@ function ToolContent({
   skillContentMap,
   subagentMessagesMap,
   asyncTaskOutputMap,
+  taskProgressMap,
   depth,
 }: {
   toolCall: ToolCall
@@ -93,6 +96,7 @@ function ToolContent({
   skillContentMap?: Map<string, string>
   subagentMessagesMap?: Map<string, SessionMessage[]>
   asyncTaskOutputMap?: Map<string, import('~/lib/session-message-utils').TaskToolResult>
+  taskProgressMap?: Map<string, TaskProgressMessage>
   depth: number
 }) {
   // Render tool-specific view based on tool name
@@ -114,7 +118,7 @@ function ToolContent({
     case 'WebSearch':
       return <WebSearchToolView toolCall={toolCall} />
     case 'Task':
-      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} depth={depth} />
+      return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} />
     case 'TodoWrite':
       return <TodoToolView toolCall={toolCall} />
     case 'Skill':

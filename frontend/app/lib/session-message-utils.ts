@@ -113,6 +113,12 @@ export interface SessionMessage {
   task_type?: string  // Type of task (e.g., "local_agent")
   // Also has: tool_use_id (defined above), task_id (defined above)
 
+  // Task progress fields (when subtype === 'task_progress')
+  // Periodic updates from a running Task subagent, showing current activity and cumulative stats.
+  // Also has: description (defined above, but means "current activity" not "task description"),
+  //           tool_use_id, task_id, session_id, usage (all defined above)
+  last_tool_name?: string  // Name of the last tool used by the subagent (e.g., "Read", "Bash")
+
   // Hook started/response fields (when subtype === 'hook_started' or 'hook_response')
   hook_id?: string  // Unique identifier for this hook execution
   hook_name?: string  // Hook name (e.g., "SessionStart:startup")
@@ -222,7 +228,7 @@ export function normalizeMessages<T extends Record<string, unknown>>(msgs: T[]):
 
 // System message subtypes
 // See docs/claude-code/data-models.md "System Subtypes" section
-export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | 'task_notification' | 'task_started' | string
+export type SystemSubtype = 'init' | 'compact_boundary' | 'microcompact_boundary' | 'turn_duration' | 'api_error' | 'local_command' | 'hook_started' | 'hook_response' | 'status' | 'task_notification' | 'task_started' | 'task_progress' | string
 
 // Compact metadata for compact_boundary messages
 export interface CompactMetadata {
@@ -625,6 +631,17 @@ export function isTaskNotificationMessage(msg: SessionMessage): boolean {
  */
 export function isTaskStartedMessage(msg: SessionMessage): boolean {
   return msg.type === 'system' && msg.subtype === 'task_started'
+}
+
+/**
+ * Type guard to check if a message is a task progress message.
+ * Task progress messages are periodic updates from a running Task subagent,
+ * showing the current activity (description, last_tool_name) and cumulative
+ * usage stats. They are rendered inside the parent Task tool via taskProgressMap,
+ * not as standalone messages.
+ */
+export function isTaskProgressMessage(msg: SessionMessage): boolean {
+  return msg.type === 'system' && msg.subtype === 'task_progress'
 }
 
 /**

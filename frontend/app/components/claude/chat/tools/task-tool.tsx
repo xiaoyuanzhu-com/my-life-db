@@ -1,10 +1,26 @@
 import { useState, useMemo, useEffect } from 'react'
 import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { SessionMessages } from '../session-messages'
-import type { AgentProgressMessage } from '../session-messages'
+import type { AgentProgressMessage, TaskProgressMessage } from '../session-messages'
 import type { ToolCall, TaskToolParams } from '~/types/claude'
 import type { SessionMessage, TaskToolResult } from '~/lib/session-message-utils'
 import { parseMarkdown } from '~/lib/markdown'
+
+// Format duration in milliseconds to human-readable string
+function formatDuration(ms: number): string {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (remainingSeconds === 0) return `${minutes}m`
+  return `${minutes}m ${remainingSeconds}s`
+}
+
+// Format token count to human-readable string
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return `${tokens}`
+  return `${Math.round(tokens / 1000)}K`
+}
 
 interface TaskToolViewProps {
   toolCall: ToolCall
@@ -14,11 +30,13 @@ interface TaskToolViewProps {
   subagentMessagesMap?: Map<string, SessionMessage[]>
   /** Map from Task tool_use.id to merged TaskOutput result (for background async Tasks) */
   asyncTaskOutputMap?: Map<string, TaskToolResult>
+  /** Map from tool_use_id to latest task progress message (for running Task tools) */
+  taskProgressMap?: Map<string, TaskProgressMessage>
   /** Nesting depth for recursive rendering (0 = top-level) */
   depth?: number
 }
 
-export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, asyncTaskOutputMap, depth = 0 }: TaskToolViewProps) {
+export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0 }: TaskToolViewProps) {
   const [expanded, setExpanded] = useState(false)
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [resultExpanded, setResultExpanded] = useState(false)
@@ -162,6 +180,12 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
     return taskMeta?.prompt || params.prompt || null
   }, [agentProgress, taskMeta, params.prompt])
 
+  // Get latest task progress for this tool (live status from running subagent)
+  const taskProgress = useMemo(() => {
+    if (!taskProgressMap) return undefined
+    return taskProgressMap.get(toolCall.id)
+  }, [taskProgressMap, toolCall.id])
+
   // Determine if header should be expandable
   const hasExpandableContent = result || subagentPrompt || nestedMessages.length > 0
 
@@ -252,11 +276,29 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
         </div>
       )}
 
-      {/* Status indicator when running */}
+      {/* Status indicator when running — show live progress if available, else generic */}
       {toolCall.status === 'running' && !result && !isAsyncLaunch && (
         <div className="mt-1 flex gap-2" style={{ color: 'var(--claude-text-secondary)' }}>
           <span className="select-none">└</span>
-          <span>Agent is working...</span>
+          {taskProgress ? (
+            <div className="flex-1 min-w-0">
+              <span>{taskProgress.description}</span>
+              {taskProgress.usage && (
+                <span
+                  className="ml-2 text-[12px]"
+                  style={{ color: 'var(--claude-text-tertiary, var(--claude-text-secondary))', opacity: 0.6 }}
+                >
+                  ({[
+                    taskProgress.usage.duration_ms != null && formatDuration(taskProgress.usage.duration_ms),
+                    taskProgress.usage.tool_uses != null && `${taskProgress.usage.tool_uses} tool uses`,
+                    taskProgress.usage.total_tokens != null && `${formatTokens(taskProgress.usage.total_tokens)} tokens`,
+                  ].filter(Boolean).join(' · ')})
+                </span>
+              )}
+            </div>
+          ) : (
+            <span>Agent is working...</span>
+          )}
         </div>
       )}
 
