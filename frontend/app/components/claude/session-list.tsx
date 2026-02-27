@@ -70,6 +70,50 @@ function formatRelativeTime(epochMs: number): string {
   return date.toLocaleDateString()
 }
 
+// ─── Time-based grouping (ported from iOS ClaudeSessionListView) ─────────────
+
+interface SessionGroup {
+  title: string
+  sessions: Session[]
+}
+
+function groupSessionsByTime(sessions: Session[]): SessionGroup[] {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+  const startOfWeek = new Date(startOfToday.getTime() - 7 * 86400000)
+  const startOfMonth = new Date(startOfToday.getTime() - 30 * 86400000)
+
+  const today: Session[] = []
+  const yesterday: Session[] = []
+  const pastWeek: Session[] = []
+  const pastMonth: Session[] = []
+  const earlier: Session[] = []
+
+  for (const session of sessions) {
+    const date = new Date(session.lastUserActivity || session.lastActivity)
+    if (date >= startOfToday) {
+      today.push(session)
+    } else if (date >= startOfYesterday) {
+      yesterday.push(session)
+    } else if (date >= startOfWeek) {
+      pastWeek.push(session)
+    } else if (date >= startOfMonth) {
+      pastMonth.push(session)
+    } else {
+      earlier.push(session)
+    }
+  }
+
+  const result: SessionGroup[] = []
+  if (today.length > 0) result.push({ title: 'Today', sessions: today })
+  if (yesterday.length > 0) result.push({ title: 'Yesterday', sessions: yesterday })
+  if (pastWeek.length > 0) result.push({ title: 'Past Week', sessions: pastWeek })
+  if (pastMonth.length > 0) result.push({ title: 'Past Month', sessions: pastMonth })
+  if (earlier.length > 0) result.push({ title: 'Earlier', sessions: earlier })
+  return result
+}
+
 // ─── Unread dot indicator ────────────────────────────────────────────────────
 
 function UnreadIndicator({ state }: { state: 'working' | 'unread' }) {
@@ -161,120 +205,127 @@ export function SessionList({
         </div>
       ) : (
         <>
-          {sessions.map((session) => {
-            // Show unread dot for active/waiting sessions that aren't currently being viewed
-            const { sessionState } = session
-            const showDot = (sessionState === 'working' || sessionState === 'unread')
-              && activeSessionId !== session.id
-
-            return (
-              <div
-                key={session.id}
-                className={cn(
-                  'group relative border-b border-border p-3 cursor-pointer transition-colors',
-                  activeSessionId === session.id
-                    ? 'bg-primary/10'
-                    : 'hover:bg-muted/50'
-                )}
-                onClick={() => onSelect(session.id)}
-              >
-                {editingId === session.id ? (
-                  <div className="flex items-center gap-1">
-                    <Input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit()
-                        if (e.key === 'Escape') cancelEdit()
-                      }}
-                      className="h-7 text-sm"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        saveEdit()
-                      }}
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        cancelEdit()
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h3
-                            className={cn(
-                              'truncate text-sm font-medium text-foreground',
-                              sessionState === 'archived' && 'opacity-60'
-                            )}
-                            title={getSessionDisplayTitle(session).full}
-                          >
-                            {getSessionDisplayTitle(session).display}
-                          </h3>
-                          {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
-                          <span className="w-2 shrink-0 flex items-center">
-                            {showDot && (
-                              <UnreadIndicator state={sessionState as 'working' | 'unread'} />
-                            )}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="truncate">
-                            {session.workingDir}
-                          </span>
-                          <span className="shrink-0">
-                            • {formatRelativeTime(session.lastUserActivity || session.lastActivity)}
-                          </span>
-                          {session.messageCount !== undefined && session.messageCount > 0 && (
-                            <span className="shrink-0">
-                              • {session.messageCount} msgs
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (sessionState === 'archived') {
-                            onUnarchive(session.id)
-                          } else {
-                            onArchive(session.id)
-                          }
-                        }}
-                        title={sessionState === 'archived' ? 'Unarchive session' : 'Archive session'}
-                      >
-                        {sessionState === 'archived' ? (
-                          <ArchiveRestore className="h-3.5 w-3.5" />
-                        ) : (
-                          <Archive className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </>
-                )}
+          {groupSessionsByTime(sessions).map((group) => (
+            <div key={group.title}>
+              <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border">
+                {group.title}
               </div>
-            )
-          })}
+              {group.sessions.map((session) => {
+                // Show unread dot for active/waiting sessions that aren't currently being viewed
+                const { sessionState } = session
+                const showDot = (sessionState === 'working' || sessionState === 'unread')
+                  && activeSessionId !== session.id
+
+                return (
+                  <div
+                    key={session.id}
+                    className={cn(
+                      'group relative border-b border-border p-3 cursor-pointer transition-colors',
+                      activeSessionId === session.id
+                        ? 'bg-primary/10'
+                        : 'hover:bg-muted/50'
+                    )}
+                    onClick={() => onSelect(session.id)}
+                  >
+                    {editingId === session.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit()
+                            if (e.key === 'Escape') cancelEdit()
+                          }}
+                          className="h-7 text-sm"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            saveEdit()
+                          }}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            cancelEdit()
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <h3
+                                className={cn(
+                                  'truncate text-sm font-medium text-foreground',
+                                  sessionState === 'archived' && 'opacity-60'
+                                )}
+                                title={getSessionDisplayTitle(session).full}
+                              >
+                                {getSessionDisplayTitle(session).display}
+                              </h3>
+                              {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
+                              <span className="w-2 shrink-0 flex items-center">
+                                {showDot && (
+                                  <UnreadIndicator state={sessionState as 'working' | 'unread'} />
+                                )}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                              <span className="truncate">
+                                {session.workingDir}
+                              </span>
+                              <span className="shrink-0">
+                                • {formatRelativeTime(session.lastUserActivity || session.lastActivity)}
+                              </span>
+                              {session.messageCount !== undefined && session.messageCount > 0 && (
+                                <span className="shrink-0">
+                                  • {session.messageCount} msgs
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (sessionState === 'archived') {
+                                onUnarchive(session.id)
+                              } else {
+                                onArchive(session.id)
+                              }
+                            }}
+                            title={sessionState === 'archived' ? 'Unarchive session' : 'Archive session'}
+                          >
+                            {sessionState === 'archived' ? (
+                              <ArchiveRestore className="h-3.5 w-3.5" />
+                            ) : (
+                              <Archive className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
 
           {/* Load more trigger element - invisible sentinel for Intersection Observer */}
           <div ref={loadMoreTriggerRef} className="h-1" />
