@@ -41,8 +41,8 @@ export interface FileRecordRow {
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   text_preview: string | null;
 
-  /** Screenshot SQLAR path (cached from digests for fast inbox rendering) */
-  screenshot_sqlar: string | null;
+  /** Preview SQLAR path (cached from digests for fast inbox rendering) */
+  preview_sqlar: string | null;
 }
 
 /**
@@ -81,8 +81,8 @@ export interface FileRecord {
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   textPreview: string | null;
 
-  /** Screenshot SQLAR path (cached from digests for fast inbox rendering) */
-  screenshotSqlar: string | null;
+  /** Preview SQLAR path (cached from digests for fast inbox rendering) */
+  previewSqlar: string | null;
 }
 
 /**
@@ -100,6 +100,6 @@ export function rowToFileRecord(row: FileRecordRow): FileRecord {
     createdAt: row.created_at,
     lastScannedAt: row.last_scanned_at,
     textPreview: row.text_preview,
-    screenshotSqlar: row.screenshot_sqlar,
+    previewSqlar: row.preview_sqlar,
   };
 }

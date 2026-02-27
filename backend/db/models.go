@@ -17,7 +17,7 @@ type FileRecord struct {
 	CreatedAt      int64      `json:"createdAt"`
 	LastScannedAt  int64      `json:"lastScannedAt,omitempty"`
 	TextPreview    *string    `json:"textPreview,omitempty"`
-	ScreenshotSqlar *string   `json:"screenshotSqlar,omitempty"`
+	PreviewSqlar *string   `json:"previewSqlar,omitempty"`
 }
 
 // Digest represents a digest record
@@ -131,7 +131,7 @@ func scanFileRecord(row interface{ Scan(...any) error }) (FileRecord, error) {
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType,
 		&f.Hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-		&f.TextPreview, &f.ScreenshotSqlar,
+		&f.TextPreview, &f.PreviewSqlar,
 	)
 	f.IsFolder = isFolder == 1
 	f.LastScannedAt = lastScannedAt.Int64

@@ -142,7 +142,7 @@ func migrateFiles(tx *sql.Tx) error {
 			created_at INTEGER NOT NULL,
 			last_scanned_at INTEGER,
 			text_preview TEXT,
-			screenshot_sqlar TEXT
+			preview_sqlar TEXT
 		);
 
 		INSERT INTO files_new
@@ -151,7 +151,7 @@ func migrateFiles(tx *sql.Tx) error {
 			%s,
 			%s,
 			%s,
-			text_preview, screenshot_sqlar
+			text_preview, preview_sqlar
 		FROM files;
 
 		DROP TABLE files;

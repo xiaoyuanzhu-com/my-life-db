@@ -26,7 +26,7 @@ export interface InboxItem {
   createdAt: number;
   digests: Digest[];
   textPreview?: string;
-  screenshotSqlar?: string;
+  previewSqlar?: string;
   isPinned: boolean;
 }
 
@@ -84,7 +84,7 @@ export interface SearchResultItem {
   score: number;
   snippet: string;
   textPreview?: string;
-  screenshotSqlar?: string;
+  previewSqlar?: string;
   highlights?: Record<string, string>;
   matchContext?: MatchContext;
   matchedObject?: MatchedObject;

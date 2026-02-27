@@ -38,7 +38,7 @@ type SearchResultItem struct {
 	Score           float64           `json:"score"`
 	Snippet         string            `json:"snippet"`
 	TextPreview     *string           `json:"textPreview,omitempty"`
-	ScreenshotSqlar *string           `json:"screenshotSqlar,omitempty"`
+	PreviewSqlar *string           `json:"previewSqlar,omitempty"`
 	Highlights      map[string]string `json:"highlights,omitempty"`
 	MatchContext    *MatchContext     `json:"matchContext,omitempty"`
 	MatchedObject   *MatchedObject    `json:"matchedObject,omitempty"`
@@ -194,7 +194,7 @@ func (h *Handlers) Search(c *gin.Context) {
 					Score:           1.0,
 					Snippet:         snippet,
 					TextPreview:     file.TextPreview,
-					ScreenshotSqlar: file.ScreenshotSqlar,
+					PreviewSqlar: file.PreviewSqlar,
 					Highlights:      highlights,
 					MatchContext:    matchContext,
 					MatchedObject:   matchedObject,
@@ -210,7 +210,7 @@ func (h *Handlers) Search(c *gin.Context) {
 
 		// Simple LIKE search on file names and text preview
 		rows, err := db.GetDB().Query(`
-			SELECT path, name, is_folder, size, mime_type, modified_at, created_at, text_preview, screenshot_sqlar
+			SELECT path, name, is_folder, size, mime_type, modified_at, created_at, text_preview, preview_sqlar
 			FROM files
 			WHERE (name LIKE '%' || ? || '%' OR text_preview LIKE '%' || ? || '%')
 			ORDER BY modified_at DESC
@@ -222,7 +222,7 @@ func (h *Handlers) Search(c *gin.Context) {
 			for rows.Next() {
 				var f db.FileRecord
 				var isFolder int
-				if err := rows.Scan(&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType, &f.ModifiedAt, &f.CreatedAt, &f.TextPreview, &f.ScreenshotSqlar); err != nil {
+				if err := rows.Scan(&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType, &f.ModifiedAt, &f.CreatedAt, &f.TextPreview, &f.PreviewSqlar); err != nil {
 					continue
 				}
 				f.IsFolder = isFolder == 1
@@ -239,7 +239,7 @@ func (h *Handlers) Search(c *gin.Context) {
 					Score:           0.5,
 					Snippet:         "",
 					TextPreview:     f.TextPreview,
-					ScreenshotSqlar: f.ScreenshotSqlar,
+					PreviewSqlar: f.PreviewSqlar,
 				})
 			}
 		}

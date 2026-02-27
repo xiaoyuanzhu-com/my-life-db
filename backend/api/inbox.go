@@ -29,7 +29,7 @@ type InboxItem struct {
 	CreatedAt       int64       `json:"createdAt"`
 	Digests         []db.Digest `json:"digests"`
 	TextPreview     *string     `json:"textPreview,omitempty"`
-	ScreenshotSqlar *string     `json:"screenshotSqlar,omitempty"`
+	PreviewSqlar *string     `json:"previewSqlar,omitempty"`
 	IsPinned        bool        `json:"isPinned"`
 }
 
@@ -127,7 +127,7 @@ func (h *Handlers) GetInbox(c *gin.Context) {
 			CreatedAt:       f.CreatedAt,
 			Digests:         []db.Digest{},
 			TextPreview:     f.TextPreview,
-			ScreenshotSqlar: f.ScreenshotSqlar,
+			PreviewSqlar: f.PreviewSqlar,
 			IsPinned:        isPinned,
 		})
 	}

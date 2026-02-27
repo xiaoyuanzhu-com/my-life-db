@@ -15,7 +15,7 @@ import (
 func GetFileByPath(path string) (*FileRecord, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path = ?
 	`
@@ -25,13 +25,13 @@ func GetFileByPath(path string) (*FileRecord, error) {
 	var f FileRecord
 	var isFolder int
 	var size sql.NullInt64
-	var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+	var hash, mimeType, textPreview, previewSqlar sql.NullString
 	var lastScannedAt sql.NullInt64
 
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &size, &mimeType,
 		&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-		&textPreview, &screenshotSqlar,
+		&textPreview, &previewSqlar,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -45,7 +45,7 @@ func GetFileByPath(path string) (*FileRecord, error) {
 	f.Hash = StringPtr(hash)
 	f.MimeType = StringPtr(mimeType)
 	f.TextPreview = StringPtr(textPreview)
-	f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+	f.PreviewSqlar = StringPtr(previewSqlar)
 	f.LastScannedAt = lastScannedAt.Int64
 
 	return &f, nil
@@ -59,7 +59,7 @@ func UpsertFile(f *FileRecord) (bool, error) {
 	isNewInsert := err != nil // If error (no rows), it's a new insert
 
 	query := `
-		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
+		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			name = excluded.name,
@@ -80,7 +80,7 @@ func UpsertFile(f *FileRecord) (bool, error) {
 	_, err = GetDB().Exec(query,
 		f.Path, f.Name, isFolder, f.Size, f.MimeType,
 		f.Hash, f.ModifiedAt, f.CreatedAt, f.LastScannedAt,
-		f.TextPreview, f.ScreenshotSqlar,
+		f.TextPreview, f.PreviewSqlar,
 	)
 	return isNewInsert, err
 }
@@ -156,7 +156,7 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
+		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			name = excluded.name,
@@ -183,7 +183,7 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 		_, err := stmt.Exec(
 			record.Path, record.Name, isFolder, record.Size, record.MimeType,
 			record.Hash, record.ModifiedAt, record.CreatedAt, record.LastScannedAt,
-			record.TextPreview, record.ScreenshotSqlar,
+			record.TextPreview, record.PreviewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -256,7 +256,7 @@ type FileListResult struct {
 func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
@@ -275,13 +275,13 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar sql.NullString
 		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &screenshotSqlar,
+			&textPreview, &previewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -292,7 +292,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		f.Hash = StringPtr(hash)
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
-		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.PreviewSqlar = StringPtr(previewSqlar)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
@@ -311,7 +311,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
@@ -333,13 +333,13 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar sql.NullString
 		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &screenshotSqlar,
+			&textPreview, &previewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -350,7 +350,7 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.Hash = StringPtr(hash)
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
-		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.PreviewSqlar = StringPtr(previewSqlar)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
@@ -368,7 +368,7 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
@@ -390,13 +390,13 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar sql.NullString
 		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &screenshotSqlar,
+			&textPreview, &previewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -407,7 +407,7 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		f.Hash = StringPtr(hash)
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
-		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.PreviewSqlar = StringPtr(previewSqlar)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		result.Items = append(result.Items, f)
@@ -444,7 +444,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 	// Load items BEFORE cursor (older, including cursor item)
 	beforeQuery := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
@@ -464,13 +464,13 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar sql.NullString
 		var lastScannedAt sql.NullInt64
 
 		err := beforeRows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &screenshotSqlar,
+			&textPreview, &previewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -481,7 +481,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.Hash = StringPtr(hash)
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
-		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.PreviewSqlar = StringPtr(previewSqlar)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		beforeItems = append(beforeItems, f)
@@ -490,7 +490,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 	// Load items AFTER cursor (newer, excluding cursor item)
 	afterQuery := `
 		SELECT path, name, is_folder, size, mime_type, hash,
-			   modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar
 		FROM files
 		WHERE path LIKE ? || '%'
 		  AND path NOT LIKE ? || '%/%'
@@ -510,13 +510,13 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, screenshotSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar sql.NullString
 		var lastScannedAt sql.NullInt64
 
 		err := afterRows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &screenshotSqlar,
+			&textPreview, &previewSqlar,
 		)
 		if err != nil {
 			return nil, err
@@ -527,7 +527,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		f.Hash = StringPtr(hash)
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
-		f.ScreenshotSqlar = StringPtr(screenshotSqlar)
+		f.PreviewSqlar = StringPtr(previewSqlar)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		afterItems = append(afterItems, f)
@@ -780,7 +780,7 @@ func UpdateFileField(path string, field string, value interface{}) error {
 	// Whitelist of allowed fields
 	allowedFields := map[string]bool{
 		"text_preview":     true,
-		"screenshot_sqlar": true,
+		"preview_sqlar": true,
 		"hash":             true,
 		"size":             true,
 		"modified_at":      true,
@@ -813,7 +813,7 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	}
 
 	_, err = tx.Exec(`
-		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, screenshot_sqlar)
+		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			name = excluded.name,
@@ -826,7 +826,7 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 			text_preview = COALESCE(excluded.text_preview, files.text_preview)
 	`, newRecord.Path, newRecord.Name, isFolder, newRecord.Size, newRecord.MimeType,
 		newRecord.Hash, newRecord.ModifiedAt, newRecord.CreatedAt, newRecord.LastScannedAt,
-		newRecord.TextPreview, newRecord.ScreenshotSqlar)
+		newRecord.TextPreview, newRecord.PreviewSqlar)
 	if err != nil {
 		return fmt.Errorf("failed to insert new path: %w", err)
 	}

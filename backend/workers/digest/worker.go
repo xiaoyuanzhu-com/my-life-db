@@ -499,9 +499,9 @@ func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
 			sqlarPath := fileHash + "/" + output.Digester + "/" + *output.SqlarName
 			db.SqlarStore(sqlarPath, output.SqlarData, 0644)
 
-			// Update files.screenshot_sqlar for screenshot digesters
+			// Update files.preview_sqlar for screenshot digesters
 			if output.Status == DigestStatusCompleted && isScreenshotDigester(output.Digester) {
-				db.UpdateFileField(filePath, "screenshot_sqlar", sqlarPath)
+				db.UpdateFileField(filePath, "preview_sqlar", sqlarPath)
 
 				// Notify clients that preview is ready
 				w.notifyPreviewReady(filePath, output.Digester)
