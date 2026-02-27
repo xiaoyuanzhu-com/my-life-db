@@ -12,10 +12,16 @@ func init() {
 	})
 }
 
-func migration012_claudeSessions(db *sql.DB) error {
-	// Create the unified table
-	if _, err := db.Exec(`
-		CREATE TABLE claude_sessions (
+func migration012_claudeSessions(database *sql.DB) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create the unified table (IF NOT EXISTS for idempotency after partial failure)
+	if _, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS claude_sessions (
 			session_id           TEXT PRIMARY KEY,
 			archived_at          INTEGER,
 			last_read_count      INTEGER NOT NULL DEFAULT 0,
@@ -27,34 +33,41 @@ func migration012_claudeSessions(db *sql.DB) error {
 		return err
 	}
 
-	// Migrate archived sessions
-	if _, err := db.Exec(`
-		INSERT INTO claude_sessions (session_id, archived_at, updated_at)
+	// Migrate archived sessions (IGNORE if already migrated from a partial run)
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO claude_sessions (session_id, archived_at, updated_at)
 		SELECT session_id, hidden_at, hidden_at
 		FROM archived_claude_sessions
 	`); err != nil {
 		return err
 	}
 
-	// Migrate read status (merge with ON CONFLICT for sessions that are both archived and have read state)
-	if _, err := db.Exec(`
-		INSERT INTO claude_sessions (session_id, last_read_count, updated_at)
+	// Migrate read status: first insert sessions that don't exist yet
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO claude_sessions (session_id, last_read_count, updated_at)
 		SELECT session_id, last_read_message_count, updated_at
 		FROM session_read_status
-		ON CONFLICT(session_id) DO UPDATE SET
-			last_read_count = excluded.last_read_count,
-			updated_at = MAX(claude_sessions.updated_at, excluded.updated_at)
 	`); err != nil {
 		return err
 	}
 
-	// Drop old tables (IF EXISTS for safety)
-	if _, err := db.Exec(`DROP TABLE IF EXISTS archived_claude_sessions`); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`DROP TABLE IF EXISTS session_read_status`); err != nil {
+	// Then update sessions that already existed (from archived_claude_sessions) with read status
+	if _, err := tx.Exec(`
+		UPDATE claude_sessions
+		SET last_read_count = (SELECT last_read_message_count FROM session_read_status WHERE session_id = claude_sessions.session_id),
+		    updated_at = MAX(claude_sessions.updated_at, (SELECT updated_at FROM session_read_status WHERE session_id = claude_sessions.session_id))
+		WHERE session_id IN (SELECT session_id FROM session_read_status)
+	`); err != nil {
 		return err
 	}
 
-	return nil
+	// Drop old tables
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS archived_claude_sessions`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS session_read_status`); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
