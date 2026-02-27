@@ -69,10 +69,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   // Track scroll element for parent callback and scroll listeners
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
 
-  // Track previous message count for scroll position preservation on prepend
+  // Track previous state for scroll position preservation on prepend
   const prevMessageCountRef = useRef(filteredMessages.length)
   const prevScrollHeightRef = useRef(0)
   const prevScrollTopRef = useRef(0)
+  const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
 
   // Merged ref callback: assigns to useStickToBottom's setScrollElement AND stores locally
   const mergedScrollRef = useCallback(
@@ -115,8 +116,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     if (!element) return
 
     const handleScroll = () => {
-      // Trigger load when within 300px of the top
-      if (element.scrollTop < 300 && hasMoreHistory && !isLoadingPage) {
+      // Trigger load when within 300px of the top (and user has actually scrolled up)
+      if (element.scrollTop < 300 && hasMoreHistory && !isLoadingPage && !isAtBottom.current) {
         onLoadOlderPage?.()
       }
     }
@@ -147,10 +148,18 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
     const prevCount = prevMessageCountRef.current
     const currentCount = filteredMessages.length
+    const currentFirstUuid = filteredMessages[0]?.uuid
+    const firstUuidChanged = currentFirstUuid !== prevFirstUuidRef.current
 
-    if (currentCount > prevCount && prevScrollHeightRef.current > 0) {
-      // Messages were added. Check if they were prepended (older page loaded)
-      // by comparing scroll heights — if content grew above the viewport, adjust.
+    // Only preserve scroll position when messages were PREPENDED (older page
+    // loaded), detected by the first message's uuid changing. During initial
+    // load and normal appends the first uuid stays the same — we must NOT
+    // adjust scrollTop or it fights the stick-to-bottom auto-scroll.
+    if (
+      currentCount > prevCount &&
+      prevScrollHeightRef.current > 0 &&
+      firstUuidChanged
+    ) {
       const heightDelta = element.scrollHeight - prevScrollHeightRef.current
       if (heightDelta > 0 && prevScrollTopRef.current < 300) {
         // User was near the top (waiting for older messages) — preserve position
@@ -159,6 +168,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     }
 
     // Save current state for next comparison
+    prevFirstUuidRef.current = currentFirstUuid
     prevMessageCountRef.current = currentCount
     prevScrollHeightRef.current = element.scrollHeight
     prevScrollTopRef.current = element.scrollTop
@@ -179,7 +189,13 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
     // Use requestAnimationFrame to check after the browser has finished layout
     const rafId = requestAnimationFrame(() => {
-      if (element.scrollHeight <= element.clientHeight || element.scrollTop < 300) {
+      if (element.scrollHeight <= element.clientHeight) {
+        // Content doesn't fill viewport — load more regardless
+        onLoadOlderPage?.()
+      } else if (element.scrollTop < 300 && !isAtBottom.current) {
+        // User scrolled up and is stuck near the top — no scroll event will fire,
+        // so re-trigger load. Guard with !isAtBottom to skip during initial load
+        // (scrollTop is 0 but we intend to scroll to bottom, not load all pages).
         onLoadOlderPage?.()
       }
     })
@@ -245,6 +261,20 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const hasMessages = filteredMessages.length > 0 || !!optimisticMessage
   const virtualItems = virtualizer.getVirtualItems()
   const totalSize = virtualizer.getTotalSize()
+
+  // Re-scroll to bottom when virtualizer re-measures items and total size changes.
+  // During initial load, scrollToBottom fires before all bottom items are measured
+  // (estimateSize=120px vs actual). As ResizeObserver reports real sizes, totalSize
+  // drifts and we end up "near bottom" instead of "at bottom". This effect catches
+  // that drift and re-scrolls.
+  useEffect(() => {
+    if (isAtBottom.current) {
+      requestAnimationFrame(() => {
+        scrollToBottom('instant')
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalSize, scrollToBottom])
 
   return (
     <div
