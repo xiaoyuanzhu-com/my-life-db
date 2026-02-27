@@ -738,7 +738,7 @@ export default function ClaudePage() {
       <div className="flex md:hidden flex-1 h-full">
         {activeSessionId ? (
           /* Detail view: full-screen chat with floating back button */
-          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
+          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 animate-slide-in-right">
             <Button
               variant="ghost"
               size="icon"
