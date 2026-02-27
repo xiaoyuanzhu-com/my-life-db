@@ -767,14 +767,16 @@ export default function ClaudePage() {
         {activeSessionId ? (
           /* Detail view: full-screen chat with floating back button */
           <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 animate-slide-in-right">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
-              onClick={() => setActiveSessionId(null)}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            {sessionSidebar && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
+                onClick={() => setActiveSessionId(null)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
             <ChatInterface
               key={activeSessionId}
               sessionId={activeSessionId}
@@ -787,7 +789,7 @@ export default function ClaudePage() {
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           </div>
-        ) : (
+        ) : sessionSidebar ? (
           /* List view: full-screen session list */
           <div className="flex flex-1 flex-col bg-muted/30">
             <SessionsHeader />
@@ -822,6 +824,23 @@ export default function ClaudePage() {
                 />
               </div>
             )}
+          </div>
+        ) : (
+          /* No sidebar (hybrid app) — just the chat input */
+          <div className="flex flex-1 flex-col claude-bg">
+            <div className="flex-1" />
+            <ChatInput
+              onSend={createSessionWithMessage}
+              disabled={isCreatingSession}
+              placeholder="Start a new conversation..."
+              workingDir={newSessionWorkingDir}
+              onWorkingDirChange={setNewSessionWorkingDir}
+              slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
+                ? warmSlashCommands
+                : BUILTIN_COMMANDS}
+              permissionMode={newSessionPermissionMode}
+              onPermissionModeChange={setNewSessionPermissionMode}
+            />
           </div>
         )}
       </div>
