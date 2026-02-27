@@ -23,6 +23,7 @@ type Service struct {
 	processor *metadataProcessor
 	watcher   *watcher
 	scanner   *scanner
+	preview   *previewWorker
 
 	// Concurrency control
 	fileLock *fileLock
@@ -49,6 +50,7 @@ func NewService(cfg Config) *Service {
 
 	// Initialize sub-components
 	s.processor = newMetadataProcessor(s)
+	s.preview = newPreviewWorker(s, cfg.PreviewNotifier)
 
 	// Only create watcher if enabled
 	if cfg.WatchEnabled {
@@ -67,6 +69,13 @@ func (s *Service) Start() error {
 	// Start change notification worker
 	s.wg.Add(1)
 	go s.changeNotificationWorker()
+
+	// Start preview worker
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.preview.run()
+	}()
 
 	// Start watcher if enabled
 	if s.watcher != nil {
@@ -87,6 +96,9 @@ func (s *Service) Start() error {
 // Stop gracefully shuts down the service
 func (s *Service) Stop() error {
 	log.Info().Msg("stopping filesystem service")
+
+	// Close preview queue to stop preview worker
+	close(s.preview.queue)
 
 	close(s.stopChan)
 
@@ -147,6 +159,17 @@ func (s *Service) changeNotificationWorker() {
 
 			if handler != nil {
 				handler(event)
+			}
+
+			// Queue preview generation if needed
+			if event.ContentChanged || event.IsNew {
+				file, _ := s.cfg.DB.GetFileByPath(event.FilePath)
+				if file != nil && file.MimeType != nil && needsImagePreview(*file.MimeType) {
+					s.preview.enqueue(previewJob{
+						filePath: event.FilePath,
+						mimeType: *file.MimeType,
+					})
+				}
 			}
 
 		case <-s.stopChan:

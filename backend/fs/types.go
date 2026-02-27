@@ -49,6 +49,9 @@ type Config struct {
 	DB           Database
 	ScanInterval time.Duration // How often to scan for external changes
 	WatchEnabled bool          // Enable filesystem watching
+
+	// Preview notification callback (optional, for SSE)
+	PreviewNotifier PreviewNotifier
 }
 
 // Database interface defines required database operations
