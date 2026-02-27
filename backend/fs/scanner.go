@@ -156,6 +156,9 @@ func (s *scanner) scan() {
 			Msg("cleaned up stale file locks")
 	}
 
+	// Check for files missing previews (backfill for pre-existing files)
+	s.service.preview.queueMissingPreviews()
+
 	log.Info().
 		Int("totalFiles", totalFiles).
 		Int("filesProcessed", len(filesToProcess)).

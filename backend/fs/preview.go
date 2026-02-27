@@ -187,6 +187,26 @@ func (w *previewWorker) processJob(job previewJob) {
 	}
 }
 
+// ---------- Missing preview catch-up ----------
+
+// queueMissingPreviews finds files that should have image previews but don't
+// and enqueues them for generation. Called by the scanner after each scan cycle.
+func (w *previewWorker) queueMissingPreviews() {
+	files, err := w.service.cfg.DB.GetFilesMissingPreviews(50)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to query files missing previews")
+		return
+	}
+
+	for _, f := range files {
+		w.enqueue(previewJob{filePath: f.Path, mimeType: f.MimeType})
+	}
+
+	if len(files) > 0 {
+		log.Info().Int("count", len(files)).Msg("queued files with missing previews")
+	}
+}
+
 // ---------- Image thumbnail ----------
 
 // generateImageThumbnail decodes an image file, resizes it to thumbnailMaxWidth,

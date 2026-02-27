@@ -62,6 +62,11 @@ func (a *dbAdapter) DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	return db.DeleteFilesWithCascadePrefix(pathPrefix)
 }
 
+// GetFilesMissingPreviews returns files that need preview generation
+func (a *dbAdapter) GetFilesMissingPreviews(limit int) ([]db.FileWithMime, error) {
+	return db.GetFilesMissingPreviews(limit)
+}
+
 // SqlarStore stores data in the SQLAR table
 func (a *dbAdapter) SqlarStore(name string, data []byte, mode int) bool {
 	return db.SqlarStore(name, data, mode)

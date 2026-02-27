@@ -866,6 +866,53 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	return tx.Commit()
 }
 
+// FileWithMime holds a file path and its MIME type.
+type FileWithMime struct {
+	Path     string
+	MimeType string
+}
+
+// GetFilesMissingPreviews returns files that should have image previews but don't.
+// It checks for image/*, video/*, and document MIME types with null preview_sqlar.
+// Results are limited to avoid overwhelming the preview queue.
+func GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
+	rows, err := GetDB().Query(`
+		SELECT path, mime_type FROM files
+		WHERE is_folder = 0
+		  AND mime_type IS NOT NULL
+		  AND preview_sqlar IS NULL
+		  AND (
+			mime_type LIKE 'image/%'
+			OR mime_type LIKE 'video/%'
+			OR mime_type IN (
+				'application/pdf',
+				'application/msword',
+				'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+				'application/vnd.ms-excel',
+				'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'application/vnd.ms-powerpoint',
+				'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+			)
+		  )
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []FileWithMime
+	for rows.Next() {
+		var f FileWithMime
+		if err := rows.Scan(&f.Path, &f.MimeType); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+
+	return files, rows.Err()
+}
+
 // ListAllFilePaths returns all file paths in the database (for reconciliation).
 // The caller is responsible for closing the returned rows.
 func ListAllFilePaths() ([]string, error) {

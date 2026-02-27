@@ -75,6 +75,9 @@ type Database interface {
 	DeleteFileWithCascade(path string) error
 	DeleteFilesWithCascadePrefix(pathPrefix string) error
 
+	// Preview operations
+	GetFilesMissingPreviews(limit int) ([]db.FileWithMime, error)
+
 	// SQLAR operations (for preview storage)
 	SqlarStore(name string, data []byte, mode int) bool
 	SqlarExists(name string) bool
