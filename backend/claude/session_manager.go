@@ -720,6 +720,7 @@ func (m *SessionManager) ensureInitialized() {
 
 	m.loadFromIndexFiles()
 	m.scanForMissingJSONL()
+	m.applyPersistedPreferences()
 
 	if err := m.startWatcher(); err != nil {
 		log.Error().Err(err).Msg("failed to start session watcher")
@@ -832,6 +833,56 @@ func (m *SessionManager) scanForMissingJSONL() {
 
 	if addedCount > 0 {
 		log.Debug().Int("count", addedCount).Msg("added sessions from JSONL scan")
+	}
+}
+
+// applyPersistedPreferences loads permission mode and always-allowed tools
+// from the database and applies them to loaded sessions. This makes backend
+// restarts transparent — sessions retain their preferences.
+func (m *SessionManager) applyPersistedPreferences() {
+	// Wrap in recover() like ListAllSessions does, because DB may not be
+	// initialized in tests.
+	var prefs map[string]*db.ClaudeSessionPreferences
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warn().Msgf("recovered from panic loading session preferences: %v", r)
+			}
+		}()
+		var err error
+		prefs, err = db.GetAllClaudeSessionPreferences()
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to load session preferences")
+		}
+	}()
+
+	if prefs == nil {
+		return
+	}
+
+	applied := 0
+	for sessionID, pref := range prefs {
+		session, exists := m.sessions[sessionID]
+		if !exists {
+			continue
+		}
+
+		if pref.PermissionMode != "" {
+			session.PermissionMode = sdk.PermissionMode(pref.PermissionMode)
+		}
+
+		if len(pref.AlwaysAllowedTools) > 0 {
+			session.alwaysAllowedTools = make(map[string]bool, len(pref.AlwaysAllowedTools))
+			for _, tool := range pref.AlwaysAllowedTools {
+				session.alwaysAllowedTools[tool] = true
+			}
+		}
+
+		applied++
+	}
+
+	if applied > 0 {
+		log.Info().Int("count", applied).Msg("applied persisted session preferences")
 	}
 }
 
