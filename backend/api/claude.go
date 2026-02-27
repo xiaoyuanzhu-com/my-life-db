@@ -218,9 +218,10 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		Str("statusFilter", statusFilter).
 		Msg("ListAllClaudeSessions: fetching sessions with pagination")
 
-	// Convert Session to response format
+	// Convert SessionSnapshot to response format.
+	// All fields are from the snapshot — no live Session access, no lock needed.
 	result := make([]map[string]interface{}, 0, len(paginationResult.Sessions))
-	for _, session := range paginationResult.Sessions {
+	for _, snap := range paginationResult.Sessions {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
 		//   "working"  — Claude is mid-turn (including sub-agents/tool use)
@@ -231,47 +232,44 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		//                new items arriving after the user closes make it unread again.
 		//   "idle"     — nothing happening, user is up to date
 		sessionState := "idle"
-		if session.IsArchived {
+		if snap.IsArchived {
 			sessionState = "archived"
-		} else if session.IsProcessing() && !session.HasPendingPermission() {
-			sessionState = "working"
-		} else if session.IsProcessing() && session.HasUnseenPermission() {
+		} else if snap.IsProcessing && snap.HasUnseenPermission {
 			// Mid-turn, waiting on user permission, and user hasn't seen it yet
 			sessionState = "unread"
-		} else if session.IsProcessing() && session.HasPendingPermission() {
-			// Mid-turn, waiting on user permission, but user has already seen it
-			sessionState = "idle"
+		} else if snap.IsProcessing {
+			// Mid-turn (with or without seen permission) = working
+			sessionState = "working"
 		} else {
-			lastReadResults, seen := readResultCounts[session.ID]
+			lastReadResults, seen := readResultCounts[snap.ID]
 			// A result message (completed turn) that the user hasn't seen yet.
 			// If no read-state row exists (session never opened in UI), treat
 			// any completed turns as unread so the green dot appears.
-			resultCount := session.ResultCount()
-			hasUnreadResult := resultCount > 0 && (!seen || resultCount > lastReadResults)
+			hasUnreadResult := snap.ResultCount > 0 && (!seen || snap.ResultCount > lastReadResults)
 			if hasUnreadResult {
 				sessionState = "unread"
 			}
 		}
 
 		sessionData := map[string]interface{}{
-			"id":               session.ID,
-			"title":            session.ComputeDisplayTitle(),
-			"workingDir":       session.WorkingDir,
-			"createdAt":        session.CreatedAt.UnixMilli(),
-			"lastActivity":     session.LastActivity.UnixMilli(),
-			"lastUserActivity": session.LastUserActivity.UnixMilli(),
-			"messageCount":     session.MessageCount,
-			"isSidechain":      session.IsSidechain,
+			"id":               snap.ID,
+			"title":            snap.DisplayTitle,
+			"workingDir":       snap.WorkingDir,
+			"createdAt":        snap.CreatedAt.UnixMilli(),
+			"lastActivity":     snap.LastActivity.UnixMilli(),
+			"lastUserActivity": snap.LastUserActivity.UnixMilli(),
+			"messageCount":     snap.MessageCount,
+			"isSidechain":      snap.IsSidechain,
 			"sessionState":     sessionState,
-			"permissionMode":   string(session.PermissionMode), // empty for historical sessions
+			"permissionMode":   string(snap.PermissionMode), // empty for historical sessions
 		}
 
-		if session.Git != nil {
-			sessionData["git"] = session.Git
-		} else if session.GitBranch != "" {
+		if snap.Git != nil {
+			sessionData["git"] = snap.Git
+		} else if snap.GitBranch != "" {
 			sessionData["git"] = map[string]interface{}{
 				"isRepo": true,
-				"branch": session.GitBranch,
+				"branch": snap.GitBranch,
 			}
 		}
 
@@ -648,8 +646,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				session.BroadcastUIMessage(msgBytes)
 			}
 
-			session.LastActivity = time.Now()
-			session.LastUserActivity = time.Now()
+			session.TouchUserActivity()
 
 			// Auto-unarchive: sending a message to an archived session means the user is actively using it
 			if archived, err := db.IsClaudeSessionArchived(sessionID); err == nil && archived {
@@ -745,7 +742,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 				// Store permission mode first (used during activation if not already active)
 				wasActivated := session.IsActivated()
-				session.PermissionMode = permMode
+				session.UpdatePermissionModeField(permMode)
 
 				// Ensure session is activated (uses session.PermissionMode for CLI args)
 				if err := session.EnsureActivated(); err != nil {

@@ -74,6 +74,7 @@ type Session struct {
 
 	// Lazy activation support
 	activated  bool          `json:"-"` // Whether the Claude process has been spawned
+	activating bool          `json:"-"` // True while activation is in progress (prevents double-spawn)
 	activateFn func() error  `json:"-"` // Function to activate this session
 	ready      chan struct{} `json:"-"` // Closed when Claude is ready to receive input
 
@@ -133,6 +134,99 @@ type Session struct {
 	enriched             bool   `json:"-"` // Whether JSONL has been fully parsed
 }
 
+// SessionSnapshot is a point-in-time copy of all Session fields needed
+// by the API layer. Taken under session.mu so all fields are consistent —
+// eliminates TOCTOU races when computing session state.
+type SessionSnapshot struct {
+	ID                   string
+	WorkingDir           string
+	DisplayTitle         string
+	CreatedAt            time.Time
+	LastActivity         time.Time
+	LastUserActivity     time.Time
+	PermissionMode       sdk.PermissionMode
+	Git                  *GitInfo
+	GitBranch            string
+
+	MessageCount         int
+	ResultCount          int
+	FirstUserMessageUUID string
+	IsSidechain          bool
+	IsArchived           bool
+
+	IsProcessing         bool
+	HasPendingPermission bool
+	HasUnseenPermission  bool
+}
+
+// Snapshot returns a consistent point-in-time copy of all session fields.
+// All fields are read under a single lock — no TOCTOU races.
+func (s *Session) Snapshot() SessionSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return SessionSnapshot{
+		ID:                   s.ID,
+		WorkingDir:           s.WorkingDir,
+		DisplayTitle:         s.ComputeDisplayTitle(),
+		CreatedAt:            s.CreatedAt,
+		LastActivity:         s.LastActivity,
+		LastUserActivity:     s.LastUserActivity,
+		PermissionMode:       s.PermissionMode,
+		Git:                  s.Git,
+		GitBranch:            s.GitBranch,
+		MessageCount:         s.MessageCount,
+		ResultCount:          s.resultCount,
+		FirstUserMessageUUID: s.FirstUserMessageUUID,
+		IsSidechain:          s.IsSidechain,
+		IsArchived:           s.IsArchived,
+		IsProcessing:         s.isProcessing,
+		HasPendingPermission: s.pendingPermissionCount > 0,
+		HasUnseenPermission:  s.pendingPermissionCount > s.seenPermissionCount,
+	}
+}
+
+// --- Setter methods (all writes to mutable fields go through these) ---
+
+// TouchActivity updates LastActivity timestamp under lock.
+func (s *Session) TouchActivity() {
+	s.mu.Lock()
+	s.LastActivity = time.Now()
+	s.mu.Unlock()
+}
+
+// TouchUserActivity updates both LastActivity and LastUserActivity under lock.
+func (s *Session) TouchUserActivity() {
+	s.mu.Lock()
+	s.LastActivity = time.Now()
+	s.LastUserActivity = time.Now()
+	s.mu.Unlock()
+}
+
+// UpdatePermissionModeField sets the PermissionMode struct field under lock.
+// This only updates the local field — use SetPermissionMode() to also notify
+// the running Claude process.
+func (s *Session) UpdatePermissionModeField(mode sdk.PermissionMode) {
+	s.mu.Lock()
+	s.PermissionMode = mode
+	s.mu.Unlock()
+}
+
+// SetIsArchived updates the IsArchived field under lock.
+func (s *Session) SetIsArchived(archived bool) {
+	s.mu.Lock()
+	s.IsArchived = archived
+	s.mu.Unlock()
+}
+
+// getSDKClient returns the current SDK client pointer under lock.
+// Callers should copy the pointer and use it outside the lock.
+// Returns nil if the session has no active process.
+func (s *Session) getSDKClient() *sdk.ClaudeSDKClient {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sdkClient
+}
+
 // AddClient registers a new WebSocket client to this session
 func (s *Session) AddClient(client *Client) {
 	s.mu.Lock()
@@ -152,10 +246,24 @@ func (s *Session) RemoveClient(client *Client) {
 
 // EnsureActivated ensures the session is activated and ready to receive input.
 // If not activated, it calls the activation function to spawn the process and waits for readiness.
+// Safe for concurrent calls — only one goroutine activates; others wait on the ready channel.
 func (s *Session) EnsureActivated() error {
 	s.mu.Lock()
 	if s.activated {
 		s.mu.Unlock()
+		return nil
+	}
+
+	// Another goroutine is already activating — wait for it to finish.
+	if s.activating {
+		readyChan := s.ready
+		s.mu.Unlock()
+		if readyChan != nil {
+			select {
+			case <-readyChan:
+			case <-time.After(5 * time.Second):
+			}
+		}
 		return nil
 	}
 
@@ -164,28 +272,41 @@ func (s *Session) EnsureActivated() error {
 		return fmt.Errorf("session cannot be activated: no activation function")
 	}
 
-	// Reset raw messages before starting new process.
-	// This clears any accumulated ephemeral messages (like init) from previous runs
-	// and reloads persisted history from JSONL.
-	s.mu.Unlock() // Unlock before ResetRawMessages (it acquires rawMu)
+	// Claim the activation slot and create the ready channel before releasing the lock.
+	// Concurrent callers will see activating==true and wait on this channel.
+	s.activating = true
+	s.ready = make(chan struct{})
+	activateFn := s.activateFn
+	s.mu.Unlock()
+
+	// Reset raw messages before starting new process (acquires rawMu, not session.mu).
 	s.ResetRawMessages()
-	s.mu.Lock()
 
 	log.Info().
 		Str("sessionId", s.ID).
 		Str("workingDir", s.WorkingDir).
 		Msg("activating session (starting new process)")
 
-	if err := s.activateFn(); err != nil {
+	if err := activateFn(); err != nil {
+		s.mu.Lock()
+		s.activating = false
+		readyChan := s.ready
+		s.ready = nil
 		s.mu.Unlock()
+		// Unblock any waiters so they can observe the failure
+		if readyChan != nil {
+			close(readyChan)
+		}
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
+	s.mu.Lock()
 	s.activated = true
+	s.activating = false
 	readyChan := s.ready
 	s.mu.Unlock()
 
-	// Wait for readiness
+	// Wait for the SDK process to become ready
 	if readyChan != nil {
 		select {
 		case <-readyChan:
@@ -277,12 +398,24 @@ func (s *Session) ComputeDisplayTitle() string {
 // Enrich loads accurate Title and FirstUserMessageUUID from the JSONL file.
 // Called lazily when sessions are about to be paginated in ListAllSessions.
 // Only fills in Title if it hasn't been set yet (e.g. from CreateSession).
+// Disk I/O happens outside the lock; writes happen under session.mu.
 func (s *Session) Enrich() bool {
+	s.mu.RLock()
 	if s.enriched {
+		s.mu.RUnlock()
 		return false
 	}
+	id, workDir := s.ID, s.WorkingDir
+	s.mu.RUnlock()
 
-	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(s.ID, s.WorkingDir)
+	// Disk I/O — outside lock
+	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(id, workDir)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.enriched {
+		return false // Double-check after re-lock
+	}
 	if firstPrompt != "" && s.Title == "" {
 		s.Title = firstPrompt
 	}
@@ -293,8 +426,11 @@ func (s *Session) Enrich() bool {
 
 // mergeMetadata updates metadata fields from a parsed JSONL file.
 // Called by handleFSEvent when a JSONL file changes.
-// Caller must hold SessionManager.mu.
+// All writes are under session.mu for thread safety.
 func (s *Session) mergeMetadata(meta *sessionMetadata) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.FullPath = meta.FullPath
 	if meta.ProjectPath != "" {
 		s.WorkingDir = meta.ProjectPath
@@ -321,13 +457,13 @@ func (s *Session) mergeMetadata(meta *sessionMetadata) {
 	if meta.LastUserActivity.After(s.LastUserActivity) {
 		s.LastUserActivity = meta.LastUserActivity
 	}
-	// For inactive sessions, update result count from JSONL.
+	// For inactive sessions, update result count from JSONL — but only increase.
 	// Active sessions derive resultCount from live stdout — don't overwrite.
-	s.mu.Lock()
-	if !s.activated {
+	// Monotonic guard: JSONL may lag behind live stdout. Overwriting a higher
+	// live count with a lower JSONL count would cause "unread" → "idle" flicker.
+	if !s.activated && meta.ResultCount > s.resultCount {
 		s.resultCount = meta.ResultCount
 	}
-	s.mu.Unlock()
 }
 
 // ClientCount returns the number of connected WebSocket clients.
@@ -376,42 +512,46 @@ func (s *Session) SendInputUI(content string) error {
 		return fmt.Errorf("failed to activate session: %w", err)
 	}
 
-	if s.sdkClient == nil {
+	client := s.getSDKClient()
+	if client == nil {
 		return fmt.Errorf("session not active (no SDK client)")
 	}
 
-	return s.sdkClient.SendMessage(content)
+	return client.SendMessage(content)
 }
 
 // Interrupt sends an interrupt signal to stop the current operation.
 // Uses the SDK client's interrupt mechanism.
 func (s *Session) Interrupt() error {
-	if s.sdkClient == nil {
+	client := s.getSDKClient()
+	if client == nil {
 		return fmt.Errorf("Cannot interrupt: session not active (no running process)")
 	}
 
-	return s.sdkClient.Interrupt()
+	return client.Interrupt()
 }
 
 // SetModel changes the AI model during conversation.
 // Uses the SDK client's SetModel mechanism.
 func (s *Session) SetModel(model string) error {
-	if s.sdkClient == nil {
+	client := s.getSDKClient()
+	if client == nil {
 		return fmt.Errorf("Cannot set model: session not active (no running process)")
 	}
 
-	return s.sdkClient.SetModel(model)
+	return client.SetModel(model)
 }
 
 // SendToolResult sends a tool result back to Claude.
 // This is used for interactive tools like AskUserQuestion that require user input.
 // The toolUseID must match the id from the tool_use block.
 func (s *Session) SendToolResult(toolUseID string, content string) error {
-	if s.sdkClient == nil {
+	client := s.getSDKClient()
+	if client == nil {
 		return fmt.Errorf("Cannot send tool result: session not active (no running process)")
 	}
 
-	return s.sdkClient.SendToolResult(toolUseID, content)
+	return client.SendToolResult(toolUseID, content)
 }
 
 // SetPermissionMode changes the permission mode during conversation.
@@ -423,11 +563,12 @@ func (s *Session) SendToolResult(toolUseID string, content string) error {
 //   - sdk.PermissionModePlan: Planning mode (no tool execution)
 //   - sdk.PermissionModeBypassPermissions: Allow all tools (use with caution)
 func (s *Session) SetPermissionMode(mode sdk.PermissionMode) error {
-	if s.sdkClient == nil {
+	client := s.getSDKClient()
+	if client == nil {
 		return fmt.Errorf("Cannot set permission mode: session not active (no running process)")
 	}
 
-	return s.sdkClient.SetPermissionMode(mode)
+	return client.SetPermissionMode(mode)
 }
 
 // SendControlResponse sends a permission response to the SDK for a forwarded control_request.
@@ -491,7 +632,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 		Msg("sending permission response to SDK")
 
 	// Send to SDK — this unblocks the goroutine waiting in forwardAndWaitForPermission()
-	if err := s.sdkClient.RespondToPermission(requestID, result); err != nil {
+	client := s.getSDKClient()
+	if client == nil {
+		return fmt.Errorf("session not active (no SDK client)")
+	}
+	if err := client.RespondToPermission(requestID, result); err != nil {
 		return fmt.Errorf("failed to respond to permission: %w", err)
 	}
 
@@ -519,7 +664,11 @@ func (s *Session) SendControlResponse(requestID string, subtype string, behavior
 // are also approved without requiring additional user interaction.
 func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID string) {
 	// Get all pending request IDs from the SDK
-	pendingIDs := s.sdkClient.PendingPermissionIDs()
+	client := s.getSDKClient()
+	if client == nil {
+		return
+	}
+	pendingIDs := client.PendingPermissionIDs()
 
 	// Filter to matching tool name using our lightweight map
 	s.pendingToolNamesMu.RLock()
@@ -540,7 +689,7 @@ func (s *Session) autoApprovePendingForTool(toolName string, excludeRequestID st
 			Msg("auto-approving pending request due to 'always allow'")
 
 		result := sdk.PermissionResultAllow{Behavior: sdk.PermissionAllow}
-		if err := s.sdkClient.RespondToPermission(reqID, result); err != nil {
+		if err := client.RespondToPermission(reqID, result); err != nil {
 			log.Warn().Err(err).
 				Str("sessionId", s.ID).
 				Str("requestId", reqID).

@@ -319,16 +319,25 @@ func (m *SessionManager) ListSessions() []*Session {
 	return sessions
 }
 
-// SessionPaginationResult holds the result of a paginated session query
+// SessionPaginationResult holds the result of a paginated session query.
+// Contains SessionSnapshots (point-in-time copies), not live Session pointers.
 type SessionPaginationResult struct {
-	Sessions   []*Session
+	Sessions   []SessionSnapshot
 	HasMore    bool
 	NextCursor string
 	TotalCount int
 }
 
+// sessionRef pairs a live Session with its point-in-time snapshot.
+// Used internally by ListAllSessions for lock-free sorting and filtering.
+type sessionRef struct {
+	session *Session
+	snap    SessionSnapshot
+}
+
 // ListAllSessions returns paginated sessions with optional filters.
 // Reads from the single m.sessions store — no overlay or sync needed.
+// All session data is captured in SessionSnapshots under lock to eliminate TOCTOU races.
 func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter string) *SessionPaginationResult {
 	m.ensureInitialized()
 
@@ -339,23 +348,24 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		limit = 100
 	}
 
+	// Collect snapshots under m.mu.RLock. Each session.Snapshot() acquires session.mu.RLock
+	// internally, so all fields (including runtime state like isProcessing) are consistent.
 	m.mu.RLock()
-	all := make([]*Session, 0, len(m.sessions))
+	all := make([]sessionRef, 0, len(m.sessions))
 	for _, session := range m.sessions {
+		snap := session.Snapshot()
 		// Skip empty inactive sessions (no messages, not currently processing).
-		// These are warm sessions created for slash command discovery or idle
-		// sessions that haven't been used yet.
-		if session.MessageCount == 0 && !session.IsProcessing() && session.ResultCount() == 0 {
+		if snap.MessageCount == 0 && !snap.IsProcessing && snap.ResultCount == 0 {
 			continue
 		}
-		all = append(all, session)
+		all = append(all, sessionRef{session: session, snap: snap})
 	}
 	m.mu.RUnlock()
 
 	// Load archived session IDs from database.
 	// Protected with recover() because db.GetArchivedClaudeSessionIDs panics
 	// when the DB is not initialized (e.g., in tests).
-	// If the DB call fails, preserve existing IsArchived values on sessions.
+	// If the DB call fails, preserve existing IsArchived values from the snapshot.
 	var archivedIDs map[string]bool
 	dbOK := false
 	func() {
@@ -374,45 +384,46 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}()
 
 	if dbOK {
-		for _, session := range all {
-			session.IsArchived = archivedIDs[session.ID]
+		for i := range all {
+			archived := archivedIDs[all[i].snap.ID]
+			all[i].snap.IsArchived = archived
+			// Also update the live session for persistence across calls
+			all[i].session.SetIsArchived(archived)
 		}
 	}
-	// If DB failed, preserve existing IsArchived values set by the caller (tests)
-	// or from previous successful queries.
 
 	// Deduplicate by FirstUserMessageUUID (keep session with most messages)
-	all = m.deduplicateSessions(all)
+	all = deduplicateSessionRefs(all)
 
-	// Sort by LastUserActivity time (descending) for stable ordering.
-	// This prevents sessions from jumping around when Claude is actively responding.
+	// Sort by snapshot.LastUserActivity (descending) for stable ordering.
+	// All reads are from the snapshot — no lock needed during sort.
 	sort.Slice(all, func(i, j int) bool {
-		if all[i].LastUserActivity.Equal(all[j].LastUserActivity) {
-			return all[i].ID > all[j].ID
+		if all[i].snap.LastUserActivity.Equal(all[j].snap.LastUserActivity) {
+			return all[i].snap.ID > all[j].snap.ID
 		}
-		return all[i].LastUserActivity.After(all[j].LastUserActivity)
+		return all[i].snap.LastUserActivity.After(all[j].snap.LastUserActivity)
 	})
 
 	// Find cursor position
 	startIdx := 0
 	if cursor != "" {
-		startIdx = m.findSessionCursorIndex(all, cursor)
+		startIdx = findRefCursorIndex(all, cursor)
 	}
 
 	// Filter and collect results
-	result := make([]*Session, 0, limit)
+	result := make([]SessionSnapshot, 0, limit)
 	totalFiltered := 0
 	filteredAfterCursor := 0
 
 	for i := 0; i < len(all); i++ {
-		session := all[i]
+		snap := &all[i].snap
 
 		// Apply status filter
 		// "active" = not archived (default view), "archived" = archived only, "all" = everything
-		if statusFilter == "active" && session.IsArchived {
+		if statusFilter == "active" && snap.IsArchived {
 			continue
 		}
-		if statusFilter == "archived" && !session.IsArchived {
+		if statusFilter == "archived" && !snap.IsArchived {
 			continue
 		}
 
@@ -425,9 +436,15 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 		filteredAfterCursor++
 
 		if len(result) < limit {
-			// Enrich on demand
-			session.Enrich()
-			result = append(result, session)
+			// Enrich on demand (may update DisplayTitle, FirstUserMessageUUID)
+			if all[i].session.Enrich() {
+				// Re-snapshot after enrichment to pick up the new data
+				*snap = all[i].session.Snapshot()
+				if dbOK {
+					snap.IsArchived = archivedIDs[snap.ID]
+				}
+			}
+			result = append(result, *snap)
 		}
 	}
 
@@ -447,36 +464,38 @@ func (m *SessionManager) ListAllSessions(cursor string, limit int, statusFilter 
 	}
 }
 
-// deduplicateSessions removes duplicate sessions (same FirstUserMessageUUID)
-func (m *SessionManager) deduplicateSessions(sessions []*Session) []*Session {
-	groups := make(map[string][]*Session)
-	for _, session := range sessions {
-		key := session.FirstUserMessageUUID
-		groups[key] = append(groups[key], session)
+// deduplicateSessionRefs removes duplicate sessions (same FirstUserMessageUUID).
+// Operates on snapshots — no lock needed.
+func deduplicateSessionRefs(refs []sessionRef) []sessionRef {
+	groups := make(map[string][]int) // uuid -> indices into refs
+	for i, ref := range refs {
+		key := ref.snap.FirstUserMessageUUID
+		groups[key] = append(groups[key], i)
 	}
 
-	result := make([]*Session, 0, len(sessions))
-	for uuid, group := range groups {
+	result := make([]sessionRef, 0, len(refs))
+	for uuid, indices := range groups {
 		if uuid == "" {
-			result = append(result, group...)
+			for _, i := range indices {
+				result = append(result, refs[i])
+			}
 			continue
 		}
 		// Keep session with most messages
-		var best *Session
-		for _, s := range group {
-			if best == nil || s.MessageCount > best.MessageCount {
-				best = s
+		bestIdx := indices[0]
+		for _, i := range indices[1:] {
+			if refs[i].snap.MessageCount > refs[bestIdx].snap.MessageCount {
+				bestIdx = i
 			}
 		}
-		if best != nil {
-			result = append(result, best)
-		}
+		result = append(result, refs[bestIdx])
 	}
 	return result
 }
 
-// findSessionCursorIndex finds the index after the cursor position
-func (m *SessionManager) findSessionCursorIndex(sessions []*Session, cursor string) int {
+// findRefCursorIndex finds the index after the cursor position.
+// Operates on snapshots — no lock needed.
+func findRefCursorIndex(refs []sessionRef, cursor string) int {
 	parts := strings.SplitN(cursor, "_", 2)
 	if len(parts) != 2 {
 		return 0
@@ -496,16 +515,16 @@ func (m *SessionManager) findSessionCursorIndex(sessions []*Session, cursor stri
 	cursorTime := time.UnixMilli(cursorMs)
 	cursorSessionID := parts[1]
 
-	for i, session := range sessions {
-		if session.LastUserActivity.After(cursorTime) {
+	for i, ref := range refs {
+		if ref.snap.LastUserActivity.After(cursorTime) {
 			continue
 		}
-		if session.LastUserActivity.Equal(cursorTime) && session.ID >= cursorSessionID {
+		if ref.snap.LastUserActivity.Equal(cursorTime) && ref.snap.ID >= cursorSessionID {
 			continue
 		}
 		return i
 	}
-	return len(sessions)
+	return len(refs)
 }
 
 // =============================================================================
@@ -1184,11 +1203,16 @@ func (m *SessionManager) forceKillAllSessions() {
 	for id, session := range m.sessions {
 		log.Warn().Str("sessionId", id).Msg("force killing session")
 
-		if session.sdkClient != nil {
-			if session.sdkCancel != nil {
-				session.sdkCancel()
+		session.mu.RLock()
+		client := session.sdkClient
+		cancel := session.sdkCancel
+		session.mu.RUnlock()
+
+		if client != nil {
+			if cancel != nil {
+				cancel()
 			}
-			session.sdkClient.Close()
+			client.Close()
 		}
 	}
 }
@@ -1230,19 +1254,23 @@ func (m *SessionManager) createShellSession(id, workingDir, title string) (*Sess
 	return session, nil
 }
 
-// activateSession spawns the actual Claude process for a shell session
+// activateSession spawns the actual Claude process for a shell session.
+// The ready channel is created by EnsureActivated before calling this.
 func (m *SessionManager) activateSession(session *Session) error {
-	session.ready = make(chan struct{})
-
 	if err := m.createSessionWithSDK(session, true); err != nil {
 		log.Error().Err(err).Str("sessionId", session.ID).Msg("failed to activate SDK session")
 		return fmt.Errorf("failed to activate SDK session: %w", err)
 	}
 
+	// Close the ready channel after a small delay to signal the SDK is up.
+	// The channel was created by EnsureActivated under lock.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		if session.ready != nil {
-			close(session.ready)
+		session.mu.Lock()
+		readyChan := session.ready
+		session.mu.Unlock()
+		if readyChan != nil {
+			close(readyChan)
 		}
 	}()
 
@@ -1258,11 +1286,16 @@ func (m *SessionManager) activateSession(session *Session) error {
 // Note: Claude CLI (Node.js) responds to SIGINT but ignores SIGTERM.
 // See docs/agent/components/claude-code.md for details.
 func (m *SessionManager) cleanupSession(session *Session, id string) {
-	if session.sdkClient != nil {
-		if session.sdkCancel != nil {
-			session.sdkCancel()
+	session.mu.RLock()
+	client := session.sdkClient
+	cancel := session.sdkCancel
+	session.mu.RUnlock()
+
+	if client != nil {
+		if cancel != nil {
+			cancel()
 		}
-		session.sdkClient.Close()
+		client.Close()
 		log.Info().Str("sessionId", id).Msg("deactivated SDK claude session")
 		return
 	}
@@ -1327,7 +1360,10 @@ func (m *SessionManager) gcIdleSessions() {
 		if session.ClientCount() > 0 {
 			continue
 		}
-		age := now.Sub(session.LastActivity)
+		session.mu.RLock()
+		lastActivity := session.LastActivity
+		session.mu.RUnlock()
+		age := now.Sub(lastActivity)
 		if age > gcTimeout {
 			candidates = append(candidates, gcCandidate{
 				id:     id,
@@ -1352,8 +1388,11 @@ func (m *SessionManager) gcIdleSessions() {
 
 func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) error {
 	ctx, cancel := context.WithCancel(m.ctx)
+	session.mu.Lock()
 	session.sdkCtx = ctx
 	session.sdkCancel = cancel
+	permMode := session.PermissionMode
+	session.mu.Unlock()
 
 	// Enable adaptive thinking (extended thinking) by default.
 	// 31999 aligns with the VSCode extension's hardcoded default.
@@ -1363,7 +1402,7 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,
 		SystemPrompt:           defaultSystemPrompt,
-		PermissionMode:         session.PermissionMode,
+		PermissionMode:         permMode,
 		CanUseTool:             session.CreatePermissionCallback(),
 		SkipInitialization:     true,
 		IncludePartialMessages: true,  // Enable progressive streaming updates
@@ -1385,8 +1424,10 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 		return fmt.Errorf("failed to connect SDK client: %w", err)
 	}
 
+	session.mu.Lock()
 	session.sdkClient = client
 	session.Status = "active"
+	session.mu.Unlock()
 
 	m.trackProcessStart()
 
@@ -1401,7 +1442,8 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 func (m *SessionManager) forwardSDKMessages(session *Session) {
 	defer m.wg.Done()
 
-	msgs := session.sdkClient.RawMessages()
+	client := session.getSDKClient()
+	msgs := client.RawMessages()
 
 	for {
 		select {
@@ -1439,7 +1481,7 @@ func (m *SessionManager) forwardSDKMessages(session *Session) {
 			}
 
 			session.BroadcastUIMessage(data)
-			session.LastActivity = time.Now()
+			session.TouchActivity()
 
 			log.Debug().Str("sessionId", session.ID).Int("bytes", len(data)).Msg("forwarded SDK message to WebSocket clients")
 		}
@@ -1474,6 +1516,7 @@ processExited:
 func (m *SessionManager) resetProcessState(session *Session) {
 	session.mu.Lock()
 	session.activated = false
+	session.activating = false
 	session.isProcessing = false
 	session.pendingPermissionCount = 0
 	session.seenPermissionCount = 0
