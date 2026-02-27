@@ -187,7 +187,7 @@ func TestConcurrent_ListAllSessions(t *testing.T) {
 		id := "session-" + string(rune('a'+(i%26))) + string(rune('0'+(i/26)))
 		m.sessions[id] = &Session{
 			ID:           id,
-			DisplayTitle: "Test Session",
+			Title: "Test Session",
 			MessageCount: i + 1,
 			LastActivity: time.Now().Add(time.Duration(-i) * time.Minute),
 			Status:       "active",
@@ -260,7 +260,7 @@ func TestListAllSessions_Pagination(t *testing.T) {
 		id := "session-" + string(rune('a'+i))
 		m.sessions[id] = &Session{
 			ID:               id,
-			DisplayTitle:     "Test Session " + string(rune('A'+i)),
+			Title:     "Test Session " + string(rune('A'+i)),
 			MessageCount:     i + 1,
 			LastActivity:     baseTime.Add(time.Duration(-i) * time.Minute),
 			LastUserActivity: baseTime.Add(time.Duration(-i) * time.Minute),
@@ -328,7 +328,7 @@ func TestListAllSessions_LimitBounds(t *testing.T) {
 		id := "session-" + string(rune('a'+(i%26))) + string(rune('0'+(i/26)%10))
 		m.sessions[id] = &Session{
 			ID:           id,
-			DisplayTitle: "Test",
+			Title: "Test",
 			MessageCount: 1,
 			LastActivity: time.Now(),
 			Status:       "active",
@@ -369,7 +369,7 @@ func TestListAllSessions_StatusFilter(t *testing.T) {
 		id := "archived-" + string(rune('a'+i))
 		m.sessions[id] = &Session{
 			ID:           id,
-			DisplayTitle: "Archived",
+			Title: "Archived",
 			MessageCount: 1,
 			LastActivity: time.Now(),
 			Status:       "active",
@@ -383,7 +383,7 @@ func TestListAllSessions_StatusFilter(t *testing.T) {
 		id := "active-" + string(rune('a'+i))
 		m.sessions[id] = &Session{
 			ID:           id,
-			DisplayTitle: "Active",
+			Title: "Active",
 			MessageCount: 1,
 			LastActivity: time.Now(),
 			Status:       "active",
@@ -425,7 +425,7 @@ func TestListAllSessions_SortsByModifiedDescending(t *testing.T) {
 	m.initialized = true
 	m.sessions["oldest"] = &Session{
 		ID:               "oldest",
-		DisplayTitle:     "Oldest",
+		Title:     "Oldest",
 		MessageCount:     1,
 		LastActivity:     baseTime.Add(-3 * time.Hour),
 		LastUserActivity: baseTime.Add(-3 * time.Hour),
@@ -434,7 +434,7 @@ func TestListAllSessions_SortsByModifiedDescending(t *testing.T) {
 	}
 	m.sessions["middle"] = &Session{
 		ID:               "middle",
-		DisplayTitle:     "Middle",
+		Title:     "Middle",
 		MessageCount:     1,
 		LastActivity:     baseTime.Add(-1 * time.Hour),
 		LastUserActivity: baseTime.Add(-1 * time.Hour),
@@ -443,7 +443,7 @@ func TestListAllSessions_SortsByModifiedDescending(t *testing.T) {
 	}
 	m.sessions["newest"] = &Session{
 		ID:               "newest",
-		DisplayTitle:     "Newest",
+		Title:     "Newest",
 		MessageCount:     1,
 		LastActivity:     baseTime,
 		LastUserActivity: baseTime,
@@ -478,7 +478,7 @@ func TestListAllSessions_DeduplicatesByFirstUserMessageUUID(t *testing.T) {
 	// Two sessions with same FirstUserMessageUUID (keep the one with more messages)
 	m.sessions["session-1"] = &Session{
 		ID:                   "session-1",
-		DisplayTitle:         "Session 1",
+		Title:         "Session 1",
 		FirstUserMessageUUID: "same-uuid",
 		MessageCount:         5,
 		LastActivity:         time.Now(),
@@ -488,7 +488,7 @@ func TestListAllSessions_DeduplicatesByFirstUserMessageUUID(t *testing.T) {
 	}
 	m.sessions["session-2"] = &Session{
 		ID:                   "session-2",
-		DisplayTitle:         "Session 2",
+		Title:         "Session 2",
 		FirstUserMessageUUID: "same-uuid",
 		MessageCount:         10, // More messages
 		LastActivity:         time.Now(),
@@ -499,7 +499,7 @@ func TestListAllSessions_DeduplicatesByFirstUserMessageUUID(t *testing.T) {
 	// A unique session
 	m.sessions["session-3"] = &Session{
 		ID:                   "session-3",
-		DisplayTitle:         "Session 3",
+		Title:         "Session 3",
 		FirstUserMessageUUID: "unique-uuid",
 		MessageCount:         3,
 		LastActivity:         time.Now(),
@@ -539,7 +539,7 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 	m.initialized = true
 	m.sessions["empty-untitled"] = &Session{
 		ID:           "empty-untitled",
-		DisplayTitle: "Untitled",
+		Title: "Untitled",
 		MessageCount: 0,
 		LastActivity: time.Now(),
 		Status:       "active",
@@ -547,7 +547,7 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 	}
 	m.sessions["empty-titled"] = &Session{
 		ID:           "empty-titled",
-		DisplayTitle: "Session 10",
+		Title: "Session 10",
 		MessageCount: 0,
 		LastActivity: time.Now(),
 		Status:       "active",
@@ -555,7 +555,7 @@ func TestListAllSessions_SkipsEmptySessions(t *testing.T) {
 	}
 	m.sessions["has-content"] = &Session{
 		ID:               "has-content",
-		DisplayTitle:     "Has Content",
+		Title:     "Has Content",
 		MessageCount:     5,
 		LastActivity:     time.Now(),
 		LastUserActivity: time.Now(),
@@ -583,7 +583,7 @@ func TestListAllSessions_InvalidCursor(t *testing.T) {
 		id := "session-" + string(rune('a'+i))
 		m.sessions[id] = &Session{
 			ID:               id,
-			DisplayTitle:     "Test",
+			Title:     "Test",
 			MessageCount:     1,
 			LastActivity:     time.Now(),
 			LastUserActivity: time.Now(),

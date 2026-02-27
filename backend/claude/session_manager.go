@@ -62,8 +62,7 @@ type SessionEventCallback func(event SessionEvent)
 type sessionMetadata struct {
 	FullPath             string
 	ProjectPath          string // Working directory from JSONL
-	DisplayTitle         string
-	FirstPrompt          string
+	Title                string // First user prompt (used as fallback display title)
 	FirstUserMessageUUID string
 	Summary              string
 	CustomTitle          string
@@ -776,15 +775,14 @@ func (m *SessionManager) newHistoricalSessionFromIndex(entry *models.SessionInde
 		Clients:          make(map[*Client]bool),
 		pendingToolNames: make(map[string]string),
 		// Metadata
+		Title:        entry.FirstPrompt, // Seed from index; enriched later from JSONL
 		FullPath:     entry.FullPath,
-		FirstPrompt:  entry.FirstPrompt,
 		Summary:      entry.Summary,
 		CustomTitle:  entry.CustomTitle,
 		MessageCount: entry.MessageCount,
 		GitBranch:    entry.GitBranch,
 		IsSidechain:  entry.IsSidechain,
 	}
-	session.DisplayTitle = session.ComputeDisplayTitle()
 	session.activateFn = func() error {
 		return m.activateSession(session)
 	}
@@ -849,9 +847,8 @@ func (m *SessionManager) newHistoricalSessionFromMetadata(id string, meta *sessi
 		Clients:          make(map[*Client]bool),
 		pendingToolNames: make(map[string]string),
 		// Metadata
+		Title:                meta.Title,
 		FullPath:             meta.FullPath,
-		DisplayTitle:         meta.DisplayTitle,
-		FirstPrompt:          meta.FirstPrompt,
 		FirstUserMessageUUID: meta.FirstUserMessageUUID,
 		Summary:              meta.Summary,
 		CustomTitle:          meta.CustomTitle,
@@ -933,8 +930,8 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *sessionMet
 					meta.IsSidechain = *userMsg.IsSidechain
 				}
 			}
-			if meta.FirstPrompt == "" && !userMsg.IsCompactSummary {
-				meta.FirstPrompt = userMsg.GetUserPrompt()
+			if meta.Title == "" && !userMsg.IsCompactSummary {
+				meta.Title = userMsg.GetUserPrompt()
 				meta.FirstUserMessageUUID = userMsg.GetUUID()
 			}
 
@@ -974,17 +971,6 @@ func (m *SessionManager) parseJSONLFile(sessionID, jsonlPath string) *sessionMet
 		if msgType == "result" {
 			meta.ResultCount++
 		}
-	}
-
-	// Compute display title
-	if meta.CustomTitle != "" {
-		meta.DisplayTitle = meta.CustomTitle
-	} else if meta.Summary != "" {
-		meta.DisplayTitle = meta.Summary
-	} else if meta.FirstPrompt != "" {
-		meta.DisplayTitle = meta.FirstPrompt
-	} else {
-		meta.DisplayTitle = "Untitled"
 	}
 
 	// Fall back to file modification time if no user messages found
@@ -1081,12 +1067,13 @@ func (m *SessionManager) handleFSEvent(event fsnotify.Event) {
 
 			shouldNotify := !existed
 			if existed {
-				// Only notify for meaningful changes
-				if session.DisplayTitle != meta.DisplayTitle {
-					shouldNotify = true
-				}
+				// Only notify for meaningful changes (title changed)
+				oldTitle := session.ComputeDisplayTitle()
 				// Merge metadata into existing session
 				session.mergeMetadata(meta)
+				if session.ComputeDisplayTitle() != oldTitle {
+					shouldNotify = true
+				}
 			} else {
 				// New session from disk — create historical Session
 				session = m.newHistoricalSessionFromMetadata(sessionID, meta)
@@ -1169,7 +1156,6 @@ func (m *SessionManager) createShellSession(id, workingDir, title string) (*Sess
 		ID:               id,
 		WorkingDir:       workingDir,
 		Title:            title,
-		DisplayTitle:     title,
 		PermissionMode:   sdk.PermissionModeDefault,
 		CreatedAt:        time.Now(),
 		LastActivity:     time.Now(),

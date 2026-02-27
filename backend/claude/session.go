@@ -122,11 +122,9 @@ type Session struct {
 	// These are the source of truth for the session list (ListAllSessions).
 	// Written under SessionManager.mu; read under SessionManager.mu.RLock().
 	FullPath             string `json:"-"` // Path to JSONL file
-	DisplayTitle         string `json:"-"` // Computed: CustomTitle → Summary → FirstPrompt → "Untitled"
-	FirstPrompt          string `json:"-"`
 	FirstUserMessageUUID string `json:"-"`
-	Summary              string `json:"-"`
-	CustomTitle          string `json:"-"`
+	Summary              string `json:"-"` // Claude-generated session summary (from JSONL)
+	CustomTitle          string `json:"-"` // User-set title via /title command (from JSONL)
 	MessageCount         int    `json:"-"`
 	GitBranch            string `json:"-"`
 	IsSidechain          bool   `json:"-"`
@@ -253,6 +251,8 @@ func (s *Session) MarkPermissionsSeen() {
 }
 
 // ComputeDisplayTitle derives the display title from metadata fields.
+// Priority: CustomTitle (user-set) > Summary (Claude-generated) > Title (first prompt) > "Untitled".
+// Title is truncated to the first line, capped at 120 chars, since it may be a long user prompt.
 func (s *Session) ComputeDisplayTitle() string {
 	if s.CustomTitle != "" {
 		return s.CustomTitle
@@ -260,23 +260,30 @@ func (s *Session) ComputeDisplayTitle() string {
 	if s.Summary != "" {
 		return s.Summary
 	}
-	if s.FirstPrompt != "" {
-		return s.FirstPrompt
+	if s.Title != "" {
+		title := s.Title
+		if i := strings.IndexByte(title, '\n'); i != -1 {
+			title = title[:i]
+		}
+		if len(title) > 120 {
+			title = title[:120] + "…"
+		}
+		return title
 	}
 	return "Untitled"
 }
 
-// Enrich loads accurate FirstPrompt and FirstUserMessageUUID from the JSONL file.
+// Enrich loads accurate Title and FirstUserMessageUUID from the JSONL file.
 // Called lazily when sessions are about to be paginated in ListAllSessions.
+// Only fills in Title if it hasn't been set yet (e.g. from CreateSession).
 func (s *Session) Enrich() bool {
 	if s.enriched {
 		return false
 	}
 
 	firstPrompt, firstUUID := GetFirstUserPromptAndUUID(s.ID, s.WorkingDir)
-	if firstPrompt != "" {
-		s.FirstPrompt = firstPrompt
-		s.DisplayTitle = s.ComputeDisplayTitle()
+	if firstPrompt != "" && s.Title == "" {
+		s.Title = firstPrompt
 	}
 	s.FirstUserMessageUUID = firstUUID
 	s.enriched = true
@@ -291,8 +298,12 @@ func (s *Session) mergeMetadata(meta *sessionMetadata) {
 	if meta.ProjectPath != "" {
 		s.WorkingDir = meta.ProjectPath
 	}
-	s.DisplayTitle = meta.DisplayTitle
-	s.FirstPrompt = meta.FirstPrompt
+	// Only overwrite Title from JSONL if it found a real first prompt.
+	// This preserves the seed Title from CreateSession when the JSONL
+	// hasn't captured the user message yet.
+	if meta.Title != "" {
+		s.Title = meta.Title
+	}
 	s.FirstUserMessageUUID = meta.FirstUserMessageUUID
 	s.Summary = meta.Summary
 	s.CustomTitle = meta.CustomTitle
@@ -347,7 +358,7 @@ func (s *Session) ToJSON() map[string]interface{} {
 		"lastActivity":     s.LastActivity,
 		"lastUserActivity": s.LastUserActivity,
 		"status":         "active", // Newly created/listed sessions are always active
-		"title":          s.Title,
+		"title":          s.ComputeDisplayTitle(),
 		"permissionMode": s.PermissionMode,
 	}
 	if s.Git != nil {

@@ -255,7 +255,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 
 		sessionData := map[string]interface{}{
 			"id":               session.ID,
-			"title":            session.DisplayTitle,
+			"title":            session.ComputeDisplayTitle(),
 			"workingDir":       session.WorkingDir,
 			"createdAt":        session.CreatedAt.UnixMilli(),
 			"lastActivity":     session.LastActivity.UnixMilli(),
