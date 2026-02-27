@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-contrib/gzip"
@@ -33,6 +35,9 @@ type Server struct {
 	notifService    *notifications.Service
 	claudeManager   *claude.SessionManager
 	agent           *agent.Agent
+
+	// Claude Code CLI auth
+	claudeLoggedIn atomic.Bool
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -123,6 +128,9 @@ func New(cfg *Config) (*Server, error) {
 
 	// 9. Setup HTTP router
 	s.setupRouter()
+
+	// 10. Check Claude Code CLI auth status
+	s.claudeLoggedIn.Store(checkClaudeAuthStatus())
 
 	log.Info().Msg("server initialized successfully")
 	return s, nil
@@ -215,6 +223,7 @@ func (s *Server) setupRouter() {
 			"/api/notifications/stream", // SSE - needs streaming
 			"/api/asr/realtime",         // WebSocket - protocol upgrade
 			"/api/upload/tus/",          // TUS - needs ResponseController for timeout extension
+			"/api/claude-login/ws",          // WebSocket - login terminal
 		}),
 		gzip.WithExcludedPathsRegexs([]string{
 			"/api/claude/sessions/.*/ws",        // WebSocket - terminal I/O
@@ -383,3 +392,17 @@ func (s *Server) Claude() *claude.SessionManager              { return s.claudeM
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
+func (s *Server) ClaudeLoggedIn() bool                        { return s.claudeLoggedIn.Load() }
+func (s *Server) SetClaudeLoggedIn(v bool)                    { s.claudeLoggedIn.Store(v) }
+
+// checkClaudeAuthStatus runs `claude auth status` and returns true if exit code 0
+func checkClaudeAuthStatus() bool {
+	cmd := exec.Command("claude", "auth", "status")
+	err := cmd.Run()
+	if err != nil {
+		log.Info().Msg("Claude Code CLI not authenticated")
+		return false
+	}
+	log.Info().Msg("Claude Code CLI authenticated")
+	return true
+}

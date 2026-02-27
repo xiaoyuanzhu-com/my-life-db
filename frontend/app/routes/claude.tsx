@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
@@ -22,6 +22,10 @@ import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
+
+const ClaudeLoginTerminal = lazy(() =>
+  import('~/components/claude/claude-login-terminal').then(m => ({ default: m.ClaudeLoginTerminal }))
+)
 
 interface Session {
   id: string
@@ -54,6 +58,7 @@ export default function ClaudePage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId || null)
   const [loading, setLoading] = useState(true)
+  const [claudeLoggedIn, setClaudeLoggedIn] = useState<boolean | null>(null) // null = loading
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -353,6 +358,14 @@ export default function ClaudePage() {
     enabled: isAuthenticated,
   })
 
+  // Check Claude Code CLI auth status
+  useEffect(() => {
+    api.get('/api/claude/auth-status')
+      .then(res => res.json())
+      .then(data => setClaudeLoggedIn(data.loggedIn))
+      .catch(() => setClaudeLoggedIn(false))
+  }, [])
+
   // Load more sessions (infinite scroll)
   const loadMoreSessions = useCallback(async () => {
     if (!pagination.hasMore || isLoadingMore || !pagination.nextCursor) return
@@ -554,6 +567,19 @@ export default function ClaudePage() {
           </p>
         </div>
       </div>
+    )
+  }
+
+  // Show Claude Code login terminal when CLI is not authenticated
+  if (claudeLoggedIn === false) {
+    return (
+      <Suspense fallback={
+        <div className="flex h-full items-center justify-center">
+          <div className="text-muted-foreground">Loading...</div>
+        </div>
+      }>
+        <ClaudeLoginTerminal onLoginSuccess={() => setClaudeLoggedIn(true)} />
+      </Suspense>
     )
   }
 

@@ -19,6 +19,9 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.POST("/oauth/refresh", h.OAuthRefresh)
 		public.GET("/oauth/token", h.OAuthToken)
 		public.POST("/oauth/logout", h.OAuthLogout)
+
+		// Claude Code CLI auth status (public — independent of app auth)
+		public.GET("/claude/auth-status", h.ClaudeAuthStatus)
 	}
 
 	// Protected routes (require auth when auth mode is enabled)
@@ -121,6 +124,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	wsAuth := AuthMiddleware()
 	r.GET("/api/claude/sessions/:id/subscribe", wsAuth, h.ClaudeSubscribeWebSocket)
 	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
+	r.GET("/api/claude-login/ws", h.ClaudeLoginWebSocket)
 
 	// Raw file serving - protected
 	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
