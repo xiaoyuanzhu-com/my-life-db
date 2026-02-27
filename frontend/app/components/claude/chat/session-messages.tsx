@@ -1,23 +1,15 @@
-import { useMemo } from 'react'
 import { MessageBlock } from './message-block'
 import { MessageDot } from './message-dot'
 import {
-  buildToolResultMap,
-  isSkippedUserMessage,
-  isHookResponseMessage,
-  isHookStartedMessage,
-  isStatusMessage,
-  isTaskStartedMessage,
-  isTaskProgressMessage,
-  isSystemInitMessage,
   isToolUseBlock,
   isToolResultBlock,
-  isSubagentMessage,
+  isTaskProgressMessage,
   getParentToolUseID,
   type SessionMessage,
   type ExtractedToolResult,
   type TaskToolResult,
 } from '~/lib/session-message-utils'
+import { useFilteredMessages } from './use-filtered-messages'
 
 // Tool use info for mapping tool IDs to their names and titles
 export interface ToolUseInfo {
@@ -40,7 +32,7 @@ export interface AgentProgressMessage extends SessionMessage {
 }
 
 // Bash progress message structure
-interface BashProgressMessage extends SessionMessage {
+export interface BashProgressMessage extends SessionMessage {
   type: 'progress'
   parentToolUseID?: string
   data?: {
@@ -447,7 +439,8 @@ const STATUS_LABELS: Record<string, string> = {
  * Uses a pulsing MessageDot and progressive three-dot animation.
  * Disappears when status is cleared (null) and compact_boundary takes over.
  */
-function TransientStatusBlock({ status }: { status: string }) {
+/** Exported for use by MessageList (virtual scrolling) which renders it after the virtualized list */
+export function TransientStatusBlock({ status }: { status: string }) {
   const label = STATUS_LABELS[status] || status
 
   return (
@@ -499,43 +492,6 @@ interface SessionMessagesProps {
    */
   toolResultMap?: Map<string, ExtractedToolResult>
   /**
-   * Pre-built agent progress map. If not provided, will be built from messages.
-   */
-  agentProgressMap?: Map<string, AgentProgressMessage[]>
-  /**
-   * Pre-built bash progress map. If not provided, will be built from messages.
-   */
-  bashProgressMap?: Map<string, BashProgressMessage[]>
-  /**
-   * Pre-built hook progress map. If not provided, will be built from messages.
-   */
-  hookProgressMap?: Map<string, HookProgressMessage[]>
-  /**
-   * Pre-built tool use map. If not provided, will be built from messages.
-   */
-  toolUseMap?: Map<string, ToolUseInfo>
-  /**
-   * Pre-built skill content map. If not provided, will be built from messages.
-   * Maps sourceToolUseID to skill prompt content (from isMeta messages).
-   */
-  skillContentMap?: Map<string, string>
-  /**
-   * Pre-built subagent messages map. If not provided, will be built from messages.
-   * Maps parentToolUseID to subagent conversation messages (for Task tools).
-   */
-  subagentMessagesMap?: Map<string, SessionMessage[]>
-  /**
-   * Pre-built async task output map. If not provided, will be built from messages.
-   * Maps Task tool_use.id to merged TaskOutput result (for background async Tasks).
-   */
-  asyncTaskOutputMap?: Map<string, TaskToolResult>
-  /**
-   * Pre-built task progress map. If not provided, will be built from messages.
-   * Maps tool_use_id to the latest task_progress message (for running Task tools).
-   */
-  taskProgressMap?: Map<string, TaskProgressMessage>
-  /**
-  /**
    * Nesting depth for recursive rendering.
    * 0 = top-level session, 1+ = nested agent sessions
    */
@@ -543,185 +499,26 @@ interface SessionMessagesProps {
 }
 
 /**
- * SessionMessages - Pure message list renderer
+ * SessionMessages - Pure message list renderer (non-virtualized)
  *
  * This component renders a list of SessionMessages without any scroll behavior
- * or container styling. It's designed to be:
- * 1. Used by MessageList for top-level session rendering
- * 2. Used recursively by AgentProgressBlock for nested agent sessions
+ * or container styling. It's used for nested Task tool conversations (depth > 0).
  *
- * The depth prop allows for visual differentiation of nested sessions
- * (e.g., indentation, border styling).
+ * For top-level rendering, MessageList uses the virtualizer directly with
+ * useFilteredMessages, bypassing this component.
+ *
+ * The depth prop allows for visual differentiation of nested sessions.
  */
 export function SessionMessages({
   messages,
   toolResultMap: providedToolResultMap,
-  agentProgressMap: providedAgentProgressMap,
-  bashProgressMap: providedBashProgressMap,
-  hookProgressMap: providedHookProgressMap,
-  toolUseMap: providedToolUseMap,
-  skillContentMap: providedSkillContentMap,
-  subagentMessagesMap: providedSubagentMessagesMap,
-  asyncTaskOutputMap: providedAsyncTaskOutputMap,
-  taskProgressMap: providedTaskProgressMap,
   depth = 0,
 }: SessionMessagesProps) {
-  // Build tool result map if not provided (for nested sessions)
-  const toolResultMap = useMemo(() => {
-    if (providedToolResultMap) return providedToolResultMap
-    return buildToolResultMap(messages)
-  }, [messages, providedToolResultMap])
-
-  // Build agent progress map if not provided
-  const agentProgressMap = useMemo(() => {
-    if (providedAgentProgressMap) return providedAgentProgressMap
-    return buildAgentProgressMap(messages)
-  }, [messages, providedAgentProgressMap])
-
-  // Build bash progress map if not provided
-  const bashProgressMap = useMemo(() => {
-    if (providedBashProgressMap) return providedBashProgressMap
-    return buildBashProgressMap(messages)
-  }, [messages, providedBashProgressMap])
-
-  // Build hook progress map if not provided
-  const hookProgressMap = useMemo(() => {
-    if (providedHookProgressMap) return providedHookProgressMap
-    return buildHookProgressMap(messages)
-  }, [messages, providedHookProgressMap])
-
-  // hookResponseMap removed — hook_started/hook_response messages are now fully skipped
-  // (hooks are infrastructure plumbing; their side effects appear as system-reminders)
-
-  // Build tool use map if not provided
-  const toolUseMap = useMemo(() => {
-    if (providedToolUseMap) return providedToolUseMap
-    return buildToolUseMap(messages)
-  }, [messages, providedToolUseMap])
-
-  // Build skill content map if not provided
-  const skillContentMap = useMemo(() => {
-    if (providedSkillContentMap) return providedSkillContentMap
-    return buildSkillContentMap(messages)
-  }, [messages, providedSkillContentMap])
-
-  // Build subagent messages map if not provided
-  const subagentMessagesMap = useMemo(() => {
-    if (providedSubagentMessagesMap) return providedSubagentMessagesMap
-    return buildSubagentMessagesMap(messages)
-  }, [messages, providedSubagentMessagesMap])
-
-  // Build async task output map if not provided
-  // This links background async Task tool_use blocks to their TaskOutput results
-  const asyncTaskOutputMap = useMemo(() => {
-    if (providedAsyncTaskOutputMap) return providedAsyncTaskOutputMap
-    return buildAsyncTaskOutputMap(messages, toolResultMap).resultMap
-  }, [messages, toolResultMap, providedAsyncTaskOutputMap])
-
-  // Build task progress map if not provided
-  // This provides live status updates for running Task subagents
-  const taskProgressMap = useMemo(() => {
-    if (providedTaskProgressMap) return providedTaskProgressMap
-    return buildTaskProgressMap(messages)
-  }, [messages, providedTaskProgressMap])
-
-  // Filter out:
-  // - progress messages (rendered inside their parent tools, not as standalone messages)
-  // - hook messages (hook_started + hook_response are infrastructure plumbing; side effects appear as system-reminders)
-  // - isMeta messages (system-injected context, not user-visible)
-  // - user messages with only skipped XML tags (e.g., <command-name>/clear</command-name>)
-  // - control_request/control_response (permission protocol messages, handled via modal)
-  // - internal events (queue-operation, file-history-snapshot)
-  // - stream_event messages (streaming transport signals, no user-facing content)
-  // - subagent messages (rendered inside their parent Task tool via subagentMessagesMap)
-  const filteredMessages = useMemo(() => {
-    return messages.filter((msg) => {
-      // Skip all progress messages - they're rendered inside their parent tools:
-      // - agent_progress → rendered inside Task tool via agentProgressMap
-      // - bash_progress → rendered inside Bash tool via bashProgressMap
-      // - hook_progress, query_update, search_results_received → future support
-      if (msg.type === 'progress') return false
-
-      // Skip hook messages - hooks are infrastructure plumbing (SessionStart, PreToolUse, etc.)
-      // whose side effects (e.g., additional_context injection) are already visible as
-      // system-reminder messages. Showing the raw hook output adds noise, not signal.
-      if (isHookStartedMessage(msg)) return false
-      if (isHookResponseMessage(msg)) return false
-
-      // Skip status messages - rendered as transient indicator at the end of the message list
-      // when status is non-null (e.g., "compacting"), disappears when status becomes null
-      if (isStatusMessage(msg)) return false
-
-      // Skip task_started messages - these are redundant with the Task tool_use block that
-      // already shows the same description. The task_started message has no linking field
-      // (task_id ≠ tool_use.id) so it can't be merged into the tool block either.
-      if (isTaskStartedMessage(msg)) return false
-
-      // Skip task_progress messages - rendered inside the parent Task tool via taskProgressMap.
-      // These are periodic updates from running subagents (description, last_tool_name, usage stats).
-      if (isTaskProgressMessage(msg)) return false
-
-      // Skip system init messages - these are session-level metadata (model, tools, agents, etc.)
-      // not user-facing content. The metadata is extracted in chat-interface.tsx and exposed
-      // via initData for use by slash commands, session info display, etc.
-      if (isSystemInitMessage(msg)) return false
-
-      // Skip control protocol messages - internal communication between UI and Claude CLI.
-      // These are not standalone chat messages. See data-models.md "Permission Handling" section.
-      // - control_request: Claude asks for permission to use a tool (triggers permission modal)
-      // - control_response: UI responds with allow/deny (sent via stdin, not displayed)
-      // - control_cancel_request: UI cancels a pending request (e.g., user pressed Escape)
-      if (msg.type === 'control_request' || msg.type === 'control_response' || msg.type === 'control_cancel_request') return false
-
-      // Skip internal events - these are metadata messages that provide no user-facing value.
-      // See data-models.md "Internal Events" section.
-      // - queue-operation: Internal session queue management (enqueue/dequeue)
-      // - file-history-snapshot: Internal file versioning for undo/redo
-      if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot') return false
-
-      // Skip result messages - these are turn terminators sent via stdout (not persisted to JSONL).
-      // They signal the end of Claude's turn and contain summary statistics (duration, cost, tokens).
-      // Used by isWorking detection (last message type !== 'result'), but not displayed as chat messages.
-      // See data-models.md "The result Message (Session Terminator)" section.
-      if (msg.type === 'result') return false
-
-      // Skip stream_event messages - these are streaming transport signals from the Claude API
-      // (e.g., message_start, content_block_delta, message_stop). They appear when sessions are
-      // streamed with --include-partial-messages. They carry no user-facing content, only event
-      // lifecycle metadata used by the SDK's streaming protocol.
-      if (msg.type === 'stream_event') return false
-
-      // rate_limit_event is now rendered as a message block — do not skip it here.
-
-      // Skip meta messages (system-injected context)
-      if (msg.isMeta) return false
-
-      // Skip user messages with only skipped XML tags
-      if (isSkippedUserMessage(msg)) return false
-
-      // Skip subagent messages at top level - they're rendered inside their parent Task tool via subagentMessagesMap
-      // See data-models.md "Subagent Message Hierarchy" section.
-      // When depth > 0, we're already inside a Task tool's nested session, so don't filter these out.
-      if (depth === 0 && isSubagentMessage(msg)) return false
-
-      return true
-    })
-  }, [messages, depth])
-
-  // Derive current active status from the last status message
-  // Status messages are ephemeral indicators (e.g., "compacting") that should show
-  // while active, then disappear when cleared (status: null)
-  const currentStatus = useMemo(() => {
-    // Find the last status message (iterate in reverse)
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i] as StatusMessage
-      if (isStatusMessage(msg)) {
-        // Return the status value (could be "compacting", null, etc.)
-        return msg.status
-      }
-    }
-    return null
-  }, [messages])
+  const { filteredMessages, maps, currentStatus } = useFilteredMessages(
+    messages,
+    providedToolResultMap,
+    depth,
+  )
 
   if (filteredMessages.length === 0 && !currentStatus) {
     return null
@@ -733,15 +530,15 @@ export function SessionMessages({
         <MessageBlock
           key={message.uuid}
           message={message}
-          toolResultMap={toolResultMap}
-          agentProgressMap={agentProgressMap}
-          bashProgressMap={bashProgressMap}
-          hookProgressMap={hookProgressMap}
-          toolUseMap={toolUseMap}
-          skillContentMap={skillContentMap}
-          subagentMessagesMap={subagentMessagesMap}
-          asyncTaskOutputMap={asyncTaskOutputMap}
-          taskProgressMap={taskProgressMap}
+          toolResultMap={maps.toolResultMap}
+          agentProgressMap={maps.agentProgressMap}
+          bashProgressMap={maps.bashProgressMap}
+          hookProgressMap={maps.hookProgressMap}
+          toolUseMap={maps.toolUseMap}
+          skillContentMap={maps.skillContentMap}
+          subagentMessagesMap={maps.subagentMessagesMap}
+          asyncTaskOutputMap={maps.asyncTaskOutputMap}
+          taskProgressMap={maps.taskProgressMap}
           depth={depth}
         />
       ))}
@@ -750,5 +547,3 @@ export function SessionMessages({
     </div>
   )
 }
-
-export type { BashProgressMessage, TaskProgressMessage }
