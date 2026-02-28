@@ -727,8 +727,10 @@ func (q *Query) RewindFiles(userMessageID string) error {
 	return err
 }
 
-// SendUserMessage sends a user message to Claude
-func (q *Query) SendUserMessage(content string, sessionID string) error {
+// SendUserMessage sends a user message to Claude.
+// When uuid is provided, it is included in the JSON payload so Claude CLI
+// uses the same UUID in its JSONL transcript (fixing reconnect dedup).
+func (q *Query) SendUserMessage(content string, sessionID string, uuid string) error {
 	if sessionID == "" {
 		sessionID = "default"
 	}
@@ -741,6 +743,9 @@ func (q *Query) SendUserMessage(content string, sessionID string) error {
 		},
 		"parent_tool_use_id": nil,
 		"session_id":         sessionID,
+	}
+	if uuid != "" {
+		message["uuid"] = uuid
 	}
 
 	msgJSON, err := json.Marshal(message)

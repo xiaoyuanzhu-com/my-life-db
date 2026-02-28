@@ -614,8 +614,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "user_message":
-			// SendInputUI handles activation internally
-			if err := session.SendInputUI(inMsg.Content); err != nil {
+			// Generate UUID ONCE — passed to both the SDK (so Claude CLI records it
+			// in JSONL) and the synthetic broadcast. This ensures reconnecting clients
+			// see the same UUID from both sources, fixing dedup on restart.
+			msgUUID := uuid.New().String()
+
+			if err := session.SendInputUIWithUUID(inMsg.Content, msgUUID); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
 				errMsg := map[string]interface{}{
 					"type":  "error",
@@ -627,12 +631,12 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 				break
 			}
 
-			// Broadcast synthetic user message back to clients
-			// This unifies behavior — Claude stdin doesn't echo user messages to stdout,
-			// so we synthesize one.
+			// Broadcast synthetic user message back to clients.
+			// Claude stdin doesn't echo user messages to stdout, so we synthesize one.
+			// Uses the same msgUUID passed to the SDK above.
 			syntheticMsg := map[string]interface{}{
 				"type":      "user",
-				"uuid":      uuid.New().String(),
+				"uuid":      msgUUID,
 				"timestamp": time.Now().UnixMilli(),
 				"sessionId": sessionID,
 				"message": map[string]interface{}{

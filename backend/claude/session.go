@@ -529,6 +529,23 @@ func (s *Session) SendInputUI(content string) error {
 	return client.SendMessage(content)
 }
 
+// SendInputUIWithUUID sends a user message with a specific UUID.
+// The UUID is passed through to the SDK so Claude CLI records the same UUID
+// in its JSONL transcript, ensuring the synthetic broadcast and JSONL share
+// a single UUID (fixing reconnect dedup).
+func (s *Session) SendInputUIWithUUID(content string, msgUUID string) error {
+	if err := s.EnsureActivated(); err != nil {
+		return fmt.Errorf("failed to activate session: %w", err)
+	}
+
+	client := s.getSDKClient()
+	if client == nil {
+		return fmt.Errorf("session not active (no SDK client)")
+	}
+
+	return client.SendMessageWithUUID(content, msgUUID)
+}
+
 // Interrupt sends an interrupt signal to stop the current operation.
 // Uses the SDK client's interrupt mechanism.
 func (s *Session) Interrupt() error {

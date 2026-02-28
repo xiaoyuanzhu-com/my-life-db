@@ -134,7 +134,7 @@ func (c *ClaudeSDKClient) Connect(ctx context.Context, prompt string) error {
 
 	// Send initial prompt if provided
 	if prompt != "" {
-		if err := c.query.SendUserMessage(prompt, ""); err != nil {
+		if err := c.query.SendUserMessage(prompt, "", ""); err != nil {
 			return fmt.Errorf("failed to send initial prompt: %w", err)
 		}
 	}
@@ -153,7 +153,7 @@ func (c *ClaudeSDKClient) SendMessage(content string) error {
 		return ErrNotConnected
 	}
 
-	return c.query.SendUserMessage(content, "")
+	return c.query.SendUserMessage(content, "", "")
 }
 
 // SendMessageWithSession sends a user message with a specific session ID
@@ -165,7 +165,22 @@ func (c *ClaudeSDKClient) SendMessageWithSession(content string, sessionID strin
 		return ErrNotConnected
 	}
 
-	return c.query.SendUserMessage(content, sessionID)
+	return c.query.SendUserMessage(content, sessionID, "")
+}
+
+// SendMessageWithUUID sends a user message with a specific UUID.
+// The UUID is included in the stdin JSON so Claude CLI uses the same UUID
+// in its JSONL transcript, ensuring the synthetic broadcast and JSONL
+// share a single UUID (fixing reconnect dedup).
+func (c *ClaudeSDKClient) SendMessageWithUUID(content string, uuid string) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.query == nil {
+		return ErrNotConnected
+	}
+
+	return c.query.SendUserMessage(content, "", uuid)
 }
 
 // SendToolResult sends a tool result back to Claude.
