@@ -10,6 +10,8 @@ import { StreamingThinking } from './streaming-thinking'
 import { isTextBlock } from '~/lib/session-message-utils'
 import type { SessionMessage, ExtractedToolResult, ContentBlock } from '~/lib/session-message-utils'
 
+const TOP_LOAD_THRESHOLD = 300
+
 interface MessageListProps {
   messages: SessionMessage[]
   toolResultMap: Map<string, ExtractedToolResult>
@@ -40,9 +42,8 @@ interface MessageListProps {
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
- * - Scroll-up detection for loading older message pages
+ * - User-intent-driven loading for older message pages
  * - Scroll position preservation when prepending older messages
- * - Adaptive viewport fill (loads more pages if content doesn't fill viewport)
  * - Streaming display (StreamingResponse, StreamingThinking, ClaudeWIP)
  * - TransientStatusBlock for ephemeral session status (e.g., compacting)
  *
@@ -64,15 +65,14 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   )
 
   // Stick-to-bottom: replaces the `use-stick-to-bottom` npm library
-  const { isAtBottom, scrollToBottom, setScrollElement, onContentChange } = useStickToBottom()
+  const { shouldStick, setScrollElement, setContentElement } = useStickToBottom()
 
   // Track scroll element for parent callback and scroll listeners
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
+  const historyPagingActiveRef = useRef(false)
+  const pendingPrependAnchorRef = useRef<{ index: number; delta: number } | null>(null)
 
   // Track previous state for scroll position preservation on prepend
-  const prevMessageCountRef = useRef(filteredMessages.length)
-  const prevScrollHeightRef = useRef(0)
-  const prevScrollTopRef = useRef(0)
   const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
 
   // Merged ref callback: assigns to useStickToBottom's setScrollElement AND stores locally
@@ -101,30 +101,66 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     // It uses ResizeObserver internally to detect size changes dynamically.
   })
 
-  // Auto-scroll when new content arrives and user is at bottom
-  useEffect(() => {
-    onContentChange()
-  }, [filteredMessages.length, streamingText, streamingThinking, wipText, optimisticMessage, currentStatus, onContentChange])
+  const requestOlderPage = useCallback(() => {
+    if (!onLoadOlderPage || !hasMoreHistory || isLoadingPage) return
+
+    const element = scrollElementRef.current
+    if (!element) return
+
+    const scrollTop = element.scrollTop
+    const anchor =
+      virtualizer.getVirtualItems().find((item) => item.end > scrollTop) ??
+      virtualizer.getVirtualItems()[0]
+
+    if (anchor) {
+      pendingPrependAnchorRef.current = {
+        index: anchor.index,
+        delta: Math.max(0, scrollTop - anchor.start),
+      }
+    } else {
+      pendingPrependAnchorRef.current = null
+    }
+
+    historyPagingActiveRef.current = true
+    onLoadOlderPage()
+  }, [hasMoreHistory, isLoadingPage, onLoadOlderPage, virtualizer])
 
   // ============================================================================
   // Scroll event handlers
   // ============================================================================
 
-  // Scroll-up detection: load older pages when user scrolls near the top
+  // Scroll-up detection: load older pages only after the user has explicitly
+  // scrolled away from the sticky bottom state.
   useEffect(() => {
     const element = scrollElementRef.current
     if (!element) return
 
+    let lastScrollTop = element.scrollTop
+
     const handleScroll = () => {
-      // Trigger load when within 300px of the top (and user has actually scrolled up)
-      if (element.scrollTop < 300 && hasMoreHistory && !isLoadingPage && !isAtBottom.current) {
-        onLoadOlderPage?.()
+      const currentScrollTop = element.scrollTop
+
+      if (currentScrollTop >= TOP_LOAD_THRESHOLD) {
+        historyPagingActiveRef.current = false
+      }
+
+      const scrollingUp = currentScrollTop < lastScrollTop
+      lastScrollTop = currentScrollTop
+
+      if (
+        scrollingUp &&
+        currentScrollTop < TOP_LOAD_THRESHOLD &&
+        hasMoreHistory &&
+        !isLoadingPage &&
+        !shouldStick.current
+      ) {
+        requestOlderPage()
       }
     }
 
     element.addEventListener('scroll', handleScroll, { passive: true })
     return () => element.removeEventListener('scroll', handleScroll)
-  }, [hasMoreHistory, isLoadingPage, onLoadOlderPage])
+  }, [hasMoreHistory, isLoadingPage, requestOlderPage, shouldStick])
 
   // ============================================================================
   // Scroll position preservation on prepend
@@ -137,67 +173,54 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   // eliminates that single-frame jump entirely.
   //
   // How it works:
-  //   prevScrollHeightRef / prevScrollTopRef hold values from the *last* layout.
-  //   When messages are prepended, scrollHeight grows by the height of the new
-  //   content. We shift scrollTop by the same delta so the visible content stays
-  //   in place. Only triggered when the user was near the top (scrollTop < 300),
-  //   which is the condition that triggered the older-page load in the first place.
+  //   Before requesting another history page, capture the first visible virtual
+  //   item plus the current offset into that item. After prepend, restore the
+  //   same anchor against the new index space, so the viewport stays locked to
+  //   what the user was reading instead of relying on scrollHeight deltas.
   useLayoutEffect(() => {
-    const element = scrollElementRef.current
-    if (!element) return
-
-    const prevCount = prevMessageCountRef.current
-    const currentCount = filteredMessages.length
+    const prevFirstUuid = prevFirstUuidRef.current
     const currentFirstUuid = filteredMessages[0]?.uuid
-    const firstUuidChanged = currentFirstUuid !== prevFirstUuidRef.current
+    const prependCount = prevFirstUuid
+      ? filteredMessages.findIndex((message) => message.uuid === prevFirstUuid)
+      : -1
 
-    // Only preserve scroll position when messages were PREPENDED (older page
-    // loaded), detected by the first message's uuid changing. During initial
-    // load and normal appends the first uuid stays the same — we must NOT
-    // adjust scrollTop or it fights the stick-to-bottom auto-scroll.
-    if (
-      currentCount > prevCount &&
-      prevScrollHeightRef.current > 0 &&
-      firstUuidChanged
-    ) {
-      const heightDelta = element.scrollHeight - prevScrollHeightRef.current
-      if (heightDelta > 0 && prevScrollTopRef.current < 300) {
-        // User was near the top (waiting for older messages) — preserve position
-        element.scrollTop = prevScrollTopRef.current + heightDelta
+    if (prependCount > 0) {
+      const anchor = pendingPrependAnchorRef.current
+      if (anchor) {
+        const targetIndex = Math.min(anchor.index + prependCount, filteredMessages.length - 1)
+        const offsetInfo = virtualizer.getOffsetForIndex(targetIndex, 'start')
+
+        if (offsetInfo) {
+          const [baseOffset] = offsetInfo
+          virtualizer.scrollToOffset(baseOffset + anchor.delta)
+        }
       }
+      pendingPrependAnchorRef.current = null
     }
 
     // Save current state for next comparison
     prevFirstUuidRef.current = currentFirstUuid
-    prevMessageCountRef.current = currentCount
-    prevScrollHeightRef.current = element.scrollHeight
-    prevScrollTopRef.current = element.scrollTop
-  }, [filteredMessages.length])
+  }, [filteredMessages, virtualizer])
 
   // ============================================================================
-  // Stuck-at-top recovery
+  // Continued history paging while user remains near the top
   // ============================================================================
 
-  // After a page load completes, if the user is still near the top and no
-  // scroll events fire (momentum ended), re-trigger the next page load.
-  // The scroll event handler (above) covers active scrolling; this effect
-  // is the safety net for the "stuck" case.
-  //
-  // Debounced with 500ms so it doesn't fire during initial WebSocket burst.
+  // Keep loading progressively only after the user has deliberately scrolled to
+  // the history boundary. This preserves the old "keep pulling history while I
+  // stay at the top" behavior without letting a bad initial scroll position
+  // trigger background overfetch on first open.
   useEffect(() => {
     const element = scrollElementRef.current
-    if (!element || isLoadingPage || !hasMoreHistory || filteredMessages.length === 0) return
+    if (!element || !historyPagingActiveRef.current || isLoadingPage) return
 
-    const timeoutId = setTimeout(() => {
-      requestAnimationFrame(() => {
-        if (element.scrollTop < 300 && !isAtBottom.current) {
-          onLoadOlderPage?.()
-        }
-      })
-    }, 500)
+    if (!hasMoreHistory || shouldStick.current || element.scrollTop >= TOP_LOAD_THRESHOLD) {
+      historyPagingActiveRef.current = false
+      return
+    }
 
-    return () => clearTimeout(timeoutId)
-  }, [filteredMessages.length, isLoadingPage, hasMoreHistory, onLoadOlderPage])
+    requestOlderPage()
+  }, [filteredMessages.length, isLoadingPage, hasMoreHistory, requestOlderPage, shouldStick])
 
   // ============================================================================
   // Streaming visibility logic
@@ -240,17 +263,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   }, [streamingThinking, messages])
 
   // ============================================================================
-  // onHeightChange callback for virtualizer re-measurement
-  // ============================================================================
-
-  // When a collapsible section expands/collapses, the virtualizer's ResizeObserver
-  // should catch the size change via measureElement. This callback is a safety net
-  // that also triggers onContentChange to auto-scroll if at bottom.
-  const handleHeightChange = useCallback(() => {
-    onContentChange()
-  }, [onContentChange])
-
-  // ============================================================================
   // Render
   // ============================================================================
 
@@ -258,26 +270,12 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const virtualItems = virtualizer.getVirtualItems()
   const totalSize = virtualizer.getTotalSize()
 
-  // Re-scroll to bottom when virtualizer re-measures items and total size changes.
-  // During initial load, scrollToBottom fires before all bottom items are measured
-  // (estimateSize=120px vs actual). As ResizeObserver reports real sizes, totalSize
-  // drifts and we end up "near bottom" instead of "at bottom". This effect catches
-  // that drift and re-scrolls.
-  useEffect(() => {
-    if (isAtBottom.current) {
-      requestAnimationFrame(() => {
-        scrollToBottom('instant')
-      })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalSize, scrollToBottom])
-
   return (
     <div
       ref={mergedScrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
     >
-      <div className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
+      <div ref={setContentElement} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
         {!hasMessages ? (
           <div className="flex-1" />
         ) : (
@@ -331,7 +329,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                         asyncTaskOutputMap={maps.asyncTaskOutputMap}
                         taskProgressMap={maps.taskProgressMap}
                         depth={0}
-                        onHeightChange={handleHeightChange}
                       />
                     </div>
                   )

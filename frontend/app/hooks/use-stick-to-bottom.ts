@@ -18,10 +18,15 @@ const AT_BOTTOM_THRESHOLD = 50
  */
 export function useStickToBottom() {
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
+  const contentElementRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef<boolean>(true)
+  const shouldStickRef = useRef<boolean>(true)
 
   // RAF guard to debounce scroll checks
   const rafRef = useRef<number | null>(null)
+  const settleRafRef = useRef<number | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const isProgrammaticScrollRef = useRef(false)
 
   const checkIsAtBottom = useCallback((el: HTMLDivElement): boolean => {
     const { scrollTop, scrollHeight, clientHeight } = el
@@ -29,23 +34,43 @@ export function useStickToBottom() {
     return distanceFromBottom <= AT_BOTTOM_THRESHOLD
   }, [])
 
+  const clearProgrammaticScroll = useCallback(() => {
+    if (settleRafRef.current !== null) {
+      cancelAnimationFrame(settleRafRef.current)
+    }
+
+    // Give the browser one extra frame to apply the scroll position and emit
+    // any resulting scroll event before we resume treating scroll as user input.
+    settleRafRef.current = requestAnimationFrame(() => {
+      settleRafRef.current = requestAnimationFrame(() => {
+        settleRafRef.current = null
+        isProgrammaticScrollRef.current = false
+
+        const el = scrollElementRef.current
+        if (!el) return
+
+        const atBottom = checkIsAtBottom(el)
+        isAtBottomRef.current = atBottom
+        if (atBottom) {
+          shouldStickRef.current = true
+        }
+      })
+    })
+  }, [checkIsAtBottom])
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'instant') => {
     const el = scrollElementRef.current
     if (!el) return
+    isProgrammaticScrollRef.current = true
     el.scrollTo({ top: el.scrollHeight, behavior })
     isAtBottomRef.current = true
-  }, [])
+    shouldStickRef.current = true
+    clearProgrammaticScroll()
+  }, [clearProgrammaticScroll])
 
-  /**
-   * Called after content changes (new messages, streaming updates, etc.)
-   * to auto-scroll if the user is currently at bottom.
-   */
-  const onContentChange = useCallback(() => {
-    if (isAtBottomRef.current) {
-      // Use rAF to ensure layout has been calculated after the DOM update
-      requestAnimationFrame(() => {
-        scrollToBottom('instant')
-      })
+  const stickIfNeeded = useCallback(() => {
+    if (shouldStickRef.current) {
+      scrollToBottom('instant')
     }
   }, [scrollToBottom])
 
@@ -59,14 +84,27 @@ export function useStickToBottom() {
       rafRef.current = null
       const el = scrollElementRef.current
       if (!el) return
-      isAtBottomRef.current = checkIsAtBottom(el)
+      const atBottom = checkIsAtBottom(el)
+      isAtBottomRef.current = atBottom
+
+      if (atBottom) {
+        shouldStickRef.current = true
+      } else if (!isProgrammaticScrollRef.current) {
+        shouldStickRef.current = false
+      }
     })
   })
 
   const handleScrollEndRef = useRef(function handleScrollEnd() {
     const el = scrollElementRef.current
     if (!el) return
-    isAtBottomRef.current = checkIsAtBottom(el)
+    const atBottom = checkIsAtBottom(el)
+    isAtBottomRef.current = atBottom
+    if (atBottom) {
+      shouldStickRef.current = true
+    } else if (!isProgrammaticScrollRef.current) {
+      shouldStickRef.current = false
+    }
   })
 
   /**
@@ -87,31 +125,71 @@ export function useStickToBottom() {
 
     if (!el) return
 
-    // Initial state: start at bottom
+    // Opening a chat should start pinned to the latest content until the user
+    // explicitly scrolls away.
+    shouldStickRef.current = true
     isAtBottomRef.current = checkIsAtBottom(el)
 
     el.addEventListener('scroll', handleScroll, { passive: true })
     el.addEventListener('scrollend', handleScrollEnd, { passive: true })
-  }, [checkIsAtBottom])
+    requestAnimationFrame(() => {
+      stickIfNeeded()
+    })
+  }, [checkIsAtBottom, stickIfNeeded])
+
+  /**
+   * Callback ref — observes content height changes so sticky mode follows the
+   * real rendered height instead of relying on callers to signal updates.
+   */
+  const setContentElement = useCallback((el: HTMLDivElement | null) => {
+    if (resizeObserverRef.current && contentElementRef.current) {
+      resizeObserverRef.current.unobserve(contentElementRef.current)
+    }
+
+    contentElementRef.current = el
+
+    if (!el || typeof ResizeObserver === 'undefined') return
+
+    if (!resizeObserverRef.current) {
+      resizeObserverRef.current = new ResizeObserver(() => {
+        stickIfNeeded()
+      })
+    }
+
+    resizeObserverRef.current.observe(el)
+    requestAnimationFrame(() => {
+      stickIfNeeded()
+    })
+  }, [stickIfNeeded])
 
   // Clean up on unmount
   useEffect(() => {
+    const handleScroll = handleScrollRef.current
+    const handleScrollEnd = handleScrollEndRef.current
+
     return () => {
       const el = scrollElementRef.current
       if (el) {
-        el.removeEventListener('scroll', handleScrollRef.current)
-        el.removeEventListener('scrollend', handleScrollEndRef.current)
+        el.removeEventListener('scroll', handleScroll)
+        el.removeEventListener('scrollend', handleScrollEnd)
       }
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
+      }
+      if (settleRafRef.current !== null) {
+        cancelAnimationFrame(settleRafRef.current)
+      }
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect()
       }
     }
   }, [])
 
   return {
     isAtBottom: isAtBottomRef,
+    shouldStick: shouldStickRef,
     scrollToBottom,
     setScrollElement,
-    onContentChange,
+    setContentElement,
   }
 }
