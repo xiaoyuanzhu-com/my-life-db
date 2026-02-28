@@ -17,14 +17,24 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
   useEffect(() => {
     if (!terminalRef.current) return
 
+    // Read the actual background color from CSS variable so xterm can render properly.
+    // xterm.js does not support 'transparent' — it needs a real color for its canvas.
+    const computedBg = getComputedStyle(terminalRef.current)
+      .getPropertyValue('--claude-bg-code-block')
+      .trim() || '#1a1a1a'
+
+    const isDark = document.documentElement.classList.contains('dark')
+
     const term = new Terminal({
       fontSize: 14,
       fontFamily: 'JetBrains Mono, monospace',
       cursorBlink: true,
-      rows: 12,
+      rows: 14,
       cols: 80,
       theme: {
-        background: 'transparent',
+        background: computedBg,
+        foreground: isDark ? '#E8E8E8' : '#1A1A1A',
+        cursor: isDark ? '#E8E8E8' : '#1A1A1A',
       },
       convertEol: true,
     })
@@ -35,7 +45,8 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
     term.loadAddon(webLinksAddon)
 
     term.open(terminalRef.current)
-    fitAddon.fit()
+    // Fit after a frame to ensure the container has its final dimensions
+    requestAnimationFrame(() => fitAddon.fit())
     termRef.current = term
 
     // Connect WebSocket
@@ -74,13 +85,16 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
       }
     })
 
-    // Handle resize
+    // Handle resize — debounce to prevent feedback loops
+    let resizeTimer: ReturnType<typeof setTimeout>
     const observer = new ResizeObserver(() => {
-      fitAddon.fit()
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => fitAddon.fit(), 100)
     })
     observer.observe(terminalRef.current)
 
     return () => {
+      clearTimeout(resizeTimer)
       observer.disconnect()
       ws.close()
       term.dispose()
@@ -100,7 +114,7 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
         <div
           ref={terminalRef}
           className="w-full rounded-lg border border-border overflow-hidden p-2"
-          style={{ backgroundColor: 'var(--claude-bg-code-block)' }}
+          style={{ backgroundColor: 'var(--claude-bg-code-block)', height: '360px' }}
         />
 
         {status === 'success' && (
