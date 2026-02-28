@@ -10,7 +10,7 @@ import { StreamingThinking } from './streaming-thinking'
 import { isTextBlock } from '~/lib/session-message-utils'
 import type { SessionMessage, ExtractedToolResult, ContentBlock } from '~/lib/session-message-utils'
 
-const TOP_LOAD_THRESHOLD = 300
+const TOP_LOAD_THRESHOLD = 1000
 
 interface MessageListProps {
   messages: SessionMessage[]
