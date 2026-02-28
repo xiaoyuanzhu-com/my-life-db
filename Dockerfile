@@ -44,11 +44,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
 
-# Copy built artifacts maintaining local structure
-COPY --from=go-builder /app/my-life-db ./backend/my-life-db
-COPY --from=frontend-builder /app/dist ./frontend/dist
-
 # Create data directories and .claude directory with proper permissions
+# Done BEFORE COPY so chown only touches empty dirs, not the binaries
 RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
              /home/xiaoyuanzhu/my-life-db/.my-life-db \
              /home/xiaoyuanzhu/.claude && \
@@ -56,6 +53,10 @@ RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
     chmod -R 775 /home/xiaoyuanzhu/my-life-db/data \
                  /home/xiaoyuanzhu/my-life-db/.my-life-db \
                  /home/xiaoyuanzhu/.claude
+
+# Copy built artifacts with correct ownership (avoids extra chown layer)
+COPY --from=go-builder --chown=1000:1000 /app/my-life-db ./backend/my-life-db
+COPY --from=frontend-builder --chown=1000:1000 /app/dist ./frontend/dist
 
 # Switch to non-root user
 USER 1000
