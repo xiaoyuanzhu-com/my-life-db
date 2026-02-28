@@ -147,12 +147,6 @@ export function ChatInterface({
   const wasConnectedRef = useRef(false)
   // Track if permission mode has been synced to backend for this session
   const permissionModeSyncedRef = useRef(false)
-  // Deferred reconnect clear: when true, rawMessages will be cleared on the next
-  // incoming message (inside handleMessage) rather than immediately in the effect.
-  // This avoids a flash of empty content — React 18 batches the clear and the first
-  // new message into a single render, so the UI goes straight from old → new.
-  const pendingReconnectClearRef = useRef(false)
-
   // Scroll container element for hide-on-scroll behavior
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
 
@@ -164,14 +158,6 @@ export function ChatInterface({
   const handleMessage = useCallback(
     (data: unknown) => {
       const msg = data as Record<string, unknown>
-
-      // Deferred reconnect clear: wipe stale rawMessages on the first incoming message
-      // after reconnection. Done here (not in the effect) so React 18 batches the clear
-      // and the first new message into one render — no flash of empty content.
-      if (pendingReconnectClearRef.current) {
-        pendingReconnectClearRef.current = false
-        setRawMessages([])
-      }
 
       // Debounce initial load detection: reset timer on each message
       // After 500ms of no messages, mark initial load as complete
@@ -663,7 +649,6 @@ export function ChatInterface({
     streamingBufferRef.current = [] // Clear buffered tokens on session change
     thinkingBufferRef.current = []
     streamingCompleteRef.current = false
-    pendingReconnectClearRef.current = false
     // Reset pagination state
     setLowestLoadedPage(0)
     setIsLoadingHistory(false)
@@ -727,20 +712,19 @@ export function ChatInterface({
 
   // Reset state on WebSocket reconnection.
   //
-  // After a server restart, the backend's in-memory state is gone and the JSONL file
-  // becomes the single source of truth. The frontend's rawMessages contain stale
-  // synthetic user messages (generated with uuid.New() during the previous connection)
-  // whose UUIDs don't match the Claude-generated UUIDs in the JSONL file.
-  // UUID-based deduplication fails for these → duplicate user messages.
-  //
-  // Fix: defer rawMessages clear until the first message arrives in handleMessage.
-  // React 18 batches the clear + first new message into one render → no empty flash.
-  // Other state is reset immediately since it doesn't affect the message list display.
+  // Reconnection effect: reset ephemeral state but keep rawMessages intact.
+  // User message UUIDs are now stable across server restarts (the backend passes
+  // the same UUID to both synthetic broadcast and Claude CLI stdin). The existing
+  // UUID-based dedup in handleMessage merges the burst correctly:
+  //   existing UUID → update in place, new UUID → append.
+  // No rawMessages clear needed — the UI transitions seamlessly from old → new.
   useEffect(() => {
     if (ws.connectionStatus === 'connected') {
       if (wasConnectedRef.current) {
-        // Defer rawMessages clear to handleMessage (avoids flash of empty content)
-        pendingReconnectClearRef.current = true
+        // RECONNECTION: keep rawMessages intact — incoming burst messages
+        // will merge by UUID (existing = skip, new = append). No clear needed
+        // because user message UUIDs are now stable across server restarts
+        // (same UUID passed to both synthetic broadcast and Claude CLI stdin).
         setHasSeenInit(false)
         setOptimisticMessage(null)
         setTurnInProgress(false)
