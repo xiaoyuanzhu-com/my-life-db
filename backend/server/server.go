@@ -328,49 +328,55 @@ func (s *Server) Start() error {
 	return s.http.ListenAndServe()
 }
 
-// Shutdown gracefully shuts down the server
+// Shutdown gracefully shuts down the server using drain-then-shutdown.
+// Sequence: close HTTP listener → signal sessions → close WS/SSE → drain active sessions → cleanup.
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
-	// 0. Signal Claude sessions that we're shutting down FIRST
+	// 1. Stop accepting new HTTP connections FIRST.
+	// WebSocket connections are hijacked and not tracked by http.Server,
+	// so this returns quickly. Clients get connection refused and use
+	// their reconnect logic to reach the new server after restart.
+	if s.http != nil {
+		// Short timeout for closing listener + finishing in-flight HTTP (not WS)
+		httpCtx, httpCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer httpCancel()
+		if err := s.http.Shutdown(httpCtx); err != nil {
+			log.Error().Err(err).Msg("http server shutdown error")
+		}
+		log.Info().Msg("HTTP listener closed")
+	}
+
+	// 2. Signal Claude sessions that we're shutting down.
 	// This must happen before SIGINT propagates to child processes,
 	// so they know to expect process exit errors and log at debug level.
 	if s.claudeManager != nil {
 		s.claudeManager.SignalShutdown()
 	}
 
-	// 1. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE)
-	// This allows them to stop gracefully before we close the HTTP server
+	// 3. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE)
 	log.Info().Msg("signaling handlers to stop")
 	s.shutdownCancel()
 
 	// Give handlers a moment to process the cancellation and close connections.
-	// This prevents "response.WriteHeader on hijacked connection" warnings.
 	time.Sleep(100 * time.Millisecond)
 
-	// 2. Close notification service to cleanly disconnect SSE clients
+	// 4. Close notification service to cleanly disconnect SSE clients
 	s.notifService.Shutdown()
 
-	// 2.5. Shutdown Claude manager (kills all sessions)
+	// 5. Drain active Claude sessions (waits for "working" sessions to finish)
 	if s.claudeManager != nil {
 		if err := s.claudeManager.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("Claude manager shutdown error")
 		}
 	}
 
-	// 3. Shutdown HTTP server (stop accepting new requests and wait for existing ones)
-	if s.http != nil {
-		if err := s.http.Shutdown(ctx); err != nil {
-			log.Error().Err(err).Msg("http server shutdown error")
-		}
-	}
-
-	// Stop background services (in reverse order of startup)
+	// 6. Stop background services (in reverse order of startup)
 	s.meiliSyncWorker.Stop()
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
-	// Close database last
+	// 7. Close database last
 	if s.database != nil {
 		if err := s.database.Close(); err != nil {
 			log.Error().Err(err).Msg("database close error")
