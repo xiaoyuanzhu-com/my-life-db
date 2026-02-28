@@ -175,32 +175,28 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   }, [filteredMessages.length])
 
   // ============================================================================
-  // Adaptive viewport fill + stuck-at-top recovery
+  // Stuck-at-top recovery
   // ============================================================================
 
-  // After a page load completes (isLoadingPage false→true→false), check if we
-  // still need more content. This covers two cases:
-  // 1. Content doesn't fill the viewport — keep loading until it does
-  // 2. User scrolled to top fast and is stuck there — no scroll event will fire,
-  //    so we re-trigger the load if still near the top
+  // After a page load completes, if the user is still near the top and no
+  // scroll events fire (momentum ended), re-trigger the next page load.
+  // The scroll event handler (above) covers active scrolling; this effect
+  // is the safety net for the "stuck" case.
+  //
+  // Debounced with 500ms so it doesn't fire during initial WebSocket burst.
   useEffect(() => {
     const element = scrollElementRef.current
     if (!element || isLoadingPage || !hasMoreHistory || filteredMessages.length === 0) return
 
-    // Use requestAnimationFrame to check after the browser has finished layout
-    const rafId = requestAnimationFrame(() => {
-      if (element.scrollHeight <= element.clientHeight) {
-        // Content doesn't fill viewport — load more regardless
-        onLoadOlderPage?.()
-      } else if (element.scrollTop < 300 && !isAtBottom.current) {
-        // User scrolled up and is stuck near the top — no scroll event will fire,
-        // so re-trigger load. Guard with !isAtBottom to skip during initial load
-        // (scrollTop is 0 but we intend to scroll to bottom, not load all pages).
-        onLoadOlderPage?.()
-      }
-    })
+    const timeoutId = setTimeout(() => {
+      requestAnimationFrame(() => {
+        if (element.scrollTop < 300 && !isAtBottom.current) {
+          onLoadOlderPage?.()
+        }
+      })
+    }, 500)
 
-    return () => cancelAnimationFrame(rafId)
+    return () => clearTimeout(timeoutId)
   }, [filteredMessages.length, isLoadingPage, hasMoreHistory, onLoadOlderPage])
 
   // ============================================================================
