@@ -699,6 +699,146 @@ func TestSessionManager_WorkingSessionCount_NoneWorking(t *testing.T) {
 }
 
 // =============================================================================
+// Drain-Then-Shutdown Tests
+// =============================================================================
+
+func TestDrainAndShutdown_NoWorkingSessions(t *testing.T) {
+	m, _ := createTestManager(t) // Don't defer cleanup — we call Shutdown manually
+
+	m.mu.Lock()
+	m.initialized = true
+	m.sessions["idle"] = &Session{
+		ID:           "idle",
+		Clients:      make(map[*Client]bool),
+		isProcessing: false,
+	}
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := m.Shutdown(ctx)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	// Should complete after ~5s settle (no drain wait)
+	if elapsed > 8*time.Second {
+		t.Errorf("Shutdown took too long: %v (expected ~5s settle)", elapsed)
+	}
+	if elapsed < 4*time.Second {
+		t.Errorf("Shutdown too fast: %v (expected ~5s settle)", elapsed)
+	}
+}
+
+func TestDrainAndShutdown_WaitsForWorkingSessions(t *testing.T) {
+	m, _ := createTestManager(t)
+
+	m.mu.Lock()
+	m.initialized = true
+
+	workingSession := &Session{
+		ID:           "working",
+		Clients:      make(map[*Client]bool),
+		isProcessing: true,
+		onStateChanged: func() {
+			m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: "working"})
+		},
+	}
+	m.sessions["working"] = workingSession
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	shutdownDone := make(chan error, 1)
+	go func() {
+		shutdownDone <- m.Shutdown(ctx)
+	}()
+
+	// Simulate session finishing after 500ms
+	time.Sleep(500 * time.Millisecond)
+	workingSession.mu.Lock()
+	workingSession.isProcessing = false
+	workingSession.mu.Unlock()
+	// Trigger the state change notification via the manager (simulating what onStateChanged does)
+	m.notify(SessionEvent{Type: SessionEventUpdated, SessionID: "working"})
+
+	select {
+	case err := <-shutdownDone:
+		if err != nil {
+			t.Fatalf("Shutdown returned error: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Shutdown did not complete after session finished")
+	}
+}
+
+func TestDrainAndShutdown_PermissionBlockedDoesNotBlock(t *testing.T) {
+	m, _ := createTestManager(t)
+
+	m.mu.Lock()
+	m.initialized = true
+	m.sessions["permission-blocked"] = &Session{
+		ID:                     "permission-blocked",
+		Clients:                make(map[*Client]bool),
+		isProcessing:           true,
+		pendingPermissionCount: 1,
+	}
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := m.Shutdown(ctx)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	// Should not wait for permission-blocked session — just settle
+	if elapsed > 8*time.Second {
+		t.Errorf("Shutdown took too long: %v (permission-blocked should not block drain)", elapsed)
+	}
+}
+
+func TestDrainAndShutdown_Timeout(t *testing.T) {
+	m, _ := createTestManager(t)
+
+	m.mu.Lock()
+	m.initialized = true
+	m.sessions["stuck"] = &Session{
+		ID:           "stuck",
+		Clients:      make(map[*Client]bool),
+		isProcessing: true, // Never finishes
+	}
+	m.mu.Unlock()
+
+	// Short timeout to speed up test
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := m.Shutdown(ctx)
+	elapsed := time.Since(start)
+
+	// Should timeout, not error (context deadline drives the timeout)
+	if err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	// Should have waited roughly 2s (the timeout), not longer
+	if elapsed > 4*time.Second {
+		t.Errorf("Shutdown took too long after timeout: %v", elapsed)
+	}
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 

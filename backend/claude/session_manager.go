@@ -227,24 +227,80 @@ func (m *SessionManager) workingSessionIDs() ([]string, int) {
 	return ids, len(ids)
 }
 
-// Shutdown gracefully stops the session manager
+// Shutdown gracefully stops the session manager.
+// It drains active sessions (waits for "working" sessions to finish their current turn),
+// then settles for 5 seconds, and finally cleans up resources.
+// The ctx deadline controls the maximum wait time for draining.
 func (m *SessionManager) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down SessionManager")
 
-	// Signal goroutines to stop
-	m.cancel()
-
-	// Close FS watcher
+	// Close FS watcher early — no new session discovery during drain
 	if m.watcher != nil {
 		m.watcher.Close()
 	}
 
-	// Wait for live processes to exit
+	// ── Drain: wait for working sessions to finish ──
+
+	// Subscribe to state changes so we wake up when sessions finish
+	drainNotify := make(chan struct{}, 100)
+	unsubscribe := m.Subscribe(func(event SessionEvent) {
+		select {
+		case drainNotify <- struct{}{}:
+		default:
+		}
+	})
+
+	ids, count := m.workingSessionIDs()
+	if count > 0 {
+		log.Info().Int("workingSessions", count).Strs("sessionIDs", ids).Msg("draining: waiting for working sessions to finish")
+
+	drainLoop:
+		for {
+			select {
+			case <-drainNotify:
+				ids, count = m.workingSessionIDs()
+				if count == 0 {
+					log.Info().Msg("drain complete: all sessions finished")
+					break drainLoop
+				}
+				log.Info().Int("remaining", count).Strs("sessionIDs", ids).Msg("draining: sessions still working")
+			case <-ctx.Done():
+				ids, count = m.workingSessionIDs()
+				log.Warn().Int("remaining", count).Strs("sessionIDs", ids).Msg("drain timeout: force killing remaining sessions")
+				m.forceKillAllSessions()
+				break drainLoop
+			}
+		}
+	} else {
+		log.Info().Msg("no working sessions, skipping drain")
+	}
+
+	unsubscribe()
+
+	// ── Settle: wait 5s for final writes to flush ──
+
+	settleTimer := time.NewTimer(5 * time.Second)
+	select {
+	case <-settleTimer.C:
+		log.Info().Msg("settle complete")
+	case <-ctx.Done():
+		settleTimer.Stop()
+		log.Warn().Msg("settle interrupted by context timeout")
+	}
+
+	// ── Cleanup ──
+
+	// Signal goroutines to stop
+	m.cancel()
+
+	// Force kill any remaining live processes (permission-blocked, etc.)
 	liveCount := atomic.LoadInt32(&m.liveProcessCount)
 	if liveCount > 0 {
-		log.Info().Int32("liveProcesses", liveCount).Msg("waiting for Claude processes to exit")
+		log.Info().Int32("liveProcesses", liveCount).Msg("killing remaining live processes after drain")
+		m.forceKillAllSessions()
 
-		waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+		// Brief wait for processes to exit
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer waitCancel()
 
 	waitLoop:
@@ -255,8 +311,7 @@ func (m *SessionManager) Shutdown(ctx context.Context) error {
 			case <-waitCtx.Done():
 				remaining := atomic.LoadInt32(&m.liveProcessCount)
 				if remaining > 0 {
-					log.Warn().Int32("remaining", remaining).Msg("timeout waiting for processes, force killing")
-					m.forceKillAllSessions()
+					log.Warn().Int32("remaining", remaining).Msg("some processes did not exit after force kill")
 				}
 				break waitLoop
 			}
@@ -287,9 +342,9 @@ func (m *SessionManager) Shutdown(ctx context.Context) error {
 	case <-done:
 		log.Info().Msg("SessionManager shutdown complete")
 		return nil
-	case <-ctx.Done():
-		log.Warn().Msg("SessionManager shutdown timed out")
-		return ctx.Err()
+	case <-time.After(2 * time.Second):
+		log.Warn().Msg("SessionManager goroutine cleanup timed out")
+		return nil
 	}
 }
 
