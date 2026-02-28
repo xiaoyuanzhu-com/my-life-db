@@ -185,6 +185,15 @@ func (s *Session) Snapshot() SessionSnapshot {
 	}
 }
 
+// IsWorking returns true if the session is actively processing (mid-turn)
+// and NOT blocked waiting for user permission. Sessions waiting on permission
+// will not progress without human input and should not block server shutdown.
+func (s *Session) IsWorking() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isProcessing && s.pendingPermissionCount == 0
+}
+
 // --- Setter methods (all writes to mutable fields go through these) ---
 
 // TouchActivity updates LastActivity timestamp under lock.

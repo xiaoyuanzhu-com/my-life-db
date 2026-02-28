@@ -212,6 +212,21 @@ func (m *SessionManager) SignalShutdown() {
 	}
 }
 
+// workingSessionIDs returns the IDs and count of sessions currently in "working" state
+// (actively processing, not blocked on permission). Used by drain logic.
+func (m *SessionManager) workingSessionIDs() ([]string, int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var ids []string
+	for id, session := range m.sessions {
+		if session.IsWorking() {
+			ids = append(ids, id)
+		}
+	}
+	return ids, len(ids)
+}
+
 // Shutdown gracefully stops the session manager
 func (m *SessionManager) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down SessionManager")

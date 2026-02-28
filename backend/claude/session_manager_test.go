@@ -601,6 +601,104 @@ func TestListAllSessions_InvalidCursor(t *testing.T) {
 }
 
 // =============================================================================
+// IsWorking Tests
+// =============================================================================
+
+func TestSession_IsWorking(t *testing.T) {
+	tests := []struct {
+		name                   string
+		isProcessing           bool
+		pendingPermissionCount int
+		want                   bool
+	}{
+		{"idle session", false, 0, false},
+		{"processing no permissions", true, 0, true},
+		{"processing with pending permission", true, 1, false},
+		{"not processing with stale permission", false, 1, false},
+		{"processing with multiple permissions", true, 3, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Session{
+				isProcessing:           tt.isProcessing,
+				pendingPermissionCount: tt.pendingPermissionCount,
+			}
+			if got := s.IsWorking(); got != tt.want {
+				t.Errorf("IsWorking() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// Working Session Count Tests
+// =============================================================================
+
+func TestSessionManager_WorkingSessionCount(t *testing.T) {
+	m, cleanup := createTestManager(t)
+	defer cleanup()
+
+	m.mu.Lock()
+	m.initialized = true
+
+	// Idle session
+	m.sessions["idle"] = &Session{
+		ID:           "idle",
+		Clients:      make(map[*Client]bool),
+		isProcessing: false,
+	}
+
+	// Working session (processing, no pending permissions)
+	m.sessions["working"] = &Session{
+		ID:           "working",
+		Clients:      make(map[*Client]bool),
+		isProcessing: true,
+	}
+
+	// Permission-blocked session (processing but waiting on permission)
+	m.sessions["permission"] = &Session{
+		ID:                     "permission",
+		Clients:                make(map[*Client]bool),
+		isProcessing:           true,
+		pendingPermissionCount: 1,
+	}
+	m.mu.Unlock()
+
+	ids, count := m.workingSessionIDs()
+	if count != 1 {
+		t.Errorf("expected 1 working session, got %d", count)
+	}
+	if len(ids) != 1 || ids[0] != "working" {
+		t.Errorf("expected [working], got %v", ids)
+	}
+}
+
+func TestSessionManager_WorkingSessionCount_NoneWorking(t *testing.T) {
+	m, cleanup := createTestManager(t)
+	defer cleanup()
+
+	m.mu.Lock()
+	m.initialized = true
+	m.sessions["idle1"] = &Session{
+		ID:           "idle1",
+		Clients:      make(map[*Client]bool),
+		isProcessing: false,
+	}
+	m.sessions["idle2"] = &Session{
+		ID:           "idle2",
+		Clients:      make(map[*Client]bool),
+		isProcessing: false,
+	}
+	m.mu.Unlock()
+
+	_, count := m.workingSessionIDs()
+	if count != 0 {
+		t.Errorf("expected 0 working sessions, got %d", count)
+	}
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
