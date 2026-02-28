@@ -32,6 +32,7 @@ services:
       - ./data:/home/xiaoyuanzhu/my-life-db/data
       - ./app-data:/home/xiaoyuanzhu/my-life-db/.my-life-db
     restart: unless-stopped
+    stop_grace_period: 11m
     environment:
       - USER_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
       - APP_DATA_DIR=/home/xiaoyuanzhu/my-life-db/.my-life-db
