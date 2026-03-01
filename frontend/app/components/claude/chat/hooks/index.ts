@@ -8,3 +8,4 @@ export {
 export { useSlashCommands, filterCommands, type InitData } from './use-slash-commands'
 export { useWarmSession, type UseWarmSessionResult } from './use-warm-session'
 export { useFileTag, useFilteredFiles, filterFiles, type FileItem } from './use-file-tag'
+export { useAnchorWidth } from './use-anchor-width'

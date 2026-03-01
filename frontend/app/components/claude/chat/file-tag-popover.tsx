@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import { File, Folder } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { Popover, PopoverContent, PopoverAnchor } from '~/components/ui/popover'
+import { useAnchorWidth } from './hooks'
 import type { FileItem } from './hooks/use-file-tag'
 
 interface FileTagPopoverProps {
@@ -33,7 +34,8 @@ export function FileTagPopover({
     },
   }
 
-  const anchorWidth = anchorRef.current?.offsetWidth ?? 320
+  // Reactively track anchor width via ResizeObserver — never exceeds input box
+  const anchorWidth = useAnchorWidth(anchorRef)
 
   // Scroll focused item into view
   useEffect(() => {
@@ -46,12 +48,15 @@ export function FileTagPopover({
     }
   }, [open, focusIndex, files.length])
 
+  // Don't render the popover content until anchor is measured
+  if (!anchorWidth) return null
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor virtualRef={virtualRef} />
       <PopoverContent
         className="p-0 max-h-80 overflow-hidden duration-0"
-        style={{ width: anchorWidth }}
+        style={{ width: anchorWidth, maxWidth: anchorWidth }}
         align="start"
         side="top"
         sideOffset={8}

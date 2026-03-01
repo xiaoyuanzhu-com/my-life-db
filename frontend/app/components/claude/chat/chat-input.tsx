@@ -177,7 +177,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           {/* Popup cards (permissions and questions) - limited to MAX_POPUPS */}
           {/* Constrain total height so cards never push buttons off-screen on mobile */}
           {visiblePopups.length > 0 && (
-            <div className="max-h-[60vh] overflow-y-auto">
+            <div className="max-h-[60vh] overflow-y-auto overflow-x-hidden">
               {visiblePopups.map((item, index) =>
                 item.type === 'permission' ? (
                   <PermissionCard

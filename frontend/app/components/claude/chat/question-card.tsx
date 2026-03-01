@@ -261,7 +261,7 @@ export function QuestionCard({ question, onAnswer, onSkip, isFirst = true }: Que
         </p>
 
         {/* Options - compact table list */}
-        <div className="border border-border rounded-lg overflow-hidden max-h-48 md:max-h-none overflow-y-auto">
+        <div className="border border-border rounded-lg overflow-x-hidden max-h-48 md:max-h-none overflow-y-auto">
           {currentQuestion.options.map((option, oIndex) => {
             const isSelected = currentQuestion.multiSelect
               ? ((answers[currentKey] as string[]) || []).includes(option.label)
