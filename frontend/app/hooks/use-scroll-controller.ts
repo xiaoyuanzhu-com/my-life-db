@@ -120,10 +120,17 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     (behavior: ScrollBehavior = 'instant') => {
       const el = scrollElementRef.current
       if (!el) return
+      const prevScrollTop = el.scrollTop
       phaseRef.current = 'programmatic'
       el.scrollTo({ top: el.scrollHeight, behavior })
       isAtBottomRef.current = true
       shouldStickRef.current = true
+      // If scroll position didn't change (no overflow or already at bottom),
+      // scrollend won't fire — return to idle immediately so ResizeObserver
+      // isn't blocked when content arrives later.
+      if (el.scrollTop === prevScrollTop) {
+        phaseRef.current = 'idle'
+      }
     },
     [],
   )
