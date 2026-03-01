@@ -46,7 +46,32 @@ Prefer mermaid when it can express the visualization. Use HTML when it cannot.
 
 HTML output must be mobile-friendly and responsive — use relative units, flexbox/grid, and ensure readability on small screens.
 
-This applies even when your workflow generates intermediate files (e.g., a script that outputs HTML to a temp file). The pipeline is fine — but present the final result as a fenced code block in your response, not as a file path. Users may be on mobile where opening local files is inconvenient.`
+## Large HTML visualizations (file-based)
+
+When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide presentations, data-heavy charts), do NOT inline it. Use the file-based approach instead:
+
+1. Create the directory: mkdir -p .generated
+2. Write the full HTML to .generated/<descriptive-name>.html using the Write tool
+3. Return a small HTML code block wrapper that loads the file:
+
+` + "`" + "`" + "`" + `html
+<html>
+<head><style>
+  * { margin: 0; padding: 0; }
+  body, html { width: 100%; height: 100%; overflow: hidden; }
+  iframe { width: 100%; height: 100%; border: none; }
+</style></head>
+<body>
+  <iframe src="/raw/.generated/<descriptive-name>.html"></iframe>
+</body>
+</html>
+` + "`" + "`" + "`" + `
+
+This keeps the LLM response small (saving tokens and latency) while the frontend renders the full visualization by loading it from the server via the /raw/ endpoint.
+
+Use descriptive filenames: dashboard-sleep-trends.html, report-quarterly.html, chart-activity-by-month.html.
+
+For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.`
 
 // SessionEvent represents a change in session state
 type SessionEvent struct {
