@@ -3,7 +3,6 @@ import { MessageList } from './message-list'
 import { ChatInput, type ChatInputHandle } from './chat-input'
 import { TodoPanel } from './todo-panel'
 import { RateLimitWarning } from './rate-limit-warning'
-import { useHideOnScroll } from '~/hooks/use-hide-on-scroll'
 import { useSessionWebSocket, useSlashCommands, type ConnectionStatus, type InitData } from './hooks'
 import type { TodoItem, UserQuestion, PermissionRequest, PermissionDecision, ControlResponse } from '~/types/claude'
 import type { PermissionMode } from './permission-mode-selector'
@@ -147,8 +146,11 @@ export function ChatInterface({
   const wasConnectedRef = useRef(false)
   // Track if permission mode has been synced to backend for this session
   const permissionModeSyncedRef = useRef(false)
-  // Scroll container element for hide-on-scroll behavior
-  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
+  // Hide-on-scroll state — driven by scroll controller callback inside MessageList
+  const [shouldHideInput, setShouldHideInput] = useState(false)
+  const handleHideChange = useCallback((hidden: boolean) => {
+    setShouldHideInput(hidden)
+  }, [])
 
   // ============================================================================
   // Hooks
@@ -413,11 +415,6 @@ export function ChatInterface({
   // WebSocket connection hook
   const ws = useSessionWebSocket(sessionId, { onMessage: handleMessage })
 
-  // Hide input on mobile when scrolling up
-  const { shouldHide: shouldHideInput } = useHideOnScroll(scrollElement, {
-    threshold: 50,
-    bottomThreshold: 100,
-  })
 
   // ============================================================================
   // Derived State
@@ -1047,7 +1044,7 @@ export function ChatInterface({
                   'Working...'
                 : null
             }
-            onScrollElementReady={setScrollElement}
+            onHideChange={handleHideChange}
           />
 
           {/* Rate limit warning banner — shown when API quota nears the limit */}

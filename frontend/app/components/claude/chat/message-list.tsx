@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useStickToBottom } from '~/hooks/use-stick-to-bottom'
+import { useScrollController } from '~/hooks/use-scroll-controller'
 import { useFilteredMessages } from './use-filtered-messages'
 import { TransientStatusBlock } from './session-messages'
 import { MessageBlock } from './message-block'
@@ -9,8 +9,6 @@ import { StreamingResponse } from './streaming-response'
 import { StreamingThinking } from './streaming-thinking'
 import { isTextBlock } from '~/lib/session-message-utils'
 import type { SessionMessage, ExtractedToolResult, ContentBlock } from '~/lib/session-message-utils'
-
-const TOP_LOAD_THRESHOLD = 1000
 
 interface MessageListProps {
   messages: SessionMessage[]
@@ -23,8 +21,8 @@ interface MessageListProps {
   /** Turn counter — incremented each turn so ClaudeWIP picks fresh random words per turn */
   turnId?: number
   wipText?: string | null
-  /** Callback to receive the scroll container element for external use (e.g., hide-on-scroll) */
-  onScrollElementReady?: (element: HTMLDivElement | null) => void
+  /** Called when hide-on-scroll state changes (true = hidden) */
+  onHideChange?: (hidden: boolean) => void
   /** Whether a page of older messages is currently being loaded */
   isLoadingPage?: boolean
   /** Whether there are more historical pages available to load */
@@ -38,7 +36,7 @@ interface MessageListProps {
  *
  * This component handles:
  * - Virtual scrolling via @tanstack/react-virtual (only visible items are in the DOM)
- * - Scroll container with stick-to-bottom behavior (via custom useStickToBottom hook)
+ * - Scroll container with unified scroll controller (sticky, hide-on-scroll, history paging)
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
@@ -47,16 +45,19 @@ interface MessageListProps {
  * - Streaming display (StreamingResponse, StreamingThinking, ClaudeWIP)
  * - TransientStatusBlock for ephemeral session status (e.g., compacting)
  *
- * The useStickToBottom hook handles:
+ * The useScrollController hook handles:
  * - Sticking to bottom when new content is added
  * - Allowing user to scroll up to break sticky behavior
  * - Re-engaging sticky when user scrolls back to bottom
  * - Mobile momentum scrolling via scroll + scrollend events
+ * - Phase-gated ResizeObserver (never fights user input)
+ * - Hide-on-scroll for chat input (ref-based, no React re-renders during scroll)
+ * - Near-top detection for history page loading
  *
  * For actual message rendering, each virtual item renders a MessageBlock directly.
  * SessionMessages is still used for nested Task tool conversations (depth > 0).
  */
-export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onScrollElementReady, isLoadingPage, hasMoreHistory, onLoadOlderPage }: MessageListProps) {
+export function MessageList({ messages, toolResultMap, optimisticMessage, streamingText, streamingThinking, turnId, wipText, onHideChange, isLoadingPage, hasMoreHistory, onLoadOlderPage }: MessageListProps) {
   // Filter messages and build lookup maps (same logic as SessionMessages uses for depth > 0)
   const { filteredMessages, maps, currentStatus } = useFilteredMessages(
     messages,
@@ -64,36 +65,30 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     0, // depth = 0 for top-level
   )
 
-  // Stick-to-bottom: replaces the `use-stick-to-bottom` npm library
-  const { shouldStick, setScrollElement, setContentElement } = useStickToBottom()
+  // ============================================================================
+  // Scroll controller + virtualizer
+  // ============================================================================
 
-  // Track scroll element for parent callback and scroll listeners
-  const scrollElementRef = useRef<HTMLDivElement | null>(null)
+  // The near-top handler needs virtualizer (for anchor computation), but virtualizer
+  // needs scrollElement from the controller. Break the cycle with a ref — the
+  // controller reads onNearTop via ref internally, so it always gets the latest.
+  const nearTopHandlerRef = useRef<(() => void) | undefined>(undefined)
+  const stableNearTop = useCallback(() => nearTopHandlerRef.current?.(), [])
+
+  const { scrollRef, contentRef, scrollElement, shouldStick } = useScrollController({
+    onHideChange,
+    onNearTop: stableNearTop,
+  })
+
   const historyPagingActiveRef = useRef(false)
   const pendingPrependAnchorRef = useRef<{ index: number; delta: number } | null>(null)
 
   // Track previous state for scroll position preservation on prepend
   const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
 
-  // Merged ref callback: assigns to useStickToBottom's setScrollElement AND stores locally
-  const mergedScrollRef = useCallback(
-    (element: HTMLDivElement | null) => {
-      scrollElementRef.current = element
-      // Assign to useStickToBottom's callback ref (sets up scroll/scrollend listeners)
-      setScrollElement(element)
-      // Notify parent for hide-on-scroll
-      onScrollElementReady?.(element)
-    },
-    [setScrollElement, onScrollElementReady]
-  )
-
-  // ============================================================================
-  // Virtualizer
-  // ============================================================================
-
   const virtualizer = useVirtualizer({
     count: filteredMessages.length,
-    getScrollElement: () => scrollElementRef.current,
+    getScrollElement: () => scrollElement.current,
     estimateSize: () => 120,
     overscan: 5,
     getItemKey: (index) => filteredMessages[index]?.uuid ?? index,
@@ -101,10 +96,11 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     // It uses ResizeObserver internally to detect size changes dynamically.
   })
 
-  const requestOlderPage = useCallback(() => {
+  // Now that virtualizer exists, set the actual near-top handler (updated each render)
+  nearTopHandlerRef.current = () => {
     if (!onLoadOlderPage || !hasMoreHistory || isLoadingPage) return
 
-    const element = scrollElementRef.current
+    const element = scrollElement.current
     if (!element) return
 
     const scrollTop = element.scrollTop
@@ -123,44 +119,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
     historyPagingActiveRef.current = true
     onLoadOlderPage()
-  }, [hasMoreHistory, isLoadingPage, onLoadOlderPage, virtualizer])
-
-  // ============================================================================
-  // Scroll event handlers
-  // ============================================================================
-
-  // Scroll-up detection: load older pages only after the user has explicitly
-  // scrolled away from the sticky bottom state.
-  useEffect(() => {
-    const element = scrollElementRef.current
-    if (!element) return
-
-    let lastScrollTop = element.scrollTop
-
-    const handleScroll = () => {
-      const currentScrollTop = element.scrollTop
-
-      if (currentScrollTop >= TOP_LOAD_THRESHOLD) {
-        historyPagingActiveRef.current = false
-      }
-
-      const scrollingUp = currentScrollTop < lastScrollTop
-      lastScrollTop = currentScrollTop
-
-      if (
-        scrollingUp &&
-        currentScrollTop < TOP_LOAD_THRESHOLD &&
-        hasMoreHistory &&
-        !isLoadingPage &&
-        !shouldStick.current
-      ) {
-        requestOlderPage()
-      }
-    }
-
-    element.addEventListener('scroll', handleScroll, { passive: true })
-    return () => element.removeEventListener('scroll', handleScroll)
-  }, [hasMoreHistory, isLoadingPage, requestOlderPage, shouldStick])
+  }
 
   // ============================================================================
   // Scroll position preservation on prepend
@@ -211,16 +170,16 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   // stay at the top" behavior without letting a bad initial scroll position
   // trigger background overfetch on first open.
   useEffect(() => {
-    const element = scrollElementRef.current
+    const element = scrollElement.current
     if (!element || !historyPagingActiveRef.current || isLoadingPage) return
 
-    if (!hasMoreHistory || shouldStick.current || element.scrollTop >= TOP_LOAD_THRESHOLD) {
+    if (!hasMoreHistory || shouldStick.current || element.scrollTop >= 1000) {
       historyPagingActiveRef.current = false
       return
     }
 
-    requestOlderPage()
-  }, [filteredMessages.length, isLoadingPage, hasMoreHistory, requestOlderPage, shouldStick])
+    nearTopHandlerRef.current?.()
+  }, [filteredMessages.length, isLoadingPage, hasMoreHistory, shouldStick, scrollElement])
 
   // ============================================================================
   // Streaming visibility logic
@@ -272,10 +231,10 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   return (
     <div
-      ref={mergedScrollRef}
+      ref={scrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
     >
-      <div ref={setContentElement} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
+      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
         {!hasMessages ? (
           <div className="flex-1" />
         ) : (
