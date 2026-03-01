@@ -57,7 +57,8 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
   }, [handleKeyDown])
 
   // True full-bleed layout: iframe fills the entire viewport, close button
-  // floats above it with a gradient scrim for contrast.  Safe area offsets
+  // floats above it.  The button's glassmorphism provides sufficient contrast
+  // against the dark overlay — no gradient scrim needed.  Safe area offsets
   // are applied only to the button position via CSS.
   return createPortal(
     <div
@@ -66,9 +67,6 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
       aria-modal="true"
       aria-label="Fullscreen preview"
     >
-      {/* Gradient scrim — ensures close button is visible over any content */}
-      <div className="preview-fullscreen-scrim" />
-
       <button
         className="preview-fullscreen-collapse"
         onClick={onClose}

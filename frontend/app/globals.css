@@ -713,7 +713,7 @@
    shell because .ignoresSafeArea() zeroes out CSS env() values in WKWebView.
    In Safari / desktop browsers the native vars are absent, so env() is used. */
 /* Fullscreen preview — true full-bleed layout. The iframe fills the entire
-   viewport; the close button floats above it with a gradient scrim for contrast.
+   viewport; the close button floats above it with glassmorphism for contrast.
    Safe area offsets are applied only to the close button position. */
 .preview-fullscreen-overlay {
   position: fixed;
@@ -726,19 +726,6 @@
 @keyframes preview-fullscreen-in {
   from { opacity: 0; }
   to   { opacity: 1; }
-}
-
-/* Gradient scrim behind close button — ensures button contrast against
-   any iframe content.  pointer-events: none lets clicks pass to the iframe. */
-.preview-fullscreen-scrim {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, transparent 100%);
-  pointer-events: none;
-  z-index: 1;
 }
 
 .preview-fullscreen-collapse {
