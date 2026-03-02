@@ -46,6 +46,7 @@ const DEFAULT_STICKY_THRESHOLD = 50
 const DEFAULT_HIDE_SCROLL_THRESHOLD = 50
 const DEFAULT_HIDE_BOTTOM_THRESHOLD = 100
 const DEFAULT_TOP_LOAD_THRESHOLD = 1000
+const STICKY_BREAK_MIN_UPWARD_DELTA = 8
 
 // ============================================================================
 // Hook
@@ -90,6 +91,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   const lastScrollTopRef = useRef<number>(0)
   const accumulatedDeltaRef = useRef<number>(0)
   const isHiddenRef = useRef<boolean>(false)
+  const userScrollIntentRef = useRef<boolean>(false)
 
   // ---- ResizeObserver ----
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -122,6 +124,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       if (!el) return
       const prevScrollTop = el.scrollTop
       phaseRef.current = 'programmatic'
+      userScrollIntentRef.current = false
       el.scrollTo({ top: el.scrollHeight, behavior })
       isAtBottomRef.current = true
       shouldStickRef.current = true
@@ -136,10 +139,9 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   )
 
   const stickIfNeeded = useCallback(() => {
-    if (phaseRef.current !== 'idle') return // ◄ phase gate
-    if (shouldStickRef.current) {
-      scrollToBottom('instant')
-    }
+    if (phaseRef.current !== 'idle') return // phase gate
+    if (!shouldStickRef.current) return
+    scrollToBottom('instant')
   }, [scrollToBottom])
 
   // ============================================================================
@@ -148,6 +150,10 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
   // Stored in a ref so addEventListener/removeEventListener use the same identity.
   // All closed-over values are refs or stable callbacks — safe across renders.
+  const markUserScrollIntentRef = useRef(function markUserScrollIntent() {
+    userScrollIntentRef.current = true
+  })
+
   const handleScrollRef = useRef(function handleScroll() {
     const el = scrollElementRef.current
     if (!el) return
@@ -155,6 +161,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // ---- 1. Read metrics (once) ----
     const scrollTop = el.scrollTop
     const distanceFromBottom = el.scrollHeight - scrollTop - el.clientHeight
+    const delta = scrollTop - lastScrollTopRef.current
 
     // ---- 2. Phase gate ----
     if (phaseRef.current === 'programmatic') {
@@ -163,8 +170,10 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       return
     }
 
-    // Mark phase as user-driven (first scroll event transitions idle → user)
-    if (phaseRef.current === 'idle') {
+    const userDriven = userScrollIntentRef.current
+
+    // Only explicit user input should move us into the user phase.
+    if (userDriven && phaseRef.current === 'idle') {
       phaseRef.current = 'user'
     }
 
@@ -174,47 +183,50 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
     if (atBottom) {
       shouldStickRef.current = true
-    } else {
+    } else if (userDriven && delta <= -STICKY_BREAK_MIN_UPWARD_DELTA) {
+      // Ignore tiny upward jitter from layout/anchoring. Only a real upward
+      // scroll gesture should break sticky mode.
       shouldStickRef.current = false
     }
 
     // ---- 4. Hide-on-scroll ----
-    const delta = scrollTop - lastScrollTopRef.current
     const nearBottom = distanceFromBottom <= hideBottomThreshold
 
-    if (nearBottom) {
-      // Always show input at bottom
-      if (isHiddenRef.current) {
-        isHiddenRef.current = false
-        onHideChangeRef.current?.(false)
-      }
-      accumulatedDeltaRef.current = 0
-    } else {
-      // Accumulate delta, reset on direction change
-      if (
-        (delta > 0 && accumulatedDeltaRef.current < 0) ||
-        (delta < 0 && accumulatedDeltaRef.current > 0)
-      ) {
-        accumulatedDeltaRef.current = delta
+    if (userDriven) {
+      if (nearBottom) {
+        // Always show input at bottom
+        if (isHiddenRef.current) {
+          isHiddenRef.current = false
+          onHideChangeRef.current?.(false)
+        }
+        accumulatedDeltaRef.current = 0
       } else {
-        accumulatedDeltaRef.current += delta
-      }
+        // Accumulate delta, reset on direction change
+        if (
+          (delta > 0 && accumulatedDeltaRef.current < 0) ||
+          (delta < 0 && accumulatedDeltaRef.current > 0)
+        ) {
+          accumulatedDeltaRef.current = delta
+        } else {
+          accumulatedDeltaRef.current += delta
+        }
 
-      if (accumulatedDeltaRef.current > hideScrollThreshold && isHiddenRef.current) {
-        // Scrolling down → show input
-        isHiddenRef.current = false
-        onHideChangeRef.current?.(false)
-        accumulatedDeltaRef.current = 0
-      } else if (accumulatedDeltaRef.current < -hideScrollThreshold && !isHiddenRef.current) {
-        // Scrolling up → hide input
-        isHiddenRef.current = true
-        onHideChangeRef.current?.(true)
-        accumulatedDeltaRef.current = 0
+        if (accumulatedDeltaRef.current > hideScrollThreshold && isHiddenRef.current) {
+          // Scrolling down → show input
+          isHiddenRef.current = false
+          onHideChangeRef.current?.(false)
+          accumulatedDeltaRef.current = 0
+        } else if (accumulatedDeltaRef.current < -hideScrollThreshold && !isHiddenRef.current) {
+          // Scrolling up → hide input
+          isHiddenRef.current = true
+          onHideChangeRef.current?.(true)
+          accumulatedDeltaRef.current = 0
+        }
       }
     }
 
     // ---- 5. History paging (scroll-up near top) ----
-    const scrollingUp = delta < 0
+    const scrollingUp = userDriven && delta < 0
     if (scrollingUp && scrollTop < topLoadThreshold && !shouldStickRef.current) {
       onNearTopRef.current?.()
     }
@@ -236,13 +248,9 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     if (atBottom) {
       shouldStickRef.current = true
     }
-    // If phase was programmatic and we ended NOT at bottom, disengage stick
-    if (phaseRef.current === 'programmatic' && !atBottom) {
-      shouldStickRef.current = false
-    }
-
     // Return to idle — ResizeObserver may now call stickIfNeeded()
     phaseRef.current = 'idle'
+    userScrollIntentRef.current = false
   })
 
   // ============================================================================
@@ -253,12 +261,16 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     (el: HTMLDivElement | null) => {
       const handleScroll = handleScrollRef.current
       const handleScrollEnd = handleScrollEndRef.current
+      const markUserScrollIntent = markUserScrollIntentRef.current
 
       // Clean up previous element
       const prevEl = scrollElementRef.current
       if (prevEl && prevEl !== el) {
         prevEl.removeEventListener('scroll', handleScroll)
         prevEl.removeEventListener('scrollend', handleScrollEnd)
+        prevEl.removeEventListener('wheel', markUserScrollIntent)
+        prevEl.removeEventListener('touchstart', markUserScrollIntent)
+        prevEl.removeEventListener('pointerdown', markUserScrollIntent)
       }
 
       scrollElementRef.current = el
@@ -270,9 +282,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       isAtBottomRef.current = checkIsAtBottom(el)
       lastScrollTopRef.current = el.scrollTop
       phaseRef.current = 'idle'
+      userScrollIntentRef.current = false
 
       el.addEventListener('scroll', handleScroll, { passive: true })
       el.addEventListener('scrollend', handleScrollEnd, { passive: true })
+      el.addEventListener('wheel', markUserScrollIntent, { passive: true })
+      el.addEventListener('touchstart', markUserScrollIntent, { passive: true })
+      el.addEventListener('pointerdown', markUserScrollIntent, { passive: true })
 
       // Initial stick
       requestAnimationFrame(() => {
@@ -327,14 +343,18 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // ============================================================================
 
   useEffect(() => {
-    const handleScroll = handleScrollRef.current
-    const handleScrollEnd = handleScrollEndRef.current
+      const handleScroll = handleScrollRef.current
+      const handleScrollEnd = handleScrollEndRef.current
+      const markUserScrollIntent = markUserScrollIntentRef.current
 
     return () => {
       const el = scrollElementRef.current
       if (el) {
         el.removeEventListener('scroll', handleScroll)
         el.removeEventListener('scrollend', handleScrollEnd)
+        el.removeEventListener('wheel', markUserScrollIntent)
+        el.removeEventListener('touchstart', markUserScrollIntent)
+        el.removeEventListener('pointerdown', markUserScrollIntent)
       }
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect()

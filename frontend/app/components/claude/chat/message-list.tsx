@@ -85,8 +85,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   // Track previous state for scroll position preservation on prepend
   const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
-  const lastMessageIndex = filteredMessages.length - 1
-  const lastMessageUuid = filteredMessages[lastMessageIndex]?.uuid
 
   const virtualizer = useVirtualizer({
     count: filteredMessages.length,
@@ -115,15 +113,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
       virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined
     }
   }, [virtualizer, shouldStick])
-
-  // scrollToIndex retries across a few animation frames, which makes the
-  // initial bottom snap much more reliable than a single raw scrollTop write.
-  useLayoutEffect(() => {
-    if (lastMessageIndex < 0 || !lastMessageUuid) return
-    if (!shouldStick.current || historyPagingActiveRef.current) return
-
-    virtualizer.scrollToIndex(lastMessageIndex, { align: 'end' })
-  }, [lastMessageIndex, lastMessageUuid, virtualizer, shouldStick])
 
   // Now that virtualizer exists, set the actual near-top handler (updated each render)
   nearTopHandlerRef.current = () => {
@@ -262,6 +251,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     <div
       ref={scrollRef}
       className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
+      style={{ overflowAnchor: 'none' }}
     >
       <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
         {!hasMessages ? (
