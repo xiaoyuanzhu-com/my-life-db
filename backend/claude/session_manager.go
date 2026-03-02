@@ -33,10 +33,11 @@ const (
 	SessionEventDeleted     SessionEventType = "deleted"
 )
 
-// defaultSystemPrompt is the system prompt sent to every new Claude session.
-// This is an internal implementation detail shipped with the app — users customize
-// Claude's behavior through CLAUDE.md files instead.
-const defaultSystemPrompt = `When the user asks for a chart, diagram, or visualization, return it as a fenced code block. The frontend auto-renders these — do not describe the output unless asked.
+// buildSystemPrompt returns the system prompt for a Claude session, with the
+// working directory templated in so the LLM uses exact absolute paths for
+// file-based HTML previews (no guessing relative vs absolute).
+func buildSystemPrompt(workingDir string) string {
+	return `When the user asks for a chart, diagram, or visualization, return it as a fenced code block. The frontend auto-renders these — do not describe the output unless asked.
 
 Two formats are supported:
 - Mermaid code blocks for flowcharts, sequence diagrams, Gantt charts, ER diagrams, etc.
@@ -50,8 +51,8 @@ HTML output must be mobile-friendly and responsive — use relative units, flexb
 
 When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide presentations, data-heavy charts), do NOT inline it. Use the file-based approach instead:
 
-1. Create the directory: mkdir -p .generated
-2. Write the full HTML to .generated/<descriptive-name>.html using the Write tool
+1. Create the directory: mkdir -p ` + workingDir + `/.generated
+2. Write the full HTML to ` + workingDir + `/.generated/<descriptive-name>.html using the Write tool
 3. Return a small HTML code block wrapper that loads the file:
 
 ` + "`" + "`" + "`" + `html
@@ -67,11 +68,14 @@ When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide 
 </html>
 ` + "`" + "`" + "`" + `
 
+IMPORTANT: Always write files to ` + workingDir + `/.generated/ (absolute path). The iframe src must use /raw/.generated/ (the /raw/ endpoint serves files relative to ` + workingDir + `).
+
 This keeps the LLM response small (saving tokens and latency) while the frontend renders the full visualization by loading it from the server via the /raw/ endpoint.
 
 Use descriptive filenames: dashboard-sleep-trends.html, report-quarterly.html, chart-activity-by-month.html.
 
 For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.`
+}
 
 // SessionEvent represents a change in session state
 type SessionEvent struct {
@@ -1496,7 +1500,7 @@ func (m *SessionManager) createSessionWithSDK(session *Session, resume bool) err
 
 	options := sdk.ClaudeAgentOptions{
 		Cwd:                    session.WorkingDir,
-		SystemPrompt:           defaultSystemPrompt,
+		SystemPrompt:           buildSystemPrompt(session.WorkingDir),
 		PermissionMode:         permMode,
 		CanUseTool:             session.CreatePermissionCallback(),
 		SkipInitialization:     true,
