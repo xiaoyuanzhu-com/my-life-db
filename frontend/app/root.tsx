@@ -59,7 +59,11 @@ export default function Root() {
 
   return (
     <FeatureFlagsProvider>
-      <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] min-h-screen h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
+      {/* h-dvh is the sole height constraint — do NOT add min-h-screen.
+          On iOS Safari 100vh > 100dvh (vh includes the URL bar), so min-h-screen
+          would make the root taller than the visible viewport, creating a competing
+          scrollable layer that causes mobile scroll to jump and not follow finger. */}
+      <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
         <AuthProvider>
           {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
           {!native && <ConditionalHeader />}

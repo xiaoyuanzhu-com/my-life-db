@@ -32,6 +32,10 @@ interface ScrollControllerReturn {
   shouldStick: React.RefObject<boolean>
   /** Whether the user is currently at the bottom */
   isAtBottom: React.RefObject<boolean>
+  /** Whether user's finger is physically on the scroll surface */
+  fingerDown: React.RefObject<boolean>
+  /** Whether user scroll intent is active (finger down through momentum end) */
+  userScrollIntent: React.RefObject<boolean>
   /** Programmatically scroll to the bottom */
   scrollToBottom: (behavior?: ScrollBehavior) => void
   /** Force-show the input (e.g., when opening a modal) */
@@ -63,8 +67,12 @@ const STICKY_BREAK_MIN_UPWARD_DELTA = 8
  *   idle ──scroll event──► user ──scrollend──► idle
  *   idle ──scrollToBottom()──► programmatic ──scrollend──► idle
  *
- * Key invariant: stickIfNeeded() only fires during `idle` phase, so
- * ResizeObserver can never yank the scroll during user interaction.
+ * Key invariant: stickIfNeeded() is blocked when:
+ *   1. phase !== 'idle' (user scrolling or programmatic scroll in progress)
+ *   2. fingerDownRef is true (user's finger is on the scroll surface)
+ *   3. userScrollIntentRef is true (momentum scroll still going)
+ * This ensures ResizeObserver can never yank the scroll during any user
+ * interaction — including just touching the screen without scrolling.
  */
 export function useScrollController(options: ScrollControllerOptions = {}): ScrollControllerReturn {
   const {
@@ -92,6 +100,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   const accumulatedDeltaRef = useRef<number>(0)
   const isHiddenRef = useRef<boolean>(false)
   const userScrollIntentRef = useRef<boolean>(false)
+
+  // ---- User interaction lock ----
+  // Tracks whether the user's finger is physically on the scroll surface.
+  // Separate from userScrollIntentRef (which persists through momentum).
+  // When true, ALL programmatic scrolling is blocked — stickIfNeeded() and
+  // virtualizer scroll adjustments must respect this as an absolute lock.
+  const fingerDownRef = useRef<boolean>(false)
 
   // ---- ResizeObserver ----
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -140,6 +155,8 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
   const stickIfNeeded = useCallback(() => {
     if (phaseRef.current !== 'idle') return // phase gate
+    if (fingerDownRef.current) return       // finger on screen — absolute lock
+    if (userScrollIntentRef.current) return // momentum still going
     if (!shouldStickRef.current) return
     scrollToBottom('instant')
   }, [scrollToBottom])
@@ -152,6 +169,11 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // All closed-over values are refs or stable callbacks — safe across renders.
   const markUserScrollIntentRef = useRef(function markUserScrollIntent() {
     userScrollIntentRef.current = true
+    fingerDownRef.current = true
+  })
+
+  const clearFingerDownRef = useRef(function clearFingerDown() {
+    fingerDownRef.current = false
   })
 
   const handleScrollRef = useRef(function handleScroll() {
@@ -262,6 +284,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       const handleScroll = handleScrollRef.current
       const handleScrollEnd = handleScrollEndRef.current
       const markUserScrollIntent = markUserScrollIntentRef.current
+      const clearFingerDown = clearFingerDownRef.current
 
       // Clean up previous element
       const prevEl = scrollElementRef.current
@@ -271,6 +294,8 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         prevEl.removeEventListener('wheel', markUserScrollIntent)
         prevEl.removeEventListener('touchstart', markUserScrollIntent)
         prevEl.removeEventListener('pointerdown', markUserScrollIntent)
+        prevEl.removeEventListener('touchend', clearFingerDown)
+        prevEl.removeEventListener('pointerup', clearFingerDown)
       }
 
       scrollElementRef.current = el
@@ -283,12 +308,15 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       lastScrollTopRef.current = el.scrollTop
       phaseRef.current = 'idle'
       userScrollIntentRef.current = false
+      fingerDownRef.current = false
 
       el.addEventListener('scroll', handleScroll, { passive: true })
       el.addEventListener('scrollend', handleScrollEnd, { passive: true })
       el.addEventListener('wheel', markUserScrollIntent, { passive: true })
       el.addEventListener('touchstart', markUserScrollIntent, { passive: true })
       el.addEventListener('pointerdown', markUserScrollIntent, { passive: true })
+      el.addEventListener('touchend', clearFingerDown, { passive: true })
+      el.addEventListener('pointerup', clearFingerDown, { passive: true })
 
       // Initial stick
       requestAnimationFrame(() => {
@@ -343,9 +371,10 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // ============================================================================
 
   useEffect(() => {
-      const handleScroll = handleScrollRef.current
-      const handleScrollEnd = handleScrollEndRef.current
-      const markUserScrollIntent = markUserScrollIntentRef.current
+    const handleScroll = handleScrollRef.current
+    const handleScrollEnd = handleScrollEndRef.current
+    const markUserScrollIntent = markUserScrollIntentRef.current
+    const clearFingerDown = clearFingerDownRef.current
 
     return () => {
       const el = scrollElementRef.current
@@ -355,6 +384,8 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         el.removeEventListener('wheel', markUserScrollIntent)
         el.removeEventListener('touchstart', markUserScrollIntent)
         el.removeEventListener('pointerdown', markUserScrollIntent)
+        el.removeEventListener('touchend', clearFingerDown)
+        el.removeEventListener('pointerup', clearFingerDown)
       }
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect()
@@ -368,6 +399,8 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     scrollElement: scrollElementRef,
     shouldStick: shouldStickRef,
     isAtBottom: isAtBottomRef,
+    fingerDown: fingerDownRef,
+    userScrollIntent: userScrollIntentRef,
     scrollToBottom,
     showInput,
   }

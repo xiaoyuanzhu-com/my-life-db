@@ -84,7 +84,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const nearTopHandlerRef = useRef<(() => void) | undefined>(undefined)
   const stableNearTop = useCallback(() => nearTopHandlerRef.current?.(), [])
 
-  const { scrollRef, contentRef, scrollElement, shouldStick } = useScrollController({
+  const { scrollRef, contentRef, scrollElement, shouldStick, fingerDown, userScrollIntent } = useScrollController({
     onHideChange,
     onNearTop: stableNearTop,
   })
@@ -107,6 +107,13 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   useEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      // User is physically interacting with the scroll surface — never fight
+      // their gesture. This prevents the jumps on mobile where touch deltas
+      // are small and sticky mode breaks slowly.
+      if (fingerDown.current || userScrollIntent.current) {
+        return false
+      }
+
       if (shouldStick.current || historyPagingActiveRef.current) {
         return true
       }
@@ -121,7 +128,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     return () => {
       virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined
     }
-  }, [virtualizer, shouldStick])
+  }, [virtualizer, shouldStick, fingerDown, userScrollIntent])
 
   // Now that virtualizer exists, set the actual near-top handler (updated each render)
   nearTopHandlerRef.current = () => {
@@ -261,7 +268,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
-        style={{ overflowAnchor: 'none' }}
+        style={{ overflowAnchor: 'none', touchAction: 'pan-y' }}
       >
         <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
           {!hasMessages ? (
