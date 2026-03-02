@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os/exec"
 
@@ -51,11 +52,13 @@ func (h *Handlers) ClaudeLoginWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Spawn `claude auth login` in a PTY
+	// Spawn `claude auth login` in a PTY with an explicit window size.
+	// Claude Code uses Ink (React for CLI) which reads terminal dimensions;
+	// without a proper size, the TUI may fail to render or accept input.
 	cmd := exec.Command("claude", "auth", "login")
 	cmd.Env = append(cmd.Environ(), "TERM=xterm-256color")
 
-	ptmx, err := pty.Start(cmd)
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	if err != nil {
 		log.Error().Err(err).Msg("claude login: failed to start pty")
 		conn.Close(websocket.StatusInternalError, "failed to start login process")
@@ -81,14 +84,34 @@ func (h *Handlers) ClaudeLoginWebSocket(c *gin.Context) {
 	}()
 
 	// WebSocket → PTY
+	// Binary messages are terminal input; text messages are control (e.g. resize).
 	go func() {
 		for {
-			_, data, err := conn.Read(ctx)
+			msgType, data, err := conn.Read(ctx)
 			if err != nil {
 				// WebSocket closed — kill the process
 				cmd.Process.Kill()
 				return
 			}
+
+			// Text message = control command (resize)
+			if msgType == websocket.MessageText {
+				var msg struct {
+					Type string `json:"type"`
+					Cols uint16 `json:"cols"`
+					Rows uint16 `json:"rows"`
+				}
+				if err := json.Unmarshal(data, &msg); err == nil && msg.Type == "resize" {
+					if err := pty.Setsize(ptmx, &pty.Winsize{Rows: msg.Rows, Cols: msg.Cols}); err != nil {
+						log.Debug().Err(err).Msg("claude login: pty resize failed")
+					} else {
+						log.Debug().Uint16("cols", msg.Cols).Uint16("rows", msg.Rows).Msg("claude login: pty resized")
+					}
+				}
+				continue
+			}
+
+			// Binary message = terminal input
 			if _, err := ptmx.Write(data); err != nil {
 				log.Debug().Err(err).Msg("claude login: pty write failed")
 				return

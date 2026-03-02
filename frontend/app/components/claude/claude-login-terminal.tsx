@@ -57,6 +57,10 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
 
     ws.onopen = () => {
       setStatus('running')
+      // Send initial terminal size so backend PTY matches
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      // Force focus so keyboard input is captured immediately
+      term.focus()
     }
 
     ws.onmessage = (event) => {
@@ -78,10 +82,17 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
       setStatus('error')
     }
 
-    // Terminal input → WebSocket
+    // Terminal input → WebSocket (binary)
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(new TextEncoder().encode(data))
+      }
+    })
+
+    // Terminal resize → WebSocket (text/JSON) so backend can resize PTY
+    term.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }))
       }
     })
 
@@ -111,8 +122,12 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
           </p>
         </div>
 
+        {/* tabIndex makes the container focusable; onClick ensures clicking
+            anywhere (including padding) forwards focus to xterm's hidden textarea */}
         <div
           ref={terminalRef}
+          tabIndex={0}
+          onClick={() => termRef.current?.focus()}
           className="w-full rounded-lg border border-border overflow-hidden p-2"
           style={{ backgroundColor: 'var(--claude-bg-code-block)', height: '360px' }}
         />
