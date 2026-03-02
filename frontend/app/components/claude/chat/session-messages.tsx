@@ -371,6 +371,7 @@ function getToolTitle(name: string, input: Record<string, unknown>): string {
     case 'WebSearch':
       return truncate(input.query as string | undefined, 40) || name
 
+    case 'Agent':  // Claude Code renamed Task → Agent
     case 'Task':
       return truncate(input.description as string | undefined, 40) || name
 

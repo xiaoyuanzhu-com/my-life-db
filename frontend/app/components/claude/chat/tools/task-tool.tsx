@@ -48,6 +48,9 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
 
   const params = toolCall.parameters as TaskToolParams
 
+  // Display name: "Agent" for new Claude Code, "Task" for older sessions
+  const displayName = toolCall.name === 'Agent' ? 'Agent' : 'Task'
+
   // Detect async launch — the original result is just metadata, the actual output comes via TaskOutput
   const isAsyncLaunch = useMemo(() => {
     if (!toolCall.result || typeof toolCall.result !== 'object') return false
@@ -237,7 +240,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: Status-colored bullet + "Task" + description (clickable to expand) */}
+      {/* Header: Status-colored bullet + tool name + description (clickable to expand) */}
       {hasExpandableContent ? (
         <button
           type="button"
@@ -247,7 +250,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
           <MessageDot type={toolStatusToDotType(toolCall.status)} />
           <div className="flex-1 min-w-0">
             <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
-              Task
+              {displayName}
             </span>
             <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
               {params.description} ({params.subagent_type})
@@ -267,7 +270,7 @@ export function TaskToolView({ toolCall, agentProgressMap, subagentMessagesMap, 
           <MessageDot type={toolStatusToDotType(toolCall.status)} />
           <div className="flex-1 min-w-0">
             <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
-              Task
+              {displayName}
             </span>
             <span className="ml-2" style={{ color: 'var(--claude-text-secondary)' }}>
               {params.description} ({params.subagent_type})

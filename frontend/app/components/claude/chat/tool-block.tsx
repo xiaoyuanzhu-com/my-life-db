@@ -61,6 +61,7 @@ function _getToolSummary(toolCall: ToolCall): string {
       return params.url || 'URL'
     case 'WebSearch':
       return params.query || 'query'
+    case 'Agent':  // Claude Code renamed Task → Agent
     case 'Task':
       return params.description || 'task'
     case 'TaskOutput':
@@ -121,6 +122,7 @@ function ToolContent({
       return <WebFetchToolView toolCall={toolCall} onHeightChange={onHeightChange} />
     case 'WebSearch':
       return <WebSearchToolView toolCall={toolCall} onHeightChange={onHeightChange} />
+    case 'Agent':  // Claude Code renamed Task → Agent
     case 'Task':
       return <TaskToolView toolCall={toolCall} agentProgressMap={agentProgressMap} subagentMessagesMap={subagentMessagesMap} asyncTaskOutputMap={asyncTaskOutputMap} taskProgressMap={taskProgressMap} depth={depth} onHeightChange={onHeightChange} />
     case 'TodoWrite':

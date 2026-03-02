@@ -18,6 +18,7 @@ export interface ToolUseContentBlock {
   id: string
   name: string
   input: Record<string, unknown>
+  caller?: { type: string }  // Invocation context (e.g., "direct" = model chose to use it)
 }
 
 export interface ToolResultContentBlock {
