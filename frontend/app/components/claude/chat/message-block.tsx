@@ -62,9 +62,11 @@ interface MessageBlockProps {
   depth?: number
   /** Callback when this block's height changes (for virtualizer re-measurement) */
   onHeightChange?: () => void
+  /** Callback to open fullscreen preview at a higher level (avoids virtualizer unmount losing state) */
+  onRequestFullscreen?: (srcdoc: string) => void
 }
 
-export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0, onHeightChange }: MessageBlockProps) {
+export function MessageBlock({ message, toolResultMap, agentProgressMap, bashProgressMap, hookProgressMap, toolUseMap, skillContentMap, subagentMessagesMap, asyncTaskOutputMap, taskProgressMap, depth = 0, onHeightChange, onRequestFullscreen }: MessageBlockProps) {
   const isUser = message.type === 'user'
   const isAssistant = message.type === 'assistant'
   const isSystem = message.type === 'system'
@@ -265,7 +267,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
         <div className="flex gap-2">
           <MessageDot type="assistant" />
           <div className="flex-1 min-w-0">
-            <MessageContent content={textContent} />
+            <MessageContent content={textContent} onRequestFullscreen={onRequestFullscreen} />
           </div>
         </div>
       )}
@@ -454,7 +456,7 @@ function ToolCallGroup({
 // Uses parseMarkdownSync() for immediate initial render (no syntax highlighting),
 // then upgrades to parseMarkdown() (with syntax highlighting) asynchronously.
 // This ensures content is never blank during the streaming→final message transition.
-const MessageContent = memo(function MessageContent({ content }: { content: string }) {
+const MessageContent = memo(function MessageContent({ content, onRequestFullscreen }: { content: string; onRequestFullscreen?: (srcdoc: string) => void }) {
   // Sync-parsed HTML — available immediately for zero-flash rendering.
   // This is the same parser used by StreamingResponse, ensuring visual consistency
   // during the streaming→final message transition.
@@ -467,8 +469,11 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
   const containerRef = useRef<HTMLDivElement>(null)
   const lastHtmlRef = useRef<string>('')
 
-  // Fullscreen preview state
-  const [fullscreenSrcdoc, setFullscreenSrcdoc] = useState<string | null>(null)
+  // Fullscreen preview state — only used when no parent-level handler is provided
+  // (i.e., for non-virtualized contexts like nested Task tool conversations).
+  // When onRequestFullscreen is provided, the parent manages fullscreen state
+  // so it survives virtualizer unmount/remount cycles (e.g., orientation change).
+  const [localFullscreenSrcdoc, setLocalFullscreenSrcdoc] = useState<string | null>(null)
 
   // Use async HTML only if it matches current content, otherwise fall back to sync HTML
   const html = (asyncState && asyncState.content === content) ? asyncState.html : syncHtml
@@ -522,6 +527,8 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
       return null
     }
 
+    const openFullscreen = onRequestFullscreen ?? setLocalFullscreenSrcdoc
+
     function handleClick(e: MouseEvent) {
       const btn = (e.target as HTMLElement).closest('.preview-expand-btn')
       if (!btn) return
@@ -530,14 +537,14 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
       const previewEl = btn.closest('.mermaid-diagram, .html-preview-container') as HTMLElement | null
       if (!previewEl) return
       const srcdoc = extractFullscreenSrcdoc(previewEl)
-      if (srcdoc) setFullscreenSrcdoc(srcdoc)
+      if (srcdoc) openFullscreen(srcdoc)
     }
 
     function handleDblClick(e: MouseEvent) {
       const previewEl = (e.target as HTMLElement).closest('.mermaid-diagram, .html-preview-container') as HTMLElement | null
       if (!previewEl) return
       const srcdoc = extractFullscreenSrcdoc(previewEl)
-      if (srcdoc) setFullscreenSrcdoc(srcdoc)
+      if (srcdoc) openFullscreen(srcdoc)
     }
 
     container.addEventListener('click', handleClick)
@@ -546,7 +553,7 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
       container.removeEventListener('click', handleClick)
       container.removeEventListener('dblclick', handleDblClick)
     }
-  }, [])
+  }, [onRequestFullscreen])
 
   return (
     <>
@@ -554,10 +561,13 @@ const MessageContent = memo(function MessageContent({ content }: { content: stri
         ref={containerRef}
         className="prose-claude"
       />
-      {fullscreenSrcdoc && (
+      {/* Only render PreviewFullscreen locally when no parent handler exists
+        * (non-virtualized contexts like nested Task conversations). When the parent
+        * provides onRequestFullscreen, it owns the fullscreen overlay. */}
+      {!onRequestFullscreen && localFullscreenSrcdoc && (
         <PreviewFullscreen
-          srcdoc={fullscreenSrcdoc}
-          onClose={() => setFullscreenSrcdoc(null)}
+          srcdoc={localFullscreenSrcdoc}
+          onClose={() => setLocalFullscreenSrcdoc(null)}
         />
       )}
     </>

@@ -1,9 +1,10 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useScrollController } from '~/hooks/use-scroll-controller'
 import { useFilteredMessages } from './use-filtered-messages'
 import { TransientStatusBlock } from './session-messages'
 import { MessageBlock } from './message-block'
+import { PreviewFullscreen } from './preview-fullscreen'
 import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
 import { StreamingThinking } from './streaming-thinking'
@@ -64,6 +65,14 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     toolResultMap,
     0, // depth = 0 for top-level
   )
+
+  // ============================================================================
+  // Fullscreen preview state — lifted above the virtualizer so it survives
+  // item unmount/remount cycles (e.g., orientation change, scroll-based recycling)
+  // ============================================================================
+
+  const [fullscreenSrcdoc, setFullscreenSrcdoc] = useState<string | null>(null)
+  const handleRequestFullscreen = useCallback((srcdoc: string) => setFullscreenSrcdoc(srcdoc), [])
 
   // ============================================================================
   // Scroll controller + virtualizer
@@ -248,108 +257,120 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const totalSize = virtualizer.getTotalSize()
 
   return (
-    <div
-      ref={scrollRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
-      style={{ overflowAnchor: 'none' }}
-    >
-      <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
-        {!hasMessages ? (
-          <div className="flex-1" />
-        ) : (
-          <>
-            {/* Loading indicator for older pages */}
-            {isLoadingPage && (
-              <div className="flex justify-center py-4">
-                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--claude-text-tertiary)' }}>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Loading messages…
-                </div>
-              </div>
-            )}
-
-            {/* Virtualized message list */}
-            {filteredMessages.length > 0 && (
-              <div
-                style={{
-                  height: totalSize,
-                  width: '100%',
-                  position: 'relative',
-                }}
-              >
-                {virtualItems.map((virtualItem) => {
-                  const message = filteredMessages[virtualItem.index]
-                  return (
-                    <div
-                      key={virtualItem.key}
-                      ref={virtualizer.measureElement}
-                      data-index={virtualItem.index}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        transform: `translateY(${virtualItem.start}px)`,
-                      }}
-                    >
-                      <MessageBlock
-                        message={message}
-                        toolResultMap={maps.toolResultMap}
-                        agentProgressMap={maps.agentProgressMap}
-                        bashProgressMap={maps.bashProgressMap}
-                        hookProgressMap={maps.hookProgressMap}
-                        toolUseMap={maps.toolUseMap}
-                        skillContentMap={maps.skillContentMap}
-                        subagentMessagesMap={maps.subagentMessagesMap}
-                        asyncTaskOutputMap={maps.asyncTaskOutputMap}
-                        taskProgressMap={maps.taskProgressMap}
-                        depth={0}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Transient status indicator (e.g., "Compacting...") - after virtualized list */}
-            {currentStatus && <TransientStatusBlock status={currentStatus} />}
-
-            {/* Optimistic user message (shown before server confirms) */}
-            {optimisticMessage && (
-              <div className="mb-4">
-                <div className="flex flex-col items-end">
-                  <div
-                    className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words opacity-70"
-                    style={{
-                      backgroundColor: 'var(--claude-bg-subtle)',
-                      color: 'var(--claude-text-primary)',
-                    }}
-                  >
-                    {optimisticMessage}
+    <>
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
+        style={{ overflowAnchor: 'none' }}
+      >
+        <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
+          {!hasMessages ? (
+            <div className="flex-1" />
+          ) : (
+            <>
+              {/* Loading indicator for older pages */}
+              {isLoadingPage && (
+                <div className="flex justify-center py-4">
+                  <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--claude-text-tertiary)' }}>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Loading messages…
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Streaming thinking (progressive thinking as Claude reasons)
-              * Shown BEFORE streaming text since thinking precedes text in Claude's response.
-              * Hide once the final assistant message arrives (it contains the completed thinking block). */}
-            {showStreamingThinking && <StreamingThinking text={streamingThinking!} />}
+              {/* Virtualized message list */}
+              {filteredMessages.length > 0 && (
+                <div
+                  style={{
+                    height: totalSize,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {virtualItems.map((virtualItem) => {
+                    const message = filteredMessages[virtualItem.index]
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        ref={virtualizer.measureElement}
+                        data-index={virtualItem.index}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                      >
+                        <MessageBlock
+                          message={message}
+                          toolResultMap={maps.toolResultMap}
+                          agentProgressMap={maps.agentProgressMap}
+                          bashProgressMap={maps.bashProgressMap}
+                          hookProgressMap={maps.hookProgressMap}
+                          toolUseMap={maps.toolUseMap}
+                          skillContentMap={maps.skillContentMap}
+                          subagentMessagesMap={maps.subagentMessagesMap}
+                          asyncTaskOutputMap={maps.asyncTaskOutputMap}
+                          taskProgressMap={maps.taskProgressMap}
+                          depth={0}
+                          onRequestFullscreen={handleRequestFullscreen}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
-            {/* Streaming response (progressive text as Claude generates)
-              * Hide once the final assistant message is in the list to avoid duplicate content.
-              * The MessageBlock's MessageContent uses parseMarkdownSync for immediate render,
-              * ensuring a seamless visual transition with no flash. */}
-            {showStreaming && <StreamingResponse text={streamingText!} />}
+              {/* Transient status indicator (e.g., "Compacting...") - after virtualized list */}
+              {currentStatus && <TransientStatusBlock status={currentStatus} />}
 
-            {/* Work-in-Progress indicator */}
-            {wipText && <ClaudeWIP text={wipText} turnId={turnId} />}
-          </>
-        )}
+              {/* Optimistic user message (shown before server confirms) */}
+              {optimisticMessage && (
+                <div className="mb-4">
+                  <div className="flex flex-col items-end">
+                    <div
+                      className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words opacity-70"
+                      style={{
+                        backgroundColor: 'var(--claude-bg-subtle)',
+                        color: 'var(--claude-text-primary)',
+                      }}
+                    >
+                      {optimisticMessage}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Streaming thinking (progressive thinking as Claude reasons)
+                * Shown BEFORE streaming text since thinking precedes text in Claude's response.
+                * Hide once the final assistant message arrives (it contains the completed thinking block). */}
+              {showStreamingThinking && <StreamingThinking text={streamingThinking!} />}
+
+              {/* Streaming response (progressive text as Claude generates)
+                * Hide once the final assistant message is in the list to avoid duplicate content.
+                * The MessageBlock's MessageContent uses parseMarkdownSync for immediate render,
+                * ensuring a seamless visual transition with no flash. */}
+              {showStreaming && <StreamingResponse text={streamingText!} />}
+
+              {/* Work-in-Progress indicator */}
+              {wipText && <ClaudeWIP text={wipText} turnId={turnId} />}
+            </>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Fullscreen preview — rendered outside the virtualizer so it survives
+        * item unmount/remount cycles triggered by orientation changes or scroll. */}
+      {fullscreenSrcdoc && (
+        <PreviewFullscreen
+          srcdoc={fullscreenSrcdoc}
+          onClose={() => setFullscreenSrcdoc(null)}
+        />
+      )}
+    </>
   )
 }
