@@ -85,6 +85,8 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   // Track previous state for scroll position preservation on prepend
   const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
+  const lastMessageIndex = filteredMessages.length - 1
+  const lastMessageUuid = filteredMessages[lastMessageIndex]?.uuid
 
   const virtualizer = useVirtualizer({
     count: filteredMessages.length,
@@ -95,6 +97,33 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     // measureElement is used as a ref callback on each virtual item wrapper.
     // It uses ResizeObserver internally to detect size changes dynamically.
   })
+
+  useEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      if (shouldStick.current || historyPagingActiveRef.current) {
+        return true
+      }
+
+      if (instance.isScrolling && instance.scrollDirection === 'backward') {
+        return false
+      }
+
+      return item.start < (instance.scrollOffset ?? 0)
+    }
+
+    return () => {
+      virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined
+    }
+  }, [virtualizer, shouldStick])
+
+  // scrollToIndex retries across a few animation frames, which makes the
+  // initial bottom snap much more reliable than a single raw scrollTop write.
+  useLayoutEffect(() => {
+    if (lastMessageIndex < 0 || !lastMessageUuid) return
+    if (!shouldStick.current || historyPagingActiveRef.current) return
+
+    virtualizer.scrollToIndex(lastMessageIndex, { align: 'end' })
+  }, [lastMessageIndex, lastMessageUuid, virtualizer, shouldStick])
 
   // Now that virtualizer exists, set the actual near-top handler (updated each render)
   nearTopHandlerRef.current = () => {
