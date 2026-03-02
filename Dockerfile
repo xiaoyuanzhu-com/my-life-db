@@ -38,6 +38,7 @@ WORKDIR /home/xiaoyuanzhu/my-life-db
 # Install runtime dependencies + Claude CLI dependencies + Python runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata curl bash git openssh-client \
+    ffmpeg \
     python3 python3-pip python3-venv python3-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
