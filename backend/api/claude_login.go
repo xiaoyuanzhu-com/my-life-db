@@ -21,7 +21,14 @@ func (h *Handlers) ClaudeAuthStatus(c *gin.Context) {
 // ClaudeLoginWebSocket spawns `claude auth login` in a PTY and pipes I/O over WebSocket.
 // The PTY is killed when the WebSocket closes. Only `claude auth login` runs — no shell access.
 func (h *Handlers) ClaudeLoginWebSocket(c *gin.Context) {
-	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+	// Get the underlying http.ResponseWriter from Gin's wrapper.
+	// Middleware (e.g. gzip) wraps c.Writer, breaking websocket.Accept's Hijack().
+	var w http.ResponseWriter = c.Writer
+	if unwrapper, ok := c.Writer.(interface{ Unwrap() http.ResponseWriter }); ok {
+		w = unwrapper.Unwrap()
+	}
+
+	conn, err := websocket.Accept(w, c.Request, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
