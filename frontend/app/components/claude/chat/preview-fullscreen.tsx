@@ -97,7 +97,7 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
       <iframe
         className="preview-fullscreen-iframe"
         srcDoc={injectEscapeHandler(srcdoc)}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-same-origin"
         title="Preview content"
       />
     </div>,

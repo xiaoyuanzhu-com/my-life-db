@@ -11,7 +11,7 @@ const EXPAND_BTN_HTML = `<button class="preview-expand-btn" aria-label="Expand p
 
 export function renderHtmlPreviewBlock(code: string): string {
   const escapedHtml = code.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-  return `<div class="html-preview-container">${EXPAND_BTN_HTML}<iframe srcdoc="${escapedHtml}" sandbox="allow-scripts" class="html-preview-iframe"></iframe></div>`
+  return `<div class="html-preview-container">${EXPAND_BTN_HTML}<iframe srcdoc="${escapedHtml}" sandbox="allow-scripts allow-same-origin" class="html-preview-iframe"></iframe></div>`
 }
 
 export function getHtmlPreviewLoadingHtml(): string {
