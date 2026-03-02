@@ -156,8 +156,16 @@ export function ChatInterface({
   // Hooks
   // ============================================================================
 
-  // WebSocket message handler
-  const handleMessage = useCallback(
+  // RAF-batched message processing: WebSocket delivers messages one at a time,
+  // causing ~40 rapid re-renders during the initial burst (2 pages of history).
+  // We queue incoming messages and flush them in a single requestAnimationFrame
+  // callback. React 18 auto-batches all state updates within that callback into
+  // one render — collapsing ~40 flashes into a single smooth appearance.
+  const messageQueueRef = useRef<unknown[]>([])
+  const processRafRef = useRef<number | null>(null)
+
+  // Per-message processing logic (called from the batched handler below)
+  const processMessage = useCallback(
     (data: unknown) => {
       const msg = data as Record<string, unknown>
 
@@ -412,6 +420,26 @@ export function ChatInterface({
     [refreshSessions]
   )
 
+  // RAF-batched WebSocket message handler
+  // Queues incoming messages and processes them all in one animation frame,
+  // so React 18 batches the resulting state updates into a single re-render.
+  const handleMessage = useCallback(
+    (data: unknown) => {
+      messageQueueRef.current.push(data)
+      if (processRafRef.current === null) {
+        processRafRef.current = requestAnimationFrame(() => {
+          processRafRef.current = null
+          const queue = messageQueueRef.current
+          messageQueueRef.current = []
+          for (const msg of queue) {
+            processMessage(msg)
+          }
+        })
+      }
+    },
+    [processMessage]
+  )
+
   // WebSocket connection hook
   const ws = useSessionWebSocket(sessionId, { onMessage: handleMessage })
 
@@ -646,6 +674,12 @@ export function ChatInterface({
     streamingBufferRef.current = [] // Clear buffered tokens on session change
     thinkingBufferRef.current = []
     streamingCompleteRef.current = false
+    // Cancel any pending RAF message batch from the previous session
+    if (processRafRef.current !== null) {
+      cancelAnimationFrame(processRafRef.current)
+      processRafRef.current = null
+    }
+    messageQueueRef.current = []
     // Reset pagination state
     setLowestLoadedPage(0)
     setIsLoadingHistory(false)
@@ -667,11 +701,14 @@ export function ChatInterface({
     }
   }, [sessionId])
 
-  // Cleanup initial load timer on unmount
+  // Cleanup timers and RAF on unmount
   useEffect(() => {
     return () => {
       if (initialLoadTimerRef.current) {
         clearTimeout(initialLoadTimerRef.current)
+      }
+      if (processRafRef.current !== null) {
+        cancelAnimationFrame(processRafRef.current)
       }
     }
   }, [])
@@ -1015,7 +1052,7 @@ export function ChatInterface({
   // ============================================================================
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 claude-bg">
+    <div className="flex flex-1 flex-col min-h-0 claude-bg animate-content-ready">
       {/* Error Banner */}
       {error && (
         <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-sm text-destructive">

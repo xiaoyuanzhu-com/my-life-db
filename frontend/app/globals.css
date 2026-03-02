@@ -302,6 +302,24 @@
   animation: slide-in-left 0.3s ease-out;
 }
 
+/* Smooth content entrance — used when transitioning from loading states */
+@keyframes content-ready {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+.animate-content-ready {
+  animation: content-ready 0.35s ease-out both;
+}
+
 /* Initial hidden state for new items before animation starts */
 .animate-new-item-initial {
   opacity: 0;

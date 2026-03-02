@@ -602,7 +602,7 @@ export default function ClaudePage() {
   )
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full animate-content-ready">
       {/* ── Desktop: Resizable sidebar + chat ── */}
       <div className="hidden md:flex md:flex-1 h-full">
         {sessionSidebar ? (
