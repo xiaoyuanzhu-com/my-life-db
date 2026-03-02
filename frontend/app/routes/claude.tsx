@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
-import { useWarmSession } from '~/components/claude/chat/hooks'
-import { useSlashCommands } from '~/components/claude/chat/hooks/use-slash-commands'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import { Button } from '~/components/ui/button'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft } from 'lucide-react'
@@ -174,17 +172,6 @@ export default function ClaudePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
   }, [activeSessionId])
-
-  // Warm session: eagerly create a session to discover skills/slash commands.
-  // Hidden from listings (ResultCount==0, no clients). Activated on first message.
-  const warmSession = useWarmSession(
-    newSessionWorkingDir,
-    newSessionPermissionMode,
-    !activeSessionId && isAuthenticated
-  )
-  // Merge warm session's init data (skills + dynamic commands) with builtins.
-  // Falls back to BUILTIN_COMMANDS until the warm session's init message arrives.
-  const warmSlashCommands = useSlashCommands(warmSession.initData)
 
   // Sort sessions by last USER activity (most recent first)
   // Uses lastUserActivity (only updated on user input) instead of lastActivity
@@ -401,20 +388,26 @@ export default function ClaudePage() {
     }
   }, [pagination.hasMore, pagination.nextCursor, pagination.totalCount, isLoadingMore, statusFilter])
 
-  // Send first message: activate the warm session (or fallback to creating one inline).
-  // The warm session was already created eagerly in the background — this just sets
-  // the title via PATCH and transitions to the ChatInterface view.
+  // Create a new session and send the first message.
+  // Session + CLI process are spun up on demand — no eager/warm session.
   const createSessionWithMessage = async (message: string) => {
     if (!message || isCreatingSession) return
 
     setIsCreatingSession(true)
     try {
-      // Activate the warm session — awaits creation if still in-flight, sets title via PATCH
-      const sessionId = await warmSession.activate(message)
+      const response = await api.post('/api/claude/sessions', {
+        title: message,
+        workingDir: newSessionWorkingDir,
+        permissionMode: newSessionPermissionMode,
+      })
 
-      // Build a minimal session object for the sidebar
+      if (!response.ok) {
+        throw new Error(`Failed to create session: ${response.status}`)
+      }
+
+      const session = await response.json()
       const newSession: Session = {
-        id: sessionId,
+        id: session.id,
         title: message,
         workingDir: newSessionWorkingDir,
         createdAt: Date.now(),
@@ -424,42 +417,15 @@ export default function ClaudePage() {
         permissionMode: newSessionPermissionMode,
       }
 
-      // Deduplicate: the session may already be in the list from an SSE-triggered
-      // refresh that raced ahead of this optimistic add (warm session's JSONL write
-      // fires an SSE event that can complete a full refresh cycle before the PATCH
-      // response returns here). Filter first, then prepend.
       setSessions((prevSessions) => {
         const without = prevSessions.filter((s) => s.id !== newSession.id)
         return sortSessions([newSession, ...without])
       })
-      // Set the pending message before switching to the session
       setPendingInitialMessage(message)
-      setActiveSessionId(sessionId)
-      // Clear the new-session draft from localStorage since message is now queued
+      setActiveSessionId(session.id)
       localStorage.removeItem('claude-input:new-session')
     } catch (error) {
-      console.error('Warm session activate failed, creating inline:', error)
-      // Fallback: create session the old way (handles case where warm session failed)
-      try {
-        const response = await api.post('/api/claude/sessions', {
-          title: message,
-          workingDir: newSessionWorkingDir,
-          permissionMode: newSessionPermissionMode,
-        })
-
-        if (response.ok) {
-          const newSession = await response.json()
-          setSessions((prevSessions) => {
-            const without = prevSessions.filter((s) => s.id !== newSession.id)
-            return sortSessions([newSession, ...without])
-          })
-          setPendingInitialMessage(message)
-          setActiveSessionId(newSession.id)
-          localStorage.removeItem('claude-input:new-session')
-        }
-      } catch (fallbackError) {
-        console.error('Fallback session creation also failed:', fallbackError)
-      }
+      console.error('Failed to create session:', error)
     } finally {
       setIsCreatingSession(false)
     }
@@ -715,9 +681,7 @@ export default function ClaudePage() {
                       placeholder="Start a new conversation..."
                       workingDir={newSessionWorkingDir}
                       onWorkingDirChange={setNewSessionWorkingDir}
-                      slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
-                        ? warmSlashCommands
-                        : BUILTIN_COMMANDS}
+                      slashCommands={BUILTIN_COMMANDS}
                       permissionMode={newSessionPermissionMode}
                       onPermissionModeChange={setNewSessionPermissionMode}
                     />
@@ -750,9 +714,7 @@ export default function ClaudePage() {
                   placeholder="Start a new conversation..."
                   workingDir={newSessionWorkingDir}
                   onWorkingDirChange={setNewSessionWorkingDir}
-                  slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
-                    ? warmSlashCommands
-                    : BUILTIN_COMMANDS}
+                  slashCommands={BUILTIN_COMMANDS}
                   permissionMode={newSessionPermissionMode}
                   onPermissionModeChange={setNewSessionPermissionMode}
                 />
@@ -816,9 +778,7 @@ export default function ClaudePage() {
                   placeholder="Start a new conversation..."
                   workingDir={newSessionWorkingDir}
                   onWorkingDirChange={setNewSessionWorkingDir}
-                  slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
-                    ? warmSlashCommands
-                    : BUILTIN_COMMANDS}
+                  slashCommands={BUILTIN_COMMANDS}
                   permissionMode={newSessionPermissionMode}
                   onPermissionModeChange={setNewSessionPermissionMode}
                 />
@@ -835,9 +795,7 @@ export default function ClaudePage() {
               placeholder="Start a new conversation..."
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
-              slashCommands={warmSlashCommands.length > BUILTIN_COMMANDS.length
-                ? warmSlashCommands
-                : BUILTIN_COMMANDS}
+              slashCommands={BUILTIN_COMMANDS}
               permissionMode={newSessionPermissionMode}
               onPermissionModeChange={setNewSessionPermissionMode}
             />
