@@ -19,7 +19,6 @@ export function FileCard({
   showTimestamp = false,
   highlightTerms,
   matchContext,
-  matchedObject,
   priority = false,
   onDeleted,
   onRestoreItem,
@@ -40,7 +39,6 @@ export function FileCard({
           file={file}
           highlightTerms={highlightTerms}
           matchContext={matchContext}
-          matchedObject={matchedObject}
           priority={priority}
           onDeleted={onDeleted}
           onRestoreItem={onRestoreItem}

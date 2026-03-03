@@ -9,7 +9,4 @@ type Config struct {
 	OpenAIAPIKey     string
 	OpenAIBaseURL    string
 	OpenAIModel      string
-	HAIDBaseURL      string
-	HAIDAPIKey       string
-	HAIDChromeCDPURL string
 }

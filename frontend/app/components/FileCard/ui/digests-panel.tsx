@@ -11,7 +11,6 @@ import {
 import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 import { getDigestRenderer } from './digest-renderers';
-import type { HighlightRegion } from './digest-renderers/image-objects';
 import { api } from '~/lib/api';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
@@ -30,17 +29,11 @@ interface AudioSyncProps {
   onSeek: (time: number) => void;
 }
 
-interface ImageObjectsSyncProps {
-  onHighlightRegion: (region: HighlightRegion | null) => void;
-}
-
 interface DigestsPanelProps {
   file: FileWithDigests;
   className?: string;
   /** Audio sync props for speech-recognition renderer */
   audioSync?: AudioSyncProps;
-  /** Image objects sync props for image-objects renderer */
-  imageObjectsSync?: ImageObjectsSyncProps;
 }
 
 function mapStatus(status: DigestSummary['status']): DigestStageStatus {
@@ -99,7 +92,7 @@ function StatusIcon({ status }: { status: DigestStageStatus }): React.ReactEleme
   }
 }
 
-export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: DigestsPanelProps) {
+export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) {
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
@@ -339,9 +332,6 @@ export function DigestsPanel({ file, className, audioSync, imageObjectsSync }: D
                         if (stage.key === 'speech-recognition' && audioSync) {
                           extraProps.currentTime = audioSync.currentTime;
                           extraProps.onSeek = audioSync.onSeek;
-                        }
-                        if (stage.key === 'image-objects' && imageObjectsSync) {
-                          extraProps.onHighlightRegion = imageObjectsSync.onHighlightRegion;
                         }
                         return (
                           <Renderer

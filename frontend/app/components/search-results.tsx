@@ -409,7 +409,6 @@ export function SearchResults({
                   showTimestamp={true}
                   highlightTerms={highlightTerms}
                   matchContext={result.matchContext}
-                  matchedObject={result.matchedObject}
                   priority={index === array.length - 1}
                   onLocateInFeed={onLocateInFeed ? () => onLocateInFeed(result.path, result.createdAt) : undefined}
                 />

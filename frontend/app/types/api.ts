@@ -46,17 +46,6 @@ export interface InboxResponse {
 // Types for /api/search endpoint responses
 // Generated from backend/api/search.go
 
-export interface RleMask {
-  size: [number, number];
-  counts: number[];
-}
-
-export interface MatchedObject {
-  title: string;
-  bbox: [number, number, number, number];
-  rle: RleMask | null;
-}
-
 export interface DigestInfo {
   type: string;
   label: string;
@@ -87,7 +76,6 @@ export interface SearchResultItem {
   previewSqlar?: string;
   highlights?: Record<string, string>;
   matchContext?: MatchContext;
-  matchedObject?: MatchedObject;
   isPinned?: boolean;
 }
 

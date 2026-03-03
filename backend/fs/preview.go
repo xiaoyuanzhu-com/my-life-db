@@ -51,7 +51,7 @@ type previewWorker struct {
 
 // needsImagePreview returns true for MIME types that support preview generation
 func needsImagePreview(mimeType string) bool {
-	return isImageMime(mimeType) || isVideoMime(mimeType) || isDocumentMime(mimeType)
+	return isImageMime(mimeType) || isVideoMime(mimeType)
 }
 
 // isImageMime returns true for image/* MIME types
@@ -62,21 +62,6 @@ func isImageMime(mimeType string) bool {
 // isVideoMime returns true for video/* MIME types
 func isVideoMime(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "video/")
-}
-
-// isDocumentMime returns true for document MIME types that support screenshot preview
-func isDocumentMime(mimeType string) bool {
-	switch mimeType {
-	case "application/pdf",
-		"application/msword",
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		"application/vnd.ms-excel",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		"application/vnd.ms-powerpoint",
-		"application/vnd.openxmlformats-officedocument.presentationml.presentation":
-		return true
-	}
-	return false
 }
 
 // ---------- Worker lifecycle ----------
@@ -129,11 +114,6 @@ func (w *previewWorker) processJob(job previewJob) {
 		previewType = "thumbnail"
 		sqlarName = pathHash + "/preview/thumbnail.jpg"
 		data, err = w.generateImageThumbnail(job.filePath, job.mimeType)
-
-	case isDocumentMime(job.mimeType):
-		previewType = "screenshot"
-		sqlarName = pathHash + "/preview/screenshot.png"
-		data, err = w.generateDocScreenshot(job.filePath)
 
 	case isVideoMime(job.mimeType):
 		previewType = "thumbnail"
@@ -267,24 +247,6 @@ func resizeToMaxWidth(src image.Image, maxWidth int) image.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, draw.Over, nil)
 	return dst
-}
-
-// ---------- Document screenshot ----------
-
-// generateDocScreenshot delegates to the configured DocScreenshotter (e.g. HAID)
-// to produce a screenshot of the first page of a document.
-func (w *previewWorker) generateDocScreenshot(filePath string) ([]byte, error) {
-	if w.service.cfg.DocScreenshotter == nil {
-		log.Debug().Str("path", filePath).Msg("doc screenshots not configured, skipping")
-		return nil, nil
-	}
-
-	data, err := w.service.cfg.DocScreenshotter.GenerateDocScreenshot(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("doc screenshot: %w", err)
-	}
-
-	return data, nil
 }
 
 // ---------- Video thumbnail ----------

@@ -13,7 +13,6 @@ import (
 var defaultSettings = map[string]string{
 	"openai_model":        "gpt-4o-mini",
 	"openai_base_url":     "",
-	"haid_base_url":       "",
 	"meili_host":          "",
 	"qdrant_host":         "",
 	"digest_auto_process": "true",
@@ -226,10 +225,6 @@ func LoadUserSettings() (*models.UserSettings, error) {
 			APIKey:  pickFromMap("vendors_openai_api_key", "OPENAI_API_KEY", ""),
 			Model:   pickFromMap("vendors_openai_model", "OPENAI_MODEL", "gpt-4o-mini"),
 		},
-		HomelabAI: &models.HomelabAI{
-			BaseURL:      pickFromMap("vendors_homelab_ai_base_url", "HAID_BASE_URL", "https://haid.home.iloahz.com"),
-			ChromeCdpURL: pickFromMap("vendors_homelab_ai_chrome_cdp_url", "HAID_CHROME_CDP_URL", "http://172.16.2.2:9223/"),
-		},
 		Aliyun: &models.Aliyun{
 			APIKey:             pickFromMap("vendors_aliyun_api_key", "DASHSCOPE_API_KEY", ""),
 			Region:             pickFromMap("vendors_aliyun_region", "ALIYUN_REGION", "beijing"),
@@ -330,14 +325,6 @@ func SaveUserSettings(settings *models.UserSettings) error {
 			}
 			if settings.Vendors.OpenAI.Model != "" {
 				updates["vendors_openai_model"] = settings.Vendors.OpenAI.Model
-			}
-		}
-		if settings.Vendors.HomelabAI != nil {
-			if settings.Vendors.HomelabAI.BaseURL != "" {
-				updates["vendors_homelab_ai_base_url"] = settings.Vendors.HomelabAI.BaseURL
-			}
-			if settings.Vendors.HomelabAI.ChromeCdpURL != "" {
-				updates["vendors_homelab_ai_chrome_cdp_url"] = settings.Vendors.HomelabAI.ChromeCdpURL
 			}
 		}
 		if settings.Vendors.Aliyun != nil {

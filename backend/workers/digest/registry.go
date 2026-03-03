@@ -68,20 +68,12 @@ func (r *Registry) GetDigesterInfo() []map[string]interface{} {
 // digesterOrder defines the explicit execution order of all digesters
 // Digesters are executed in this exact order to respect dependencies
 var digesterOrder = []Digester{
-	// Phase 1: Content extraction (run first)
-	&URLCrawlDigester{},
-	&DocToMarkdownDigester{},
-	&ImageOCRDigester{},
-	&ImageCaptioningDigester{},
-	&ImageObjectsDigester{},
+	// Phase 1: Content extraction
 	&SpeechRecognitionDigester{},
-
-	// Phase 2: Secondary processing (depends on content extraction)
-	&URLCrawlSummaryDigester{},
+	// Phase 2: Secondary processing
 	&SpeechRecognitionCleanupDigester{},
 	&SpeechRecognitionSummaryDigester{},
-
-	// Phase 3: Tags and search (depends on text content being available)
+	// Phase 3: Tags and search
 	&TagsDigester{},
 	&SearchKeywordDigester{},
 }

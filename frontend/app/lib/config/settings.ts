@@ -19,14 +19,10 @@ export interface UserSettings {
       apiKey?: string;
       model?: string;
     };
-    homelabAi?: {
-      baseUrl?: string;
-      chromeCdpUrl?: string;
-    };
     aliyun?: {
       apiKey?: string;
       region?: 'beijing' | 'singapore';
-      asrProvider?: 'fun-asr-realtime' | 'haid';
+      asrProvider?: 'fun-asr-realtime';
       ossAccessKeyId?: string;
       ossAccessKeySecret?: string;
       ossRegion?: string;
@@ -42,8 +38,6 @@ export interface UserSettings {
 
   // Digester Configuration
   digesters?: {
-    'url-crawler'?: boolean;
-    'url-crawl-summary'?: boolean;
     'speech-recognition'?: boolean;
     'tags'?: boolean;
     'search-keyword'?: boolean;
@@ -116,8 +110,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
     logLevel: 'info',
   },
   digesters: {
-    'url-crawler': true,
-    'url-crawl-summary': true,
     'speech-recognition': true,
     'tags': true,
     'search-keyword': true,

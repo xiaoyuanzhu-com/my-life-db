@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { cn } from '~/lib/utils';
 import { ExternalLink, Pin, Download, Share2, Trash2, MapPin, CheckCircle2 } from 'lucide-react';
@@ -18,19 +18,12 @@ import {
   getFileLibraryUrl,
   getFileContentUrl,
 } from '../utils';
-import {
-  prepareHighlightState,
-  renderHighlightFrame,
-  ANIMATION_DURATION,
-  type AnimatedHighlightState,
-} from '../ui/animated-highlight';
 
 export function ImageCard({
   file,
   className,
   priority = false,
   matchContext,
-  matchedObject,
   onDeleted,
   onRestoreItem,
   onLocateInFeed,
@@ -40,105 +33,9 @@ export function ImageCard({
   const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
-  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const src = getFileContentUrl(file);
   const href = getFileLibraryUrl(file.path);
-
-  // Track image dimensions when loaded
-  const handleImageLoad = useCallback(() => {
-    if (imgRef.current) {
-      setImageDimensions({
-        width: imgRef.current.clientWidth,
-        height: imgRef.current.clientHeight,
-      });
-    }
-  }, []);
-
-  // Re-measure on resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (imgRef.current) {
-        setImageDimensions({
-          width: imgRef.current.clientWidth,
-          height: imgRef.current.clientHeight,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Animate highlight with SAM3-style glowing effect
-  useEffect(() => {
-    if (!canvasRef.current || !imageDimensions || !matchedObject) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Cancel any existing animation
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-
-    // Clear the canvas
-    canvas.width = imageDimensions.width;
-    canvas.height = imageDimensions.height;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Prepare the highlight state (expensive computation done once)
-    const highlightRegion = {
-      bbox: matchedObject.bbox,
-      rle: matchedObject.rle,
-    };
-    const state: AnimatedHighlightState = prepareHighlightState(
-      highlightRegion,
-      imageDimensions.width,
-      imageDimensions.height
-    );
-
-    const startTime = performance.now();
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-
-      renderHighlightFrame(
-        canvas,
-        state,
-        imageDimensions.width,
-        imageDimensions.height,
-        elapsed
-      );
-
-      // Keep animating until animation completes, then render one final frame
-      if (elapsed < ANIMATION_DURATION) {
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
-        // Render final resting state
-        renderHighlightFrame(
-          canvas,
-          state,
-          imageDimensions.width,
-          imageDimensions.height,
-          ANIMATION_DURATION + 1000 // Ensure we're past animation
-        );
-        animationRef.current = null;
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [matchedObject, imageDimensions]);
 
   const handleOpen = () => navigate(href);
 
@@ -165,7 +62,7 @@ export function ImageCard({
     <div
       className={cn(
         cardContainerClass,
-        matchContext || matchedObject ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
+        matchContext ? 'w-2/3' : 'max-w-[calc(100%-40px)] w-fit',
         className
       )}
     >
@@ -187,19 +84,7 @@ export function ImageCard({
               height: 'auto',
             }}
             loading={priority ? 'eager' : 'lazy'}
-            onLoad={handleImageLoad}
           />
-          {/* Animated highlight overlay (rendered to canvas with glowing animation) */}
-          {matchedObject && imageDimensions && (
-            <canvas
-              ref={canvasRef}
-              className="absolute top-0 left-0 pointer-events-none"
-              style={{
-                width: imageDimensions.width,
-                height: imageDimensions.height,
-              }}
-            />
-          )}
         </div>
       </div>
       {matchContext && <MatchContext context={matchContext} />}

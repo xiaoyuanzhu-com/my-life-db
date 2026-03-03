@@ -106,18 +106,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			}
 		}
 
-		if updates.Vendors.HomelabAI != nil {
-			if merged.Vendors.HomelabAI == nil {
-				merged.Vendors.HomelabAI = &models.HomelabAI{}
-			}
-			if updates.Vendors.HomelabAI.BaseURL != "" {
-				merged.Vendors.HomelabAI.BaseURL = updates.Vendors.HomelabAI.BaseURL
-			}
-			if updates.Vendors.HomelabAI.ChromeCdpURL != "" {
-				merged.Vendors.HomelabAI.ChromeCdpURL = updates.Vendors.HomelabAI.ChromeCdpURL
-			}
-		}
-
 		if updates.Vendors.Aliyun != nil {
 			if merged.Vendors.Aliyun == nil {
 				merged.Vendors.Aliyun = &models.Aliyun{}

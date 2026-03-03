@@ -39,9 +39,6 @@ func main() {
 		OpenAIAPIKey:     cfg.OpenAIAPIKey,
 		OpenAIBaseURL:    cfg.OpenAIBaseURL,
 		OpenAIModel:      cfg.OpenAIModel,
-		HAIDBaseURL:       cfg.HAIDBaseURL,
-		HAIDAPIKey:        cfg.HAIDAPIKey,
-		HAIDChromeCDPURL:  cfg.HAIDChromeCDPURL,
 		InboxAgentEnabled: cfg.InboxAgentEnabled,
 	}
 

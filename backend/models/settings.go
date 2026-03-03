@@ -23,7 +23,6 @@ type Preferences struct {
 
 type Vendors struct {
 	OpenAI      *OpenAI      `json:"openai,omitempty"`
-	HomelabAI   *HomelabAI   `json:"homelabAi,omitempty"`
 	Aliyun      *Aliyun      `json:"aliyun,omitempty"`
 	Meilisearch *Meilisearch `json:"meilisearch,omitempty"`
 }
@@ -34,15 +33,10 @@ type OpenAI struct {
 	Model   string `json:"model,omitempty"`
 }
 
-type HomelabAI struct {
-	BaseURL      string `json:"baseUrl,omitempty"`
-	ChromeCdpURL string `json:"chromeCdpUrl,omitempty"`
-}
-
 type Aliyun struct {
 	APIKey       string `json:"apiKey,omitempty"`
 	Region       string `json:"region,omitempty"` // "beijing" or "singapore"
-	ASRProvider  string `json:"asrProvider,omitempty"` // "fun-asr-realtime" (default) or "haid"
+	ASRProvider  string `json:"asrProvider,omitempty"` // "fun-asr-realtime" (default)
 	OSSAccessKeyID     string `json:"ossAccessKeyId,omitempty"`
 	OSSAccessKeySecret string `json:"ossAccessKeySecret,omitempty"`
 	OSSRegion          string `json:"ossRegion,omitempty"` // e.g., "cn-hangzhou", "oss-cn-beijing"

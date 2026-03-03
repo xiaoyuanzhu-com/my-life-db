@@ -33,10 +33,6 @@ type Config struct {
 	OpenAIBaseURL string
 	OpenAIModel   string
 
-	HAIDBaseURL      string
-	HAIDAPIKey       string
-	HAIDChromeCDPURL string
-
 	MeiliHost   string
 	MeiliAPIKey string
 	MeiliIndex  string
@@ -90,9 +86,6 @@ func (c *Config) ToDigestConfig() digest.Config {
 		OpenAIAPIKey:     c.OpenAIAPIKey,
 		OpenAIBaseURL:    c.OpenAIBaseURL,
 		OpenAIModel:      c.OpenAIModel,
-		HAIDBaseURL:      c.HAIDBaseURL,
-		HAIDAPIKey:       c.HAIDAPIKey,
-		HAIDChromeCDPURL: c.HAIDChromeCDPURL,
 	}
 }
 

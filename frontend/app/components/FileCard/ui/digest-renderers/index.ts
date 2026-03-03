@@ -4,21 +4,13 @@
  */
 
 import type { ComponentType } from 'react';
-import { UrlCrawlScreenshotRenderer } from './url-crawl-screenshot';
-import { UrlCrawlContentRenderer } from './url-crawl-content';
-import { UrlCrawlSummaryRenderer } from './url-crawl-summary';
 import { TagsRenderer } from './tags';
 import { SpeechRecognitionRenderer } from './speech-recognition';
-import { ImageCaptioningRenderer } from './image-captioning';
-import { ImageOcrRenderer } from './image-ocr';
 import { SearchKeywordRenderer } from './search-keyword';
 import { SearchSemanticRenderer } from './search-semantic';
-import { DocToMarkdownRenderer } from './doc-to-markdown';
-import { DocToScreenshotRenderer } from './doc-to-screenshot';
 import { SpeakerEmbeddingRenderer } from './speaker-embedding';
 import { SpeechRecognitionCleanupRenderer } from './speech-recognition-cleanup';
 import { SpeechRecognitionSummaryRenderer } from './speech-recognition-summary';
-import { ImageObjectsRenderer } from './image-objects';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -30,21 +22,13 @@ export interface DigestRendererProps {
 type DigestRenderer = ComponentType<DigestRendererProps>;
 
 const renderers: Record<string, DigestRenderer> = {
-  'url-crawl-screenshot': UrlCrawlScreenshotRenderer,
-  'url-crawl-content': UrlCrawlContentRenderer,
-  'url-crawl-summary': UrlCrawlSummaryRenderer,
   'tags': TagsRenderer,
   'speech-recognition': SpeechRecognitionRenderer,
-  'image-captioning': ImageCaptioningRenderer,
-  'image-ocr': ImageOcrRenderer,
   'search-keyword': SearchKeywordRenderer,
   'search-semantic': SearchSemanticRenderer,
-  'doc-to-markdown': DocToMarkdownRenderer,
-  'doc-to-screenshot': DocToScreenshotRenderer,
   'speaker-embedding': SpeakerEmbeddingRenderer,
   'speech-recognition-cleanup': SpeechRecognitionCleanupRenderer,
   'speech-recognition-summary': SpeechRecognitionSummaryRenderer,
-  'image-objects': ImageObjectsRenderer,
 };
 
 /**
@@ -55,4 +39,3 @@ export function getDigestRenderer(digestType: string): DigestRenderer {
 }
 
 export { FallbackRenderer };
-export type { BoundingBox, RleMask, HighlightRegion } from './image-objects';

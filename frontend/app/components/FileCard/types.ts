@@ -1,5 +1,5 @@
 import type { FileWithDigests } from '~/types/file-card';
-import type { SearchResultItem, MatchedObject } from '~/types/search';
+import type { SearchResultItem } from '~/types/search';
 import type { LucideIcon } from 'lucide-react';
 
 /**
@@ -27,8 +27,6 @@ export interface BaseCardProps {
   priority?: boolean;
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
-  /** Matched object from image-objects for highlighting in image (images only) */
-  matchedObject?: MatchedObject;
   /** Called immediately when delete is confirmed (for optimistic UI) */
   onDeleted?: () => void;
   /** Called when delete fails after optimistic removal (to restore the item) */
@@ -46,8 +44,6 @@ export interface FileCardProps {
   showTimestamp?: boolean;
   highlightTerms?: string[];
   matchContext?: SearchResultItem['matchContext'];
-  /** Matched object from image-objects for highlighting in image (images only) */
-  matchedObject?: MatchedObject;
   priority?: boolean;
   /** Called immediately when delete is confirmed (for optimistic UI) */
   onDeleted?: () => void;

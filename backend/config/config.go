@@ -30,10 +30,6 @@ type Config struct {
 	OpenAIBaseURL string
 	OpenAIModel   string
 
-	HAIDBaseURL      string
-	HAIDAPIKey       string
-	HAIDChromeCDPURL string
-
 	// OAuth settings
 	AuthMode              string
 	OAuthClientID         string
@@ -96,11 +92,6 @@ func load() *Config {
 		OpenAIAPIKey:  getEnv("OPENAI_API_KEY", ""),
 		OpenAIBaseURL: getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 		OpenAIModel:   getEnv("OPENAI_MODEL", "gpt-4o-mini"),
-
-		// HAID
-		HAIDBaseURL:      getEnv("HAID_BASE_URL", ""),
-		HAIDAPIKey:       getEnv("HAID_API_KEY", ""),
-		HAIDChromeCDPURL: getEnv("HAID_CHROME_CDP_URL", ""),
 
 		// OAuth
 		AuthMode:              getEnv("MLD_AUTH_MODE", "none"),
