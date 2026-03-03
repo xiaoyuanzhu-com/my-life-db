@@ -22,6 +22,7 @@ import {
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, TaskProgressMessage, ToolUseInfo } from './session-messages'
 import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
+import { linkifyLibraryPaths } from '~/lib/file-path-resolver'
 import { PreviewFullscreen, wrapSvgInHtml } from './preview-fullscreen'
 import { useEffect, useState, useMemo, memo, useRef } from 'react'
 
@@ -460,7 +461,7 @@ const MessageContent = memo(function MessageContent({ content, onRequestFullscre
   // Sync-parsed HTML — available immediately for zero-flash rendering.
   // This is the same parser used by StreamingResponse, ensuring visual consistency
   // during the streaming→final message transition.
-  const syncHtml = useMemo(() => parseMarkdownSync(content), [content])
+  const syncHtml = useMemo(() => linkifyLibraryPaths(parseMarkdownSync(content)), [content])
 
   // Async-parsed HTML — upgraded version with syntax highlighting, mermaid, etc.
   // Tracked alongside the content it was parsed from, so we can invalidate correctly.
@@ -489,7 +490,7 @@ const MessageContent = memo(function MessageContent({ content, onRequestFullscre
     const contentForParse = content
 
     parseMarkdown(contentForParse).then((parsed) => {
-      if (!cancelled) setAsyncState({ content: contentForParse, html: parsed })
+      if (!cancelled) setAsyncState({ content: contentForParse, html: linkifyLibraryPaths(parsed) })
     })
 
     return () => {
@@ -530,6 +531,20 @@ const MessageContent = memo(function MessageContent({ content, onRequestFullscre
     const openFullscreen = onRequestFullscreen ?? setLocalFullscreenSrcdoc
 
     function handleClick(e: MouseEvent) {
+      // Library file link click
+      const libraryLink = (e.target as HTMLElement).closest('.library-file-link') as HTMLAnchorElement | null
+      if (libraryLink) {
+        e.preventDefault()
+        e.stopPropagation()
+        const libraryPath = decodeURIComponent(libraryLink.dataset.libraryPath || '')
+        const isDir = libraryLink.dataset.isDir === 'true'
+        if (libraryPath) {
+          const param = isDir ? 'dir' : 'open'
+          window.location.href = `/library?${param}=${encodeURIComponent(libraryPath)}`
+        }
+        return
+      }
+
       const btn = (e.target as HTMLElement).closest('.preview-expand-btn')
       if (!btn) return
       e.preventDefault()
