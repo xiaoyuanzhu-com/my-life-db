@@ -1,6 +1,6 @@
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useScrollController } from '~/hooks/use-scroll-controller'
+import { useVirtualList } from '~/hooks/use-virtual-list'
 import { useFilteredMessages } from './use-filtered-messages'
 import { TransientStatusBlock } from './session-messages'
 import { MessageBlock } from './message-block'
@@ -33,16 +33,17 @@ interface MessageListProps {
 }
 
 /**
- * MessageList - Top-level message container with virtual scrolling
+ * MessageList - Top-level message container with flow-based virtual scrolling
  *
  * This component handles:
- * - Virtual scrolling via @tanstack/react-virtual (only visible items are in the DOM)
+ * - Virtual scrolling via useVirtualList (only visible items are in the DOM)
+ * - Flow-based layout with spacer divs (no absolute positioning)
+ * - CSS overflow-anchor for browser-native scroll anchoring on item resize
  * - Scroll container with unified scroll controller (sticky, hide-on-scroll, history paging)
  * - Empty state when no messages
  * - Optimistic user message display
  * - Work-in-progress indicator
  * - User-intent-driven loading for older message pages
- * - Scroll position preservation when prepending older messages
  * - Streaming display (StreamingResponse, StreamingThinking, ClaudeWIP)
  * - TransientStatusBlock for ephemeral session status (e.g., compacting)
  *
@@ -75,125 +76,40 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const handleRequestFullscreen = useCallback((srcdoc: string) => setFullscreenSrcdoc(srcdoc), [])
 
   // ============================================================================
-  // Scroll controller + virtualizer
+  // Scroll controller + virtual list
   // ============================================================================
 
-  // The near-top handler needs virtualizer (for anchor computation), but virtualizer
-  // needs scrollElement from the controller. Break the cycle with a ref — the
-  // controller reads onNearTop via ref internally, so it always gets the latest.
   const nearTopHandlerRef = useRef<(() => void) | undefined>(undefined)
   const stableNearTop = useCallback(() => nearTopHandlerRef.current?.(), [])
 
-  const { scrollRef, contentRef, scrollElement, shouldStick, fingerDown, userScrollIntent } = useScrollController({
+  const { scrollRef, contentRef, scrollElement, shouldStick } = useScrollController({
     onHideChange,
     onNearTop: stableNearTop,
   })
 
   const historyPagingActiveRef = useRef(false)
-  const pendingPrependAnchorRef = useRef<{ index: number; delta: number } | null>(null)
 
-  // Track previous state for scroll position preservation on prepend
-  const prevFirstUuidRef = useRef<string | undefined>(filteredMessages[0]?.uuid)
+  const getKey = useCallback(
+    (index: number) => filteredMessages[index]?.uuid ?? index,
+    [filteredMessages],
+  )
 
-  const virtualizer = useVirtualizer({
+  const { startIndex, endIndex, topHeight, bottomHeight } = useVirtualList({
     count: filteredMessages.length,
-    getScrollElement: () => scrollElement.current,
-    estimateSize: () => 120,
-    overscan: 5,
-    getItemKey: (index) => filteredMessages[index]?.uuid ?? index,
-    // measureElement is used as a ref callback on each virtual item wrapper.
-    // It uses ResizeObserver internally to detect size changes dynamically.
+    estimateSize: 120,
+    overscan: 10,
+    scrollElement,
+    getKey,
+    shouldStick,
   })
 
-  useEffect(() => {
-    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
-      // User is physically interacting with the scroll surface — never fight
-      // their gesture. This prevents the jumps on mobile where touch deltas
-      // are small and sticky mode breaks slowly.
-      if (fingerDown.current || userScrollIntent.current) {
-        return false
-      }
-
-      if (shouldStick.current || historyPagingActiveRef.current) {
-        return true
-      }
-
-      if (instance.isScrolling && instance.scrollDirection === 'backward') {
-        return false
-      }
-
-      return item.start < (instance.scrollOffset ?? 0)
-    }
-
-    return () => {
-      virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined
-    }
-  }, [virtualizer, shouldStick, fingerDown, userScrollIntent])
-
-  // Now that virtualizer exists, set the actual near-top handler (updated each render)
+  // Set the near-top handler (updated each render) — simplified since browser
+  // scroll anchoring handles position preservation on prepend.
   nearTopHandlerRef.current = () => {
     if (!onLoadOlderPage || !hasMoreHistory || isLoadingPage) return
-
-    const element = scrollElement.current
-    if (!element) return
-
-    const scrollTop = element.scrollTop
-    const anchor =
-      virtualizer.getVirtualItems().find((item) => item.end > scrollTop) ??
-      virtualizer.getVirtualItems()[0]
-
-    if (anchor) {
-      pendingPrependAnchorRef.current = {
-        index: anchor.index,
-        delta: Math.max(0, scrollTop - anchor.start),
-      }
-    } else {
-      pendingPrependAnchorRef.current = null
-    }
-
     historyPagingActiveRef.current = true
     onLoadOlderPage()
   }
-
-  // ============================================================================
-  // Scroll position preservation on prepend
-  // ============================================================================
-
-  // Uses useLayoutEffect (not useEffect) so the scroll adjustment happens
-  // synchronously after DOM mutations but BEFORE the browser paints the frame.
-  // With useEffect the browser would paint the post-prepend layout (scroll jumps
-  // to top) before the effect ran — causing a visible flash. useLayoutEffect
-  // eliminates that single-frame jump entirely.
-  //
-  // How it works:
-  //   Before requesting another history page, capture the first visible virtual
-  //   item plus the current offset into that item. After prepend, restore the
-  //   same anchor against the new index space, so the viewport stays locked to
-  //   what the user was reading instead of relying on scrollHeight deltas.
-  useLayoutEffect(() => {
-    const prevFirstUuid = prevFirstUuidRef.current
-    const currentFirstUuid = filteredMessages[0]?.uuid
-    const prependCount = prevFirstUuid
-      ? filteredMessages.findIndex((message) => message.uuid === prevFirstUuid)
-      : -1
-
-    if (prependCount > 0) {
-      const anchor = pendingPrependAnchorRef.current
-      if (anchor) {
-        const targetIndex = Math.min(anchor.index + prependCount, filteredMessages.length - 1)
-        const offsetInfo = virtualizer.getOffsetForIndex(targetIndex, 'start')
-
-        if (offsetInfo) {
-          const [baseOffset] = offsetInfo
-          virtualizer.scrollToOffset(baseOffset + anchor.delta)
-        }
-      }
-      pendingPrependAnchorRef.current = null
-    }
-
-    // Save current state for next comparison
-    prevFirstUuidRef.current = currentFirstUuid
-  }, [filteredMessages, virtualizer])
 
   // ============================================================================
   // Continued history paging while user remains near the top
@@ -260,24 +176,22 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   // ============================================================================
 
   const hasMessages = filteredMessages.length > 0 || !!optimisticMessage
-  const virtualItems = virtualizer.getVirtualItems()
-  const totalSize = virtualizer.getTotalSize()
 
   return (
     <>
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
-        style={{ overflowAnchor: 'none', touchAction: 'pan-y' }}
+        style={{ touchAction: 'pan-y' }}
       >
         <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
           {!hasMessages ? (
             <div className="flex-1" />
           ) : (
             <>
-              {/* Loading indicator for older pages */}
+              {/* Loading indicator for older pages — not an anchor candidate */}
               {isLoadingPage && (
-                <div className="flex justify-center py-4">
+                <div className="flex justify-center py-4" style={{ overflowAnchor: 'none' }}>
                   <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--claude-text-tertiary)' }}>
                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -288,30 +202,22 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                 </div>
               )}
 
-              {/* Virtualized message list */}
+              {/* Flow-based virtual message list */}
               {filteredMessages.length > 0 && (
-                <div
-                  style={{
-                    height: totalSize,
-                    width: '100%',
-                    position: 'relative',
-                  }}
-                >
-                  {virtualItems.map((virtualItem) => {
-                    const message = filteredMessages[virtualItem.index]
+                <>
+                  {/* Top spacer — estimated height of items above the render window.
+                    * overflow-anchor: none prevents browser from anchoring on a spacer. */}
+                  <div style={{ height: topHeight, overflowAnchor: 'none' }} />
+
+                  {/* Rendered items — normal document flow, valid anchor candidates.
+                    * Browser overflow-anchor: auto (default) keeps these visually stable
+                    * when content above or below them changes size. */}
+                  {Array.from({ length: endIndex - startIndex }, (_, i) => {
+                    const index = startIndex + i
+                    const message = filteredMessages[index]
+                    if (!message) return null
                     return (
-                      <div
-                        key={virtualItem.key}
-                        ref={virtualizer.measureElement}
-                        data-index={virtualItem.index}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          transform: `translateY(${virtualItem.start}px)`,
-                        }}
-                      >
+                      <div key={message.uuid}>
                         <MessageBlock
                           message={message}
                           toolResultMap={maps.toolResultMap}
@@ -329,15 +235,22 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                       </div>
                     )
                   })}
+
+                  {/* Bottom spacer — estimated height of items below the render window. */}
+                  <div style={{ height: bottomHeight, overflowAnchor: 'none' }} />
+                </>
+              )}
+
+              {/* Transient status indicator (e.g., "Compacting...") — not an anchor candidate */}
+              {currentStatus && (
+                <div style={{ overflowAnchor: 'none' }}>
+                  <TransientStatusBlock status={currentStatus} />
                 </div>
               )}
 
-              {/* Transient status indicator (e.g., "Compacting...") - after virtualized list */}
-              {currentStatus && <TransientStatusBlock status={currentStatus} />}
-
-              {/* Optimistic user message (shown before server confirms) */}
+              {/* Optimistic user message (shown before server confirms) — not an anchor candidate */}
               {optimisticMessage && (
-                <div className="mb-4">
+                <div className="mb-4" style={{ overflowAnchor: 'none' }}>
                   <div className="flex flex-col items-end">
                     <div
                       className="inline-block max-w-[85%] px-4 py-3 rounded-xl text-[15px] leading-relaxed whitespace-pre-wrap break-words opacity-70"
@@ -352,25 +265,32 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                 </div>
               )}
 
-              {/* Streaming thinking (progressive thinking as Claude reasons)
-                * Shown BEFORE streaming text since thinking precedes text in Claude's response.
-                * Hide once the final assistant message arrives (it contains the completed thinking block). */}
-              {showStreamingThinking && <StreamingThinking text={streamingThinking!} />}
+              {/* Streaming thinking — not an anchor candidate (changes constantly) */}
+              {showStreamingThinking && (
+                <div style={{ overflowAnchor: 'none' }}>
+                  <StreamingThinking text={streamingThinking!} />
+                </div>
+              )}
 
-              {/* Streaming response (progressive text as Claude generates)
-                * Hide once the final assistant message is in the list to avoid duplicate content.
-                * The MessageBlock's MessageContent uses parseMarkdownSync for immediate render,
-                * ensuring a seamless visual transition with no flash. */}
-              {showStreaming && <StreamingResponse text={streamingText!} />}
+              {/* Streaming response — not an anchor candidate (changes constantly) */}
+              {showStreaming && (
+                <div style={{ overflowAnchor: 'none' }}>
+                  <StreamingResponse text={streamingText!} />
+                </div>
+              )}
 
-              {/* Work-in-Progress indicator */}
-              {wipText && <ClaudeWIP text={wipText} turnId={turnId} />}
+              {/* Work-in-Progress indicator — not an anchor candidate */}
+              {wipText && (
+                <div style={{ overflowAnchor: 'none' }}>
+                  <ClaudeWIP text={wipText} turnId={turnId} />
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
 
-      {/* Fullscreen preview — rendered outside the virtualizer so it survives
+      {/* Fullscreen preview — rendered outside the virtual list so it survives
         * item unmount/remount cycles triggered by orientation changes or scroll. */}
       {fullscreenSrcdoc && (
         <PreviewFullscreen
