@@ -499,6 +499,7 @@
   line-height: 1.6;
   user-select: text;
   color: var(--claude-text-primary);
+  overflow-wrap: break-word;
 }
 
 .prose-claude p {
