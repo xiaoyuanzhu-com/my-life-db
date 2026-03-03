@@ -2,6 +2,15 @@ import { useState } from 'react'
 import { MessageDot, toolStatusToDotType } from '../message-dot'
 import type { ToolCall, BashToolParams, BashToolResult } from '~/types/claude'
 import type { BashProgressMessage } from '../session-messages'
+import { linkifyLibraryPaths } from '~/lib/file-path-resolver'
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 interface BashToolViewProps {
   toolCall: ToolCall
@@ -110,8 +119,25 @@ export function BashToolView({ toolCall, bashProgressMap, onHeightChange }: Bash
               maxHeight: '60vh',
               color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)',
             }}
+            onClick={(e) => {
+              const link = (e.target as HTMLElement).closest('.library-file-link') as HTMLAnchorElement | null
+              if (link) {
+                e.preventDefault()
+                e.stopPropagation()
+                const libraryPath = decodeURIComponent(link.dataset.libraryPath || '')
+                const isDir = link.dataset.isDir === 'true'
+                if (libraryPath) {
+                  const param = isDir ? 'dir' : 'open'
+                  window.location.href = `/library?${param}=${encodeURIComponent(libraryPath)}`
+                }
+              }
+            }}
           >
-            {errorText || outputText}
+            <span
+              dangerouslySetInnerHTML={{
+                __html: linkifyLibraryPaths(escapeHtml(errorText || outputText))
+              }}
+            />
           </div>
         </div>
       </div>
