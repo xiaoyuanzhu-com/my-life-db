@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { MessageDot, toolStatusToDotType } from '../message-dot'
+import { resolvePath } from '~/lib/file-path-resolver'
+import { FileRef } from '../file-ref'
 import type { ToolCall, EditToolParams } from '~/types/claude'
 
 interface EditToolViewProps {
@@ -11,6 +13,7 @@ const MAX_NEW_LINES = 5
 
 export function EditToolView({ toolCall }: EditToolViewProps) {
   const params = toolCall.parameters as EditToolParams
+  const resolved = resolvePath(params.file_path)
   const [expanded, setExpanded] = useState(false)
 
   // Split into lines for unified diff view
@@ -35,10 +38,15 @@ export function EditToolView({ toolCall }: EditToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Edit
           </span>
-          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
-            {params.file_path}
+          <span className="ml-2 break-all">
+            <FileRef
+              path={params.file_path}
+              libraryPath={resolved.libraryRelative}
+              isDirectory={resolved.isDirectory}
+              showIcon={false}
+            />
             {params.replace_all && (
-              <span className="ml-2 opacity-70">(replace all)</span>
+              <span className="ml-2 opacity-70" style={{ color: 'var(--claude-text-secondary)' }}>(replace all)</span>
             )}
           </span>
         </div>

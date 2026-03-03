@@ -1,4 +1,6 @@
 import { MessageDot, toolStatusToDotType } from '../message-dot'
+import { resolvePath } from '~/lib/file-path-resolver'
+import { FileRef } from '../file-ref'
 import type { ToolCall, ReadToolParams, ReadToolResult } from '~/types/claude'
 
 interface ReadToolViewProps {
@@ -8,6 +10,7 @@ interface ReadToolViewProps {
 export function ReadToolView({ toolCall }: ReadToolViewProps) {
   const params = toolCall.parameters as ReadToolParams
   const result = toolCall.result as ReadToolResult | string | undefined
+  const resolved = resolvePath(params.file_path)
 
   // Extract line metadata from result
   const file = typeof result === 'object' ? result?.file : undefined
@@ -34,8 +37,13 @@ export function ReadToolView({ toolCall }: ReadToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Read
           </span>
-          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
-            {params.file_path}
+          <span className="ml-2 break-all">
+            <FileRef
+              path={params.file_path}
+              libraryPath={resolved.libraryRelative}
+              isDirectory={resolved.isDirectory}
+              showIcon={false}
+            />
           </span>
         </div>
       </div>

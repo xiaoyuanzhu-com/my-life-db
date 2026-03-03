@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { MessageDot, toolStatusToDotType } from '../message-dot'
 import { highlightCode } from '~/lib/markdown'
+import { resolvePath } from '~/lib/file-path-resolver'
+import { FileRef } from '../file-ref'
 import type { ToolCall, WriteToolParams } from '~/types/claude'
 
 interface WriteToolViewProps {
@@ -61,6 +63,7 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
   const isTruncated = lines.length > MAX_LINES
   const displayContent = expanded ? params.content : lines.slice(0, MAX_LINES).join('\n')
   const lang = getLanguageFromPath(params.file_path)
+  const resolved = resolvePath(params.file_path)
 
   // Highlight content with Shiki
   useEffect(() => {
@@ -85,8 +88,13 @@ export function WriteToolView({ toolCall }: WriteToolViewProps) {
           <span className="font-semibold" style={{ color: 'var(--claude-text-primary)' }}>
             Write
           </span>
-          <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
-            {params.file_path}
+          <span className="ml-2 break-all">
+            <FileRef
+              path={params.file_path}
+              libraryPath={resolved.libraryRelative}
+              isDirectory={resolved.isDirectory}
+              showIcon={false}
+            />
           </span>
         </div>
       </div>

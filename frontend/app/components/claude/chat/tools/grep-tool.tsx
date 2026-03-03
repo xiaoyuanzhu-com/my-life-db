@@ -1,4 +1,6 @@
 import { MessageDot, toolStatusToDotType } from '../message-dot'
+import { resolvePath } from '~/lib/file-path-resolver'
+import { FileRef } from '../file-ref'
 import type { ToolCall, GrepToolParams, GrepToolResult } from '~/types/claude'
 
 interface GrepToolViewProps {
@@ -23,6 +25,11 @@ export function GrepToolView({ toolCall }: GrepToolViewProps) {
           </span>
           <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             /{params.pattern}/
+            {params.path && (
+              <span className="opacity-70 ml-2">
+                in <FileRef path={params.path} libraryPath={resolvePath(params.path).libraryRelative} isDirectory={true} showIcon={false} />
+              </span>
+            )}
             {params.glob && <span className="opacity-70 ml-2">in {params.glob}</span>}
             {params.type && <span className="opacity-70 ml-2">type:{params.type}</span>}
           </span>

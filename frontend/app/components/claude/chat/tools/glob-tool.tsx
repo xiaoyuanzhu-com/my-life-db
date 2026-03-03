@@ -1,4 +1,6 @@
 import { MessageDot, toolStatusToDotType } from '../message-dot'
+import { resolvePath } from '~/lib/file-path-resolver'
+import { FileRef } from '../file-ref'
 import type { ToolCall, GlobToolParams, GlobToolResult } from '~/types/claude'
 
 interface GlobToolViewProps {
@@ -22,7 +24,11 @@ export function GlobToolView({ toolCall }: GlobToolViewProps) {
           </span>
           <span className="ml-2 break-all" style={{ color: 'var(--claude-text-secondary)' }}>
             {params.pattern}
-            {params.path && <span className="opacity-70 ml-2">in {params.path}</span>}
+            {params.path && (
+              <span className="opacity-70 ml-2">
+                in <FileRef path={params.path} libraryPath={resolvePath(params.path).libraryRelative} isDirectory={true} showIcon={false} />
+              </span>
+            )}
           </span>
         </div>
       </div>
