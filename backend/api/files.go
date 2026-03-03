@@ -633,6 +633,12 @@ func (h *Handlers) GetDirectories(c *gin.Context) {
 	c.JSON(http.StatusOK, dirs)
 }
 
+// GetLibraryRoot handles GET /api/library/root
+func (h *Handlers) GetLibraryRoot(c *gin.Context) {
+	cfg := config.Get()
+	c.JSON(http.StatusOK, gin.H{"root": cfg.UserDataDir})
+}
+
 // RenameLibraryFile handles POST /api/library/rename
 func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	var body struct {
