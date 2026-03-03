@@ -41,11 +41,11 @@ function useDarkMode() {
 
 function ConditionalHeader() {
   const location = useLocation();
-  const isClaudePage = location.pathname.startsWith('/claude');
+  // Hide header on mobile only for Claude session detail (not the list page)
+  const isClaudeSessionDetail = /^\/claude\/[^/]+/.test(location.pathname);
 
-  // Hide header on mobile for Claude page, always show on desktop
   return (
-    <div className={isClaudePage ? 'hidden md:block' : ''}>
+    <div className={isClaudeSessionDetail ? 'hidden md:block' : ''}>
       <Header />
     </div>
   );

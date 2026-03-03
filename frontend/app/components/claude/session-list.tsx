@@ -284,8 +284,8 @@ export function SessionList({
                                 )}
                               </span>
                             </div>
-                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span className="truncate">
+                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                              <span className="truncate min-w-0">
                                 {session.workingDir}
                               </span>
                               <span className="shrink-0">

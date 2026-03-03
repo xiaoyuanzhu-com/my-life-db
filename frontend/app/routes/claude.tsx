@@ -725,7 +725,7 @@ export default function ClaudePage() {
       </div>
 
       {/* ── Mobile: Stack navigation ── */}
-      <div className="flex md:hidden flex-1 h-full">
+      <div className="flex md:hidden flex-1 h-full min-w-0 overflow-hidden">
         {activeSessionId ? (
           /* Detail view: full-screen chat with floating back button */
           <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 animate-slide-in-right">
@@ -753,7 +753,7 @@ export default function ClaudePage() {
           </div>
         ) : sessionSidebar ? (
           /* List view: full-screen session list */
-          <div className="flex flex-1 flex-col bg-muted/30">
+          <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
             <SessionsHeader />
             <div className="flex-1 overflow-hidden">
               <SessionList
