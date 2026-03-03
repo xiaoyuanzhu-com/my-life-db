@@ -49,10 +49,34 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    // Mark body so other components (e.g. swipe-back handler) know
+    // fullscreen preview is active and should yield to iframe gestures.
+    document.body.setAttribute('data-fullscreen-preview', '')
+
+    // Tell the native app to disable the interactive pop gesture so
+    // swipe-left/right gestures inside the iframe reach the content
+    // (e.g. slide navigation) instead of popping the NavigationStack.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    if (w.isNativeApp) {
+      w.webkit?.messageHandlers?.native?.postMessage({
+        action: 'fullscreenPreview',
+        isFullscreen: true,
+      })
+    }
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('message', handleMessage)
       document.body.style.overflow = prev
+      document.body.removeAttribute('data-fullscreen-preview')
+
+      if (w.isNativeApp) {
+        w.webkit?.messageHandlers?.native?.postMessage({
+          action: 'fullscreenPreview',
+          isFullscreen: false,
+        })
+      }
     }
   }, [handleKeyDown])
 

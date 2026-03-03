@@ -291,6 +291,9 @@ export default function ClaudePage() {
   // Swipe gesture handler for mobile back navigation
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
+      // Yield to fullscreen preview — let the iframe handle all gestures
+      if (document.body.hasAttribute('data-fullscreen-preview')) return
+
       // Only start tracking if touch starts from left edge (within 50px)
       if (e.touches[0].clientX < 50) {
         touchStartX.current = e.touches[0].clientX
