@@ -47,7 +47,16 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
     term.open(terminalRef.current)
     // Fit after a frame to ensure the container has its final dimensions
     requestAnimationFrame(() => fitAddon.fit())
+    term.focus()
     termRef.current = term
+
+    // Let browser handle Ctrl+V / Cmd+V so paste works in the terminal
+    term.attachCustomKeyEventHandler((event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+        return false
+      }
+      return true
+    })
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -122,13 +131,10 @@ export function ClaudeLoginTerminal({ onLoginSuccess }: ClaudeLoginTerminalProps
           </p>
         </div>
 
-        {/* tabIndex makes the container focusable; onClick ensures clicking
-            anywhere (including padding) forwards focus to xterm's hidden textarea */}
         <div
           ref={terminalRef}
-          tabIndex={0}
-          onClick={() => termRef.current?.focus()}
-          className="w-full rounded-lg border border-border overflow-hidden p-2"
+          onMouseDown={() => termRef.current?.focus()}
+          className="w-full rounded-lg border border-border overflow-hidden p-2 cursor-text"
           style={{ backgroundColor: 'var(--claude-bg-code-block)', height: '360px' }}
         />
 
