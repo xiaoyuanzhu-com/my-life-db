@@ -1,17 +1,49 @@
 import { FileText } from 'lucide-react'
+import { Link } from 'react-router'
 
 interface FileRefProps {
   path: string
+  /** Library-relative path to link to. If set, renders as a clickable link. */
+  libraryPath?: string | null
+  /** Whether this is a directory (uses ?dir= instead of ?open=). */
+  isDirectory?: boolean
   showIcon?: boolean
   className?: string
 }
 
 /**
- * FileRef renders a file path as a styled, interactive element.
+ * FileRef renders a file path as a styled element.
  * Shows just the filename with the full path on hover.
+ * When libraryPath is set, renders as a clickable link to the library page.
  */
-export function FileRef({ path, showIcon = true, className = '' }: FileRefProps) {
+export function FileRef({ path, libraryPath, isDirectory, showIcon = true, className = '' }: FileRefProps) {
   const filename = path.split('/').pop() || path
+
+  const inner = (
+    <>
+      {showIcon && <FileText className="h-3 w-3 flex-shrink-0" />}
+      <span className="truncate max-w-[200px]">{filename}</span>
+    </>
+  )
+
+  if (libraryPath != null) {
+    const param = isDirectory ? 'dir' : 'open'
+    const to = `/library?${param}=${encodeURIComponent(libraryPath)}`
+
+    return (
+      <Link
+        to={to}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[13px] cursor-pointer hover:underline ${className}`}
+        style={{
+          backgroundColor: 'var(--claude-bg-code-block)',
+          color: 'var(--claude-accent, var(--claude-text-secondary))',
+        }}
+        title={path}
+      >
+        {inner}
+      </Link>
+    )
+  }
 
   return (
     <span
@@ -22,8 +54,7 @@ export function FileRef({ path, showIcon = true, className = '' }: FileRefProps)
       }}
       title={path}
     >
-      {showIcon && <FileText className="h-3 w-3 flex-shrink-0" />}
-      <span className="truncate max-w-[200px]">{filename}</span>
+      {inner}
     </span>
   )
 }
