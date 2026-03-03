@@ -5,6 +5,7 @@ import { AuthProvider } from "~/contexts/auth-context";
 import { FeatureFlagsProvider } from "~/contexts/feature-flags-context";
 import { Toaster } from "~/components/ui/sonner";
 import { isNativeApp, setupNativeListeners } from "~/lib/native-bridge";
+import { initLibraryRoot } from "~/lib/file-path-resolver";
 import "./globals.css";
 
 function useDarkMode() {
@@ -54,6 +55,11 @@ function ConditionalHeader() {
 export default function Root() {
   useDarkMode();
   useNativeBridge();
+
+  // Initialize library root for file path resolution
+  useEffect(() => {
+    initLibraryRoot()
+  }, [])
 
   const native = isNativeApp();
 
