@@ -119,8 +119,10 @@ function LibraryContent() {
 
   useEffect(() => {
     const openParams = searchParams.getAll("open");
-    if (openParams.length === 0) return;
+    const dirParam = searchParams.get("dir");
+    if (openParams.length === 0 && !dirParam) return;
 
+    // Handle file opens
     openParams.forEach((filePath) => {
       if (!filePath) return;
       const fileName = filePath.split("/").pop() || filePath;
@@ -135,6 +137,18 @@ function LibraryContent() {
 
       expandParentFolders(filePath);
     });
+
+    // Handle directory navigation — expand to folder without opening a file tab
+    if (dirParam) {
+      // expandParentFolders expands all ancestors; we also need to expand the dir itself
+      expandParentFolders(dirParam + '/placeholder');
+      setExpandedFolders((prev) => {
+        const next = new Set(prev);
+        const normalizedDir = dirParam.startsWith('./') ? dirParam : './' + dirParam;
+        next.add(normalizedDir);
+        return next;
+      });
+    }
 
     navigate("/library", { replace: true });
   }, [searchParams, navigate]);
