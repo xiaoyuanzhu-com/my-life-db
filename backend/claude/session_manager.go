@@ -1458,12 +1458,16 @@ func (m *SessionManager) gcIdleSessions() {
 
 	m.mu.RLock()
 	for id, session := range m.sessions {
+		session.mu.RLock()
+		activated := session.activated
+		lastActivity := session.LastActivity
+		session.mu.RUnlock()
+		if !activated {
+			continue // Historical session, no process to GC
+		}
 		if session.ClientCount() > 0 {
 			continue
 		}
-		session.mu.RLock()
-		lastActivity := session.LastActivity
-		session.mu.RUnlock()
 		age := now.Sub(lastActivity)
 		if age > gcTimeout {
 			candidates = append(candidates, gcCandidate{
