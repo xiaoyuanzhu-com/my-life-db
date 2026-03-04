@@ -2,17 +2,14 @@ package fs
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gen2brain/heic"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -51,17 +48,12 @@ type previewWorker struct {
 
 // needsImagePreview returns true for MIME types that support preview generation
 func needsImagePreview(mimeType string) bool {
-	return isImageMime(mimeType) || isVideoMime(mimeType)
+	return isImageMime(mimeType)
 }
 
 // isImageMime returns true for image/* MIME types
 func isImageMime(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "image/")
-}
-
-// isVideoMime returns true for video/* MIME types
-func isVideoMime(mimeType string) bool {
-	return strings.HasPrefix(mimeType, "video/")
 }
 
 // ---------- Worker lifecycle ----------
@@ -114,11 +106,6 @@ func (w *previewWorker) processJob(job previewJob) {
 		previewType = "thumbnail"
 		sqlarName = pathHash + "/preview/thumbnail.jpg"
 		data, err = w.generateImageThumbnail(job.filePath, job.mimeType)
-
-	case isVideoMime(job.mimeType):
-		previewType = "thumbnail"
-		sqlarName = pathHash + "/preview/thumbnail.jpg"
-		data, err = w.generateVideoThumbnail(job.filePath)
 
 	default:
 		return
@@ -247,69 +234,6 @@ func resizeToMaxWidth(src image.Image, maxWidth int) image.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, draw.Over, nil)
 	return dst
-}
-
-// ---------- Video thumbnail ----------
-
-// generateVideoThumbnail extracts a frame from a video using ffmpeg,
-// resizes it, and encodes it as a JPEG thumbnail.
-func (w *previewWorker) generateVideoThumbnail(filePath string) ([]byte, error) {
-	fullPath := filepath.Join(w.service.cfg.DataRoot, filePath)
-
-	// Extract a frame at 1 second using ffmpeg
-	data, err := extractVideoFrame(fullPath, "1")
-	if err != nil {
-		// Very short video — try 0s instead
-		data, err = extractVideoFrame(fullPath, "0")
-		if err != nil {
-			return nil, fmt.Errorf("ffmpeg: %w", err)
-		}
-	}
-
-	// Decode the PNG frame from ffmpeg
-	img, err := png.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("decode ffmpeg frame: %w", err)
-	}
-
-	// Resize and encode as JPEG thumbnail
-	thumb := resizeToMaxWidth(img, thumbnailMaxWidth)
-
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: thumbnailQuality}); err != nil {
-		return nil, fmt.Errorf("encode video thumbnail: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-// extractVideoFrame runs ffmpeg to extract a single frame at the given timestamp
-func extractVideoFrame(videoPath, seekTime string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-ss", seekTime,
-		"-i", videoPath,
-		"-frames:v", "1",
-		"-f", "image2pipe",
-		"-vcodec", "png",
-		"-",
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%w: %s", err, stderr.String())
-	}
-
-	if stdout.Len() == 0 {
-		return nil, fmt.Errorf("ffmpeg produced empty output")
-	}
-
-	return stdout.Bytes(), nil
 }
 
 // Ensure standard image decoders are registered (JPEG, PNG, GIF are auto-registered
