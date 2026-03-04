@@ -13,6 +13,8 @@ export const TEXT_MIME_TYPES = new Set([
   'application/x-javascript',
   'application/x-sh',
   'application/sql',
+  'application/x-yaml',
+  'application/yaml',
 ]);
 
 /**
@@ -20,16 +22,24 @@ export const TEXT_MIME_TYPES = new Set([
  * (for cases where MIME type detection fails or is inaccurate)
  */
 export const TEXT_EXTENSIONS = new Set([
-  '.md',
-  '.mdx',
-  '.markdown',
-  '.txt',
-  '.log',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.csv',
-  '.tsv',
+  // Text / markup
+  '.md', '.mdx', '.markdown', '.txt', '.log',
+  '.json', '.yaml', '.yml', '.csv', '.tsv',
+  // Programming languages
+  '.js', '.jsx', '.ts', '.tsx',
+  '.go', '.py', '.rs', '.java',
+  '.c', '.cpp', '.h', '.hpp',
+  '.rb', '.php', '.swift', '.kt', '.scala',
+  '.r', '.lua', '.pl', '.dart', '.zig', '.v', '.elm',
+  // Shell / scripts
+  '.sh', '.bash', '.zsh', '.fish', '.bat', '.ps1',
+  // Config / data
+  '.toml', '.ini', '.cfg', '.conf', '.env',
+  '.sql', '.graphql', '.proto',
+  // Web
+  '.html', '.htm', '.css', '.xml', '.svg',
+  // Special dotfiles
+  '.gitignore', '.dockerignore', '.editorconfig',
 ]);
 
 /**

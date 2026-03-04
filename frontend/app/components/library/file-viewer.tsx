@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { TextEditor } from '~/components/text-editor';
+import { isTextFile } from '~/lib/file-types';
 
 interface FileViewerProps {
   filePath: string;
@@ -19,8 +20,8 @@ interface FileData {
   modifiedAt: number;
 }
 
-function getFileType(contentType: string): 'text' | 'image' | 'video' | 'audio' | 'pdf' | 'unknown' {
-  if (contentType.startsWith('text/') || contentType === 'application/json') return 'text';
+function getFileType(contentType: string, filename: string): 'text' | 'image' | 'video' | 'audio' | 'pdf' | 'unknown' {
+  if (isTextFile(contentType, filename)) return 'text';
   if (contentType.startsWith('image/')) return 'image';
   if (contentType.startsWith('video/')) return 'video';
   if (contentType.startsWith('audio/')) return 'audio';
@@ -57,11 +58,10 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
       // Extract just the MIME type, stripping charset and other parameters
       const rawContentType = response.headers.get('content-type') || 'application/octet-stream';
       const contentType = rawContentType.split(';')[0].trim();
-      const fileType = getFileType(contentType);
-
       // Extract filename from path
       const filenameMatch = filePath.match(/[^/]+$/);
       const filename = filenameMatch ? filenameMatch[0] : 'file';
+      const fileType = getFileType(contentType, filename);
 
       // For text files, decode the binary response as UTF-8
       if (fileType === 'text') {
@@ -213,7 +213,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     );
   }
 
-  const fileType = getFileType(fileData.contentType);
+  const fileType = getFileType(fileData.contentType, fileData.name);
   const fileUrl = `/raw/${filePath}`;
 
   return (
