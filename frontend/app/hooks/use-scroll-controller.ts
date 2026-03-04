@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 // ============================================================================
+// Debug flag
+// ============================================================================
+
+export const scrollDebug = { enabled: true }
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -141,6 +147,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       phaseRef.current = 'programmatic'
       userScrollIntentRef.current = false
       el.scrollTo({ top: el.scrollHeight, behavior })
+      if (scrollDebug.enabled && el.scrollTop !== prevScrollTop) console.log('[scroll-debug] scrollToBottom', { prevScrollTop, newScrollTop: el.scrollTop, scrollHeight: el.scrollHeight, behavior, stack: new Error().stack?.split('\n').slice(1, 4).map(s => s.trim()).join(' < ') })
       isAtBottomRef.current = true
       shouldStickRef.current = true
       // If scroll position didn't change (no overflow or already at bottom),
@@ -154,12 +161,15 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   )
 
   const stickIfNeeded = useCallback(() => {
-    if (phaseRef.current !== 'idle') return // phase gate
-    if (fingerDownRef.current) return       // finger on screen — absolute lock
-    if (userScrollIntentRef.current) return // momentum still going
-    if (!shouldStickRef.current) return
+    const blocked = phaseRef.current !== 'idle' ? `phase=${phaseRef.current}` : fingerDownRef.current ? 'fingerDown' : userScrollIntentRef.current ? 'userScrollIntent' : !shouldStickRef.current ? 'shouldStick=false' : null
+    if (blocked) return
+    const el = scrollElementRef.current
+    if (!el) return
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distFromBottom <= stickyThreshold) return // already at bottom, skip no-op
+    if (scrollDebug.enabled) console.log('[scroll-debug] stickIfNeeded EXECUTING', { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, distFromBottom })
     scrollToBottom('instant')
-  }, [scrollToBottom])
+  }, [scrollToBottom, stickyThreshold])
 
   // ============================================================================
   // Scroll event handler (single listener, synchronous)
@@ -204,10 +214,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     isAtBottomRef.current = atBottom
 
     if (atBottom) {
+      if (scrollDebug.enabled && !shouldStickRef.current) console.log('[scroll-debug] sticky RE-ENGAGED at bottom')
       shouldStickRef.current = true
     } else if (userDriven && delta <= -STICKY_BREAK_MIN_UPWARD_DELTA) {
       // Ignore tiny upward jitter from layout/anchoring. Only a real upward
       // scroll gesture should break sticky mode.
+      if (scrollDebug.enabled && shouldStickRef.current) console.log('[scroll-debug] sticky BROKEN by user scroll up', { delta, scrollTop, distanceFromBottom })
       shouldStickRef.current = false
     }
 
@@ -270,6 +282,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     if (atBottom) {
       shouldStickRef.current = true
     }
+    if (scrollDebug.enabled) console.log('[scroll-debug] scrollend', { phase: phaseRef.current, atBottom, shouldStick: shouldStickRef.current, scrollTop: el.scrollTop })
     // Return to idle — ResizeObserver may now call stickIfNeeded()
     phaseRef.current = 'idle'
     userScrollIntentRef.current = false
@@ -341,7 +354,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       if (!el || typeof ResizeObserver === 'undefined') return
 
       if (!resizeObserverRef.current) {
-        resizeObserverRef.current = new ResizeObserver(() => {
+        let prevContentHeight = -1
+        resizeObserverRef.current = new ResizeObserver((entries) => {
+          const h = entries[0]?.contentRect.height ?? 0
+          if (h === prevContentHeight) return
+          if (scrollDebug.enabled) console.log('[scroll-debug] ResizeObserver', { contentHeight: h, prevContentHeight, scrollTop: scrollElementRef.current?.scrollTop, scrollHeight: scrollElementRef.current?.scrollHeight })
+          prevContentHeight = h
           stickIfNeeded() // phase-gated: only acts during idle
         })
       }
