@@ -1,5 +1,4 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { scrollDebug } from './use-scroll-controller'
 
 // ============================================================================
 // Types
@@ -126,7 +125,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
           prependHandledRef.current = true
-          scrollDebug.enabled && console.log('[vlist-debug] PREPEND (render-phase)', { prependCount, from: `${range.startIndex}-${range.endIndex}`, to: `${newStart}-${newEnd}`, topH: `${range.startIndex * estimateSize}→${newStart * estimateSize}` })
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
       }
@@ -160,7 +158,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       )
 
       if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-      scrollDebug.enabled && console.log('[vlist-debug] updateRange', { from: `${prev.startIndex}-${prev.endIndex}`, to: `${startIndex}-${endIndex}`, calc: `${next.startIndex}-${next.endIndex}`, scrollTop: el.scrollTop })
       return { startIndex, endIndex }
     })
   }, [scrollElement, count, estimateSize, overscan])
@@ -209,7 +206,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
-      scrollDebug.enabled && console.log('[vlist-debug] count change (sticky)', { count, range: `${nextRange.startIndex}-${nextRange.endIndex}`, topH: nextRange.startIndex * estimateSize })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
@@ -218,7 +214,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const visibleCount = Math.ceil(viewportHeight / estimateSize)
         const endIndex = Math.min(count, prev.startIndex + visibleCount + 2 * overscan)
         if (prev.endIndex === endIndex) return prev
-        scrollDebug.enabled && console.log('[vlist-debug] count change (non-sticky)', { count, from: `${prev.startIndex}-${prev.endIndex}`, to: `${prev.startIndex}-${endIndex}` })
         return { startIndex: prev.startIndex, endIndex }
       })
     }
@@ -242,22 +237,12 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     const expectedScrollTop = snap.scrollTop + heightAdded
     if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
       el.scrollTop = expectedScrollTop
-      scrollDebug.enabled && console.log('[vlist-debug] prepend scroll restore', { heightAdded, prevScrollTop: snap.scrollTop, newScrollTop: el.scrollTop, browserScrollTop: snap.scrollTop })
-    } else {
-      scrollDebug.enabled && console.log('[vlist-debug] prepend scroll restore (browser handled)', { heightAdded, scrollTop: el.scrollTop })
     }
   }, [range.startIndex, range.endIndex, scrollElement])
 
   // ---- Derived spacer heights ----
   const topHeight = range.startIndex * estimateSize
   const bottomHeight = Math.max(0, (count - range.endIndex) * estimateSize)
-
-  // Log spacer height changes (only when they actually change)
-  const prevSpacersRef = useRef({ topHeight: -1, bottomHeight: -1 })
-  if (prevSpacersRef.current.topHeight !== topHeight || prevSpacersRef.current.bottomHeight !== bottomHeight) {
-    scrollDebug.enabled && console.log('[vlist-debug] spacers', { topHeight, bottomHeight, range: `${range.startIndex}-${range.endIndex}`, count })
-    prevSpacersRef.current = { topHeight, bottomHeight }
-  }
 
   return {
     startIndex: range.startIndex,
