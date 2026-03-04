@@ -117,6 +117,14 @@ export function extractAndResolvePaths(text: string, cwd?: string): ResolvedPath
     // Skip very short matches
     if (raw.length < 4) continue
 
+    // Skip bare relative paths that look like natural language (e.g. "text/layout",
+    // "wider/shorter"). Bare relative paths (no ./ ../ or leading /) with only one
+    // slash and no file extension are almost certainly not file paths.
+    if (!raw.startsWith('/') && !raw.startsWith('./') && !raw.startsWith('../')) {
+      const slashCount = (raw.match(/\//g) || []).length
+      if (slashCount <= 1 && !hasFileExtension(raw)) continue
+    }
+
     const resolved = resolvePath(raw, cwd)
     if (resolved.libraryRelative !== null) {
       results.push(resolved)
