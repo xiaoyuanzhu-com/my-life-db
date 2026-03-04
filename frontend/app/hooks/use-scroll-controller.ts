@@ -50,7 +50,6 @@ const DEFAULT_STICKY_THRESHOLD = 50
 const DEFAULT_HIDE_SCROLL_THRESHOLD = 50
 const DEFAULT_HIDE_BOTTOM_THRESHOLD = 100
 const DEFAULT_TOP_LOAD_THRESHOLD = 1000
-const STICKY_BREAK_MIN_UPWARD_DELTA = 8
 
 // ============================================================================
 // Hook
@@ -205,12 +204,15 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     const atBottom = distanceFromBottom <= stickyThreshold
     isAtBottomRef.current = atBottom
 
-    if (atBottom) {
-      shouldStickRef.current = true
-    } else if (userDriven && delta <= -STICKY_BREAK_MIN_UPWARD_DELTA) {
-      // Ignore tiny upward jitter from layout/anchoring. Only a real upward
-      // scroll gesture should break sticky mode.
+    // Intent-first: any upward user scroll breaks sticky immediately, even
+    // within the stickyThreshold zone. On iOS high-frequency touch events,
+    // the old if/else structure let atBottom re-affirm sticky for ~50px of
+    // upward travel — by which time scrollend had already fired at touch-lift
+    // and userDriven was false, so sticky could never break.
+    if (userDriven && delta < 0) {
       shouldStickRef.current = false
+    } else if (atBottom) {
+      shouldStickRef.current = true
     }
 
     // ---- 4. Hide-on-scroll ----
