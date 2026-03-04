@@ -94,6 +94,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     count > 0 ? getKey(0) : undefined,
   )
   const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+  const prependHandledRef = useRef(false)
 
   // ---- Render-phase prepend detection ----
   // Detecting prepends during render and calling setRange immediately makes React
@@ -124,6 +125,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
           if (el) {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
+          prependHandledRef.current = true
           scrollDebug.enabled && console.log('[vlist-debug] PREPEND (render-phase)', { prependCount, from: `${range.startIndex}-${range.endIndex}`, to: `${newStart}-${newEnd}`, topH: `${range.startIndex * estimateSize}→${newStart * estimateSize}` })
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
@@ -134,43 +136,33 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   }
 
   // ---- Range update (called from scroll listener and effects) ----
-  const recentCalcsRef = useRef<Array<{ s: number; e: number }>>([])
 
   const updateRange = useCallback(() => {
     const el = scrollElement.current
     if (!el || count === 0) return
     const next = calcRange(el.scrollTop, el.clientHeight, count, estimateSize, overscan)
 
-    // Check if calcRange is returning a range we've recently computed — indicates
-    // oscillation from variable item heights making scrollTop bounce.
-    const recents = recentCalcsRef.current
-    const isOscillating = recents.some((r) => r.s === next.startIndex && r.e === next.endIndex)
-
     setRange((prev) => {
       if (prev.startIndex === next.startIndex && prev.endIndex === next.endIndex) return prev
 
-      // Stabilize: either oscillation detected (A→B→A) or ±1 boundary jitter.
-      // Merge into the union of both ranges — renders a few extra items but stops thrashing.
-      const shouldStabilize =
-        isOscillating ||
-        (Math.abs(next.startIndex - prev.startIndex) <= 1 && Math.abs(next.endIndex - prev.endIndex) <= 1)
+      // Conservative range update: expand immediately to include what calcRange
+      // says is needed, but shrink lazily. Items are only removed when they're
+      // more than 2×overscan away from the calculated viewport edge.
+      // This prevents empty space caused by variable item heights differing
+      // from estimateSize.
+      const startIndex = Math.max(
+        Math.min(prev.startIndex, next.startIndex),
+        next.startIndex - overscan,
+      )
+      const endIndex = Math.min(
+        Math.max(prev.endIndex, next.endIndex),
+        next.endIndex + overscan,
+      )
 
-      if (shouldStabilize) {
-        const stable = {
-          startIndex: Math.min(prev.startIndex, next.startIndex),
-          endIndex: Math.max(prev.endIndex, next.endIndex),
-        }
-        if (stable.startIndex === prev.startIndex && stable.endIndex === prev.endIndex) return prev
-        scrollDebug.enabled && console.log('[vlist-debug] updateRange (stabilized)', { from: `${prev.startIndex}-${prev.endIndex}`, to: `${stable.startIndex}-${stable.endIndex}`, calc: `${next.startIndex}-${next.endIndex}`, oscillation: isOscillating })
-        return stable
-      }
-
-      scrollDebug.enabled && console.log('[vlist-debug] updateRange (scroll)', { from: `${prev.startIndex}-${prev.endIndex}`, to: `${next.startIndex}-${next.endIndex}`, scrollTop: el.scrollTop, topH: `${next.startIndex * estimateSize}→${prev.startIndex * estimateSize}` })
-      return next
+      if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
+      scrollDebug.enabled && console.log('[vlist-debug] updateRange', { from: `${prev.startIndex}-${prev.endIndex}`, to: `${startIndex}-${endIndex}`, calc: `${next.startIndex}-${next.endIndex}`, scrollTop: el.scrollTop })
+      return { startIndex, endIndex }
     })
-
-    recents.push({ s: next.startIndex, e: next.endIndex })
-    if (recents.length > 4) recents.shift()
   }, [scrollElement, count, estimateSize, overscan])
 
   // ---- Scroll listener (passive) ----
@@ -193,6 +185,15 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // ---- Count changes: non-prepend adjustments (append, filter, initial load) ----
   // Prepend is already handled in render phase above. This effect handles the rest.
   useLayoutEffect(() => {
+    // Skip if render-phase prepend detection already adjusted the range.
+    // The count-change effect would otherwise override the shifted range with
+    // a stale calculation, causing a visual jump.
+    if (prependHandledRef.current) {
+      prependHandledRef.current = false
+      prevFirstKeyRef.current = count > 0 ? getKey(0) : undefined
+      return
+    }
+
     if (count === 0) {
       setRange({ startIndex: 0, endIndex: 0 })
       prevFirstKeyRef.current = undefined
