@@ -731,7 +731,7 @@ export default function ClaudePage() {
       <div className="flex md:hidden flex-1 h-full min-w-0 overflow-hidden">
         {activeSessionId ? (
           /* Detail view: full-screen chat with floating back button */
-          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 animate-slide-in-right">
+          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
             {sessionSidebar && (
               <Button
                 variant="ghost"
@@ -772,21 +772,6 @@ export default function ClaudePage() {
                 onLoadMore={loadMoreSessions}
               />
             </div>
-            {/* New session input at bottom of list view */}
-            {sessionCreateNew && !activeSessionId && (
-              <div className="border-t border-border">
-                <ChatInput
-                  onSend={createSessionWithMessage}
-                  disabled={isCreatingSession}
-                  placeholder="Start a new conversation..."
-                  workingDir={newSessionWorkingDir}
-                  onWorkingDirChange={setNewSessionWorkingDir}
-                  slashCommands={BUILTIN_COMMANDS}
-                  permissionMode={newSessionPermissionMode}
-                  onPermissionModeChange={setNewSessionPermissionMode}
-                />
-              </div>
-            )}
           </div>
         ) : (
           /* No sidebar (hybrid app) — just the chat input */
