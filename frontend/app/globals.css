@@ -685,15 +685,16 @@
   display: block;
 }
 
-/* Library file path links in session messages */
-.library-file-link {
+/* Library file path links in session messages
+   Use `a.library-file-link` (specificity 0,1,1) to override `.prose-claude a` underline. */
+a.library-file-link {
   color: var(--claude-accent, var(--claude-text-secondary));
   text-decoration: none;
   cursor: pointer;
   border-bottom: 1px dotted currentColor;
 }
-.library-file-link:hover {
-  text-decoration: underline;
+a.library-file-link:hover {
+  border-bottom-style: solid;
 }
 
 /* ── Preview expand button ── */

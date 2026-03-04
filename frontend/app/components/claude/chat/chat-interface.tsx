@@ -14,6 +14,7 @@ import {
   type SessionMessage,
 } from '~/lib/session-message-utils'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
+import { setSessionCwd } from '~/lib/file-path-resolver'
 import type { ContextUsage } from './context-usage-indicator'
 
 interface ChatInterfaceProps {
@@ -126,6 +127,12 @@ export function ChatInterface({
 
   // Working directory (read-only for existing sessions)
   const workingDir = initialWorkingDir
+
+  // Set session cwd for file path resolver (used by linkifyLibraryPaths)
+  useEffect(() => {
+    setSessionCwd(workingDir ?? null)
+    return () => setSessionCwd(null)
+  }, [workingDir])
 
   // ============================================================================
   // Refs

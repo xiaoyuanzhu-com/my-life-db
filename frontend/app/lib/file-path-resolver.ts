@@ -5,6 +5,7 @@
 import { api } from '~/lib/api'
 
 let libraryRoot: string | null = null
+let sessionCwd: string | null = null
 
 export interface ResolvedPath {
   /** The raw string found in the text */
@@ -39,6 +40,11 @@ export function getLibraryRoot(): string | null {
   return libraryRoot
 }
 
+/** Set the session working directory for resolving relative paths. */
+export function setSessionCwd(cwd: string | null) {
+  sessionCwd = cwd
+}
+
 /**
  * Resolve a single known path string against the library root.
  * Returns libraryRelative if the path lives inside the library, null otherwise.
@@ -58,8 +64,8 @@ export function resolvePath(raw: string, cwd?: string): ResolvedPath {
     // Relative — resolve against cwd
     absolute = normalizePath(cwd + '/' + trimmed)
   } else {
-    // Relative with no cwd — try resolving against library root
-    absolute = normalizePath(libraryRoot + '/' + trimmed)
+    // Relative with no cwd — can't determine if it's in the library
+    return { original: raw, absolute: trimmed, libraryRelative: null, isDirectory: false }
   }
 
   const isDirectory = trimmed.endsWith('/') || !hasFileExtension(trimmed)
@@ -133,17 +139,49 @@ export function libraryUrl(resolved: ResolvedPath): string {
  * Post-process an HTML string to wrap detected library paths in clickable links.
  * Used for markdown-rendered content and bash output.
  *
- * Adds <a data-library-path="..." data-is-dir="true|false" class="library-file-link">
- * around detected path text. Only processes text between HTML tags (not inside attributes).
+ * Two passes:
+ * 1. Fix markdown-generated <a href="relative-path"> — resolve against session cwd,
+ *    convert to library links if in library, otherwise strip href to prevent wrong navigation.
+ * 2. Scan text content between tags for file-path-like strings and linkify matches.
  */
 export function linkifyLibraryPaths(html: string, cwd?: string): string {
   if (!libraryRoot) return html
 
-  // Process text segments between HTML tags: ">text<"
-  return html.replace(/(>)([^<]+)(<)/g, (_full, open: string, textContent: string, close: string) => {
+  const effectiveCwd = cwd ?? sessionCwd ?? undefined
+
+  // First pass: fix markdown-generated <a href="relative-path">text</a>.
+  // Marked creates links like <a href="docs/plans/file.md"> which the browser resolves
+  // relative to the current page URL (wrong). Resolve against session cwd instead.
+  let processed = html.replace(
+    /<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g,
+    (_match, href: string, content: string) => {
+      // Skip URLs, anchors, mailto, etc.
+      if (/^(?:https?:|ftp:|mailto:|#|data:)/.test(href)) return _match
+      // Skip if already a library-file-link
+      if (_match.includes('library-file-link')) return _match
+
+      // Try resolving against session cwd first, then library root as fallback.
+      // Markdown links are intentional file references — worth checking both.
+      const resolved = resolvePath(href, effectiveCwd)
+      if (resolved.libraryRelative !== null) {
+        return `<a href="${libraryUrl(resolved)}" class="library-file-link">${content}</a>`
+      }
+      if (libraryRoot) {
+        const resolvedFromLib = resolvePath(href, libraryRoot)
+        if (resolvedFromLib.libraryRelative !== null) {
+          return `<a href="${libraryUrl(resolvedFromLib)}" class="library-file-link">${content}</a>`
+        }
+      }
+      // Not a library path — unwrap the <a> entirely to avoid styled dead links
+      return content
+    }
+  )
+
+  // Second pass: linkify paths detected in text content between HTML tags
+  processed = processed.replace(/(>)([^<]+)(<)/g, (_full, open: string, textContent: string, close: string) => {
     if (!textContent.trim()) return _full
 
-    const paths = extractAndResolvePaths(textContent, cwd)
+    const paths = extractAndResolvePaths(textContent, effectiveCwd)
     if (paths.length === 0) return _full
 
     let result = textContent
@@ -157,12 +195,14 @@ export function linkifyLibraryPaths(html: string, cwd?: string): string {
     for (const resolved of sortedPaths) {
       const idx = result.indexOf(resolved.original)
       if (idx === -1) continue
-      const link = `<a data-library-path="${encodeURIComponent(resolved.libraryRelative!)}" data-is-dir="${resolved.isDirectory}" class="library-file-link">${resolved.original}</a>`
+      const link = `<a href="${libraryUrl(resolved)}" class="library-file-link">${resolved.original}</a>`
       result = result.slice(0, idx) + link + result.slice(idx + resolved.original.length)
     }
 
     return open + result + close
   })
+
+  return processed
 }
 
 // --- Internal helpers ---

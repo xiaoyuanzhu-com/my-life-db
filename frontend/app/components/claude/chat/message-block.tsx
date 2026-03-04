@@ -531,20 +531,6 @@ const MessageContent = memo(function MessageContent({ content, onRequestFullscre
     const openFullscreen = onRequestFullscreen ?? setLocalFullscreenSrcdoc
 
     function handleClick(e: MouseEvent) {
-      // Library file link click
-      const libraryLink = (e.target as HTMLElement).closest('.library-file-link') as HTMLAnchorElement | null
-      if (libraryLink) {
-        e.preventDefault()
-        e.stopPropagation()
-        const libraryPath = decodeURIComponent(libraryLink.dataset.libraryPath || '')
-        const isDir = libraryLink.dataset.isDir === 'true'
-        if (libraryPath) {
-          const param = isDir ? 'dir' : 'open'
-          window.location.href = `/library?${param}=${encodeURIComponent(libraryPath)}`
-        }
-        return
-      }
-
       const btn = (e.target as HTMLElement).closest('.preview-expand-btn')
       if (!btn) return
       e.preventDefault()

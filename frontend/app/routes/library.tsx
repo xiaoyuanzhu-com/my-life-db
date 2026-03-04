@@ -144,8 +144,7 @@ function LibraryContent() {
       expandParentFolders(dirParam + '/placeholder');
       setExpandedFolders((prev) => {
         const next = new Set(prev);
-        const normalizedDir = dirParam.startsWith('./') ? dirParam : './' + dirParam;
-        next.add(normalizedDir);
+        next.add(dirParam);
         return next;
       });
     }
@@ -161,7 +160,7 @@ function LibraryContent() {
       let currentPath = "";
       for (let i = 0; i < pathParts.length - 1; i++) {
         if (i === 0) {
-          currentPath = "./" + pathParts[i];
+          currentPath = pathParts[i];
         } else {
           currentPath += "/" + pathParts[i];
         }

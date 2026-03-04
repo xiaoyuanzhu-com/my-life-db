@@ -119,19 +119,6 @@ export function BashToolView({ toolCall, bashProgressMap, onHeightChange }: Bash
               maxHeight: '60vh',
               color: errorText ? 'var(--claude-status-alert)' : 'var(--claude-text-secondary)',
             }}
-            onClick={(e) => {
-              const link = (e.target as HTMLElement).closest('.library-file-link') as HTMLAnchorElement | null
-              if (link) {
-                e.preventDefault()
-                e.stopPropagation()
-                const libraryPath = decodeURIComponent(link.dataset.libraryPath || '')
-                const isDir = link.dataset.isDir === 'true'
-                if (libraryPath) {
-                  const param = isDir ? 'dir' : 'open'
-                  window.location.href = `/library?${param}=${encodeURIComponent(libraryPath)}`
-                }
-              }
-            }}
           >
             <span
               dangerouslySetInnerHTML={{
