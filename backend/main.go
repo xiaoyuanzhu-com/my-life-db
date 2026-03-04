@@ -80,6 +80,11 @@ func main() {
 
 	log.Info().Msg("shutting down server")
 
+	// Signal Claude sessions immediately so they expect process exit errors.
+	// Child processes share the process group and receive SIGINT simultaneously,
+	// so we must set the shuttingDown flag before the CLI processes exit.
+	srv.SignalShutdown()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute+5*time.Second)
 	defer cancel()
 

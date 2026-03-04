@@ -325,16 +325,31 @@ func (s *Server) Start() error {
 }
 
 // Shutdown gracefully shuts down the server using drain-then-shutdown.
-// Sequence: close HTTP listener → signal sessions → close WS/SSE → drain active sessions → cleanup.
+// Sequence: signal sessions → close WS/SSE → close HTTP listener → drain active sessions → cleanup.
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
-	// 1. Stop accepting new HTTP connections FIRST.
-	// WebSocket connections are hijacked and not tracked by http.Server,
-	// so this returns quickly. Clients get connection refused and use
-	// their reconnect logic to reach the new server after restart.
+	// 1. Signal Claude sessions that we're shutting down.
+	// Note: SignalShutdown() is also called earlier in main.go right after
+	// receiving the signal, but we call it here too for safety.
+	if s.claudeManager != nil {
+		s.claudeManager.SignalShutdown()
+	}
+
+	// 2. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE).
+	// This must happen BEFORE http.Server.Shutdown() so that SSE/WS handlers exit
+	// and release their connections — otherwise Shutdown() blocks waiting for them.
+	log.Info().Msg("signaling handlers to stop")
+	s.shutdownCancel()
+
+	// 3. Close notification service to cleanly disconnect SSE clients
+	s.notifService.Shutdown()
+
+	// Give handlers a moment to process the cancellation and close connections.
+	time.Sleep(100 * time.Millisecond)
+
+	// 4. Stop accepting new HTTP connections and wait for in-flight requests to finish.
 	if s.http != nil {
-		// Short timeout for closing listener + finishing in-flight HTTP (not WS)
 		httpCtx, httpCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer httpCancel()
 		if err := s.http.Shutdown(httpCtx); err != nil {
@@ -342,23 +357,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 		log.Info().Msg("HTTP listener closed")
 	}
-
-	// 2. Signal Claude sessions that we're shutting down.
-	// This must happen before SIGINT propagates to child processes,
-	// so they know to expect process exit errors and log at debug level.
-	if s.claudeManager != nil {
-		s.claudeManager.SignalShutdown()
-	}
-
-	// 3. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE)
-	log.Info().Msg("signaling handlers to stop")
-	s.shutdownCancel()
-
-	// Give handlers a moment to process the cancellation and close connections.
-	time.Sleep(100 * time.Millisecond)
-
-	// 4. Close notification service to cleanly disconnect SSE clients
-	s.notifService.Shutdown()
 
 	// 5. Drain active Claude sessions (waits for "working" sessions to finish)
 	if s.claudeManager != nil {
@@ -394,6 +392,15 @@ func (s *Server) Claude() *claude.SessionManager              { return s.claudeM
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
+
+// SignalShutdown marks Claude sessions as shutting down early, before Shutdown() is called.
+// This should be called immediately after receiving SIGINT/SIGTERM so that child processes
+// (which share the process group and receive the signal simultaneously) are expected to exit.
+func (s *Server) SignalShutdown() {
+	if s.claudeManager != nil {
+		s.claudeManager.SignalShutdown()
+	}
+}
 func (s *Server) ClaudeLoggedIn() bool                        { return s.claudeLoggedIn.Load() }
 func (s *Server) SetClaudeLoggedIn(v bool)                    { s.claudeLoggedIn.Store(v) }
 

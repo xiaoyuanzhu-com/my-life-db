@@ -236,7 +236,11 @@ func (q *Query) readMessages() {
 			if !ok {
 				return
 			}
-			log.Error().Err(err).Msg("transport error")
+			if q.ctx.Err() != nil {
+				log.Debug().Err(err).Msg("transport error during shutdown")
+			} else {
+				log.Error().Err(err).Msg("transport error")
+			}
 		}
 	}
 }
