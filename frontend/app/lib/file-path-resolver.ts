@@ -110,20 +110,20 @@ export function extractAndResolvePaths(text: string, cwd?: string): ResolvedPath
   while ((match = PATH_REGEX.exec(text)) !== null) {
     const raw = match[0]
 
-    // Skip if it looks like a URL (check preceding text)
-    const before = text.slice(Math.max(0, match.index - 10), match.index)
-    if (/https?:\/\/\s*$/.test(before) || /ftp:\/\/\s*$/.test(before)) continue
+    // Skip if match is inside a URL — look back to the last whitespace to catch
+    // URLs where the match starts far from the "://" (e.g. matching a suffix of
+    // "https://github.com/user/repo/pull/new/feature/branch-name")
+    const wordStart = text.lastIndexOf(' ', match.index - 1)
+    const preceding = text.slice(Math.max(0, wordStart + 1), match.index)
+    if (/\w:\/\//.test(preceding)) continue
 
     // Skip very short matches
     if (raw.length < 4) continue
 
-    // Skip bare relative paths that look like natural language (e.g. "text/layout",
-    // "wider/shorter"). Bare relative paths (no ./ ../ or leading /) with only one
-    // slash and no file extension are almost certainly not file paths.
-    if (!raw.startsWith('/') && !raw.startsWith('./') && !raw.startsWith('../')) {
-      const slashCount = (raw.match(/\//g) || []).length
-      if (slashCount <= 1 && !hasFileExtension(raw)) continue
-    }
+    // For relative paths, only link if the last segment has a file extension.
+    // This avoids false positives like "text/layout", "origin/feature/branch",
+    // "wider/shorter", etc. Absolute paths (starting with /) are always checked.
+    if (!raw.startsWith('/') && !hasFileExtension(raw)) continue
 
     const resolved = resolvePath(raw, cwd)
     if (resolved.libraryRelative !== null) {
@@ -185,8 +185,12 @@ export function linkifyLibraryPaths(html: string, cwd?: string): string {
     }
   )
 
-  // Second pass: linkify paths detected in text content between HTML tags
-  processed = processed.replace(/(>)([^<]+)(<)/g, (_full, open: string, textContent: string, close: string) => {
+  // Second pass: linkify paths detected in text content between HTML tags.
+  // Use alternation to skip <a>...</a> content — text inside existing links
+  // must not be re-linkified (e.g. URL text like "https://github.com/.../feature/x").
+  processed = processed.replace(/(<a\s[^>]*>[\s\S]*?<\/a>)|(>)([^<]+)(<)/g, (_full, anchorTag: string, open: string, textContent: string, close: string) => {
+    // If this matched an <a>...</a> block, leave it untouched
+    if (anchorTag) return _full
     if (!textContent.trim()) return _full
 
     const paths = extractAndResolvePaths(textContent, effectiveCwd)
