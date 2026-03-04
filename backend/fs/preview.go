@@ -2,14 +2,17 @@ package fs
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gen2brain/heic"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -46,14 +49,34 @@ type previewWorker struct {
 
 // ---------- MIME type helpers ----------
 
-// needsImagePreview returns true for MIME types that support preview generation
-func needsImagePreview(mimeType string) bool {
-	return isImageMime(mimeType)
+// needsPreview returns true for MIME types that support preview generation
+func needsPreview(mimeType string) bool {
+	return isImageMime(mimeType) || isDocumentMime(mimeType)
 }
 
 // isImageMime returns true for image/* MIME types
 func isImageMime(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "image/")
+}
+
+// isDocumentMime returns true for MIME types that screenitshot can render.
+func isDocumentMime(mimeType string) bool {
+	switch mimeType {
+	case "application/pdf",
+		"application/epub+zip",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"text/csv",
+		"application/rtf",
+		"text/html",
+		"text/markdown":
+		return true
+	}
+	return false
 }
 
 // ---------- Worker lifecycle ----------
@@ -106,6 +129,11 @@ func (w *previewWorker) processJob(job previewJob) {
 		previewType = "thumbnail"
 		sqlarName = pathHash + "/preview/thumbnail.jpg"
 		data, err = w.generateImageThumbnail(job.filePath, job.mimeType)
+
+	case isDocumentMime(job.mimeType):
+		previewType = "thumbnail"
+		sqlarName = pathHash + "/preview/thumbnail.jpg"
+		data, err = w.generateDocumentPreview(job.filePath)
 
 	default:
 		return
@@ -172,6 +200,60 @@ func (w *previewWorker) queueMissingPreviews() {
 	if len(files) > 0 {
 		log.Info().Int("count", len(files)).Msg("queued files with missing previews")
 	}
+}
+
+// ---------- Document preview (screenitshot) ----------
+
+// generateDocumentPreview runs screenitshot CLI to produce a PNG screenshot
+// of a document, then resizes and encodes it as a JPEG thumbnail.
+func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error) {
+	fullPath := filepath.Join(w.service.cfg.DataRoot, filePath)
+
+	// Create temp dir for output
+	tmpDir, err := os.MkdirTemp("", "screenitshot-")
+	if err != nil {
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Run screenitshot: produces <filename>.png in output dir
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "screenitshot", fullPath, "-o", tmpDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("screenitshot: %w: %s", err, stderr.String())
+	}
+
+	// Find the output PNG (screenitshot names it <basename>.png)
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil || len(entries) == 0 {
+		return nil, fmt.Errorf("screenitshot produced no output")
+	}
+
+	pngPath := filepath.Join(tmpDir, entries[0].Name())
+	f, err := os.Open(pngPath)
+	if err != nil {
+		return nil, fmt.Errorf("open screenshot: %w", err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("decode screenshot: %w", err)
+	}
+
+	// Resize and encode as JPEG thumbnail
+	thumb := resizeToMaxWidth(img, thumbnailMaxWidth)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: thumbnailQuality}); err != nil {
+		return nil, fmt.Errorf("encode document thumbnail: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
 
 // ---------- Image thumbnail ----------

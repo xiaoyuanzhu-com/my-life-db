@@ -883,15 +883,19 @@ func GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
 		  AND preview_sqlar IS NULL
 		  AND (
 			mime_type LIKE 'image/%'
-			OR mime_type LIKE 'video/%'
 			OR mime_type IN (
 				'application/pdf',
+				'application/epub+zip',
 				'application/msword',
 				'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 				'application/vnd.ms-excel',
 				'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 				'application/vnd.ms-powerpoint',
-				'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+				'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+				'text/csv',
+				'application/rtf',
+				'text/html',
+				'text/markdown'
 			)
 		  )
 		LIMIT ?

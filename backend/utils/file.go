@@ -136,6 +136,9 @@ func DetectMimeType(filename string) string {
 		".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		".ppt":  "application/vnd.ms-powerpoint",
 		".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		".csv":  "text/csv",
+		".rtf":  "application/rtf",
+		".epub": "application/epub+zip",
 		// Text / markup
 		".txt":      "text/plain",
 		".md":       "text/markdown",
@@ -146,7 +149,6 @@ func DetectMimeType(filename string) string {
 		".htm":      "text/html",
 		".css":      "text/css",
 		".xml":      "application/xml",
-		".csv":      "text/csv",
 		".tsv":      "text/tab-separated-values",
 		".log":      "text/plain",
 		// Programming languages

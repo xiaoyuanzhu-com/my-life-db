@@ -164,7 +164,7 @@ func (s *Service) changeNotificationWorker() {
 			// Queue preview generation if needed
 			if event.ContentChanged || event.IsNew {
 				file, _ := s.cfg.DB.GetFileByPath(event.FilePath)
-				if file != nil && file.MimeType != nil && needsImagePreview(*file.MimeType) {
+				if file != nil && file.MimeType != nil && needsPreview(*file.MimeType) {
 					s.preview.enqueue(previewJob{
 						filePath: event.FilePath,
 						mimeType: *file.MimeType,
