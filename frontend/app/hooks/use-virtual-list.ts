@@ -9,8 +9,8 @@ interface VirtualListOptions {
   count: number
   /** Estimated height per item in pixels */
   estimateSize: number
-  /** Number of extra items to render above/below the visible range */
-  overscan: number
+  /** Extra pixels to render above/below the visible range */
+  overscanPx: number
   /** Ref to the scroll container element */
   scrollElement: React.RefObject<HTMLDivElement | null>
   /** Stable function returning a unique key for the given index */
@@ -71,7 +71,8 @@ function calcRange(
  * This hook NEVER touches scrollTop.
  */
 export function useVirtualList(options: VirtualListOptions): VirtualListRange {
-  const { count, estimateSize, overscan, scrollElement, getKey, shouldStick, userScrollIntent } = options
+  const { count, estimateSize, overscanPx, scrollElement, getKey, shouldStick, userScrollIntent } = options
+  const overscan = Math.ceil(overscanPx / estimateSize)
 
   // ---- State: visible range ----
   const [range, setRange] = useState<{ startIndex: number; endIndex: number }>(() => {
@@ -151,13 +152,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         // During user scroll: freeze range to avoid jitter (Safari lacks
         // overflow-anchor). But if the visible viewport is approaching the
         // edge of the rendered buffer, expand to prevent blank space.
-        const rawStart = Math.floor(el.scrollTop / estimateSize)
-        const visibleCount = Math.ceil(el.clientHeight / estimateSize)
-        const visibleEnd = rawStart + visibleCount
-        const edgeThreshold = 5
+        const viewportTop = el.scrollTop
+        const viewportBottom = viewportTop + el.clientHeight
+        const renderedTop = prev.startIndex * estimateSize
+        const renderedBottom = prev.endIndex * estimateSize
+        const edgePx = 1080
 
-        const nearTopEdge = rawStart < prev.startIndex + edgeThreshold
-        const nearBottomEdge = visibleEnd > prev.endIndex - edgeThreshold
+        const nearTopEdge = viewportTop < renderedTop + edgePx
+        const nearBottomEdge = viewportBottom > renderedBottom - edgePx
 
         if (!nearTopEdge && !nearBottomEdge) {
           // Safely inside buffer — freeze
@@ -168,7 +170,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const startIndex = Math.min(prev.startIndex, next.startIndex)
         const endIndex = Math.max(prev.endIndex, next.endIndex)
         if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-        console.log('[scroll:vlist]', 'edge expand', { edge: nearTopEdge ? 'top' : 'bottom', prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, rawStart, visibleEnd })
+        console.log('[scroll:vlist]', 'edge expand', { edge: nearTopEdge ? 'top' : 'bottom', prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, viewportTop, viewportBottom })
         return { startIndex, endIndex }
       }
 

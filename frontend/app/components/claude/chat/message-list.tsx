@@ -97,7 +97,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const { startIndex, endIndex, topHeight, bottomHeight } = useVirtualList({
     count: filteredMessages.length,
     estimateSize: 120,
-    overscan: 40,
+    overscanPx: 5400, // should match DEFAULT_TOP_LOAD_THRESHOLD in useScrollController
     scrollElement,
     getKey,
     shouldStick,
