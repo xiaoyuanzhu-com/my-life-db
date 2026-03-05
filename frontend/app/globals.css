@@ -500,6 +500,8 @@
   user-select: text;
   color: var(--claude-text-primary);
   overflow-wrap: break-word;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .prose-claude p {

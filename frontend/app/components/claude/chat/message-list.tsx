@@ -217,7 +217,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
                     const message = filteredMessages[index]
                     if (!message) return null
                     return (
-                      <div key={message.uuid}>
+                      <div key={message.uuid} className="min-w-0">
                         <MessageBlock
                           message={message}
                           toolResultMap={maps.toolResultMap}
