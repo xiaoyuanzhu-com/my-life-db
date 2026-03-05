@@ -97,6 +97,8 @@ export default function ClaudePage() {
   })
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  // Mobile: distinguish "viewing session list" from "composing new session"
+  const [showNewSessionMobile, setShowNewSessionMobile] = useState(false)
   // Permission mode for new session (empty state)
   // - Stored locally until session is created
   // - Changing this does NOT create a session or send any request
@@ -426,6 +428,7 @@ export default function ClaudePage() {
       })
       setPendingInitialMessage(message)
       setActiveSessionId(session.id)
+      setShowNewSessionMobile(false)
       localStorage.removeItem('claude-input:new-session')
     } catch (error) {
       console.error('Failed to create session:', error)
@@ -511,6 +514,7 @@ export default function ClaudePage() {
       )
     )
     setActiveSessionId(sessionId)
+    setShowNewSessionMobile(false)
   }, [])
 
   // Show loading state while checking authentication
@@ -594,7 +598,10 @@ export default function ClaudePage() {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setActiveSessionId(null)}
+            onClick={() => {
+              setActiveSessionId(null)
+              setShowNewSessionMobile(true)
+            }}
             title="New session"
           >
             <Plus className="h-4 w-4" />
@@ -752,6 +759,29 @@ export default function ClaudePage() {
               refreshSessions={refreshSessions}
               initialMessage={pendingInitialMessage ?? undefined}
               onInitialMessageSent={() => setPendingInitialMessage(null)}
+            />
+          </div>
+        ) : sessionSidebar && showNewSessionMobile ? (
+          /* New session view: full-screen chat input with back button */
+          <div className="relative flex flex-1 flex-col claude-bg min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
+              onClick={() => setShowNewSessionMobile(false)}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex-1" />
+            <ChatInput
+              onSend={createSessionWithMessage}
+              disabled={isCreatingSession}
+              placeholder="Start a new conversation..."
+              workingDir={newSessionWorkingDir}
+              onWorkingDirChange={setNewSessionWorkingDir}
+              slashCommands={BUILTIN_COMMANDS}
+              permissionMode={newSessionPermissionMode}
+              onPermissionModeChange={setNewSessionPermissionMode}
             />
           </div>
         ) : sessionSidebar ? (
