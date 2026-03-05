@@ -67,8 +67,11 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	secure := !cfg.IsDevelopment()
 	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
 
+	// Build dynamic redirect URI from request if not configured
+	redirectURI := buildOAuthRedirectURI(c)
+
 	// Get authorization URL with discovered endpoints
-	authURL := provider.GetAuthCodeURL(state)
+	authURL := provider.GetAuthCodeURL(state, redirectURI)
 
 	c.Redirect(http.StatusFound, authURL)
 }
@@ -120,11 +123,14 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Build dynamic redirect URI from request if not configured
+	redirectURI := buildOAuthRedirectURI(c)
+
 	// Exchange authorization code for tokens using discovered token endpoint
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	oauth2Token, err := provider.Exchange(ctx, code)
+	oauth2Token, err := provider.Exchange(ctx, code, redirectURI)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to exchange code for tokens")
 		c.Redirect(http.StatusFound, "/?error=token_exchange_failed")
@@ -411,6 +417,21 @@ func generateOAuthState() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// buildOAuthRedirectURI returns a dynamic redirect URI from the request's Host header
+// if MLD_OAUTH_REDIRECT_URI is not configured. This allows the app to work on any
+// host (localhost, LAN IP, etc.) without changing config.
+func buildOAuthRedirectURI(c *gin.Context) string {
+	cfg := config.Get()
+	if cfg.OAuthRedirectURI != "" {
+		return "" // use the configured value (empty means no override)
+	}
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/api/oauth/callback", scheme, c.Request.Host)
 }
 
 // extractNativeRedirect extracts native app redirect URL from the OAuth state parameter.

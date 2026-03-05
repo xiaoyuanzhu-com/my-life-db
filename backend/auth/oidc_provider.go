@@ -81,17 +81,25 @@ func GetOIDCProvider() (*OIDCProvider, error) {
 	return oidcProvider, oidcProviderErr
 }
 
-// GetAuthCodeURL returns the authorization URL for OAuth flow
-func (p *OIDCProvider) GetAuthCodeURL(state string) string {
+// GetAuthCodeURL returns the authorization URL for OAuth flow.
+// If redirectURI is non-empty, it overrides the configured redirect URL.
+func (p *OIDCProvider) GetAuthCodeURL(state string, redirectURI string) string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+	if redirectURI != "" {
+		return p.oauth2Config.AuthCodeURL(state, oauth2.SetAuthURLParam("redirect_uri", redirectURI))
+	}
 	return p.oauth2Config.AuthCodeURL(state)
 }
 
-// Exchange exchanges authorization code for tokens
-func (p *OIDCProvider) Exchange(ctx context.Context, code string) (*oauth2.Token, error) {
+// Exchange exchanges authorization code for tokens.
+// If redirectURI is non-empty, it overrides the configured redirect URL.
+func (p *OIDCProvider) Exchange(ctx context.Context, code string, redirectURI string) (*oauth2.Token, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+	if redirectURI != "" {
+		return p.oauth2Config.Exchange(ctx, code, oauth2.SetAuthURLParam("redirect_uri", redirectURI))
+	}
 	return p.oauth2Config.Exchange(ctx, code)
 }
 
