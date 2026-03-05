@@ -148,13 +148,27 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       if (prev.startIndex === next.startIndex && prev.endIndex === next.endIndex) return prev
 
       if (scrolling) {
-        // During user scroll: expand-only (add items in scroll direction) but
-        // never shrink (remove items behind). Removing items changes spacer
-        // heights which causes content jitter from estimateSize mismatches.
+        // During user scroll: freeze range to avoid jitter (Safari lacks
+        // overflow-anchor). But if the visible viewport is approaching the
+        // edge of the rendered buffer, expand to prevent blank space.
+        const rawStart = Math.floor(el.scrollTop / estimateSize)
+        const visibleCount = Math.ceil(el.clientHeight / estimateSize)
+        const visibleEnd = rawStart + visibleCount
+        const edgeThreshold = 5
+
+        const nearTopEdge = rawStart < prev.startIndex + edgeThreshold
+        const nearBottomEdge = visibleEnd > prev.endIndex - edgeThreshold
+
+        if (!nearTopEdge && !nearBottomEdge) {
+          // Safely inside buffer — freeze
+          return prev
+        }
+
+        // Near edge — expand-only (never shrink) to prevent blank space
         const startIndex = Math.min(prev.startIndex, next.startIndex)
         const endIndex = Math.max(prev.endIndex, next.endIndex)
         if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-        console.log('[scroll:vlist]', 'updateRange (expand-only)', { prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, scrollTop: el.scrollTop })
+        console.log('[scroll:vlist]', 'edge expand', { edge: nearTopEdge ? 'top' : 'bottom', prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, rawStart, visibleEnd })
         return { startIndex, endIndex }
       }
 
@@ -262,6 +276,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       console.log('[scroll:vlist]','prepend scroll restore: browser anchoring handled it', { heightAdded, scrollTop: el.scrollTop })
     }
   }, [range.startIndex, range.endIndex, scrollElement])
+
 
   // ---- Derived spacer heights ----
   const topHeight = range.startIndex * estimateSize

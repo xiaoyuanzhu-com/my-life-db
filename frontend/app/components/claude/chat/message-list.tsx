@@ -97,7 +97,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const { startIndex, endIndex, topHeight, bottomHeight } = useVirtualList({
     count: filteredMessages.length,
     estimateSize: 120,
-    overscan: 15,
+    overscan: 40,
     scrollElement,
     getKey,
     shouldStick,
