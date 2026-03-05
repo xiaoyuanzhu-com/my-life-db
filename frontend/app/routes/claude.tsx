@@ -59,6 +59,7 @@ export default function ClaudePage() {
   const [claudeLoggedIn, setClaudeLoggedIn] = useState<boolean | null>(null) // null = loading
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
+  const prevActiveSessionIdRef = useRef<string | null>(activeSessionId)
 
   // Pagination state
   const [pagination, setPagination] = useState<Pagination>({
@@ -276,11 +277,19 @@ export default function ClaudePage() {
 
   // Sync URL with active session
   useEffect(() => {
+    const prevId = prevActiveSessionIdRef.current
+    prevActiveSessionIdRef.current = activeSessionId
+
     if (activeSessionId) {
-      // Update URL to include session ID
-      navigate(`/claude/${activeSessionId}`, { replace: true })
+      // Skip if URL already matches (e.g. after browser back/forward popstate)
+      if (urlSessionId === activeSessionId) return
+      // Push a new history entry when navigating from list → detail (prevId was null).
+      // This lets the browser's native swipe-back gesture return to the session list.
+      // Use replace when switching between sessions to avoid stacking history entries.
+      const useReplace = prevId != null
+      navigate(`/claude/${activeSessionId}`, { replace: useReplace })
     } else if (urlSessionId) {
-      // URL has session ID but we don't have it set - navigate to base
+      // Going back to list — replace so we don't duplicate the list entry
       navigate('/claude', { replace: true })
     }
   }, [activeSessionId, urlSessionId, navigate])
@@ -289,6 +298,25 @@ export default function ClaudePage() {
   useEffect(() => {
     setActiveSessionId(urlSessionId || null)
   }, [urlSessionId])
+
+  // Push a history entry when entering mobile new-session view so that
+  // the browser's native swipe-back returns to the session list.
+  useEffect(() => {
+    if (!showNewSessionMobile) return
+    const isMobile = window.innerWidth < 768
+    if (!isMobile) return
+
+    window.history.pushState({ mobileNewSession: true }, '')
+
+    const handlePopState = () => {
+      setShowNewSessionMobile(false)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [showNewSessionMobile])
 
   // Swipe gesture handler for mobile back navigation
   useEffect(() => {
@@ -320,7 +348,12 @@ export default function ClaudePage() {
       // 2. Swipe was rightward (end X > start X)
       // 3. Swipe distance was significant (> 100px)
       if (touchStartX.current > 0 && touchEndX.current - touchStartX.current > 100) {
-        setActiveSessionId(null)
+        if (activeSessionId) {
+          setActiveSessionId(null)
+        } else if (showNewSessionMobile) {
+          // Pop the history entry we pushed for the new-session view
+          window.history.back()
+        }
       }
 
       // Reset for next gesture
@@ -328,9 +361,9 @@ export default function ClaudePage() {
       touchEndX.current = 0
     }
 
-    // Only add listeners on mobile when viewing a session detail
+    // Active on mobile when viewing session detail OR new-session compose view
     const isMobile = window.innerWidth < 768
-    if (isMobile && activeSessionId) {
+    if (isMobile && (activeSessionId || showNewSessionMobile)) {
       document.addEventListener('touchstart', handleTouchStart, { passive: true })
       document.addEventListener('touchmove', handleTouchMove, { passive: true })
       document.addEventListener('touchend', handleTouchEnd)
@@ -341,7 +374,7 @@ export default function ClaudePage() {
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [activeSessionId])
+  }, [activeSessionId, showNewSessionMobile])
 
   // Refresh session list when titles change (SSE from backend)
   // Uses refreshSessions for seamless background updates without loading flash
@@ -768,7 +801,7 @@ export default function ClaudePage() {
               variant="ghost"
               size="icon"
               className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
-              onClick={() => setShowNewSessionMobile(false)}
+              onClick={() => window.history.back()}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
