@@ -128,7 +128,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
           prependHandledRef.current = true
-          console.log('[scroll:vlist]','prepend detected', { prependCount, oldRange: `${range.startIndex}-${range.endIndex}`, newRange: `${newStart}-${newEnd}`, count })
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
       }
@@ -170,7 +169,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const startIndex = Math.min(prev.startIndex, next.startIndex)
         const endIndex = Math.max(prev.endIndex, next.endIndex)
         if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-        console.log('[scroll:vlist]', 'edge expand', { edge: nearTopEdge ? 'top' : 'bottom', prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, viewportTop, viewportBottom })
         return { startIndex, endIndex }
       }
 
@@ -186,7 +184,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       )
 
       if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-      console.log('[scroll:vlist]','updateRange', { prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, calc: `${next.startIndex}-${next.endIndex}`, scrollTop: el.scrollTop, count })
       return { startIndex, endIndex }
     })
   }, [scrollElement, count, estimateSize, overscan, userScrollIntent])
@@ -241,7 +238,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
-      console.log('[scroll:vlist]','count changed (stick)', { count, range: `${nextRange.startIndex}-${nextRange.endIndex}`, viewportHeight })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
@@ -273,18 +269,12 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     if (heightAdded === 0) return
 
     // During momentum: don't touch scrollTop, let momentum continue
-    if (userScrollIntent?.current) {
-      console.log('[scroll:vlist]','prepend scroll restore: skipped (momentum)', { heightAdded, scrollTop: el.scrollTop })
-      return
-    }
+    if (userScrollIntent?.current) return
 
     // Only adjust if browser anchoring didn't already handle it
     const expectedScrollTop = snap.scrollTop + heightAdded
     if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
-      console.log('[scroll:vlist]','prepend scroll restore', { heightAdded, oldScrollTop: snap.scrollTop, currentScrollTop: el.scrollTop, expected: expectedScrollTop })
       el.scrollTop = expectedScrollTop
-    } else {
-      console.log('[scroll:vlist]','prepend scroll restore: browser anchoring handled it', { heightAdded, scrollTop: el.scrollTop })
     }
   }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
 

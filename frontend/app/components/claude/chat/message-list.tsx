@@ -104,19 +104,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     userScrollIntent,
   })
 
-  // Log render-time state for debugging
-  console.log('[scroll:msglist]','render', {
-    totalMessages: filteredMessages.length,
-    virtualRange: `${startIndex}-${endIndex}`,
-    topHeight,
-    bottomHeight,
-    showStreaming: !!streamingText,
-    showThinking: !!streamingThinking,
-    showWIP: !!wipText,
-    showOptimistic: !!optimisticMessage,
-    shouldStick: shouldStick.current,
-  })
-
   // Set the near-top handler (updated each render) — simplified since browser
   // scroll anchoring handles position preservation on prepend.
   nearTopHandlerRef.current = () => {
