@@ -82,7 +82,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const nearTopHandlerRef = useRef<(() => void) | undefined>(undefined)
   const stableNearTop = useCallback(() => nearTopHandlerRef.current?.(), [])
 
-  const { scrollRef, contentRef, scrollElement, shouldStick } = useScrollController({
+  const { scrollRef, contentRef, scrollElement, shouldStick, userScrollIntent } = useScrollController({
     onHideChange,
     onNearTop: stableNearTop,
   })
@@ -97,10 +97,24 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const { startIndex, endIndex, topHeight, bottomHeight } = useVirtualList({
     count: filteredMessages.length,
     estimateSize: 120,
-    overscan: 10,
+    overscan: 15,
     scrollElement,
     getKey,
     shouldStick,
+    userScrollIntent,
+  })
+
+  // Log render-time state for debugging
+  console.log('[scroll:msglist]','render', {
+    totalMessages: filteredMessages.length,
+    virtualRange: `${startIndex}-${endIndex}`,
+    topHeight,
+    bottomHeight,
+    showStreaming: !!streamingText,
+    showThinking: !!streamingThinking,
+    showWIP: !!wipText,
+    showOptimistic: !!optimisticMessage,
+    shouldStick: shouldStick.current,
   })
 
   // Set the near-top handler (updated each render) — simplified since browser

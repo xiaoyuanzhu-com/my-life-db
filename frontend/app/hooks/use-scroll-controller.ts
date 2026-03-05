@@ -147,6 +147,9 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       // isn't blocked when content arrives later.
       if (el.scrollTop === prevScrollTop) {
         phaseRef.current = 'idle'
+        console.log('[scroll:ctrl]','scrollToBottom: no-op (already at bottom)', { scrollTop: prevScrollTop, scrollHeight: el.scrollHeight })
+      } else {
+        console.log('[scroll:ctrl]','scrollToBottom: scrolling', { from: prevScrollTop, to: el.scrollHeight, behavior, distFromBottom: el.scrollHeight - prevScrollTop - el.clientHeight })
       }
     },
     [],
@@ -154,11 +157,15 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
   const stickIfNeeded = useCallback(() => {
     const blocked = phaseRef.current !== 'idle' ? `phase=${phaseRef.current}` : fingerDownRef.current ? 'fingerDown' : userScrollIntentRef.current ? 'userScrollIntent' : !shouldStickRef.current ? 'shouldStick=false' : null
-    if (blocked) return
+    if (blocked) {
+      console.log('[scroll:ctrl]',`stickIfNeeded: BLOCKED (${blocked})`)
+      return
+    }
     const el = scrollElementRef.current
     if (!el) return
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
     if (distFromBottom <= stickyThreshold) return // already at bottom, skip no-op
+    console.log('[scroll:ctrl]','stickIfNeeded: triggering scrollToBottom', { distFromBottom, scrollTop: el.scrollTop, scrollHeight: el.scrollHeight })
     scrollToBottom('instant')
   }, [scrollToBottom, stickyThreshold])
 
@@ -168,13 +175,15 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
   // Stored in a ref so addEventListener/removeEventListener use the same identity.
   // All closed-over values are refs or stable callbacks — safe across renders.
-  const markUserScrollIntentRef = useRef(function markUserScrollIntent() {
+  const markUserScrollIntentRef = useRef(function markUserScrollIntent(e: Event) {
     userScrollIntentRef.current = true
     fingerDownRef.current = true
+    console.log('[scroll:ctrl]',`markUserScrollIntent (${e.type})`, { phase: phaseRef.current, shouldStick: shouldStickRef.current })
   })
 
-  const clearFingerDownRef = useRef(function clearFingerDown() {
+  const clearFingerDownRef = useRef(function clearFingerDown(e: Event) {
     fingerDownRef.current = false
+    console.log('[scroll:ctrl]',`clearFingerDown (${e.type})`, { userScrollIntent: userScrollIntentRef.current, shouldStick: shouldStickRef.current })
   })
 
   const handleScrollRef = useRef(function handleScroll() {
@@ -190,6 +199,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     if (phaseRef.current === 'programmatic') {
       // During programmatic scroll, only update position tracking for hide-on-scroll
       lastScrollTopRef.current = scrollTop
+      console.log('[scroll:ctrl]','handleScroll: programmatic phase, skipping', { scrollTop, distanceFromBottom })
       return
     }
 
@@ -198,6 +208,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // Only explicit user input should move us into the user phase.
     if (userDriven && phaseRef.current === 'idle') {
       phaseRef.current = 'user'
+      console.log('[scroll:ctrl]','handleScroll: phase idle→user')
     }
 
     // ---- 3. Sticky (synchronous — no RAF) ----
@@ -209,10 +220,14 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // the old if/else structure let atBottom re-affirm sticky for ~50px of
     // upward travel — by which time scrollend had already fired at touch-lift
     // and userDriven was false, so sticky could never break.
+    const prevStick = shouldStickRef.current
     if (userDriven && delta < 0) {
       shouldStickRef.current = false
     } else if (atBottom) {
       shouldStickRef.current = true
+    }
+    if (shouldStickRef.current !== prevStick) {
+      console.log('[scroll:ctrl]',`sticky: ${prevStick}→${shouldStickRef.current}`, { userDriven, delta, atBottom, distanceFromBottom, scrollTop, fingerDown: fingerDownRef.current })
     }
 
     // ---- 4. Hide-on-scroll ----
@@ -224,6 +239,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         if (isHiddenRef.current) {
           isHiddenRef.current = false
           onHideChangeRef.current?.(false)
+          console.log('[scroll:ctrl]','hide: showing input (near bottom)')
         }
         accumulatedDeltaRef.current = 0
       } else {
@@ -242,11 +258,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
           isHiddenRef.current = false
           onHideChangeRef.current?.(false)
           accumulatedDeltaRef.current = 0
+          console.log('[scroll:ctrl]','hide: showing input (scroll down)')
         } else if (accumulatedDeltaRef.current < -hideScrollThreshold && !isHiddenRef.current) {
           // Scrolling up → hide input
           isHiddenRef.current = true
           onHideChangeRef.current?.(true)
           accumulatedDeltaRef.current = 0
+          console.log('[scroll:ctrl]','hide: hiding input (scroll up)', { distanceFromBottom })
         }
       }
     }
@@ -254,6 +272,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // ---- 5. History paging (scroll-up near top) ----
     const scrollingUp = userDriven && delta < 0
     if (scrollingUp && scrollTop < topLoadThreshold && !shouldStickRef.current) {
+      console.log('[scroll:ctrl]','nearTop: triggering history load', { scrollTop })
       onNearTopRef.current?.()
     }
 
@@ -268,6 +287,9 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     const el = scrollElementRef.current
     if (!el) return
 
+    const prevPhase = phaseRef.current
+    const prevStick = shouldStickRef.current
+
     // Finalize sticky state after momentum ends
     const atBottom = checkIsAtBottom(el)
     isAtBottomRef.current = atBottom
@@ -277,6 +299,16 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // Return to idle — ResizeObserver may now call stickIfNeeded()
     phaseRef.current = 'idle'
     userScrollIntentRef.current = false
+
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    console.log('[scroll:ctrl]',`scrollend: ${prevPhase}→idle`, {
+      atBottom,
+      distFromBottom,
+      sticky: `${prevStick}→${shouldStickRef.current}`,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    })
   })
 
   // ============================================================================
@@ -349,7 +381,9 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         resizeObserverRef.current = new ResizeObserver((entries) => {
           const h = entries[0]?.contentRect.height ?? 0
           if (h === prevContentHeight) return
+          const delta = prevContentHeight >= 0 ? h - prevContentHeight : 0
           prevContentHeight = h
+          console.log('[scroll:ctrl]','ResizeObserver: content height changed', { height: h, delta, phase: phaseRef.current, shouldStick: shouldStickRef.current, fingerDown: fingerDownRef.current, userScrollIntent: userScrollIntentRef.current })
           stickIfNeeded() // phase-gated: only acts during idle
         })
       }

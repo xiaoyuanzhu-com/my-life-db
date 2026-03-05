@@ -17,6 +17,8 @@ interface VirtualListOptions {
   getKey: (index: number) => string | number
   /** Whether the list should initialize from the bottom (stick-to-bottom) */
   shouldStick: React.RefObject<boolean>
+  /** Whether user scroll intent is active (freeze range updates during momentum scroll) */
+  userScrollIntent?: React.RefObject<boolean>
 }
 
 interface VirtualListRange {
@@ -69,7 +71,7 @@ function calcRange(
  * This hook NEVER touches scrollTop.
  */
 export function useVirtualList(options: VirtualListOptions): VirtualListRange {
-  const { count, estimateSize, overscan, scrollElement, getKey, shouldStick } = options
+  const { count, estimateSize, overscan, scrollElement, getKey, shouldStick, userScrollIntent } = options
 
   // ---- State: visible range ----
   const [range, setRange] = useState<{ startIndex: number; endIndex: number }>(() => {
@@ -125,6 +127,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
           prependHandledRef.current = true
+          console.log('[scroll:vlist]','prepend detected', { prependCount, oldRange: `${range.startIndex}-${range.endIndex}`, newRange: `${newStart}-${newEnd}`, count })
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
       }
@@ -139,15 +142,24 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     const el = scrollElement.current
     if (!el || count === 0) return
     const next = calcRange(el.scrollTop, el.clientHeight, count, estimateSize, overscan)
+    const scrolling = userScrollIntent?.current
 
     setRange((prev) => {
       if (prev.startIndex === next.startIndex && prev.endIndex === next.endIndex) return prev
 
-      // Conservative range update: expand immediately to include what calcRange
-      // says is needed, but shrink lazily. Items are only removed when they're
-      // more than 2×overscan away from the calculated viewport edge.
-      // This prevents empty space caused by variable item heights differing
-      // from estimateSize.
+      if (scrolling) {
+        // During user scroll: expand-only (add items in scroll direction) but
+        // never shrink (remove items behind). Removing items changes spacer
+        // heights which causes content jitter from estimateSize mismatches.
+        const startIndex = Math.min(prev.startIndex, next.startIndex)
+        const endIndex = Math.max(prev.endIndex, next.endIndex)
+        if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
+        console.log('[scroll:vlist]', 'updateRange (expand-only)', { prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, scrollTop: el.scrollTop })
+        return { startIndex, endIndex }
+      }
+
+      // When idle: expand immediately, shrink lazily (items removed only when
+      // more than 2×overscan away from the calculated viewport edge).
       const startIndex = Math.max(
         Math.min(prev.startIndex, next.startIndex),
         next.startIndex - overscan,
@@ -158,16 +170,23 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       )
 
       if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
+      console.log('[scroll:vlist]','updateRange', { prev: `${prev.startIndex}-${prev.endIndex}`, next: `${startIndex}-${endIndex}`, calc: `${next.startIndex}-${next.endIndex}`, scrollTop: el.scrollTop, count })
       return { startIndex, endIndex }
     })
-  }, [scrollElement, count, estimateSize, overscan])
+  }, [scrollElement, count, estimateSize, overscan, userScrollIntent])
 
   // ---- Scroll listener (passive) ----
+  // Also listen for scrollend to update range after momentum scroll ends
+  // (range updates are frozen during userScrollIntent).
   useLayoutEffect(() => {
     const el = scrollElement.current
     if (!el) return
     el.addEventListener('scroll', updateRange, { passive: true })
-    return () => el.removeEventListener('scroll', updateRange)
+    el.addEventListener('scrollend', updateRange, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', updateRange)
+      el.removeEventListener('scrollend', updateRange)
+    }
   }, [scrollElement, updateRange])
 
   // ---- Viewport resize ----
@@ -206,6 +225,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
+      console.log('[scroll:vlist]','count changed (stick)', { count, range: `${nextRange.startIndex}-${nextRange.endIndex}`, viewportHeight })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
@@ -236,7 +256,10 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     // Only adjust if browser anchoring didn't already handle it
     const expectedScrollTop = snap.scrollTop + heightAdded
     if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
+      console.log('[scroll:vlist]','prepend scroll restore', { heightAdded, oldScrollTop: snap.scrollTop, currentScrollTop: el.scrollTop, expected: expectedScrollTop })
       el.scrollTop = expectedScrollTop
+    } else {
+      console.log('[scroll:vlist]','prepend scroll restore: browser anchoring handled it', { heightAdded, scrollTop: el.scrollTop })
     }
   }, [range.startIndex, range.endIndex, scrollElement])
 
