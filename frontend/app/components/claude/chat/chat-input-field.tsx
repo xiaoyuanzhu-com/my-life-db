@@ -374,7 +374,7 @@ export function ChatInputField({
         rows={1}
         className={cn(
           'w-full resize-none',
-          'text-[15px] text-foreground',
+          'text-base text-foreground',
           'placeholder:text-muted-foreground',
           'bg-transparent border-none outline-none',
           'disabled:cursor-not-allowed disabled:opacity-50',
