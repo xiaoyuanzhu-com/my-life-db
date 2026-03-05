@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install screenitshot for document preview generation (PDF, EPUB, DOCX, etc.)
 # Playwright's --with-deps installs system libraries needed by Chromium
-RUN pip3 install --break-system-packages screenitshot && \
+RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
     playwright install --with-deps chromium
 
 # Create non-root user with UID/GID 1000 for better host compatibility
