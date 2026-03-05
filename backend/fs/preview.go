@@ -209,18 +209,24 @@ func (w *previewWorker) queueMissingPreviews() {
 func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error) {
 	fullPath := filepath.Join(w.service.cfg.DataRoot, filePath)
 
-	// Create temp dir for output
+	// screenitshot outputs <basename>.png next to the input file.
+	// To avoid writing into the user's data directory, symlink the file
+	// into a temp dir and run screenitshot on the symlink.
 	tmpDir, err := os.MkdirTemp("", "screenitshot-")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Run screenitshot: produces <filename>.png in output dir
+	linkPath := filepath.Join(tmpDir, filepath.Base(fullPath))
+	if err := os.Symlink(fullPath, linkPath); err != nil {
+		return nil, fmt.Errorf("symlink: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "screenitshot", fullPath, "-o", tmpDir)
+	cmd := exec.CommandContext(ctx, "screenitshot", linkPath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -228,13 +234,12 @@ func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error)
 		return nil, fmt.Errorf("screenitshot: %w: %s", err, stderr.String())
 	}
 
-	// Find the output PNG (screenitshot names it <basename>.png)
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil || len(entries) == 0 {
-		return nil, fmt.Errorf("screenitshot produced no output")
-	}
+	// Output is <basename-without-ext>.png in the same dir as input
+	baseName := filepath.Base(fullPath)
+	ext := filepath.Ext(baseName)
+	pngName := baseName[:len(baseName)-len(ext)] + ".png"
+	pngPath := filepath.Join(tmpDir, pngName)
 
-	pngPath := filepath.Join(tmpDir, entries[0].Name())
 	f, err := os.Open(pngPath)
 	if err != nil {
 		return nil, fmt.Errorf("open screenshot: %w", err)

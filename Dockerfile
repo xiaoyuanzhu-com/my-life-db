@@ -41,6 +41,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install screenitshot for document preview generation (PDF, EPUB, DOCX, etc.)
+# Playwright's --with-deps installs system libraries needed by Chromium
+RUN pip3 install --break-system-packages screenitshot && \
+    playwright install --with-deps chromium
+
 # Create non-root user with UID/GID 1000 for better host compatibility
 RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
 

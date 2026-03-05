@@ -872,8 +872,8 @@ type FileWithMime struct {
 	MimeType string
 }
 
-// GetFilesMissingPreviews returns files that should have image previews but don't.
-// It checks for image/*, video/*, and document MIME types with null preview_sqlar.
+// GetFilesMissingPreviews returns files that should have previews but don't.
+// It checks for image/* and document MIME types with null preview_sqlar.
 // Results are limited to avoid overwhelming the preview queue.
 func GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
 	rows, err := GetDB().Query(`
