@@ -259,6 +259,8 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // After React commits the shifted range to the DOM, restore scroll position
   // using the height delta. This is a manual scroll anchor — no dependency on
   // browser overflow-anchor behavior.
+  // During momentum scroll, skip the restore — setting scrollTop kills momentum.
+  // The content will jump but momentum continues naturally.
   useLayoutEffect(() => {
     const snap = prependSnapshotRef.current
     if (!snap) return
@@ -267,6 +269,13 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     if (!el) return
     const heightAdded = el.scrollHeight - snap.scrollHeight
     if (heightAdded === 0) return
+
+    // During momentum: don't touch scrollTop, let momentum continue
+    if (userScrollIntent?.current) {
+      console.log('[scroll:vlist]','prepend scroll restore: skipped (momentum)', { heightAdded, scrollTop: el.scrollTop })
+      return
+    }
+
     // Only adjust if browser anchoring didn't already handle it
     const expectedScrollTop = snap.scrollTop + heightAdded
     if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
@@ -275,7 +284,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     } else {
       console.log('[scroll:vlist]','prepend scroll restore: browser anchoring handled it', { heightAdded, scrollTop: el.scrollTop })
     }
-  }, [range.startIndex, range.endIndex, scrollElement])
+  }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
 
 
   // ---- Derived spacer heights ----
