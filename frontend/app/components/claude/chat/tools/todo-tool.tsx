@@ -7,7 +7,7 @@ interface TodoToolViewProps {
 
 export function TodoToolView({ toolCall }: TodoToolViewProps) {
   const params = toolCall.parameters as TodoWriteParams
-  const todos = params.todos || []
+  const todos = Array.isArray(params?.todos) ? params.todos : []
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
