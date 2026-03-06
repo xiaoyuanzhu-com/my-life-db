@@ -18,6 +18,7 @@ import { cn } from '~/lib/utils'
 import { useAuth } from '~/contexts/auth-context'
 import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
+import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
 import '@fontsource/jetbrains-mono'
 
@@ -51,6 +52,7 @@ type StatusFilter = 'all' | 'active' | 'archived'
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
+  const isMobile = useIsMobile()
   const navigate = useNavigate()
   const { sessionId: urlSessionId } = useParams()
   const [sessions, setSessions] = useState<Session[]>([])
@@ -130,6 +132,11 @@ export default function ClaudePage() {
   // Clear cache only when activeSessionId changes (user explicitly switched sessions)
   const effectiveActiveSession = activeSession ||
     (cachedActiveSessionRef.current?.id === activeSessionId ? cachedActiveSessionRef.current : undefined)
+
+  // DEBUG: Track session resolution to diagnose flashing
+  if (activeSessionId && !effectiveActiveSession) {
+    console.warn(`[ClaudePage] activeSessionId=${activeSessionId} but effectiveActiveSession is undefined! sessions.length=${sessions.length}`)
+  }
 
   // Persist working directory to localStorage
   useEffect(() => {
@@ -703,7 +710,7 @@ export default function ClaudePage() {
                     <PanelLeftOpen className="h-4 w-4" />
                   </Button>
                 )}
-                {activeSessionId ? (
+                {activeSessionId && !isMobile ? (
                   <ChatInterface
                     key={activeSessionId}
                     sessionId={activeSessionId}
@@ -715,7 +722,7 @@ export default function ClaudePage() {
                     initialMessage={pendingInitialMessage ?? undefined}
                     onInitialMessageSent={() => setPendingInitialMessage(null)}
                   />
-                ) : (
+                ) : !activeSessionId ? (
                   <div className="flex flex-1 flex-col claude-bg">
                     <div className="flex-1" />
                     <ChatInput
@@ -729,14 +736,14 @@ export default function ClaudePage() {
                       onPermissionModeChange={setNewSessionPermissionMode}
                     />
                   </div>
-                )}
+                ) : null}
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (
           /* No sidebar — just the chat area */
           <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-            {activeSessionId ? (
+            {activeSessionId && !isMobile ? (
               <ChatInterface
                 key={activeSessionId}
                 sessionId={activeSessionId}
@@ -748,7 +755,7 @@ export default function ClaudePage() {
                 initialMessage={pendingInitialMessage ?? undefined}
                 onInitialMessageSent={() => setPendingInitialMessage(null)}
               />
-            ) : (
+            ) : !activeSessionId ? (
               <div className="flex flex-1 flex-col claude-bg">
                 <div className="flex-1" />
                 <ChatInput
@@ -762,14 +769,14 @@ export default function ClaudePage() {
                   onPermissionModeChange={setNewSessionPermissionMode}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>
 
       {/* ── Mobile: Stack navigation ── */}
       <div className="flex md:hidden flex-1 h-full min-w-0 overflow-hidden">
-        {activeSessionId ? (
+        {activeSessionId && isMobile ? (
           /* Detail view: full-screen chat with floating back button */
           <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
             {sessionSidebar && (
@@ -794,7 +801,7 @@ export default function ClaudePage() {
               onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           </div>
-        ) : sessionSidebar && showNewSessionMobile ? (
+        ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
           /* New session view: full-screen chat input with back button */
           <div className="relative flex flex-1 flex-col claude-bg min-w-0">
             <Button

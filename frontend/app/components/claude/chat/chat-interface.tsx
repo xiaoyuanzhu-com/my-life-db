@@ -656,7 +656,7 @@ export function ChatInterface({
   // Effects
   // ============================================================================
 
-  // Reset state when sessionId changes
+  // Reset state when sessionId changes.
   useEffect(() => {
     setRawMessages([])
     setOptimisticMessage(null)
@@ -694,7 +694,17 @@ export function ChatInterface({
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null
     }
-  }, [sessionId, initialPermissionMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialPermissionMode is handled separately below
+  }, [sessionId])
+
+  // Sync permission mode when parent prop changes (e.g., after refreshSessions updates session data).
+  // This is separate from the reset effect above to avoid clearing rawMessages when only
+  // the permission mode changes — which would cause messages to flash/disappear.
+  useEffect(() => {
+    if (initialPermissionMode === 'default' || initialPermissionMode === 'acceptEdits' || initialPermissionMode === 'plan' || initialPermissionMode === 'bypassPermissions') {
+      setPermissionMode(initialPermissionMode)
+    }
+  }, [initialPermissionMode])
 
   // Cleanup timers and RAF on unmount
   useEffect(() => {

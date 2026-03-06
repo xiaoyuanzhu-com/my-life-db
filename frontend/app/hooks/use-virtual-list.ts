@@ -40,7 +40,10 @@ function calcRange(
   overscan: number,
 ): { startIndex: number; endIndex: number } {
   if (count === 0) return { startIndex: 0, endIndex: 0 }
-  const rawStart = Math.floor(scrollTop / estimateSize)
+  // Clamp rawStart to valid range — actual content height can exceed
+  // count * estimateSize when items are taller than the estimate,
+  // which would push rawStart beyond count and produce an empty range.
+  const rawStart = Math.min(Math.floor(scrollTop / estimateSize), count - 1)
   const visibleCount = Math.ceil(viewportHeight / estimateSize)
   const startIndex = Math.max(0, rawStart - overscan)
   const endIndex = Math.min(count, rawStart + visibleCount + overscan)
@@ -141,6 +144,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   const updateRange = useCallback(() => {
     const el = scrollElement.current
     if (!el || count === 0) return
+
     const next = calcRange(el.scrollTop, el.clientHeight, count, estimateSize, overscan)
     const scrolling = userScrollIntent?.current
 

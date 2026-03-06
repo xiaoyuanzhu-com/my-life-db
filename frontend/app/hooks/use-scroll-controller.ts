@@ -49,7 +49,7 @@ interface ScrollControllerReturn {
 const DEFAULT_STICKY_THRESHOLD = 50
 const DEFAULT_HIDE_SCROLL_THRESHOLD = 50
 const DEFAULT_HIDE_BOTTOM_THRESHOLD = 100
-const DEFAULT_TOP_LOAD_THRESHOLD = 5400 // should match overscanPx in useVirtualList
+const DEFAULT_TOP_LOAD_THRESHOLD = 5400
 
 // ============================================================================
 // Hook
