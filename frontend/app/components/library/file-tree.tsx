@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download, Upload, FolderUp } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { api } from '~/lib/api';
@@ -64,6 +65,10 @@ interface TreeNodeProps {
   allPendingUploads: PendingInboxItem[];
   /** Trigger to reload children (incremented on SSE refresh) */
   refreshTrigger: number;
+  /** Upload files to a specific folder path */
+  onUploadFileTo: (targetPath: string) => void;
+  /** Upload folder to a specific folder path */
+  onUploadFolderTo: (targetPath: string) => void;
 }
 
 function TreeNode({
@@ -85,6 +90,8 @@ function TreeNode({
   onExternalFileDrop,
   allPendingUploads,
   refreshTrigger,
+  onUploadFileTo,
+  onUploadFolderTo,
 }: TreeNodeProps) {
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -94,6 +101,9 @@ function TreeNode({
   const [isDeleting, setIsDeleting] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isCreatingSubfolder, setIsCreatingSubfolder] = useState(false);
+  const [subfolderName, setSubfolderName] = useState('');
+  const subfolderInputRef = useRef<HTMLInputElement>(null);
 
   // Compute full path from parent path and node name
   const fullPath = parentPath ? `${parentPath}/${node.path}` : node.path;
@@ -258,6 +268,56 @@ function TreeNode({
       downloadFolder(fullPath, name);
     } else {
       downloadFile(fullPath, name);
+    }
+  };
+
+  // "New Folder Here" handlers
+  useEffect(() => {
+    if (isCreatingSubfolder && subfolderInputRef.current) {
+      subfolderInputRef.current.focus();
+    }
+  }, [isCreatingSubfolder]);
+
+  const handleNewFolderHere = () => {
+    // Expand folder if collapsed so the inline input is visible
+    if (!isExpanded) {
+      onToggleFolder(fullPath, true);
+    }
+    setSubfolderName('');
+    setIsCreatingSubfolder(true);
+  };
+
+  const handleCreateSubfolder = async () => {
+    if (!subfolderName.trim()) {
+      setIsCreatingSubfolder(false);
+      return;
+    }
+
+    try {
+      const response = await api.post('/api/library/folder', { path: fullPath, name: subfolderName.trim() });
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Failed to create folder');
+        return;
+      }
+      onRefresh();
+      loadChildren(false);
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder');
+    } finally {
+      setIsCreatingSubfolder(false);
+      setSubfolderName('');
+    }
+  };
+
+  const handleSubfolderKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCreateSubfolder();
+    } else if (e.key === 'Escape') {
+      setIsCreatingSubfolder(false);
+      setSubfolderName('');
     }
   };
 
@@ -452,6 +512,23 @@ function TreeNode({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          {node.type === 'folder' && (
+            <>
+              <ContextMenuItem onClick={() => onUploadFileTo(fullPath)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Files Here
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onUploadFolderTo(fullPath)}>
+                <FolderUp className="w-4 h-4 mr-2" />
+                Upload Folder Here
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handleNewFolderHere}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                New Folder Here
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
           <ContextMenuItem onClick={handleDownload}>
             <Download className="w-4 h-4 mr-2" />
             Download
@@ -501,40 +578,60 @@ function TreeNode({
               Loading...
             </div>
           ) : (
-            (() => {
-              // Build set of real child paths
-              const realChildPaths = new Set(children.map(c => c.path));
+            <>
+              {(() => {
+                // Build set of real child paths
+                const realChildPaths = new Set(children.map(c => c.path));
 
-              // Get virtual nodes for this folder level (from pending uploads)
-              const virtualChildren = buildVirtualNodes(allPendingUploads, fullPath, realChildPaths);
+                // Get virtual nodes for this folder level (from pending uploads)
+                const virtualChildren = buildVirtualNodes(allPendingUploads, fullPath, realChildPaths);
 
-              // Merge and sort: folders first, then files, alphabetically
-              const allChildren = sortNodes([...virtualChildren, ...children]);
+                // Merge and sort: folders first, then files, alphabetically
+                const allChildren = sortNodes([...virtualChildren, ...children]);
 
-              return allChildren.map((child) => (
-                <TreeNode
-                  key={child.path + (child.uploadStatus ? '-virtual' : '')}
-                  node={child}
-                  parentPath={fullPath}
-                  level={level + 1}
-                  onFileOpen={onFileOpen}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={onToggleFolder}
-                  selectedFilePath={selectedFilePath}
-                  onRefresh={onRefresh}
-                  onFileDeleted={onFileDeleted}
-                  onFileRenamed={onFileRenamed}
-                  onFileMoved={onFileMoved}
-                  draggedItem={draggedItem}
-                  setDraggedItem={setDraggedItem}
-                  dropTarget={dropTarget}
-                  setDropTarget={setDropTarget}
-                  onExternalFileDrop={onExternalFileDrop}
-                  allPendingUploads={allPendingUploads}
-                  refreshTrigger={refreshTrigger}
-                />
-              ));
-            })()
+                return allChildren.map((child) => (
+                  <TreeNode
+                    key={child.path + (child.uploadStatus ? '-virtual' : '')}
+                    node={child}
+                    parentPath={fullPath}
+                    level={level + 1}
+                    onFileOpen={onFileOpen}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={onToggleFolder}
+                    selectedFilePath={selectedFilePath}
+                    onRefresh={onRefresh}
+                    onFileDeleted={onFileDeleted}
+                    onFileRenamed={onFileRenamed}
+                    onFileMoved={onFileMoved}
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    dropTarget={dropTarget}
+                    setDropTarget={setDropTarget}
+                    onExternalFileDrop={onExternalFileDrop}
+                    allPendingUploads={allPendingUploads}
+                    refreshTrigger={refreshTrigger}
+                    onUploadFileTo={onUploadFileTo}
+                    onUploadFolderTo={onUploadFolderTo}
+                  />
+                ));
+              })()}
+              {isCreatingSubfolder && (
+                <div className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}>
+                  <div className="w-4" />
+                  <Folder className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <Input
+                    ref={subfolderInputRef}
+                    value={subfolderName}
+                    onChange={(e) => setSubfolderName(e.target.value)}
+                    onBlur={handleCreateSubfolder}
+                    onKeyDown={handleSubfolderKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="New folder name"
+                    className="h-5 py-0 px-1 text-sm"
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -562,6 +659,10 @@ export function FileTree({
   const [pendingUploads, setPendingUploads] = useState<PendingInboxItem[]>([]);
   // Trigger to reload children in expanded folders (incremented on SSE refresh)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Shared file inputs for targeted uploads (from context menu)
+  const targetFileInputRef = useRef<HTMLInputElement>(null);
+  const targetFolderInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetPathRef = useRef<string>('');
 
   // Core tree loading function
   const loadRootImpl = useCallback(async () => {
@@ -721,6 +822,72 @@ export function FileTree({
       setIsCreatingFolder(false);
       setNewFolderName('');
     }
+  };
+
+  // Upload file(s) to a specific folder via file picker
+  const handleUploadFileTo = useCallback((targetPath: string) => {
+    uploadTargetPathRef.current = targetPath;
+    targetFileInputRef.current?.click();
+  }, []);
+
+  // Upload folder to a specific folder via directory picker
+  const handleUploadFolderTo = useCallback((targetPath: string) => {
+    uploadTargetPathRef.current = targetPath;
+    targetFolderInputRef.current?.click();
+  }, []);
+
+  const handleTargetFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const targetPath = uploadTargetPathRef.current;
+    const fileArray = Array.from(files);
+
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      const batch = fileArray.map(file => ({ file, destination: targetPath }));
+      await uploadManager.enqueueBatch(batch);
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    e.target.value = '';
+  };
+
+  const handleTargetFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const targetPath = uploadTargetPathRef.current;
+    const fileArray = Array.from(files);
+
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      const batch = fileArray.map(file => {
+        const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        const pathParts = relativePath.split('/');
+        pathParts.pop(); // Remove filename
+        const relativeDir = pathParts.join('/');
+        const destination = targetPath
+          ? relativeDir ? `${targetPath}/${relativeDir}` : targetPath
+          : relativeDir;
+        return { file, destination };
+      });
+
+      await uploadManager.enqueueBatch(batch);
+    } catch (error) {
+      console.error('Failed to upload folder:', error);
+      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    e.target.value = '';
   };
 
   // Handle drop at root level
@@ -907,6 +1074,23 @@ export function FileTree({
   }
 
   return (
+    <>
+      {/* Hidden file inputs for targeted uploads */}
+      <input
+        ref={targetFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleTargetFileInputChange}
+      />
+      <input
+        ref={targetFolderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleTargetFolderInputChange}
+        {...{ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>}
+      />
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
@@ -952,6 +1136,8 @@ export function FileTree({
                     onExternalFileDrop={handleExternalFileDrop}
                     allPendingUploads={pendingUploads}
                     refreshTrigger={refreshTrigger}
+                    onUploadFileTo={handleUploadFileTo}
+                    onUploadFolderTo={handleUploadFolderTo}
                   />
                 ));
               })()}
@@ -981,5 +1167,6 @@ export function FileTree({
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download } from 'lucide-react';
+import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
@@ -32,6 +32,12 @@ interface GridItemProps {
   onRefresh: () => void;
   onFileDeleted?: (path: string) => void;
   onFileRenamed?: (oldPath: string, newPath: string) => void;
+  /** Upload files to this folder (only for folder items) */
+  onUploadFileTo?: (targetPath: string) => void;
+  /** Upload folder to this folder (only for folder items) */
+  onUploadFolderTo?: (targetPath: string) => void;
+  /** Create a new subfolder in this folder (only for folder items) */
+  onNewFolderIn?: (parentPath: string) => void;
 }
 
 export function GridItem({
@@ -42,6 +48,9 @@ export function GridItem({
   onRefresh,
   onFileDeleted,
   onFileRenamed,
+  onUploadFileTo,
+  onUploadFolderTo,
+  onNewFolderIn,
 }: GridItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(getNodeName(node));
@@ -227,6 +236,23 @@ export function GridItem({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          {isFolder && (
+            <>
+              <ContextMenuItem onClick={() => onUploadFileTo?.(fullPath)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Files Here
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onUploadFolderTo?.(fullPath)}>
+                <FolderUp className="w-4 h-4 mr-2" />
+                Upload Folder Here
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onNewFolderIn?.(fullPath)}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                New Folder Here
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
           <ContextMenuItem onClick={handleDownload}>
             <Download className="w-4 h-4 mr-2" />
             Download

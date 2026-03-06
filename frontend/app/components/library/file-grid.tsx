@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { FolderPlus, Plus, Upload, FolderUp } from 'lucide-react';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
@@ -50,6 +51,10 @@ export function FileGrid({
   const [newFolderName, setNewFolderName] = useState('');
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const [pendingUploads, setPendingUploads] = useState<PendingInboxItem[]>([]);
+  // Shared file inputs for targeted uploads (from context menu)
+  const targetFileInputRef = useRef<HTMLInputElement>(null);
+  const targetFolderInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetPathRef = useRef<string>('');
 
   // Reference to upload manager for cleanup
   const uploadManagerRef = useRef<Awaited<ReturnType<typeof import('~/lib/send-queue/upload-queue-manager').getUploadQueueManager>> | null>(null);
@@ -191,6 +196,91 @@ export function FileGrid({
     }
   };
 
+  // Context menu: upload files to a specific folder
+  const handleUploadFileTo = useCallback((targetPath: string) => {
+    uploadTargetPathRef.current = targetPath;
+    targetFileInputRef.current?.click();
+  }, []);
+
+  // Context menu: upload folder to a specific folder
+  const handleUploadFolderTo = useCallback((targetPath: string) => {
+    uploadTargetPathRef.current = targetPath;
+    targetFolderInputRef.current?.click();
+  }, []);
+
+  const handleTargetFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const targetPath = uploadTargetPathRef.current;
+    const fileArray = Array.from(files);
+
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      const batch = fileArray.map(file => ({ file, destination: targetPath }));
+      await uploadManager.enqueueBatch(batch);
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    e.target.value = '';
+  };
+
+  const handleTargetFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const targetPath = uploadTargetPathRef.current;
+    const fileArray = Array.from(files);
+
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      const batch = fileArray.map(file => {
+        const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        const pathParts = relativePath.split('/');
+        pathParts.pop();
+        const relativeDir = pathParts.join('/');
+        const destination = targetPath
+          ? relativeDir ? `${targetPath}/${relativeDir}` : targetPath
+          : relativeDir;
+        return { file, destination };
+      });
+
+      await uploadManager.enqueueBatch(batch);
+    } catch (error) {
+      console.error('Failed to upload folder:', error);
+      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    e.target.value = '';
+  };
+
+  // Context menu: create new folder inside a specific folder
+  const handleNewFolderIn = useCallback(async (parentPath: string) => {
+    const folderName = prompt('New folder name:');
+    if (!folderName?.trim()) return;
+
+    try {
+      const response = await api.post('/api/library/folder', { path: parentPath, name: folderName.trim() });
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Failed to create folder');
+        return;
+      }
+      loadChildren(false);
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder');
+    }
+  }, [loadChildren]);
+
   const handleNavigate = (path: string) => {
     setCurrentPath(path);
   };
@@ -235,6 +325,23 @@ export function FileGrid({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Hidden file inputs for targeted uploads */}
+      <input
+        ref={targetFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleTargetFileInputChange}
+      />
+      <input
+        ref={targetFolderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleTargetFolderInputChange}
+        {...{ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>}
+      />
+
       {/* Breadcrumb navigation + action button */}
       <div className="shrink-0 px-3 py-2 border-b flex items-center gap-2">
         <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} className="flex-1 min-w-0" />
@@ -294,6 +401,9 @@ export function FileGrid({
                   onRefresh={() => loadChildren(false)}
                   onFileDeleted={handleFileDeleted}
                   onFileRenamed={handleFileRenamed}
+                  onUploadFileTo={handleUploadFileTo}
+                  onUploadFolderTo={handleUploadFolderTo}
+                  onNewFolderIn={handleNewFolderIn}
                 />
               );
             })}
