@@ -20,6 +20,7 @@ import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
+import { isNativeApp } from '~/lib/native-bridge'
 import '@fontsource/jetbrains-mono'
 
 const ClaudeLoginTerminal = lazy(() =>
@@ -324,7 +325,14 @@ export default function ClaudePage() {
       // Push a new history entry when navigating from list → detail (prevId was null).
       // This lets the browser's native swipe-back gesture return to the session list.
       // Use replace when switching between sessions to avoid stacking history entries.
-      const useReplace = prevId != null
+      //
+      // IMPORTANT: In the native app (iOS/macOS), ALWAYS replace. The native
+      // NavigationStack owns back navigation via its interactive pop gesture.
+      // If we push browser history entries here, the WebView consumes the
+      // edge-swipe to go back in browser history instead of letting the
+      // NavigationStack pop — causing the user to land on a stale empty page
+      // instead of the session list.
+      const useReplace = isNativeApp() || prevId != null
       navigate(`/claude/${activeSessionId}`, { replace: useReplace })
     } else if (urlSessionId) {
       // Going back to list — replace so we don't duplicate the list entry
