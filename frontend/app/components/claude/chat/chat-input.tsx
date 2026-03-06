@@ -39,8 +39,6 @@ interface ChatInputProps {
   onQuestionAnswer?: (questionId: string, answers: Record<string, string | string[]>) => void
   /** Callback when user skips a question */
   onQuestionSkip?: (questionId: string) => void
-  /** Whether to hide the input on mobile (for scroll-based hiding) */
-  hiddenOnMobile?: boolean
   /** Whether Claude is currently working (processing a request) */
   isWorking?: boolean
   /** Callback to interrupt the current operation */
@@ -74,7 +72,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     pendingQuestions = [],
     onQuestionAnswer,
     onQuestionSkip,
-    hiddenOnMobile = false,
     isWorking = false,
     onInterrupt,
     connectionStatus = 'connected',
@@ -146,17 +143,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const showConnectionBanner =
     connectionStatus !== 'connected' || (reconnection.showReconnected && connectionStatus === 'connected')
 
-  // Whether to actually hide (respects permission/question override)
-  const shouldHide = hiddenOnMobile && !hasOverlay
-
   return (
-    <div
-      className={cn(
-        'claude-bg overflow-hidden transition-all duration-200 ease-out',
-        // On mobile, collapse height when hidden
-        shouldHide ? 'pb-4 max-md:max-h-0 max-md:pb-0' : 'pb-4'
-      )}
-    >
+    <div className="claude-bg overflow-hidden pb-4">
+
       {/* Container matches message width */}
       <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
         {/* Input card - grows to include permission UI when needed */}

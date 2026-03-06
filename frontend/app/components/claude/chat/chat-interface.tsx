@@ -142,11 +142,15 @@ export function ChatInterface({
   const wasConnectedRef = useRef(false)
   // Track if permission mode has been synced to backend for this session
   const permissionModeSyncedRef = useRef(false)
-  // Hide-on-scroll state — driven by scroll controller callback inside MessageList
-  const [shouldHideInput, setShouldHideInput] = useState(false)
+  // Hide-on-scroll — driven by scroll controller callback inside MessageList.
+  // Uses direct DOM manipulation instead of React state to avoid re-renders
+  // during scroll. In WKWebView, React re-renders during active touch scroll
+  // cause layout thrashing that cancels the scroll gesture recognizer.
+  const chatInputWrapperRef = useRef<HTMLDivElement>(null)
   const handleHideChange = useCallback((hidden: boolean) => {
-    setShouldHideInput(hidden)
+    chatInputWrapperRef.current?.classList.toggle('chat-input-scroll-hidden', hidden)
   }, [])
+  const chatInputOverlayShowRef = useRef(false)
 
   // ============================================================================
   // Hooks
@@ -608,6 +612,16 @@ export function ChatInterface({
 
     return { pendingPermissions: unresolvedPermissions, pendingQuestions: unresolvedQuestions }
   }, [rawMessages])
+
+  // Force-show input when permission/question overlays appear (not during scroll,
+  // so React re-render is fine here — this runs on WebSocket state changes).
+  useEffect(() => {
+    const hasOverlay = pendingPermissions.length > 0 || pendingQuestions.length > 0
+    if (hasOverlay && !chatInputOverlayShowRef.current) {
+      chatInputWrapperRef.current?.classList.remove('chat-input-scroll-hidden')
+    }
+    chatInputOverlayShowRef.current = hasOverlay
+  }, [pendingPermissions, pendingQuestions])
 
   // Filter messages for rendering
   const renderableMessages = useMemo(() => {
@@ -1099,26 +1113,27 @@ export function ChatInterface({
             />
           )}
 
-          <ChatInput
-            ref={chatInputRef}
-            sessionId={sessionId}
-            onSend={sendMessage}
-            pendingPermissions={pendingPermissions}
-            onPermissionDecision={handlePermissionDecision}
-            pendingQuestions={pendingQuestions}
-            onQuestionAnswer={handleQuestionAnswer}
-            onQuestionSkip={handleQuestionSkip}
-            hiddenOnMobile={shouldHideInput}
-            isWorking={isWorking}
-            onInterrupt={handleInterrupt}
-            connectionStatus={effectiveConnectionStatus}
-            workingDir={workingDir}
-            slashCommands={slashCommands}
-            permissionMode={permissionMode}
-            onPermissionModeChange={handlePermissionModeChange}
-            contextUsage={contextUsage}
-            onCompact={() => sendMessage('/compact')}
-          />
+          <div ref={chatInputWrapperRef}>
+            <ChatInput
+              ref={chatInputRef}
+              sessionId={sessionId}
+              onSend={sendMessage}
+              pendingPermissions={pendingPermissions}
+              onPermissionDecision={handlePermissionDecision}
+              pendingQuestions={pendingQuestions}
+              onQuestionAnswer={handleQuestionAnswer}
+              onQuestionSkip={handleQuestionSkip}
+              isWorking={isWorking}
+              onInterrupt={handleInterrupt}
+              connectionStatus={effectiveConnectionStatus}
+              workingDir={workingDir}
+              slashCommands={slashCommands}
+              permissionMode={permissionMode}
+              onPermissionModeChange={handlePermissionModeChange}
+              contextUsage={contextUsage}
+              onCompact={() => sendMessage('/compact')}
+            />
+          </div>
         </div>
 
         {/* Todo Panel (collapsible) */}

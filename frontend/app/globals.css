@@ -822,3 +822,22 @@ a.library-file-link:hover {
 .native-app .pb-safe {
   padding-bottom: 0;
 }
+
+/* Hide-on-scroll for chat input — applied via direct DOM class toggle
+   (not React state) to avoid re-renders during scroll. In WKWebView,
+   React re-renders during active touch scroll cause CSS transitions and
+   flex reflows that cancel the scroll gesture recognizer. */
+@media (max-width: 767px) {
+  .chat-input-scroll-hidden {
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
+    transition: max-height 200ms ease-out, padding-top 200ms ease-out, padding-bottom 200ms ease-out;
+  }
+}
+/* In native app, skip the CSS transition entirely — continuous reflow
+   during the 200ms animation can still disrupt the scroll gesture. */
+.native-app .chat-input-scroll-hidden {
+  transition: none !important;
+}
