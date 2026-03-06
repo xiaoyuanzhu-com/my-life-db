@@ -128,7 +128,7 @@ func New(cfg *Config) (*Server, error) {
 		homeDir, err := os.UserHomeDir()
 		if err == nil {
 			sourceDir := filepath.Join(homeDir, ".claude", "projects")
-			destDir := filepath.Join(cfg.UserDataDir, "imports", "claude-code")
+			destDir := filepath.Join(cfg.UserDataDir, "imports", "claude-code", "projects")
 			s.claudeCodeCollector = claudecodecollector.New(sourceDir, destDir)
 			log.Info().Str("source", sourceDir).Str("dest", destDir).Msg("initialized Claude Code data collector")
 		} else {
