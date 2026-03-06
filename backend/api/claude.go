@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,7 +25,7 @@ func (h *Handlers) ListClaudeSessions(c *gin.Context) {
 	sessions := h.server.Claude().ListSessions()
 
 	// Convert to JSON-safe format
-	result := make([]map[string]interface{}, len(sessions))
+	result := make([]map[string]any, len(sessions))
 	for i, s := range sessions {
 		result[i] = s.ToJSON()
 	}
@@ -180,7 +179,7 @@ func (h *Handlers) UnarchiveClaudeSession(c *gin.Context) {
 type ChatMessage struct {
 	Type      string      `json:"type"`
 	MessageID string      `json:"messageId,omitempty"`
-	Data      interface{} `json:"data,omitempty"`
+	Data      any `json:"data,omitempty"`
 }
 
 // ListAllClaudeSessions handles GET /api/claude/sessions/all
@@ -220,7 +219,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 
 	// Convert SessionSnapshot to response format.
 	// All fields are from the snapshot — no live Session access, no lock needed.
-	result := make([]map[string]interface{}, 0, len(paginationResult.Sessions))
+	result := make([]map[string]any, 0, len(paginationResult.Sessions))
 	for _, snap := range paginationResult.Sessions {
 		// Compute unified session state (mutually exclusive):
 		//   "archived" — user explicitly archived this session
@@ -251,7 +250,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 			}
 		}
 
-		sessionData := map[string]interface{}{
+		sessionData := map[string]any{
 			"id":               snap.ID,
 			"title":            snap.DisplayTitle,
 			"workingDir":       snap.WorkingDir,
@@ -267,7 +266,7 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		if snap.Git != nil {
 			sessionData["git"] = snap.Git
 		} else if snap.GitBranch != "" {
-			sessionData["git"] = map[string]interface{}{
+			sessionData["git"] = map[string]any{
 				"isRepo": true,
 				"branch": snap.GitBranch,
 			}
@@ -439,9 +438,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	// This allows viewing historical sessions without activating them
 	log.Debug().Str("sessionId", sessionID).Msg("Subscribe WebSocket connected (not activated yet)")
 
-	var updateMutex sync.Mutex // Protect concurrent access
-	_ = updateMutex // Used implicitly by goroutines
-
 	// Load raw messages from JSONL (if not already loaded or activated)
 	// This allows viewing history before activation
 	if err := session.LoadRawMessages(); err != nil {
@@ -479,7 +475,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 	}
 
 	// Send session_info metadata frame.
-	sessionInfo := map[string]interface{}{
+	sessionInfo := map[string]any{
 		"type":            "session_info",
 		"totalPages":      totalPages,
 		"lowestBurstPage": lowestBurstPage,
@@ -612,7 +608,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 
 			if err := session.SendInputUIWithUUID(inMsg.Content, msgUUID); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send UI message")
-				errMsg := map[string]interface{}{
+				errMsg := map[string]any{
 					"type":  "error",
 					"error": "Failed to send message to session",
 				}
@@ -625,14 +621,14 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			// Broadcast synthetic user message back to clients.
 			// Claude stdin doesn't echo user messages to stdout, so we synthesize one.
 			// Uses the same msgUUID passed to the SDK above.
-			syntheticMsg := map[string]interface{}{
+			syntheticMsg := map[string]any{
 				"type":      "user",
 				"uuid":      msgUUID,
 				"timestamp": time.Now().UnixMilli(),
 				"sessionId": sessionID,
-				"message": map[string]interface{}{
+				"message": map[string]any{
 					"role": "user",
-					"content": []map[string]interface{}{
+					"content": []map[string]any{
 						{"type": "text", "text": inMsg.Content},
 					},
 				},
@@ -732,7 +728,6 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
 						conn.Write(ctx, websocket.MessageText, msgBytes)
 					}
-					break
 				}
 
 				// Store permission mode first (used during activation if not already active)
@@ -824,7 +819,7 @@ func (h *Handlers) ClaudeSubscribeWebSocket(c *gin.Context) {
 			// Ensure session is activated before sending control_response
 			if err := session.EnsureActivated(); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to activate session for control_response")
-				errMsg := map[string]interface{}{
+				errMsg := map[string]any{
 					"type":  "error",
 					"error": fmt.Sprintf("Failed to activate session: %v", err),
 				}

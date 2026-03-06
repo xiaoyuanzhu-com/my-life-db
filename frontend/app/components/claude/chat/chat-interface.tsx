@@ -31,17 +31,6 @@ interface ChatInterfaceProps {
 // Types that should not be rendered as messages
 const SKIP_TYPES = ['file-history-snapshot', 'result']
 
-// Rate limit info from the API (carried in rate_limit_event messages).
-// utilization ∈ [0, 1]; resetsAt is a Unix timestamp (seconds).
-interface RateLimitInfo {
-  status: string            // "allowed" | "allowed_warning" | "limited"
-  rateLimitType: string     // "seven_day" | "five_hour" | etc.
-  resetsAt: number          // Unix timestamp (seconds)
-  isUsingOverage: boolean
-  utilization: number       // 0–1
-  surpassedThreshold?: number // threshold that was crossed, e.g. 0.75
-}
-
 /** Extract text content from a user message (for draft comparison) */
 function extractUserMessageText(msg: SessionMessage): string | null {
   if (msg.type !== 'user') return null
@@ -83,7 +72,7 @@ export function ChatInterface({
   // IMPORTANT: This is the key to distinguishing historical incomplete tool_use from live control_requests
   // - Before init: messages are from historical JSONL cache
   // - After init: messages are from active Claude CLI stdout
-  const [hasSeenInit, setHasSeenInit] = useState(false)
+  const [_hasSeenInit, setHasSeenInit] = useState(false)
 
   // Optimistic user message (shown immediately before server confirms)
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null)
@@ -423,7 +412,6 @@ export function ChatInterface({
         return [...prev, sessionMsg]
       })
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [refreshSessions]
   )
 
@@ -706,7 +694,7 @@ export function ChatInterface({
       clearTimeout(initialLoadTimerRef.current)
       initialLoadTimerRef.current = null
     }
-  }, [sessionId])
+  }, [sessionId, initialPermissionMode])
 
   // Cleanup timers and RAF on unmount
   useEffect(() => {
@@ -953,7 +941,7 @@ export function ChatInterface({
         setTimeout(() => setError(null), 3000)
       }
     },
-    [pendingQuestions, ws.sendMessage]
+    [pendingQuestions, ws]
   )
 
   // Handle question skip - send control_response with deny behavior.

@@ -291,6 +291,7 @@ func transformAliyunToOurs(aliyunMsg []byte) ([]byte, error) {
 				"isFinal":   transcriptPayload.IsFinal,
 				"beginTime": transcriptPayload.BeginTime,
 				"endTime":   transcriptPayload.EndTime,
+				"speakerID":  transcriptPayload.SpeakerID,
 			},
 		}
 

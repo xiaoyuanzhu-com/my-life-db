@@ -92,7 +92,7 @@ export function resolvePath(raw: string, cwd?: string): ResolvedPath {
  * - Single-segment bare filenames (file.pdf)
  * - Very short matches (< 3 chars)
  */
-const PATH_REGEX = /(?<![a-zA-Z]:\/\/|[a-zA-Z]:|["'`(\[])\b(?:(?:\.{0,2}\/)?(?:[a-zA-Z0-9_@.][a-zA-Z0-9_@.\-]*\/)+(?:[a-zA-Z0-9_@.\-]+(?:\.[a-zA-Z0-9]+)?)?|\/(?:[a-zA-Z0-9_@.\-]+\/)+(?:[a-zA-Z0-9_@.\-]+(?:\.[a-zA-Z0-9]+)?)?)/g
+const PATH_REGEX = /(?<![a-zA-Z]:\/\/|[a-zA-Z]:|["'`([])\b(?:(?:\.{0,2}\/)?(?:[a-zA-Z0-9_@.][a-zA-Z0-9_@.-]*\/)+(?:[a-zA-Z0-9_@.-]+(?:\.[a-zA-Z0-9]+)?)?|\/(?:[a-zA-Z0-9_@.-]+\/)+(?:[a-zA-Z0-9_@.-]+(?:\.[a-zA-Z0-9]+)?)?)/g
 
 /**
  * Scan a block of text for path-like strings and resolve each one.

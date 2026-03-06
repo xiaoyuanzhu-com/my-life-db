@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/base64"
 	"io"
 	"net/http"
 	"os"
@@ -371,23 +370,6 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 
 // Helper functions specific to upload
 
-func copyUploadFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
-}
-
 // computeFileHashFromPath computes SHA-256 hash of a file on disk.
 // Returns empty string on error (best-effort; dedup falls back to rename).
 func computeFileHashFromPath(path string) string {
@@ -403,26 +385,3 @@ func computeFileHashFromPath(path string) string {
 	return hash
 }
 
-// parseMetadata parses the Upload-Metadata header
-func parseMetadata(header string) map[string]string {
-	metadata := make(map[string]string)
-	if header == "" {
-		return metadata
-	}
-
-	pairs := strings.Split(header, ",")
-	for _, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		parts := strings.SplitN(pair, " ", 2)
-		if len(parts) == 2 {
-			key := parts[0]
-			value, err := base64.StdEncoding.DecodeString(parts[1])
-			if err == nil {
-				metadata[key] = string(value)
-			}
-		} else if len(parts) == 1 {
-			metadata[parts[0]] = ""
-		}
-	}
-	return metadata
-}

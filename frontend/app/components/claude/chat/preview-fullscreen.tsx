@@ -56,7 +56,6 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
     // Tell the native app to disable the interactive pop gesture so
     // swipe-left/right gestures inside the iframe reach the content
     // (e.g. slide navigation) instead of popping the NavigationStack.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any
     if (w.isNativeApp) {
       w.webkit?.messageHandlers?.native?.postMessage({
@@ -78,7 +77,7 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
         })
       }
     }
-  }, [handleKeyDown])
+  }, [handleKeyDown, onClose])
 
   // True full-bleed layout: iframe fills the entire viewport, close button
   // floats above it.  The button's glassmorphism provides sufficient contrast
