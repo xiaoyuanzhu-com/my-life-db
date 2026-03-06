@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
+	claudecodecollector "github.com/xiaoyuanzhu-com/my-life-db/collectors/claudecode"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -33,7 +36,8 @@ type Server struct {
 	meiliSyncWorker *meiliworker.SyncWorker
 	notifService    *notifications.Service
 	claudeManager   *claude.SessionManager
-	agent           *agent.Agent
+	agent               *agent.Agent
+	claudeCodeCollector *claudecodecollector.Collector
 
 	// Claude Code CLI auth
 	claudeLoggedIn atomic.Bool
@@ -117,6 +121,19 @@ func New(cfg *Config) (*Server, error) {
 		s.agent = agent.NewAgent(appClient, llmClient)
 	} else {
 		log.Info().Msg("inbox agent disabled")
+	}
+
+	// 6.5. Create Claude Code data collector
+	{
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			sourceDir := filepath.Join(homeDir, ".claude", "projects")
+			destDir := filepath.Join(cfg.UserDataDir, "imports", "claude-code")
+			s.claudeCodeCollector = claudecodecollector.New(sourceDir, destDir)
+			log.Info().Str("source", sourceDir).Str("dest", destDir).Msg("initialized Claude Code data collector")
+		} else {
+			log.Warn().Err(err).Msg("failed to get home dir, Claude Code collector disabled")
+		}
 	}
 
 	// 8. Wire service connections
@@ -308,6 +325,11 @@ func (s *Server) Start() error {
 	// Start Meilisearch sync worker
 	s.meiliSyncWorker.Start()
 
+	// Start Claude Code collector sync
+	if s.claudeCodeCollector != nil {
+		go s.runClaudeCodeSync()
+	}
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -403,6 +425,29 @@ func (s *Server) SignalShutdown() {
 }
 func (s *Server) ClaudeLoggedIn() bool                        { return s.claudeLoggedIn.Load() }
 func (s *Server) SetClaudeLoggedIn(v bool)                    { s.claudeLoggedIn.Store(v) }
+
+// runClaudeCodeSync runs the Claude Code collector on startup and periodically.
+func (s *Server) runClaudeCodeSync() {
+	// Initial sync on startup
+	if _, err := s.claudeCodeCollector.Sync(s.shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("Claude Code initial sync failed")
+	}
+
+	// Periodic sync every 10 minutes
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.shutdownCtx.Done():
+			return
+		case <-ticker.C:
+			if _, err := s.claudeCodeCollector.Sync(s.shutdownCtx); err != nil {
+				log.Error().Err(err).Msg("Claude Code periodic sync failed")
+			}
+		}
+	}
+}
 
 // checkClaudeAuthStatus runs `claude auth status` and returns true if exit code 0
 func checkClaudeAuthStatus() bool {
