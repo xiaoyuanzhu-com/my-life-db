@@ -108,6 +108,16 @@ export function TextEditor({
     (editor, monaco) => {
       editorRef.current = editor;
 
+      // Disable all diagnostics — this is a simple text editor, not an IDE
+      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: true,
+        noSyntaxValidation: true,
+      });
+      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: true,
+        noSyntaxValidation: true,
+      });
+
       // Add Cmd+S / Ctrl+S save action
       if (onSave) {
         editor.addAction({
