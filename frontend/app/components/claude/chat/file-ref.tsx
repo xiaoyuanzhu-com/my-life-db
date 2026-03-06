@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react'
 import { Link } from 'react-router'
+import { isNativeApp, nativeBridge } from '~/lib/native-bridge'
 
 interface FileRefProps {
   path: string
@@ -29,6 +30,25 @@ export function FileRef({ path, libraryPath, isDirectory, showIcon = true, class
   if (libraryPath != null) {
     const param = isDirectory ? 'dir' : 'open'
     const to = `/library?${param}=${encodeURIComponent(libraryPath)}`
+
+    // In native app, use the bridge to switch tabs instead of SPA navigation
+    // (which would navigate within the current WebView and trap the user)
+    if (isNativeApp()) {
+      return (
+        <span
+          role="link"
+          onClick={() => nativeBridge.navigate(to)}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[13px] cursor-pointer hover:underline ${className}`}
+          style={{
+            backgroundColor: 'var(--claude-bg-code-block)',
+            color: 'var(--claude-accent, var(--claude-text-secondary))',
+          }}
+          title={path}
+        >
+          {inner}
+        </span>
+      )
+    }
 
     return (
       <Link
