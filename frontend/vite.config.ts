@@ -123,18 +123,16 @@ export default defineConfig({
     // Proxy API requests to Go backend during development
     proxy: {
       "/api": {
-        target: "https://my.xiaoyuanzhu.com",
+        target: "http://localhost:12345",
         changeOrigin: true,
         ws: true, // Enable WebSocket proxying
-        secure: true,
       },
       "/raw": {
-        target: "https://my.xiaoyuanzhu.com",
+        target: "http://localhost:12345",
         changeOrigin: true,
-        secure: true,
       },
       "/sqlar": {
-        target: "https://my.xiaoyuanzhu.com",
+        target: "http://localhost:12345",
         changeOrigin: true,
         secure: true,
       },

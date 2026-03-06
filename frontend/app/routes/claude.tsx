@@ -133,11 +133,6 @@ export default function ClaudePage() {
   const effectiveActiveSession = activeSession ||
     (cachedActiveSessionRef.current?.id === activeSessionId ? cachedActiveSessionRef.current : undefined)
 
-  // DEBUG: Track session resolution to diagnose flashing
-  if (activeSessionId && !effectiveActiveSession) {
-    console.warn(`[ClaudePage] activeSessionId=${activeSessionId} but effectiveActiveSession is undefined! sessions.length=${sessions.length}`)
-  }
-
   // Persist working directory to localStorage
   useEffect(() => {
     if (newSessionWorkingDir) {
@@ -281,6 +276,42 @@ export default function ClaudePage() {
   useEffect(() => {
     loadSessions()
   }, [loadSessions])
+
+  // Fetch individual session when activeSessionId is set but not in the loaded sessions
+  // (e.g., navigating directly to an archived session URL while filter is "active").
+  // Uses a ref to read sessions without depending on it — avoids re-triggering on every
+  // session list update (clicking around, SSE refreshes, etc.).
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
+
+  useEffect(() => {
+    if (!activeSessionId || loading) return
+    if (sessionsRef.current.some((s) => s.id === activeSessionId)) return
+
+    let cancelled = false
+    api.get(`/api/claude/sessions/${activeSessionId}`).then(async (res) => {
+      if (cancelled) return
+      if (!res.ok) return
+      const data = await res.json()
+      const session: Session = {
+        id: data.id,
+        title: data.title || data.id,
+        workingDir: data.workingDir || '',
+        sessionState: data.sessionState || 'idle',
+        createdAt: data.createdAt || 0,
+        lastActivity: data.lastActivity || 0,
+        lastUserActivity: data.lastUserActivity,
+        messageCount: data.messageCount,
+        permissionMode: data.permissionMode,
+      }
+      setSessions((prev) => {
+        if (prev.some((s) => s.id === session.id)) return prev
+        return [...prev, session]
+      })
+    }).catch(() => {})
+
+    return () => { cancelled = true }
+  }, [activeSessionId, loading])
 
   // Sync URL with active session
   useEffect(() => {
