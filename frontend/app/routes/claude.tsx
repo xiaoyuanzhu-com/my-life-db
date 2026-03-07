@@ -4,7 +4,7 @@ import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import { Button } from '~/components/ui/button'
-import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, X, Check } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +21,8 @@ import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
 import { isNativeApp } from '~/lib/native-bridge'
+import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
+import { toast } from 'sonner'
 import '@fontsource/jetbrains-mono'
 
 const ClaudeLoginTerminal = lazy(() =>
@@ -40,6 +42,8 @@ interface Session {
   messageCount?: number
   gitBranch?: string
   permissionMode?: string // From active session runtime state (empty for historical)
+  shareToken?: string
+  shareUrl?: string
 }
 
 interface Pagination {
@@ -49,6 +53,131 @@ interface Pagination {
 }
 
 type StatusFilter = 'all' | 'active' | 'archived'
+
+function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Partial<Session>) => void }) {
+  const [open, setOpen] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  const handleShare = async () => {
+    setSharing(true)
+    try {
+      const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`Failed to share: ${res.status}`)
+      const data = await res.json()
+      onUpdate({ shareToken: data.token, shareUrl: data.url })
+      toast.success('Session shared')
+    } catch (err) {
+      console.error('Failed to share session:', err)
+      toast.error('Failed to share session')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleUnshare = async () => {
+    setSharing(true)
+    try {
+      const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error(`Failed to unshare: ${res.status}`)
+      onUpdate({ shareToken: undefined, shareUrl: undefined })
+      setOpen(false)
+      toast.success('Session unshared')
+    } catch (err) {
+      console.error('Failed to unshare session:', err)
+      toast.error('Failed to unshare session')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleCopy = () => {
+    if (!session.shareUrl) return
+    navigator.clipboard.writeText(session.shareUrl)
+    setCopied(true)
+    toast.success('Link copied to clipboard')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={() => {
+          if (!session.shareToken) {
+            handleShare()
+          } else {
+            setOpen(!open)
+          }
+        }}
+        disabled={sharing}
+        title={session.shareToken ? 'Share settings' : 'Share session'}
+      >
+        <Share2 className={cn('h-4 w-4', session.shareToken && 'text-primary')} />
+      </Button>
+
+      {open && session.shareToken && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-border bg-popover p-3 shadow-lg">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Share link</span>
+            <button
+              onClick={() => setOpen(false)}
+              className="rounded p-0.5 hover:bg-muted"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5">
+              <Link className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-xs text-foreground">{session.shareUrl}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 px-2"
+              onClick={handleCopy}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : 'Copy'}
+            </Button>
+          </div>
+
+          <div className="mt-2 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-destructive hover:text-destructive"
+              onClick={handleUnshare}
+              disabled={sharing}
+            >
+              Unshare
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ClaudePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -596,6 +725,13 @@ export default function ClaudePage() {
     setShowNewSessionMobile(false)
   }, [])
 
+  // Update share fields on a session (called by ShareButton)
+  const updateSessionShare = useCallback((sessionId: string, fields: Partial<Session>) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, ...fields } : s))
+    )
+  }, [])
+
   // Show loading state while checking authentication
   if (authLoading || loading) {
     return (
@@ -749,6 +885,15 @@ export default function ClaudePage() {
                     <PanelLeftOpen className="h-4 w-4" />
                   </Button>
                 )}
+                {/* Share button */}
+                {activeSessionId && effectiveActiveSession && (
+                  <div className="absolute top-2 right-2 z-20">
+                    <ShareButton
+                      session={effectiveActiveSession}
+                      onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
+                    />
+                  </div>
+                )}
                 {activeSessionId && !isMobile ? (
                   <ChatInterface
                     key={activeSessionId}
@@ -827,6 +972,14 @@ export default function ClaudePage() {
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
+            )}
+            {effectiveActiveSession && (
+              <div className="absolute top-2 right-2 z-20">
+                <ShareButton
+                  session={effectiveActiveSession}
+                  onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
+                />
+              </div>
             )}
             <ChatInterface
               key={activeSessionId}
