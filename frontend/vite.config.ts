@@ -124,16 +124,18 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        // Keep original Host header so the backend sees the real host (e.g. LAN IP)
+        // for dynamic OAuth redirect URI construction
+        changeOrigin: false,
         ws: true, // Enable WebSocket proxying
       },
       "/raw": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/sqlar": {
         target: "http://localhost:12345",
-        changeOrigin: true,
+        changeOrigin: false,
         secure: true,
       },
     },
