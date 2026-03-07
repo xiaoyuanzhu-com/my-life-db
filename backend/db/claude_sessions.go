@@ -178,3 +178,93 @@ func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, err
 	}
 	return result, nil
 }
+
+// ── Share operations ─────────────────────────────────────────────────────────
+
+// ShareClaudeSession sets the share token for a session (upsert).
+func ShareClaudeSession(sessionID, shareToken string) error {
+	_, err := Run(
+		`INSERT INTO claude_sessions (session_id, share_token, shared_at, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(session_id) DO UPDATE SET
+		   share_token = excluded.share_token,
+		   shared_at = excluded.shared_at,
+		   updated_at = excluded.updated_at`,
+		sessionID, shareToken, NowMs(), NowMs(),
+	)
+	return err
+}
+
+// UnshareClaudeSession removes the share token from a session.
+func UnshareClaudeSession(sessionID string) error {
+	_, err := Run(
+		`UPDATE claude_sessions SET share_token = NULL, shared_at = NULL, updated_at = ?
+		 WHERE session_id = ?`,
+		NowMs(), sessionID,
+	)
+	return err
+}
+
+// GetSessionIDByShareToken resolves a share token to a session ID.
+// Returns "" if the token is not found.
+func GetSessionIDByShareToken(shareToken string) (string, error) {
+	var sessionID string
+	err := GetDB().QueryRow(
+		`SELECT session_id FROM claude_sessions WHERE share_token = ?`,
+		shareToken,
+	).Scan(&sessionID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return sessionID, nil
+}
+
+// GetShareToken returns the share token for a session.
+// Returns "" if the session is not shared.
+func GetShareToken(sessionID string) (string, error) {
+	var token sql.NullString
+	err := GetDB().QueryRow(
+		`SELECT share_token FROM claude_sessions WHERE session_id = ?`,
+		sessionID,
+	).Scan(&token)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !token.Valid {
+		return "", nil
+	}
+	return token.String, nil
+}
+
+// ShareTokenEntry holds a session ID and its share token.
+type ShareTokenEntry struct {
+	SessionID  string
+	ShareToken string
+}
+
+// GetAllShareTokens bulk-loads all share tokens as a sessionID -> shareToken map.
+func GetAllShareTokens() (map[string]string, error) {
+	rows, err := Select(
+		`SELECT session_id, share_token FROM claude_sessions WHERE share_token IS NOT NULL`,
+		nil,
+		func(rows *sql.Rows) (ShareTokenEntry, error) {
+			var e ShareTokenEntry
+			err := rows.Scan(&e.SessionID, &e.ShareToken)
+			return e, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(rows))
+	for _, e := range rows {
+		result[e.SessionID] = e.ShareToken
+	}
+	return result, nil
+}
