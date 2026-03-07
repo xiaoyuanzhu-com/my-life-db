@@ -21,10 +21,11 @@ import {
   type SummaryMessage,
 } from '~/lib/session-message-utils'
 import type { AgentProgressMessage, BashProgressMessage, HookProgressMessage, TaskProgressMessage, ToolUseInfo } from './session-messages'
+import { Copy, Check } from 'lucide-react'
 import { parseMarkdown, parseMarkdownSync, onMermaidThemeChange, highlightCode } from '~/lib/markdown'
 import { linkifyLibraryPaths } from '~/lib/file-path-resolver'
 import { PreviewFullscreen, wrapSvgInHtml } from './preview-fullscreen'
-import { useEffect, useState, useMemo, memo, useRef } from 'react'
+import { useEffect, useState, useMemo, useCallback, memo, useRef } from 'react'
 
 // Format duration in milliseconds to human-readable string (e.g., "2m 54s")
 function formatDuration(ms: number): string {
@@ -269,6 +270,7 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
           <MessageDot type="assistant" />
           <div className="flex-1 min-w-0">
             <MessageContent content={textContent} onRequestFullscreen={onRequestFullscreen} />
+            <CopyButton text={textContent} />
           </div>
         </div>
       )}
@@ -447,6 +449,44 @@ function ToolCallGroup({
         </div>
       </div>
     </div>
+  )
+}
+
+// Copy button for assistant messages
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null)
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+    })
+  }, [text])
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  const Icon = copied ? Check : Copy
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="mt-1 flex items-center gap-1 font-mono text-[11px] leading-none hover:opacity-100 transition-opacity cursor-pointer"
+      style={{
+        color: copied ? 'var(--claude-status-success, #22c55e)' : 'var(--claude-text-tertiary)',
+        opacity: copied ? 1 : 0.5,
+      }}
+      title="Copy message"
+    >
+      <Icon size={12} />
+    </button>
   )
 }
 
