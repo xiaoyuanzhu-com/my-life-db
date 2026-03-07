@@ -86,7 +86,15 @@ func (h *Handlers) GetClaudeSession(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, session.ToJSON())
+	data := session.ToJSON()
+
+	// Include share status if shared
+	if shareToken, err := db.GetShareToken(sessionID); err == nil && shareToken != "" {
+		data["shareToken"] = shareToken
+		data["shareUrl"] = "/share/" + shareToken
+	}
+
+	c.JSON(http.StatusOK, data)
 }
 
 // UpdateClaudeSession handles PATCH /api/claude/sessions/:id
@@ -209,6 +217,13 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 		readResultCounts = make(map[string]int)
 	}
 
+	// Load share tokens in bulk
+	shareTokens, err := db.GetAllShareTokens()
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to load share tokens")
+		shareTokens = make(map[string]string)
+	}
+
 	log.Debug().
 		Int("returnedCount", len(paginationResult.Sessions)).
 		Int("totalCount", paginationResult.TotalCount).
@@ -270,6 +285,11 @@ func (h *Handlers) ListAllClaudeSessions(c *gin.Context) {
 				"isRepo": true,
 				"branch": snap.GitBranch,
 			}
+		}
+
+		if token, ok := shareTokens[snap.ID]; ok {
+			sessionData["shareToken"] = token
+			sessionData["shareUrl"] = "/share/" + token
 		}
 
 		result = append(result, sessionData)

@@ -22,6 +22,10 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 		// Claude Code CLI auth status (public — independent of app auth)
 		public.GET("/claude/auth-status", h.ClaudeAuthStatus)
+
+		// Public share routes (no auth required)
+		public.GET("/share/:token", h.GetSharedSession)
+		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 	}
 
 	// Protected routes (require auth when auth mode is enabled)
@@ -115,6 +119,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.POST("/claude/sessions/:id/archive", h.ArchiveClaudeSession)
 		api.POST("/claude/sessions/:id/unarchive", h.UnarchiveClaudeSession)
 		api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
+		api.POST("/claude/sessions/:id/share", h.ShareClaudeSession)
+		api.DELETE("/claude/sessions/:id/share", h.UnshareClaudeSession)
 
 		// ASR routes
 		api.POST("/asr", h.ASRHandler)
@@ -126,6 +132,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/api/claude/sessions/:id/subscribe", wsAuth, h.ClaudeSubscribeWebSocket)
 	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
 	r.GET("/api/claude-login/ws", h.ClaudeLoginWebSocket)
+	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 
 	// Raw file serving - protected
 	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
