@@ -501,6 +501,24 @@ export function isSkippedUserMessage(msg: SessionMessage): boolean {
   if (msg.type !== 'user') return false
 
   const content = msg.message?.content
+
+  // Handle array content (e.g., tool_result blocks + text)
+  if (Array.isArray(content)) {
+    // Skip ToolSearch results: messages with only tool_result blocks + "Tool loaded." text.
+    // These are internal deferred-tool loading machinery, not user-typed content.
+    const textBlocks = content.filter(isTextBlock)
+    const toolResultBlocks = content.filter(isToolResultBlock)
+    const otherBlocks = content.filter(b => !isTextBlock(b) && !isToolResultBlock(b))
+    if (
+      otherBlocks.length === 0 &&
+      toolResultBlocks.length > 0 &&
+      textBlocks.every(b => b.text.trim() === 'Tool loaded.')
+    ) {
+      return true
+    }
+    return false
+  }
+
   if (typeof content !== 'string') return false
 
   // PREFIX-BASED FILTER: Skip task-notification messages (system-injected, not user-typed).

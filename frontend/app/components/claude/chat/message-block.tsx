@@ -96,10 +96,11 @@ export function MessageBlock({ message, toolResultMap, agentProgressMap, bashPro
 
     const texts = content.filter(isTextBlock).map((block) => block.text)
     const thinking = content.filter(isThinkingBlock)
-    // Filter out TaskOutput tool_use blocks — they are always absorbed into parent Task blocks.
-    // TaskOutput has zero standalone value; its result is merged into the parent Task via asyncTaskOutputMap.
+    // Filter out internal tool_use blocks that have no standalone rendering value:
+    // - TaskOutput: absorbed into parent Task blocks via asyncTaskOutputMap
+    // - ToolSearch: internal deferred-tool loading machinery (user sees "Tool loaded." at most)
     const toolUses = content.filter(isToolUseBlock).filter(
-      (block) => block.name !== 'TaskOutput'
+      (block) => block.name !== 'TaskOutput' && block.name !== 'ToolSearch'
     )
 
     return {
