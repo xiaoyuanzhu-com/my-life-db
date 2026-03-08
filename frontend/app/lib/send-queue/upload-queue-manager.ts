@@ -10,6 +10,7 @@
  */
 
 import * as tus from 'tus-js-client';
+import { generateUUID } from '~/lib/uuid';
 import type { PendingInboxItem } from './types';
 import { QUEUE_CONSTANTS, RETRY_DELAYS_MS } from './types';
 import {
@@ -54,22 +55,6 @@ function generateTabId(): string {
   return `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
-/**
- * Generate a UUID v4
- */
-function generateUUID(): string {
-  // Use crypto.randomUUID if available (modern browsers)
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  // Fallback polyfill for older browsers
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
 
 /**
  * Calculate retry delay with jitter

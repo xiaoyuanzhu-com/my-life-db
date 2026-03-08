@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { scrollDebug } from '~/lib/scroll-debug'
 
 // ============================================================================
 // Types
@@ -111,6 +112,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // virtualizer scroll adjustments must respect this as an absolute lock.
   const fingerDownRef = useRef<boolean>(false)
 
+  // ---- Deferred scrollend finalization ----
+  // When scrollend fires mid-gesture (finger still down), we ignore it.
+  // After finger lifts, if no momentum follows (no further scroll events),
+  // the browser won't fire another scrollend. This timer ensures we finalize.
+  const deferredFinalizeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // ---- ResizeObserver ----
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
@@ -141,6 +148,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       const el = scrollElementRef.current
       if (!el) return
       const prevScrollTop = el.scrollTop
+      scrollDebug('⚙️', 'scrollToBottom', {
+        behavior,
+        prevScrollTop: Math.round(prevScrollTop),
+        scrollHeight: el.scrollHeight,
+        prevPhase: phaseRef.current,
+      })
       phaseRef.current = 'programmatic'
       userScrollIntentRef.current = false
       el.scrollTo({ top: el.scrollHeight, behavior })
@@ -150,6 +163,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       // scrollend won't fire — return to idle immediately so ResizeObserver
       // isn't blocked when content arrives later.
       if (el.scrollTop === prevScrollTop) {
+        scrollDebug('⚙️', 'scrollToBottom:noOp', { reason: 'already at bottom' })
         phaseRef.current = 'idle'
       }
     },
@@ -165,11 +179,23 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // If shouldStick is true and fingerDown is false, we should follow new
     // content even during wheel/trackpad momentum — the user wants to be
     // at the bottom, and there's no physical finger to fight.
-    if (phaseRef.current === 'programmatic' || fingerDownRef.current || !shouldStickRef.current) return
+    if (phaseRef.current === 'programmatic' || fingerDownRef.current || !shouldStickRef.current) {
+      scrollDebug('⚙️', 'stickIfNeeded:skip', {
+        phase: phaseRef.current,
+        fingerDown: fingerDownRef.current,
+        shouldStick: shouldStickRef.current,
+      })
+      return
+    }
     const el = scrollElementRef.current
     if (!el) return
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
     if (distFromBottom <= stickyThreshold) return
+    scrollDebug('⚙️', 'stickIfNeeded:act', {
+      distFromBottom: Math.round(distFromBottom),
+      scrollTop: Math.round(el.scrollTop),
+      scrollHeight: el.scrollHeight,
+    })
     scrollToBottom('instant')
   }, [scrollToBottom, stickyThreshold])
 
@@ -183,6 +209,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   const markFingerDownRef = useRef(function markFingerDown() {
     userScrollIntentRef.current = true
     fingerDownRef.current = true
+    scrollDebug('👆', 'fingerDown', { userScrollIntent: true, fingerDown: true })
   })
 
   // Wheel: no physical finger on the surface — only mark scroll intent, NOT fingerDown.
@@ -191,23 +218,68 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // there's no touchend/pointerup to clear it — it would stay true forever.
   const markWheelIntentRef = useRef(function markWheelIntent() {
     userScrollIntentRef.current = true
+    scrollDebug('👆', 'wheelIntent', { userScrollIntent: true })
   })
 
   const clearFingerDownRef = useRef(function clearFingerDown() {
     fingerDownRef.current = false
+    scrollDebug('👆', 'fingerUp', {
+      fingerDown: false,
+      userScrollIntent: userScrollIntentRef.current,
+      phase: phaseRef.current,
+    })
+    // Don't reset phase/intent here — momentum scroll may follow the finger
+    // lift. scrollend will fire after momentum ends and do the reset.
+    // userScrollIntent stays true so the virtual list keeps the range frozen
+    // through momentum.
+
+    // Safety net: if no scroll/scrollend event comes within 150ms, the user
+    // lifted their finger without momentum (or the last scrollend was ignored
+    // mid-gesture). Finalize manually to avoid a stuck state.
+    if (deferredFinalizeRef.current) clearTimeout(deferredFinalizeRef.current)
+    deferredFinalizeRef.current = setTimeout(() => {
+      deferredFinalizeRef.current = null
+      if (phaseRef.current !== 'idle' || userScrollIntentRef.current) {
+        scrollDebug('👆', 'fingerUp:deferredFinalize', {
+          phase: phaseRef.current,
+          userScrollIntent: userScrollIntentRef.current,
+        })
+        phaseRef.current = 'idle'
+        userScrollIntentRef.current = false
+      }
+    }, 150)
   })
 
   const handleScrollRef = useRef(function handleScroll() {
     const el = scrollElementRef.current
     if (!el) return
 
+    // Cancel deferred finalize — a scroll event means momentum is active,
+    // so scrollend will fire later and do the real finalization.
+    if (deferredFinalizeRef.current) {
+      clearTimeout(deferredFinalizeRef.current)
+      deferredFinalizeRef.current = null
+    }
+
     // ---- 1. Read metrics (once) ----
     const scrollTop = el.scrollTop
     const distanceFromBottom = el.scrollHeight - scrollTop - el.clientHeight
     const delta = scrollTop - lastScrollTopRef.current
 
+    scrollDebug('📜', 'scroll', {
+      scrollTop: Math.round(scrollTop),
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      distFromBottom: Math.round(distanceFromBottom),
+      delta: Math.round(delta),
+      phase: phaseRef.current,
+      fingerDown: fingerDownRef.current,
+      userScrollIntent: userScrollIntentRef.current,
+    })
+
     // ---- 2. Phase gate ----
     if (phaseRef.current === 'programmatic') {
+      scrollDebug('📜', 'scroll:gated', { reason: 'programmatic phase' })
       lastScrollTopRef.current = scrollTop
       lastDistFromBottomRef.current = distanceFromBottom
       return
@@ -217,6 +289,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
     if (userDriven && phaseRef.current === 'idle') {
       phaseRef.current = 'user'
+      scrollDebug('🔄', 'phase:idle→user')
     }
 
     // ---- 3. Sticky (synchronous — no RAF) ----
@@ -238,8 +311,14 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
     if (userDriven && distDelta > 0 && distanceFromBottom > stickyThreshold) {
       shouldStickRef.current = false
+      scrollDebug('🔄', 'shouldStick→false', {
+        reason: 'user scrolled up',
+        distDelta,
+        distanceFromBottom: Math.round(distanceFromBottom),
+      })
     } else if (atBottom) {
       shouldStickRef.current = true
+      scrollDebug('🔄', 'shouldStick→true', { reason: 'at bottom' })
     }
 
     // ---- 4. Hide-on-scroll ----
@@ -280,6 +359,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // ---- 5. History paging (scroll-up near top) ----
     const scrollingUp = userDriven && delta < 0
     if (scrollingUp && scrollTop < topLoadThreshold && !shouldStickRef.current) {
+      scrollDebug('📦', 'nearTop:loadMore', { scrollTop: Math.round(scrollTop) })
       onNearTopRef.current?.()
     }
 
@@ -297,10 +377,32 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // Finalize sticky state after momentum ends
     const atBottom = checkIsAtBottom(el)
     isAtBottomRef.current = atBottom
+    scrollDebug('📜', 'scrollend', {
+      scrollTop: Math.round(el.scrollTop),
+      scrollHeight: el.scrollHeight,
+      distFromBottom: Math.round(el.scrollHeight - el.scrollTop - el.clientHeight),
+      atBottom,
+      prevPhase: phaseRef.current,
+      fingerDown: fingerDownRef.current,
+    })
     if (atBottom) {
       shouldStickRef.current = true
     }
+
+    // If finger is still on screen, the user is mid-gesture (e.g., reversing
+    // direction). The browser fires scrollend when velocity hits zero, but
+    // the touch gesture isn't over. Keep phase/intent active so the scroll
+    // continues tracking the finger.
+    if (fingerDownRef.current) {
+      scrollDebug('📜', 'scrollend:ignored', { reason: 'finger still down' })
+      return
+    }
+
     // Return to idle — ResizeObserver may now call stickIfNeeded()
+    if (deferredFinalizeRef.current) {
+      clearTimeout(deferredFinalizeRef.current)
+      deferredFinalizeRef.current = null
+    }
     phaseRef.current = 'idle'
     userScrollIntentRef.current = false
   })
@@ -377,6 +479,14 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         resizeObserverRef.current = new ResizeObserver((entries) => {
           const h = entries[0]?.contentRect.height ?? 0
           if (h === prevContentHeight) return
+          scrollDebug('📐', 'contentResize', {
+            prevHeight: prevContentHeight,
+            newHeight: h,
+            delta: h - prevContentHeight,
+            phase: phaseRef.current,
+            fingerDown: fingerDownRef.current,
+            shouldStick: shouldStickRef.current,
+          })
           prevContentHeight = h
           stickIfNeeded() // phase-gated: only acts during idle
         })

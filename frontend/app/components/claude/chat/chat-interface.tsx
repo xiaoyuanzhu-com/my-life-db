@@ -15,6 +15,7 @@ import {
 } from '~/lib/session-message-utils'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
 import { setSessionCwd } from '~/lib/file-path-resolver'
+import { generateUUID } from '~/lib/uuid'
 import type { ContextUsage } from './context-usage-indicator'
 
 interface ChatInterfaceProps {
@@ -302,7 +303,7 @@ export function ChatInterface({
         setRawMessages((prev) => {
           const resultMsg: SessionMessage = {
             type: 'result',
-            uuid: (msg.uuid as string) || crypto.randomUUID(),
+            uuid: (msg.uuid as string) || generateUUID(),
             timestamp: new Date().toISOString(),
             ...(msg as object),
           }
@@ -337,7 +338,7 @@ export function ChatInterface({
         setTurnId((prev) => prev + 1) // New turn → ClaudeWIP picks fresh random words
         const initMsg: SessionMessage = {
           type: 'system',
-          uuid: (msg.uuid as string) || crypto.randomUUID(),
+          uuid: (msg.uuid as string) || generateUUID(),
           timestamp: new Date().toISOString(),
           ...(msg as object),
         }
@@ -359,7 +360,7 @@ export function ChatInterface({
       // AskUserQuestion control_request, preventing the QuestionCard from rendering.
       if (!sessionMsg.uuid) {
         const reqId = (msg as Record<string, unknown>).request_id as string | undefined
-        sessionMsg.uuid = reqId ? `${sessionMsg.type}:${reqId}` : crypto.randomUUID()
+        sessionMsg.uuid = reqId ? `${sessionMsg.type}:${reqId}` : generateUUID()
       }
 
       if (sessionMsg.type === 'user' && !hasToolUseResult(sessionMsg)) {

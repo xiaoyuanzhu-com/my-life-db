@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { scrollDebug } from '~/lib/scroll-debug'
 
 // ============================================================================
 // Types
@@ -101,6 +102,13 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const prependHandledRef = useRef(false)
 
+  // ---- Manual scroll anchoring ----
+  // Safari lacks overflow-anchor, so when items above the viewport are added/removed
+  // (startIndex changes), the spacer↔item height mismatch causes a visual jump.
+  // We manually anchor: before a range change, record a visible element's viewport
+  // offset; after DOM commit, restore it by adjusting scrollTop.
+  const anchorRef = useRef<{ element: Element; topOffset: number } | null>(null)
+
   // ---- Render-phase prepend detection ----
   // Detecting prepends during render and calling setRange immediately makes React
   // discard the interrupted render and retry with the corrected range. The DOM
@@ -130,6 +138,13 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
           if (el) {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
+          scrollDebug('📦', 'prepend:detected', {
+            prependCount,
+            oldRange: `[${range.startIndex}, ${range.endIndex})`,
+            newRange: `[${newStart}, ${newEnd})`,
+            scrollHeight: el?.scrollHeight,
+            scrollTop: el ? Math.round(el.scrollTop) : undefined,
+          })
           prependHandledRef.current = true
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
@@ -140,6 +155,25 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   }
 
   // ---- Range update (called from scroll listener and effects) ----
+
+  // Capture a visible element as a scroll anchor before range changes.
+  // Uses data-vi (virtual index) attributes on rendered items.
+  const captureAnchor = useCallback(() => {
+    const el = scrollElement.current
+    if (!el) return
+    // Find the element near viewport center for best stability
+    const centerVi = Math.floor((el.scrollTop + el.clientHeight / 2) / estimateSize)
+    // Clamp to the currently rendered range
+    const vi = Math.max(range.startIndex, Math.min(range.endIndex - 1, centerVi))
+    const anchorEl = el.querySelector(`[data-vi="${vi}"]`)
+    if (anchorEl) {
+      const elRect = el.getBoundingClientRect()
+      anchorRef.current = {
+        element: anchorEl,
+        topOffset: anchorEl.getBoundingClientRect().top - elRect.top,
+      }
+    }
+  }, [scrollElement, estimateSize, range.startIndex, range.endIndex])
 
   const updateRange = useCallback(() => {
     const el = scrollElement.current
@@ -166,6 +200,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
 
         if (!nearTopEdge && !nearBottomEdge) {
           // Safely inside buffer — freeze
+          scrollDebug('🧊', 'range:frozen', {
+            reason: 'inside buffer',
+            range: `[${prev.startIndex}, ${prev.endIndex})`,
+            viewportTop: Math.round(viewportTop),
+            viewportBottom: Math.round(viewportBottom),
+            renderedTop: Math.round(renderedTop),
+            renderedBottom: Math.round(renderedBottom),
+          })
           return prev
         }
 
@@ -173,6 +215,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const startIndex = Math.min(prev.startIndex, next.startIndex)
         const endIndex = Math.max(prev.endIndex, next.endIndex)
         if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
+        // Capture anchor before DOM changes (edge expand during scroll)
+        if (startIndex !== prev.startIndex) captureAnchor()
+        scrollDebug('🧊', 'range:edgeExpand', {
+          nearTopEdge,
+          nearBottomEdge,
+          prev: `[${prev.startIndex}, ${prev.endIndex})`,
+          next: `[${startIndex}, ${endIndex})`,
+        })
         return { startIndex, endIndex }
       }
 
@@ -188,9 +238,16 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       )
 
       if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
+      // Capture anchor before DOM changes when startIndex moves
+      if (startIndex !== prev.startIndex) captureAnchor()
+      scrollDebug('🔄', 'range:update', {
+        prev: `[${prev.startIndex}, ${prev.endIndex})`,
+        next: `[${startIndex}, ${endIndex})`,
+        scrollTop: Math.round(el.scrollTop),
+      })
       return { startIndex, endIndex }
     })
-  }, [scrollElement, count, estimateSize, overscan, userScrollIntent])
+  }, [scrollElement, count, estimateSize, overscan, userScrollIntent, captureAnchor])
 
   // ---- Scroll listener (passive) ----
   // Also listen for scrollend to update range after momentum scroll ends
@@ -242,9 +299,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
+      scrollDebug('📦', 'count:change+stick', {
+        count,
+        range: `[${nextRange.startIndex}, ${nextRange.endIndex})`,
+      })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
+      scrollDebug('📦', 'count:change', { count, shouldStick: false })
       setRange((prev) => {
         const viewportHeight = scrollElement.current?.clientHeight ?? 800
         const visibleCount = Math.ceil(viewportHeight / estimateSize)
@@ -257,28 +319,58 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     prevFirstKeyRef.current = count > 0 ? getKey(0) : undefined
   }, [count, getKey, shouldStick, scrollElement, estimateSize, overscan])
 
-  // ---- Prepend scroll restoration ----
-  // After React commits the shifted range to the DOM, restore scroll position
-  // using the height delta. This is a manual scroll anchor — no dependency on
-  // browser overflow-anchor behavior.
-  // During momentum scroll, skip the restore — setting scrollTop kills momentum.
-  // The content will jump but momentum continues naturally.
+  // ---- Scroll anchoring (prepend + range changes) ----
+  // After React commits DOM changes, restore scroll position using an anchor
+  // element's viewport offset. This is a manual implementation of overflow-anchor
+  // for Safari which lacks native support.
+  // Handles both prepend (count change) and range changes (startIndex moves).
+  // During momentum scroll, skip — setting scrollTop kills momentum.
   useLayoutEffect(() => {
-    const snap = prependSnapshotRef.current
-    if (!snap) return
-    prependSnapshotRef.current = null
+    // Prepend snapshot uses height-delta approach (items are new, no anchor element)
+    const prependSnap = prependSnapshotRef.current
+    if (prependSnap) {
+      prependSnapshotRef.current = null
+      const el = scrollElement.current
+      if (!el) return
+      const heightAdded = el.scrollHeight - prependSnap.scrollHeight
+      if (heightAdded === 0) return
+      if (userScrollIntent?.current) {
+        scrollDebug('📦', 'prepend:scrollRestore:skip', { reason: 'momentum active', heightAdded })
+        return
+      }
+      const expectedScrollTop = prependSnap.scrollTop + heightAdded
+      if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
+        el.scrollTop = expectedScrollTop
+      }
+      scrollDebug('📦', 'prepend:scrollRestore', {
+        snapScrollTop: Math.round(prependSnap.scrollTop),
+        heightAdded,
+        expectedScrollTop: Math.round(expectedScrollTop),
+        actualScrollTop: Math.round(el.scrollTop),
+      })
+      anchorRef.current = null // clear any stale anchor
+      return
+    }
+
+    // Anchor-based restoration for range changes (startIndex moved)
+    const anchor = anchorRef.current
+    if (!anchor) return
+    anchorRef.current = null
     const el = scrollElement.current
-    if (!el) return
-    const heightAdded = el.scrollHeight - snap.scrollHeight
-    if (heightAdded === 0) return
-
-    // During momentum: don't touch scrollTop, let momentum continue
-    if (userScrollIntent?.current) return
-
-    // Only adjust if browser anchoring didn't already handle it
-    const expectedScrollTop = snap.scrollTop + heightAdded
-    if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
-      el.scrollTop = expectedScrollTop
+    if (!el || !anchor.element.isConnected) return
+    if (userScrollIntent?.current) {
+      scrollDebug('⚓', 'anchor:skip', { reason: 'momentum active' })
+      return
+    }
+    const elRect = el.getBoundingClientRect()
+    const newTopOffset = anchor.element.getBoundingClientRect().top - elRect.top
+    const drift = newTopOffset - anchor.topOffset
+    if (Math.abs(drift) > 2) {
+      el.scrollTop += drift
+      scrollDebug('⚓', 'anchor:restore', {
+        drift: Math.round(drift),
+        scrollTop: Math.round(el.scrollTop),
+      })
     }
   }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
 
