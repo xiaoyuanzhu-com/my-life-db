@@ -83,7 +83,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
   const nearTopHandlerRef = useRef<(() => void) | undefined>(undefined)
   const stableNearTop = useCallback(() => nearTopHandlerRef.current?.(), [])
 
-  const { scrollRef, contentRef, scrollElement, shouldStick, userScrollIntent } = useScrollController({
+  const { scrollRef, contentRef, scrollElement, contentElement, shouldStick, userScrollIntent } = useScrollController({
     onHideChange,
     onNearTop: stableNearTop,
   })
@@ -100,6 +100,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     estimateSize: 120,
     overscanPx: 5400,
     scrollElement,
+    contentElement,
     getKey,
     shouldStick,
     userScrollIntent,

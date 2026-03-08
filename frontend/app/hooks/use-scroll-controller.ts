@@ -29,6 +29,8 @@ interface ScrollControllerReturn {
   contentRef: (el: HTMLDivElement | null) => void
   /** Ref to the scroll container element (for virtualizer's getScrollElement) */
   scrollElement: React.RefObject<HTMLDivElement | null>
+  /** Ref to the inner content wrapper element (for content resize observation) */
+  contentElement: React.RefObject<HTMLDivElement | null>
   /** Whether auto-scroll-to-bottom is engaged */
   shouldStick: React.RefObject<boolean>
   /** Whether the user is currently at the bottom */
@@ -544,6 +546,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     scrollRef,
     contentRef,
     scrollElement: scrollElementRef,
+    contentElement: contentElementRef,
     shouldStick: shouldStickRef,
     isAtBottom: isAtBottomRef,
     fingerDown: fingerDownRef,

@@ -14,6 +14,10 @@ interface VirtualListOptions {
   overscanPx: number
   /** Ref to the scroll container element */
   scrollElement: React.RefObject<HTMLDivElement | null>
+  /** Ref to the inner content wrapper (child of scrollElement). When provided,
+   *  a ResizeObserver on this element reapplies the scrollBottom anchor after
+   *  newly-rendered items settle to their real heights (fixes Safari drift). */
+  contentElement?: React.RefObject<HTMLDivElement | null>
   /** Stable function returning a unique key for the given index */
   getKey: (index: number) => string | number
   /** Whether the list should initialize from the bottom (stick-to-bottom) */
@@ -75,7 +79,7 @@ function calcRange(
  * This hook NEVER touches scrollTop.
  */
 export function useVirtualList(options: VirtualListOptions): VirtualListRange {
-  const { count, estimateSize, overscanPx, scrollElement, getKey, shouldStick, userScrollIntent } = options
+  const { count, estimateSize, overscanPx, scrollElement, contentElement, getKey, shouldStick, userScrollIntent } = options
   const overscan = Math.ceil(overscanPx / estimateSize)
 
   // ---- State: visible range ----
@@ -109,6 +113,19 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // Range updates never change both ends simultaneously (expand/shrink one side
   // at a time), so scrollBottom is always invariant when startIndex changes.
   const anchorRef = useRef<{ scrollBottom: number } | null>(null)
+
+  // persistentAnchorRef survives past the layout-effect restore. It's reapplied
+  // each time the content ResizeObserver fires (newly-rendered items settling to
+  // real heights change scrollHeight without scrollTop compensation on Safari).
+  // Cleared when the user scrolls (they take control of scroll position).
+  const persistentAnchorRef = useRef<{ scrollBottom: number } | null>(null)
+
+  // iOS Safari fires scroll events asynchronously for programmatic scrollTop
+  // assignments. These deferred events would clear persistentAnchorRef before
+  // the content ResizeObserver can use it. This flag suppresses the clear for
+  // scroll events that originate from our own scrollTop assignments.
+  // Reset to false on scrollend (by which point all deferred events have fired).
+  const programmaticScrollRef = useRef(false)
 
   // ---- Render-phase prepend detection ----
   // Detecting prepends during render and calling setRange immediately makes React
@@ -280,11 +297,26 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   useLayoutEffect(() => {
     const el = scrollElement.current
     if (!el) return
-    el.addEventListener('scroll', updateRange, { passive: true })
-    el.addEventListener('scrollend', updateRange, { passive: true })
+    const handleScroll = () => {
+      // Don't clear persistentAnchorRef for programmatic scrollTop assignments.
+      // iOS Safari fires scroll events asynchronously for those, so they arrive
+      // after our layout effect has set persistentAnchorRef — wiping it before
+      // the content ResizeObserver can compensate for item resize drift.
+      if (!programmaticScrollRef.current) {
+        persistentAnchorRef.current = null
+      }
+      updateRange()
+    }
+    const handleScrollEnd = () => {
+      // By scrollend, all deferred scroll events from programmatic sets have fired.
+      programmaticScrollRef.current = false
+      updateRange()
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    el.addEventListener('scrollend', handleScrollEnd, { passive: true })
     return () => {
-      el.removeEventListener('scroll', updateRange)
-      el.removeEventListener('scrollend', updateRange)
+      el.removeEventListener('scroll', handleScroll)
+      el.removeEventListener('scrollend', handleScrollEnd)
     }
   }, [scrollElement, updateRange])
 
@@ -296,6 +328,34 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     ro.observe(el)
     return () => ro.disconnect()
   }, [scrollElement, updateRange])
+
+  // ---- Content resize anchor compensation (Safari overflow-anchor workaround) ----
+  // After an expand-top, newly-rendered items settle to their real heights via
+  // ResizeObserver. Each resize changes scrollHeight without adjusting scrollTop
+  // on Safari (no overflow-anchor). The persistentAnchorRef stores the target
+  // scrollBottom and this observer reapplies it until the user scrolls.
+  useLayoutEffect(() => {
+    const content = contentElement?.current
+    if (!content || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      const pa = persistentAnchorRef.current
+      if (!pa || userScrollIntent?.current) return
+      const el = scrollElement.current
+      if (!el) return
+      const newScrollTop = el.scrollHeight - el.clientHeight - pa.scrollBottom
+      if (Math.abs(el.scrollTop - newScrollTop) > 2) {
+        scrollDebug('⚓', 'anchor:contentResize', {
+          scrollBottom: Math.round(pa.scrollBottom),
+          oldScrollTop: Math.round(el.scrollTop),
+          newScrollTop: Math.round(newScrollTop),
+        })
+        programmaticScrollRef.current = true
+        el.scrollTop = newScrollTop
+      }
+    })
+    ro.observe(content)
+    return () => ro.disconnect()
+  }, [contentElement, scrollElement, userScrollIntent])
 
   // ---- Count changes: non-prepend adjustments (append, filter, initial load) ----
   // Prepend is already handled in render phase above. This effect handles the rest.
@@ -365,6 +425,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       }
       const expectedScrollTop = prependSnap.scrollTop + heightAdded
       if (Math.abs(el.scrollTop - expectedScrollTop) > 2) {
+        programmaticScrollRef.current = true
         el.scrollTop = expectedScrollTop
       }
       scrollDebug('📦', 'prepend:scrollRestore', {
@@ -395,8 +456,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         oldScrollTop: Math.round(el.scrollTop),
         newScrollTop: Math.round(newScrollTop),
       })
+      programmaticScrollRef.current = true
       el.scrollTop = newScrollTop
     }
+    // Keep the target scrollBottom alive so the content ResizeObserver can
+    // reapply it as newly-rendered items settle to their real heights.
+    // (On Safari, each item resize changes scrollHeight without adjusting
+    // scrollTop; persistentAnchorRef lets us compensate each time.)
+    persistentAnchorRef.current = { scrollBottom: anchor.scrollBottom }
   }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
 
 

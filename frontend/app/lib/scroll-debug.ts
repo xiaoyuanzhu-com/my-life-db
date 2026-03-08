@@ -14,7 +14,7 @@
 
 export function scrollDebug(prefix: string, label: string, data?: Record<string, unknown>): void {
   if (data) {
-    console.log(`${prefix} [${label}]`, data)
+    console.log(`${prefix} [${label}] – ${JSON.stringify(data)}`)
   } else {
     console.log(`${prefix} [${label}]`)
   }
