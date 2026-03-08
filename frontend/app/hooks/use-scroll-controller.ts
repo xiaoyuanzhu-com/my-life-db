@@ -114,6 +114,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // virtualizer scroll adjustments must respect this as an absolute lock.
   const fingerDownRef = useRef<boolean>(false)
 
+  // ---- Touch vs wheel intent ----
+  // True when the current scroll session started from a touch gesture (not wheel).
+  // Used by stickIfNeeded to block programmatic scrollTop during touch momentum —
+  // setting scrollTop during iOS touch momentum kills inertia instantly.
+  // Wheel/trackpad momentum is safe to interrupt, so stickIfNeeded allows it.
+  const touchIntentRef = useRef<boolean>(false)
+
   // ---- Deferred scrollend finalization ----
   // When scrollend fires mid-gesture (finger still down), we ignore it.
   // After finger lifts, if no momentum follows (no further scroll events),
@@ -177,11 +184,16 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     // 1. A programmatic scroll is already in flight (prevent recursion)
     // 2. User's finger is physically on the screen (would fight touch input)
     // 3. Sticky is not engaged (user scrolled up, respect their intent)
-    // Notably, we do NOT block on phase === 'user' or userScrollIntent.
-    // If shouldStick is true and fingerDown is false, we should follow new
-    // content even during wheel/trackpad momentum — the user wants to be
-    // at the bottom, and there's no physical finger to fight.
-    if (phaseRef.current === 'programmatic' || fingerDownRef.current || !shouldStickRef.current) {
+    // We do NOT block on userScrollIntent when the scroll came from a wheel/trackpad —
+    // interrupting trackpad momentum is safe and desired (follow new content).
+    // But during touch momentum (touchIntentRef=true), setting scrollTop kills iOS
+    // inertia instantly. Block in that case: wait for scrollend, then stick.
+    if (
+      phaseRef.current === 'programmatic' ||
+      fingerDownRef.current ||
+      (userScrollIntentRef.current && touchIntentRef.current) ||
+      !shouldStickRef.current
+    ) {
       scrollDebug('⚙️', 'stickIfNeeded:skip', {
         phase: phaseRef.current,
         fingerDown: fingerDownRef.current,
@@ -211,6 +223,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   const markFingerDownRef = useRef(function markFingerDown() {
     userScrollIntentRef.current = true
     fingerDownRef.current = true
+    touchIntentRef.current = true
     scrollDebug('👆', 'fingerDown', { userScrollIntent: true, fingerDown: true })
   })
 
@@ -220,6 +233,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // there's no touchend/pointerup to clear it — it would stay true forever.
   const markWheelIntentRef = useRef(function markWheelIntent() {
     userScrollIntentRef.current = true
+    touchIntentRef.current = false
     scrollDebug('👆', 'wheelIntent', { userScrollIntent: true })
   })
 
@@ -248,6 +262,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
         })
         phaseRef.current = 'idle'
         userScrollIntentRef.current = false
+        touchIntentRef.current = false
       }
     }, 150)
   })
@@ -407,6 +422,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     }
     phaseRef.current = 'idle'
     userScrollIntentRef.current = false
+    touchIntentRef.current = false
   })
 
   // ============================================================================
