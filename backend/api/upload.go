@@ -172,36 +172,6 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 			}
 		}
 
-		// Check if this is an archive file — extract instead of keeping
-		if isArchiveFile(filename) {
-			log.Info().
-				Str("filename", filename).
-				Str("destination", destination).
-				Msg("upload is an archive, extracting contents")
-
-			extractResults, extractErr := h.extractArchive(c.Request.Context(), srcPath, destination)
-
-			// Clean up TUS upload files (archive itself)
-			os.Remove(srcPath)
-			os.Remove(srcPath + ".info")
-
-			if extractErr != nil {
-				log.Error().Err(extractErr).Str("filename", filename).Msg("archive extraction failed")
-			}
-
-			for _, r := range extractResults {
-				paths = append(paths, r.Path)
-				results = append(results, r)
-			}
-
-			log.Info().
-				Int("filesExtracted", len(extractResults)).
-				Str("archive", filename).
-				Msg("archive extraction complete")
-
-			continue
-		}
-
 		// Compute hash of the incoming TUS file for duplicate detection
 		incomingHash := computeFileHashFromPath(srcPath)
 
@@ -333,65 +303,6 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	if err != nil {
 		log.Error().Err(err).Msg("simple upload: failed to read request body")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
-		return
-	}
-
-	// Check if this is an archive file — extract instead of keeping
-	if isArchiveFile(filename) {
-		log.Info().
-			Str("filename", filename).
-			Str("destination", dir).
-			Msg("simple upload is an archive, extracting contents")
-
-		// Write archive to a temp file for extraction
-		tmpFile, err := os.CreateTemp("", "mld-archive-*")
-		if err != nil {
-			log.Error().Err(err).Msg("simple upload: failed to create temp file for archive")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process archive"})
-			return
-		}
-		tmpPath := tmpFile.Name()
-		defer os.Remove(tmpPath)
-
-		if _, err := io.Copy(tmpFile, bytes.NewReader(bodyBytes)); err != nil {
-			tmpFile.Close()
-			log.Error().Err(err).Msg("simple upload: failed to write archive to temp file")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process archive"})
-			return
-		}
-		tmpFile.Close()
-
-		// Extract
-		extractResults, extractErr := h.extractArchive(c.Request.Context(), tmpPath, dir)
-		if extractErr != nil {
-			log.Error().Err(extractErr).Msg("simple upload: archive extraction failed")
-		}
-
-		if len(extractResults) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "No files extracted from archive"})
-			return
-		}
-
-		var allPaths []string
-		var allResults []uploadFileResult
-		for _, r := range extractResults {
-			allPaths = append(allPaths, r.Path)
-			allResults = append(allResults, r)
-		}
-
-		// Notify UI
-		if dir == "inbox" || dir == "" || dir == "." {
-			h.server.Notifications().NotifyInboxChanged()
-		} else {
-			h.server.Notifications().NotifyLibraryChanged(allPaths[0], "upload")
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"path":    allPaths[0],
-			"paths":   allPaths,
-			"results": allResults,
-		})
 		return
 	}
 

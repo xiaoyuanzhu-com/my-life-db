@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/mholt/archives"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -66,6 +68,64 @@ func isSafeArchivePath(path string) bool {
 		}
 	}
 	return true
+}
+
+// ExtractArchive handles POST /api/library/extract
+// Extracts an archive file in-place (into the same directory), then deletes the archive.
+func (h *Handlers) ExtractArchive(c *gin.Context) {
+	var body struct {
+		Path string `json:"path"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+		return
+	}
+
+	if !isArchiveFile(body.Path) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File is not a supported archive format"})
+		return
+	}
+
+	cfg := config.Get()
+	absPath := filepath.Join(cfg.UserDataDir, body.Path)
+
+	// Verify the file exists
+	if _, err := os.Stat(absPath); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	// Extract into the same directory as the archive
+	destDir := filepath.Dir(body.Path)
+	results, err := h.extractArchive(c.Request.Context(), absPath, destDir)
+	if err != nil {
+		log.Error().Err(err).Str("path", body.Path).Msg("archive extraction failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extract archive"})
+		return
+	}
+
+	if len(results) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No files extracted from archive"})
+		return
+	}
+
+	var paths []string
+	for _, r := range results {
+		paths = append(paths, r.Path)
+	}
+
+	log.Info().
+		Str("archive", body.Path).
+		Int("filesExtracted", len(results)).
+		Msg("archive extracted by user action")
+
+	h.server.Notifications().NotifyLibraryChanged(paths[0], "extract")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"paths":   paths,
+		"results": results,
+	})
 }
 
 // extractArchive extracts an archive file into the given destination directory.

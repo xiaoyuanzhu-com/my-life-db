@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download, Upload, FolderUp } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
@@ -32,6 +32,13 @@ import {
   buildVirtualNodes,
   getFolderUploadStatus,
 } from './library-utils';
+
+const archiveExtensions = ['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar.zst', '.7z', '.rar'];
+
+function isArchiveFile(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return archiveExtensions.some(ext => lower.endsWith(ext));
+}
 
 interface FileTreeProps {
   onFileOpen: (path: string, name: string) => void;
@@ -259,6 +266,26 @@ function TreeNode({
       await navigator.clipboard.writeText(fullPath);
     } catch (error) {
       console.error('Failed to copy path:', error);
+    }
+  };
+
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const handleExtract = async () => {
+    setIsExtracting(true);
+    try {
+      const response = await api.post('/api/library/extract', { path: fullPath });
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Failed to extract archive');
+        return;
+      }
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to extract:', error);
+      alert('Failed to extract archive');
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -533,6 +560,12 @@ function TreeNode({
             <Download className="w-4 h-4 mr-2" />
             Download
           </ContextMenuItem>
+          {isFile && isArchiveFile(getNodeName(node)) && (
+            <ContextMenuItem onClick={handleExtract} disabled={isExtracting}>
+              <PackageOpen className="w-4 h-4 mr-2" />
+              {isExtracting ? 'Extracting...' : 'Extract Here'}
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator />
           <ContextMenuItem onClick={startRename}>
             <Pencil className="w-4 h-4 mr-2" />

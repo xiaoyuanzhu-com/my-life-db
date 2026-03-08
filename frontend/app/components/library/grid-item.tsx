@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus } from 'lucide-react';
+import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
@@ -23,6 +23,13 @@ import {
 import { Input } from '~/components/ui/input';
 import { type FileNode, getNodeName, formatFileSize } from './library-utils';
 import { FileTypeIcon } from './file-type-icon';
+
+const archiveExtensions = ['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar.zst', '.7z', '.rar'];
+
+function isArchiveFile(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return archiveExtensions.some(ext => lower.endsWith(ext));
+}
 
 interface GridItemProps {
   node: FileNode;
@@ -135,6 +142,26 @@ export function GridItem({
       await navigator.clipboard.writeText(fullPath);
     } catch (error) {
       console.error('Failed to copy path:', error);
+    }
+  };
+
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const handleExtract = async () => {
+    setIsExtracting(true);
+    try {
+      const response = await api.post('/api/library/extract', { path: fullPath });
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Failed to extract archive');
+        return;
+      }
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to extract:', error);
+      alert('Failed to extract archive');
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -257,6 +284,12 @@ export function GridItem({
             <Download className="w-4 h-4 mr-2" />
             Download
           </ContextMenuItem>
+          {!isFolder && isArchiveFile(name) && (
+            <ContextMenuItem onClick={handleExtract} disabled={isExtracting}>
+              <PackageOpen className="w-4 h-4 mr-2" />
+              {isExtracting ? 'Extracting...' : 'Extract Here'}
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator />
           <ContextMenuItem onClick={startRename}>
             <Pencil className="w-4 h-4 mr-2" />

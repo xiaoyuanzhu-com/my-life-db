@@ -65,6 +65,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.POST("/library/folder", h.CreateLibraryFolder)
 		api.GET("/library/download", h.DownloadLibraryPath)
 		api.GET("/library/root", h.GetLibraryRoot)
+		api.POST("/library/extract", h.ExtractArchive)
 
 		// Notifications (SSE)
 		api.GET("/notifications/stream", h.NotificationStream)
