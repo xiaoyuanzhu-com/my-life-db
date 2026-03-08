@@ -105,9 +105,10 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // ---- Manual scroll anchoring ----
   // Safari lacks overflow-anchor, so when items above the viewport are added/removed
   // (startIndex changes), the spacer↔item height mismatch causes a visual jump.
-  // We manually anchor: before a range change, record a visible element's viewport
-  // offset; after DOM commit, restore it by adjusting scrollTop.
-  const anchorRef = useRef<{ element: Element; topOffset: number } | null>(null)
+  //
+  // Range updates never change both ends simultaneously (expand/shrink one side
+  // at a time), so scrollBottom is always invariant when startIndex changes.
+  const anchorRef = useRef<{ scrollBottom: number } | null>(null)
 
   // ---- Render-phase prepend detection ----
   // Detecting prepends during render and calling setRange immediately makes React
@@ -156,24 +157,16 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
 
   // ---- Range update (called from scroll listener and effects) ----
 
-  // Capture a visible element as a scroll anchor before range changes.
-  // Uses data-vi (virtual index) attributes on rendered items.
-  const captureAnchor = useCallback(() => {
+  // Capture scrollBottom before range changes that move startIndex.
+  // Since we never change both ends simultaneously, content below the
+  // viewport is unchanged and scrollBottom is invariant.
+  const captureScrollBottom = useCallback(() => {
     const el = scrollElement.current
     if (!el) return
-    // Find the element near viewport center for best stability
-    const centerVi = Math.floor((el.scrollTop + el.clientHeight / 2) / estimateSize)
-    // Clamp to the currently rendered range
-    const vi = Math.max(range.startIndex, Math.min(range.endIndex - 1, centerVi))
-    const anchorEl = el.querySelector(`[data-vi="${vi}"]`)
-    if (anchorEl) {
-      const elRect = el.getBoundingClientRect()
-      anchorRef.current = {
-        element: anchorEl,
-        topOffset: anchorEl.getBoundingClientRect().top - elRect.top,
-      }
+    anchorRef.current = {
+      scrollBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
     }
-  }, [scrollElement, estimateSize, range.startIndex, range.endIndex])
+  }, [scrollElement])
 
   const updateRange = useCallback(() => {
     const el = scrollElement.current
@@ -216,7 +209,8 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const endIndex = Math.max(prev.endIndex, next.endIndex)
         if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
         // Capture anchor before DOM changes (edge expand during scroll)
-        if (startIndex !== prev.startIndex) captureAnchor()
+        // Edge expand only adds items (never removes), so only one end changes
+        if (startIndex !== prev.startIndex) captureScrollBottom()
         scrollDebug('🧊', 'range:edgeExpand', {
           nearTopEdge,
           nearBottomEdge,
@@ -226,28 +220,57 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         return { startIndex, endIndex }
       }
 
-      // When idle: expand immediately, shrink lazily (items removed only when
-      // more than 2×overscan away from the calculated viewport edge).
-      const startIndex = Math.max(
+      // When idle: expand and shrink one side at a time, never both.
+      // This guarantees scrollBottom (or scrollTop) is invariant, so
+      // scroll anchoring is always exact with no drift.
+      //
+      // Priority: expand first (prevents blank space), shrink later.
+      const wantStart = Math.max(
         Math.min(prev.startIndex, next.startIndex),
         next.startIndex - overscan,
       )
-      const endIndex = Math.min(
+      const wantEnd = Math.min(
         Math.max(prev.endIndex, next.endIndex),
         next.endIndex + overscan,
       )
 
-      if (startIndex === prev.startIndex && endIndex === prev.endIndex) return prev
-      // Capture anchor before DOM changes when startIndex moves
-      if (startIndex !== prev.startIndex) captureAnchor()
-      scrollDebug('🔄', 'range:update', {
-        prev: `[${prev.startIndex}, ${prev.endIndex})`,
-        next: `[${startIndex}, ${endIndex})`,
-        scrollTop: Math.round(el.scrollTop),
-      })
-      return { startIndex, endIndex }
+      // Expand: add items on whichever side needs it
+      if (wantStart < prev.startIndex) {
+        captureScrollBottom()
+        scrollDebug('🔄', 'range:expand-top', {
+          prev: `[${prev.startIndex}, ${prev.endIndex})`,
+          startIndex: wantStart,
+        })
+        return { startIndex: wantStart, endIndex: prev.endIndex }
+      }
+      if (wantEnd > prev.endIndex) {
+        scrollDebug('🔄', 'range:expand-bottom', {
+          prev: `[${prev.startIndex}, ${prev.endIndex})`,
+          endIndex: wantEnd,
+        })
+        return { startIndex: prev.startIndex, endIndex: wantEnd }
+      }
+
+      // Shrink: remove items from the far side (lower priority)
+      if (wantStart > prev.startIndex) {
+        // Removing items above — scrollTop is already correct, no anchor needed
+        scrollDebug('🔄', 'range:shrink-top', {
+          prev: `[${prev.startIndex}, ${prev.endIndex})`,
+          startIndex: wantStart,
+        })
+        return { startIndex: wantStart, endIndex: prev.endIndex }
+      }
+      if (wantEnd < prev.endIndex) {
+        scrollDebug('🔄', 'range:shrink-bottom', {
+          prev: `[${prev.startIndex}, ${prev.endIndex})`,
+          endIndex: wantEnd,
+        })
+        return { startIndex: prev.startIndex, endIndex: wantEnd }
+      }
+
+      return prev
     })
-  }, [scrollElement, count, estimateSize, overscan, userScrollIntent, captureAnchor])
+  }, [scrollElement, count, estimateSize, overscan, userScrollIntent, captureScrollBottom])
 
   // ---- Scroll listener (passive) ----
   // Also listen for scrollend to update range after momentum scroll ends
@@ -352,25 +375,25 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       return
     }
 
-    // Anchor-based restoration for range changes (startIndex moved)
+    // Restore scroll position for range changes (startIndex moved).
+    // scrollBottom is invariant because we only change one end at a time.
     const anchor = anchorRef.current
     if (!anchor) return
     anchorRef.current = null
     const el = scrollElement.current
-    if (!el || !anchor.element.isConnected) return
+    if (!el) return
     if (userScrollIntent?.current) {
       scrollDebug('⚓', 'anchor:skip', { reason: 'momentum active' })
       return
     }
-    const elRect = el.getBoundingClientRect()
-    const newTopOffset = anchor.element.getBoundingClientRect().top - elRect.top
-    const drift = newTopOffset - anchor.topOffset
-    if (Math.abs(drift) > 2) {
-      el.scrollTop += drift
-      scrollDebug('⚓', 'anchor:restore', {
-        drift: Math.round(drift),
-        scrollTop: Math.round(el.scrollTop),
+    const newScrollTop = el.scrollHeight - el.clientHeight - anchor.scrollBottom
+    if (Math.abs(el.scrollTop - newScrollTop) > 2) {
+      scrollDebug('⚓', 'anchor:scrollBottom', {
+        scrollBottom: Math.round(anchor.scrollBottom),
+        oldScrollTop: Math.round(el.scrollTop),
+        newScrollTop: Math.round(newScrollTop),
       })
+      el.scrollTop = newScrollTop
     }
   }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
 
