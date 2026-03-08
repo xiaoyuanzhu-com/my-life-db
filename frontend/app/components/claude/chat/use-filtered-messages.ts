@@ -152,7 +152,7 @@ export function useFilteredMessages(
       if (isTaskProgressMessage(msg)) return false
       if (isSystemInitMessage(msg)) return false
       if (msg.type === 'control_request' || msg.type === 'control_response' || msg.type === 'control_cancel_request') return false
-      if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot') return false
+      if (msg.type === 'queue-operation' || msg.type === 'file-history-snapshot' || msg.type === 'last-prompt') return false
       if (msg.type === 'result') return false
       if (msg.type === 'stream_event') return false
       if (msg.isMeta) return false

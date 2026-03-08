@@ -56,6 +56,7 @@ func TestMessageTypeCoverage(t *testing.T) {
 		"agent-name":            true,
 		"queue-operation":       true,
 		"file-history-snapshot": true,
+		"last-prompt":          true,
 
 		// System subtypes
 		"system":                   true,
@@ -378,6 +379,9 @@ var knownFieldsByType = map[string]map[string]bool{
 	},
 	"file-history-snapshot": {
 		"messageId": true, "snapshot": true, "isSnapshotUpdate": true,
+	},
+	"last-prompt": {
+		"lastPrompt": true, "sessionId": true,
 	},
 }
 
