@@ -188,8 +188,10 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const renderedBottom = prev.endIndex * estimateSize
         const edgePx = 1080
 
-        const nearTopEdge = viewportTop < renderedTop + edgePx
-        const nearBottomEdge = viewportBottom > renderedBottom - edgePx
+        // Only check edges where there's actually a spacer (more items to render).
+        // When all items are rendered on one side, there's no blank space danger.
+        const nearTopEdge = prev.startIndex > 0 && viewportTop < renderedTop + edgePx
+        const nearBottomEdge = prev.endIndex < count && viewportBottom > renderedBottom - edgePx
 
         if (!nearTopEdge && !nearBottomEdge) {
           // Safely inside buffer — freeze
