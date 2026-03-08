@@ -827,9 +827,9 @@ export default function ClaudePage() {
   )
 
   return (
-    <div className="flex h-full animate-content-ready">
+    <div className="flex h-full min-w-0 animate-content-ready">
       {/* ── Desktop: Resizable sidebar + chat ── */}
-      <div className="hidden md:flex md:flex-1 h-full">
+      <div className="hidden md:flex md:flex-1 h-full min-w-0">
         {sessionSidebar ? (
           <ResizablePanelGroup
             direction="horizontal"
