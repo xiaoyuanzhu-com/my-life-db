@@ -76,6 +76,8 @@ This keeps the LLM response small (saving tokens and latency) while the frontend
 
 Use descriptive filenames: dashboard-sleep-trends.html, report-quarterly.html, chart-activity-by-month.html.
 
+**Versioning rule:** When the user asks to modify a previously generated HTML file, always write to a NEW file with a version suffix (e.g., -v2, -v3). Never overwrite the original — it is still referenced earlier in the conversation and must remain intact so the user can see what changed and why.
+
 For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.`
 }
 
