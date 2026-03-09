@@ -4,7 +4,7 @@ import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import { Button } from '~/components/ui/button'
-import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, X, Check } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '~/components/ui/resizable'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '~/components/ui/dialog'
+import { Switch } from '~/components/ui/switch'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { cn } from '~/lib/utils'
 import { useAuth } from '~/contexts/auth-context'
@@ -22,7 +24,6 @@ import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
 import { isNativeApp } from '~/lib/native-bridge'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
-import { toast } from 'sonner'
 import '@fontsource/jetbrains-mono'
 
 const ClaudeLoginTerminal = lazy(() =>
@@ -58,124 +59,110 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
   const [open, setOpen] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [copied, setCopied] = useState(false)
-  const popoverRef = useRef<HTMLDivElement>(null)
 
-  // Close popover on outside click
-  useEffect(() => {
-    if (!open) return
-    const handle = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpen(false)
+  const isShared = !!session.shareToken
+
+  const fullShareUrl = session.shareUrl
+    ? `${window.location.origin}${session.shareUrl}`
+    : ''
+
+  const handleToggleShare = async (checked: boolean) => {
+    setSharing(true)
+    try {
+      if (checked) {
+        const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+          method: 'POST',
+        })
+        if (!res.ok) throw new Error(`Failed to share: ${res.status}`)
+        const data = await res.json()
+        onUpdate({ shareToken: data.token, shareUrl: data.url })
+      } else {
+        const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) throw new Error(`Failed to unshare: ${res.status}`)
+        onUpdate({ shareToken: undefined, shareUrl: undefined })
       }
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  const handleShare = async () => {
-    setSharing(true)
-    try {
-      const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
-        method: 'POST',
-      })
-      if (!res.ok) throw new Error(`Failed to share: ${res.status}`)
-      const data = await res.json()
-      onUpdate({ shareToken: data.token, shareUrl: data.url })
-      toast.success('Session shared')
     } catch (err) {
-      console.error('Failed to share session:', err)
-      toast.error('Failed to share session')
-    } finally {
-      setSharing(false)
-    }
-  }
-
-  const handleUnshare = async () => {
-    setSharing(true)
-    try {
-      const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error(`Failed to unshare: ${res.status}`)
-      onUpdate({ shareToken: undefined, shareUrl: undefined })
-      setOpen(false)
-      toast.success('Session unshared')
-    } catch (err) {
-      console.error('Failed to unshare session:', err)
-      toast.error('Failed to unshare session')
+      console.error('Failed to update share state:', err)
     } finally {
       setSharing(false)
     }
   }
 
   const handleCopy = () => {
-    if (!session.shareUrl) return
-    navigator.clipboard.writeText(session.shareUrl)
+    if (!fullShareUrl) return
+    navigator.clipboard.writeText(fullShareUrl)
     setCopied(true)
-    toast.success('Link copied to clipboard')
     setTimeout(() => setCopied(false), 2000)
   }
 
   return (
-    <div className="relative" ref={popoverRef}>
+    <>
       <Button
         variant="ghost"
         size="icon"
         className="h-8 w-8"
-        onClick={() => {
-          if (!session.shareToken) {
-            handleShare()
-          } else {
-            setOpen(!open)
-          }
-        }}
-        disabled={sharing}
-        title={session.shareToken ? 'Share settings' : 'Share session'}
+        onClick={() => setOpen(true)}
+        title="Share session"
       >
-        <Share2 className={cn('h-4 w-4', session.shareToken && 'text-primary')} />
+        <Share2 className={cn('h-4 w-4', isShared && 'text-primary')} />
       </Button>
 
-      {open && session.shareToken && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-border bg-popover p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Share link</span>
-            <button
-              onClick={() => setOpen(false)}
-              className="rounded p-0.5 hover:bg-muted"
-            >
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share session</DialogTitle>
+            <DialogDescription>
+              Anyone with the link can view this session (read-only).
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="flex items-center gap-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5">
-              <Link className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate text-xs text-foreground">{session.shareUrl}</span>
+          <div className="space-y-4">
+            {/* Share toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Public link</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {sharing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                <Switch
+                  checked={isShared}
+                  onCheckedChange={handleToggleShare}
+                  disabled={sharing}
+                />
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 px-2"
-              onClick={handleCopy}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : 'Copy'}
-            </Button>
-          </div>
 
-          <div className="mt-2 flex justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-destructive hover:text-destructive"
-              onClick={handleUnshare}
-              disabled={sharing}
-            >
-              Unshare
-            </Button>
+            {/* Share URL (only when shared) */}
+            {isShared && (
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2">
+                  <Link className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm text-foreground">{fullShareUrl}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 gap-1.5 px-3"
+                  onClick={handleCopy}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Copied
+                    </>
+                  ) : (
+                    'Copy link'
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
