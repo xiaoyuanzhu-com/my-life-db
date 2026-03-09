@@ -1,5 +1,4 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { scrollDebug } from '~/lib/scroll-debug'
 
 // ============================================================================
 // Types
@@ -156,13 +155,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
           if (el) {
             prependSnapshotRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
           }
-          scrollDebug('📦', 'prepend:detected', {
-            prependCount,
-            oldRange: `[${range.startIndex}, ${range.endIndex})`,
-            newRange: `[${newStart}, ${newEnd})`,
-            scrollHeight: el?.scrollHeight,
-            scrollTop: el ? Math.round(el.scrollTop) : undefined,
-          })
           prependHandledRef.current = true
           setRange({ startIndex: newStart, endIndex: newEnd })
         }
@@ -180,10 +172,21 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   const captureScrollBottom = useCallback(() => {
     const el = scrollElement.current
     if (!el) return
-    anchorRef.current = {
-      scrollBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
+    const scrollBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    anchorRef.current = { scrollBottom }
+    // Pre-update persistentAnchorRef so that any contentResize events that fire
+    // before useLayoutEffect (anchor:scrollBottom) use the correct target.
+    // Without this, a contentResize from a previous cycle can fire with a stale
+    // scrollBottom and move scrollTop in the wrong direction — then anchor:scrollBottom
+    // corrects it again, causing a visible double-jump at momentum end.
+    //
+    // Skip during momentum: anchor:scrollBottom is also skipped then, so scrollTop
+    // won't actually be corrected yet — the persistent anchor will be set after
+    // scrollend when the range update commits and useLayoutEffect runs.
+    if (!userScrollIntent?.current) {
+      persistentAnchorRef.current = { scrollBottom }
     }
-  }, [scrollElement])
+  }, [scrollElement, userScrollIntent])
 
   const updateRange = useCallback(() => {
     const el = scrollElement.current
@@ -211,15 +214,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         const nearBottomEdge = prev.endIndex < count && viewportBottom > renderedBottom - edgePx
 
         if (!nearTopEdge && !nearBottomEdge) {
-          // Safely inside buffer — freeze
-          scrollDebug('🧊', 'range:frozen', {
-            reason: 'inside buffer',
-            range: `[${prev.startIndex}, ${prev.endIndex})`,
-            viewportTop: Math.round(viewportTop),
-            viewportBottom: Math.round(viewportBottom),
-            renderedTop: Math.round(renderedTop),
-            renderedBottom: Math.round(renderedBottom),
-          })
           return prev
         }
 
@@ -230,12 +224,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         // Capture anchor before DOM changes (edge expand during scroll)
         // Edge expand only adds items (never removes), so only one end changes
         if (startIndex !== prev.startIndex) captureScrollBottom()
-        scrollDebug('🧊', 'range:edgeExpand', {
-          nearTopEdge,
-          nearBottomEdge,
-          prev: `[${prev.startIndex}, ${prev.endIndex})`,
-          next: `[${startIndex}, ${endIndex})`,
-        })
         return { startIndex, endIndex }
       }
 
@@ -256,34 +244,17 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       // Expand: add items on whichever side needs it
       if (wantStart < prev.startIndex) {
         captureScrollBottom()
-        scrollDebug('🔄', 'range:expand-top', {
-          prev: `[${prev.startIndex}, ${prev.endIndex})`,
-          startIndex: wantStart,
-        })
         return { startIndex: wantStart, endIndex: prev.endIndex }
       }
       if (wantEnd > prev.endIndex) {
-        scrollDebug('🔄', 'range:expand-bottom', {
-          prev: `[${prev.startIndex}, ${prev.endIndex})`,
-          endIndex: wantEnd,
-        })
         return { startIndex: prev.startIndex, endIndex: wantEnd }
       }
 
       // Shrink: remove items from the far side (lower priority)
       if (wantStart > prev.startIndex) {
-        // Removing items above — scrollTop is already correct, no anchor needed
-        scrollDebug('🔄', 'range:shrink-top', {
-          prev: `[${prev.startIndex}, ${prev.endIndex})`,
-          startIndex: wantStart,
-        })
         return { startIndex: wantStart, endIndex: prev.endIndex }
       }
       if (wantEnd < prev.endIndex) {
-        scrollDebug('🔄', 'range:shrink-bottom', {
-          prev: `[${prev.startIndex}, ${prev.endIndex})`,
-          endIndex: wantEnd,
-        })
         return { startIndex: prev.startIndex, endIndex: wantEnd }
       }
 
@@ -302,15 +273,28 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       // iOS Safari fires scroll events asynchronously for those, so they arrive
       // after our layout effect has set persistentAnchorRef — wiping it before
       // the content ResizeObserver can compensate for item resize drift.
+      //
+      // Also skip updateRange for programmatic scroll events entirely. Each
+      // expand-top anchor adjusts scrollTop, which fires a deferred scroll event
+      // on iOS. That scroll triggers updateRange → another expand → another anchor,
+      // creating a visible multi-jump feedback loop at momentum end. The range is
+      // close enough after one expand (overscan provides a large buffer), and
+      // scrollend will call updateRange after all anchoring settles.
       if (!programmaticScrollRef.current) {
         persistentAnchorRef.current = null
+        updateRange()
       }
-      updateRange()
     }
     const handleScrollEnd = () => {
       // By scrollend, all deferred scroll events from programmatic sets have fired.
+      // If this scrollend came from an anchor adjustment (programmatic), skip
+      // updateRange — it would start another expand cycle. The next real user
+      // scroll or viewport resize will update the range.
+      const wasProgrammatic = programmaticScrollRef.current
       programmaticScrollRef.current = false
-      updateRange()
+      if (!wasProgrammatic) {
+        updateRange()
+      }
     }
     el.addEventListener('scroll', handleScroll, { passive: true })
     el.addEventListener('scrollend', handleScrollEnd, { passive: true })
@@ -344,11 +328,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       if (!el) return
       const newScrollTop = el.scrollHeight - el.clientHeight - pa.scrollBottom
       if (Math.abs(el.scrollTop - newScrollTop) > 2) {
-        scrollDebug('⚓', 'anchor:contentResize', {
-          scrollBottom: Math.round(pa.scrollBottom),
-          oldScrollTop: Math.round(el.scrollTop),
-          newScrollTop: Math.round(newScrollTop),
-        })
         programmaticScrollRef.current = true
         el.scrollTop = newScrollTop
       }
@@ -384,14 +363,9 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
-      scrollDebug('📦', 'count:change+stick', {
-        count,
-        range: `[${nextRange.startIndex}, ${nextRange.endIndex})`,
-      })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
-      scrollDebug('📦', 'count:change', { count, shouldStick: false })
       setRange((prev) => {
         const viewportHeight = scrollElement.current?.clientHeight ?? 800
         const visibleCount = Math.ceil(viewportHeight / estimateSize)
@@ -420,7 +394,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       const heightAdded = el.scrollHeight - prependSnap.scrollHeight
       if (heightAdded === 0) return
       if (userScrollIntent?.current) {
-        scrollDebug('📦', 'prepend:scrollRestore:skip', { reason: 'momentum active', heightAdded })
         return
       }
       const expectedScrollTop = prependSnap.scrollTop + heightAdded
@@ -428,12 +401,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         programmaticScrollRef.current = true
         el.scrollTop = expectedScrollTop
       }
-      scrollDebug('📦', 'prepend:scrollRestore', {
-        snapScrollTop: Math.round(prependSnap.scrollTop),
-        heightAdded,
-        expectedScrollTop: Math.round(expectedScrollTop),
-        actualScrollTop: Math.round(el.scrollTop),
-      })
       anchorRef.current = null // clear any stale anchor
       return
     }
@@ -446,16 +413,10 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     const el = scrollElement.current
     if (!el) return
     if (userScrollIntent?.current) {
-      scrollDebug('⚓', 'anchor:skip', { reason: 'momentum active' })
       return
     }
     const newScrollTop = el.scrollHeight - el.clientHeight - anchor.scrollBottom
     if (Math.abs(el.scrollTop - newScrollTop) > 2) {
-      scrollDebug('⚓', 'anchor:scrollBottom', {
-        scrollBottom: Math.round(anchor.scrollBottom),
-        oldScrollTop: Math.round(el.scrollTop),
-        newScrollTop: Math.round(newScrollTop),
-      })
       programmaticScrollRef.current = true
       el.scrollTop = newScrollTop
     }

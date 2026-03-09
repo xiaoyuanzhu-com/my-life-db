@@ -9,7 +9,6 @@ import { ClaudeWIP } from './claude-wip'
 import { StreamingResponse } from './streaming-response'
 import { StreamingThinking } from './streaming-thinking'
 import { isTextBlock } from '~/lib/session-message-utils'
-import { scrollDebug } from '~/lib/scroll-debug'
 import type { SessionMessage, ExtractedToolResult, ContentBlock } from '~/lib/session-message-utils'
 
 interface MessageListProps {
@@ -105,17 +104,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     shouldStick,
     userScrollIntent,
   })
-
-  useEffect(() => {
-    scrollDebug('📐', 'render', {
-      messages: `${filteredMessages.length} total`,
-      rendered: `[${startIndex}, ${endIndex}) = ${endIndex - startIndex} items`,
-      topSpacer: topHeight,
-      bottomSpacer: bottomHeight,
-      scrollHeight: scrollElement.current?.scrollHeight,
-      scrollTop: scrollElement.current ? Math.round(scrollElement.current.scrollTop) : undefined,
-    })
-  }, [startIndex, endIndex, topHeight, bottomHeight, filteredMessages.length, scrollElement])
 
   // Set the near-top handler (updated each render) — simplified since browser
   // scroll anchoring handles position preservation on prepend.
