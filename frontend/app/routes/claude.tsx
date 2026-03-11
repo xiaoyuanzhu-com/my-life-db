@@ -75,7 +75,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
         })
         if (!res.ok) throw new Error(`Failed to share: ${res.status}`)
         const data = await res.json()
-        onUpdate({ shareToken: data.token, shareUrl: data.url })
+        onUpdate({ shareToken: data.shareToken, shareUrl: data.shareUrl })
       } else {
         const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
           method: 'DELETE',
