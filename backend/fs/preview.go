@@ -26,8 +26,8 @@ import (
 // Preview worker constants
 const (
 	previewQueueSize  = 100
-	thumbnailMaxWidth = 400
-	thumbnailQuality  = 80
+	thumbnailMaxWidth = 1200
+	thumbnailQuality  = 85
 )
 
 // previewJob represents a file that needs preview generation
