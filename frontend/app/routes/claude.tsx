@@ -545,13 +545,16 @@ export default function ClaudePage() {
     enabled: isAuthenticated,
   })
 
-  // Check Claude Code CLI auth status
+  // Check Claude Code CLI auth status.
+  // Depends on isAuthenticated so it re-runs after native WebView auth settles
+  // (cookies may not be available on initial mount in the native app).
   useEffect(() => {
+    if (!isAuthenticated) return
     api.get('/api/claude/auth-status')
       .then(res => res.json())
       .then(data => setClaudeLoggedIn(data.loggedIn))
       .catch(() => setClaudeLoggedIn(false))
-  }, [])
+  }, [isAuthenticated])
 
   // Load more sessions (infinite scroll)
   const loadMoreSessions = useCallback(async () => {

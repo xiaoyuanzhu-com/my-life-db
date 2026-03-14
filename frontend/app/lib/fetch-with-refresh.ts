@@ -73,6 +73,10 @@ async function refreshViaNativeBridge(): Promise<boolean> {
     if (response.ok) {
       const result = await response.json();
       if (result.success) {
+        // Update the access token for subsequent Authorization header injection
+        if (result.accessToken) {
+          (window as any).__nativeAccessToken = result.accessToken;
+        }
         console.log('✅ Token refreshed via native bridge');
         return true;
       }
@@ -103,6 +107,17 @@ export async function fetchWithRefresh(
     credentials: 'same-origin',
   };
 
+  // In native app context, add Authorization header from native-injected token.
+  // This bypasses WebPage cookie issues — the backend prefers Bearer over cookies.
+  const w = window as any;
+  if (w.isNativeApp && w.__nativeAccessToken) {
+    const headers = new Headers(fetchOptions.headers);
+    if (!headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${w.__nativeAccessToken}`);
+    }
+    fetchOptions.headers = headers;
+  }
+
   // Make the initial request
   let response = await fetch(input, fetchOptions);
 
@@ -113,13 +128,13 @@ export async function fetchWithRefresh(
     const refreshed = await refreshAccessToken();
 
     if (refreshed) {
-      // Retry the original request with the new token
-      console.log('🔄 Retrying original request with new token...');
+      // Retry with fresh token (refreshViaNativeBridge updates __nativeAccessToken)
+      if (w.isNativeApp && w.__nativeAccessToken) {
+        const headers = new Headers(fetchOptions.headers);
+        headers.set('Authorization', `Bearer ${w.__nativeAccessToken}`);
+        fetchOptions.headers = headers;
+      }
       response = await fetch(input, fetchOptions);
-    } else {
-      // Refresh failed - return 401 and let UI handle it (show login button)
-      console.log('❌ Token refresh failed, returning 401');
-      // Return the 401 response - components will check isAuthenticated and show login UI
     }
   }
 

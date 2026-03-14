@@ -46,10 +46,13 @@ func AuthMiddleware() gin.HandlerFunc {
 
 // validateOAuthToken validates the OAuth access token from cookie or header
 func validateOAuthToken(c *gin.Context) bool {
-	// Get access token from Authorization header or cookie
+	// Get access token from Authorization header, query parameter, or cookie.
+	// Query parameter is needed for WebSocket connections (cannot set custom headers).
 	accessToken := c.Request.Header.Get("Authorization")
 	if strings.HasPrefix(accessToken, "Bearer ") {
 		accessToken = strings.TrimPrefix(accessToken, "Bearer ")
+	} else if qt := c.Query("access_token"); qt != "" {
+		accessToken = qt
 	} else {
 		var err error
 		accessToken, err = c.Cookie("access_token")
