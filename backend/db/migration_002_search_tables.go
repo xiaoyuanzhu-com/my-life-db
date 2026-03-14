@@ -7,7 +7,7 @@ import (
 func init() {
 	RegisterMigration(Migration{
 		Version:     2,
-		Description: "Create qdrant_documents and meili_documents tables for search indexing",
+		Description: "Create meili_documents table for search indexing",
 		Up:          migration002Up,
 	})
 }

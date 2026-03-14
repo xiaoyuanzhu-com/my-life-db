@@ -668,7 +668,7 @@ func GetFileWithDigests(path string) (*FileWithDigests, error) {
 }
 
 // RenameFilePath updates a single file's path and name, including all related tables.
-// Updates: files, digests, pins, meili_documents, qdrant_documents.
+// Updates: files, digests, pins, meili_documents.
 func RenameFilePath(oldPath, newPath, newName string) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -700,17 +700,11 @@ func RenameFilePath(oldPath, newPath, newName string) error {
 		return fmt.Errorf("failed to update meili_documents: %w", err)
 	}
 
-	// Update qdrant_documents
-	_, err = tx.Exec(`UPDATE qdrant_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update qdrant_documents: %w", err)
-	}
-
 	return tx.Commit()
 }
 
 // RenameFilePaths updates all paths that start with oldPath prefix (for folder renames).
-// Updates all related tables: files, digests, pins, meili_documents, qdrant_documents.
+// Updates all related tables: files, digests, pins, meili_documents.
 func RenameFilePaths(oldPath, newPath string) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -762,16 +756,6 @@ func RenameFilePaths(oldPath, newPath string) error {
 		return fmt.Errorf("failed to update meili_documents: %w", err)
 	}
 
-	// Update qdrant_documents
-	_, err = tx.Exec(`
-		UPDATE qdrant_documents
-		SET file_path = ? || substr(file_path, ?)
-		WHERE file_path = ? OR file_path LIKE ? || '/%'
-	`, newPath, len(oldPath)+1, oldPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update qdrant_documents: %w", err)
-	}
-
 	return tx.Commit()
 }
 
@@ -798,7 +782,7 @@ func UpdateFileField(path string, field string, value interface{}) error {
 // MoveFileAtomic atomically moves a file record from oldPath to newPath.
 // This is used when detecting external file moves via fsnotify.
 // It updates the file record and ALL related tables in a single transaction:
-// files, digests, pins, meili_documents, qdrant_documents.
+// files, digests, pins, meili_documents.
 func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -855,12 +839,6 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	_, err = tx.Exec(`UPDATE meili_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
 		return fmt.Errorf("failed to update meili_documents: %w", err)
-	}
-
-	// 6. Update related tables: qdrant_documents
-	_, err = tx.Exec(`UPDATE qdrant_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update qdrant_documents: %w", err)
 	}
 
 	return tx.Commit()
@@ -939,7 +917,7 @@ func ListAllFilePaths() ([]string, error) {
 }
 
 // DeleteFileWithCascade removes a file record and all related records in a single transaction.
-// This includes: digests, pins, meili_documents, qdrant_documents.
+// This includes: digests, pins, meili_documents.
 // Used during reconciliation and file deletion to clean up all related data.
 func DeleteFileWithCascade(path string) error {
 	tx, err := GetDB().Begin()
@@ -949,10 +927,6 @@ func DeleteFileWithCascade(path string) error {
 	defer tx.Rollback()
 
 	// Delete search index documents first
-	if _, err := tx.Exec("DELETE FROM qdrant_documents WHERE file_path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete qdrant_documents: %w", err)
-	}
-
 	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ?", path); err != nil {
 		return fmt.Errorf("failed to delete meili_documents: %w", err)
 	}
@@ -976,7 +950,7 @@ func DeleteFileWithCascade(path string) error {
 }
 
 // DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
-// Cleans up: files, digests, pins, meili_documents, qdrant_documents.
+// Cleans up: files, digests, pins, meili_documents.
 // Used for recursive folder deletion.
 func DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	tx, err := GetDB().Begin()
@@ -986,10 +960,6 @@ func DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	defer tx.Rollback()
 
 	// Delete search index documents
-	if _, err := tx.Exec("DELETE FROM qdrant_documents WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete qdrant_documents: %w", err)
-	}
-
 	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
 		return fmt.Errorf("failed to delete meili_documents: %w", err)
 	}
