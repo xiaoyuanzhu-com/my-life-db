@@ -117,6 +117,15 @@ func (w *previewWorker) enqueue(job previewJob) {
 // processJob dispatches to the correct generator based on MIME type,
 // stores the result in SQLAR, and updates the file record.
 func (w *previewWorker) processJob(job previewJob) {
+	// Check if file still exists before attempting generation
+	fullPath := filepath.Join(w.service.cfg.DataRoot, job.filePath)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		log.Info().
+			Str("path", job.filePath).
+			Msg("skipping preview for missing file")
+		return
+	}
+
 	var data []byte
 	var err error
 	var previewType string
@@ -144,6 +153,13 @@ func (w *previewWorker) processJob(job previewJob) {
 			Str("path", job.filePath).
 			Str("mime", job.mimeType).
 			Msg("preview generation failed")
+
+		// Mark as failed so it won't be re-queued every scan cycle
+		if updateErr := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_status", db.PreviewStatusFailed); updateErr != nil {
+			log.Error().Err(updateErr).
+				Str("path", job.filePath).
+				Msg("failed to update preview_status to failed")
+		}
 		return
 	}
 
@@ -162,11 +178,17 @@ func (w *previewWorker) processJob(job previewJob) {
 		return
 	}
 
-	// Update file record with the SQLAR path
+	// Update file record: set sqlar path and status to ready
 	if err := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_sqlar", sqlarName); err != nil {
 		log.Error().Err(err).
 			Str("path", job.filePath).
 			Msg("failed to update preview_sqlar field")
+		return
+	}
+	if err := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_status", db.PreviewStatusReady); err != nil {
+		log.Error().Err(err).
+			Str("path", job.filePath).
+			Msg("failed to update preview_status to ready")
 		return
 	}
 
@@ -184,8 +206,8 @@ func (w *previewWorker) processJob(job previewJob) {
 
 // ---------- Missing preview catch-up ----------
 
-// queueMissingPreviews finds files that should have image previews but don't
-// and enqueues them for generation. Called by the scanner after each scan cycle.
+// queueMissingPreviews finds files with preview_status='pending' and enqueues
+// them for generation. Called by the scanner after each scan cycle.
 func (w *previewWorker) queueMissingPreviews() {
 	files, err := w.service.cfg.DB.GetFilesMissingPreviews(50)
 	if err != nil {

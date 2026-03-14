@@ -38,7 +38,8 @@ type SearchResultItem struct {
 	Score           float64           `json:"score"`
 	Snippet         string            `json:"snippet"`
 	TextPreview     *string           `json:"textPreview,omitempty"`
-	PreviewSqlar *string           `json:"previewSqlar,omitempty"`
+	PreviewSqlar  *string           `json:"previewSqlar,omitempty"`
+	PreviewStatus *string           `json:"previewStatus,omitempty"`
 	Highlights      map[string]string `json:"highlights,omitempty"`
 	MatchContext    *MatchContext     `json:"matchContext,omitempty"`
 	MatchedObject   *MatchedObject    `json:"matchedObject,omitempty"`
@@ -194,7 +195,8 @@ func (h *Handlers) Search(c *gin.Context) {
 					Score:           1.0,
 					Snippet:         snippet,
 					TextPreview:     file.TextPreview,
-					PreviewSqlar: file.PreviewSqlar,
+					PreviewSqlar:  file.PreviewSqlar,
+					PreviewStatus: file.PreviewStatus,
 					Highlights:      highlights,
 					MatchContext:    matchContext,
 					MatchedObject:   matchedObject,
@@ -210,7 +212,7 @@ func (h *Handlers) Search(c *gin.Context) {
 
 		// Simple LIKE search on file names and text preview
 		rows, err := db.GetDB().Query(`
-			SELECT path, name, is_folder, size, mime_type, modified_at, created_at, text_preview, preview_sqlar
+			SELECT path, name, is_folder, size, mime_type, modified_at, created_at, text_preview, preview_sqlar, preview_status
 			FROM files
 			WHERE (name LIKE '%' || ? || '%' OR text_preview LIKE '%' || ? || '%')
 			ORDER BY modified_at DESC
@@ -222,7 +224,7 @@ func (h *Handlers) Search(c *gin.Context) {
 			for rows.Next() {
 				var f db.FileRecord
 				var isFolder int
-				if err := rows.Scan(&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType, &f.ModifiedAt, &f.CreatedAt, &f.TextPreview, &f.PreviewSqlar); err != nil {
+				if err := rows.Scan(&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType, &f.ModifiedAt, &f.CreatedAt, &f.TextPreview, &f.PreviewSqlar, &f.PreviewStatus); err != nil {
 					continue
 				}
 				f.IsFolder = isFolder == 1
@@ -239,7 +241,8 @@ func (h *Handlers) Search(c *gin.Context) {
 					Score:           0.5,
 					Snippet:         "",
 					TextPreview:     f.TextPreview,
-					PreviewSqlar: f.PreviewSqlar,
+					PreviewSqlar:  f.PreviewSqlar,
+					PreviewStatus: f.PreviewStatus,
 				})
 			}
 		}

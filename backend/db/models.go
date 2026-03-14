@@ -17,7 +17,8 @@ type FileRecord struct {
 	CreatedAt      int64      `json:"createdAt"`
 	LastScannedAt  int64      `json:"lastScannedAt,omitempty"`
 	TextPreview    *string    `json:"textPreview,omitempty"`
-	PreviewSqlar *string   `json:"previewSqlar,omitempty"`
+	PreviewSqlar  *string `json:"previewSqlar,omitempty"`
+	PreviewStatus *string `json:"previewStatus,omitempty"`
 }
 
 // Digest represents a digest record
@@ -33,6 +34,13 @@ type Digest struct {
 	CreatedAt int64   `json:"createdAt"`
 	UpdatedAt int64   `json:"updatedAt"`
 }
+
+// Preview status constants
+const (
+	PreviewStatusPending = "pending"
+	PreviewStatusReady   = "ready"
+	PreviewStatusFailed  = "failed"
+)
 
 // DigestStatus constants
 const (
@@ -131,7 +139,7 @@ func scanFileRecord(row interface{ Scan(...any) error }) (FileRecord, error) {
 	err := row.Scan(
 		&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType,
 		&f.Hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-		&f.TextPreview, &f.PreviewSqlar,
+		&f.TextPreview, &f.PreviewSqlar, &f.PreviewStatus,
 	)
 	f.IsFolder = isFolder == 1
 	f.LastScannedAt = lastScannedAt.Int64

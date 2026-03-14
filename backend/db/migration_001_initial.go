@@ -57,7 +57,8 @@ func createFreshSchema(db *sql.DB) error {
 			created_at TEXT NOT NULL,
 			last_scanned_at TEXT,
 			text_preview TEXT,
-			preview_sqlar TEXT
+			preview_sqlar TEXT,
+			preview_status TEXT
 		);
 
 		CREATE INDEX idx_files_path_prefix ON files(path);

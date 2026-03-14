@@ -449,6 +449,12 @@ func (s *Service) buildFileRecord(path string, info os.FileInfo, metadata *Metad
 		record.TextPreview = metadata.TextPreview
 	}
 
+	// Set preview_status to pending for previewable file types
+	if needsPreview(mimeType) {
+		pending := db.PreviewStatusPending
+		record.PreviewStatus = &pending
+	}
+
 	return record
 }
 

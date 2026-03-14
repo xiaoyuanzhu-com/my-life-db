@@ -61,7 +61,7 @@ func GetAllPins() ([]Pin, error) {
 func GetPinnedFiles() ([]FileWithDigests, error) {
 	query := `
 		SELECT f.path, f.name, f.is_folder, f.size, f.mime_type, f.hash,
-			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar,
+			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar, f.preview_status,
 			   p.pinned_at as pin_created_at
 		FROM pins p
 		JOIN files f ON f.path = p.file_path
@@ -79,13 +79,13 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
-		var hash, mimeType, textPreview, previewSqlar sql.NullString
+		var hash, mimeType, textPreview, previewSqlar, previewStatus sql.NullString
 		var lastScannedAt, pinCreatedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &previewSqlar, &pinCreatedAt,
+			&textPreview, &previewSqlar, &previewStatus, &pinCreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -97,6 +97,7 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		f.MimeType = StringPtr(mimeType)
 		f.TextPreview = StringPtr(textPreview)
 		f.PreviewSqlar = StringPtr(previewSqlar)
+		f.PreviewStatus = StringPtr(previewStatus)
 		f.LastScannedAt = lastScannedAt.Int64
 
 		// Get digests for this file

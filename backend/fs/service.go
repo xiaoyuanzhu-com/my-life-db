@@ -165,6 +165,8 @@ func (s *Service) changeNotificationWorker() {
 			if event.ContentChanged || event.IsNew {
 				file, _ := s.cfg.DB.GetFileByPath(event.FilePath)
 				if file != nil && file.MimeType != nil && needsPreview(*file.MimeType) {
+					// Set preview_status to pending (reset any previous failure)
+					_ = s.cfg.DB.UpdateFileField(event.FilePath, "preview_status", db.PreviewStatusPending)
 					s.preview.enqueue(previewJob{
 						filePath: event.FilePath,
 						mimeType: *file.MimeType,
