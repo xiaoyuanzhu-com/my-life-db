@@ -51,14 +51,21 @@ function debounce<T extends (...args: unknown[]) => void>(
 
 /**
  * Connect to SSE stream (shared across all hooks).
- * Uses cookie-based auth — the access_token cookie is sent automatically.
+ * In browser: uses cookie-based auth (access_token cookie sent automatically).
+ * In native app: appends access_token query param (EventSource can't set headers).
  */
 function connectToNotifications() {
   if (sharedEventSource) {
     return; // Already connected
   }
 
-  const eventSource = new EventSource('/api/notifications/stream');
+  let url = '/api/notifications/stream';
+  const w = window as any;
+  if (w.isNativeApp && w.__nativeAccessToken) {
+    url += `?access_token=${encodeURIComponent(w.__nativeAccessToken)}`;
+  }
+
+  const eventSource = new EventSource(url);
   sharedEventSource = eventSource;
 
   eventSource.onopen = () => {
