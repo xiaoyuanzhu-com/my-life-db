@@ -154,8 +154,20 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = 'instant') => {
       const el = scrollElementRef.current
-      if (!el) return
+      if (!el) {
+        console.log('[ScrollCtrl] scrollToBottom: no element')
+        return
+      }
       const prevScrollTop = el.scrollTop
+      const scrollHeight = el.scrollHeight
+      const clientHeight = el.clientHeight
+      console.log('[ScrollCtrl] scrollToBottom:', {
+        behavior,
+        prevScrollTop,
+        scrollHeight,
+        clientHeight,
+        distFromBottom: scrollHeight - prevScrollTop - clientHeight,
+      })
       phaseRef.current = 'programmatic'
       userScrollIntentRef.current = false
       el.scrollTo({ top: el.scrollHeight, behavior })
@@ -165,7 +177,10 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       // scrollend won't fire — return to idle immediately so ResizeObserver
       // isn't blocked when content arrives later.
       if (el.scrollTop === prevScrollTop) {
+        console.log('[ScrollCtrl] scrollToBottom: no position change, back to idle')
         phaseRef.current = 'idle'
+      } else {
+        console.log('[ScrollCtrl] scrollToBottom: scrolled from', prevScrollTop, 'to', el.scrollTop)
       }
     },
     [],
@@ -186,12 +201,26 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       (userScrollIntentRef.current && touchIntentRef.current) ||
       !shouldStickRef.current
     ) {
+      console.log('[ScrollCtrl] stickIfNeeded: BLOCKED', {
+        phase: phaseRef.current,
+        fingerDown: fingerDownRef.current,
+        userScrollIntent: userScrollIntentRef.current,
+        touchIntent: touchIntentRef.current,
+        shouldStick: shouldStickRef.current,
+      })
       return
     }
     const el = scrollElementRef.current
-    if (!el) return
+    if (!el) {
+      console.log('[ScrollCtrl] stickIfNeeded: no element')
+      return
+    }
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (distFromBottom <= stickyThreshold) return
+    if (distFromBottom <= stickyThreshold) {
+      console.log('[ScrollCtrl] stickIfNeeded: already at bottom (dist=' + distFromBottom + ')')
+      return
+    }
+    console.log('[ScrollCtrl] stickIfNeeded: scrolling to bottom (dist=' + distFromBottom + ')')
     scrollToBottom('instant')
   }, [scrollToBottom, stickyThreshold])
 
@@ -203,6 +232,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // All closed-over values are refs or stable callbacks — safe across renders.
   // Touch/pointer: finger is physically on the screen — block all programmatic scroll
   const markFingerDownRef = useRef(function markFingerDown() {
+    console.log('[ScrollCtrl] markFingerDown (touchstart/pointerdown)')
     userScrollIntentRef.current = true
     fingerDownRef.current = true
     touchIntentRef.current = true
@@ -213,11 +243,16 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
   // finger is on the screen. Wheel/trackpad scrolling doesn't need this guard because
   // there's no touchend/pointerup to clear it — it would stay true forever.
   const markWheelIntentRef = useRef(function markWheelIntent() {
+    console.log('[ScrollCtrl] markWheelIntent')
     userScrollIntentRef.current = true
     touchIntentRef.current = false
   })
 
   const clearFingerDownRef = useRef(function clearFingerDown() {
+    console.log('[ScrollCtrl] clearFingerDown (touchend/pointerup)', {
+      phase: phaseRef.current,
+      shouldStick: shouldStickRef.current,
+    })
     fingerDownRef.current = false
     // Don't reset phase/intent here — momentum scroll may follow the finger
     // lift. scrollend will fire after momentum ends and do the reset.
@@ -231,6 +266,11 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     deferredFinalizeRef.current = setTimeout(() => {
       deferredFinalizeRef.current = null
       if (phaseRef.current !== 'idle' || userScrollIntentRef.current) {
+        console.log('[ScrollCtrl] deferred finalize: resetting to idle', {
+          wasPhase: phaseRef.current,
+          wasUserScrollIntent: userScrollIntentRef.current,
+          shouldStick: shouldStickRef.current,
+        })
         phaseRef.current = 'idle'
         userScrollIntentRef.current = false
         touchIntentRef.current = false
@@ -264,6 +304,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     const userDriven = userScrollIntentRef.current
 
     if (userDriven && phaseRef.current === 'idle') {
+      console.log('[ScrollCtrl] handleScroll: phase idle→user', {
+        scrollTop,
+        distanceFromBottom,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      })
       phaseRef.current = 'user'
     }
 
@@ -284,10 +330,19 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     const distDelta = distanceFromBottom - prevDist // positive = moving away from bottom
     lastDistFromBottomRef.current = distanceFromBottom
 
+    const prevShouldStick = shouldStickRef.current
     if (userDriven && distDelta > 0 && distanceFromBottom > stickyThreshold) {
       shouldStickRef.current = false
     } else if (atBottom) {
       shouldStickRef.current = true
+    }
+    if (shouldStickRef.current !== prevShouldStick) {
+      console.log('[ScrollCtrl] handleScroll: shouldStick changed', prevShouldStick, '→', shouldStickRef.current, {
+        distanceFromBottom,
+        distDelta,
+        userDriven,
+        atBottom,
+      })
     }
 
     // ---- 4. Hide-on-scroll ----
@@ -297,6 +352,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       if (nearBottom) {
         // Always show input at bottom
         if (isHiddenRef.current) {
+          console.log('[ScrollCtrl] handleScroll: showing input (near bottom)')
           isHiddenRef.current = false
           onHideChangeRef.current?.(false)
         }
@@ -314,10 +370,12 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
         if (accumulatedDeltaRef.current > hideScrollThreshold && isHiddenRef.current) {
           // Scrolling down → show input
+          console.log('[ScrollCtrl] handleScroll: showing input (scroll down)')
           isHiddenRef.current = false
           onHideChangeRef.current?.(false)
           accumulatedDeltaRef.current = 0
         } else if (accumulatedDeltaRef.current < -hideScrollThreshold && !isHiddenRef.current) {
+          console.log('[ScrollCtrl] handleScroll: hiding input (scroll up)')
           isHiddenRef.current = true
           onHideChangeRef.current?.(true)
           accumulatedDeltaRef.current = 0
@@ -342,18 +400,34 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     const el = scrollElementRef.current
     if (!el) return
 
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+
     // Finalize sticky state after momentum ends
     const atBottom = checkIsAtBottom(el)
     isAtBottomRef.current = atBottom
+    const prevShouldStick = shouldStickRef.current
     if (atBottom) {
       shouldStickRef.current = true
     }
+
+    console.log('[ScrollCtrl] scrollend:', {
+      phase: phaseRef.current,
+      atBottom,
+      distFromBottom,
+      shouldStick: shouldStickRef.current,
+      shouldStickChanged: shouldStickRef.current !== prevShouldStick,
+      fingerDown: fingerDownRef.current,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    })
 
     // If finger is still on screen, the user is mid-gesture (e.g., reversing
     // direction). The browser fires scrollend when velocity hits zero, but
     // the touch gesture isn't over. Keep phase/intent active so the scroll
     // continues tracking the finger.
     if (fingerDownRef.current) {
+      console.log('[ScrollCtrl] scrollend: finger still down, keeping phase active')
       return
     }
 
@@ -362,6 +436,7 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       clearTimeout(deferredFinalizeRef.current)
       deferredFinalizeRef.current = null
     }
+    console.log('[ScrollCtrl] scrollend: finalizing → idle')
     phaseRef.current = 'idle'
     userScrollIntentRef.current = false
     touchIntentRef.current = false
@@ -404,6 +479,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       userScrollIntentRef.current = false
       fingerDownRef.current = false
 
+      console.log('[ScrollCtrl] scrollRef attached:', {
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        isAtBottom: isAtBottomRef.current,
+      })
+
       el.addEventListener('scroll', handleScroll, { passive: true })
       el.addEventListener('scrollend', handleScrollEnd, { passive: true })
       el.addEventListener('wheel', markWheelIntent, { passive: true })
@@ -413,7 +495,13 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
       el.addEventListener('pointerup', clearFingerDown, { passive: true })
 
       // Initial stick
+      console.log('[ScrollCtrl] scheduling initial stickIfNeeded via RAF')
       requestAnimationFrame(() => {
+        console.log('[ScrollCtrl] initial stickIfNeeded RAF firing:', {
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        })
         stickIfNeeded()
       })
     },
@@ -434,18 +522,29 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
 
       if (!el || typeof ResizeObserver === 'undefined') return
 
+      console.log('[ScrollCtrl] contentRef attached, setting up ResizeObserver')
+
       if (!resizeObserverRef.current) {
         let prevContentHeight = -1
         resizeObserverRef.current = new ResizeObserver((entries) => {
           const h = entries[0]?.contentRect.height ?? 0
           if (h === prevContentHeight) return
+          console.log('[ScrollCtrl] ResizeObserver: content height changed', prevContentHeight, '→', h)
           prevContentHeight = h
           stickIfNeeded() // phase-gated: only acts during idle
         })
       }
 
       resizeObserverRef.current.observe(el)
+      console.log('[ScrollCtrl] scheduling contentRef stickIfNeeded via RAF')
       requestAnimationFrame(() => {
+        const scrollEl = scrollElementRef.current
+        console.log('[ScrollCtrl] contentRef stickIfNeeded RAF firing:', {
+          scrollTop: scrollEl?.scrollTop,
+          scrollHeight: scrollEl?.scrollHeight,
+          clientHeight: scrollEl?.clientHeight,
+          contentHeight: el.getBoundingClientRect().height,
+        })
         stickIfNeeded()
       })
     },

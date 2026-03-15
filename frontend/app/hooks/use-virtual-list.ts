@@ -83,18 +83,36 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
 
   // ---- State: visible range ----
   const [range, setRange] = useState<{ startIndex: number; endIndex: number }>(() => {
-    if (count === 0) return { startIndex: 0, endIndex: 0 }
+    if (count === 0) {
+      console.log('[VirtualList] init: count=0')
+      return { startIndex: 0, endIndex: 0 }
+    }
 
     // If should stick, initialize from bottom so first render shows the end
     if (shouldStick.current) {
       const viewportHeight = scrollElement.current?.clientHeight ?? 800
       const visibleCount = Math.ceil(viewportHeight / estimateSize)
       const startIndex = Math.max(0, count - visibleCount - overscan)
+      console.log('[VirtualList] init from bottom:', {
+        count,
+        viewportHeight,
+        visibleCount,
+        startIndex,
+        endIndex: count,
+        scrollElExists: !!scrollElement.current,
+      })
       return { startIndex, endIndex: count }
     }
 
     const viewportHeight = scrollElement.current?.clientHeight ?? 800
     const visibleCount = Math.ceil(viewportHeight / estimateSize)
+    console.log('[VirtualList] init from top:', {
+      count,
+      viewportHeight,
+      visibleCount,
+      startIndex: 0,
+      endIndex: Math.min(count, visibleCount + overscan),
+    })
     return { startIndex: 0, endIndex: Math.min(count, visibleCount + overscan) }
   })
 
@@ -363,6 +381,13 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
         startIndex: Math.max(0, count - visibleCount - overscan),
         endIndex: count,
       }
+      console.log('[VirtualList] count change (stick):', {
+        count,
+        viewportHeight,
+        visibleCount,
+        nextRange,
+        scrollElExists: !!scrollElement.current,
+      })
       setRange(nextRange)
     } else {
       // Not at bottom: keep start position, extend end if needed
