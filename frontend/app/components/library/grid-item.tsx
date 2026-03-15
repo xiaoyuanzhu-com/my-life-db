@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
-import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
+import { downloadFile, downloadFolder, getSqlarUrl } from '~/components/FileCard/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -212,6 +212,13 @@ export function GridItem({
             <div className="relative flex items-center justify-center w-12 h-12">
               {isFolder ? (
                 <FolderClosed className="w-10 h-10 text-muted-foreground" />
+              ) : node.previewSqlar ? (
+                <img
+                  src={getSqlarUrl(node.previewSqlar)}
+                  alt=""
+                  loading="lazy"
+                  className="w-12 h-12 object-cover rounded"
+                />
               ) : (
                 <FileTypeIcon filename={name} size={36} />
               )}

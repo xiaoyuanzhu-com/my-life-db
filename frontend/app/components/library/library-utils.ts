@@ -6,6 +6,7 @@ export interface FileNode {
   type: 'file' | 'folder';
   size?: number;
   modifiedAt?: number;
+  previewSqlar?: string;
   children?: FileNode[];
   uploadStatus?: 'pending' | 'uploading' | 'error';
   uploadProgress?: number;
