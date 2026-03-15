@@ -420,11 +420,12 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 
 // FileNode represents a file or folder in the tree (recursive structure)
 type FileNode struct {
-	Path       string     `json:"path,omitempty"`
-	Type       string     `json:"type,omitempty"` // "file" or "folder"
-	Size       *int64     `json:"size,omitempty"`
-	ModifiedAt *int64     `json:"modifiedAt,omitempty"`
-	Children   []FileNode `json:"children,omitempty"`
+	Path         string     `json:"path,omitempty"`
+	Type         string     `json:"type,omitempty"` // "file" or "folder"
+	Size         *int64     `json:"size,omitempty"`
+	ModifiedAt   *int64     `json:"modifiedAt,omitempty"`
+	PreviewSqlar *string    `json:"previewSqlar,omitempty"`
+	Children     []FileNode `json:"children,omitempty"`
 }
 
 // fieldSet tracks which fields to include in the response
@@ -438,6 +439,7 @@ func parseFields(fieldsParam string) fieldSet {
 		fields["type"] = true
 		fields["size"] = true
 		fields["modifiedAt"] = true
+		fields["previewSqlar"] = true
 		return fields
 	}
 	for _, f := range strings.Split(fieldsParam, ",") {
@@ -533,6 +535,12 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		return []FileNode{}
 	}
 
+	// Batch-load preview info if requested
+	var previewMap map[string]string
+	if fields["previewSqlar"] {
+		previewMap, _ = db.GetPreviewSqlarMap(relativePath)
+	}
+
 	var nodes []FileNode
 	atRoot := relativePath == ""
 	for _, entry := range entries {
@@ -584,6 +592,11 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if fields["modifiedAt"] && info != nil {
 			modTime := info.ModTime().UnixMilli()
 			node.ModifiedAt = &modTime
+		}
+		if fields["previewSqlar"] && !isDir {
+			if sqlar, ok := previewMap[name]; ok {
+				node.PreviewSqlar = &sqlar
+			}
 		}
 
 		// Recurse into directories if depth allows

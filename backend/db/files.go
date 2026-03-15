@@ -11,6 +11,39 @@ import (
 	"time"
 )
 
+// GetPreviewSqlarMap returns a map of filename -> previewSqlar for files in a directory.
+// Only returns entries where preview_status = 'ready' and preview_sqlar IS NOT NULL.
+func GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
+	query := `
+		SELECT name, preview_sqlar
+		FROM files
+		WHERE path LIKE ? || '%'
+		  AND path NOT LIKE ? || '%/%'
+		  AND preview_status = 'ready'
+		  AND preview_sqlar IS NOT NULL
+	`
+	prefix := dirPath
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	rows, err := GetDB().Query(query, prefix, prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var name, sqlar string
+		if err := rows.Scan(&name, &sqlar); err != nil {
+			continue
+		}
+		result[name] = sqlar
+	}
+	return result, rows.Err()
+}
+
 // GetFileByPath retrieves a file record by path
 func GetFileByPath(path string) (*FileRecord, error) {
 	query := `
