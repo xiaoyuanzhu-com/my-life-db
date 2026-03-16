@@ -761,6 +761,33 @@ export default function ClaudePage() {
     )
   }
 
+  // ─── Native app: single layout, no responsive split ─────────────────────────
+  // The desktop/mobile conditional rendering below uses useIsMobile() to render
+  // ChatInterface in one section or the other. On iPhone, rotating from portrait
+  // (~390px) to landscape (~844px) crosses the 768px breakpoint, causing isMobile
+  // to flip — which unmounts the current ChatInterface and mounts a new one,
+  // losing all React state (fullscreen preview, scroll position, messages).
+  // The native app always shows a single session, so bypass the split entirely.
+  if (isNativeApp() && activeSessionId) {
+    return (
+      <div className="flex h-full min-w-0 animate-content-ready">
+        <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
+          <ChatInterface
+            key={activeSessionId}
+            sessionId={activeSessionId}
+            sessionName={effectiveActiveSession?.title || 'Session'}
+            workingDir={effectiveActiveSession?.workingDir}
+            permissionMode={effectiveActiveSession?.permissionMode}
+            onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+            refreshSessions={refreshSessions}
+            initialMessage={pendingInitialMessage ?? undefined}
+            onInitialMessageSent={() => setPendingInitialMessage(null)}
+          />
+        </div>
+      </div>
+    )
+  }
+
   // ─── Shared header for desktop sidebar and mobile list view ────────────────
   const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
     <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
