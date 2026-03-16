@@ -60,6 +60,11 @@ export const nativeBridge = {
     postNative("navigate", { path });
   },
 
+  /** Ask the native shell to pop the current view (go back in NavigationStack). */
+  goBack() {
+    postNative("goBack");
+  },
+
   /** Open a URL in the system browser (Safari). */
   openExternal(url: string) {
     postNative("openExternal", { url });
