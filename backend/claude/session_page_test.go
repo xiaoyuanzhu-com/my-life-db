@@ -11,20 +11,22 @@ import (
 // =============================================================================
 
 // makeMsg creates a raw JSON message with the given type.
-// For stream_event, uses a struct to ensure "type" appears early in the JSON
-// (isStreamEvent checks the first 100 bytes). With map[string]interface{},
-// json.Marshal sorts keys alphabetically, putting "event" before "type".
+// For stream_event, uses map serialization so "event" sorts before "type"
+// alphabetically — matching real Claude API output where the nested event
+// object pushes "type":"stream_event" far into the payload.
 func makeMsg(msgType string) []byte {
 	if msgType == "stream_event" {
-		type streamEvent struct {
-			Type  string `json:"type"`
-			Event struct {
-				Type string `json:"type"`
-			} `json:"event"`
-		}
-		se := streamEvent{Type: "stream_event"}
-		se.Event.Type = "content_block_delta"
-		data, _ := json.Marshal(se)
+		data, _ := json.Marshal(map[string]interface{}{
+			"type": "stream_event",
+			"event": map[string]interface{}{
+				"type": "content_block_delta",
+				"delta": map[string]string{
+					"type": "text_delta",
+					"text": "hello",
+				},
+				"index": 0,
+			},
+		})
 		return data
 	}
 	data, _ := json.Marshal(map[string]string{"type": msgType})
@@ -612,6 +614,48 @@ func TestDerivePageBreaks_StreamEventsCountTowardBytes(t *testing.T) {
 	}
 	if s.pageBreaks[0] != 3 {
 		t.Errorf("expected page break at index 3, got %d", s.pageBreaks[0])
+	}
+}
+
+// =============================================================================
+// Realistic Stream Event Tests
+// =============================================================================
+
+// makeRealisticStreamEvent creates a stream_event matching real Claude API output.
+// The "type":"stream_event" field appears at byte offset ~200+, well past any
+// prefix-based fast check. This is the layout that caused the original bug.
+func makeRealisticStreamEvent() []byte {
+	return []byte(`{"event":{"delta":{"thinking":"The user wants to understand the architecture of the system","type":"thinking_delta"},"index":0,"type":"content_block_delta"},"parent_tool_use_id":null,"session_id":"43cfefcc-abd1-4462-aa85-0611f1e4a8ca","type":"stream_event","uuid":"bc00f9ea-9441-483c-927d-2eaf3b67deb3"}`)
+}
+
+func TestIsStreamEvent_RealisticPayload(t *testing.T) {
+	// Real Claude stream_events have "type":"stream_event" far past byte 100
+	data := makeRealisticStreamEvent()
+	if !isStreamEvent(data) {
+		t.Error("isStreamEvent should detect realistic stream_event (type field at byte ~200)")
+	}
+}
+
+func TestMaterializePageSlice_RealisticStreamEvents(t *testing.T) {
+	// Use realistic stream_events where "type" appears late in the JSON
+	slice := [][]byte{
+		makeRealisticStreamEvent(), // closed
+		makeRealisticStreamEvent(), // closed
+		makeMsg("assistant"),
+		makeMsg("result"),
+	}
+
+	got := materializePageSlice(slice, false)
+	types := msgTypes(got)
+
+	expected := []string{"assistant", "result"}
+	if len(types) != len(expected) {
+		t.Fatalf("expected %d messages (realistic stream_events excluded), got %d: %v", len(expected), len(types), types)
+	}
+	for i, exp := range expected {
+		if types[i] != exp {
+			t.Errorf("index %d: expected %s, got %s", i, exp, types[i])
+		}
 	}
 }
 

@@ -1223,13 +1223,9 @@ func (s *Session) BroadcastToClients(data []byte) {
 }
 
 // isStreamEvent checks if a raw JSON message is a stream_event type.
-// Uses a lightweight prefix check before falling back to JSON parsing.
+// Uses full JSON parsing because the "type" field can appear far into the
+// payload (after large nested event objects), making prefix checks unreliable.
 func isStreamEvent(data []byte) bool {
-	// Quick check: stream_event messages contain "stream_event" near the start
-	// This avoids JSON parsing for the vast majority of messages
-	if len(data) < 30 || !bytes.Contains(data[:min(100, len(data))], []byte(`"stream_event"`)) {
-		return false
-	}
 	var envelope struct {
 		Type string `json:"type"`
 	}
