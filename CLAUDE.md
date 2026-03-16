@@ -286,9 +286,6 @@ Never create shadcn components manually.
 | OPENAI_API_KEY | | OpenAI API key (optional) |
 | OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
 | OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |
-| HAID_BASE_URL | | HAID service URL for OCR, ASR, etc. (optional) |
-| HAID_API_KEY | | HAID API key (optional) |
-| HAID_CHROME_CDP_URL | | Chrome CDP URL for HAID web crawling (optional) |
 | MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
 | MLD_OAUTH_CLIENT_ID | | OAuth client ID |
 | MLD_OAUTH_CLIENT_SECRET | | OAuth client secret |
