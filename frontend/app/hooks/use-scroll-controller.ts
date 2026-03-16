@@ -331,9 +331,16 @@ export function useScrollController(options: ScrollControllerOptions = {}): Scro
     lastDistFromBottomRef.current = distanceFromBottom
 
     const prevShouldStick = shouldStickRef.current
+    // Only change shouldStick during user-driven scroll events.
+    // Browser-initiated scroll adjustments (e.g., viewport resize during device
+    // rotation) can briefly land at the bottom due to spacer recalculation in the
+    // virtual list. Without this guard, a resize behind a fullscreen overlay would
+    // re-engage sticky and scroll to bottom when the overlay closes.
+    // The scrollend handler separately handles re-engaging sticky after any scroll
+    // settles — that covers programmatic scrollToBottom and momentum end.
     if (userDriven && distDelta > 0 && distanceFromBottom > stickyThreshold) {
       shouldStickRef.current = false
-    } else if (atBottom) {
+    } else if (userDriven && atBottom) {
       shouldStickRef.current = true
     }
     if (shouldStickRef.current !== prevShouldStick) {

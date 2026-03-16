@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 interface PreviewFullscreenProps {
@@ -28,20 +28,25 @@ function injectEscapeHandler(srcdoc: string): string {
 }
 
 export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    },
-    [onClose]
-  )
+  // Ref keeps the latest onClose without re-running the effect.
+  // Previously, the inline onClose prop changed every parent render, which
+  // re-ran the effect cleanup → setup cycle. That cleanup briefly sent
+  // isFullscreen:false to the native bridge, causing SwiftUI to toggle
+  // InteractivePopGestureController and potentially destabilize the WebView
+  // during device rotation.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     // Parent-document Escape handler (for when iframe does NOT have focus)
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onCloseRef.current()
+    }
     document.addEventListener('keydown', handleKeyDown)
 
     // Listen for Escape postMessage from inside the sandboxed iframe
     function handleMessage(e: MessageEvent) {
-      if (e.data?.type === 'preview-close') onClose()
+      if (e.data?.type === 'preview-close') onCloseRef.current()
     }
     window.addEventListener('message', handleMessage)
 
@@ -77,7 +82,7 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
         })
       }
     }
-  }, [handleKeyDown, onClose])
+  }, []) // mount/unmount only — onCloseRef keeps handlers current
 
   // True full-bleed layout: iframe fills the entire viewport, close button
   // floats above it.  The button's glassmorphism provides sufficient contrast
@@ -92,10 +97,10 @@ export function PreviewFullscreen({ srcdoc, onClose }: PreviewFullscreenProps) {
     >
       <button
         className="preview-fullscreen-collapse"
-        onClick={onClose}
+        onClick={() => onCloseRef.current()}
         onPointerDown={(e) => {
           e.preventDefault()
-          onClose()
+          onCloseRef.current()
         }}
         aria-label="Collapse preview"
         title="Collapse preview"

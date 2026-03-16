@@ -74,6 +74,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
 
   const [fullscreenSrcdoc, setFullscreenSrcdoc] = useState<string | null>(null)
   const handleRequestFullscreen = useCallback((srcdoc: string) => setFullscreenSrcdoc(srcdoc), [])
+  const handleCloseFullscreen = useCallback(() => setFullscreenSrcdoc(null), [])
 
   // ============================================================================
   // Scroll controller + virtual list
@@ -316,7 +317,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
       {fullscreenSrcdoc && (
         <PreviewFullscreen
           srcdoc={fullscreenSrcdoc}
-          onClose={() => setFullscreenSrcdoc(null)}
+          onClose={handleCloseFullscreen}
         />
       )}
     </>
