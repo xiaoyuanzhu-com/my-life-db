@@ -22,7 +22,7 @@ import { useFeatureFlags } from '~/contexts/feature-flags-context'
 import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
 import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
-import { isNativeApp, nativeBridge } from '~/lib/native-bridge'
+import { isNativeApp } from '~/lib/native-bridge'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
 import '@fontsource/jetbrains-mono'
 
@@ -512,10 +512,7 @@ export default function ClaudePage() {
       // 2. Swipe was rightward (end X > start X)
       // 3. Swipe distance was significant (> 100px)
       if (touchStartX.current > 0 && touchEndX.current - touchStartX.current > 100) {
-        if (isNativeApp()) {
-          // In native app, tell SwiftUI to pop the NavigationStack
-          nativeBridge.goBack()
-        } else if (activeSessionId) {
+        if (activeSessionId) {
           setActiveSessionId(null)
         } else if (showNewSessionMobile) {
           // Pop the history entry we pushed for the new-session view
@@ -529,8 +526,9 @@ export default function ClaudePage() {
     }
 
     // Active on mobile when viewing session detail OR new-session compose view.
+    // Skip in native app — the native interactive pop gesture handles this.
     const isMobile = window.innerWidth < 768
-    if (isMobile && (activeSessionId || showNewSessionMobile)) {
+    if (isMobile && !isNativeApp() && (activeSessionId || showNewSessionMobile)) {
       document.addEventListener('touchstart', handleTouchStart, { passive: true })
       document.addEventListener('touchmove', handleTouchMove, { passive: true })
       document.addEventListener('touchend', handleTouchEnd)
