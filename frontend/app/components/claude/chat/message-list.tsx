@@ -106,25 +106,6 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
     userScrollIntent,
   })
 
-  // Debug: log render with scroll state
-  const prevMsgCountRef = useRef(0)
-  if (filteredMessages.length !== prevMsgCountRef.current) {
-    console.log('[MessageList] render:', {
-      msgCount: filteredMessages.length,
-      prevCount: prevMsgCountRef.current,
-      startIndex,
-      endIndex,
-      topHeight,
-      bottomHeight,
-      shouldStick: shouldStick.current,
-      scrollElExists: !!scrollElement.current,
-      scrollTop: scrollElement.current?.scrollTop,
-      scrollHeight: scrollElement.current?.scrollHeight,
-      clientHeight: scrollElement.current?.clientHeight,
-    })
-    prevMsgCountRef.current = filteredMessages.length
-  }
-
   // Set the near-top handler (updated each render) — simplified since browser
   // scroll anchoring handles position preservation on prepend.
   nearTopHandlerRef.current = () => {
