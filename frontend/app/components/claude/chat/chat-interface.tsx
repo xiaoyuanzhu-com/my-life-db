@@ -643,9 +643,15 @@ export function ChatInterface({
   // Pagination: whether there are more historical pages to load via HTTP
   const hasMoreHistory = lowestLoadedPage > 0
 
-  // Only show connection status banner after we've connected at least once
+  // Determine the connection status shown to the UI (banner, input).
+  // Hide status in two cases:
+  //   1. Before the first successful connection (initial load)
+  //   2. During the grace period after a disconnect (optimistic reconnect)
+  // In both cases, the UI pretends we're connected to avoid visual disruption.
   const effectiveConnectionStatus: ConnectionStatus =
-    ws.hasConnected && ws.connectionStatus !== 'connected' ? ws.connectionStatus : 'connected'
+    ws.hasConnected && ws.connectionStatus !== 'connected' && !ws.isGracePeriod
+      ? ws.connectionStatus
+      : 'connected'
 
   // ============================================================================
   // Effects

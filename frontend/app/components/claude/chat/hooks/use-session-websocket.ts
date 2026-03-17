@@ -11,10 +11,17 @@ export interface UseSessionWebSocketOptions {
 }
 
 export interface UseSessionWebSocketResult {
-  /** Current connection status */
+  /** Current connection status (always honest — reflects actual WebSocket state) */
   connectionStatus: ConnectionStatus
   /** Whether we've ever successfully connected (for showing reconnection banner) */
   hasConnected: boolean
+  /**
+   * Whether we're in the optimistic grace period after a disconnect.
+   * True when the WebSocket just dropped but we expect a fast reconnect.
+   * UI should suppress the reconnecting banner and state resets while this is true.
+   * After RECONNECT_GRACE_MS (2s), this becomes false and the banner appears.
+   */
+  isGracePeriod: boolean
   /** Send a message via WebSocket (connects lazily if needed) */
   sendMessage: (payload: unknown) => Promise<void>
   /** Send raw JSON via WebSocket (connects lazily if needed) */
@@ -24,6 +31,12 @@ export interface UseSessionWebSocketResult {
 /**
  * Manages WebSocket connection to a Claude session.
  * Handles connection, reconnection with exponential backoff, and message routing.
+ *
+ * Optimistic reconnection strategy: connectionStatus always reflects the true
+ * WebSocket state, but isGracePeriod signals that a brief disconnect just happened
+ * and reconnection is expected to succeed quickly. The UI uses both signals:
+ * - connectionStatus for correctness (state resets, data syncing)
+ * - isGracePeriod to suppress visual disruption (banner, re-renders)
  */
 export function useSessionWebSocket(
   sessionId: string,
@@ -31,11 +44,16 @@ export function useSessionWebSocket(
 ): UseSessionWebSocketResult {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
   const [hasConnected, setHasConnected] = useState(false)
+  const [isGracePeriod, setIsGracePeriod] = useState(false)
 
   // WebSocket ref and connection state
   const wsRef = useRef<WebSocket | null>(null)
   const connectPromiseRef = useRef<Promise<WebSocket> | null>(null)
   const isComponentActiveRef = useRef(true)
+
+  // Grace period timer ref for cleanup
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const RECONNECT_GRACE_MS = 2000
 
   // Track the current session ID to ignore stale messages after session switch
   // This is updated synchronously before WebSocket cleanup to prevent race conditions
@@ -111,6 +129,12 @@ export function useSessionWebSocket(
         wsRef.current = ws
 
         ws.onopen = () => {
+          // End grace period — reconnection succeeded
+          if (graceTimerRef.current) {
+            clearTimeout(graceTimerRef.current)
+            graceTimerRef.current = null
+          }
+          setIsGracePeriod(false)
           setConnectionStatus('connected')
           setHasConnected(true)
           wasConnected = true
@@ -142,10 +166,27 @@ export function useSessionWebSocket(
           const delay = Math.min(baseDelay * Math.pow(2, attempts - 1), maxDelay)
 
           if (wasConnected) {
-            // Was connected, now disconnected - try token refresh then reconnect
-            // Token may have expired during idle period
+            // Was connected, now disconnected - try token refresh then reconnect.
+            // Token may have expired during idle period.
+            //
+            // connectionStatus is set honestly to 'connecting' immediately.
+            // isGracePeriod suppresses the UI banner for RECONNECT_GRACE_MS —
+            // if reconnection succeeds within that window, the user never sees
+            // a status change. If it takes longer, grace period ends and the
+            // banner appears naturally.
             setConnectionStatus('connecting')
             connectPromiseRef.current = null
+
+            // Start grace period (only if not already running)
+            if (!graceTimerRef.current) {
+              setIsGracePeriod(true)
+              graceTimerRef.current = setTimeout(() => {
+                graceTimerRef.current = null
+                // Grace period expired — reconnection is taking too long
+                setIsGracePeriod(false)
+              }, RECONNECT_GRACE_MS)
+            }
+
             setTimeout(async () => {
               // Try to refresh auth token before reconnecting
               // This handles the case where token expired during long idle
@@ -175,6 +216,7 @@ export function useSessionWebSocket(
     isComponentActiveRef.current = true
     setConnectionStatus('connecting')
     setHasConnected(false)
+    setIsGracePeriod(false)
 
     // Connect immediately (infinite retry, never rejects)
     ensureConnected()
@@ -204,6 +246,11 @@ export function useSessionWebSocket(
     return () => {
       isComponentActiveRef.current = false
       connectPromiseRef.current = null
+      // Clear grace period timer on cleanup
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current)
+        graceTimerRef.current = null
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (wsRef.current) {
         wsRef.current.close()
@@ -235,6 +282,7 @@ export function useSessionWebSocket(
   return {
     connectionStatus,
     hasConnected,
+    isGracePeriod,
     sendMessage,
     sendRaw,
   }
