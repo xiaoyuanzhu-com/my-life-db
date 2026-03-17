@@ -158,39 +158,53 @@ export function linkifyLibraryPaths(html: string): string {
     }
   )
 
-  // Second pass: linkify absolute paths detected in text content between HTML tags.
-  // Use alternation to skip <a>...</a> content — text inside existing links
-  // must not be re-linkified (e.g. URL text like "https://github.com/.../feature/x").
-  processed = processed.replace(/(<a\s[^>]*>[\s\S]*?<\/a>)|(>)([^<]+)(<)/g, (_full, anchorTag: string, open: string, textContent: string, close: string) => {
-    // If this matched an <a>...</a> block, leave it untouched
-    if (anchorTag) return _full
-    if (!textContent.trim()) return _full
+  // Second pass: linkify absolute paths in text content.
+  // For plain text (no HTML tags, e.g. bash output), linkify directly.
+  // For HTML, process text between tags while skipping <a>...</a> content.
+  const hasHtmlTags = /<[a-zA-Z]/.test(processed)
 
-    const paths = extractAndResolvePaths(textContent)
-    if (paths.length === 0) return _full
+  if (!hasHtmlTags) {
+    // Plain text — linkify paths directly
+    processed = linkifyInText(processed)
+  } else {
+    // HTML — use alternation to skip <a>...</a> content (text inside existing links
+    // must not be re-linkified, e.g. URL text like "https://github.com/.../feature/x").
+    processed = processed.replace(/(<a\s[^>]*>[\s\S]*?<\/a>)|(>)([^<]+)(<)/g, (_full, anchorTag: string, open: string, textContent: string, close: string) => {
+      if (anchorTag) return _full
+      if (!textContent.trim()) return _full
 
-    let result = textContent
-    // Process in reverse order of appearance to preserve string indices
-    const sortedPaths = [...paths].sort((a, b) => {
-      const idxA = textContent.indexOf(a.original)
-      const idxB = textContent.indexOf(b.original)
-      return idxB - idxA
+      const result = linkifyInText(textContent)
+      return result === textContent ? _full : open + result + close
     })
-
-    for (const resolved of sortedPaths) {
-      const idx = result.indexOf(resolved.original)
-      if (idx === -1) continue
-      const link = `<a href="${libraryUrl(resolved)}" class="library-file-link">${resolved.original}</a>`
-      result = result.slice(0, idx) + link + result.slice(idx + resolved.original.length)
-    }
-
-    return open + result + close
-  })
+  }
 
   return processed
 }
 
 // --- Internal helpers ---
+
+/** Replace detected absolute library paths in a text string with <a> links. */
+function linkifyInText(text: string): string {
+  const paths = extractAndResolvePaths(text)
+  if (paths.length === 0) return text
+
+  let result = text
+  // Process in reverse order of appearance to preserve string indices
+  const sortedPaths = [...paths].sort((a, b) => {
+    const idxA = text.indexOf(a.original)
+    const idxB = text.indexOf(b.original)
+    return idxB - idxA
+  })
+
+  for (const resolved of sortedPaths) {
+    const idx = result.indexOf(resolved.original)
+    if (idx === -1) continue
+    const link = `<a href="${libraryUrl(resolved)}" class="library-file-link">${resolved.original}</a>`
+    result = result.slice(0, idx) + link + result.slice(idx + resolved.original.length)
+  }
+
+  return result
+}
 
 function hasFileExtension(path: string): boolean {
   const lastSegment = path.split('/').pop() || ''
