@@ -81,6 +81,15 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   const { count, estimateSize, overscanPx, scrollElement, contentElement, getKey, shouldStick, userScrollIntent } = options
   const overscan = Math.ceil(overscanPx / estimateSize)
 
+  // Stable ref for getKey — prevents the count-change effect from firing
+  // on every filteredMessages change. getKey's identity changes whenever
+  // filteredMessages gets a new reference (every messages prop update),
+  // but the count-change effect only needs to run when count changes.
+  // The ref gives the effect body access to the latest getKey without
+  // adding it to the dependency array.
+  const getKeyRef = useRef(getKey)
+  getKeyRef.current = getKey
+
   // ---- State: visible range ----
   const [range, setRange] = useState<{ startIndex: number; endIndex: number }>(() => {
     if (count === 0) return { startIndex: 0, endIndex: 0 }
@@ -109,15 +118,29 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // Safari lacks overflow-anchor, so when items above the viewport are added/removed
   // (startIndex changes), the spacer↔item height mismatch causes a visual jump.
   //
-  // Range updates never change both ends simultaneously (expand/shrink one side
-  // at a time), so scrollBottom is always invariant when startIndex changes.
-  const anchorRef = useRef<{ scrollBottom: number } | null>(null)
-
-  // persistentAnchorRef survives past the layout-effect restore. It's reapplied
-  // each time the content ResizeObserver fires (newly-rendered items settling to
-  // real heights change scrollHeight without scrollTop compensation on Safari).
+  // Two-layer anchor system:
+  //
+  // 1. Primary anchor (anchorRef): scrollBottom-based, one-shot.
+  //    Captures scrollBottom before a range change that moves startIndex.
+  //    Applied in useLayoutEffect immediately after React commits the DOM change.
+  //    Cleared after use.
+  //
+  // 2. Persistent anchor (persistentAnchorRef): element-based, survives past layout effect.
+  //    After the primary anchor fires, captures a visible DOM element's viewport offset.
+  //    The content ResizeObserver reapplies it as newly-rendered items settle to their
+  //    real heights (fixes Safari drift from spacer→item height mismatches).
+  //
+  //    Element-based (not scrollBottom-based) because it must be immune to content
+  //    changes BELOW the viewport. scrollBottom changes when streaming content grows
+  //    at the bottom, causing the anchor to fight those changes and push the user's
+  //    view. An element's viewport offset only changes when content ABOVE it changes —
+  //    exactly the settling behavior we need to compensate for.
+  //
+  //    This is the same approach browser overflow-anchor uses natively.
+  //
   // Cleared when the user scrolls (they take control of scroll position).
-  const persistentAnchorRef = useRef<{ scrollBottom: number } | null>(null)
+  const anchorRef = useRef<{ scrollBottom: number } | null>(null)
+  const persistentAnchorRef = useRef<{ vi: string; offset: number } | null>(null)
 
   // iOS Safari fires scroll events asynchronously for programmatic scrollTop
   // assignments. These deferred events would clear persistentAnchorRef before
@@ -166,6 +189,40 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
 
   // ---- Range update (called from scroll listener and effects) ----
 
+  // Capture a visible DOM element as a persistent anchor for Safari drift
+  // compensation. The element nearest the viewport center is chosen because
+  // it's most likely to remain in the DOM across range changes.
+  //
+  // Each rendered item has a data-vi attribute (virtual index), so the anchor
+  // lookup is a single querySelector.
+  const captureElementAnchor = useCallback(() => {
+    const el = scrollElement.current
+    if (!el) return
+    const containerRect = el.getBoundingClientRect()
+    const viewportCenterY = containerRect.top + el.clientHeight / 2
+    const items = el.querySelectorAll('[data-vi]')
+    let best: Element | null = null
+    let bestDist = Infinity
+    for (const item of items) {
+      const rect = item.getBoundingClientRect()
+      const center = rect.top + rect.height / 2
+      const dist = Math.abs(center - viewportCenterY)
+      if (dist < bestDist) {
+        bestDist = dist
+        best = item
+      }
+    }
+    if (best) {
+      const vi = best.getAttribute('data-vi')
+      if (vi) {
+        persistentAnchorRef.current = {
+          vi,
+          offset: best.getBoundingClientRect().top - containerRect.top,
+        }
+      }
+    }
+  }, [scrollElement])
+
   // Capture scrollBottom before range changes that move startIndex.
   // Since we never change both ends simultaneously, content below the
   // viewport is unchanged and scrollBottom is invariant.
@@ -174,19 +231,7 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
     if (!el) return
     const scrollBottom = el.scrollHeight - el.scrollTop - el.clientHeight
     anchorRef.current = { scrollBottom }
-    // Pre-update persistentAnchorRef so that any contentResize events that fire
-    // before useLayoutEffect (anchor:scrollBottom) use the correct target.
-    // Without this, a contentResize from a previous cycle can fire with a stale
-    // scrollBottom and move scrollTop in the wrong direction — then anchor:scrollBottom
-    // corrects it again, causing a visible double-jump at momentum end.
-    //
-    // Skip during momentum: anchor:scrollBottom is also skipped then, so scrollTop
-    // won't actually be corrected yet — the persistent anchor will be set after
-    // scrollend when the range update commits and useLayoutEffect runs.
-    if (!userScrollIntent?.current) {
-      persistentAnchorRef.current = { scrollBottom }
-    }
-  }, [scrollElement, userScrollIntent])
+  }, [scrollElement])
 
   const updateRange = useCallback(() => {
     const el = scrollElement.current
@@ -316,8 +361,12 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // ---- Content resize anchor compensation (Safari overflow-anchor workaround) ----
   // After an expand-top, newly-rendered items settle to their real heights via
   // ResizeObserver. Each resize changes scrollHeight without adjusting scrollTop
-  // on Safari (no overflow-anchor). The persistentAnchorRef stores the target
-  // scrollBottom and this observer reapplies it until the user scrolls.
+  // on Safari (no overflow-anchor).
+  //
+  // Uses element-based anchoring: finds the anchor element by data-vi attribute,
+  // measures how far it drifted from its captured offset, and adjusts scrollTop
+  // by the drift. This is immune to content changes BELOW the anchor element
+  // (streaming, new messages) because those don't affect the anchor's position.
   useLayoutEffect(() => {
     const content = contentElement?.current
     if (!content || typeof ResizeObserver === 'undefined') return
@@ -326,10 +375,21 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       if (!pa || userScrollIntent?.current) return
       const el = scrollElement.current
       if (!el) return
-      const newScrollTop = el.scrollHeight - el.clientHeight - pa.scrollBottom
-      if (Math.abs(el.scrollTop - newScrollTop) > 2) {
+      // Find the anchor element by virtual index
+      const item = el.querySelector(`[data-vi="${pa.vi}"]`)
+      if (!item) {
+        // Element was unmounted (range changed beyond it) — clear anchor
+        persistentAnchorRef.current = null
+        return
+      }
+      const containerRect = el.getBoundingClientRect()
+      const currentOffset = item.getBoundingClientRect().top - containerRect.top
+      const drift = currentOffset - pa.offset
+      if (Math.abs(drift) > 2) {
         programmaticScrollRef.current = true
-        el.scrollTop = newScrollTop
+        el.scrollTop += drift
+        // offset target stays the same — we're restoring the element to its
+        // original position, so pa.offset remains the correct target
       }
     })
     ro.observe(content)
@@ -338,13 +398,19 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
 
   // ---- Count changes: non-prepend adjustments (append, filter, initial load) ----
   // Prepend is already handled in render phase above. This effect handles the rest.
+  //
+  // Uses getKeyRef (not getKey) to avoid firing on every filteredMessages change.
+  // getKey's identity changes whenever filteredMessages gets a new reference,
+  // but this effect only needs to run when count changes. The ref gives the
+  // effect body access to the latest getKey without triggering re-execution.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     // Skip if render-phase prepend detection already adjusted the range.
     // The count-change effect would otherwise override the shifted range with
     // a stale calculation, causing a visual jump.
     if (prependHandledRef.current) {
       prependHandledRef.current = false
-      prevFirstKeyRef.current = count > 0 ? getKey(0) : undefined
+      prevFirstKeyRef.current = count > 0 ? getKeyRef.current(0) : undefined
       return
     }
 
@@ -375,8 +441,8 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       })
     }
 
-    prevFirstKeyRef.current = count > 0 ? getKey(0) : undefined
-  }, [count, getKey, shouldStick, scrollElement, estimateSize, overscan])
+    prevFirstKeyRef.current = count > 0 ? getKeyRef.current(0) : undefined
+  }, [count, shouldStick, scrollElement, estimateSize, overscan])
 
   // ---- Scroll anchoring (prepend + range changes) ----
   // After React commits DOM changes, restore scroll position using an anchor
@@ -420,12 +486,14 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
       programmaticScrollRef.current = true
       el.scrollTop = newScrollTop
     }
-    // Keep the target scrollBottom alive so the content ResizeObserver can
-    // reapply it as newly-rendered items settle to their real heights.
-    // (On Safari, each item resize changes scrollHeight without adjusting
-    // scrollTop; persistentAnchorRef lets us compensate each time.)
-    persistentAnchorRef.current = { scrollBottom: anchor.scrollBottom }
-  }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent])
+    // After the primary scrollBottom anchor corrects scrollTop, capture a
+    // visible element as the persistent anchor. The content ResizeObserver
+    // will use this to compensate for items settling to their real heights.
+    //
+    // Element-based (not scrollBottom) so it's immune to streaming content
+    // growing below the viewport — only reacts to changes above the anchor.
+    captureElementAnchor()
+  }, [range.startIndex, range.endIndex, scrollElement, userScrollIntent, captureElementAnchor])
 
 
   // ---- Derived spacer heights ----
