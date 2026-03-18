@@ -156,7 +156,17 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.InboxAgentEnabled {
 		log.Info().Msg("initializing inbox agent")
 		appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
-		llmClient := agent.NewOpenAILLMClient()
+
+		// Use LLM proxy if configured, otherwise fall back to direct OpenAI
+		var llmClient agent.LLMClient
+		if cfg.LLM.HasOpenAI() {
+			proxyURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
+			llmClient = agent.NewProxyLLMClient(proxyURL, s.llmProxy.Token(), cfg.OpenAIModel)
+			log.Info().Msg("inbox agent using LLM proxy")
+		} else {
+			llmClient = agent.NewOpenAILLMClient()
+			log.Info().Msg("inbox agent using direct OpenAI")
+		}
 		s.agent = agent.NewAgent(appClient, llmClient)
 	} else {
 		log.Info().Msg("inbox agent disabled")
