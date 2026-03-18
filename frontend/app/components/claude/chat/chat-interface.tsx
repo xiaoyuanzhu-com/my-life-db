@@ -827,7 +827,7 @@ export function ChatInterface({
     try {
       const targetPage = lowestLoadedPage - 1
       const res = await fetchWithRefresh(
-        `/api/claude/sessions/${sessionId}/messages?page=${targetPage}`
+        `/api/agent/sessions/${sessionId}/messages?page=${targetPage}`
       )
       const data = await res.json()
       const olderMessages = ((data.messages || []) as Record<string, unknown>[])

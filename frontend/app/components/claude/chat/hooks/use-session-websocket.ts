@@ -116,7 +116,7 @@ export function useSessionWebSocket(
         attempts++
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        let wsUrl = `${protocol}//${window.location.host}/api/claude/sessions/${sessionId}/subscribe`
+        let wsUrl = `${protocol}//${window.location.host}/api/agent/sessions/${sessionId}/subscribe`
 
         // WebSocket API cannot set custom HTTP headers, so pass token as query parameter
         // when running inside native app (where cookies don't work reliably)

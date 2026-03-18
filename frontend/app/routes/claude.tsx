@@ -70,14 +70,14 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
     setSharing(true)
     try {
       if (checked) {
-        const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+        const res = await fetchWithRefresh(`/api/agent/sessions/${session.id}/share`, {
           method: 'POST',
         })
         if (!res.ok) throw new Error(`Failed to share: ${res.status}`)
         const data = await res.json()
         onUpdate({ shareToken: data.shareToken, shareUrl: data.shareUrl })
       } else {
-        const res = await fetchWithRefresh(`/api/claude/sessions/${session.id}/share`, {
+        const res = await fetchWithRefresh(`/api/agent/sessions/${session.id}/share`, {
           method: 'DELETE',
         })
         if (!res.ok) throw new Error(`Failed to unshare: ${res.status}`)
@@ -315,7 +315,7 @@ export default function ClaudePage() {
         status: statusFilter,
       })
 
-      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const response = await api.get(`/api/agent/sessions/all?${params}`)
       const data = await response.json()
       const sessionList = data.sessions || []
 
@@ -346,7 +346,7 @@ export default function ClaudePage() {
         status: statusFilter,
       })
 
-      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const response = await api.get(`/api/agent/sessions/all?${params}`)
       const data = await response.json()
       const newSessionList: Session[] = data.sessions || []
 
@@ -406,7 +406,7 @@ export default function ClaudePage() {
     if (sessionsRef.current.some((s) => s.id === activeSessionId)) return
 
     let cancelled = false
-    api.get(`/api/claude/sessions/${activeSessionId}`).then(async (res) => {
+    api.get(`/api/agent/sessions/${activeSessionId}`).then(async (res) => {
       if (cancelled) return
       if (!res.ok) return
       const data = await res.json()
@@ -571,7 +571,7 @@ export default function ClaudePage() {
         cursor: pagination.nextCursor,
       })
 
-      const response = await api.get(`/api/claude/sessions/all?${params}`)
+      const response = await api.get(`/api/agent/sessions/all?${params}`)
       const data = await response.json()
       const newSessions = data.sessions || []
 
@@ -601,7 +601,7 @@ export default function ClaudePage() {
 
     setIsCreatingSession(true)
     try {
-      const response = await api.post('/api/claude/sessions', {
+      const response = await api.post('/api/agent/sessions', {
         title: message,
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
@@ -640,7 +640,7 @@ export default function ClaudePage() {
 
   const deleteSession = async (sessionId: string) => {
     try {
-      const response = await api.delete(`/api/claude/sessions/${sessionId}`)
+      const response = await api.delete(`/api/agent/sessions/${sessionId}`)
 
       if (response.ok) {
         setSessions(sessions.filter((s) => s.id !== sessionId))
@@ -658,7 +658,7 @@ export default function ClaudePage() {
 
   const updateSessionTitle = async (sessionId: string, title: string) => {
     try {
-      await api.patch(`/api/claude/sessions/${sessionId}`, { title })
+      await api.patch(`/api/agent/sessions/${sessionId}`, { title })
 
       setSessions(
         sessions.map((s) => (s.id === sessionId ? { ...s, title } : s))
@@ -670,7 +670,7 @@ export default function ClaudePage() {
 
   const archiveSession = async (sessionId: string) => {
     try {
-      const response = await api.post(`/api/claude/sessions/${sessionId}/archive`)
+      const response = await api.post(`/api/agent/sessions/${sessionId}/archive`)
 
       if (response.ok) {
         setSessions(
@@ -686,7 +686,7 @@ export default function ClaudePage() {
 
   const unarchiveSession = async (sessionId: string) => {
     try {
-      const response = await api.post(`/api/claude/sessions/${sessionId}/unarchive`)
+      const response = await api.post(`/api/agent/sessions/${sessionId}/unarchive`)
 
       if (response.ok) {
         setSessions(
