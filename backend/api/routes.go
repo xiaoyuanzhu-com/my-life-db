@@ -109,7 +109,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Vendor routes
 		api.GET("/vendors/openai/models", h.GetOpenAIModels)
 
-		// Claude Code routes
+		// Claude Code routes — DEPRECATED: use /api/agent/sessions/* instead
+		// Kept temporarily for backward compatibility (native app may still use old URLs)
 		api.GET("/claude/sessions", h.ListClaudeSessions)
 		api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
 		api.POST("/claude/sessions", h.CreateClaudeSession)
