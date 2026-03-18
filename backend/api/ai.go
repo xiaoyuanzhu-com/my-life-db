@@ -44,7 +44,8 @@ type OpenAIResponse struct {
 	} `json:"choices"`
 }
 
-// Summarize generates an AI summary of the provided text
+// Summarize generates an AI summary of the provided text.
+// Routes through the LLM proxy when configured, otherwise falls back to direct OpenAI.
 func (h *Handlers) Summarize(c *gin.Context) {
 	var req SummarizeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -54,10 +55,24 @@ func (h *Handlers) Summarize(c *gin.Context) {
 
 	cfg := config.Get()
 
-	// Check if OpenAI API key is configured
-	if cfg.OpenAIAPIKey == "" {
+	// Determine LLM endpoint: proxy or direct
+	var apiURL, apiKey, model string
+	if proxy := h.server.LLMProxy(); proxy != nil && proxy.Token() != "" && (cfg.LLMOpenAIKey != "" || cfg.OpenAIAPIKey != "") {
+		// Use LLM proxy
+		apiURL = fmt.Sprintf("http://localhost:%d/api/openai/v1/chat/completions", cfg.Port)
+		apiKey = proxy.Token()
+		model = cfg.OpenAIModel
+		if model == "" {
+			model = "gpt-4o-mini"
+		}
+	} else if cfg.OpenAIAPIKey != "" {
+		// Direct OpenAI fallback
+		apiURL = cfg.OpenAIBaseURL + "/chat/completions"
+		apiKey = cfg.OpenAIAPIKey
+		model = cfg.OpenAIModel
+	} else {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.",
+			"error": "No LLM provider configured. Set MLD_LLM_OPENAI_KEY or OPENAI_API_KEY.",
 		})
 		return
 	}
@@ -77,9 +92,9 @@ Transcript:
 
 Summary:`, req.Text)
 
-	// Build OpenAI API request
+	// Build request (OpenAI format — works with both direct and proxy)
 	openAIReq := OpenAIRequest{
-		Model: cfg.OpenAIModel,
+		Model: model,
 		Messages: []OpenAIMessage{
 			{
 				Role:    "user",
@@ -87,71 +102,62 @@ Summary:`, req.Text)
 			},
 		},
 		MaxTokens:   maxTokens,
-		Temperature: 0.3, // Lower temperature for more focused summaries
+		Temperature: 0.3,
 	}
 
-	// Marshal request
 	reqBody, err := json.Marshal(openAIReq)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to marshal OpenAI request")
+		log.Error().Err(err).Msg("failed to marshal LLM request")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to prepare request"})
 		return
 	}
 
-	// Make request to OpenAI API
-	url := cfg.OpenAIBaseURL + "/chat/completions"
-	req2, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	req2, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(reqBody))
 	if err != nil {
-		log.Error().Err(err).Msg("failed to create OpenAI request")
+		log.Error().Err(err).Msg("failed to create LLM request")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 		return
 	}
 
 	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("Authorization", "Bearer "+cfg.OpenAIAPIKey)
+	req2.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{}
 	resp, err := client.Do(req2)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to call OpenAI API")
+		log.Error().Err(err).Msg("failed to call LLM API")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate summary"})
 		return
 	}
 	defer resp.Body.Close()
 
-	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to read OpenAI response")
+		log.Error().Err(err).Msg("failed to read LLM response")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response"})
 		return
 	}
 
-	// Check status code
 	if resp.StatusCode != http.StatusOK {
-		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("OpenAI API error")
-		c.JSON(resp.StatusCode, gin.H{"error": fmt.Sprintf("OpenAI API error: %s", string(body))})
+		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("LLM API error")
+		c.JSON(resp.StatusCode, gin.H{"error": fmt.Sprintf("LLM API error: %s", string(body))})
 		return
 	}
 
-	// Parse response
 	var openAIResp OpenAIResponse
 	if err := json.Unmarshal(body, &openAIResp); err != nil {
-		log.Error().Err(err).Msg("failed to parse OpenAI response")
+		log.Error().Err(err).Msg("failed to parse LLM response")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse response"})
 		return
 	}
 
-	// Extract summary
 	if len(openAIResp.Choices) == 0 {
-		log.Error().Msg("OpenAI API returned no choices")
+		log.Error().Msg("LLM API returned no choices")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No summary generated"})
 		return
 	}
 
-	summary := openAIResp.Choices[0].Message.Content
-
 	c.JSON(http.StatusOK, SummarizeResponse{
-		Summary: summary,
+		Summary: openAIResp.Choices[0].Message.Content,
 	})
 }
