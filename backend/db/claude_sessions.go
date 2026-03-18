@@ -10,7 +10,7 @@ import (
 // ArchiveClaudeSession marks a Claude session as archived
 func ArchiveClaudeSession(sessionID string) error {
 	_, err := Run(
-		`INSERT INTO claude_sessions (session_id, archived_at, updated_at)
+		`INSERT INTO agent_sessions (session_id, archived_at, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   archived_at = excluded.archived_at,
@@ -23,7 +23,7 @@ func ArchiveClaudeSession(sessionID string) error {
 // UnarchiveClaudeSession removes the archived mark from a Claude session
 func UnarchiveClaudeSession(sessionID string) error {
 	_, err := Run(
-		`UPDATE claude_sessions SET archived_at = NULL, updated_at = ?
+		`UPDATE agent_sessions SET archived_at = NULL, updated_at = ?
 		 WHERE session_id = ?`,
 		NowMs(), sessionID,
 	)
@@ -33,7 +33,7 @@ func UnarchiveClaudeSession(sessionID string) error {
 // IsClaudeSessionArchived checks if a single session is archived
 func IsClaudeSessionArchived(sessionID string) (bool, error) {
 	return Exists(
-		`SELECT 1 FROM claude_sessions WHERE session_id = ? AND archived_at IS NOT NULL`,
+		`SELECT 1 FROM agent_sessions WHERE session_id = ? AND archived_at IS NOT NULL`,
 		sessionID,
 	)
 }
@@ -41,7 +41,7 @@ func IsClaudeSessionArchived(sessionID string) (bool, error) {
 // GetArchivedClaudeSessionIDs returns all archived session IDs as a set
 func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 	rows, err := Select(
-		`SELECT session_id FROM claude_sessions WHERE archived_at IS NOT NULL`,
+		`SELECT session_id FROM agent_sessions WHERE archived_at IS NOT NULL`,
 		nil,
 		func(rows *sql.Rows) (string, error) {
 			var id string
@@ -66,10 +66,10 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 // a client disconnecting with a lower count can never regress the value.
 func MarkClaudeSessionRead(sessionID string, resultCount int) error {
 	_, err := Run(
-		`INSERT INTO claude_sessions (session_id, last_read_count, updated_at)
+		`INSERT INTO agent_sessions (session_id, last_read_count, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
-		   last_read_count = MAX(excluded.last_read_count, claude_sessions.last_read_count),
+		   last_read_count = MAX(excluded.last_read_count, agent_sessions.last_read_count),
 		   updated_at = excluded.updated_at`,
 		sessionID, resultCount, NowMs(),
 	)
@@ -86,7 +86,7 @@ type SessionReadState struct {
 // Key is session_id, value is last-read result count (completed turns).
 func GetAllSessionReadStates() (map[string]int, error) {
 	rows, err := Select(
-		`SELECT session_id, last_read_count FROM claude_sessions WHERE last_read_count > 0`,
+		`SELECT session_id, last_read_count FROM agent_sessions WHERE last_read_count > 0`,
 		nil,
 		func(rows *sql.Rows) (SessionReadState, error) {
 			var s SessionReadState
@@ -110,7 +110,7 @@ func GetAllSessionReadStates() (map[string]int, error) {
 // Called when the user changes permission mode via the UI.
 func SaveClaudeSessionPermissionMode(sessionID string, mode string) error {
 	_, err := Run(
-		`INSERT INTO claude_sessions (session_id, permission_mode, updated_at)
+		`INSERT INTO agent_sessions (session_id, permission_mode, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   permission_mode = excluded.permission_mode,
@@ -128,7 +128,7 @@ func SaveClaudeSessionAllowedTools(sessionID string, tools []string) error {
 		return err
 	}
 	_, err = Run(
-		`INSERT INTO claude_sessions (session_id, always_allowed_tools, updated_at)
+		`INSERT INTO agent_sessions (session_id, always_allowed_tools, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   always_allowed_tools = excluded.always_allowed_tools,
@@ -151,7 +151,7 @@ type ClaudeSessionPreferences struct {
 func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, error) {
 	rows, err := Select(
 		`SELECT session_id, permission_mode, always_allowed_tools
-		 FROM claude_sessions
+		 FROM agent_sessions
 		 WHERE permission_mode != '' OR always_allowed_tools != '[]'`,
 		nil,
 		func(rows *sql.Rows) (*ClaudeSessionPreferences, error) {
@@ -184,7 +184,7 @@ func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, err
 // ShareClaudeSession sets the share token for a session (upsert).
 func ShareClaudeSession(sessionID, shareToken string) error {
 	_, err := Run(
-		`INSERT INTO claude_sessions (session_id, share_token, shared_at, updated_at)
+		`INSERT INTO agent_sessions (session_id, share_token, shared_at, updated_at)
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   share_token = excluded.share_token,
@@ -198,7 +198,7 @@ func ShareClaudeSession(sessionID, shareToken string) error {
 // UnshareClaudeSession removes the share token from a session.
 func UnshareClaudeSession(sessionID string) error {
 	_, err := Run(
-		`UPDATE claude_sessions SET share_token = NULL, shared_at = NULL, updated_at = ?
+		`UPDATE agent_sessions SET share_token = NULL, shared_at = NULL, updated_at = ?
 		 WHERE session_id = ?`,
 		NowMs(), sessionID,
 	)
@@ -210,7 +210,7 @@ func UnshareClaudeSession(sessionID string) error {
 func GetSessionIDByShareToken(shareToken string) (string, error) {
 	var sessionID string
 	err := GetDB().QueryRow(
-		`SELECT session_id FROM claude_sessions WHERE share_token = ?`,
+		`SELECT session_id FROM agent_sessions WHERE share_token = ?`,
 		shareToken,
 	).Scan(&sessionID)
 	if err == sql.ErrNoRows {
@@ -227,7 +227,7 @@ func GetSessionIDByShareToken(shareToken string) (string, error) {
 func GetShareToken(sessionID string) (string, error) {
 	var token sql.NullString
 	err := GetDB().QueryRow(
-		`SELECT share_token FROM claude_sessions WHERE session_id = ?`,
+		`SELECT share_token FROM agent_sessions WHERE session_id = ?`,
 		sessionID,
 	).Scan(&token)
 	if err == sql.ErrNoRows {
@@ -251,7 +251,7 @@ type ShareTokenEntry struct {
 // GetAllShareTokens bulk-loads all share tokens as a sessionID -> shareToken map.
 func GetAllShareTokens() (map[string]string, error) {
 	rows, err := Select(
-		`SELECT session_id, share_token FROM claude_sessions WHERE share_token IS NOT NULL`,
+		`SELECT session_id, share_token FROM agent_sessions WHERE share_token IS NOT NULL`,
 		nil,
 		func(rows *sql.Rows) (ShareTokenEntry, error) {
 			var e ShareTokenEntry
