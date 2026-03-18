@@ -280,6 +280,7 @@ func (s *Server) setupRouter() {
 		gzip.WithExcludedPathsRegexs([]string{
 			"/api/claude/sessions/.*/ws",        // WebSocket - terminal I/O
 			"/api/claude/sessions/.*/subscribe", // WebSocket - session updates
+			"/api/agent/sessions/.*/subscribe",  // WebSocket - agent session updates
 		}),
 	))
 

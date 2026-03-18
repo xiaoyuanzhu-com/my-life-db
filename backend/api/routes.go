@@ -135,6 +135,26 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/api/claude-login/ws", h.ClaudeLoginWebSocket)
 	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 
+	// Agent routes (new unified API)
+	agentRoutes := r.Group("/api/agent")
+	agentRoutes.Use(wsAuth)
+	{
+		agentRoutes.GET("/info", h.GetAgentInfo)
+		agentRoutes.GET("/sessions", h.GetAgentSessions)
+		agentRoutes.GET("/sessions/all", h.GetAgentSessions)
+		agentRoutes.POST("/sessions", h.CreateAgentSession)
+		agentRoutes.GET("/sessions/:id", h.GetAgentSession)
+		agentRoutes.PATCH("/sessions/:id", h.UpdateAgentSession)
+		agentRoutes.DELETE("/sessions/:id", h.DeleteAgentSession)
+		agentRoutes.GET("/sessions/:id/messages", h.GetAgentMessages)
+		agentRoutes.POST("/sessions/:id/deactivate", h.DeactivateAgentSession)
+		agentRoutes.POST("/sessions/:id/archive", h.ArchiveAgentSession)
+		agentRoutes.POST("/sessions/:id/unarchive", h.UnarchiveAgentSession)
+		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)
+		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
+	}
+	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionSubscribe)
+
 	// LLM proxy routes (token-authenticated, used by agent CLIs)
 	if proxy := h.server.LLMProxy(); proxy != nil {
 		r.Any("/api/anthropic/*path", gin.WrapH(proxy.AnthropicHandler()))
