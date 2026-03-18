@@ -48,9 +48,10 @@ func (c *Client) AvailableAgents() []AgentInfo {
 }
 
 // CreateSession starts an interactive, multi-turn agent session via ACP.
-// TODO: Implement ACP connection once coder/acp-go-sdk is added.
+// Spawns the agent binary, establishes ACP connection, creates session.
 func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Session, error) {
-	if _, err := c.getAgent(config.Agent); err != nil {
+	agentCfg, err := c.getAgent(config.Agent)
+	if err != nil {
 		return nil, err
 	}
 
@@ -65,21 +66,38 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 	}
 	c.mu.Unlock()
 
-	// TODO: Spawn agent binary, create ACP connection
-	return nil, &AgentError{
-		Type:    ErrNotFound,
-		Agent:   config.Agent,
-		Message: "ACP session creation not yet implemented",
+	// Merge env vars (defaults + per-call)
+	env := c.MergeEnv(config)
+
+	// Spawn agent process and create ACP session
+	session, err := spawnACPSession(ctx, agentCfg, config, env)
+	if err != nil {
+		return nil, err
 	}
+
+	// Track active session
+	c.mu.Lock()
+	c.active[session.ID()] = session
+	c.mu.Unlock()
+
+	// Remove from active on close
+	go func() {
+		<-session.Done()
+		c.mu.Lock()
+		delete(c.active, session.ID())
+		c.mu.Unlock()
+	}()
+
+	return session, nil
 }
 
 // ResumeSession resumes an existing session by ID via ACP.
+// Note: LoadSession fails across process restarts (verified finding).
+// For now, this creates a new session — history is not replayed.
 func (c *Client) ResumeSession(ctx context.Context, sessionID string, config SessionConfig) (Session, error) {
-	return nil, &AgentError{
-		Type:    ErrNotFound,
-		Agent:   config.Agent,
-		Message: "ACP session resume not yet implemented",
-	}
+	// ACP LoadSession fails across process restarts.
+	// Create a new session instead.
+	return c.CreateSession(ctx, config)
 }
 
 // RunTask runs a one-off agent task to completion.

@@ -85,10 +85,18 @@ const (
 
 // PermissionRequest is emitted when the agent needs user approval.
 type PermissionRequest struct {
-	ID       string          // unique ID for this request
-	Tool     string          // tool name
-	Input    json.RawMessage // tool input
-	FilePath string          // affected file, if applicable
+	ID       string             // unique ID (= ACP ToolCallId)
+	Tool     string             // tool title (e.g., "Write /path/file.txt")
+	ToolKind string             // tool kind (e.g., "execute", "edit", "read")
+	Input    json.RawMessage    // raw tool input
+	Options  []PermissionOption // available permission options
+}
+
+// PermissionOption describes one choice in a permission request.
+type PermissionOption struct {
+	ID   string // option ID (e.g., "allow_always", "allow", "reject")
+	Kind string // option kind (e.g., "allow_always", "allow_once", "reject_once")
+	Name string // display name (e.g., "Always Allow", "Allow", "Reject")
 }
 
 // Usage tracks token consumption for a turn or task.
@@ -114,12 +122,13 @@ const (
 
 // Block represents a piece of content within a message.
 type Block struct {
-	Type       BlockType
-	Text       string          // for text blocks
-	Language   string          // for code blocks
-	ToolName   string          // for tool_use / tool_result blocks
-	ToolInput  json.RawMessage // for tool_use blocks
-	ToolOutput string          // for tool_result blocks
+	Type      BlockType
+	Text      string          // for text, thinking, plan blocks
+	Language  string          // for code blocks
+	ToolName  string          // for tool_use blocks: tool title
+	ToolUseID string          // for tool_use / tool_result blocks: links them
+	ToolKind  string          // for tool_use blocks: "execute", "edit", "read", etc.
+	ToolInput json.RawMessage // for tool_use blocks: raw input JSON
 }
 
 // BlockType identifies the kind of content block.
@@ -128,8 +137,10 @@ type BlockType string
 const (
 	BlockText       BlockType = "text"
 	BlockCode       BlockType = "code"
+	BlockThinking   BlockType = "thinking"
 	BlockToolUse    BlockType = "tool_use"
 	BlockToolResult BlockType = "tool_result"
+	BlockPlan       BlockType = "plan"
 )
 
 // AgentInfo describes an available agent.
