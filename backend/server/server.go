@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/claude"
 	claudecodecollector "github.com/xiaoyuanzhu-com/my-life-db/collectors/claudecode"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
@@ -40,6 +41,7 @@ type Server struct {
 	agent               *agent.Agent
 	claudeCodeCollector *claudecodecollector.Collector
 	llmProxy        *llm.Proxy
+	agentClient     *agentsdk.Client
 
 	// Claude Code CLI auth
 	claudeLoggedIn atomic.Bool
@@ -79,6 +81,32 @@ func New(cfg *Config) (*Server, error) {
 			Bool("anthropic", cfg.LLM.HasAnthropic()).
 			Bool("openai", cfg.LLM.HasOpenAI()).
 			Msg("LLM proxy initialized")
+	}
+
+	// 1.6. Initialize Agent Client (ACP-based)
+	{
+		claudeAgent := agentsdk.AgentConfig{
+			Type:    agentsdk.AgentClaudeCode,
+			Name:    "Claude Code",
+			Command: "claude-agent-acp",
+		}
+
+		agentDefaults := agentsdk.SessionConfig{}
+		if cfg.LLM.HasAnthropic() {
+			agentDefaults.Env = map[string]string{
+				"ANTHROPIC_BASE_URL": fmt.Sprintf("http://localhost:%d/api/anthropic", cfg.Port),
+				"ANTHROPIC_API_KEY":  "dummy",
+				"MLD_PROXY_TOKEN":    s.llmProxy.Token(),
+			}
+		}
+		// If no LLM proxy configured, agent uses its own auth (e.g., claude login)
+
+		s.agentClient = agentsdk.NewClient(agentDefaults, claudeAgent)
+		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
+
+		log.Info().
+			Bool("llm_proxy", cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI()).
+			Msg("agent client initialized")
 	}
 
 	// 2. Load user settings from database and apply log level
@@ -398,6 +426,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	// 5.5. Shutdown agent client (close all ACP sessions)
+	if s.agentClient != nil {
+		if err := s.agentClient.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("agent client shutdown error")
+		}
+	}
+
 	// 6. Stop background services (in reverse order of startup)
 	s.meiliSyncWorker.Stop()
 	s.digestWorker.Stop()
@@ -424,6 +459,7 @@ func (s *Server) Notifications() *notifications.Service       { return s.notifSe
 func (s *Server) Claude() *claude.SessionManager              { return s.claudeManager }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
+func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 
