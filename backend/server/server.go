@@ -19,6 +19,7 @@ import (
 	claudecodecollector "github.com/xiaoyuanzhu-com/my-life-db/collectors/claudecode"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
+	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
@@ -38,6 +39,7 @@ type Server struct {
 	claudeManager   *claude.SessionManager
 	agent               *agent.Agent
 	claudeCodeCollector *claudecodecollector.Collector
+	llmProxy        *llm.Proxy
 
 	// Claude Code CLI auth
 	claudeLoggedIn atomic.Bool
@@ -69,6 +71,15 @@ func New(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	s.database = database
+
+	// 1.5. Initialize LLM proxy
+	s.llmProxy = llm.NewProxy(cfg.LLM)
+	if cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI() {
+		log.Info().
+			Bool("anthropic", cfg.LLM.HasAnthropic()).
+			Bool("openai", cfg.LLM.HasOpenAI()).
+			Msg("LLM proxy initialized")
+	}
 
 	// 2. Load user settings from database and apply log level
 	settings, err := db.LoadUserSettings()
@@ -412,6 +423,7 @@ func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSy
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) Claude() *claude.SessionManager              { return s.claudeManager }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
+func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 

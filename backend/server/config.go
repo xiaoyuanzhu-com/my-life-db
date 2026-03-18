@@ -5,6 +5,7 @@ import (
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
+	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
 
@@ -36,6 +37,9 @@ type Config struct {
 	MeiliHost   string
 	MeiliAPIKey string
 	MeiliIndex  string
+
+	// LLM proxy
+	LLM llm.Config
 
 	// Feature flags
 	InboxAgentEnabled bool

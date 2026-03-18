@@ -51,6 +51,11 @@ func getEnvDefault(key, defaultVal string) string {
 	return defaultVal
 }
 
+// GenerateToken creates a random 64-character hex token for proxy auth.
+func GenerateToken() string {
+	return generateToken()
+}
+
 func generateToken() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

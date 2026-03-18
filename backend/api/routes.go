@@ -135,6 +135,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/api/claude-login/ws", h.ClaudeLoginWebSocket)
 	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 
+	// LLM proxy routes (token-authenticated, used by agent CLIs)
+	if proxy := h.server.LLMProxy(); proxy != nil {
+		r.Any("/api/anthropic/*path", gin.WrapH(proxy.AnthropicHandler()))
+		r.Any("/api/openai/*path", gin.WrapH(proxy.OpenAIHandler()))
+		r.GET("/api/llm/v1/models", gin.WrapH(proxy.ModelsHandler()))
+	}
+
 	// Raw file serving - protected
 	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
 	r.PUT("/raw/*path", wsAuth, h.SaveRawFile)

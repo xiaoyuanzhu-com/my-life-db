@@ -38,6 +38,12 @@ type Config struct {
 	OAuthRedirectURI      string
 	OAuthExpectedUsername string
 
+	// LLM proxy
+	LLMAnthropicKey string
+	LLMAnthropicURL string
+	LLMOpenAIKey    string
+	LLMOpenAIURL    string
+
 	// Feature flags
 	InboxAgentEnabled bool
 
@@ -100,6 +106,12 @@ func load() *Config {
 		OAuthIssuerURL:        getEnv("MLD_OAUTH_ISSUER_URL", ""),
 		OAuthRedirectURI:      getEnv("MLD_OAUTH_REDIRECT_URI", ""),
 		OAuthExpectedUsername: getEnv("MLD_EXPECTED_USERNAME", ""),
+
+		// LLM proxy
+		LLMAnthropicKey: getEnv("MLD_LLM_ANTHROPIC_KEY", ""),
+		LLMAnthropicURL: getEnv("MLD_LLM_ANTHROPIC_URL", "https://api.anthropic.com"),
+		LLMOpenAIKey:    getEnv("MLD_LLM_OPENAI_KEY", ""),
+		LLMOpenAIURL:    getEnv("MLD_LLM_OPENAI_URL", "https://api.openai.com"),
 
 		// Feature flags
 		InboxAgentEnabled: getEnv("MLD_INBOX_AGENT", "") == "1",
