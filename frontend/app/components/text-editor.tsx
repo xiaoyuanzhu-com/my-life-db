@@ -49,6 +49,8 @@ function getLanguageFromFilename(filename: string): string {
     r: 'r',
     dockerfile: 'dockerfile',
     makefile: 'makefile',
+    tex: 'latex',
+    typ: 'plaintext',
   };
   return languageMap[ext || ''] || 'plaintext';
 }

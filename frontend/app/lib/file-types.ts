@@ -23,7 +23,7 @@ export const TEXT_MIME_TYPES = new Set([
  */
 export const TEXT_EXTENSIONS = new Set([
   // Text / markup
-  '.md', '.mdx', '.markdown', '.txt', '.log',
+  '.md', '.mdx', '.markdown', '.txt', '.log', '.tex', '.typ',
   '.json', '.yaml', '.yml', '.csv', '.tsv',
   // Programming languages
   '.js', '.jsx', '.ts', '.tsx',

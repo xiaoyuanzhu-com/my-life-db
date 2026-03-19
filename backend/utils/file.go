@@ -151,6 +151,8 @@ func DetectMimeType(filename string) string {
 		".xml":      "application/xml",
 		".tsv":      "text/tab-separated-values",
 		".log":      "text/plain",
+		".tex":      "text/x-tex",
+		".typ":      "text/plain",
 		// Programming languages
 		".js":   "text/javascript",
 		".jsx":  "text/javascript",
