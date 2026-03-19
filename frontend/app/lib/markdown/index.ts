@@ -42,6 +42,13 @@ function configureMarked() {
       breaks: true, // Convert \n to <br>
       gfm: true, // GitHub Flavored Markdown
       renderer: {
+        link({ href, text }) {
+          // External links open in a new tab
+          if (/^https?:\/\//.test(href)) {
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`
+          }
+          return `<a href="${href}">${text}</a>`
+        },
         code({ text, lang }) {
           // Handle mermaid blocks specially
           if (lang === 'mermaid') {
