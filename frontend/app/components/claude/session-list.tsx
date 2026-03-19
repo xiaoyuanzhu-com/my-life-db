@@ -21,6 +21,7 @@ export interface Session {
   lastUserActivity?: number
   messageCount?: number
   gitBranch?: string
+  agentType?: string
 }
 
 interface SessionListProps {
@@ -294,6 +295,11 @@ export function SessionList({
                               {session.messageCount !== undefined && session.messageCount > 0 && (
                                 <span className="shrink-0">
                                   • {session.messageCount} msgs
+                                </span>
+                              )}
+                              {session.agentType && session.agentType !== 'claude_code' && (
+                                <span className="shrink-0">
+                                  • {session.agentType === 'codex' ? 'Codex' : session.agentType}
                                 </span>
                               )}
                             </div>

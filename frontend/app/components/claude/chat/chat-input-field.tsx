@@ -6,6 +6,7 @@ import { FolderPicker } from './folder-picker'
 import { SlashCommandPopover } from './slash-command-popover'
 import { FileTagPopover } from './file-tag-popover'
 import { PermissionModeSelector, type PermissionMode } from './permission-mode-selector'
+import { AgentTypeSelector, type AgentType } from './agent-type-selector'
 import { ContextUsageIndicator, type ContextUsage } from './context-usage-indicator'
 import { filterCommands } from './hooks'
 import { useFileTag, useFilteredFiles } from './hooks/use-file-tag'
@@ -44,6 +45,10 @@ interface ChatInputFieldProps {
   contextUsage?: ContextUsage | null
   /** Callback when user clicks context usage indicator to trigger compact */
   onCompact?: () => void
+  /** Current agent type */
+  agentType?: AgentType
+  /** Callback when agent type changes */
+  onAgentTypeChange?: (type: AgentType) => void
 }
 
 export function ChatInputField({
@@ -63,6 +68,8 @@ export function ChatInputField({
   onPermissionModeChange,
   contextUsage,
   onCompact,
+  agentType = 'claude_code',
+  onAgentTypeChange,
 }: ChatInputFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -392,6 +399,14 @@ export function ChatInputField({
               onChange={onWorkingDirChange}
               disabled={disabled || hasPermission}
               readOnly={!onWorkingDirChange}
+            />
+          )}
+          {onAgentTypeChange && (
+            <AgentTypeSelector
+              value={agentType}
+              onChange={onAgentTypeChange}
+              disabled={disabled || hasPermission}
+              showLabel
             />
           )}
           {onPermissionModeChange && (

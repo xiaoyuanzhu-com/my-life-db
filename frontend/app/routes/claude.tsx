@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
+import type { AgentType } from '~/components/claude/chat/agent-type-selector'
 import { Button } from '~/components/ui/button'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
 import {
@@ -43,6 +44,7 @@ interface Session {
   messageCount?: number
   gitBranch?: string
   permissionMode?: string // From active session runtime state (empty for historical)
+  agentType?: string
   shareToken?: string
   shareUrl?: string
 }
@@ -232,6 +234,16 @@ export default function ClaudePage() {
     }
     return 'default'
   })
+  // Agent type for new session
+  const [newSessionAgentType, setNewSessionAgentType] = useState<AgentType>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mld-agent-type')
+      if (saved === 'claude_code' || saved === 'codex') {
+        return saved
+      }
+    }
+    return 'claude_code'
+  })
 
   // Get active session - use ref to cache and prevent unmount during session list refresh
   // This prevents ChatInterface from unmounting when sessions array temporarily
@@ -266,6 +278,11 @@ export default function ClaudePage() {
   useEffect(() => {
     localStorage.setItem('claude-permission-mode', newSessionPermissionMode)
   }, [newSessionPermissionMode])
+
+  // Persist agent type to localStorage
+  useEffect(() => {
+    localStorage.setItem('mld-agent-type', newSessionAgentType)
+  }, [newSessionAgentType])
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -605,6 +622,7 @@ export default function ClaudePage() {
         title: message,
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
+        agentType: newSessionAgentType,
       })
 
       if (!response.ok) {
@@ -938,6 +956,8 @@ export default function ClaudePage() {
                       slashCommands={BUILTIN_COMMANDS}
                       permissionMode={newSessionPermissionMode}
                       onPermissionModeChange={setNewSessionPermissionMode}
+                      agentType={newSessionAgentType}
+                      onAgentTypeChange={setNewSessionAgentType}
                     />
                   </div>
                 ) : null}
@@ -971,6 +991,8 @@ export default function ClaudePage() {
                   slashCommands={BUILTIN_COMMANDS}
                   permissionMode={newSessionPermissionMode}
                   onPermissionModeChange={setNewSessionPermissionMode}
+                  agentType={newSessionAgentType}
+                  onAgentTypeChange={setNewSessionAgentType}
                 />
               </div>
             ) : null}
@@ -1034,6 +1056,8 @@ export default function ClaudePage() {
               slashCommands={BUILTIN_COMMANDS}
               permissionMode={newSessionPermissionMode}
               onPermissionModeChange={setNewSessionPermissionMode}
+              agentType={newSessionAgentType}
+              onAgentTypeChange={setNewSessionAgentType}
             />
           </div>
         ) : sessionSidebar ? (
@@ -1068,6 +1092,8 @@ export default function ClaudePage() {
               slashCommands={BUILTIN_COMMANDS}
               permissionMode={newSessionPermissionMode}
               onPermissionModeChange={setNewSessionPermissionMode}
+              agentType={newSessionAgentType}
+              onAgentTypeChange={setNewSessionAgentType}
             />
           </div>
         )}

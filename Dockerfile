@@ -76,6 +76,14 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Add ~/.local/bin to PATH for the xiaoyuanzhu user
 ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
 
+# Node.js runtime (required for ACP agent ecosystem)
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
+USER 1000
+
+# ACP agent binaries
+RUN npm install -g @zed-industries/claude-agent-acp
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=12345

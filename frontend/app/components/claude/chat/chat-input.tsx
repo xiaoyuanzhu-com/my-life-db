@@ -8,6 +8,7 @@ import { QuestionCard } from './question-card'
 import { ChatInputField } from './chat-input-field'
 import type { SlashCommand } from './slash-commands'
 import type { PermissionMode } from './permission-mode-selector'
+import type { AgentType } from './agent-type-selector'
 import type { ContextUsage } from './context-usage-indicator'
 
 // Re-export ConnectionStatus for backwards compatibility
@@ -61,6 +62,10 @@ interface ChatInputProps {
   contextUsage?: ContextUsage | null
   /** Callback when user clicks the context usage indicator to trigger compact */
   onCompact?: () => void
+  /** Current agent type */
+  agentType?: AgentType
+  /** Callback when agent type changes (only shown for new session) */
+  onAgentTypeChange?: (type: AgentType) => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -85,6 +90,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     onPermissionModeChange,
     contextUsage,
     onCompact,
+    agentType = 'claude_code',
+    onAgentTypeChange,
   },
   ref
 ) {
@@ -225,6 +232,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               onPermissionModeChange={onPermissionModeChange}
               contextUsage={contextUsage}
               onCompact={onCompact}
+              agentType={agentType}
+              onAgentTypeChange={onAgentTypeChange}
             />
           </div>
         </div>
