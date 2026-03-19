@@ -46,5 +46,4 @@ func (h *Handlers) ShareAgentSession(c *gin.Context)     { h.ShareClaudeSession(
 func (h *Handlers) UnshareAgentSession(c *gin.Context)   { h.UnshareClaudeSession(c) }
 func (h *Handlers) DeactivateAgentSession(c *gin.Context) { h.DeactivateClaudeSession(c) }
 
-// WebSocket handlers
-func (h *Handlers) AgentSessionSubscribe(c *gin.Context) { h.ClaudeSubscribeWebSocket(c) }
+// WebSocket handler: AgentSessionWebSocket is in agent_ws.go

@@ -154,7 +154,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)
 		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
 	}
-	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionSubscribe)
+	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionWebSocket)
 
 	// LLM proxy routes (token-authenticated, used by agent CLIs)
 	if proxy := h.server.LLMProxy(); proxy != nil {
