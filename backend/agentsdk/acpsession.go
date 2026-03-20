@@ -200,8 +200,9 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 			// Check if this is a context cancellation (cancel returns error, not StopReason)
 			if ctx.Err() != nil {
 				events <- Event{
-					Type:  EventComplete,
-					Usage: &Usage{},
+					Type:       EventComplete,
+					StopReason: "cancelled",
+					Usage:      &Usage{},
 				}
 				return
 			}
@@ -218,22 +219,41 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 			Msg("ACP prompt completed")
 
 		events <- Event{
-			Type:  EventComplete,
-			Usage: &Usage{}, // ACP doesn't provide token usage
+			Type:       EventComplete,
+			StopReason: string(resp.StopReason),
+			Usage:      &Usage{}, // ACP doesn't provide token usage
 		}
 	}()
 
 	return events, nil
 }
 
-// RespondToPermission unblocks a pending permission request.
-func (s *acpSession) RespondToPermission(ctx context.Context, requestID string, allowed bool) error {
-	return s.client.respondToPermission(requestID, allowed, "")
+// RespondToPermission unblocks a pending permission request using an optionID.
+func (s *acpSession) RespondToPermission(ctx context.Context, toolCallID string, optionID string) error {
+	return s.client.respondToPermission(toolCallID, true, optionID)
 }
 
-// RespondToPermissionWithOption unblocks a pending permission request with a specific option.
-func (s *acpSession) RespondToPermissionWithOption(ctx context.Context, requestID string, optionID string) error {
-	return s.client.respondToPermission(requestID, true, optionID)
+// CancelAllPermissions cancels all pending permission requests.
+func (s *acpSession) CancelAllPermissions() {
+	s.client.cancelAllPermissions()
+}
+
+// SetMode changes the active mode for this session.
+func (s *acpSession) SetMode(ctx context.Context, modeID string) error {
+	_, err := s.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
+		SessionId: acp.SessionId(s.sessionID),
+		ModeId:    acp.SessionModeId(modeID),
+	})
+	return err
+}
+
+// SetModel changes the active model for this session.
+func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
+	_, err := s.conn.SetSessionModel(ctx, acp.SetSessionModelRequest{
+		SessionId: acp.SessionId(s.sessionID),
+		ModelId:   acp.ModelId(modelID),
+	})
+	return err
 }
 
 // Stop cancels the current operation (sends SIGINT equivalent via ACP Cancel).

@@ -347,8 +347,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			allowed := permResp.Response.Response.Behavior != "deny"
-
-			if err := acpSession.RespondToPermission(ctx, permResp.RequestID, allowed); err != nil {
+			optionID := ""
+			if allowed {
+				optionID = "allow_once"
+			} else {
+				optionID = "reject_once"
+			}
+			if err := acpSession.RespondToPermission(ctx, permResp.RequestID, optionID); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respond to permission")
 			}
 

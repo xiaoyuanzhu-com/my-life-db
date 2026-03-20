@@ -70,6 +70,17 @@ type Event struct {
 	PermissionRequest *PermissionRequest // for EventPermissionRequest
 	Usage             *Usage             // for EventComplete: token usage stats
 	Error             error              // for EventError
+	StopReason        string             // for EventComplete: why the turn ended
+	SessionMeta       *SessionMeta       // for EventModeUpdate/EventCommandsUpdate/EventModelsUpdate
+}
+
+// SessionMeta carries session-level metadata updates.
+type SessionMeta struct {
+	ModeID          string
+	AvailableModes  json.RawMessage
+	ModelID         string
+	AvailableModels json.RawMessage
+	Commands        json.RawMessage
 }
 
 // EventType identifies the kind of streaming event.
@@ -81,6 +92,9 @@ const (
 	EventPermissionRequest EventType = "permission_request" // agent needs approval (from ACP RequestPermission)
 	EventComplete          EventType = "complete"           // turn finished
 	EventError             EventType = "error"              // error occurred
+	EventModeUpdate        EventType = "mode_update"
+	EventCommandsUpdate    EventType = "commands_update"
+	EventModelsUpdate      EventType = "models_update"
 )
 
 // PermissionRequest is emitted when the agent needs user approval.
@@ -156,8 +170,17 @@ type Session interface {
 	// The returned channel is always closed after EventComplete or EventError.
 	Send(ctx context.Context, prompt string) (<-chan Event, error)
 
-	// RespondToPermission responds to an EventPermissionRequest.
-	RespondToPermission(ctx context.Context, requestID string, allowed bool) error
+	// RespondToPermission responds to an EventPermissionRequest using an optionID.
+	RespondToPermission(ctx context.Context, toolCallID string, optionID string) error
+
+	// CancelAllPermissions cancels all pending permission requests.
+	CancelAllPermissions()
+
+	// SetMode changes the active mode for this session.
+	SetMode(ctx context.Context, modeID string) error
+
+	// SetModel changes the active model for this session.
+	SetModel(ctx context.Context, modelID string) error
 
 	// Stop cancels the current operation (SIGINT). Agent stays alive.
 	Stop() error

@@ -278,6 +278,19 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 	}
 }
 
+// cancelAllPermissions cancels all pending permission requests.
+func (c *acpClient) cancelAllPermissions() {
+	c.permMu.Lock()
+	defer c.permMu.Unlock()
+	for id, ch := range c.permChannels {
+		select {
+		case ch <- permResponse{allowed: false}:
+		default:
+		}
+		delete(c.permChannels, id)
+	}
+}
+
 // respondToPermission unblocks a pending RequestPermission call.
 func (c *acpClient) respondToPermission(requestID string, allowed bool, optionID string) error {
 	c.permMu.Lock()
