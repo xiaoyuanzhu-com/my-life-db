@@ -5,6 +5,7 @@ package acptest
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -470,5 +471,212 @@ func TestACPSessionMultiTurnThenLoad(t *testing.T) {
 		t.Log("FINDING: LoadSession only replays the LAST turn")
 	} else {
 		t.Log("FINDING: LoadSession replay content is unclear — check replayed text above")
+	}
+}
+
+// TestACPLoadHistoricalSessionFromDisk tests whether session/load can restore
+// a historical session from Claude Code's JSONL files on disk.
+//
+// Claude Code persists sessions as JSONL files in ~/.claude/projects/<path>/.
+// This test discovers a real historical session ID from disk and attempts to
+// load it in a fresh claude-agent-acp process.
+//
+// This is critical for understanding session continuity after server restarts:
+// if LoadSession can read JSONL files, we can resume conversations; if not,
+// we need an alternative approach (e.g., claude --resume flag).
+func TestACPLoadHistoricalSessionFromDisk(t *testing.T) {
+	// Step 1: Discover a historical session ID from Claude's JSONL files
+	t.Log("=== Step 1: Discover historical session from disk ===")
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("Cannot get home directory: %v", err)
+	}
+
+	projectsDir := homeDir + "/.claude/projects"
+	projectEntries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		t.Skipf("Cannot read Claude projects directory %s: %v", projectsDir, err)
+	}
+
+	var historicalSessionID string
+	var originalCwd string // the ORIGINAL working directory, not the .claude/projects path
+	var jsonlPath string
+
+	for _, projEntry := range projectEntries {
+		if !projEntry.IsDir() {
+			continue
+		}
+		projPath := projectsDir + "/" + projEntry.Name()
+		files, err := os.ReadDir(projPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			name := f.Name()
+			if strings.HasSuffix(name, ".jsonl") && !f.IsDir() {
+				// Extract session ID from filename (remove .jsonl suffix)
+				sid := strings.TrimSuffix(name, ".jsonl")
+				// Basic UUID format check
+				if len(sid) == 36 && strings.Count(sid, "-") == 4 {
+					historicalSessionID = sid
+					jsonlPath = projPath + "/" + name
+
+					// Decode the project directory name back to the original cwd.
+					// Claude encodes paths by replacing '/' with '-' and prepending '-'.
+					// e.g., "-Users-iloahz-projects-MyLifeDB-my-life-db" → "/Users/iloahz/projects/MyLifeDB/my-life-db"
+					encodedName := projEntry.Name()
+					if strings.HasPrefix(encodedName, "-") {
+						decoded := strings.ReplaceAll(encodedName, "-", "/")
+						// Verify the decoded path exists on disk
+						if info, err := os.Stat(decoded); err == nil && info.IsDir() {
+							originalCwd = decoded
+						}
+					}
+					break
+				}
+			}
+		}
+		if historicalSessionID != "" {
+			break
+		}
+	}
+
+	if historicalSessionID == "" {
+		t.Skip("No historical Claude Code session JSONL files found on disk")
+	}
+	if originalCwd == "" {
+		t.Skipf("Could not decode original cwd from project directory for session %s", historicalSessionID)
+	}
+
+	// Get file size for context
+	info, _ := os.Stat(jsonlPath)
+	t.Logf("Found historical session: %s", historicalSessionID)
+	t.Logf("JSONL file: %s (%d bytes)", jsonlPath, info.Size())
+	t.Logf("Original cwd: %s", originalCwd)
+
+	// Count messages in the JSONL
+	content, _ := os.ReadFile(jsonlPath)
+	lineCount := strings.Count(string(content), "\n")
+	t.Logf("JSONL lines: %d", lineCount)
+
+	// Step 2: Spawn a fresh claude-agent-acp and try to load this session
+	t.Log("=== Step 2: Fresh process, attempt LoadSession with historical ID ===")
+	h := NewHarness(t, WithAutoApprove(), WithTimeout(3*time.Minute))
+	h.Client().resetEvents()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Check if LoadSession capability is advertised
+	t.Logf("Agent LoadSession capability: checking via LoadSession call")
+
+	loadResp, err := h.Conn().LoadSession(ctx, acp.LoadSessionRequest{
+		SessionId:  acp.SessionId(historicalSessionID),
+		Cwd:        originalCwd,
+		McpServers: []acp.McpServer{},
+	})
+
+	if err != nil {
+		t.Logf("FINDING: LoadSession with historical session ID FAILED: %v", err)
+
+		errStr := err.Error()
+		if strings.Contains(errStr, "-32002") {
+			t.Log("FINDING: Error -32002 (Resource not found) — claude-agent-acp does NOT read JSONL files")
+			t.Log("         Historical sessions on disk are invisible to ACP session/load")
+		} else if strings.Contains(errStr, "-32601") {
+			t.Log("FINDING: Error -32601 (Method not found) — LoadSession not implemented")
+		} else {
+			t.Logf("FINDING: Unexpected error code — check error details above")
+		}
+
+		t.Log("")
+		t.Log("CONCLUSION: Cannot resume historical sessions via ACP session/load.")
+		t.Log("  Options for session continuity after restart:")
+		t.Log("  1. Use 'claude --resume <id>' CLI flag (bypass ACP)")
+		t.Log("  2. Re-inject conversation history into new session as context")
+		t.Log("  3. Wait for ACP spec to add session persistence support")
+		return
+	}
+
+	// If we get here, it worked!
+	t.Log("FINDING: LoadSession with historical session ID SUCCEEDED!")
+	t.Logf("Modes: %v, Models: %v", loadResp.Modes != nil, loadResp.Models != nil)
+
+	// Wait for replay events
+	time.Sleep(5 * time.Second)
+
+	replayEvents := h.Client().getEvents()
+	t.Logf("Replayed events: %d", len(replayEvents))
+
+	typeCounts := map[string]int{}
+	for _, e := range replayEvents {
+		typeCounts[e.Type]++
+	}
+	for typ, count := range typeCounts {
+		t.Logf("  %s: %d", typ, count)
+	}
+
+	userMsgs := Events(replayEvents, "user_message")
+	agentMsgs := Events(replayEvents, "agent_message")
+	t.Logf("User messages replayed: %d", len(userMsgs))
+	t.Logf("Agent messages replayed: %d", len(agentMsgs))
+
+	if len(replayEvents) > 0 {
+		t.Log("FINDING: Historical session loaded AND replayed conversation history")
+		t.Log("         This means session/load CAN restore sessions from JSONL files!")
+
+		// Try sending a follow-up prompt
+		t.Log("=== Step 3: Send follow-up prompt to verify context retention ===")
+		h.Client().resetEvents()
+
+		origSessID := h.sessionID
+		h.sessionID = acp.SessionId(historicalSessionID)
+		defer func() { h.sessionID = origSessID }()
+
+		_, events := h.Prompt(ctx, "What was the first thing I asked you in this conversation? Reply briefly.")
+		text := AgentText(events)
+		t.Logf("Agent recall response: %q", truncate(text, 300))
+		t.Log("FINDING: If the agent recalled context, historical session resume works end-to-end")
+	} else {
+		t.Log("FINDING: LoadSession succeeded but NO events replayed — session may be empty or replay is async")
+	}
+}
+
+// TestACPLoadSessionCapability checks whether claude-agent-acp advertises
+// the LoadSession capability during initialization.
+func TestACPLoadSessionCapability(t *testing.T) {
+	h := NewHarness(t, WithAutoApprove(), WithTimeout(2*time.Minute))
+
+	// The capability is in the InitializeResponse — we need to check it
+	// Since the harness already called Initialize, we check by attempting LoadSession
+	// with a known-invalid ID and inspecting the error code.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := h.Conn().LoadSession(ctx, acp.LoadSessionRequest{
+		SessionId:  "00000000-0000-0000-0000-000000000000",
+		Cwd:        t.TempDir(),
+		McpServers: []acp.McpServer{},
+	})
+
+	if err == nil {
+		t.Log("FINDING: LoadSession with fake ID succeeded (unexpected)")
+		return
+	}
+
+	errStr := err.Error()
+	t.Logf("LoadSession error: %s", errStr)
+
+	if strings.Contains(errStr, "-32601") {
+		t.Log("FINDING: LoadSession returns -32601 (Method not found)")
+		t.Log("         This means claude-agent-acp does NOT implement AgentLoader")
+		t.Log("         The loadSession capability is NOT advertised")
+	} else if strings.Contains(errStr, "-32002") {
+		t.Log("FINDING: LoadSession returns -32002 (Resource not found)")
+		t.Log("         This means claude-agent-acp DOES implement AgentLoader")
+		t.Log("         The method exists but the session ID was not found")
+	} else {
+		t.Logf("FINDING: LoadSession returns unexpected error — capability status unclear")
 	}
 }
