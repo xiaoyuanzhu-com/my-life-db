@@ -14,6 +14,7 @@ import {
   type AgentToolCallFrame,
   type AgentToolCallUpdateFrame,
   type PermissionRequestFrame,
+  type PermissionOption,
   type ErrorFrame,
 } from "./use-agent-websocket"
 
@@ -67,6 +68,10 @@ export function useAgentRuntime(options: {
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [sessionMeta, setSessionMeta] = useState<SessionMeta>({})
+  // Map of toolCallId → { toolName, options } for pending permission.request frames
+  const [pendingPermissions, setPendingPermissions] = useState<
+    Map<string, { toolName: string; options: PermissionOption[] }>
+  >(() => new Map())
 
   // Use a ref to generate stable message IDs
   const msgIdCounter = useRef(0)
@@ -242,6 +247,16 @@ export function useAgentRuntime(options: {
         case "permission.request": {
           const f = frame as PermissionRequestFrame
           const toolCallId = f.toolCall.toolCallId
+
+          // Store permission options so the UI can render buttons
+          setPendingPermissions((prev) => {
+            const next = new Map(prev)
+            next.set(toolCallId, {
+              toolName: f.toolCall.title ?? "unknown",
+              options: f.options,
+            })
+            return next
+          })
 
           setMessages((prev) => {
             const updated = [...prev]
@@ -441,11 +456,25 @@ export function useAgentRuntime(options: {
 
   const runtime = useExternalStoreRuntime(adapter)
 
+  // Wrap sendPermissionResponse to also clear the pending entry
+  const handlePermissionResponse = useCallback(
+    (toolCallId: string, optionId: string) => {
+      sendPermissionResponse(toolCallId, optionId)
+      setPendingPermissions((prev) => {
+        const next = new Map(prev)
+        next.delete(toolCallId)
+        return next
+      })
+    },
+    [sendPermissionResponse]
+  )
+
   return {
     runtime,
     connected,
     sessionMeta,
-    sendPermissionResponse,
+    pendingPermissions,
+    sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
   }
 }

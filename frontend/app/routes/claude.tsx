@@ -4,8 +4,9 @@ import { SessionList } from '~/components/claude/session-list'
 import { ChatInterface, ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import type { AgentType } from '~/components/claude/chat/agent-type-selector'
+import { AgentChat } from '~/components/agent/agent-chat'
 import { Button } from '~/components/ui/button'
-import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2, Cpu } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -243,6 +244,14 @@ export default function ClaudePage() {
       }
     }
     return 'claude_code'
+  })
+
+  // Toggle between classic ChatInterface and new AgentChat (ACP runtime)
+  const [useAgentChat, setUseAgentChat] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('mld-use-agent-chat') === 'true'
+    }
+    return false
   })
 
   // Get active session - use ref to cache and prevent unmount during session list refresh
@@ -782,6 +791,15 @@ export default function ClaudePage() {
     )
   }
 
+  // ─── Helper: persist agent chat toggle ────────────────────────────────────
+  const handleToggleAgentChat = useCallback(() => {
+    setUseAgentChat((prev) => {
+      const next = !prev
+      localStorage.setItem('mld-use-agent-chat', String(next))
+      return next
+    })
+  }, [])
+
   // ─── Native app: single layout, no responsive split ─────────────────────────
   // The desktop/mobile conditional rendering below uses useIsMobile() to render
   // ChatInterface in one section or the other. On iPhone, rotating from portrait
@@ -793,17 +811,21 @@ export default function ClaudePage() {
     return (
       <div className="flex h-full min-w-0 animate-content-ready">
         <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
-          <ChatInterface
-            key={activeSessionId}
-            sessionId={activeSessionId}
-            sessionName={effectiveActiveSession?.title || 'Session'}
-            workingDir={effectiveActiveSession?.workingDir}
-            permissionMode={effectiveActiveSession?.permissionMode}
-            onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-            refreshSessions={refreshSessions}
-            initialMessage={pendingInitialMessage ?? undefined}
-            onInitialMessageSent={() => setPendingInitialMessage(null)}
-          />
+          {useAgentChat ? (
+            <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+          ) : (
+            <ChatInterface
+              key={activeSessionId}
+              sessionId={activeSessionId}
+              sessionName={effectiveActiveSession?.title || 'Session'}
+              workingDir={effectiveActiveSession?.workingDir}
+              permissionMode={effectiveActiveSession?.permissionMode}
+              onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+              refreshSessions={refreshSessions}
+              initialMessage={pendingInitialMessage ?? undefined}
+              onInitialMessageSent={() => setPendingInitialMessage(null)}
+            />
+          )}
         </div>
       </div>
     )
@@ -923,27 +945,42 @@ export default function ClaudePage() {
                     <PanelLeftOpen className="h-4 w-4" />
                   </Button>
                 )}
-                {/* Share button */}
-                {activeSessionId && effectiveActiveSession && (
-                  <div className="absolute top-2 right-2 z-20">
-                    <ShareButton
-                      session={effectiveActiveSession}
-                      onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
-                    />
+                {/* Top-right buttons: agent chat toggle + share */}
+                {activeSessionId && (
+                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn('h-8 w-8', useAgentChat && 'text-primary')}
+                      onClick={handleToggleAgentChat}
+                      title={useAgentChat ? 'Switch to classic chat' : 'Switch to ACP agent chat'}
+                    >
+                      <Cpu className="h-4 w-4" />
+                    </Button>
+                    {effectiveActiveSession && (
+                      <ShareButton
+                        session={effectiveActiveSession}
+                        onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
+                      />
+                    )}
                   </div>
                 )}
                 {activeSessionId && !isMobile ? (
-                  <ChatInterface
-                    key={activeSessionId}
-                    sessionId={activeSessionId}
-                    sessionName={effectiveActiveSession?.title || 'Session'}
-                    workingDir={effectiveActiveSession?.workingDir}
-                    permissionMode={effectiveActiveSession?.permissionMode}
-                    onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-                    refreshSessions={refreshSessions}
-                    initialMessage={pendingInitialMessage ?? undefined}
-                    onInitialMessageSent={() => setPendingInitialMessage(null)}
-                  />
+                  useAgentChat ? (
+                    <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+                  ) : (
+                    <ChatInterface
+                      key={activeSessionId}
+                      sessionId={activeSessionId}
+                      sessionName={effectiveActiveSession?.title || 'Session'}
+                      workingDir={effectiveActiveSession?.workingDir}
+                      permissionMode={effectiveActiveSession?.permissionMode}
+                      onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                      refreshSessions={refreshSessions}
+                      initialMessage={pendingInitialMessage ?? undefined}
+                      onInitialMessageSent={() => setPendingInitialMessage(null)}
+                    />
+                  )
                 ) : !activeSessionId ? (
                   <div className="flex flex-1 flex-col claude-bg">
                     <div className="flex-1" />
@@ -968,17 +1005,21 @@ export default function ClaudePage() {
           /* No sidebar — just the chat area */
           <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
             {activeSessionId && !isMobile ? (
-              <ChatInterface
-                key={activeSessionId}
-                sessionId={activeSessionId}
-                sessionName={effectiveActiveSession?.title || 'Session'}
-                workingDir={effectiveActiveSession?.workingDir}
-                permissionMode={effectiveActiveSession?.permissionMode}
-                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-                refreshSessions={refreshSessions}
-                initialMessage={pendingInitialMessage ?? undefined}
-                onInitialMessageSent={() => setPendingInitialMessage(null)}
-              />
+              useAgentChat ? (
+                <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+              ) : (
+                <ChatInterface
+                  key={activeSessionId}
+                  sessionId={activeSessionId}
+                  sessionName={effectiveActiveSession?.title || 'Session'}
+                  workingDir={effectiveActiveSession?.workingDir}
+                  permissionMode={effectiveActiveSession?.permissionMode}
+                  onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                  refreshSessions={refreshSessions}
+                  initialMessage={pendingInitialMessage ?? undefined}
+                  onInitialMessageSent={() => setPendingInitialMessage(null)}
+                />
+              )
             ) : !activeSessionId ? (
               <div className="flex flex-1 flex-col claude-bg">
                 <div className="flex-1" />
@@ -1023,17 +1064,21 @@ export default function ClaudePage() {
                 />
               </div>
             )}
-            <ChatInterface
-              key={activeSessionId}
-              sessionId={activeSessionId}
-              sessionName={effectiveActiveSession?.title || 'Session'}
-              workingDir={effectiveActiveSession?.workingDir}
-              permissionMode={effectiveActiveSession?.permissionMode}
-              onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
-              refreshSessions={refreshSessions}
-              initialMessage={pendingInitialMessage ?? undefined}
-              onInitialMessageSent={() => setPendingInitialMessage(null)}
-            />
+            {useAgentChat ? (
+              <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+            ) : (
+              <ChatInterface
+                key={activeSessionId}
+                sessionId={activeSessionId}
+                sessionName={effectiveActiveSession?.title || 'Session'}
+                workingDir={effectiveActiveSession?.workingDir}
+                permissionMode={effectiveActiveSession?.permissionMode}
+                onSessionNameChange={(name) => updateSessionTitle(activeSessionId, name)}
+                refreshSessions={refreshSessions}
+                initialMessage={pendingInitialMessage ?? undefined}
+                onInitialMessageSent={() => setPendingInitialMessage(null)}
+              />
+            )}
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
           /* New session view: full-screen chat input with back button */
