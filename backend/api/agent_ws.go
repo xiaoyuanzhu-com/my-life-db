@@ -46,7 +46,7 @@ var (
 )
 
 // AgentSessionWebSocket handles WebSocket connections for ACP-based agent sessions.
-// It translates ACP events into the same JSON format the existing frontend expects.
+// It uses ACP-native envelope framing for all messages.
 func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	sessionID := c.Param("id")
 
@@ -115,15 +115,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		seenResultCount.Store(int32(rc))
 	}
 
-	// Send session_info metadata frame
+	// Send session.info metadata frame
 	totalMessages := len(sessionState.GetRecentMessages(0))
-	sessionInfo := map[string]any{
-		"type":            "session_info",
-		"totalPages":      1,
-		"lowestBurstPage": 0,
-		"totalMessages":   totalMessages,
-	}
-	if infoBytes, err := json.Marshal(sessionInfo); err == nil {
+	sessionState.Mu.RLock()
+	isProcessing := sessionState.IsProcessing
+	sessionState.Mu.RUnlock()
+	infoBytes, err := agentsdk.SessionInfoEnvelope(sessionID, totalMessages, isProcessing)
+	if err == nil {
 		if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
 			return
 		}
@@ -172,7 +170,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					return
 				}
 				var mt struct{ Type string `json:"type"` }
-				if json.Unmarshal(data, &mt) == nil && mt.Type == "result" {
+				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
 					seenResultCount.Add(1)
 					persistReadState()
 				}
@@ -199,9 +197,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Create the bridge for event translation
-	bridge := &agentsdk.WSBridge{SessionID: sessionID}
-
 	// Read loop: handle inbound messages
 	for {
 		msgType, msg, err := conn.Read(ctx)
@@ -222,10 +217,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			continue
 		}
 
-		// Parse incoming message
+		// Parse incoming ACP message
 		var inMsg struct {
-			Type    string `json:"type"`
-			Content string `json:"content"`
+			Type       string          `json:"type"`
+			SessionID  string          `json:"sessionId"`
+			Content    json.RawMessage `json:"content,omitempty"`
+			ModeID     string          `json:"modeId,omitempty"`
+			ModelID    string          `json:"modelId,omitempty"`
+			ToolCallID string          `json:"toolCallId,omitempty"`
+			OptionID   string          `json:"optionId,omitempty"`
 		}
 		if err := json.Unmarshal(msg, &inMsg); err != nil {
 			log.Debug().Err(err).Msg("failed to parse agent WS message")
@@ -235,16 +235,34 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		log.Debug().Str("sessionId", sessionID).Str("type", inMsg.Type).Msg("received agent WS message")
 
 		switch inMsg.Type {
-		case "user_message":
-			msgUUID := uuid.New().String()
+		case "session.prompt":
+			// Extract text from content blocks
+			var contentBlocks []map[string]any
+			if err := json.Unmarshal(inMsg.Content, &contentBlocks); err != nil {
+				log.Debug().Err(err).Msg("failed to parse content blocks")
+				continue
+			}
 
-			// Broadcast synthetic user message
-			userMsg := bridge.UserMessage(inMsg.Content, msgUUID)
-			sessionState.AppendAndBroadcast(userMsg)
+			// Build prompt text from content blocks
+			var promptText string
+			for _, block := range contentBlocks {
+				if t, ok := block["type"].(string); ok && t == "text" {
+					if text, ok := block["text"].(string); ok {
+						if promptText != "" {
+							promptText += "\n"
+						}
+						promptText += text
+					}
+				}
+			}
 
-			// Broadcast system:init
-			initMsg := bridge.SystemInitMessage()
-			sessionState.AppendAndBroadcast(initMsg)
+			// Broadcast user echo
+			userEcho, _ := agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
+			sessionState.AppendAndBroadcast(userEcho)
+
+			// Broadcast turn.start
+			turnStart, _ := agentsdk.TurnStartEnvelope(sessionID)
+			sessionState.AppendAndBroadcast(turnStart)
 
 			// Create ACP session lazily if needed
 			acpSessionsMu.Lock()
@@ -259,12 +277,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
-					errMsg := map[string]any{
-						"type":  "error",
-						"error": "Failed to create agent session: " + err.Error(),
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						conn.Write(ctx, websocket.MessageText, msgBytes)
+					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to create agent session: "+err.Error(), "SESSION_ERROR")
+					if errBytes != nil {
+						conn.Write(ctx, websocket.MessageText, errBytes)
 					}
 					continue
 				}
@@ -279,12 +294,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				events, err := acpSess.Send(ctx, prompt)
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt to ACP session")
-					errMsg := map[string]any{
-						"type":  "error",
-						"error": "Failed to send message: " + err.Error(),
-					}
-					if msgBytes, _ := json.Marshal(errMsg); msgBytes != nil {
-						sessionState.AppendAndBroadcast(msgBytes)
+					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
+					if errBytes != nil {
+						sessionState.AppendAndBroadcast(errBytes)
 					}
 					return
 				}
@@ -294,9 +306,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Mu.Unlock()
 
 				for event := range events {
-					translated := bridge.TranslateEvent(event)
-					for _, jsonMsg := range translated {
-						sessionState.AppendAndBroadcast(jsonMsg)
+					frames := translateEventToEnvelopes(sessionID, event)
+					for _, frame := range frames {
+						sessionState.AppendAndBroadcast(frame)
 					}
 					if event.Type == agentsdk.EventComplete {
 						sessionState.Mu.Lock()
@@ -306,7 +318,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
 					}
 				}
-			}(acpSession, inMsg.Content)
+			}(acpSession, promptText)
 
 			// Auto-unarchive
 			if archived, err := db.IsClaudeSessionArchived(sessionID); err == nil && archived {
@@ -319,24 +331,50 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			log.Info().
 				Str("sessionId", sessionID).
-				Str("content", inMsg.Content).
-				Msg("message sent to agent session via WebSocket")
+				Str("prompt", promptText).
+				Msg("prompt sent to agent session via WebSocket")
 
-		case "control_response", "permission_response":
-			// Parse permission response
-			var permResp struct {
-				RequestID string `json:"request_id"`
-				Response  struct {
-					Response struct {
-						Behavior string `json:"behavior"`
-					} `json:"response"`
-				} `json:"response"`
-			}
-			if err := json.Unmarshal(msg, &permResp); err != nil {
-				log.Debug().Err(err).Msg("failed to parse permission response")
-				break
+		case "session.cancel":
+			acpSessionsMu.Lock()
+			acpSession, exists := acpSessions[sessionID]
+			acpSessionsMu.Unlock()
+
+			if exists {
+				acpSession.CancelAllPermissions()
+				if err := acpSession.Stop(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to cancel agent session")
+				} else {
+					log.Info().Str("sessionId", sessionID).Msg("agent session cancelled via WebSocket")
+				}
 			}
 
+		case "session.setMode":
+			acpSessionsMu.Lock()
+			acpSession, exists := acpSessions[sessionID]
+			acpSessionsMu.Unlock()
+
+			if exists {
+				if err := acpSession.SetMode(ctx, inMsg.ModeID); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("failed to set mode")
+				} else {
+					log.Info().Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("mode set via WebSocket")
+				}
+			}
+
+		case "session.setModel":
+			acpSessionsMu.Lock()
+			acpSession, exists := acpSessions[sessionID]
+			acpSessionsMu.Unlock()
+
+			if exists {
+				if err := acpSession.SetModel(ctx, inMsg.ModelID); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("failed to set model")
+				} else {
+					log.Info().Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("model set via WebSocket")
+				}
+			}
+
+		case "permission.respond":
 			acpSessionsMu.Lock()
 			acpSession, exists := acpSessions[sessionID]
 			acpSessionsMu.Unlock()
@@ -346,57 +384,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				break
 			}
 
-			allowed := permResp.Response.Response.Behavior != "deny"
-			optionID := ""
-			if allowed {
-				optionID = "allow_once"
-			} else {
-				optionID = "reject_once"
-			}
-			if err := acpSession.RespondToPermission(ctx, permResp.RequestID, optionID); err != nil {
+			if err := acpSession.RespondToPermission(ctx, inMsg.ToolCallID, inMsg.OptionID); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respond to permission")
 			}
 
 			log.Info().
 				Str("sessionId", sessionID).
-				Str("requestId", permResp.RequestID).
-				Bool("allowed", allowed).
+				Str("toolCallId", inMsg.ToolCallID).
+				Str("optionId", inMsg.OptionID).
 				Msg("sent permission response to agent")
-
-		case "control_request":
-			// Parse the control request
-			var controlReq struct {
-				Request struct {
-					Subtype string `json:"subtype"`
-					Mode    string `json:"mode"`
-				} `json:"request"`
-			}
-			if err := json.Unmarshal(msg, &controlReq); err != nil {
-				log.Debug().Err(err).Msg("failed to parse control_request")
-				break
-			}
-
-			switch controlReq.Request.Subtype {
-			case "interrupt":
-				acpSessionsMu.Lock()
-				acpSession, exists := acpSessions[sessionID]
-				acpSessionsMu.Unlock()
-
-				if exists {
-					if err := acpSession.Stop(); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to interrupt agent session")
-					} else {
-						log.Info().Str("sessionId", sessionID).Msg("agent session interrupted via WebSocket")
-					}
-				}
-
-			case "set_permission_mode":
-				// Store preference — currently informational only for ACP sessions
-				log.Info().
-					Str("sessionId", sessionID).
-					Str("mode", controlReq.Request.Mode).
-					Msg("permission mode preference noted (ACP)")
-			}
 
 		default:
 			log.Debug().Str("type", inMsg.Type).Msg("unknown agent WS message type")
@@ -405,4 +401,109 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	<-pollDone
 	<-pingDone
+}
+
+// translateEventToEnvelopes converts an agentsdk.Event into zero or more
+// ACP envelope frames for sending over WebSocket.
+func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte {
+	var frames [][]byte
+	var data []byte
+	var err error
+
+	switch event.Type {
+	case agentsdk.EventDelta:
+		data, err = agentsdk.AgentMessageChunkEnvelope(sessionID,
+			map[string]any{"type": "text", "text": event.Delta})
+
+	case agentsdk.EventMessage:
+		if event.Message == nil {
+			return nil
+		}
+		for _, block := range event.Message.Content {
+			switch block.Type {
+			case agentsdk.BlockThinking:
+				data, err = agentsdk.AgentThoughtChunkEnvelope(sessionID,
+					map[string]any{"type": "text", "text": block.Text})
+			case agentsdk.BlockToolUse:
+				fields := map[string]any{
+					"toolCallId": block.ToolUseID,
+					"title":      block.ToolName,
+					"kind":       block.ToolKind,
+					"status":     "in_progress",
+					"rawInput":   json.RawMessage(block.ToolInput),
+				}
+				data, err = agentsdk.AgentToolCallEnvelope(sessionID, fields)
+			case agentsdk.BlockToolResult:
+				fields := map[string]any{
+					"toolCallId": block.ToolUseID,
+					"status":     "completed",
+					"rawOutput":  map[string]any{"content": block.Text},
+				}
+				data, err = agentsdk.AgentToolCallUpdateEnvelope(sessionID, fields)
+			case agentsdk.BlockPlan:
+				data, err = agentsdk.AgentPlanEnvelope(sessionID, block.Text)
+			case agentsdk.BlockText:
+				data, err = agentsdk.AgentMessageChunkEnvelope(sessionID,
+					map[string]any{"type": "text", "text": block.Text})
+			}
+			if err == nil && data != nil {
+				frames = append(frames, data)
+				data = nil
+			}
+		}
+		return frames
+
+	case agentsdk.EventPermissionRequest:
+		pr := event.PermissionRequest
+		toolCall := map[string]any{
+			"toolCallId": pr.ID,
+			"title":      pr.Tool,
+			"kind":       pr.ToolKind,
+			"rawInput":   json.RawMessage(pr.Input),
+		}
+		options := make([]map[string]any, len(pr.Options))
+		for i, opt := range pr.Options {
+			options[i] = map[string]any{
+				"optionId": opt.ID, "name": opt.Name, "kind": opt.Kind,
+			}
+		}
+		data, err = agentsdk.PermissionRequestEnvelope(sessionID, toolCall, options)
+
+	case agentsdk.EventComplete:
+		stopReason := event.StopReason
+		if stopReason == "" {
+			stopReason = "end_turn"
+		}
+		data, err = agentsdk.TurnCompleteEnvelope(sessionID, stopReason)
+
+	case agentsdk.EventError:
+		msg := "unknown error"
+		if event.Error != nil {
+			msg = event.Error.Error()
+		}
+		data, err = agentsdk.ErrorEnvelope(sessionID, msg, "AGENT_ERROR")
+
+	case agentsdk.EventModeUpdate:
+		if event.SessionMeta != nil {
+			data, err = agentsdk.SessionModeUpdateEnvelope(sessionID,
+				event.SessionMeta.ModeID, json.RawMessage(event.SessionMeta.AvailableModes))
+		}
+
+	case agentsdk.EventCommandsUpdate:
+		if event.SessionMeta != nil {
+			data, err = agentsdk.SessionCommandsUpdateEnvelope(sessionID,
+				json.RawMessage(event.SessionMeta.Commands))
+		}
+
+	case agentsdk.EventModelsUpdate:
+		if event.SessionMeta != nil {
+			data, err = agentsdk.SessionModelsUpdateEnvelope(sessionID,
+				event.SessionMeta.ModelID, json.RawMessage(event.SessionMeta.AvailableModels))
+		}
+	}
+
+	if err == nil && data != nil {
+		frames = append(frames, data)
+	}
+	return frames
 }
