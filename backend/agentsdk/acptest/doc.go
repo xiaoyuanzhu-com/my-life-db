@@ -16,7 +16,9 @@
 //   - Connection lifecycle (initialize, session, prompt, close)
 //   - Streaming behavior (message chunks, thought chunks, tool calls)
 //   - Permission flow (request, approve, deny, always-allow)
-//   - Session management (create, load/resume)
+//   - Session management (create, load/resume, context retention)
+//   - Session load within same process vs across process restarts
+//   - AskUserQuestion: how it surfaces through ACP (tool call, permission, or text)
 //   - Interruption (cancel mid-prompt)
 //   - File I/O callbacks (read, write)
 //   - Terminal callbacks (create, output, kill)
