@@ -2,6 +2,7 @@ package agentsdk
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"sync"
@@ -20,6 +21,10 @@ type acpSession struct {
 
 	mu     sync.Mutex
 	closed bool
+
+	// Cached from NewSessionResponse, emitted on first Send()
+	initialModes  *SessionMeta
+	initialModels *SessionMeta
 }
 
 // spawnACPSession launches an agent binary, creates the ACP connection,
@@ -157,6 +162,38 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		agentType: agentCfg.Type,
 	}
 
+	// Cache session modes
+	if sessResp.Modes != nil {
+		modes := make([]map[string]any, len(sessResp.Modes.AvailableModes))
+		for i, m := range sessResp.Modes.AvailableModes {
+			entry := map[string]any{"id": string(m.Id), "name": m.Name}
+			if m.Description != nil {
+				entry["description"] = *m.Description
+			}
+			modes[i] = entry
+		}
+		modesJSON, _ := json.Marshal(modes)
+		session.initialModes = &SessionMeta{
+			ModeID:         string(sessResp.Modes.CurrentModeId),
+			AvailableModes: modesJSON,
+		}
+	}
+
+	// Cache session models
+	if sessResp.Models != nil {
+		models := make([]map[string]any, len(sessResp.Models.AvailableModels))
+		for i, m := range sessResp.Models.AvailableModels {
+			models[i] = map[string]any{
+				"modelId": string(m.ModelId), "name": m.Name,
+			}
+		}
+		modelsJSON, _ := json.Marshal(models)
+		session.initialModels = &SessionMeta{
+			ModelID:         string(sessResp.Models.CurrentModelId),
+			AvailableModels: modelsJSON,
+		}
+	}
+
 	// Watch for process exit
 	go func() {
 		<-conn.Done()
@@ -187,6 +224,21 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 
 	// Wire the events channel to the ACP client
 	s.client.setEvents(events)
+
+	// Emit cached session metadata on first prompt
+	s.mu.Lock()
+	modes := s.initialModes
+	models := s.initialModels
+	s.initialModes = nil // only emit once
+	s.initialModels = nil
+	s.mu.Unlock()
+
+	if modes != nil {
+		events <- Event{Type: EventModeUpdate, SessionMeta: modes}
+	}
+	if models != nil {
+		events <- Event{Type: EventModelsUpdate, SessionMeta: models}
+	}
 
 	go func() {
 		defer close(events)

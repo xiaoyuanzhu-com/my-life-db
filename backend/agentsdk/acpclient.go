@@ -2,6 +2,7 @@ package agentsdk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -153,15 +154,38 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		}
 
 	case update.CurrentModeUpdate != nil:
-		log.Info().
-			Str("mode", string(update.CurrentModeUpdate.CurrentModeId)).
-			Msg("ACP mode changed")
+		modeID := string(update.CurrentModeUpdate.CurrentModeId)
+		log.Info().Str("mode", modeID).Msg("ACP mode changed")
+		c.emit(Event{
+			Type: EventModeUpdate,
+			SessionMeta: &SessionMeta{
+				ModeID: modeID,
+			},
+		})
 
 	case update.AvailableCommandsUpdate != nil:
-		// Slash commands updated — informational only
-		log.Debug().
-			Int("commands", len(update.AvailableCommandsUpdate.AvailableCommands)).
-			Msg("ACP commands updated")
+		cmds := update.AvailableCommandsUpdate.AvailableCommands
+		log.Debug().Int("commands", len(cmds)).Msg("ACP commands updated")
+
+		cmdList := make([]map[string]any, len(cmds))
+		for i, cmd := range cmds {
+			entry := map[string]any{
+				"name":        cmd.Name,
+				"description": cmd.Description,
+			}
+			if cmd.Input != nil && cmd.Input.UnstructuredCommandInput != nil {
+				entry["input"] = map[string]any{"hint": cmd.Input.UnstructuredCommandInput.Hint}
+			}
+			cmdList[i] = entry
+		}
+		cmdJSON, _ := json.Marshal(cmdList)
+
+		c.emit(Event{
+			Type: EventCommandsUpdate,
+			SessionMeta: &SessionMeta{
+				Commands: cmdJSON,
+			},
+		})
 
 	case update.UserMessageChunk != nil:
 		// Agent echoes user message — skip to avoid duplicate
