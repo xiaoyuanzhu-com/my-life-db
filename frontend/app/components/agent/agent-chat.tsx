@@ -12,7 +12,7 @@ import {
   ComposerPrimitive,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react"
-import { Send, Square, ArrowDown } from "lucide-react"
+import { Send, Square, ArrowDown, Folder, Terminal } from "lucide-react"
 import { cn } from "~/lib/utils"
 import { useAgentRuntime } from "~/hooks/use-agent-runtime"
 import { AgentContextProvider, useAgentContext } from "./agent-context"
@@ -21,6 +21,7 @@ import { ExecuteToolRenderer } from "./tools/execute-tool"
 import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
 import { GenericToolRenderer } from "./tools/generic-tool"
+import { PermissionModeSelector, type PermissionMode } from "~/components/claude/chat/permission-mode-selector"
 
 // ── Tool dispatch ──────────────────────────────────────────────────────────
 
@@ -179,6 +180,13 @@ function AgentComposer() {
   )
 }
 
+// ── Agent type label lookup ────────────────────────────────────────────────
+
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 interface AgentChatProps {
@@ -186,15 +194,36 @@ interface AgentChatProps {
   /** Auth token for the WebSocket connection (can be empty for cookie-based auth) */
   token?: string
   className?: string
+  /** Session metadata (display only) */
+  workingDir?: string
+  agentType?: string
+  /** Permission mode (interactive — maps to session.setMode) */
+  permissionMode?: string
+  onPermissionModeChange?: (mode: string) => void
 }
 
 /**
  * AgentChat provides the full chat UI for an ACP agent session.
  * Mount this with a sessionId; it connects via WebSocket automatically.
  */
-export function AgentChat({ sessionId, token = "", className }: AgentChatProps) {
-  const { runtime, connected, pendingPermissions, sendPermissionResponse } =
+export function AgentChat({
+  sessionId,
+  token = "",
+  className,
+  workingDir,
+  agentType,
+  permissionMode,
+  onPermissionModeChange,
+}: AgentChatProps) {
+  const { runtime, connected, pendingPermissions, sendPermissionResponse, sendSetMode } =
     useAgentRuntime({ sessionId, token, enabled: true })
+
+  const handlePermissionModeChange = (mode: string) => {
+    onPermissionModeChange?.(mode)
+    sendSetMode(mode)
+  }
+
+  const agentLabel = agentType ? (AGENT_TYPE_LABELS[agentType] ?? agentType) : "Claude Code"
 
   return (
     <AgentContextProvider value={{ sendPermissionResponse, pendingPermissions }}>
@@ -206,6 +235,32 @@ export function AgentChat({ sessionId, token = "", className }: AgentChatProps) 
               Connecting…
             </div>
           )}
+
+          {/* Session header bar */}
+          <div className="shrink-0 flex items-center gap-3 px-4 py-1.5">
+            {/* Working directory */}
+            {workingDir && (
+              <div className="flex items-center gap-1 min-w-0 flex-1">
+                <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground truncate" title={workingDir}>
+                  {workingDir}
+                </span>
+              </div>
+            )}
+
+            {/* Agent type */}
+            <div className="flex items-center gap-1 shrink-0">
+              <Terminal className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground">{agentLabel}</span>
+            </div>
+
+            {/* Permission mode selector */}
+            <PermissionModeSelector
+              value={(permissionMode as PermissionMode) ?? "default"}
+              onChange={handlePermissionModeChange}
+              showLabel
+            />
+          </div>
 
           {/* Thread viewport */}
           <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">

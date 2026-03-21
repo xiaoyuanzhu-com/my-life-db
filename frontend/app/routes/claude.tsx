@@ -794,7 +794,17 @@ export default function ClaudePage() {
     return (
       <div className="flex h-full min-w-0 animate-content-ready">
         <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
-          <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+          <AgentChat
+            key={activeSessionId}
+            sessionId={activeSessionId}
+            className="flex-1"
+            workingDir={effectiveActiveSession?.workingDir}
+            agentType={effectiveActiveSession?.agentType || 'claude_code'}
+            permissionMode={effectiveActiveSession?.permissionMode || 'default'}
+            onPermissionModeChange={(mode) => {
+              localStorage.setItem('claude-permission-mode', mode)
+            }}
+          />
         </div>
       </div>
     )
@@ -924,7 +934,17 @@ export default function ClaudePage() {
                   </div>
                 )}
                 {activeSessionId && !isMobile ? (
-                  <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+                  <AgentChat
+                    key={activeSessionId}
+                    sessionId={activeSessionId}
+                    className="flex-1"
+                    workingDir={effectiveActiveSession?.workingDir}
+                    agentType={effectiveActiveSession?.agentType || 'claude_code'}
+                    permissionMode={effectiveActiveSession?.permissionMode || 'default'}
+                    onPermissionModeChange={(mode) => {
+                      localStorage.setItem('claude-permission-mode', mode)
+                    }}
+                  />
                 ) : !activeSessionId ? (
                   <div className="flex flex-1 flex-col claude-bg">
                     <div className="flex-1" />
@@ -949,7 +969,17 @@ export default function ClaudePage() {
           /* No sidebar — just the chat area */
           <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
             {activeSessionId && !isMobile ? (
-              <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+              <AgentChat
+                key={activeSessionId}
+                sessionId={activeSessionId}
+                className="flex-1"
+                workingDir={effectiveActiveSession?.workingDir}
+                agentType={effectiveActiveSession?.agentType || 'claude_code'}
+                permissionMode={effectiveActiveSession?.permissionMode || 'default'}
+                onPermissionModeChange={(mode) => {
+                  localStorage.setItem('claude-permission-mode', mode)
+                }}
+              />
             ) : !activeSessionId ? (
               <div className="flex flex-1 flex-col claude-bg">
                 <div className="flex-1" />
@@ -994,7 +1024,17 @@ export default function ClaudePage() {
                 />
               </div>
             )}
-            <AgentChat key={activeSessionId} sessionId={activeSessionId} className="flex-1" />
+            <AgentChat
+              key={activeSessionId}
+              sessionId={activeSessionId}
+              className="flex-1"
+              workingDir={effectiveActiveSession?.workingDir}
+              agentType={effectiveActiveSession?.agentType || 'claude_code'}
+              permissionMode={effectiveActiveSession?.permissionMode || 'default'}
+              onPermissionModeChange={(mode) => {
+                localStorage.setItem('claude-permission-mode', mode)
+              }}
+            />
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
           /* New session view: full-screen chat input with back button */
