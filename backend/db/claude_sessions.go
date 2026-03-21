@@ -5,6 +5,94 @@ import (
 	"encoding/json"
 )
 
+// ── Agent session CRUD ──────────────────────────────────────────────────────
+
+// AgentSessionRecord represents a full agent session row.
+type AgentSessionRecord struct {
+	SessionID  string `json:"sessionId"`
+	AgentType  string `json:"agentType"`
+	WorkingDir string `json:"workingDir"`
+	Title      string `json:"title"`
+	CreatedAt  int64  `json:"createdAt"`
+	UpdatedAt  int64  `json:"updatedAt"`
+	ArchivedAt *int64 `json:"archivedAt,omitempty"`
+}
+
+// CreateAgentSession inserts a new agent session record.
+func CreateAgentSession(sessionID, agentType, workingDir, title string) error {
+	now := NowMs()
+	_, err := Run(
+		`INSERT INTO agent_sessions (session_id, agent_type, working_dir, title, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(session_id) DO UPDATE SET
+		   agent_type = excluded.agent_type,
+		   working_dir = excluded.working_dir,
+		   title = CASE WHEN excluded.title != '' THEN excluded.title ELSE agent_sessions.title END,
+		   updated_at = excluded.updated_at`,
+		sessionID, agentType, workingDir, title, now, now,
+	)
+	return err
+}
+
+// GetAgentSession retrieves a single session record.
+func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
+	var r AgentSessionRecord
+	var archivedAt sql.NullInt64
+	err := GetDB().QueryRow(
+		`SELECT session_id, agent_type, working_dir, title, created_at, updated_at, archived_at
+		 FROM agent_sessions WHERE session_id = ?`,
+		sessionID,
+	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if archivedAt.Valid {
+		r.ArchivedAt = &archivedAt.Int64
+	}
+	return &r, nil
+}
+
+// ListAgentSessions returns all non-archived sessions ordered by most recent activity.
+func ListAgentSessions(includeArchived bool) ([]AgentSessionRecord, error) {
+	query := `SELECT session_id, agent_type, working_dir, title, created_at, updated_at, archived_at
+		 FROM agent_sessions`
+	if !includeArchived {
+		query += ` WHERE archived_at IS NULL`
+	}
+	query += ` ORDER BY updated_at DESC`
+
+	return Select(query, nil, func(rows *sql.Rows) (AgentSessionRecord, error) {
+		var r AgentSessionRecord
+		var archivedAt sql.NullInt64
+		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+		if archivedAt.Valid {
+			r.ArchivedAt = &archivedAt.Int64
+		}
+		return r, err
+	})
+}
+
+// UpdateAgentSessionTitle updates the title for a session.
+func UpdateAgentSessionTitle(sessionID, title string) error {
+	_, err := Run(
+		`UPDATE agent_sessions SET title = ?, updated_at = ? WHERE session_id = ?`,
+		title, NowMs(), sessionID,
+	)
+	return err
+}
+
+// TouchAgentSession updates the updated_at timestamp.
+func TouchAgentSession(sessionID string) error {
+	_, err := Run(
+		`UPDATE agent_sessions SET updated_at = ? WHERE session_id = ?`,
+		NowMs(), sessionID,
+	)
+	return err
+}
+
 // ── Archive operations ───────────────────────────────────────────────────────
 
 // ArchiveClaudeSession marks a Claude session as archived
