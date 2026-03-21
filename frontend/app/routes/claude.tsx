@@ -743,6 +743,15 @@ export default function ClaudePage() {
     )
   }, [])
 
+  // Helper: persist agent chat toggle
+  const handleToggleAgentChat = useCallback(() => {
+    setUseAgentChat((prev) => {
+      const next = !prev
+      localStorage.setItem('mld-use-agent-chat', String(next))
+      return next
+    })
+  }, [])
+
   // Show loading state while checking authentication
   if (authLoading || loading) {
     return (
