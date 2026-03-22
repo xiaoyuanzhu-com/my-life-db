@@ -960,6 +960,8 @@ export default function ClaudePage() {
                     onAgentTypeChange={(type) => {
                       localStorage.setItem('mld-agent-type', type)
                     }}
+                    initialMessage={pendingInitialMessage}
+                    onInitialMessageSent={() => setPendingInitialMessage(null)}
                   />
                 ) : !activeSessionId ? (
                   <AgentChat
@@ -995,6 +997,8 @@ export default function ClaudePage() {
                 onAgentTypeChange={(type) => {
                   localStorage.setItem('mld-agent-type', type)
                 }}
+                initialMessage={pendingInitialMessage}
+                onInitialMessageSent={() => setPendingInitialMessage(null)}
               />
             ) : !activeSessionId ? (
               <AgentChat
@@ -1050,6 +1054,8 @@ export default function ClaudePage() {
               onAgentTypeChange={(type) => {
                 localStorage.setItem('mld-agent-type', type)
               }}
+              initialMessage={pendingInitialMessage}
+              onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (

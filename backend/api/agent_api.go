@@ -200,7 +200,10 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 func (h *Handlers) DeleteAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	// Delete from DB (simple DELETE — the old handler also cleaned up the Claude session manager)
+	// Clean up in-memory ACP session and session state before deleting from DB
+	CleanupAgentSession(sessionID)
+
+	// Delete from DB
 	_, err := db.Run("DELETE FROM agent_sessions WHERE session_id = ?", sessionID)
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to delete agent session")

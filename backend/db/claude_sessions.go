@@ -267,6 +267,23 @@ func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, err
 	return result, nil
 }
 
+// GetAgentSessionPermissionMode returns the permission_mode for a single session.
+// Returns "" if the session doesn't exist or has no permission mode set.
+func GetAgentSessionPermissionMode(sessionID string) (string, error) {
+	var mode string
+	err := GetDB().QueryRow(
+		`SELECT permission_mode FROM agent_sessions WHERE session_id = ?`,
+		sessionID,
+	).Scan(&mode)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return mode, nil
+}
+
 // ── Share operations ─────────────────────────────────────────────────────────
 
 // ShareClaudeSession sets the share token for a session (upsert).

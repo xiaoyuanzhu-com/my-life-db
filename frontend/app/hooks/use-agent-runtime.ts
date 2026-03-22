@@ -189,11 +189,9 @@ export function useAgentRuntime(options: {
 
         case "agent.toolCall": {
           const f = frame as AgentToolCallFrame
-          const rawInput = f.rawInput
-          const args: ReadonlyJSONObject =
-            typeof rawInput === "object" && rawInput !== null
-              ? (rawInput as ReadonlyJSONObject)
-              : {}
+          const rawInput = (f.rawInput ?? {}) as Record<string, unknown>
+          // Include kind from the frame so tool renderers can dispatch on it
+          const args = { ...rawInput, kind: f.kind } as ReadonlyJSONObject
 
           setMessages((prev) => {
             const updated = [...prev]

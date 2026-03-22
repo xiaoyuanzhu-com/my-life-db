@@ -45,6 +45,21 @@ var (
 	acpSessions   = make(map[string]agentsdk.Session)
 )
 
+// CleanupAgentSession closes and removes the in-memory ACP session and session
+// state for the given session ID. Called from DeleteAgentSession in agent_api.go.
+func CleanupAgentSession(sessionID string) {
+	acpSessionsMu.Lock()
+	if sess, ok := acpSessions[sessionID]; ok {
+		sess.Close()
+		delete(acpSessions, sessionID)
+	}
+	acpSessionsMu.Unlock()
+
+	agentSessionStatesMu.Lock()
+	delete(agentSessionStates, sessionID)
+	agentSessionStatesMu.Unlock()
+}
+
 // AgentSessionWebSocket handles WebSocket connections for ACP-based agent sessions.
 // It uses ACP-native envelope framing for all messages.
 func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
@@ -270,10 +285,32 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSessionsMu.Unlock()
 
 			if !exists {
+				// Look up session metadata from DB for agent type, working dir, permission mode
+				agentType := agentsdk.AgentClaudeCode
+				permMode := agentsdk.PermissionAsk
+				workDir := ""
+				if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil {
+					if sessionRecord.AgentType == "codex" {
+						agentType = agentsdk.AgentCodex
+					}
+					workDir = sessionRecord.WorkingDir
+				}
+				if pmStr, _ := db.GetAgentSessionPermissionMode(sessionID); pmStr != "" {
+					switch pmStr {
+					case "bypassPermissions":
+						permMode = agentsdk.PermissionAuto
+					case "plan":
+						permMode = agentsdk.PermissionDeny
+					default:
+						permMode = agentsdk.PermissionAsk
+					}
+				}
+
 				// Create a new ACP session
 				sess, err := h.server.AgentClient().CreateSession(ctx, agentsdk.SessionConfig{
-					Agent:       agentsdk.AgentClaudeCode,
-					Permissions: agentsdk.PermissionAsk,
+					Agent:       agentType,
+					Permissions: permMode,
+					WorkingDir:  workDir,
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")

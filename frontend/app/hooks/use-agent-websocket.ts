@@ -129,26 +129,53 @@ export function useAgentWebSocket({
   useEffect(() => {
     if (!enabled || !sessionId) return
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const url = `${protocol}//${window.location.host}/api/agent/sessions/${sessionId}/subscribe?token=${token}`
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectDelay = 1000 // start at 1s
+    let unmounted = false
 
-    const ws = new WebSocket(url)
-    wsRef.current = ws
+    function connect() {
+      if (unmounted) return
 
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => setConnected(false)
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
+      const url = `${protocol}//${window.location.host}/api/agent/sessions/${sessionId}/subscribe?token=${token}`
 
-    ws.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(event.data) as AcpFrame
-        onFrame(frame)
-      } catch {
-        // ignore malformed frames
+      ws = new WebSocket(url)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        setConnected(true)
+        reconnectDelay = 1000 // reset on successful connect
+      }
+
+      ws.onclose = () => {
+        setConnected(false)
+        wsRef.current = null
+        // Reconnect with exponential backoff
+        if (!unmounted) {
+          reconnectTimer = setTimeout(() => {
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000)
+            connect()
+          }, reconnectDelay)
+        }
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const frame = JSON.parse(event.data) as AcpFrame
+          onFrame(frame)
+        } catch {
+          // ignore malformed frames
+        }
       }
     }
 
+    connect()
+
     return () => {
-      ws.close()
+      unmounted = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (ws) ws.close()
       wsRef.current = null
       setConnected(false)
     }
