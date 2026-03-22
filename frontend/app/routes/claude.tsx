@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { SessionList } from '~/components/claude/session-list'
-import { ChatInput, BUILTIN_COMMANDS } from '~/components/claude/chat'
 import type { PermissionMode } from '~/components/claude/chat/permission-mode-selector'
 import type { AgentType } from '~/components/claude/chat/agent-type-selector'
 import { AgentChat } from '~/components/agent/agent-chat'
@@ -804,6 +803,9 @@ export default function ClaudePage() {
             onPermissionModeChange={(mode) => {
               localStorage.setItem('claude-permission-mode', mode)
             }}
+            onAgentTypeChange={(type) => {
+              localStorage.setItem('mld-agent-type', type)
+            }}
           />
         </div>
       </div>
@@ -944,23 +946,23 @@ export default function ClaudePage() {
                     onPermissionModeChange={(mode) => {
                       localStorage.setItem('claude-permission-mode', mode)
                     }}
+                    onAgentTypeChange={(type) => {
+                      localStorage.setItem('mld-agent-type', type)
+                    }}
                   />
                 ) : !activeSessionId ? (
-                  <div className="flex flex-1 flex-col claude-bg">
-                    <div className="flex-1" />
-                    <ChatInput
-                      onSend={createSessionWithMessage}
-                      disabled={isCreatingSession}
-                      placeholder="Start a new conversation..."
-                      workingDir={newSessionWorkingDir}
-                      onWorkingDirChange={setNewSessionWorkingDir}
-                      slashCommands={BUILTIN_COMMANDS}
-                      permissionMode={newSessionPermissionMode}
-                      onPermissionModeChange={setNewSessionPermissionMode}
-                      agentType={newSessionAgentType}
-                      onAgentTypeChange={setNewSessionAgentType}
-                    />
-                  </div>
+                  <AgentChat
+                    key="new-session"
+                    sessionId=""
+                    className="flex-1 claude-bg"
+                    workingDir={newSessionWorkingDir}
+                    onWorkingDirChange={setNewSessionWorkingDir}
+                    agentType={newSessionAgentType}
+                    onAgentTypeChange={setNewSessionAgentType}
+                    permissionMode={newSessionPermissionMode}
+                    onPermissionModeChange={setNewSessionPermissionMode}
+                    onCreateSession={createSessionWithMessage}
+                  />
                 ) : null}
               </div>
             </ResizablePanel>
@@ -979,23 +981,23 @@ export default function ClaudePage() {
                 onPermissionModeChange={(mode) => {
                   localStorage.setItem('claude-permission-mode', mode)
                 }}
+                onAgentTypeChange={(type) => {
+                  localStorage.setItem('mld-agent-type', type)
+                }}
               />
             ) : !activeSessionId ? (
-              <div className="flex flex-1 flex-col claude-bg">
-                <div className="flex-1" />
-                <ChatInput
-                  onSend={createSessionWithMessage}
-                  disabled={isCreatingSession}
-                  placeholder="Start a new conversation..."
-                  workingDir={newSessionWorkingDir}
-                  onWorkingDirChange={setNewSessionWorkingDir}
-                  slashCommands={BUILTIN_COMMANDS}
-                  permissionMode={newSessionPermissionMode}
-                  onPermissionModeChange={setNewSessionPermissionMode}
-                  agentType={newSessionAgentType}
-                  onAgentTypeChange={setNewSessionAgentType}
-                />
-              </div>
+              <AgentChat
+                key="new-session"
+                sessionId=""
+                className="flex-1 claude-bg"
+                workingDir={newSessionWorkingDir}
+                onWorkingDirChange={setNewSessionWorkingDir}
+                agentType={newSessionAgentType}
+                onAgentTypeChange={setNewSessionAgentType}
+                permissionMode={newSessionPermissionMode}
+                onPermissionModeChange={setNewSessionPermissionMode}
+                onCreateSession={createSessionWithMessage}
+              />
             ) : null}
           </div>
         )}
@@ -1034,6 +1036,9 @@ export default function ClaudePage() {
               onPermissionModeChange={(mode) => {
                 localStorage.setItem('claude-permission-mode', mode)
               }}
+              onAgentTypeChange={(type) => {
+                localStorage.setItem('mld-agent-type', type)
+              }}
             />
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
@@ -1047,18 +1052,17 @@ export default function ClaudePage() {
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="flex-1" />
-            <ChatInput
-              onSend={createSessionWithMessage}
-              disabled={isCreatingSession}
-              placeholder="Start a new conversation..."
+            <AgentChat
+              key="new-session-mobile"
+              sessionId=""
+              className="flex-1"
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
-              slashCommands={BUILTIN_COMMANDS}
-              permissionMode={newSessionPermissionMode}
-              onPermissionModeChange={setNewSessionPermissionMode}
               agentType={newSessionAgentType}
               onAgentTypeChange={setNewSessionAgentType}
+              permissionMode={newSessionPermissionMode}
+              onPermissionModeChange={setNewSessionPermissionMode}
+              onCreateSession={createSessionWithMessage}
             />
           </div>
         ) : sessionSidebar ? (
@@ -1082,21 +1086,18 @@ export default function ClaudePage() {
           </div>
         ) : (
           /* No sidebar (hybrid app) — just the chat input */
-          <div className="flex flex-1 flex-col claude-bg">
-            <div className="flex-1" />
-            <ChatInput
-              onSend={createSessionWithMessage}
-              disabled={isCreatingSession}
-              placeholder="Start a new conversation..."
-              workingDir={newSessionWorkingDir}
-              onWorkingDirChange={setNewSessionWorkingDir}
-              slashCommands={BUILTIN_COMMANDS}
-              permissionMode={newSessionPermissionMode}
-              onPermissionModeChange={setNewSessionPermissionMode}
-              agentType={newSessionAgentType}
-              onAgentTypeChange={setNewSessionAgentType}
-            />
-          </div>
+          <AgentChat
+            key="new-session-mobile-nosidebar"
+            sessionId=""
+            className="flex-1 claude-bg"
+            workingDir={newSessionWorkingDir}
+            onWorkingDirChange={setNewSessionWorkingDir}
+            agentType={newSessionAgentType}
+            onAgentTypeChange={setNewSessionAgentType}
+            permissionMode={newSessionPermissionMode}
+            onPermissionModeChange={setNewSessionPermissionMode}
+            onCreateSession={createSessionWithMessage}
+          />
         )}
       </div>
     </div>

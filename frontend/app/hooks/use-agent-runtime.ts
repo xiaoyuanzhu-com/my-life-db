@@ -62,8 +62,10 @@ export function useAgentRuntime(options: {
   sessionId: string
   token: string
   enabled?: boolean
+  /** Override the default send behavior (e.g., to create a session on first message) */
+  onSend?: (text: string) => Promise<void>
 }) {
-  const { sessionId, token, enabled = true } = options
+  const { sessionId, token, enabled = true, onSend } = options
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
@@ -442,14 +444,18 @@ export function useAgentRuntime(options: {
         )
         const text = textParts.map((p) => p.text).join("\n")
         if (text.trim()) {
-          sendPrompt(text)
+          if (onSend) {
+            await onSend(text)
+          } else {
+            sendPrompt(text)
+          }
         }
       },
       onCancel: async () => {
         sendCancel()
       },
     }),
-    [threadMessages, isRunning, sendPrompt, sendCancel]
+    [threadMessages, isRunning, onSend, sendPrompt, sendCancel]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

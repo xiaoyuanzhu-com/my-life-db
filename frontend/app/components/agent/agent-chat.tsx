@@ -12,7 +12,7 @@ import {
   ComposerPrimitive,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react"
-import { Send, Square, ArrowDown, Folder, Terminal } from "lucide-react"
+import { Send, Square, ArrowDown } from "lucide-react"
 import { cn } from "~/lib/utils"
 import { useAgentRuntime } from "~/hooks/use-agent-runtime"
 import { AgentContextProvider, useAgentContext } from "./agent-context"
@@ -21,6 +21,8 @@ import { ExecuteToolRenderer } from "./tools/execute-tool"
 import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
 import { GenericToolRenderer } from "./tools/generic-tool"
+import { FolderPicker } from "~/components/claude/chat/folder-picker"
+import { AgentTypeSelector, type AgentType } from "~/components/claude/chat/agent-type-selector"
 import { PermissionModeSelector, type PermissionMode } from "~/components/claude/chat/permission-mode-selector"
 
 // ── Tool dispatch ──────────────────────────────────────────────────────────
@@ -151,116 +153,147 @@ function PendingPermissions() {
 
 // ── Composer ───────────────────────────────────────────────────────────────
 
-function AgentComposer() {
+interface AgentComposerProps {
+  workingDir?: string
+  onWorkingDirChange?: (path: string) => void
+  agentType?: string
+  onAgentTypeChange?: (type: AgentType) => void
+  permissionMode?: string
+  onPermissionModeChange?: (mode: PermissionMode) => void
+}
+
+function AgentComposer({
+  workingDir,
+  onWorkingDirChange,
+  agentType,
+  onAgentTypeChange,
+  permissionMode,
+  onPermissionModeChange,
+}: AgentComposerProps) {
   return (
     <div className="border-t border-border bg-background px-4 py-3">
-      <ComposerPrimitive.Root className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2">
+      <ComposerPrimitive.Root className="rounded-xl border border-border bg-muted/30 px-3 py-2">
         <ComposerPrimitive.Input
           placeholder="Message…"
           className={cn(
-            "flex-1 resize-none bg-transparent text-sm text-foreground",
+            "w-full resize-none bg-transparent text-sm text-foreground",
             "placeholder:text-muted-foreground focus:outline-none",
             "min-h-[36px] max-h-[200px]"
           )}
           rows={1}
         />
-        {/* Show Send when not running, Cancel when running */}
-        <ThreadPrimitive.If running={false}>
-          <ComposerPrimitive.Send className="shrink-0 rounded-lg bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Send className="h-4 w-4" />
-          </ComposerPrimitive.Send>
-        </ThreadPrimitive.If>
-        <ThreadPrimitive.If running>
-          <ComposerPrimitive.Cancel className="shrink-0 rounded-lg border border-border p-1.5 text-foreground hover:bg-muted transition-colors">
-            <Square className="h-4 w-4" />
-          </ComposerPrimitive.Cancel>
-        </ThreadPrimitive.If>
+        {/* Actions row */}
+        <div className="flex items-center justify-between mt-2">
+          {/* Left side */}
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            <FolderPicker
+              value={workingDir || ''}
+              onChange={onWorkingDirChange}
+              readOnly={!onWorkingDirChange}
+            />
+            <AgentTypeSelector
+              value={(agentType as AgentType) ?? 'claude_code'}
+              onChange={onAgentTypeChange ?? (() => {})}
+              disabled={!onAgentTypeChange}
+              showLabel
+            />
+            <PermissionModeSelector
+              value={(permissionMode as PermissionMode) ?? 'default'}
+              onChange={onPermissionModeChange ?? (() => {})}
+              disabled={!onPermissionModeChange}
+              showLabel
+            />
+          </div>
+          {/* Right side - send/cancel buttons */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Show Send when not running, Cancel when running */}
+            <ThreadPrimitive.If running={false}>
+              <ComposerPrimitive.Send className="shrink-0 rounded-lg bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <Send className="h-4 w-4" />
+              </ComposerPrimitive.Send>
+            </ThreadPrimitive.If>
+            <ThreadPrimitive.If running>
+              <ComposerPrimitive.Cancel className="shrink-0 rounded-lg border border-border p-1.5 text-foreground hover:bg-muted transition-colors">
+                <Square className="h-4 w-4" />
+              </ComposerPrimitive.Cancel>
+            </ThreadPrimitive.If>
+          </div>
+        </div>
       </ComposerPrimitive.Root>
     </div>
   )
 }
 
-// ── Agent type label lookup ────────────────────────────────────────────────
-
-const AGENT_TYPE_LABELS: Record<string, string> = {
-  claude_code: "Claude Code",
-  codex: "Codex",
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 
 interface AgentChatProps {
+  /**
+   * Session ID for the WebSocket connection. Pass an empty string when there is
+   * no active session (new-session empty state). In that case, provide
+   * `onCreateSession` to handle the first message send.
+   */
   sessionId: string
   /** Auth token for the WebSocket connection (can be empty for cookie-based auth) */
   token?: string
   className?: string
-  /** Session metadata (display only) */
+  /** Working directory (shown in composer, editable if onWorkingDirChange provided) */
   workingDir?: string
+  onWorkingDirChange?: (path: string) => void
+  /** Agent type (shown in composer, editable if onAgentTypeChange provided) */
   agentType?: string
+  onAgentTypeChange?: (type: AgentType) => void
   /** Permission mode (interactive — maps to session.setMode) */
   permissionMode?: string
   onPermissionModeChange?: (mode: string) => void
+  /**
+   * When sessionId is empty, this is called with the first message text.
+   * The parent should create the session and update the sessionId prop.
+   */
+  onCreateSession?: (message: string) => Promise<void>
 }
 
 /**
  * AgentChat provides the full chat UI for an ACP agent session.
- * Mount this with a sessionId; it connects via WebSocket automatically.
+ * Mount with a sessionId to connect via WebSocket. When sessionId is empty,
+ * it shows the empty state with the composer; on first send it calls onCreateSession.
  */
 export function AgentChat({
   sessionId,
   token = "",
   className,
   workingDir,
+  onWorkingDirChange,
   agentType,
+  onAgentTypeChange,
   permissionMode,
   onPermissionModeChange,
+  onCreateSession,
 }: AgentChatProps) {
-  const { runtime, connected, pendingPermissions, sendPermissionResponse, sendSetMode } =
-    useAgentRuntime({ sessionId, token, enabled: true })
+  const hasSession = Boolean(sessionId)
 
-  const handlePermissionModeChange = (mode: string) => {
+  const { runtime, connected, pendingPermissions, sendPermissionResponse, sendSetMode } =
+    useAgentRuntime({
+      sessionId,
+      token,
+      enabled: hasSession,
+      onSend: !hasSession && onCreateSession ? onCreateSession : undefined,
+    })
+
+  const handlePermissionModeChange = (mode: PermissionMode) => {
     onPermissionModeChange?.(mode)
     sendSetMode(mode)
   }
-
-  const agentLabel = agentType ? (AGENT_TYPE_LABELS[agentType] ?? agentType) : "Claude Code"
 
   return (
     <AgentContextProvider value={{ sendPermissionResponse, pendingPermissions }}>
       <AssistantRuntimeProvider runtime={runtime}>
         <div className={cn("flex flex-col h-full bg-background", className)}>
-          {/* Connection status */}
-          {!connected && (
+          {/* Connection status — only shown when a session exists but not yet connected */}
+          {hasSession && !connected && (
             <div className="shrink-0 px-4 py-1.5 text-center text-[11px] text-muted-foreground bg-muted/50 border-b border-border">
               Connecting…
             </div>
           )}
-
-          {/* Session header bar */}
-          <div className="shrink-0 flex items-center gap-3 px-4 py-1.5">
-            {/* Working directory */}
-            {workingDir && (
-              <div className="flex items-center gap-1 min-w-0 flex-1">
-                <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <span className="text-[11px] text-muted-foreground truncate" title={workingDir}>
-                  {workingDir}
-                </span>
-              </div>
-            )}
-
-            {/* Agent type */}
-            <div className="flex items-center gap-1 shrink-0">
-              <Terminal className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[11px] text-muted-foreground">{agentLabel}</span>
-            </div>
-
-            {/* Permission mode selector */}
-            <PermissionModeSelector
-              value={(permissionMode as PermissionMode) ?? "default"}
-              onChange={handlePermissionModeChange}
-              showLabel
-            />
-          </div>
 
           {/* Thread viewport */}
           <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
@@ -285,7 +318,14 @@ export function AgentChat({
           </ThreadPrimitive.Viewport>
 
           {/* Composer */}
-          <AgentComposer />
+          <AgentComposer
+            workingDir={workingDir}
+            onWorkingDirChange={onWorkingDirChange}
+            agentType={agentType}
+            onAgentTypeChange={onAgentTypeChange}
+            permissionMode={permissionMode}
+            onPermissionModeChange={handlePermissionModeChange}
+          />
         </div>
       </AssistantRuntimeProvider>
     </AgentContextProvider>
