@@ -250,6 +250,10 @@ interface AgentChatProps {
    * The parent should create the session and update the sessionId prop.
    */
   onCreateSession?: (message: string) => Promise<void>
+  /** Message to send automatically once WS connects (after session creation) */
+  initialMessage?: string | null
+  /** Called after the initial message has been sent */
+  onInitialMessageSent?: () => void
 }
 
 /**
@@ -268,6 +272,8 @@ export function AgentChat({
   permissionMode,
   onPermissionModeChange,
   onCreateSession,
+  initialMessage,
+  onInitialMessageSent,
 }: AgentChatProps) {
   const hasSession = Boolean(sessionId)
 
@@ -277,6 +283,8 @@ export function AgentChat({
       token,
       enabled: hasSession,
       onSend: !hasSession && onCreateSession ? onCreateSession : undefined,
+      initialMessage: initialMessage,
+      onInitialMessageSent: onInitialMessageSent,
     })
 
   const handlePermissionModeChange = (mode: PermissionMode) => {
