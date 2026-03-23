@@ -302,6 +302,8 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 		defer close(events)
 		defer s.client.clearEvents()
 
+		log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
+
 		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
 			SessionId:  acp.SessionId(sessionID),
 			Cwd:        cwd,

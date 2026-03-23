@@ -174,7 +174,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	// If no messages in memory (e.g., server restart), try loading history via ACP
 	if totalMessages == 0 {
+		log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
 		if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil && sessionRecord.WorkingDir != "" {
+			log.Info().Str("sessionId", sessionID).Str("workingDir", sessionRecord.WorkingDir).Msg("found session in DB, spawning ACP process for session/load")
 			agentType := agentsdk.AgentClaudeCode
 			if sessionRecord.AgentType == "codex" {
 				agentType = agentsdk.AgentCodex
@@ -214,8 +216,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}()
 				}
 			} else if err != nil {
-				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session for history loading")
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
 			}
+		} else {
+			log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
 		}
 	}
 
@@ -346,6 +350,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSessionsMu.Unlock()
 
 			if !exists {
+				log.Info().Str("sessionId", sessionID).Msg("no ACP session in memory, creating lazily for prompt")
 				// Look up session metadata from DB for agent type, working dir, permission mode
 				agentType := agentsdk.AgentClaudeCode
 				permMode := agentsdk.PermissionAsk
