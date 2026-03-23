@@ -24,11 +24,14 @@ export function ExecuteToolRenderer({
 }: ToolCallMessagePartProps<ExecuteArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action" || (result !== undefined && (args as { isError?: boolean }).isError)
+  const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
-  // Extract command text from args or toolName
-  const commandText = args?.command || toolName || "No command"
+  // Extract command text from args or toolName (e.g., "Bash ls -la" or "Execute npm run build")
+  const commandText = args?.command || (() => {
+    const match = toolName.match(/^(?:Execute|Bash|Run)\s+(.+)$/i)
+    return match ? match[1].trim() : toolName
+  })() || "No command"
 
   // Parse output
   const outputStr = result != null
@@ -88,10 +91,7 @@ export function ExecuteToolRenderer({
 
       {/* Summary line: tree connector */}
       {summaryLine && (
-        <div
-          className="flex gap-2 ml-5"
-          style={{ color: isError ? undefined : undefined }}
-        >
+        <div className="flex gap-2 ml-5">
           <span className={`select-none ${isError ? "text-destructive" : "text-muted-foreground"}`}>{"\u2514"}</span>
           <span className={`truncate ${isError ? "text-destructive" : "text-muted-foreground"}`}>{summaryLine}</span>
         </div>

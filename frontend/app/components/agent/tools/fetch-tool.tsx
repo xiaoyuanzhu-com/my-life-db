@@ -54,6 +54,21 @@ function extractFetchInfo(result: unknown): { status?: number; statusText?: stri
   return {}
 }
 
+/** Extract URL from tool name or args */
+function extractUrl(toolName: string, args: FetchArgs | undefined): string {
+  // First try explicit args.url
+  if (args?.url) return args.url
+
+  // Try extracting from toolName (e.g., "WebFetch https://example.com" or "Fetch https://...")
+  const match = toolName.match(/^(?:WebFetch|Fetch)\s+(.+)$/i)
+  if (match) return match[1].trim()
+
+  // Fallback: check if toolName itself looks like a URL
+  if (toolName.startsWith("http://") || toolName.startsWith("https://")) return toolName
+
+  return ""
+}
+
 export function FetchToolRenderer({
   toolName,
   args,
@@ -62,10 +77,10 @@ export function FetchToolRenderer({
 }: ToolCallMessagePartProps<FetchArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action"
+  const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
-  const url = args?.url || ""
+  const url = extractUrl(toolName, args)
   const fetchInfo = extractFetchInfo(result)
 
   // Determine dot type
@@ -120,9 +135,11 @@ export function FetchToolRenderer({
           <span className="font-semibold text-foreground">
             Fetch
           </span>
-          <span className="ml-2 break-all text-muted-foreground">
-            {url || toolName}
-          </span>
+          {url && (
+            <span className="ml-2 break-all text-muted-foreground">
+              {url}
+            </span>
+          )}
           {hasContent && (
             <span className="ml-2 select-none text-[11px] text-muted-foreground/60">
               {expanded ? "\u25BE" : "\u25B8"}

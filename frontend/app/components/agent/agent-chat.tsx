@@ -44,27 +44,60 @@ import { useIsMobile } from "~/hooks/use-is-mobile"
  * toolName is the ACP title, e.g., "Read /src/main.go".
  */
 function inferToolKind(toolName: string, args: Record<string, unknown>): string {
-  if (typeof args.kind === "string") return args.kind
+  // Use explicit kind from ACP if present and recognized
+  if (typeof args.kind === "string" && args.kind !== "other" && args.kind !== "") return args.kind
 
   const lower = toolName.toLowerCase()
+
+  // Read tools
   if (lower.startsWith("read ") || lower === "read") return "read"
+
+  // Edit/Write tools
   if (
     lower.startsWith("edit ") ||
     lower === "edit" ||
     lower.startsWith("write ") ||
     lower === "write"
   ) return "edit"
+
+  // Execute/Bash tools
   if (
     lower.startsWith("execute ") ||
     lower.startsWith("bash ") ||
     lower.startsWith("run ") ||
     lower === "execute"
   ) return "execute"
-  if (lower.startsWith("search") || lower === "search") return "search"
-  if (lower.startsWith("fetch") || lower === "fetch") return "fetch"
+
+  // Search tools -- includes Grep, Glob, WebSearch
+  if (
+    lower.startsWith("search") ||
+    lower === "search" ||
+    lower.startsWith("grep ") ||
+    lower === "grep" ||
+    lower.startsWith("glob ") ||
+    lower === "glob" ||
+    lower.startsWith("websearch ") ||
+    lower === "websearch"
+  ) return "search"
+
+  // Fetch tools -- includes WebFetch
+  if (
+    lower.startsWith("fetch") ||
+    lower === "fetch" ||
+    lower.startsWith("webfetch ") ||
+    lower === "webfetch"
+  ) return "fetch"
+
+  // Think tool
   if (lower.startsWith("think") || lower === "think") return "think"
+
+  // Delete tool
   if (lower.startsWith("delete") || lower === "delete") return "delete"
+
+  // Move tool
   if (lower.startsWith("move") || lower === "move") return "move"
+
+  // Agent/Task/TodoWrite -- intentionally "other" (use generic renderer)
   return "other"
 }
 

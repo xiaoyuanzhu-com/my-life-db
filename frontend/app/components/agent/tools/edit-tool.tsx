@@ -45,11 +45,14 @@ export function EditToolRenderer({
 }: ToolCallMessagePartProps<EditArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action"
+  const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
-  // Extract file path
-  const filePath = args?.file_path || toolName || ""
+  // Extract file path -- ACP title is e.g., "Edit /src/main.go"
+  const filePath = args?.file_path || (() => {
+    const match = toolName.match(/^(?:Edit|Write)\s+(.+)$/i)
+    return match ? match[1].trim() : toolName
+  })() || ""
   const fileName = filePath.split("/").pop() || filePath
 
   // Determine dot type

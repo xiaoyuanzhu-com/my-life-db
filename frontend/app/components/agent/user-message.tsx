@@ -77,8 +77,9 @@ function UserTextPart({ text }: UserTextPartProps) {
 
 export function UserMessage() {
   const messageState = useMessage()
-  const isOptimistic = !!(messageState.metadata as Record<string, unknown>)?.custom &&
-    !!((messageState.metadata as { custom?: Record<string, unknown> }).custom?.isOptimistic)
+  const metadata = messageState.metadata as Record<string, unknown> | undefined
+  const custom = metadata?.custom as Record<string, unknown> | undefined
+  const isOptimistic = !!custom?.isOptimistic
 
   return (
     <MessagePrimitive.Root className={cn("flex justify-end mb-4", isOptimistic && "opacity-70")}>

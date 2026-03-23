@@ -17,9 +17,10 @@ interface GenericArgs {
   [key: string]: unknown
 }
 
-/** Title-case a string */
-function titleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+/** Extract tool label from tool name: use the first word, title-cased */
+function getToolLabel(toolName: string): string {
+  const firstWord = toolName.split(/\s+/)[0] || toolName
+  return firstWord.charAt(0).toUpperCase() + firstWord.slice(1)
 }
 
 /** Derive a human-readable kind label */
@@ -40,8 +41,11 @@ export function GenericToolRenderer({
 }: ToolCallMessagePartProps<GenericArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action"
+  const isError = status.type === "requires-action" || status.type === "incomplete"
   const kind = inferKind(toolName, args)
+  const toolLabel = getToolLabel(toolName)
+  // Detail text: everything after the first word in the tool name
+  const toolDetail = toolName.includes(" ") ? toolName.slice(toolName.indexOf(" ") + 1).trim() : ""
 
   const [expanded, setExpanded] = useState(false)
 
@@ -79,9 +83,14 @@ export function GenericToolRenderer({
       >
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="font-semibold text-foreground">
-            {titleCase(toolName)}
+          <span className="font-semibold text-foreground shrink-0">
+            {toolLabel}
           </span>
+          {toolDetail && (
+            <span className="truncate text-muted-foreground">
+              {toolDetail}
+            </span>
+          )}
           <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-muted text-muted-foreground">
             {kind}
           </span>

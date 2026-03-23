@@ -24,10 +24,14 @@ export function ReadToolRenderer({
 }: ToolCallMessagePartProps<ReadArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action"
+  const isError = status.type === "requires-action" || status.type === "incomplete"
 
   // Extract file path -- show filename only in header, full path on hover
-  const filePath = args?.file_path || toolName || ""
+  // The ACP title is e.g., "Read /src/main.go", so extract the path from it
+  const filePath = args?.file_path || (() => {
+    const match = toolName.match(/^Read\s+(.+)$/i)
+    return match ? match[1].trim() : toolName
+  })() || ""
   const fileName = filePath.split("/").pop() || filePath
 
   // Count lines from result

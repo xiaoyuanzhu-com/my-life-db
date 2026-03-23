@@ -79,7 +79,7 @@ export function ConnectionStatusBanner({
   switch (state) {
     case "connecting":
       icon = <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-      text = "Reconnecting..."
+      text = "Connecting..."
       break
     case "disconnected":
       icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />

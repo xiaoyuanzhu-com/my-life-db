@@ -40,6 +40,15 @@ function extractFileCount(result: unknown): number | null {
   return null
 }
 
+/** Derive a short label from the tool name */
+function getSearchLabel(toolName: string): string {
+  const lower = toolName.toLowerCase()
+  if (lower.startsWith("grep")) return "Grep"
+  if (lower.startsWith("glob")) return "Glob"
+  if (lower.startsWith("websearch")) return "WebSearch"
+  return "Search"
+}
+
 export function SearchToolRenderer({
   toolName,
   args,
@@ -48,9 +57,15 @@ export function SearchToolRenderer({
 }: ToolCallMessagePartProps<SearchArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
-  const isError = status.type === "requires-action"
+  const isError = status.type === "requires-action" || status.type === "incomplete"
 
-  const searchQuery = args?.pattern || args?.query || ""
+  const label = getSearchLabel(toolName)
+
+  // Extract search query from args or from toolName (e.g., "Grep pattern" or "Glob *.tsx")
+  const searchQuery = args?.pattern || args?.query || (() => {
+    const match = toolName.match(/^(?:Grep|Glob|WebSearch|Search)\s+(.+)$/i)
+    return match ? match[1].trim() : ""
+  })()
   const fileCount = extractFileCount(result)
 
   // Determine dot type
@@ -76,21 +91,16 @@ export function SearchToolRenderer({
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: dot + "Search" bold + pattern */}
+      {/* Header: dot + label bold + pattern */}
       <div className="flex items-start gap-2">
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-foreground">
-            Search
+            {label}
           </span>
           {searchQuery && (
             <span className="ml-2 break-all text-muted-foreground">
               {searchQuery}
-            </span>
-          )}
-          {!searchQuery && (
-            <span className="ml-2 text-muted-foreground">
-              {toolName}
             </span>
           )}
         </div>

@@ -264,6 +264,14 @@ export function useAgentRuntime(options: {
           const f = frame as AgentToolCallUpdateFrame
           const toolCallId = f.toolCallId
 
+          // Clear pending permission for this tool call (it has a result now)
+          setPendingPermissions((prev) => {
+            if (!prev.has(toolCallId)) return prev
+            const next = new Map(prev)
+            next.delete(toolCallId)
+            return next
+          })
+
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
@@ -298,6 +306,17 @@ export function useAgentRuntime(options: {
         case "permission.request": {
           const f = frame as PermissionRequestFrame
           const toolCallId = f.toolCall.toolCallId
+
+          // Check if this tool call already has a result (e.g., during burst replay
+          // after page refresh where permission.request arrives before toolCallUpdate
+          // but both are in the burst). If the tool call already completed, skip.
+          const alreadyResolved = messagesRef.current.some((m) =>
+            m.role === "assistant" &&
+            m.content.some(
+              (p) => p.type === "tool-call" && p.toolCallId === toolCallId && p.result !== undefined
+            )
+          )
+          if (alreadyResolved) break
 
           // Store permission options so the UI can render buttons
           setPendingPermissions((prev) => {
@@ -370,6 +389,11 @@ export function useAgentRuntime(options: {
 
         case "turn.complete": {
           setIsRunning(false)
+          // Clear all pending permissions — the turn is done
+          setPendingPermissions((prev) => {
+            if (prev.size === 0) return prev
+            return new Map()
+          })
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
@@ -387,6 +411,11 @@ export function useAgentRuntime(options: {
         case "error": {
           const f = frame as ErrorFrame
           setIsRunning(false)
+          // Clear all pending permissions on error — the turn is done
+          setPendingPermissions((prev) => {
+            if (prev.size === 0) return prev
+            return new Map()
+          })
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
@@ -410,6 +439,13 @@ export function useAgentRuntime(options: {
             .isProcessing
           if (typeof isProcessing === "boolean") {
             setIsRunning(isProcessing)
+            // If the session is not processing, clear any stale pending permissions
+            if (!isProcessing) {
+              setPendingPermissions((prev) => {
+                if (prev.size === 0) return prev
+                return new Map()
+              })
+            }
           }
           break
         }
