@@ -69,8 +69,9 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		permMode = agentsdk.PermissionDeny
 	}
 
-	// Spawn ACP agent process eagerly
-	sess, err := h.server.AgentClient().CreateSession(c.Request.Context(), agentsdk.SessionConfig{
+	// Spawn ACP agent process eagerly.
+	// Use background context — the ACP process must outlive this HTTP request.
+	sess, err := h.server.AgentClient().CreateSession(context.Background(), agentsdk.SessionConfig{
 		Agent:       agentType,
 		Permissions: permMode,
 		WorkingDir:  req.WorkingDir,
