@@ -5,16 +5,18 @@
  * to render the conversation. Tool calls are dispatched to kind-specific renderers.
  * Permission cards appear above the composer as popups.
  */
-import { useMemo } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
   ComposerPrimitive,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react"
+import { useComposerRuntime } from "@assistant-ui/react"
 import { Send, Square, ArrowDown } from "lucide-react"
 import { cn } from "~/lib/utils"
 import { useAgentRuntime } from "~/hooks/use-agent-runtime"
+import { useDraftPersistence } from "~/hooks/use-draft-persistence"
 import { AgentContextProvider, useAgentContext } from "./agent-context"
 import { PermissionCard } from "./permission-card"
 import { UserMessage } from "./user-message"
@@ -22,12 +24,18 @@ import { createAssistantMessage } from "./assistant-message"
 import { ExecuteToolRenderer } from "./tools/execute-tool"
 import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
+import { SearchToolRenderer } from "./tools/search-tool"
+import { FetchToolRenderer } from "./tools/fetch-tool"
 import { GenericToolRenderer } from "./tools/generic-tool"
 import { FolderPicker } from "./folder-picker"
 import { AgentTypeSelector, type AgentType } from "./agent-type-selector"
 import { PermissionModeSelector, type PermissionMode } from "./permission-mode-selector"
 import { ConnectionStatusBanner } from "./connection-status-banner"
 import { AgentWIP } from "./agent-wip"
+import { PlanView } from "./plan-view"
+import { SlashCommandPopover } from "./slash-command-popover"
+import { FileTagPopover } from "./file-tag-popover"
+import { useIsMobile } from "~/hooks/use-is-mobile"
 
 // ── Tool dispatch ──────────────────────────────────────────────────────────
 
@@ -74,6 +82,10 @@ function AcpToolRenderer(props: ToolCallMessagePartProps) {
       return <ReadToolRenderer {...props} />
     case "edit":
       return <EditToolRenderer {...props} />
+    case "search":
+      return <SearchToolRenderer {...props} />
+    case "fetch":
+      return <FetchToolRenderer {...props} />
     default:
       return <GenericToolRenderer {...props} />
   }
@@ -123,6 +135,40 @@ function AgentWIPIndicator() {
   )
 }
 
+// ── Draft persistence sync ──────────────────────────────────────────────────
+
+/** Syncs draft text between assistant-ui composer state and localStorage */
+function DraftPersistenceSync({ sessionId }: { sessionId?: string }) {
+  const { content, setContent, clearDraft } = useDraftPersistence(sessionId)
+  const composerRuntime = useComposerRuntime()
+  const restoredRef = useRef(false)
+
+  // Restore draft from localStorage on mount
+  useEffect(() => {
+    if (content && !restoredRef.current) {
+      restoredRef.current = true
+      composerRuntime.setText(content)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist draft: subscribe to composer text changes
+  useEffect(() => {
+    return composerRuntime.subscribe(() => {
+      const state = composerRuntime.getState()
+      if (state.text !== content) {
+        if (state.text) {
+          setContent(state.text)
+        } else if (content) {
+          // Text was cleared (e.g., after send) — clear draft
+          clearDraft()
+        }
+      }
+    })
+  }, [composerRuntime, content, setContent, clearDraft])
+
+  return null
+}
+
 // ── Composer ───────────────────────────────────────────────────────────────
 
 interface AgentComposerProps {
@@ -142,10 +188,15 @@ function AgentComposer({
   permissionMode,
   onPermissionModeChange,
 }: AgentComposerProps) {
+  const composerInputRef = useRef<HTMLTextAreaElement>(null)
+
   return (
     <div className="border-t border-border bg-background px-4 py-3">
-      <ComposerPrimitive.Root className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+      <ComposerPrimitive.Root className="relative rounded-xl border border-border bg-muted/30 px-3 py-2">
+        <SlashCommandPopover textareaRef={composerInputRef} />
+        <FileTagPopover textareaRef={composerInputRef} />
         <ComposerPrimitive.Input
+          ref={composerInputRef}
           placeholder="Message..."
           className={cn(
             "w-full resize-none bg-transparent text-sm text-foreground",
@@ -228,6 +279,35 @@ interface AgentChatProps {
   onInitialMessageSent?: () => void
 }
 
+/** Hook to track scroll direction for hiding composer on mobile */
+function useScrollDirection() {
+  const [hidden, setHidden] = useState(false)
+  const lastScrollTopRef = useRef(0)
+  const scrollThreshold = 10
+
+  const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget
+    const scrollTop = target.scrollTop
+    const maxScroll = target.scrollHeight - target.clientHeight
+    const delta = scrollTop - lastScrollTopRef.current
+
+    // At the bottom — always show
+    if (scrollTop >= maxScroll - 20) {
+      setHidden(false)
+    } else if (delta > scrollThreshold) {
+      // Scrolling down — hide
+      setHidden(true)
+    } else if (delta < -scrollThreshold) {
+      // Scrolling up — show
+      setHidden(false)
+    }
+
+    lastScrollTopRef.current = scrollTop
+  }, [])
+
+  return { hidden, onScroll }
+}
+
 /**
  * AgentChat provides the full chat UI for an ACP agent session.
  * Mount with a sessionId to connect via WebSocket. When sessionId is empty,
@@ -248,8 +328,10 @@ export function AgentChat({
   onInitialMessageSent,
 }: AgentChatProps) {
   const hasSession = Boolean(sessionId)
+  const isMobile = useIsMobile()
+  const { hidden: composerHidden, onScroll: onViewportScroll } = useScrollDirection()
 
-  const { runtime, connected, pendingPermissions, sendPermissionResponse, sendSetMode } =
+  const { runtime, connected, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
     useAgentRuntime({
       sessionId,
       token,
@@ -264,15 +346,22 @@ export function AgentChat({
     sendSetMode(mode)
   }
 
+  // On mobile, hide composer when scrolling down (unless permissions are pending)
+  const shouldHideComposer = isMobile && composerHidden && pendingPermissions.size === 0
+
   return (
     <AgentContextProvider value={{ sendPermissionResponse, pendingPermissions }}>
       <AssistantRuntimeProvider runtime={runtime}>
+        <DraftPersistenceSync sessionId={hasSession ? sessionId : undefined} />
         <div className={cn("flex flex-col h-full bg-background", className)}>
           {/* Connection status banner */}
           <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
 
           {/* Thread viewport */}
-          <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
+          <ThreadPrimitive.Viewport
+            className="flex-1 overflow-y-auto px-4 py-4"
+            onScroll={isMobile ? onViewportScroll : undefined}
+          >
             <ThreadPrimitive.Empty>
               <div className="flex h-full min-h-[120px] items-center justify-center text-sm text-muted-foreground">
                 Start a conversation
@@ -291,21 +380,31 @@ export function AgentChat({
             </ThreadPrimitive.ScrollToBottom>
           </ThreadPrimitive.Viewport>
 
+          {/* Plan entries — shown between thread and composer */}
+          {planEntries.length > 0 && <PlanView entries={planEntries} />}
+
           {/* Agent WIP indicator — shown when running, after messages, before permissions */}
           <AgentWIPIndicator />
 
           {/* Permission cards — pop up above composer */}
           <PendingPermissions />
 
-          {/* Composer */}
-          <AgentComposer
-            workingDir={workingDir}
-            onWorkingDirChange={onWorkingDirChange}
-            agentType={agentType}
-            onAgentTypeChange={onAgentTypeChange}
-            permissionMode={permissionMode}
-            onPermissionModeChange={handlePermissionModeChange}
-          />
+          {/* Composer — hidden on mobile when scrolling down */}
+          <div
+            className={cn(
+              "transition-all duration-200 overflow-hidden",
+              shouldHideComposer ? "max-h-0 opacity-0" : "max-h-[300px] opacity-100"
+            )}
+          >
+            <AgentComposer
+              workingDir={workingDir}
+              onWorkingDirChange={onWorkingDirChange}
+              agentType={agentType}
+              onAgentTypeChange={onAgentTypeChange}
+              permissionMode={permissionMode}
+              onPermissionModeChange={handlePermissionModeChange}
+            />
+          </div>
         </div>
       </AssistantRuntimeProvider>
     </AgentContextProvider>

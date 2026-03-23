@@ -9,6 +9,7 @@
  */
 import { useState, useCallback } from "react"
 import { MessagePrimitive, type ToolCallMessagePartProps } from "@assistant-ui/react"
+import { useMessage } from "@assistant-ui/react"
 import { Copy, Check } from "lucide-react"
 import { MarkdownContent } from "./markdown-content"
 import { MessageDot } from "./message-dot"
@@ -63,6 +64,21 @@ function AssistantReasoningPart({ text }: { text: string }) {
   )
 }
 
+/** Blinking cursor shown when the assistant message is still streaming */
+function StreamingCursor() {
+  const messageState = useMessage()
+  const isRunning = messageState.status?.type === "running"
+
+  if (!isRunning) return null
+
+  return (
+    <span
+      className="inline-block w-[2px] h-[1em] bg-foreground align-text-bottom ml-0.5"
+      style={{ animation: "blink 0.8s step-end infinite" }}
+    />
+  )
+}
+
 export function createAssistantMessage(toolsConfig: AssistantMessageProps["toolsConfig"]) {
   return function AssistantMessage() {
     return (
@@ -78,6 +94,7 @@ export function createAssistantMessage(toolsConfig: AssistantMessageProps["tools
               tools: toolsConfig,
             }}
           />
+          <StreamingCursor />
         </div>
       </MessagePrimitive.Root>
     )

@@ -48,12 +48,20 @@ interface InternalMessage {
   content: ContentPart[]
   createdAt: Date
   status?: MessageStatus
+  isOptimistic?: boolean
 }
 
 export interface SessionMeta {
   mode?: string
   models?: string[]
   commands?: unknown[]
+}
+
+export interface PlanEntry {
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed"
+  priority?: string
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -74,6 +82,7 @@ export function useAgentRuntime(options: {
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [sessionMeta, setSessionMeta] = useState<SessionMeta>({})
+  const [planEntries, setPlanEntries] = useState<PlanEntry[]>([])
   // Map of toolCallId → { toolName, options } for pending permission.request frames
   const [pendingPermissions, setPendingPermissions] = useState<
     Map<string, { toolName: string; options: PermissionOption[] }>
@@ -86,10 +95,33 @@ export function useAgentRuntime(options: {
     return `msg-${msgIdCounter.current}`
   }, [])
 
+  // Burst replay dedup: when session.info arrives and we already have messages,
+  // skip all replayed frames until the next turn.start (response to our new prompt).
+  const skipBurstRef = useRef(false)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+
   // ── Frame Handler ─────────────────────────────────────────────────
 
   const onFrame = useCallback(
     (frame: AcpFrame) => {
+      // Burst replay dedup: session.info marks a reconnect burst.
+      // If we already have messages, skip replayed frames until
+      // a new turn.start arrives (response to a prompt sent by this client).
+      if (frame.type === "session.info") {
+        if (messagesRef.current.length > 0) {
+          skipBurstRef.current = true
+        }
+        // Fall through to handle session.info normally below
+      } else if (skipBurstRef.current) {
+        if (frame.type === "turn.start") {
+          skipBurstRef.current = false
+          // Fall through to process this turn.start
+        } else {
+          return // skip burst replay frame
+        }
+      }
+
       switch (frame.type) {
         case "user.echo": {
           const content = (frame as AcpFrame & { content?: unknown[] }).content
@@ -106,15 +138,35 @@ export function useAgentRuntime(options: {
                   .join("")
               : ""
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: "user",
-              content: [{ type: "text", text }],
-              createdAt: new Date(frame.ts),
-            },
-          ])
+          setMessages((prev) => {
+            // Check if there's an optimistic user message with matching text
+            const optimisticIdx = prev.findIndex(
+              (m) =>
+                m.role === "user" &&
+                m.isOptimistic &&
+                m.content.some((p) => p.type === "text" && p.text === text)
+            )
+            if (optimisticIdx !== -1) {
+              // Replace optimistic message with server-confirmed one
+              const updated = [...prev]
+              updated[optimisticIdx] = {
+                ...updated[optimisticIdx],
+                createdAt: new Date(frame.ts),
+                isOptimistic: false,
+              }
+              return updated
+            }
+            // No optimistic match — add normally
+            return [
+              ...prev,
+              {
+                id: nextId(),
+                role: "user",
+                content: [{ type: "text", text }],
+                createdAt: new Date(frame.ts),
+              },
+            ]
+          })
           break
         }
 
@@ -304,9 +356,20 @@ export function useAgentRuntime(options: {
         }
 
         case "agent.plan": {
-          // Plans are metadata-only — no visible content part needed.
-          // Future tasks can surface plan data via message metadata or
-          // a custom data part if the UI needs to render it.
+          const entries = (frame as AcpFrame & { entries?: unknown[] }).entries
+          if (Array.isArray(entries)) {
+            const parsed: PlanEntry[] = entries
+              .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+              .map((e, i) => ({
+                id: typeof e.id === "string" ? e.id : `plan-${i}`,
+                content: typeof e.content === "string" ? e.content : String(e.content ?? ""),
+                status: (e.status === "in_progress" || e.status === "completed")
+                  ? e.status as PlanEntry["status"]
+                  : "pending",
+                priority: typeof e.priority === "string" ? e.priority : undefined,
+              }))
+            setPlanEntries(parsed)
+          }
           break
         }
 
@@ -438,6 +501,7 @@ export function useAgentRuntime(options: {
                 }
               }),
         status: msg.status,
+        metadata: msg.isOptimistic ? { custom: { isOptimistic: true } } : undefined,
       })),
     [messages]
   )
@@ -456,6 +520,17 @@ export function useAgentRuntime(options: {
         )
         const text = textParts.map((p) => p.text).join("\n")
         if (text.trim()) {
+          // Add optimistic user message immediately
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "user",
+              content: [{ type: "text", text }],
+              createdAt: new Date(),
+              isOptimistic: true,
+            },
+          ])
           if (onSend) {
             await onSend(text)
           } else {
@@ -492,6 +567,7 @@ export function useAgentRuntime(options: {
     connected,
     sessionMeta,
     pendingPermissions,
+    planEntries,
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
   }

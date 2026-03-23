@@ -2,8 +2,11 @@
  * UserMessage — renders a user message bubble in the ACP chat thread.
  *
  * Right-aligned with primary background. Renders markdown content.
+ * Optimistic messages (not yet confirmed by server) show at 70% opacity.
  */
 import { MessagePrimitive } from "@assistant-ui/react"
+import { useMessage } from "@assistant-ui/react"
+import { cn } from "~/lib/utils"
 import { MarkdownContent } from "./markdown-content"
 
 interface UserTextPartProps {
@@ -20,8 +23,12 @@ function UserTextPart({ text }: UserTextPartProps) {
 }
 
 export function UserMessage() {
+  const messageState = useMessage()
+  const isOptimistic = !!(messageState.metadata as Record<string, unknown>)?.custom &&
+    !!((messageState.metadata as { custom?: Record<string, unknown> }).custom?.isOptimistic)
+
   return (
-    <MessagePrimitive.Root className="flex justify-end mb-4">
+    <MessagePrimitive.Root className={cn("flex justify-end mb-4", isOptimistic && "opacity-70")}>
       <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 break-words">
         <MessagePrimitive.Parts
           components={{
