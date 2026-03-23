@@ -9,6 +9,7 @@ import type { ReadonlyJSONObject } from "assistant-stream/utils"
 import {
   useAgentWebSocket,
   type AcpFrame,
+  type SessionInfoFrame,
   type AgentMessageChunkFrame,
   type AgentThoughtChunkFrame,
   type AgentToolCallFrame,
@@ -53,7 +54,9 @@ interface InternalMessage {
 
 export interface SessionMeta {
   mode?: string
-  models?: string[]
+  availableModes?: unknown[]
+  currentModel?: string
+  availableModels?: unknown[]
   commands?: unknown[]
 }
 
@@ -92,8 +95,8 @@ export function useAgentRuntime(options: {
   }, [])
 
   // Burst replay dedup: when session.info arrives and we already have messages,
-  // skip all replayed frames until the next turn.start (response to our new prompt).
-  const skipBurstRef = useRef(false)
+  // skip exactly totalMessages replayed frames (count-based, not flag-based).
+  const burstRemainingRef = useRef(0)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
@@ -101,21 +104,17 @@ export function useAgentRuntime(options: {
 
   const onFrame = useCallback(
     (frame: AcpFrame) => {
-      // Burst replay dedup: session.info marks a reconnect burst.
-      // If we already have messages, skip replayed frames until
-      // a new turn.start arrives (response to a prompt sent by this client).
+      // Burst replay dedup: on reconnect, session.info tells us how many
+      // frames will be replayed. Skip exactly that many if we already have messages.
       if (frame.type === "session.info") {
-        if (messagesRef.current.length > 0) {
-          skipBurstRef.current = true
+        const info = frame as SessionInfoFrame
+        if (messagesRef.current.length > 0 && info.totalMessages > 0) {
+          burstRemainingRef.current = info.totalMessages
         }
         // Fall through to handle session.info normally below
-      } else if (skipBurstRef.current) {
-        if (frame.type === "turn.start") {
-          skipBurstRef.current = false
-          // Fall through to process this turn.start
-        } else {
-          return // skip burst replay frame
-        }
+      } else if (burstRemainingRef.current > 0) {
+        burstRemainingRef.current--
+        return // skip burst replay frame
       }
 
       switch (frame.type) {
@@ -416,17 +415,23 @@ export function useAgentRuntime(options: {
         }
 
         case "session.modeUpdate": {
-          const modeId = (frame as AcpFrame & { modeId?: string }).modeId
-          if (modeId) {
-            setSessionMeta((prev) => ({ ...prev, mode: modeId }))
+          const f = frame as AcpFrame & { modeId?: string; availableModes?: unknown[] }
+          const update: Partial<SessionMeta> = {}
+          if (f.modeId) update.mode = f.modeId
+          if (f.availableModes) update.availableModes = f.availableModes
+          if (Object.keys(update).length > 0) {
+            setSessionMeta((prev) => ({ ...prev, ...update }))
           }
           break
         }
 
         case "session.modelsUpdate": {
-          const models = (frame as AcpFrame & { models?: string[] }).models
-          if (models) {
-            setSessionMeta((prev) => ({ ...prev, models }))
+          const f = frame as AcpFrame & { modelId?: string; availableModels?: unknown[] }
+          const update: Partial<SessionMeta> = {}
+          if (f.modelId) update.currentModel = f.modelId
+          if (f.availableModels) update.availableModels = f.availableModels
+          if (Object.keys(update).length > 0) {
+            setSessionMeta((prev) => ({ ...prev, ...update }))
           }
           break
         }

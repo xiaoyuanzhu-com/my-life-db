@@ -98,12 +98,9 @@ func TouchAgentSession(sessionID string) error {
 // ArchiveClaudeSession marks a Claude session as archived
 func ArchiveClaudeSession(sessionID string) error {
 	_, err := Run(
-		`INSERT INTO agent_sessions (session_id, archived_at, updated_at)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(session_id) DO UPDATE SET
-		   archived_at = excluded.archived_at,
-		   updated_at = excluded.updated_at`,
-		sessionID, NowMs(), NowMs(),
+		`UPDATE agent_sessions SET archived_at = ?, updated_at = ?
+		 WHERE session_id = ?`,
+		NowMs(), NowMs(), sessionID,
 	)
 	return err
 }
@@ -154,12 +151,11 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 // a client disconnecting with a lower count can never regress the value.
 func MarkClaudeSessionRead(sessionID string, resultCount int) error {
 	_, err := Run(
-		`INSERT INTO agent_sessions (session_id, last_read_count, updated_at)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(session_id) DO UPDATE SET
-		   last_read_count = MAX(excluded.last_read_count, agent_sessions.last_read_count),
-		   updated_at = excluded.updated_at`,
-		sessionID, resultCount, NowMs(),
+		`UPDATE agent_sessions
+		 SET last_read_count = MAX(?, last_read_count),
+		     updated_at = ?
+		 WHERE session_id = ?`,
+		resultCount, NowMs(), sessionID,
 	)
 	return err
 }
@@ -198,12 +194,9 @@ func GetAllSessionReadStates() (map[string]int, error) {
 // Called when the user changes permission mode via the UI.
 func SaveClaudeSessionPermissionMode(sessionID string, mode string) error {
 	_, err := Run(
-		`INSERT INTO agent_sessions (session_id, permission_mode, updated_at)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(session_id) DO UPDATE SET
-		   permission_mode = excluded.permission_mode,
-		   updated_at = excluded.updated_at`,
-		sessionID, mode, NowMs(),
+		`UPDATE agent_sessions SET permission_mode = ?, updated_at = ?
+		 WHERE session_id = ?`,
+		mode, NowMs(), sessionID,
 	)
 	return err
 }

@@ -104,6 +104,10 @@ export function useAgentWebSocket({
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
 
+  // Use a ref for onFrame to prevent WS reconnects when the callback changes
+  const onFrameRef = useRef(onFrame)
+  onFrameRef.current = onFrame
+
   const send = useCallback((msg: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ ...msg, sessionId }))
@@ -163,7 +167,7 @@ export function useAgentWebSocket({
       ws.onmessage = (event) => {
         try {
           const frame = JSON.parse(event.data) as AcpFrame
-          onFrame(frame)
+          onFrameRef.current(frame)
         } catch {
           // ignore malformed frames
         }
@@ -179,7 +183,7 @@ export function useAgentWebSocket({
       wsRef.current = null
       setConnected(false)
     }
-  }, [sessionId, token, enabled, onFrame])
+  }, [sessionId, token, enabled])
 
   return { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode }
 }

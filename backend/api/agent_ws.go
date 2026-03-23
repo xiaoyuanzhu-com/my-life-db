@@ -156,7 +156,44 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}
 
-	// Send initial burst (last ~100 messages)
+	// Register client BEFORE burst/history replay so concurrent broadcasts
+	// (from POST handler or history replay goroutine) are queued immediately.
+	uiClient := &agentsdk.WSClient{
+		ID:   uuid.New().String(),
+		Send: make(chan []byte, 256),
+	}
+	sessionState.AddClient(uiClient)
+	defer sessionState.RemoveClient(uiClient)
+
+	// Start poll goroutine BEFORE burst so it can drain the client channel
+	// while burst messages are sent via direct conn.Write.
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-uiClient.Send:
+				if !ok {
+					return
+				}
+				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+					if ctx.Err() == nil {
+						log.Debug().Err(err).Str("sessionId", sessionID).Msg("agent WebSocket write failed")
+					}
+					return
+				}
+				var mt struct{ Type string `json:"type"` }
+				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
+					seenResultCount.Add(1)
+					persistReadState()
+				}
+			}
+		}
+	}()
+
+	// Send initial burst (last ~100 messages) via direct write (bypasses client channel)
 	burstMessages := sessionState.GetRecentMessages(100)
 	if len(burstMessages) > 0 {
 		log.Debug().
@@ -191,7 +228,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			sess, histEvents, err := h.server.AgentClient().CreateSessionWithLoad(ctx, agentsdk.SessionConfig{
+			sess, histEvents, err := h.server.AgentClient().CreateSessionWithLoad(h.server.ShutdownContext(), agentsdk.SessionConfig{
 				Agent:       agentType,
 				Permissions: permMode,
 				WorkingDir:  sessionRecord.WorkingDir,
@@ -222,41 +259,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
 		}
 	}
-
-	// Register as client
-	uiClient := &agentsdk.WSClient{
-		ID:   uuid.New().String(),
-		Send: make(chan []byte, 256),
-	}
-	sessionState.AddClient(uiClient)
-	defer sessionState.RemoveClient(uiClient)
-
-	// Goroutine: forward broadcasts to WebSocket
-	pollDone := make(chan struct{})
-	go func() {
-		defer close(pollDone)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data, ok := <-uiClient.Send:
-				if !ok {
-					return
-				}
-				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-					if ctx.Err() == nil {
-						log.Debug().Err(err).Str("sessionId", sessionID).Msg("agent WebSocket write failed")
-					}
-					return
-				}
-				var mt struct{ Type string `json:"type"` }
-				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
-					seenResultCount.Add(1)
-					persistReadState()
-				}
-			}
-		}
-	}()
 
 	// Goroutine: ping every 30s
 	pingTicker := time.NewTicker(30 * time.Second)
@@ -337,12 +339,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Broadcast user echo
-			userEcho, _ := agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
-			sessionState.AppendAndBroadcast(userEcho)
+			if userEcho, err := agentsdk.UserEchoEnvelope(sessionID, contentBlocks); err == nil && userEcho != nil {
+				sessionState.AppendAndBroadcast(userEcho)
+			}
 
 			// Broadcast turn.start
-			turnStart, _ := agentsdk.TurnStartEnvelope(sessionID)
-			sessionState.AppendAndBroadcast(turnStart)
+			if turnStart, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && turnStart != nil {
+				sessionState.AppendAndBroadcast(turnStart)
+			}
 
 			// Create ACP session lazily if needed
 			acpSessionsMu.Lock()
@@ -373,7 +377,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 
 				// Create a new ACP session
-				sess, err := h.server.AgentClient().CreateSession(ctx, agentsdk.SessionConfig{
+				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 					Agent:       agentType,
 					Permissions: permMode,
 					WorkingDir:  workDir,
@@ -394,19 +398,24 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			// Send prompt and start event forwarding
 			go func(acpSess agentsdk.Session, prompt string) {
-				events, err := acpSess.Send(ctx, prompt)
+				// Mark processing BEFORE Send() so any WS client connecting
+				// between turn.start and the first event sees the correct state.
+				sessionState.Mu.Lock()
+				sessionState.IsProcessing = true
+				sessionState.Mu.Unlock()
+
+				events, err := acpSess.Send(h.server.ShutdownContext(), prompt)
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt to ACP session")
+					sessionState.Mu.Lock()
+					sessionState.IsProcessing = false
+					sessionState.Mu.Unlock()
 					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
 					if errBytes != nil {
 						sessionState.AppendAndBroadcast(errBytes)
 					}
 					return
 				}
-
-				sessionState.Mu.Lock()
-				sessionState.IsProcessing = true
-				sessionState.Mu.Unlock()
 
 				for event := range events {
 					frames := translateEventToEnvelopes(sessionID, event)
@@ -457,11 +466,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSessionsMu.Unlock()
 
 			if exists {
-				if err := acpSession.SetMode(ctx, inMsg.ModeID); err != nil {
+				modeCtx, modeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := acpSession.SetMode(modeCtx, inMsg.ModeID); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("failed to set mode")
 				} else {
 					log.Info().Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("mode set via WebSocket")
 				}
+				modeCancel()
 			}
 
 		case "session.setModel":
@@ -470,11 +481,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSessionsMu.Unlock()
 
 			if exists {
-				if err := acpSession.SetModel(ctx, inMsg.ModelID); err != nil {
+				modelCtx, modelCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := acpSession.SetModel(modelCtx, inMsg.ModelID); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("failed to set model")
 				} else {
 					log.Info().Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("model set via WebSocket")
 				}
+				modelCancel()
 			}
 
 		case "permission.respond":
@@ -487,7 +500,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				break
 			}
 
-			if err := acpSession.RespondToPermission(ctx, inMsg.ToolCallID, inMsg.OptionID); err != nil {
+			if err := acpSession.RespondToPermission(context.Background(), inMsg.ToolCallID, inMsg.OptionID); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respond to permission")
 			}
 
@@ -544,7 +557,7 @@ func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte 
 				}
 				data, err = agentsdk.AgentToolCallUpdateEnvelope(sessionID, fields)
 			case agentsdk.BlockPlan:
-				data, err = agentsdk.AgentPlanEnvelope(sessionID, block.Text)
+				data, err = agentsdk.AgentPlanEnvelope(sessionID, block.PlanEntries)
 			case agentsdk.BlockText:
 				data, err = agentsdk.AgentMessageChunkEnvelope(sessionID,
 					map[string]any{"type": "text", "text": block.Text})

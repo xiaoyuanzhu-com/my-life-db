@@ -77,7 +77,7 @@ func AgentToolCallUpdateEnvelope(sessionID string, fields map[string]any) ([]byt
 }
 
 // AgentPlanEnvelope creates an agent.plan frame from ACP Plan entries.
-func AgentPlanEnvelope(sessionID string, entries any) ([]byte, error) {
+func AgentPlanEnvelope(sessionID string, entries []PlanEntry) ([]byte, error) {
 	return MarshalEnvelope("agent.plan", sessionID, map[string]any{
 		"entries": entries,
 	})

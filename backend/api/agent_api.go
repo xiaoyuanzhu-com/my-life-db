@@ -112,29 +112,36 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 
 		// Broadcast user echo
 		contentBlocks := []map[string]any{{"type": "text", "text": req.Message}}
-		userEcho, _ := agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
-		sessionState.AppendAndBroadcast(userEcho)
+		if userEcho, err := agentsdk.UserEchoEnvelope(sessionID, contentBlocks); err == nil && userEcho != nil {
+			sessionState.AppendAndBroadcast(userEcho)
+		}
 
 		// Broadcast turn.start
-		turnStart, _ := agentsdk.TurnStartEnvelope(sessionID)
-		sessionState.AppendAndBroadcast(turnStart)
+		if turnStart, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && turnStart != nil {
+			sessionState.AppendAndBroadcast(turnStart)
+		}
 
 		// Send prompt and forward events in a background goroutine
 		go func(acpSess agentsdk.Session, prompt string) {
-			ctx := context.Background()
+			// Mark processing BEFORE Send() so any WS client connecting
+			// between turn.start and the first event sees the correct state.
+			sessionState.Mu.Lock()
+			sessionState.IsProcessing = true
+			sessionState.Mu.Unlock()
+
+			ctx := h.server.ShutdownContext()
 			events, err := acpSess.Send(ctx, prompt)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial prompt to ACP session")
+				sessionState.Mu.Lock()
+				sessionState.IsProcessing = false
+				sessionState.Mu.Unlock()
 				errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
 				if errBytes != nil {
 					sessionState.AppendAndBroadcast(errBytes)
 				}
 				return
 			}
-
-			sessionState.Mu.Lock()
-			sessionState.IsProcessing = true
-			sessionState.Mu.Unlock()
 
 			for event := range events {
 				frames := translateEventToEnvelopes(sessionID, event)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -134,20 +135,23 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		}
 
 	case update.Plan != nil:
-		// Plan entries — emit as a message with plan content
-		var text string
-		for _, entry := range update.Plan.Entries {
-			status := string(entry.Status)
-			text += fmt.Sprintf("[%s] %s\n", status, entry.Content)
-		}
-		if text != "" {
+		// Plan entries — emit as a message with structured plan data
+		if len(update.Plan.Entries) > 0 {
+			entries := make([]PlanEntry, len(update.Plan.Entries))
+			for i, e := range update.Plan.Entries {
+				entries[i] = PlanEntry{
+					Content:  e.Content,
+					Status:   string(e.Status),
+					Priority: string(e.Priority),
+				}
+			}
 			c.emit(Event{
 				Type: EventMessage,
 				Message: &Message{
 					Role: RoleAssistant,
 					Content: []Block{{
-						Type: BlockPlan,
-						Text: text,
+						Type:        BlockPlan,
+						PlanEntries: entries,
 					}},
 				},
 			})
@@ -372,8 +376,9 @@ type terminalState struct {
 }
 
 var (
-	terminalsMu sync.Mutex
-	terminals   = make(map[string]*terminalState)
+	terminalsMu     sync.Mutex
+	terminals       = make(map[string]*terminalState)
+	terminalCounter atomic.Int64
 )
 
 func (c *acpClient) CreateTerminal(ctx context.Context, params acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
@@ -397,7 +402,7 @@ func (c *acpClient) CreateTerminal(ctx context.Context, params acp.CreateTermina
 		}
 	}
 
-	termID := fmt.Sprintf("term-%s", params.Command)
+	termID := fmt.Sprintf("term-%d", terminalCounter.Add(1))
 	state := &terminalState{
 		cmd:      cmd,
 		output:   string(output),

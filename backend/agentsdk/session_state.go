@@ -2,6 +2,8 @@ package agentsdk
 
 import (
 	"sync"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // WSClient represents a connected WebSocket client for an agent session.
@@ -41,7 +43,7 @@ func (s *SessionState) AppendAndBroadcast(data []byte) {
 		select {
 		case c.Send <- data:
 		default:
-			// Client buffer full, skip (client will be cleaned up on write error)
+			log.Warn().Str("clientId", c.ID).Msg("dropping message: client send buffer full")
 		}
 	}
 }
@@ -59,6 +61,7 @@ func (s *SessionState) BroadcastToClients(data []byte) {
 		select {
 		case c.Send <- data:
 		default:
+			log.Warn().Str("clientId", c.ID).Msg("dropping broadcast: client send buffer full")
 		}
 	}
 }

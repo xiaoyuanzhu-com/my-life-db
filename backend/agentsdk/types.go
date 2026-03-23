@@ -134,15 +134,23 @@ const (
 	RoleSystem    Role = "system"
 )
 
+// PlanEntry represents a single entry in an agent plan.
+type PlanEntry struct {
+	Content  string `json:"content"`
+	Status   string `json:"status"`   // pending, in_progress, completed
+	Priority string `json:"priority"` // high, medium, low
+}
+
 // Block represents a piece of content within a message.
 type Block struct {
-	Type      BlockType
-	Text      string          // for text, thinking, plan blocks
-	Language  string          // for code blocks
-	ToolName  string          // for tool_use blocks: tool title
-	ToolUseID string          // for tool_use / tool_result blocks: links them
-	ToolKind  string          // for tool_use blocks: "execute", "edit", "read", etc.
-	ToolInput json.RawMessage // for tool_use blocks: raw input JSON
+	Type        BlockType
+	Text        string          // for text, thinking, plan blocks
+	Language    string          // for code blocks
+	ToolName    string          // for tool_use blocks: tool title
+	ToolUseID   string          // for tool_use / tool_result blocks: links them
+	ToolKind    string          // for tool_use blocks: "execute", "edit", "read", etc.
+	ToolInput   json.RawMessage // for tool_use blocks: raw input JSON
+	PlanEntries []PlanEntry     // for plan blocks: structured entries
 }
 
 // BlockType identifies the kind of content block.
