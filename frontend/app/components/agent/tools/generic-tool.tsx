@@ -9,6 +9,7 @@ import { useState } from "react"
 import { ChevronRight, Wrench } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { cn } from "~/lib/utils"
+import { MessageDot, toolStatusToDotType } from "../message-dot"
 
 interface GenericArgs {
   kind?: string
@@ -18,7 +19,7 @@ interface GenericArgs {
 // Derive a human-readable kind label from args or toolName
 function inferKind(toolName: string, args: GenericArgs): string {
   if (args.kind && typeof args.kind === "string") return args.kind
-  // Attempt to infer from the title prefix (e.g. "Search foo" → "search")
+  // Attempt to infer from the title prefix (e.g. "Search foo" -> "search")
   const lower = toolName.toLowerCase()
   for (const k of ["search", "fetch", "think", "delete", "move", "read", "edit", "execute"]) {
     if (lower.startsWith(k)) return k
@@ -26,7 +27,7 @@ function inferKind(toolName: string, args: GenericArgs): string {
   return "tool"
 }
 
-// Kind → icon color
+// Kind -> icon color
 function kindColor(kind: string): string {
   switch (kind) {
     case "search": return "text-blue-500"
@@ -46,6 +47,7 @@ export function GenericToolRenderer({
 }: ToolCallMessagePartProps<GenericArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
+  const isError = status.type === "requires-action"
   const kind = inferKind(toolName, args)
 
   const [openInput, setOpenInput] = useState(false)
@@ -59,10 +61,19 @@ export function GenericToolRenderer({
       : JSON.stringify(result, null, 2)
     : null
 
+  const summaryText = isError
+    ? "Error"
+    : isComplete
+      ? "Done"
+      : isRunning
+        ? "Running..."
+        : "Pending"
+
   return (
     <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
       {/* Header row */}
       <div className="flex items-center gap-2 px-3 py-2">
+        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
         <Wrench className={cn("h-3.5 w-3.5 shrink-0", kindColor(kind))} />
         <span className="flex-1 truncate font-mono text-xs text-foreground">
           {toolName}
@@ -73,9 +84,12 @@ export function GenericToolRenderer({
         )}>
           {kind}
         </span>
-        {isRunning && (
-          <span className="text-[10px] text-amber-500 animate-pulse">running</span>
-        )}
+      </div>
+
+      {/* Summary line */}
+      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
+        <span className="text-muted-foreground/60">{'\u2514'}</span>
+        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
       </div>
 
       {/* Raw Input (collapsed by default) */}
@@ -119,13 +133,13 @@ export function GenericToolRenderer({
               )}
             />
             output
-            {isComplete && (
-              <span className="ml-1 text-[10px] text-muted-foreground">done</span>
-            )}
           </button>
           {openOutput && (
             <div className="px-3 pb-2">
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-48 text-foreground">
+              <pre className={cn(
+                "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-48",
+                isError ? "text-destructive" : "text-foreground"
+              )}>
                 {outputStr}
               </pre>
             </div>

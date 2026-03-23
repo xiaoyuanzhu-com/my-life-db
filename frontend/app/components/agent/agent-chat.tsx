@@ -3,12 +3,12 @@
  *
  * Uses assistant-ui's AssistantRuntimeProvider + ThreadPrimitive + MessagePrimitive
  * to render the conversation. Tool calls are dispatched to kind-specific renderers.
- * Permission cards appear below the thread for tool calls awaiting approval.
+ * Permission cards appear above the composer as popups.
  */
+import { useMemo } from "react"
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
-  MessagePrimitive,
   ComposerPrimitive,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react"
@@ -17,13 +17,17 @@ import { cn } from "~/lib/utils"
 import { useAgentRuntime } from "~/hooks/use-agent-runtime"
 import { AgentContextProvider, useAgentContext } from "./agent-context"
 import { PermissionCard } from "./permission-card"
+import { UserMessage } from "./user-message"
+import { createAssistantMessage } from "./assistant-message"
 import { ExecuteToolRenderer } from "./tools/execute-tool"
 import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
 import { GenericToolRenderer } from "./tools/generic-tool"
-import { FolderPicker } from "~/components/claude/chat/folder-picker"
-import { AgentTypeSelector, type AgentType } from "~/components/claude/chat/agent-type-selector"
-import { PermissionModeSelector, type PermissionMode } from "~/components/claude/chat/permission-mode-selector"
+import { FolderPicker } from "./folder-picker"
+import { AgentTypeSelector, type AgentType } from "./agent-type-selector"
+import { PermissionModeSelector, type PermissionMode } from "./permission-mode-selector"
+import { ConnectionStatusBanner } from "./connection-status-banner"
+import { AgentWIP } from "./agent-wip"
 
 // ── Tool dispatch ──────────────────────────────────────────────────────────
 
@@ -81,53 +85,8 @@ const toolsConfig = {
   Override: AcpToolRenderer,
 } as const
 
-function UserMessage() {
-  return (
-    <MessagePrimitive.Root className="flex justify-end mb-4">
-      <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5">
-        <MessagePrimitive.Parts
-          components={{
-            Text: ({ text }) => (
-              <p className="text-sm text-primary-foreground whitespace-pre-wrap break-words">
-                {text}
-              </p>
-            ),
-            tools: toolsConfig,
-          }}
-        />
-      </div>
-    </MessagePrimitive.Root>
-  )
-}
-
-function AssistantMessage() {
-  return (
-    <MessagePrimitive.Root className="flex justify-start mb-4">
-      <div className="max-w-[85%] min-w-0">
-        <MessagePrimitive.Parts
-          components={{
-            Text: ({ text }) => (
-              <p className="text-sm text-foreground whitespace-pre-wrap break-words">
-                {text}
-              </p>
-            ),
-            Reasoning: ({ text }) => (
-              <details className="my-1">
-                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  Reasoning
-                </summary>
-                <p className="mt-1 pl-2 text-xs text-muted-foreground whitespace-pre-wrap break-words border-l border-border">
-                  {text}
-                </p>
-              </details>
-            ),
-            tools: toolsConfig,
-          }}
-        />
-      </div>
-    </MessagePrimitive.Root>
-  )
-}
+// Create AssistantMessage with tools config baked in
+const AssistantMessage = createAssistantMessage(toolsConfig)
 
 // ── Pending permissions ────────────────────────────────────────────────────
 
@@ -136,18 +95,31 @@ function PendingPermissions() {
 
   if (pendingPermissions.size === 0) return null
 
+  const entries = Array.from(pendingPermissions.entries())
+
   return (
-    <div className="space-y-2 mt-2 mb-2">
-      {Array.from(pendingPermissions.entries()).map(([toolCallId, entry]) => (
+    <div className="space-y-2 px-4 py-2">
+      {entries.map(([toolCallId, entry], index) => (
         <PermissionCard
           key={toolCallId}
           toolCallId={toolCallId}
           toolName={entry.toolName}
           args={null}
           options={entry.options}
+          isFirst={index === 0}
         />
       ))}
     </div>
+  )
+}
+
+// ── WIP indicator (shown when agent is running) ────────────────────────────
+
+function AgentWIPIndicator() {
+  return (
+    <ThreadPrimitive.If running>
+      <AgentWIP />
+    </ThreadPrimitive.If>
   )
 }
 
@@ -174,7 +146,7 @@ function AgentComposer({
     <div className="border-t border-border bg-background px-4 py-3">
       <ComposerPrimitive.Root className="rounded-xl border border-border bg-muted/30 px-3 py-2">
         <ComposerPrimitive.Input
-          placeholder="Message…"
+          placeholder="Message..."
           className={cn(
             "w-full resize-none bg-transparent text-sm text-foreground",
             "placeholder:text-muted-foreground focus:outline-none",
@@ -296,12 +268,8 @@ export function AgentChat({
     <AgentContextProvider value={{ sendPermissionResponse, pendingPermissions }}>
       <AssistantRuntimeProvider runtime={runtime}>
         <div className={cn("flex flex-col h-full bg-background", className)}>
-          {/* Connection status — only shown when a session exists but not yet connected */}
-          {hasSession && !connected && (
-            <div className="shrink-0 px-4 py-1.5 text-center text-[11px] text-muted-foreground bg-muted/50 border-b border-border">
-              Connecting…
-            </div>
-          )}
+          {/* Connection status banner */}
+          <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
 
           {/* Thread viewport */}
           <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
@@ -318,12 +286,16 @@ export function AgentChat({
               }}
             />
 
-            <PendingPermissions />
-
             <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-0 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowDown className="h-4 w-4" />
             </ThreadPrimitive.ScrollToBottom>
           </ThreadPrimitive.Viewport>
+
+          {/* Agent WIP indicator — shown when running, after messages, before permissions */}
+          <AgentWIPIndicator />
+
+          {/* Permission cards — pop up above composer */}
+          <PendingPermissions />
 
           {/* Composer */}
           <AgentComposer

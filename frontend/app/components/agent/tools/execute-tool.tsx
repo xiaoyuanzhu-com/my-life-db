@@ -8,6 +8,7 @@ import { useState } from "react"
 import { ChevronRight, Terminal } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { cn } from "~/lib/utils"
+import { MessageDot, toolStatusToDotType } from "../message-dot"
 
 // ACP rawInput shape for execute tools
 interface ExecuteArgs {
@@ -34,6 +35,15 @@ export function ExecuteToolRenderer({
       : JSON.stringify(result, null, 2)
     : null
 
+  // Build summary line
+  const summaryText = isError
+    ? "Error"
+    : isComplete
+      ? "Completed"
+      : isRunning
+        ? "Running..."
+        : "Pending"
+
   return (
     <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
       {/* Header — clickable to collapse/expand */}
@@ -42,16 +52,11 @@ export function ExecuteToolRenderer({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-md"
       >
+        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
         <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="flex-1 truncate font-mono text-xs text-foreground">
           {toolName}
         </span>
-        {isRunning && (
-          <span className="text-[10px] text-amber-500 animate-pulse">running</span>
-        )}
-        {isComplete && outputStr != null && (
-          <span className="text-[10px] text-muted-foreground">done</span>
-        )}
         <ChevronRight
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
@@ -59,6 +64,12 @@ export function ExecuteToolRenderer({
           )}
         />
       </button>
+
+      {/* Summary line */}
+      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
+        <span className="text-muted-foreground/60">{'\u2514'}</span>
+        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
+      </div>
 
       {/* Output */}
       {open && outputStr != null && (
@@ -78,7 +89,7 @@ export function ExecuteToolRenderer({
       {open && isRunning && outputStr == null && (
         <div className="border-t border-border px-3 py-2">
           <span className="font-mono text-[11px] text-muted-foreground animate-pulse">
-            …
+            ...
           </span>
         </div>
       )}

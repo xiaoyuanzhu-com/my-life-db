@@ -4,7 +4,12 @@
  * Shows what tool is being requested and renders ACP permission options
  * (Allow Once, Allow Always, Reject, Reject Always) as buttons.
  * Calls sendPermissionResponse(toolCallId, optionId) when the user clicks.
+ *
+ * Renders as a popup above the composer with slide-up animation.
+ * Supports keyboard shortcuts: Enter = allow_once, Escape = reject_once
+ * (first card only).
  */
+import { useEffect, useRef } from "react"
 import { useAgentContext } from "./agent-context"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
 import { ShieldQuestion } from "lucide-react"
@@ -14,6 +19,8 @@ interface PermissionCardProps {
   toolName: string
   args: unknown
   options: PermissionOption[]
+  /** Whether this is the first (topmost) permission card — receives keyboard shortcuts */
+  isFirst?: boolean
 }
 
 /** Determine button style by kind */
@@ -41,8 +48,10 @@ export function PermissionCard({
   toolName,
   args,
   options,
+  isFirst = false,
 }: PermissionCardProps) {
   const { sendPermissionResponse } = useAgentContext()
+  const cardRef = useRef<HTMLDivElement>(null)
 
   const previewStr =
     args != null
@@ -51,8 +60,47 @@ export function PermissionCard({
         : JSON.stringify(args, null, 2)
       : null
 
+  // Keyboard shortcuts (only for the first card)
+  useEffect(() => {
+    if (!isFirst) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return
+      }
+
+      if (e.key === "Enter") {
+        e.preventDefault()
+        // Find allow_once or allow option
+        const allowOption = options.find(
+          (o) => o.kind === "allow_once" || o.kind === "allow"
+        )
+        if (allowOption) {
+          sendPermissionResponse(toolCallId, allowOption.optionId)
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault()
+        // Find reject_once or reject option
+        const rejectOption = options.find(
+          (o) => o.kind === "reject_once" || o.kind === "reject" || o.kind === "deny"
+        )
+        if (rejectOption) {
+          sendPermissionResponse(toolCallId, rejectOption.optionId)
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isFirst, toolCallId, options, sendPermissionResponse])
+
   return (
-    <div className="my-2 rounded-md border border-border bg-background p-3 text-sm">
+    <div
+      ref={cardRef}
+      className="animate-permission-slide-up rounded-md border border-border bg-background p-3 text-sm shadow-sm"
+    >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
         <ShieldQuestion className="h-4 w-4 shrink-0 text-amber-500" />
@@ -88,6 +136,13 @@ export function PermissionCard({
             ].join(" ")}
           >
             {option.name}
+            {/* Show keyboard hint for first card */}
+            {isFirst && (option.kind === "allow_once" || option.kind === "allow") && (
+              <span className="ml-1.5 text-[10px] opacity-50">{'\u23CE'}</span>
+            )}
+            {isFirst && (option.kind === "reject_once" || option.kind === "reject" || option.kind === "deny") && (
+              <span className="ml-1.5 text-[10px] opacity-50">Esc</span>
+            )}
           </button>
         ))}
       </div>

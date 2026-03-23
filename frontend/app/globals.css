@@ -801,6 +801,108 @@ a.library-file-link:hover {
 }
 
 /* ============================================
+   Agent Chat — Markdown Content Styles
+   ============================================ */
+
+.markdown-content p {
+  margin: 0.25em 0;
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  font-weight: 600;
+  margin: 0.75em 0 0.25em;
+}
+
+.markdown-content h1 {
+  font-size: 1.25em;
+}
+
+.markdown-content h2 {
+  font-size: 1.125em;
+}
+
+.markdown-content h3 {
+  font-size: 1em;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+}
+
+.markdown-content li {
+  margin: 0.125em 0;
+}
+
+.markdown-content blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  opacity: 0.8;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--border);
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+
+.markdown-content thead {
+  background-color: var(--muted);
+}
+
+.markdown-content hr {
+  margin: 0.75em 0;
+  border-color: var(--border);
+}
+
+.markdown-content strong {
+  font-weight: 600;
+}
+
+/* Permission card slide-up animation */
+@keyframes permission-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-permission-slide-up {
+  animation: permission-slide-up 0.2s ease-out forwards;
+}
+
+/* ============================================
    Native App Mode (WKWebView)
    ============================================
    When embedded in the iOS/macOS native shell,
