@@ -1,17 +1,22 @@
 /**
- * EditTool — renderer for ACP ToolKind "edit" (file edits / diffs)
+ * EditTool -- renderer for ACP ToolKind "edit" (file edits / diffs)
  *
- * Shows the file path from title. If the result has type "diff", renders
- * oldText/newText side by side. Otherwise renders rawOutput. Collapsible.
+ * Matches the old Claude Code edit-tool.tsx pattern:
+ * - Header: MessageDot + "Edit" (bold) + file path (muted) + optional "(replace all)"
+ * - Unified diff: deleted lines red bg with "-", added lines green bg with "+"
+ * - Truncated to 5+5 lines with "Show more/less" toggle
+ * - Error below diff in destructive color
  */
 import { useState } from "react"
-import { ChevronRight, Pencil } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { cn } from "~/lib/utils"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
 interface EditArgs {
   kind?: string
+  file_path?: string
+  old_string?: string
+  new_string?: string
+  replace_all?: boolean
   [key: string]: unknown
 }
 
@@ -29,103 +34,129 @@ function isDiffResult(v: unknown): v is DiffResult {
   )
 }
 
+const MAX_OLD_LINES = 5
+const MAX_NEW_LINES = 5
+
 export function EditToolRenderer({
   toolName,
+  args,
   result,
   status,
 }: ToolCallMessagePartProps<EditArgs, unknown>) {
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action"
+  const [expanded, setExpanded] = useState(false)
 
-  // Default: collapsed when complete, expanded when running/pending
-  const [open, setOpen] = useState(!isComplete)
+  // Extract file path
+  const filePath = args?.file_path || toolName || ""
+  const fileName = filePath.split("/").pop() || filePath
 
-  const hasDiff = isDiffResult(result)
-  const outputStr = !hasDiff && result != null
+  // Determine dot type
+  const dotType = isError
+    ? "tool-failed" as const
+    : toolStatusToDotType(status.type)
+
+  // Get diff lines from args (old_string/new_string) or result
+  const hasDiffResult = isDiffResult(result)
+  const oldStr = args?.old_string ?? (hasDiffResult ? (result as DiffResult).oldText : undefined) ?? ""
+  const newStr = args?.new_string ?? (hasDiffResult ? (result as DiffResult).newText : undefined) ?? ""
+
+  const oldLines = oldStr ? oldStr.split("\n") : []
+  const newLines = newStr ? newStr.split("\n") : []
+  const hasDiff = oldLines.length > 0 || newLines.length > 0
+
+  // Truncation
+  const isTruncated = oldLines.length > MAX_OLD_LINES || newLines.length > MAX_NEW_LINES
+  const displayOldLines = expanded ? oldLines : oldLines.slice(0, MAX_OLD_LINES)
+  const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
+
+  // Fallback output for non-diff results
+  const outputStr = !hasDiff && !hasDiffResult && result != null
     ? typeof result === "string"
       ? result
       : JSON.stringify(result, null, 2)
     : null
 
-  const summaryText = isError
-    ? "Error"
-    : isComplete
-      ? "Applied"
-      : isRunning
-        ? "Editing..."
-        : "Pending"
-
   return (
-    <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
-      {/* Header */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-md"
-      >
-        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
-        <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex-1 truncate font-mono text-xs text-foreground">
-          {toolName}
-        </span>
-        <ChevronRight
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90"
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Edit" bold + file path */}
+      <div className="flex items-start gap-2 mb-3">
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-foreground">
+            Edit
+          </span>
+          <span className="ml-2 text-muted-foreground break-all" title={filePath}>
+            {fileName}
+          </span>
+          {args?.replace_all && (
+            <span className="ml-2 text-muted-foreground/70">(replace all)</span>
           )}
-        />
-      </button>
-
-      {/* Summary line */}
-      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
-        <span className="text-muted-foreground/60">{'\u2514'}</span>
-        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
+        </div>
       </div>
 
-      {/* Diff view */}
-      {open && hasDiff && (
-        <div className="border-t border-border">
-          {(result as DiffResult).oldText != null && (
-            <div className="border-b border-border px-3 py-2 bg-destructive/5">
-              <div className="mb-1 text-[10px] font-medium text-destructive/70 uppercase tracking-wide">
-                removed
+      {/* Unified diff view */}
+      {hasDiff && (
+        <div className="rounded-md overflow-hidden border border-border">
+          <div
+            className={expanded && isTruncated ? "overflow-y-auto" : ""}
+            style={expanded && isTruncated ? { maxHeight: "60vh" } : {}}
+          >
+            {/* Deleted lines */}
+            {displayOldLines.map((line, i) => (
+              <div
+                key={`del-${i}`}
+                className="font-mono text-[13px] leading-[1.5] flex bg-destructive/10"
+              >
+                <span className="inline-block px-3 select-none text-destructive/70">-</span>
+                <span className="flex-1 pr-3 whitespace-pre-wrap break-all text-destructive">{line}</span>
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-48 text-destructive">
-                {(result as DiffResult).oldText}
-              </pre>
-            </div>
-          )}
-          {(result as DiffResult).newText != null && (
-            <div className="px-3 py-2 bg-emerald-500/5">
-              <div className="mb-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
-                added
+            ))}
+
+            {/* Added lines */}
+            {displayNewLines.map((line, i) => (
+              <div
+                key={`add-${i}`}
+                className="font-mono text-[13px] leading-[1.5] flex bg-emerald-500/10"
+              >
+                <span className="inline-block px-3 select-none text-emerald-600 dark:text-emerald-400">+</span>
+                <span className="flex-1 pr-3 whitespace-pre-wrap break-all text-emerald-700 dark:text-emerald-300">{line}</span>
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-48 text-emerald-700 dark:text-emerald-300">
-                {(result as DiffResult).newText}
-              </pre>
-            </div>
+            ))}
+          </div>
+
+          {/* Expand/Collapse button */}
+          {isTruncated && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full py-1.5 text-[12px] cursor-pointer hover:opacity-80 transition-opacity bg-muted/50 text-muted-foreground border-t border-border"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
           )}
         </div>
       )}
 
-      {/* Raw output fallback */}
-      {open && !hasDiff && outputStr != null && (
-        <div className="border-t border-border px-3 py-2">
-          <pre className={cn(
-            "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-64",
-            isError ? "text-destructive" : "text-foreground"
-          )}>
-            {outputStr}
-          </pre>
+      {/* Raw output fallback (non-diff result) */}
+      {outputStr && (
+        <div className="mt-2 ml-5 p-3 rounded-md bg-muted/50 overflow-y-auto whitespace-pre-wrap break-all text-muted-foreground" style={{ maxHeight: "60vh" }}>
+          {outputStr}
         </div>
       )}
 
-      {open && isRunning && result == null && (
-        <div className="border-t border-border px-3 py-2">
-          <span className="font-mono text-[11px] text-muted-foreground animate-pulse">
-            ...
-          </span>
+      {/* Running state */}
+      {isRunning && !hasDiff && !outputStr && (
+        <div className="flex gap-2 ml-5 text-muted-foreground">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Editing...</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {isError && (
+        <div className="font-mono text-[13px] mt-2 text-destructive">
+          Error
         </div>
       )}
     </div>

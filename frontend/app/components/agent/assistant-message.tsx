@@ -1,11 +1,13 @@
 /**
- * AssistantMessage — renders an assistant message in the ACP chat thread.
+ * AssistantMessage -- renders an assistant message in the ACP chat thread.
  *
- * - Text parts rendered as markdown via MarkdownContent
- * - Reasoning blocks as collapsible <details> with smooth animation
+ * Matches the old Claude Code message-block.tsx assistant section:
+ * - MessageDot + markdown prose content
+ * - Copy button (appears on hover, top-right)
+ * - Thinking/reasoning blocks: collapsible with "Thinking" label + chevron,
+ *   code-block bg when expanded, smooth CSS grid animation
  * - Tool calls routed through AcpToolRenderer (passed via props)
- * - Copy button on hover (copies raw text)
- * - MessageDot for status
+ * - Blinking cursor during streaming
  */
 import { useState, useCallback } from "react"
 import { MessagePrimitive, type ToolCallMessagePartProps } from "@assistant-ui/react"
@@ -32,11 +34,11 @@ function AssistantTextPart({ text }: { text: string }) {
   return (
     <div className="group/text relative">
       <MarkdownContent text={text} className="text-foreground" />
-      {/* Copy button — visible on hover */}
+      {/* Copy button -- visible on hover, top-right */}
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute -top-1 -right-1 opacity-0 group-hover/text:opacity-100 transition-opacity rounded-md p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+        className="absolute -top-1 -right-1 opacity-0 group-hover/text:opacity-100 transition-opacity rounded-md p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
         title="Copy text"
       >
         {copied ? (
@@ -50,17 +52,39 @@ function AssistantTextPart({ text }: { text: string }) {
 }
 
 function AssistantReasoningPart({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+
   return (
-    <details className="my-1 group/reasoning">
-      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
-        Reasoning
-      </summary>
-      <div className="mt-1 pl-2 border-l border-border overflow-hidden transition-all duration-200">
-        <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
-          {text}
-        </p>
+    <div className="my-1">
+      {/* Header: "Thinking" label + chevron */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground transition-colors select-none"
+      >
+        <MessageDot type={expanded ? "assistant" : "tool-pending"} />
+        <span className="font-mono text-[13px] leading-[1.5] font-semibold text-foreground">
+          Thinking
+        </span>
+        <span className="text-[11px] text-muted-foreground/60">
+          {expanded ? "\u25BE" : "\u25B8"}
+        </span>
+      </button>
+
+      {/* Collapsible thinking content - smooth CSS grid animation */}
+      <div className={`collapsible-grid ${expanded ? "" : "collapsed"}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-1 ml-5 p-3 rounded-md overflow-y-auto bg-muted/50"
+            style={{ maxHeight: "60vh" }}
+          >
+            <p className="font-mono text-[13px] leading-[1.5] text-muted-foreground whitespace-pre-wrap break-words">
+              {text}
+            </p>
+          </div>
+        </div>
       </div>
-    </details>
+    </div>
   )
 }
 
@@ -82,11 +106,11 @@ function StreamingCursor() {
 export function createAssistantMessage(toolsConfig: AssistantMessageProps["toolsConfig"]) {
   return function AssistantMessage() {
     return (
-      <MessagePrimitive.Root className="flex justify-start mb-4 gap-1.5">
-        <div className="mt-1 shrink-0">
+      <MessagePrimitive.Root className="flex gap-2 mb-4">
+        <div className="mt-0.5 shrink-0">
           <MessageDot type="assistant" />
         </div>
-        <div className="max-w-[85%] min-w-0">
+        <div className="flex-1 min-w-0">
           <MessagePrimitive.Parts
             components={{
               Text: AssistantTextPart,

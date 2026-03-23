@@ -1,18 +1,18 @@
 /**
- * ExecuteTool — renderer for ACP ToolKind "execute" (shell commands)
+ * ExecuteTool -- renderer for ACP ToolKind "execute" (shell commands)
  *
- * Shows the command being run and its output in a collapsible pre/code block.
- * Collapses by default when the tool call is complete.
+ * Matches the old Claude Code bash-tool.tsx pattern:
+ * - Header: MessageDot + "Execute" (bold) + command text (muted, truncated) + chevron
+ * - Summary line with tree connector
+ * - Collapsible output with smooth CSS grid animation
  */
 import { useState } from "react"
-import { ChevronRight, Terminal } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { cn } from "~/lib/utils"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
-// ACP rawInput shape for execute tools
 interface ExecuteArgs {
   kind?: string
+  command?: string
   [key: string]: unknown
 }
 
@@ -25,74 +25,91 @@ export function ExecuteToolRenderer({
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action" || (result !== undefined && (args as { isError?: boolean }).isError)
+  const [expanded, setExpanded] = useState(false)
 
-  // Default: collapsed when complete, expanded when running/pending
-  const [open, setOpen] = useState(!isComplete)
+  // Extract command text from args or toolName
+  const commandText = args?.command || toolName || "No command"
 
+  // Parse output
   const outputStr = result != null
     ? typeof result === "string"
       ? result
       : JSON.stringify(result, null, 2)
     : null
 
+  const hasOutput = !!outputStr
+
+  // Determine dot type
+  const dotType = isError
+    ? "tool-failed" as const
+    : toolStatusToDotType(status.type)
+
   // Build summary line
-  const summaryText = isError
-    ? "Error"
-    : isComplete
-      ? "Completed"
-      : isRunning
-        ? "Running..."
-        : "Pending"
+  const getSummaryLine = () => {
+    if (isRunning && !outputStr) {
+      return "Running..."
+    }
+    if (isError && outputStr) {
+      const firstLine = outputStr.split("\n")[0].trim()
+      return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine
+    }
+    if (outputStr) {
+      const firstLine = outputStr.split("\n")[0].trim()
+      return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine
+    }
+    if (isComplete) return "Completed"
+    return null
+  }
+
+  const summaryLine = getSummaryLine()
 
   return (
-    <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
-      {/* Header — clickable to collapse/expand */}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Execute" bold + command text + chevron */}
       <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-md"
+        onClick={() => hasOutput && setExpanded(!expanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasOutput ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
       >
-        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
-        <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex-1 truncate font-mono text-xs text-foreground">
-          {toolName}
-        </span>
-        <ChevronRight
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90"
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span className="font-semibold text-foreground">
+            Execute
+          </span>
+          <span className="truncate text-muted-foreground">
+            {commandText}
+          </span>
+          {hasOutput && (
+            <span className="text-[11px] shrink-0 text-muted-foreground/60">
+              {expanded ? "\u25BE" : "\u25B8"}
+            </span>
           )}
-        />
+        </div>
       </button>
 
-      {/* Summary line */}
-      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
-        <span className="text-muted-foreground/60">{'\u2514'}</span>
-        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
-      </div>
+      {/* Summary line: tree connector */}
+      {summaryLine && (
+        <div
+          className="flex gap-2 ml-5"
+          style={{ color: isError ? undefined : undefined }}
+        >
+          <span className={`select-none ${isError ? "text-destructive" : "text-muted-foreground"}`}>{"\u2514"}</span>
+          <span className={`truncate ${isError ? "text-destructive" : "text-muted-foreground"}`}>{summaryLine}</span>
+        </div>
+      )}
 
-      {/* Output */}
-      {open && outputStr != null && (
-        <div className="border-t border-border px-3 py-2">
-          <pre
-            className={cn(
-              "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-64",
-              isError ? "text-destructive" : "text-foreground"
-            )}
+      {/* Expanded output - smooth CSS grid collapse */}
+      <div className={`collapsible-grid ${expanded && hasOutput ? "" : "collapsed"}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50"
+            style={{ maxHeight: "60vh" }}
           >
-            {outputStr}
-          </pre>
+            <span className={isError ? "text-destructive" : "text-muted-foreground"}>
+              {outputStr}
+            </span>
+          </div>
         </div>
-      )}
-
-      {/* Running indicator when no output yet */}
-      {open && isRunning && outputStr == null && (
-        <div className="border-t border-border px-3 py-2">
-          <span className="font-mono text-[11px] text-muted-foreground animate-pulse">
-            ...
-          </span>
-        </div>
-      )}
+      </div>
     </div>
   )
 }

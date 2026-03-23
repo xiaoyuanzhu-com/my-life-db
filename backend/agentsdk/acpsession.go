@@ -280,6 +280,51 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 	return events, nil
 }
 
+// LoadSession loads a historical session from the agent's persistence layer.
+// The ACP conn.LoadSession() call is blocking — events stream in via SessionUpdate
+// callbacks before it returns. The events channel is closed once replay finishes.
+func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) (<-chan Event, error) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil, &AgentError{
+			Type:    ErrAgentCrash,
+			Agent:   s.agentType,
+			Message: "session is closed",
+		}
+	}
+	s.mu.Unlock()
+
+	events := make(chan Event, 256)
+	s.client.setEvents(events)
+
+	go func() {
+		defer close(events)
+		defer s.client.clearEvents()
+
+		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
+			SessionId:  acp.SessionId(sessionID),
+			Cwd:        cwd,
+			McpServers: []acp.McpServer{},
+		})
+		if err != nil {
+			// Don't emit error event — LoadSession failure is expected for sessions
+			// that haven't been persisted by the agent (e.g., not found on disk).
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
+			return
+		}
+
+		log.Info().Str("sessionId", sessionID).Msg("LoadSession completed, history replayed")
+
+		// Update the session's internal ACP session ID to the loaded one
+		s.mu.Lock()
+		s.sessionID = sessionID
+		s.mu.Unlock()
+	}()
+
+	return events, nil
+}
+
 // RespondToPermission unblocks a pending permission request using an optionID.
 func (s *acpSession) RespondToPermission(ctx context.Context, toolCallID string, optionID string) error {
 	return s.client.respondToPermission(toolCallID, true, optionID)

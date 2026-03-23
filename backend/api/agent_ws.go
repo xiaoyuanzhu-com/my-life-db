@@ -158,6 +158,53 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}
 
+	// If no messages in memory (e.g., server restart), try loading history via ACP
+	if totalMessages == 0 {
+		if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil && sessionRecord.WorkingDir != "" {
+			agentType := agentsdk.AgentClaudeCode
+			if sessionRecord.AgentType == "codex" {
+				agentType = agentsdk.AgentCodex
+			}
+			permMode := agentsdk.PermissionAsk
+			if pmStr, _ := db.GetAgentSessionPermissionMode(sessionID); pmStr != "" {
+				switch pmStr {
+				case "bypassPermissions":
+					permMode = agentsdk.PermissionAuto
+				case "plan":
+					permMode = agentsdk.PermissionDeny
+				}
+			}
+
+			sess, histEvents, err := h.server.AgentClient().CreateSessionWithLoad(ctx, agentsdk.SessionConfig{
+				Agent:       agentType,
+				Permissions: permMode,
+				WorkingDir:  sessionRecord.WorkingDir,
+			}, sessionID)
+
+			if err == nil && sess != nil {
+				// Store the ACP session for future prompts
+				acpSessionsMu.Lock()
+				acpSessions[sessionID] = sess
+				acpSessionsMu.Unlock()
+
+				// Forward replayed history events to the WS client
+				if histEvents != nil {
+					go func() {
+						for event := range histEvents {
+							frames := translateEventToEnvelopes(sessionID, event)
+							for _, frame := range frames {
+								sessionState.AppendAndBroadcast(frame)
+							}
+						}
+						log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
+					}()
+				}
+			} else if err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create session for history loading")
+			}
+		}
+	}
+
 	// Register as client
 	uiClient := &agentsdk.WSClient{
 		ID:   uuid.New().String(),

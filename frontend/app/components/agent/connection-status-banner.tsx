@@ -1,13 +1,14 @@
 /**
- * ConnectionStatusBanner — shows connection state for the ACP WebSocket.
+ * ConnectionStatusBanner -- shows connection state for the ACP WebSocket.
  *
- * Three states:
- * - connecting: spinner + "Reconnecting..."
- * - disconnected: wifi-off icon + "Disconnected."
- * - connected: check icon + "Connected." (auto-dismiss after 1.5s)
+ * Matches the old Claude Code connection-status-banner.tsx pattern:
+ * - CSS grid reveal/conceal animation (not instant show/hide)
+ * - Muted text, proper icons (Loader2 spinning, WifiOff, Check)
+ * - Auto-dismiss reconnected after 1.5s
  */
 import { useState, useEffect, useRef } from "react"
 import { Loader2, WifiOff, Check } from "lucide-react"
+import { cn } from "~/lib/utils"
 
 interface ConnectionStatusBannerProps {
   connected: boolean
@@ -22,12 +23,14 @@ export function ConnectionStatusBanner({
   hasSession,
 }: ConnectionStatusBannerProps) {
   const [state, setState] = useState<BannerState>("hidden")
+  const [isDismissing, setIsDismissing] = useState(false)
   const wasConnected = useRef(false)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!hasSession) {
       setState("hidden")
+      setIsDismissing(false)
       return
     }
 
@@ -35,8 +38,14 @@ export function ConnectionStatusBanner({
       if (wasConnected.current) {
         // Was disconnected, now reconnected -- show success briefly
         setState("connected")
+        setIsDismissing(false)
         dismissTimer.current = setTimeout(() => {
-          setState("hidden")
+          setIsDismissing(true)
+          // After conceal animation completes, hide completely
+          setTimeout(() => {
+            setState("hidden")
+            setIsDismissing(false)
+          }, 200)
         }, 1500)
       } else {
         // First connect -- no banner needed
@@ -47,9 +56,11 @@ export function ConnectionStatusBanner({
       if (wasConnected.current) {
         // Was connected, now disconnected
         setState("disconnected")
+        setIsDismissing(false)
       } else {
         // Still trying to connect for the first time
         setState("connecting")
+        setIsDismissing(false)
       }
     }
 
@@ -81,9 +92,15 @@ export function ConnectionStatusBanner({
   }
 
   return (
-    <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 text-[11px] text-muted-foreground bg-muted/50 border-b border-border">
-      {icon}
-      <span>{text}</span>
+    <div
+      className={cn("collapsible-grid", isDismissing && "collapsed")}
+    >
+      <div className="collapsible-grid-content">
+        <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
+          {icon}
+          <span>{text}</span>
+        </div>
+      </div>
     </div>
   )
 }

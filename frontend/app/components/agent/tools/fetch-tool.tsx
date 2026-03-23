@@ -1,14 +1,14 @@
 /**
- * FetchTool — renderer for ACP ToolKind "fetch" (HTTP fetches)
+ * FetchTool -- renderer for ACP ToolKind "fetch" (HTTP fetches)
  *
- * Shows the URL being fetched, HTTP status and size summary.
- * Expandable: result content rendered as markdown.
- * Collapsed by default when complete.
+ * Matches the old Claude Code web-fetch-tool.tsx pattern:
+ * - Header: MessageDot + "Fetch" (bold) + URL (muted, truncated) + chevron
+ * - Summary line with tree connector: "HTTP {status} ({size}, {duration})"
+ * - Expandable with markdown content, smooth CSS grid animation
+ * - Chevron only when expandable (has content)
  */
 import { useState } from "react"
-import { ChevronRight, Globe } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { cn } from "~/lib/utils"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 import { MarkdownContent } from "../markdown-content"
 
@@ -18,35 +18,40 @@ interface FetchArgs {
   [key: string]: unknown
 }
 
+/** Format bytes to human-readable */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
 /** Extract HTTP status and size from result */
-function extractFetchInfo(result: unknown): { status?: number; size?: string } {
+function extractFetchInfo(result: unknown): { status?: number; statusText?: string; size?: string; duration?: string } {
   if (result == null) return {}
 
   if (typeof result === "object" && result !== null) {
     const r = result as Record<string, unknown>
-    const info: { status?: number; size?: string } = {}
+    const info: { status?: number; statusText?: string; size?: string; duration?: string } = {}
     if (typeof r.status === "number") info.status = r.status
     if (typeof r.statusCode === "number") info.status = r.statusCode
-    if (typeof r.size === "number") {
-      info.size = formatSize(r.size)
-    } else if (typeof r.contentLength === "number") {
-      info.size = formatSize(r.contentLength)
+    if (typeof r.code === "number") info.status = r.code
+    if (typeof r.codeText === "string") info.statusText = r.codeText
+    if (typeof r.size === "number") info.size = formatSize(r.size)
+    else if (typeof r.contentLength === "number") info.size = formatSize(r.contentLength)
+    else if (typeof r.bytes === "number") info.size = formatSize(r.bytes)
+    if (typeof r.durationMs === "number") {
+      info.duration = r.durationMs < 1000
+        ? `${Math.round(r.durationMs)}ms`
+        : `${(r.durationMs / 1000).toFixed(1)}s`
     }
     return info
   }
 
-  // String result — estimate size
   if (typeof result === "string") {
     return { size: formatSize(result.length) }
   }
 
   return {}
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function FetchToolRenderer({
@@ -58,29 +63,17 @@ export function FetchToolRenderer({
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action"
-
-  // Default: collapsed when complete, expanded when running/pending
-  const [open, setOpen] = useState(!isComplete)
+  const [expanded, setExpanded] = useState(false)
 
   const url = args?.url || ""
   const fetchInfo = extractFetchInfo(result)
 
-  // Build summary
-  let summaryText: string
-  if (isError) {
-    summaryText = "Error"
-  } else if (isComplete) {
-    const parts: string[] = []
-    if (fetchInfo.status) parts.push(`HTTP ${fetchInfo.status}`)
-    if (fetchInfo.size) parts.push(`(${fetchInfo.size})`)
-    summaryText = parts.length > 0 ? parts.join(" ") : "Done"
-  } else if (isRunning) {
-    summaryText = "Fetching..."
-  } else {
-    summaryText = "Pending"
-  }
+  // Determine dot type
+  const dotType = isError
+    ? "tool-failed" as const
+    : toolStatusToDotType(status.type)
 
-  // Result content as string for markdown rendering
+  // Result content as string for rendering
   const resultContent = result != null
     ? typeof result === "string"
       ? result
@@ -88,50 +81,81 @@ export function FetchToolRenderer({
         ? (result as Record<string, unknown>).content as string
         : typeof result === "object" && result !== null && typeof (result as Record<string, unknown>).body === "string"
           ? (result as Record<string, unknown>).body as string
-          : JSON.stringify(result, null, 2)
+          : typeof result === "object" && result !== null && typeof (result as Record<string, unknown>).result === "string"
+            ? (result as Record<string, unknown>).result as string
+            : null
     : null
 
+  const hasContent = !!resultContent
+
+  // Build summary line
+  const getSummaryLine = () => {
+    if (isRunning) return "Fetching..."
+    if (isError) return "Error"
+    if (isComplete) {
+      const parts: string[] = []
+      if (fetchInfo.status) {
+        parts.push(`${fetchInfo.status}${fetchInfo.statusText ? ` ${fetchInfo.statusText}` : ""}`)
+      }
+      const meta: string[] = []
+      if (fetchInfo.size) meta.push(fetchInfo.size)
+      if (fetchInfo.duration) meta.push(fetchInfo.duration)
+      if (meta.length > 0) parts.push(`(${meta.join(", ")})`)
+      return parts.length > 0 ? parts.join(" ") : "Done"
+    }
+    return null
+  }
+
+  const summaryLine = getSummaryLine()
+
   return (
-    <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
-      {/* Header — clickable to collapse/expand */}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Fetch" bold + URL + chevron */}
       <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-md"
+        onClick={() => hasContent && setExpanded(!expanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasContent ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
       >
-        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
-        <Globe className="h-3.5 w-3.5 shrink-0 text-violet-500" />
-        <span className="font-medium text-xs text-foreground">Fetch</span>
-        <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
-          {url || toolName}
-        </span>
-        <ChevronRight
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90"
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-foreground">
+            Fetch
+          </span>
+          <span className="ml-2 break-all text-muted-foreground">
+            {url || toolName}
+          </span>
+          {hasContent && (
+            <span className="ml-2 select-none text-[11px] text-muted-foreground/60">
+              {expanded ? "\u25BE" : "\u25B8"}
+            </span>
           )}
-        />
+        </div>
       </button>
 
-      {/* Summary line */}
-      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
-        <span className="text-muted-foreground/60">{"\u2514"}</span>
-        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
-      </div>
-
-      {/* Result content as markdown */}
-      {open && resultContent != null && (
-        <div className="border-t border-border px-3 py-2 max-h-96 overflow-y-auto">
-          <MarkdownContent text={resultContent} className="text-foreground text-xs" />
+      {/* Summary line: tree connector */}
+      {summaryLine && (
+        <div className="flex gap-2 ml-5">
+          <span className={`select-none ${isError ? "text-destructive" : "text-muted-foreground"}`}>{"\u2514"}</span>
+          <span className={isError ? "text-destructive" : "text-muted-foreground"}>{summaryLine}</span>
         </div>
       )}
 
-      {/* Running indicator when no output yet */}
-      {open && isRunning && resultContent == null && (
-        <div className="border-t border-border px-3 py-2">
-          <span className="font-mono text-[11px] text-muted-foreground animate-pulse">
-            ...
-          </span>
+      {/* Expanded content - smooth CSS grid collapse */}
+      <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-4 rounded-md overflow-y-auto bg-muted/50"
+            style={{ maxHeight: "60vh" }}
+          >
+            <MarkdownContent text={resultContent || ""} className="text-foreground text-xs" />
+          </div>
+        </div>
+      </div>
+
+      {/* Error */}
+      {isError && !summaryLine && (
+        <div className="flex gap-2 ml-5 text-destructive">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Error</span>
         </div>
       )}
     </div>

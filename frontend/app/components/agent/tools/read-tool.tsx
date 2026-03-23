@@ -1,22 +1,24 @@
 /**
- * ReadTool — renderer for ACP ToolKind "read" (file reads)
+ * ReadTool -- renderer for ACP ToolKind "read" (file reads)
  *
- * Shows the file path from title and file content from result in a collapsible
- * code block. Collapsed by default when complete.
+ * Matches the old Claude Code read-tool.tsx pattern:
+ * - Header: MessageDot + "Read" (bold) + file path (muted)
+ * - Summary line with tree connector showing line count
+ * - NOT expandable (matching old behavior)
+ * - Error with tree connector in destructive color
  */
-import { useState } from "react"
-import { ChevronRight, FileText } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { cn } from "~/lib/utils"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
 interface ReadArgs {
   kind?: string
+  file_path?: string
   [key: string]: unknown
 }
 
 export function ReadToolRenderer({
   toolName,
+  args,
   result,
   status,
 }: ToolCallMessagePartProps<ReadArgs, unknown>) {
@@ -24,69 +26,59 @@ export function ReadToolRenderer({
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action"
 
-  // Default: collapsed when complete, expanded when running/pending
-  const [open, setOpen] = useState(!isComplete)
+  // Extract file path -- show filename only in header, full path on hover
+  const filePath = args?.file_path || toolName || ""
+  const fileName = filePath.split("/").pop() || filePath
 
+  // Count lines from result
   const outputStr = result != null
     ? typeof result === "string"
       ? result
       : JSON.stringify(result, null, 2)
     : null
+  const lineCount = outputStr ? outputStr.split("\n").length : 0
 
-  // Count lines for summary
-  const lineCount = outputStr ? outputStr.split('\n').length : 0
-  const summaryText = isError
-    ? "Error"
-    : isComplete
-      ? `${lineCount} line${lineCount !== 1 ? 's' : ''}`
-      : isRunning
-        ? "Reading..."
-        : "Pending"
+  // Determine dot type
+  const dotType = isError
+    ? "tool-failed" as const
+    : toolStatusToDotType(status.type)
 
   return (
-    <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
-      {/* Header */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-md"
-      >
-        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
-        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex-1 truncate font-mono text-xs text-foreground">
-          {toolName}
-        </span>
-        <ChevronRight
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90"
-          )}
-        />
-      </button>
-
-      {/* Summary line */}
-      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
-        <span className="text-muted-foreground/60">{'\u2514'}</span>
-        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Read" bold + file path */}
+      <div className="flex items-start gap-2 w-full text-left">
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-foreground">
+            Read
+          </span>
+          <span className="ml-2 text-muted-foreground truncate" title={filePath}>
+            {fileName}
+          </span>
+        </div>
       </div>
 
-      {/* File content */}
-      {open && outputStr != null && (
-        <div className="border-t border-border px-3 py-2">
-          <pre className={cn(
-            "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-96",
-            isError ? "text-destructive" : "text-foreground"
-          )}>
-            {outputStr}
-          </pre>
+      {/* Summary: line count */}
+      {isComplete && lineCount > 0 && (
+        <div className="flex gap-2 ml-5 text-muted-foreground">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Read {lineCount} line{lineCount !== 1 ? "s" : ""}</span>
         </div>
       )}
 
-      {open && isRunning && outputStr == null && (
-        <div className="border-t border-border px-3 py-2">
-          <span className="font-mono text-[11px] text-muted-foreground animate-pulse">
-            ...
-          </span>
+      {/* Running state */}
+      {isRunning && (
+        <div className="flex gap-2 ml-5 text-muted-foreground">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Reading...</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {isError && (
+        <div className="flex gap-2 ml-5 text-destructive">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Error</span>
         </div>
       )}
     </div>

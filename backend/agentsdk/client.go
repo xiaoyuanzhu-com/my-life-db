@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // Client is the entry point for all agent interactions.
@@ -98,6 +100,32 @@ func (c *Client) ResumeSession(ctx context.Context, sessionID string, config Ses
 	// ACP LoadSession fails across process restarts.
 	// Create a new session instead.
 	return c.CreateSession(ctx, config)
+}
+
+// CreateSessionWithLoad creates an ACP session and immediately tries to load
+// a historical session by ID. This spawns the agent process, establishes the
+// ACP connection, then calls session/load to replay history events.
+// If LoadSession fails (e.g., session not found on disk), the session is still
+// usable — just without history. The returned events channel may be nil if
+// history loading failed.
+func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, <-chan Event, error) {
+	// Create the ACP session normally (spawns agent process)
+	sess, err := c.CreateSession(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Try to load the historical session
+	events, err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir)
+	if err != nil {
+		// LoadSession setup failed — session is still usable, just no history
+		log.Warn().Err(err).
+			Str("sessionId", historicalSessionID).
+			Msg("CreateSessionWithLoad: LoadSession setup failed, continuing without history")
+		return sess, nil, nil
+	}
+
+	return sess, events, nil
 }
 
 // RunTask runs a one-off agent task to completion.

@@ -1,10 +1,12 @@
 /**
- * SearchTool — renderer for ACP ToolKind "search" (grep/glob file searches)
+ * SearchTool -- renderer for ACP ToolKind "search" (grep/glob file searches)
  *
- * Shows the search pattern/query and a summary of found files.
- * NOT expandable — matches old Grep/Glob behavior.
+ * Matches the old Claude Code grep-tool.tsx + glob-tool.tsx pattern:
+ * - Header: MessageDot + "Search" (bold) + pattern/query (muted)
+ * - Summary line with tree connector: "Found in N file(s)" or "No matches found"
+ * - NOT expandable (matching old behavior)
+ * - Error with tree connector in destructive color
  */
-import { Search } from "lucide-react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
@@ -16,23 +18,20 @@ interface SearchArgs {
   [key: string]: unknown
 }
 
-/** Extract file count from rawOutput */
+/** Extract file count from result */
 function extractFileCount(result: unknown): number | null {
   if (result == null) return null
 
-  // If result is a string, count non-empty lines (each line is a file match)
   if (typeof result === "string") {
     const lines = result.split("\n").filter((l) => l.trim().length > 0)
     return lines.length
   }
 
-  // If result is an object with a count or files array
   if (typeof result === "object") {
     const r = result as Record<string, unknown>
     if (typeof r.count === "number") return r.count
     if (Array.isArray(r.files)) return r.files.length
     if (Array.isArray(r.matches)) return r.matches.length
-    // Try to parse rawOutput string
     if (typeof r.rawOutput === "string") {
       return r.rawOutput.split("\n").filter((l: string) => l.trim().length > 0).length
     }
@@ -54,40 +53,58 @@ export function SearchToolRenderer({
   const searchQuery = args?.pattern || args?.query || ""
   const fileCount = extractFileCount(result)
 
-  const summaryText = isError
-    ? "Error"
-    : isComplete
-      ? fileCount !== null
-        ? `Found in ${fileCount} file${fileCount !== 1 ? "s" : ""}`
-        : "Done"
-      : isRunning
-        ? "Searching..."
-        : "Pending"
+  // Determine dot type
+  const dotType = isError
+    ? "tool-failed" as const
+    : toolStatusToDotType(status.type)
+
+  // Build summary line
+  const getSummaryLine = () => {
+    if (isRunning) return "Searching..."
+    if (isError) return "Error"
+    if (isComplete) {
+      if (fileCount !== null && fileCount > 0) {
+        return `Found in ${fileCount} file${fileCount !== 1 ? "s" : ""}`
+      }
+      if (fileCount === 0) return "No matches found"
+      return "Done"
+    }
+    return null
+  }
+
+  const summaryLine = getSummaryLine()
 
   return (
-    <div className="my-1 rounded-md border border-border bg-muted/30 text-sm">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <MessageDot type={isError ? "tool-failed" : toolStatusToDotType(status.type)} />
-        <Search className="h-3.5 w-3.5 shrink-0 text-blue-500" />
-        <span className="font-medium text-xs text-foreground">Search</span>
-        {searchQuery && (
-          <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
-            {searchQuery}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Search" bold + pattern */}
+      <div className="flex items-start gap-2">
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-foreground">
+            Search
           </span>
-        )}
-        {!searchQuery && (
-          <span className="flex-1 truncate font-mono text-xs text-foreground">
-            {toolName}
-          </span>
-        )}
+          {searchQuery && (
+            <span className="ml-2 break-all text-muted-foreground">
+              {searchQuery}
+            </span>
+          )}
+          {!searchQuery && (
+            <span className="ml-2 text-muted-foreground">
+              {toolName}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Summary line */}
-      <div className="flex items-center gap-1 px-3 pb-1.5 text-[11px] text-muted-foreground">
-        <span className="text-muted-foreground/60">{"\u2514"}</span>
-        <span className={isError ? "text-destructive" : ""}>{summaryText}</span>
-      </div>
+      {/* Summary: tree connector */}
+      {summaryLine && (
+        <div className="flex gap-2 ml-5">
+          <span className={`select-none ${isError ? "text-destructive" : "text-muted-foreground"}`}>{"\u2514"}</span>
+          <span className={isError ? "text-destructive" : fileCount === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}>
+            {summaryLine}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
