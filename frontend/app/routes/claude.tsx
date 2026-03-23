@@ -964,6 +964,7 @@ export default function ClaudePage() {
                     key="new-session"
                     sessionId=""
                     className="flex-1 claude-bg"
+                    onCreateSession={createSessionWithMessage}
                     workingDir={newSessionWorkingDir}
                     onWorkingDirChange={setNewSessionWorkingDir}
                     agentType={newSessionAgentType}
@@ -999,6 +1000,7 @@ export default function ClaudePage() {
                 key="new-session"
                 sessionId=""
                 className="flex-1 claude-bg"
+                onCreateSession={createSessionWithMessage}
                 workingDir={newSessionWorkingDir}
                 onWorkingDirChange={setNewSessionWorkingDir}
                 agentType={newSessionAgentType}
@@ -1064,6 +1066,7 @@ export default function ClaudePage() {
               key="new-session-mobile"
               sessionId=""
               className="flex-1"
+              onCreateSession={createSessionWithMessage}
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
               agentType={newSessionAgentType}
@@ -1096,6 +1099,7 @@ export default function ClaudePage() {
           <AgentChat
             key="new-session-mobile-nosidebar"
             sessionId=""
+            onCreateSession={createSessionWithMessage}
             className="flex-1 claude-bg"
             workingDir={newSessionWorkingDir}
             onWorkingDirChange={setNewSessionWorkingDir}

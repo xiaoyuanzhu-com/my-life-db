@@ -252,12 +252,18 @@ function AgentComposer({
 interface AgentChatProps {
   /**
    * Session ID for the WebSocket connection. Pass an empty string when there is
-   * no active session (new-session empty state).
+   * no active session (new-session empty state). In that case, provide
+   * `onCreateSession` to handle the first message send.
    */
   sessionId: string
   /** Auth token for the WebSocket connection (can be empty for cookie-based auth) */
   token?: string
   className?: string
+  /**
+   * Called when the user sends a message but there is no session yet (sessionId="").
+   * The parent should create the session via API and navigate to it.
+   */
+  onCreateSession?: (message: string) => void
   /** Working directory (shown in composer, editable if onWorkingDirChange provided) */
   workingDir?: string
   onWorkingDirChange?: (path: string) => void
@@ -307,6 +313,7 @@ export function AgentChat({
   sessionId,
   token = "",
   className,
+  onCreateSession,
   workingDir,
   onWorkingDirChange,
   agentType,
@@ -318,11 +325,15 @@ export function AgentChat({
   const isMobile = useIsMobile()
   const { hidden: composerHidden, onScroll: onViewportScroll } = useScrollDirection()
 
+  // When no session exists, route sends to onCreateSession instead of WS
+  const onSend = !hasSession && onCreateSession ? onCreateSession : undefined
+
   const { runtime, connected, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
     useAgentRuntime({
       sessionId,
       token,
       enabled: hasSession,
+      onSend,
     })
 
   const handlePermissionModeChange = (mode: PermissionMode) => {

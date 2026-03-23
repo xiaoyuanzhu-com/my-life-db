@@ -70,8 +70,10 @@ export function useAgentRuntime(options: {
   sessionId: string
   token: string
   enabled?: boolean
+  /** When provided, onNew calls this instead of sendPrompt (used for new-session creation) */
+  onSend?: (text: string) => void
 }) {
-  const { sessionId, token, enabled = true } = options
+  const { sessionId, token, enabled = true, onSend } = options
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
@@ -504,25 +506,30 @@ export function useAgentRuntime(options: {
         )
         const text = textParts.map((p) => p.text).join("\n")
         if (text.trim()) {
-          // Add optimistic user message immediately
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: "user",
-              content: [{ type: "text", text }],
-              createdAt: new Date(),
-              isOptimistic: true,
-            },
-          ])
-          sendPrompt(text)
+          if (onSend) {
+            // Route to parent handler (e.g., create session via API)
+            onSend(text)
+          } else {
+            // Add optimistic user message immediately
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "user",
+                content: [{ type: "text", text }],
+                createdAt: new Date(),
+                isOptimistic: true,
+              },
+            ])
+            sendPrompt(text)
+          }
         }
       },
       onCancel: async () => {
         sendCancel()
       },
     }),
-    [threadMessages, isRunning, sendPrompt, sendCancel]
+    [threadMessages, isRunning, sendPrompt, sendCancel, onSend]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────
