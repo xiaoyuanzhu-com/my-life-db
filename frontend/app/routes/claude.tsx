@@ -217,7 +217,6 @@ export default function ClaudePage() {
     }
     return ''
   })
-  const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   // Mobile: distinguish "viewing session list" from "composing new session"
   const [showNewSessionMobile, setShowNewSessionMobile] = useState(false)
@@ -620,6 +619,7 @@ export default function ClaudePage() {
     try {
       const response = await api.post('/api/agent/sessions', {
         title: message,
+        message: message,
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
         agentType: newSessionAgentType,
@@ -645,7 +645,6 @@ export default function ClaudePage() {
         const without = prevSessions.filter((s) => s.id !== newSession.id)
         return sortSessions([newSession, ...without])
       })
-      setPendingInitialMessage(message)
       setActiveSessionId(session.id)
       setShowNewSessionMobile(false)
       localStorage.removeItem('claude-input:new-session')
@@ -815,8 +814,6 @@ export default function ClaudePage() {
             onAgentTypeChange={(type) => {
               localStorage.setItem('mld-agent-type', type)
             }}
-            initialMessage={pendingInitialMessage}
-            onInitialMessageSent={() => setPendingInitialMessage(null)}
           />
         </div>
       </div>
@@ -960,8 +957,7 @@ export default function ClaudePage() {
                     onAgentTypeChange={(type) => {
                       localStorage.setItem('mld-agent-type', type)
                     }}
-                    initialMessage={pendingInitialMessage}
-                    onInitialMessageSent={() => setPendingInitialMessage(null)}
+
                   />
                 ) : !activeSessionId ? (
                   <AgentChat
@@ -974,7 +970,7 @@ export default function ClaudePage() {
                     onAgentTypeChange={setNewSessionAgentType}
                     permissionMode={newSessionPermissionMode}
                     onPermissionModeChange={setNewSessionPermissionMode}
-                    onCreateSession={createSessionWithMessage}
+
                   />
                 ) : null}
               </div>
@@ -997,8 +993,6 @@ export default function ClaudePage() {
                 onAgentTypeChange={(type) => {
                   localStorage.setItem('mld-agent-type', type)
                 }}
-                initialMessage={pendingInitialMessage}
-                onInitialMessageSent={() => setPendingInitialMessage(null)}
               />
             ) : !activeSessionId ? (
               <AgentChat
@@ -1011,7 +1005,6 @@ export default function ClaudePage() {
                 onAgentTypeChange={setNewSessionAgentType}
                 permissionMode={newSessionPermissionMode}
                 onPermissionModeChange={setNewSessionPermissionMode}
-                onCreateSession={createSessionWithMessage}
               />
             ) : null}
           </div>
@@ -1054,8 +1047,6 @@ export default function ClaudePage() {
               onAgentTypeChange={(type) => {
                 localStorage.setItem('mld-agent-type', type)
               }}
-              initialMessage={pendingInitialMessage}
-              onInitialMessageSent={() => setPendingInitialMessage(null)}
             />
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
@@ -1079,7 +1070,6 @@ export default function ClaudePage() {
               onAgentTypeChange={setNewSessionAgentType}
               permissionMode={newSessionPermissionMode}
               onPermissionModeChange={setNewSessionPermissionMode}
-              onCreateSession={createSessionWithMessage}
             />
           </div>
         ) : sessionSidebar ? (
@@ -1113,7 +1103,6 @@ export default function ClaudePage() {
             onAgentTypeChange={setNewSessionAgentType}
             permissionMode={newSessionPermissionMode}
             onPermissionModeChange={setNewSessionPermissionMode}
-            onCreateSession={createSessionWithMessage}
           />
         )}
       </div>

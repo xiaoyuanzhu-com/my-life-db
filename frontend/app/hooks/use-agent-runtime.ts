@@ -70,14 +70,8 @@ export function useAgentRuntime(options: {
   sessionId: string
   token: string
   enabled?: boolean
-  /** Override the default send behavior (e.g., to create a session on first message) */
-  onSend?: (text: string) => Promise<void>
-  /** Message to send automatically once the WS connects (e.g., after session creation) */
-  initialMessage?: string | null
-  /** Called after the initial message has been sent */
-  onInitialMessageSent?: () => void
 }) {
-  const { sessionId, token, enabled = true, onSend, initialMessage, onInitialMessageSent } = options
+  const { sessionId, token, enabled = true } = options
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
@@ -462,16 +456,6 @@ export function useAgentRuntime(options: {
       enabled,
     })
 
-  // ── Send initial message once connected ──────────────────────────
-  const initialMessageSentRef = useRef(false)
-  useEffect(() => {
-    if (connected && initialMessage && !initialMessageSentRef.current) {
-      initialMessageSentRef.current = true
-      sendPrompt(initialMessage)
-      onInitialMessageSent?.()
-    }
-  }, [connected, initialMessage, sendPrompt, onInitialMessageSent])
-
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
   const threadMessages: ThreadMessageLike[] = useMemo(
@@ -531,18 +515,14 @@ export function useAgentRuntime(options: {
               isOptimistic: true,
             },
           ])
-          if (onSend) {
-            await onSend(text)
-          } else {
-            sendPrompt(text)
-          }
+          sendPrompt(text)
         }
       },
       onCancel: async () => {
         sendCancel()
       },
     }),
-    [threadMessages, isRunning, onSend, sendPrompt, sendCancel]
+    [threadMessages, isRunning, sendPrompt, sendCancel]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

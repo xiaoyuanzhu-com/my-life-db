@@ -45,6 +45,20 @@ var (
 	acpSessions   = make(map[string]agentsdk.Session)
 )
 
+// StoreAcpSession stores an ACP session in the in-memory map.
+// Called from CreateAgentSession in agent_api.go after eagerly spawning the ACP process.
+func StoreAcpSession(sessionID string, sess agentsdk.Session) {
+	acpSessionsMu.Lock()
+	acpSessions[sessionID] = sess
+	acpSessionsMu.Unlock()
+}
+
+// GetOrCreateSessionState returns the SessionState for the given session ID,
+// creating one if it doesn't exist. Exported for use from agent_api.go.
+func GetOrCreateSessionState(sessionID string) *agentsdk.SessionState {
+	return getOrCreateSessionState(sessionID)
+}
+
 // CleanupAgentSession closes and removes the in-memory ACP session and session
 // state for the given session ID. Called from DeleteAgentSession in agent_api.go.
 func CleanupAgentSession(sessionID string) {

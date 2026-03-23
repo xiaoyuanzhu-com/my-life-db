@@ -252,8 +252,7 @@ function AgentComposer({
 interface AgentChatProps {
   /**
    * Session ID for the WebSocket connection. Pass an empty string when there is
-   * no active session (new-session empty state). In that case, provide
-   * `onCreateSession` to handle the first message send.
+   * no active session (new-session empty state).
    */
   sessionId: string
   /** Auth token for the WebSocket connection (can be empty for cookie-based auth) */
@@ -268,15 +267,6 @@ interface AgentChatProps {
   /** Permission mode (interactive — maps to session.setMode) */
   permissionMode?: string
   onPermissionModeChange?: (mode: string) => void
-  /**
-   * When sessionId is empty, this is called with the first message text.
-   * The parent should create the session and update the sessionId prop.
-   */
-  onCreateSession?: (message: string) => Promise<void>
-  /** Message to send automatically once WS connects (after session creation) */
-  initialMessage?: string | null
-  /** Called after the initial message has been sent */
-  onInitialMessageSent?: () => void
 }
 
 /** Hook to track scroll direction for hiding composer on mobile */
@@ -311,7 +301,7 @@ function useScrollDirection() {
 /**
  * AgentChat provides the full chat UI for an ACP agent session.
  * Mount with a sessionId to connect via WebSocket. When sessionId is empty,
- * it shows the empty state with the composer; on first send it calls onCreateSession.
+ * it shows the empty state with the composer.
  */
 export function AgentChat({
   sessionId,
@@ -323,9 +313,6 @@ export function AgentChat({
   onAgentTypeChange,
   permissionMode,
   onPermissionModeChange,
-  onCreateSession,
-  initialMessage,
-  onInitialMessageSent,
 }: AgentChatProps) {
   const hasSession = Boolean(sessionId)
   const isMobile = useIsMobile()
@@ -336,9 +323,6 @@ export function AgentChat({
       sessionId,
       token,
       enabled: hasSession,
-      onSend: !hasSession && onCreateSession ? onCreateSession : undefined,
-      initialMessage: initialMessage,
-      onInitialMessageSent: onInitialMessageSent,
     })
 
   const handlePermissionModeChange = (mode: PermissionMode) => {

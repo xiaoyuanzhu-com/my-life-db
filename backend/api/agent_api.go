@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -32,12 +34,13 @@ func (h *Handlers) GetAgentInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"agents": resp})
 }
 
-// CreateAgentSession creates a new agent session record in the DB.
-// The ACP session is created lazily on first WebSocket message.
+// CreateAgentSession creates a new agent session by eagerly spawning the ACP
+// agent process. The ACP session ID becomes the DB primary key.
 // POST /api/agent/sessions
 func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	var req struct {
 		Title          string `json:"title"`
+		Message        string `json:"message"`
 		WorkingDir     string `json:"workingDir"`
 		AgentType      string `json:"agentType"`
 		PermissionMode string `json:"permissionMode"`
@@ -47,14 +50,43 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		return
 	}
 
-	sessionID := uuid.New().String()
-	agentType := req.AgentType
-	if agentType == "" {
-		agentType = "claude_code"
+	// Map agentType string to agentsdk.AgentType
+	agentTypeStr := req.AgentType
+	if agentTypeStr == "" {
+		agentTypeStr = "claude_code"
+	}
+	agentType := agentsdk.AgentClaudeCode
+	if agentTypeStr == "codex" {
+		agentType = agentsdk.AgentCodex
 	}
 
-	if err := db.CreateAgentSession(sessionID, agentType, req.WorkingDir, req.Title); err != nil {
-		log.Error().Err(err).Msg("failed to create agent session")
+	// Map permissionMode string to agentsdk.PermissionMode
+	permMode := agentsdk.PermissionAsk
+	switch req.PermissionMode {
+	case "bypassPermissions":
+		permMode = agentsdk.PermissionAuto
+	case "plan":
+		permMode = agentsdk.PermissionDeny
+	}
+
+	// Spawn ACP agent process eagerly
+	sess, err := h.server.AgentClient().CreateSession(c.Request.Context(), agentsdk.SessionConfig{
+		Agent:       agentType,
+		Permissions: permMode,
+		WorkingDir:  req.WorkingDir,
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create ACP session")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create agent session: " + err.Error()})
+		return
+	}
+
+	// Use ACP session ID as DB primary key
+	sessionID := sess.ID()
+
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, req.WorkingDir, req.Title); err != nil {
+		log.Error().Err(err).Msg("failed to create agent session in DB")
+		sess.Close()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
 		return
 	}
@@ -64,15 +96,69 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		db.SaveClaudeSessionPermissionMode(sessionID, req.PermissionMode)
 	}
 
+	// Store the ACP session in the in-memory map so the WS handler can find it
+	StoreAcpSession(sessionID, sess)
+
 	log.Info().
 		Str("sessionId", sessionID).
-		Str("agentType", agentType).
+		Str("agentType", agentTypeStr).
 		Str("workingDir", req.WorkingDir).
-		Msg("created agent session")
+		Msg("created agent session with ACP session ID as primary key")
+
+	// If a message was provided, start processing it in a background goroutine
+	if req.Message != "" {
+		sessionState := GetOrCreateSessionState(sessionID)
+
+		// Broadcast user echo
+		contentBlocks := []map[string]any{{"type": "text", "text": req.Message}}
+		userEcho, _ := agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
+		sessionState.AppendAndBroadcast(userEcho)
+
+		// Broadcast turn.start
+		turnStart, _ := agentsdk.TurnStartEnvelope(sessionID)
+		sessionState.AppendAndBroadcast(turnStart)
+
+		// Send prompt and forward events in a background goroutine
+		go func(acpSess agentsdk.Session, prompt string) {
+			ctx := context.Background()
+			events, err := acpSess.Send(ctx, prompt)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial prompt to ACP session")
+				errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
+				if errBytes != nil {
+					sessionState.AppendAndBroadcast(errBytes)
+				}
+				return
+			}
+
+			sessionState.Mu.Lock()
+			sessionState.IsProcessing = true
+			sessionState.Mu.Unlock()
+
+			for event := range events {
+				frames := translateEventToEnvelopes(sessionID, event)
+				for _, frame := range frames {
+					sessionState.AppendAndBroadcast(frame)
+				}
+				if event.Type == agentsdk.EventComplete {
+					sessionState.Mu.Lock()
+					sessionState.ResultCount++
+					sessionState.IsProcessing = false
+					sessionState.Mu.Unlock()
+					h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
+				}
+			}
+		}(sess, req.Message)
+
+		log.Info().
+			Str("sessionId", sessionID).
+			Str("prompt", req.Message).
+			Msg("initial prompt sent to agent session during creation")
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":         sessionID,
-		"agentType":  agentType,
+		"agentType":  agentTypeStr,
 		"workingDir": req.WorkingDir,
 		"title":      req.Title,
 	})
