@@ -97,7 +97,8 @@ export interface ErrorFrame extends AcpFrame {
 
 export interface SessionInfoFrame extends AcpFrame {
   type: "session.info"
-  totalMessages: number
+  totalMessages?: number
+  isActive: boolean
   isProcessing: boolean
 }
 

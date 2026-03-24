@@ -181,6 +181,25 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}()
 
+	// Send session.info before burst so the frontend knows active/processing state
+	// before any content frames arrive. This gates the frontend's isRunning:
+	// inactive sessions never show "working", active sessions rely on turn.complete.
+	sessionState.Mu.RLock()
+	isActive := sessionState.IsActive
+	isProcessing := sessionState.IsProcessing
+	sessionState.Mu.RUnlock()
+
+	if infoFrame, err := json.Marshal(map[string]any{
+		"type":         "session.info",
+		"isActive":     isActive,
+		"isProcessing": isProcessing,
+	}); err == nil {
+		if err := conn.Write(ctx, websocket.MessageText, infoFrame); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send session.info")
+			return
+		}
+	}
+
 	// Send initial burst (last ~100 messages) via direct write (bypasses client channel)
 	burstMessages := sessionState.GetRecentMessages(100)
 	if len(burstMessages) > 0 {

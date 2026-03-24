@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { useExternalStoreRuntime } from "@assistant-ui/react"
 import type {
   ThreadMessageLike,
@@ -14,6 +14,7 @@ import {
   type AgentToolCallFrame,
   type AgentToolCallUpdateFrame,
   type UserMessageChunkFrame,
+  type SessionInfoFrame,
   type PermissionRequestFrame,
   type PermissionOption,
   type ErrorFrame,
@@ -89,11 +90,10 @@ export function useAgentRuntime(options: {
     Map<string, { toolName: string; options: PermissionOption[] }>
   >(() => new Map())
 
-  // Whether the session is active (user has sent a prompt).
-  // During replay (inactive), user_message_chunk closes previous assistant turns
-  // since ACP replay has no turn.complete. In active sessions, turn.complete handles it.
-  // Fetched from backend on connect, updated locally on first sendPrompt.
-  const sessionActiveRef = useRef(false)
+  // Whether the session is active (loaded via ACP + at least one prompt sent).
+  // Populated from backend's session.info frame on WS connect (source of truth).
+  // Inactive sessions never show "working"; active sessions rely on turn.complete.
+  const isActiveRef = useRef(false)
 
   // Use a ref to generate stable message IDs
   const msgIdCounter = useRef(0)
@@ -114,6 +114,12 @@ export function useAgentRuntime(options: {
       const frameType = frame.sessionUpdate || frame.type
 
       switch (frameType) {
+        case "session.info": {
+          const f = frame as SessionInfoFrame
+          isActiveRef.current = f.isActive
+          break
+        }
+
         case "user_message_chunk": {
           // ACP native: content is a single content block, not an array
           const f = frame as UserMessageChunkFrame
@@ -148,7 +154,7 @@ export function useAgentRuntime(options: {
             // During replay (session not active), close any running assistant
             // message. ACP replay has no turn.complete — user_message_chunk
             // is the only turn boundary signal.
-            if (!sessionActiveRef.current) {
+            if (!isActiveRef.current) {
               const lastAssistant = findLastAssistant(updated)
               if (lastAssistant && lastAssistant.status?.type !== "complete") {
                 const content = lastAssistant.content.map((part) => {
@@ -181,19 +187,23 @@ export function useAgentRuntime(options: {
           if (f.content?.type !== "text") break
           const chunk = f.content.text
 
-          setIsRunning(true)
+          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
 
-            // If no running assistant message exists, create one
+            // If no open assistant message exists, create one.
+            // Active sessions use "running" (triggers WIP indicator);
+            // inactive (replay) use "incomplete" (allows appending without triggering running).
             if (!last || last.status?.type === "complete") {
               updated.push({
                 id: nextId(),
                 role: "assistant",
                 content: [{ type: "text", text: chunk }],
                 createdAt: new Date(),
-                status: { type: "running" },
+                status: isActiveRef.current
+                  ? { type: "running" }
+                  : { type: "incomplete", reason: "other" },
               })
               return updated
             }
@@ -220,19 +230,20 @@ export function useAgentRuntime(options: {
           if (f.content?.type !== "text") break
           const chunk = f.content.text
 
-          setIsRunning(true)
+          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
 
-            // If no running assistant message exists, create one
             if (!last || last.status?.type === "complete") {
               updated.push({
                 id: nextId(),
                 role: "assistant",
                 content: [{ type: "reasoning", text: chunk }],
                 createdAt: new Date(),
-                status: { type: "running" },
+                status: isActiveRef.current
+                  ? { type: "running" }
+                  : { type: "incomplete", reason: "other" },
               })
               return updated
             }
@@ -260,12 +271,11 @@ export function useAgentRuntime(options: {
           // Include kind from the frame so tool renderers can dispatch on it
           const args = { ...rawInput, kind: f.kind } as ReadonlyJSONObject
 
-          setIsRunning(true)
+          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
 
-            // If no running assistant message exists, create one
             if (!last || last.status?.type === "complete") {
               updated.push({
                 id: nextId(),
@@ -280,7 +290,9 @@ export function useAgentRuntime(options: {
                   },
                 ],
                 createdAt: new Date(),
-                status: { type: "running" },
+                status: isActiveRef.current
+                  ? { type: "running" }
+                  : { type: "incomplete", reason: "other" },
               })
               return updated
             }
@@ -553,18 +565,8 @@ export function useAgentRuntime(options: {
       enabled,
     })
 
-  // Fetch session active state from backend on connect
-  useEffect(() => {
-    if (!connected || !sessionId) return
-    fetch(`/api/agent/sessions/${sessionId}`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data?.isActive) {
-          sessionActiveRef.current = true
-        }
-      })
-      .catch(() => {}) // ignore errors — defaults to inactive (safe for replay)
-  }, [connected, sessionId])
+  // isActiveRef is populated from session.info frame sent by backend on WS connect.
+  // No separate API fetch needed — the frame arrives before burst/replay.
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
@@ -630,7 +632,7 @@ export function useAgentRuntime(options: {
               },
             ])
             sendPrompt(text)
-            sessionActiveRef.current = true
+            isActiveRef.current = true
           }
         }
       },

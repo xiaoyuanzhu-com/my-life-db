@@ -239,15 +239,6 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		state = "archived"
 	}
 
-	// Enrich with in-memory runtime state
-	isActive := false
-	isProcessing := false
-	ss := GetOrCreateSessionState(sessionID)
-	ss.Mu.RLock()
-	isActive = ss.IsActive
-	isProcessing = ss.IsProcessing
-	ss.Mu.RUnlock()
-
 	c.JSON(http.StatusOK, gin.H{
 		"id":           session.SessionID,
 		"title":        session.Title,
@@ -256,8 +247,6 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		"sessionState": state,
 		"createdAt":    session.CreatedAt,
 		"lastActivity": session.UpdatedAt,
-		"isActive":     isActive,
-		"isProcessing": isProcessing,
 	})
 }
 
