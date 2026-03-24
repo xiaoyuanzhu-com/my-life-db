@@ -405,6 +405,9 @@ export function AgentChat({
                   AssistantMessage,
                 }}
               />
+
+              {/* Agent WIP indicator — rendered as part of the message list */}
+              <AgentWIPIndicator />
             </div>
 
             <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-4 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -414,11 +417,6 @@ export function AgentChat({
 
           {/* Plan entries — shown between thread and composer */}
           {planEntries.length > 0 && <PlanView entries={planEntries} />}
-
-          {/* Agent WIP indicator — shown when running, below messages, matching thread width */}
-          <div className="w-full max-w-3xl mx-auto px-4">
-            <AgentWIPIndicator />
-          </div>
 
           {/* Permission cards — pop up above composer */}
           <PendingPermissions />
