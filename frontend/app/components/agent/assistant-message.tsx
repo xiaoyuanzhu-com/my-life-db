@@ -55,7 +55,7 @@ function AssistantReasoningPart({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="my-1">
+    <div>
       {/* Header: "Thinking" label + chevron */}
       <button
         type="button"
@@ -108,13 +108,15 @@ export function createAssistantMessage(toolsConfig: AssistantMessageProps["tools
     return (
       <MessagePrimitive.Root className="mb-4">
         <div className="min-w-0">
-          <MessagePrimitive.Parts
-            components={{
-              Text: AssistantTextPart,
-              Reasoning: AssistantReasoningPart,
-              tools: toolsConfig,
-            }}
-          />
+          <div className="space-y-3">
+            <MessagePrimitive.Parts
+              components={{
+                Text: AssistantTextPart,
+                Reasoning: AssistantReasoningPart,
+                tools: toolsConfig,
+              }}
+            />
+          </div>
           <StreamingCursor />
         </div>
       </MessagePrimitive.Root>

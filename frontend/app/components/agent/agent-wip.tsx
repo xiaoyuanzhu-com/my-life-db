@@ -152,8 +152,8 @@ export function AgentWIP({ className = "" }: AgentWIPProps) {
   }, [displayText, charIndex])
 
   return (
-    <div className={`font-mono text-[13px] leading-[1.5] px-4 py-1 ${className}`}>
-      <div className="flex items-start gap-2">
+    <div className={`max-w-3xl mx-auto px-4 py-1 ${className}`}>
+      <div className="font-mono text-[13px] leading-[1.5] flex items-start gap-2">
         <MessageDot type="assistant-wip" />
         <div className="flex-1 min-w-0">
           <span style={{ color: "#E07A5F" }}>
