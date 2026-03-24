@@ -68,7 +68,7 @@ function inferToolKind(toolName: string, args: Record<string, unknown>): string 
     lower === "execute"
   ) return "execute"
 
-  // Search tools -- includes Grep, Glob, WebSearch
+  // Search tools -- includes Grep, Glob, WebSearch, ToolSearch
   if (
     lower.startsWith("search") ||
     lower === "search" ||
@@ -77,7 +77,8 @@ function inferToolKind(toolName: string, args: Record<string, unknown>): string 
     lower.startsWith("glob ") ||
     lower === "glob" ||
     lower.startsWith("websearch ") ||
-    lower === "websearch"
+    lower === "websearch" ||
+    lower === "toolsearch"
   ) return "search"
 
   // Fetch tools -- includes WebFetch

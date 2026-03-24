@@ -40,12 +40,25 @@ function extractFileCount(result: unknown): number | null {
   return null
 }
 
+/** Extract tool names from ToolSearch result */
+function extractToolNames(result: unknown): string[] | null {
+  if (!Array.isArray(result)) return null
+  const names = result
+    .filter((r): r is Record<string, unknown> =>
+      typeof r === "object" && r !== null && r.type === "tool_reference"
+    )
+    .map((r) => r.tool_name)
+    .filter((n): n is string => typeof n === "string")
+  return names.length > 0 ? names : null
+}
+
 /** Derive a short label from the tool name */
 function getSearchLabel(toolName: string): string {
   const lower = toolName.toLowerCase()
   if (lower.startsWith("grep")) return "Grep"
   if (lower.startsWith("glob")) return "Glob"
   if (lower.startsWith("websearch")) return "WebSearch"
+  if (lower.startsWith("toolsearch")) return "ToolSearch"
   return "Search"
 }
 
@@ -60,13 +73,15 @@ export function SearchToolRenderer({
   const isError = status.type === "requires-action" || status.type === "incomplete"
 
   const label = getSearchLabel(toolName)
+  const isToolSearch = label === "ToolSearch"
 
   // Extract search query from args or from toolName (e.g., "Grep pattern" or "Glob *.tsx")
   const searchQuery = args?.pattern || args?.query || (() => {
-    const match = toolName.match(/^(?:Grep|Glob|WebSearch|Search)\s+(.+)$/i)
+    const match = toolName.match(/^(?:Grep|Glob|WebSearch|ToolSearch|Search)\s+(.+)$/i)
     return match ? match[1].trim() : ""
   })()
-  const fileCount = extractFileCount(result)
+  const fileCount = isToolSearch ? null : extractFileCount(result)
+  const toolNames = isToolSearch ? extractToolNames(result) : null
 
   // Determine dot type
   const dotType = isError
@@ -75,9 +90,13 @@ export function SearchToolRenderer({
 
   // Build summary line
   const getSummaryLine = () => {
-    if (isRunning) return "Searching..."
+    if (isRunning) return isToolSearch ? "Looking up tools..." : "Searching..."
     if (isError) return "Error"
     if (isComplete) {
+      if (isToolSearch) {
+        if (toolNames) return `Found: ${toolNames.join(", ")}`
+        return "Done"
+      }
       if (fileCount !== null && fileCount > 0) {
         return `Found in ${fileCount} file${fileCount !== 1 ? "s" : ""}`
       }
