@@ -352,12 +352,23 @@ func (h *Handlers) UnshareAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// GetAgentMessages returns messages for a session.
+// GetAgentMessages returns messages for a session (for debugging).
 // GET /api/agent/sessions/:id/messages
 func (h *Handlers) GetAgentMessages(c *gin.Context) {
-	// Messages are stored in-memory (SessionState) and replayed via WebSocket.
-	// This endpoint returns an empty list — the WS connection handles history.
-	c.JSON(http.StatusOK, gin.H{"messages": []any{}})
+	sessionID := c.Param("id")
+	ss := GetOrCreateSessionState(sessionID)
+	raw := ss.GetRecentMessages(0) // 0 = all messages
+
+	// Write a JSON array of raw JSON objects directly.
+	c.Header("Content-Type", "application/json")
+	c.Writer.WriteString("[")
+	for i, msg := range raw {
+		if i > 0 {
+			c.Writer.WriteString(",")
+		}
+		c.Writer.Write(msg)
+	}
+	c.Writer.WriteString("]")
 }
 
 // DeactivateAgentSession is a no-op for ACP sessions (they're ephemeral).
