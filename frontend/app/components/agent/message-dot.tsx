@@ -31,7 +31,7 @@ export function MessageDot({ type }: MessageDotProps) {
 
   return (
     <span
-      className={`select-none font-mono text-xs h-5 flex items-center shrink-0 ${style.pulse ? "animate-pulse" : ""}`}
+      className={`select-none font-mono text-[8px] h-5 flex items-center shrink-0 ${style.pulse ? "animate-pulse" : ""}`}
       style={{ color: style.color }}
     >
       {style.char}

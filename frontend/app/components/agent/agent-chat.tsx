@@ -415,8 +415,10 @@ export function AgentChat({
           {/* Plan entries — shown between thread and composer */}
           {planEntries.length > 0 && <PlanView entries={planEntries} />}
 
-          {/* Agent WIP indicator — shown when running, after messages, before permissions */}
-          <AgentWIPIndicator />
+          {/* Agent WIP indicator — shown when running, below messages, matching thread width */}
+          <div className="w-full max-w-3xl mx-auto px-4">
+            <AgentWIPIndicator />
+          </div>
 
           {/* Permission cards — pop up above composer */}
           <PendingPermissions />
