@@ -1,11 +1,13 @@
 /**
- * FetchTool -- renderer for ACP ToolKind "fetch" (HTTP fetches)
+ * FetchTool -- renderer for ACP ToolKind "fetch" (HTTP fetches + web searches)
  *
- * Matches the old Claude Code web-fetch-tool.tsx pattern:
- * - Header: MessageDot + "Fetch" (bold) + URL (muted, truncated) + chevron
- * - Summary line with tree connector: "HTTP {status} ({size}, {duration})"
+ * Handles two sub-types based on args:
+ * 1. WebSearch (args.query present, no url): "WebSearch" + query text
+ * 2. WebFetch (args.url or URL in title): "Fetch" + URL
+ *
+ * - Header: MessageDot + label (bold) + query/URL (muted) + chevron
+ * - Summary line with tree connector
  * - Expandable with markdown content, smooth CSS grid animation
- * - Chevron only when expandable (has content)
  */
 import { useState } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
@@ -15,6 +17,7 @@ import { MarkdownContent } from "../markdown-content"
 interface FetchArgs {
   kind?: string
   url?: string
+  query?: string
   [key: string]: unknown
 }
 
@@ -54,19 +57,57 @@ function extractFetchInfo(result: unknown): { status?: number; statusText?: stri
   return {}
 }
 
+/** Strip surrounding quotes from a string (e.g. `"foo"` → `foo`) */
+function stripQuotes(s: string): string {
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    return s.slice(1, -1)
+  }
+  return s
+}
+
 /** Extract URL from tool name or args */
 function extractUrl(toolName: string, args: FetchArgs | undefined): string {
-  // First try explicit args.url
   if (args?.url) return args.url
 
-  // Try extracting from toolName (e.g., "WebFetch https://example.com" or "Fetch https://...")
   const match = toolName.match(/^(?:WebFetch|Fetch)\s+(.+)$/i)
   if (match) return match[1].trim()
 
-  // Fallback: check if toolName itself looks like a URL
   if (toolName.startsWith("http://") || toolName.startsWith("https://")) return toolName
 
   return ""
+}
+
+/** Detect if this is a web search (query-based) rather than a URL fetch */
+function isWebSearch(args: FetchArgs | undefined, toolName: string): boolean {
+  if (args?.query) return true
+  const lower = toolName.toLowerCase()
+  return lower.startsWith("websearch") || lower.includes("search")
+}
+
+/** Extract the display text (query or URL) */
+function extractDisplayText(args: FetchArgs | undefined, toolName: string): string {
+  // WebSearch: use query from args or title
+  if (args?.query) return args.query
+
+  // Fetch: use URL
+  const url = extractUrl(toolName, args)
+  if (url) return url
+
+  // Fallback: use cleaned-up title
+  return stripQuotes(toolName)
+}
+
+/** Result content as string for rendering */
+function extractResultContent(result: unknown): string | null {
+  if (result == null) return null
+  if (typeof result === "string") return result
+  if (typeof result === "object" && result !== null) {
+    const r = result as Record<string, unknown>
+    if (typeof r.content === "string") return r.content
+    if (typeof r.body === "string") return r.body
+    if (typeof r.result === "string") return r.result
+  }
+  return null
 }
 
 export function FetchToolRenderer({
@@ -80,34 +121,24 @@ export function FetchToolRenderer({
   const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
-  const url = extractUrl(toolName, args)
+  const isSearch = isWebSearch(args, toolName)
+  const label = isSearch ? "WebSearch" : "Fetch"
+  const displayText = extractDisplayText(args, toolName)
   const fetchInfo = extractFetchInfo(result)
 
-  // Determine dot type
   const dotType = isError
     ? "tool-failed" as const
     : toolStatusToDotType(status.type)
 
-  // Result content as string for rendering
-  const resultContent = result != null
-    ? typeof result === "string"
-      ? result
-      : typeof result === "object" && result !== null && typeof (result as Record<string, unknown>).content === "string"
-        ? (result as Record<string, unknown>).content as string
-        : typeof result === "object" && result !== null && typeof (result as Record<string, unknown>).body === "string"
-          ? (result as Record<string, unknown>).body as string
-          : typeof result === "object" && result !== null && typeof (result as Record<string, unknown>).result === "string"
-            ? (result as Record<string, unknown>).result as string
-            : null
-    : null
-
+  const resultContent = extractResultContent(result)
   const hasContent = !!resultContent
 
   // Build summary line
   const getSummaryLine = () => {
-    if (isRunning) return "Fetching..."
+    if (isRunning) return isSearch ? "Searching..." : "Fetching..."
     if (isError) return "Error"
     if (isComplete) {
+      if (isSearch) return "Done"
       const parts: string[] = []
       if (fetchInfo.status) {
         parts.push(`${fetchInfo.status}${fetchInfo.statusText ? ` ${fetchInfo.statusText}` : ""}`)
@@ -125,7 +156,7 @@ export function FetchToolRenderer({
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: dot + "Fetch" bold + URL + chevron */}
+      {/* Header: dot + label bold + query/URL + chevron */}
       <button
         onClick={() => hasContent && setExpanded(!expanded)}
         className={`flex items-start gap-2 w-full text-left ${hasContent ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
@@ -133,11 +164,11 @@ export function FetchToolRenderer({
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-foreground">
-            Fetch
+            {label}
           </span>
-          {url && (
+          {displayText && (
             <span className="ml-2 break-all text-muted-foreground">
-              {url}
+              {displayText}
             </span>
           )}
           {hasContent && (
