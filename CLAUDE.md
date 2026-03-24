@@ -422,6 +422,29 @@ The user typically has a development server running. Check before starting a new
 3. **Ask when uncertain** - When you discover a potential issue (like port mismatches), ask rather than assume
 4. **Incomplete information is not permission to guess** - Stop and clarify rather than filling in gaps with assumptions
 
+### Evidence-Based Debugging (CRITICAL)
+
+**Never treat a hypothesis as a conclusion.** The correct flow is: **observe → hypothesize → verify → fix**. Skipping verification leads to wrong fixes that waste time and erode trust.
+
+**Rules:**
+1. **Hypotheses are not assertions** — When you don't know the root cause, say "I think X might be happening" not "X is the problem". Never state a guess as fact.
+2. **Verify before fixing** — If you can't prove the root cause, add instrumentation (logging, counters, traces) to gather evidence first. A 5-line log statement that confirms the theory is worth more than a 50-line fix based on a guess.
+3. **Check your own pipeline before blaming externals** — Before claiming "library X has a bug" or "the CLI does Y wrong", verify that your own code isn't the cause. Trace the data flow through YOUR code first.
+4. **After 2-3 failed guesses, stop guessing harder** — Step back, add observability, and let the data tell you. More guessing compounds the problem; more visibility solves it.
+5. **Prove it, then fix it** — The debugging session should produce evidence (logs, repro steps, seq numbers) that clearly point to the root cause. Only then write the fix.
+
+**BAD:**
+```
+"WebSearch is a server tool so the CLI doesn't emit tool_call_update" → builds workaround
+"This is a bug in the CLI's ACP adapter" → asserts without evidence
+```
+
+**GOOD:**
+```
+"The frame might be arriving late — let me add a seq counter to verify"
+→ adds logging → observes actual order → identifies exact mechanism → fixes
+```
+
 ### Examples of Good vs Bad Behavior
 
 **BAD:**
