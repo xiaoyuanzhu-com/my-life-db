@@ -179,8 +179,8 @@ type Session interface {
 	Send(ctx context.Context, prompt string) (<-chan []byte, error)
 
 	// LoadSession loads a historical session from the agent's persistence layer.
-	// Returns all replayed raw JSON frames synchronously.
-	LoadSession(ctx context.Context, sessionID string, cwd string) ([][]byte, error)
+	// Frames are delivered via the onFrame handler as they arrive.
+	LoadSession(ctx context.Context, sessionID string, cwd string) error
 
 	// RespondToPermission responds to an EventPermissionRequest using an optionID.
 	RespondToPermission(ctx context.Context, toolCallID string, optionID string) error
@@ -196,6 +196,10 @@ type Session interface {
 
 	// Stop cancels the current operation (SIGINT). Agent stays alive.
 	Stop() error
+
+	// SetOnFrame sets the permanent handler for all ACP frames.
+	// Must be called before any Send()/LoadSession() calls.
+	SetOnFrame(fn func([]byte))
 
 	// Close terminates the session and kills the agent process.
 	Close() error

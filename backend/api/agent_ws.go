@@ -216,26 +216,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			sess, histEvents, err := h.server.AgentClient().CreateSessionWithLoad(h.server.ShutdownContext(), agentsdk.SessionConfig{
+			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 				Agent:       agentType,
 				Permissions: permMode,
 				WorkingDir:  sessionRecord.WorkingDir,
-			}, sessionID)
+			})
 
 			if err == nil && sess != nil {
+				// Wire the permanent frame handler BEFORE LoadSession so all
+				// replayed frames flow directly to the WebSocket clients.
+				sess.SetOnFrame(func(data []byte) {
+					sessionState.AppendAndBroadcast(data)
+				})
+
 				// Store the ACP session for future prompts
 				acpSessionsMu.Lock()
 				acpSessions[sessionID] = sess
 				acpSessionsMu.Unlock()
 
-				// Forward replayed history frames to the WS client as-is.
-				// No turn.complete injection — the client knows this is replay
-				// (session not yet active) and handles turn boundaries itself.
-				if len(histEvents) > 0 {
-					for _, frame := range histEvents {
-						sessionState.AppendAndBroadcast(frame)
-					}
-					log.Info().Str("sessionId", sessionID).Int("frames", len(histEvents)).Msg("historical session replay complete")
+				// LoadSession triggers history replay. Frames are delivered
+				// via onFrame → sessionState.AppendAndBroadcast automatically.
+				if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
+				} else {
+					log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
 				}
 			} else if err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
@@ -365,6 +369,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					continue
 				}
+				sess.SetOnFrame(func(data []byte) {
+					sessionState.AppendAndBroadcast(data)
+				})
 				acpSessionsMu.Lock()
 				acpSessions[sessionID] = sess
 				acpSessionsMu.Unlock()

@@ -109,24 +109,23 @@ func (c *Client) ResumeSession(ctx context.Context, sessionID string, config Ses
 // If LoadSession fails (e.g., session not found on disk), the session is still
 // usable — just without history. The returned events slice may be nil if
 // history loading failed.
-func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, [][]byte, error) {
+func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, error) {
 	// Create the ACP session normally (spawns agent process)
 	sess, err := c.CreateSession(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// Try to load the historical session (synchronous — collects all raw frames)
-	frames, err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir)
-	if err != nil {
+	// Load the historical session. Frames are delivered via the onFrame handler
+	// (must be set by the caller before this call).
+	if err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir); err != nil {
 		// LoadSession failed — session is still usable, just no history
 		log.Warn().Err(err).
 			Str("sessionId", historicalSessionID).
 			Msg("CreateSessionWithLoad: LoadSession failed, continuing without history")
-		return sess, nil, nil
 	}
 
-	return sess, frames, nil
+	return sess, nil
 }
 
 // RunTask runs a one-off agent task to completion.

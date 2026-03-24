@@ -14,14 +14,18 @@ import (
 )
 
 // acpClient implements the acp.Client interface, re-marshaling ACP notifications
-// as raw JSON bytes and emitting them on a channel. One instance per session.
+// as raw JSON bytes and emitting them via a permanent handler. One instance per session.
+//
+// Design: a single `onFrame` callback handles ALL frames for the session lifetime.
+// No temporary channels, no set/clear cycle, no gaps where frames can be dropped.
 type acpClient struct {
 	autoApprove bool
 	workingDir  string
 
-	// Current events channel — set by Send(), cleared when prompt completes.
-	mu            sync.RWMutex
-	currentEvents chan<- []byte
+	// Permanent frame handler — set once via SetOnFrame(), never cleared.
+	// Every frame from the ACP SDK is delivered here. Never nil after setup.
+	mu      sync.RWMutex
+	onFrame func([]byte)
 
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
@@ -33,28 +37,16 @@ type permResponse struct {
 	optionID acp.PermissionOptionId
 }
 
-// setEvents sets the current events channel for streaming.
-func (c *acpClient) setEvents(ch chan<- []byte) {
-	c.mu.Lock()
-	c.currentEvents = ch
-	c.mu.Unlock()
-}
-
-// clearEvents clears the current events channel.
-func (c *acpClient) clearEvents() {
-	c.mu.Lock()
-	c.currentEvents = nil
-	c.mu.Unlock()
-}
-
-// emit sends raw JSON bytes to the current channel, if any.
+// emit sends raw JSON bytes to the permanent handler.
 func (c *acpClient) emit(data []byte) {
 	c.mu.RLock()
-	ch := c.currentEvents
+	fn := c.onFrame
 	c.mu.RUnlock()
 
-	if ch != nil {
-		ch <- data
+	if fn != nil {
+		fn(data)
+	} else {
+		log.Warn().Msg("ACP: frame dropped — onFrame not set")
 	}
 }
 

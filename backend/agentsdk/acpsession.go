@@ -221,10 +221,9 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 	}
 	s.mu.Unlock()
 
+	// Channel for synthetic frames only (metadata, turn.complete, errors).
+	// ACP SessionUpdate frames go through onFrame directly — no temporary channel.
 	events := make(chan []byte, 256)
-
-	// Wire the events channel to the ACP client
-	s.client.setEvents(events)
 
 	// Emit cached session metadata on first prompt
 	s.mu.Lock()
@@ -255,7 +254,6 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 
 	go func() {
 		defer close(events)
-		defer s.client.clearEvents()
 
 		resp, err := s.conn.Prompt(ctx, acp.PromptRequest{
 			SessionId: acp.SessionId(s.sessionID),
@@ -299,19 +297,13 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 }
 
 // LoadSession loads a historical session from the agent's persistence layer.
-// Returns the collected raw JSON frames synchronously. The ACP conn.LoadSession()
-// call blocks while the agent replays history via SessionUpdate notifications.
-//
-// Design: We use a large-buffer channel + async drain goroutine to avoid
-// deadlock. The ACP SDK's reader goroutine calls emit() for each replayed
-// event. If emit() blocks (channel full), the reader can't deliver the
-// LoadSession JSON-RPC response, causing deadlock. The drain goroutine
-// ensures the channel is always being consumed.
-func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) ([][]byte, error) {
+// Frames are delivered via the permanent onFrame handler as they arrive —
+// no temporary collection channel needed.
+func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) error {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return nil, &AgentError{
+		return &AgentError{
 			Type:    ErrAgentCrash,
 			Agent:   s.agentType,
 			Message: "session is closed",
@@ -321,48 +313,27 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 
 	log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
 
-	// Large buffer to avoid blocking the ACP SDK's reader goroutine.
-	collector := make(chan []byte, 4096)
-	s.client.setEvents(collector)
-
-	// Drain collector into a slice asynchronously — this prevents deadlock
-	// between emit() blocking on a full channel and conn.LoadSession()
-	// waiting for the response that the blocked reader can't deliver.
-	var collected [][]byte
-	drainDone := make(chan struct{})
-	go func() {
-		defer close(drainDone)
-		for frame := range collector {
-			collected = append(collected, frame)
-		}
-	}()
-
 	// conn.LoadSession blocks. During this call, the agent replays history
-	// as SessionUpdate notifications → acpClient.emit() → collector channel.
+	// as SessionUpdate notifications → acpClient.emit() → onFrame handler.
 	_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
 		SessionId:  acp.SessionId(sessionID),
 		Cwd:        cwd,
 		McpServers: []acp.McpServer{},
 	})
 
-	// Stop collecting: disconnect the channel, close it, wait for drain.
-	s.client.clearEvents()
-	close(collector)
-	<-drainDone
-
 	if err != nil {
-		log.Warn().Err(err).Str("sessionId", sessionID).Int("frames", len(collected)).Msg("LoadSession failed")
-		return nil, err
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
+		return err
 	}
 
-	log.Info().Str("sessionId", sessionID).Int("frames", len(collected)).Msg("LoadSession completed")
+	log.Info().Str("sessionId", sessionID).Msg("LoadSession completed")
 
 	// Update the session's internal ACP session ID to the loaded one
 	s.mu.Lock()
 	s.sessionID = sessionID
 	s.mu.Unlock()
 
-	return collected, nil
+	return nil
 }
 
 // RespondToPermission unblocks a pending permission request using an optionID.
@@ -398,6 +369,14 @@ func (s *acpSession) Stop() error {
 	return s.conn.Cancel(context.Background(), acp.CancelNotification{
 		SessionId: acp.SessionId(s.sessionID),
 	})
+}
+
+// SetOnFrame sets the permanent handler for all ACP frames.
+// Must be called before any Send()/LoadSession() calls.
+func (s *acpSession) SetOnFrame(fn func([]byte)) {
+	s.client.mu.Lock()
+	s.client.onFrame = fn
+	s.client.mu.Unlock()
 }
 
 // Close terminates the session and kills the agent process.
