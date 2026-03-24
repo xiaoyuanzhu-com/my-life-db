@@ -27,6 +27,15 @@ type acpClient struct {
 	mu      sync.RWMutex
 	onFrame func([]byte)
 
+	// Ordered delivery: the ACP SDK calls SessionUpdate from concurrent goroutines
+	// (`go handleInbound()` in connection.go), so frames can arrive out of order.
+	// We assign a monotonic sequence number to each frame, then ensure emit()
+	// happens in strict seq order using a condition variable.
+	frameSeq atomic.Int64 // next seq to assign (via Add(1))
+	emitMu   sync.Mutex   // protects emitNext + emitCond
+	emitNext int64         // next seq to emit (starts at 1)
+	emitCond *sync.Cond   // signaled when emitNext advances
+
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
 	permChannels map[string]chan permResponse
@@ -37,7 +46,9 @@ type permResponse struct {
 	optionID acp.PermissionOptionId
 }
 
-// emit sends raw JSON bytes to the permanent handler.
+// emit sends raw JSON bytes to the permanent handler immediately (unordered).
+// Used for out-of-band frames like permission requests that don't participate
+// in the SessionUpdate sequencing.
 func (c *acpClient) emit(data []byte) {
 	c.mu.RLock()
 	fn := c.onFrame
@@ -48,6 +59,30 @@ func (c *acpClient) emit(data []byte) {
 	} else {
 		log.Warn().Msg("ACP: frame dropped — onFrame not set")
 	}
+}
+
+// emitOrdered delivers a frame in strict sequence order.
+// Each caller holds its assigned seq; it waits until emitNext matches,
+// then delivers and advances the counter for the next waiter.
+func (c *acpClient) emitOrdered(seq int64, data []byte) {
+	c.emitMu.Lock()
+	for c.emitNext != seq {
+		c.emitCond.Wait()
+	}
+
+	c.mu.RLock()
+	fn := c.onFrame
+	c.mu.RUnlock()
+
+	if fn != nil {
+		fn(data)
+	} else {
+		log.Warn().Msg("ACP: frame dropped — onFrame not set")
+	}
+
+	c.emitNext++
+	c.emitCond.Broadcast()
+	c.emitMu.Unlock()
 }
 
 // --- ACP Client interface implementation ---
@@ -65,15 +100,66 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		return nil
 	}
 
+	// Debug: log frame sequence to detect ACP SDK goroutine reordering.
+	seq := c.frameSeq.Add(1)
+	frameType := "unknown"
+	framePreview := ""
+	switch {
+	case update.UserMessageChunk != nil:
+		frameType = "user_message_chunk"
+		if update.UserMessageChunk.Content.Text != nil {
+			t := update.UserMessageChunk.Content.Text.Text
+			if len(t) > 80 {
+				t = t[:80]
+			}
+			framePreview = t
+		}
+	case update.AgentMessageChunk != nil:
+		frameType = "agent_message_chunk"
+		if update.AgentMessageChunk.Content.Text != nil {
+			t := update.AgentMessageChunk.Content.Text.Text
+			if len(t) > 80 {
+				t = t[:80]
+			}
+			framePreview = t
+		}
+	case update.AgentThoughtChunk != nil:
+		frameType = "agent_thought_chunk"
+		if update.AgentThoughtChunk.Content.Text != nil {
+			t := update.AgentThoughtChunk.Content.Text.Text
+			if len(t) > 80 {
+				t = t[:80]
+			}
+			framePreview = t
+		}
+	case update.ToolCall != nil:
+		frameType = fmt.Sprintf("tool_call[%s]", update.ToolCall.ToolCallId)
+	case update.ToolCallUpdate != nil:
+		frameType = fmt.Sprintf("tool_call_update[%s]", update.ToolCallUpdate.ToolCallId)
+	case update.AvailableCommandsUpdate != nil:
+		frameType = "available_commands_update"
+	default:
+		frameType = "other"
+	}
+	log.Info().Int64("seq", seq).Str("frameType", frameType).Str("preview", framePreview).Msg("ACP SessionUpdate received")
+
 	// Marshal the ACP SessionUpdate to JSON (uses ACP SDK's custom MarshalJSON
 	// which produces JSON with a "sessionUpdate" discriminator field).
 	data, err := json.Marshal(update)
 	if err != nil {
-		log.Warn().Err(err).Msg("ACP: failed to marshal session update")
+		log.Warn().Err(err).Int64("seq", seq).Msg("ACP: failed to marshal session update")
+		// Must still advance the sequence to avoid deadlocking other waiters.
+		c.emitMu.Lock()
+		for c.emitNext != seq {
+			c.emitCond.Wait()
+		}
+		c.emitNext++
+		c.emitCond.Broadcast()
+		c.emitMu.Unlock()
 		return nil
 	}
 
-	c.emit(data)
+	c.emitOrdered(seq, data)
 	return nil
 }
 
