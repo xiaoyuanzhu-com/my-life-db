@@ -106,22 +106,22 @@ func (c *Client) ResumeSession(ctx context.Context, sessionID string, config Ses
 // a historical session by ID. This spawns the agent process, establishes the
 // ACP connection, then calls session/load to replay history events.
 // If LoadSession fails (e.g., session not found on disk), the session is still
-// usable — just without history. The returned events channel may be nil if
+// usable — just without history. The returned events slice may be nil if
 // history loading failed.
-func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, <-chan Event, error) {
+func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, []Event, error) {
 	// Create the ACP session normally (spawns agent process)
 	sess, err := c.CreateSession(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Try to load the historical session
+	// Try to load the historical session (synchronous — collects all events)
 	events, err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir)
 	if err != nil {
-		// LoadSession setup failed — session is still usable, just no history
+		// LoadSession failed — session is still usable, just no history
 		log.Warn().Err(err).
 			Str("sessionId", historicalSessionID).
-			Msg("CreateSessionWithLoad: LoadSession setup failed, continuing without history")
+			Msg("CreateSessionWithLoad: LoadSession failed, continuing without history")
 		return sess, nil, nil
 	}
 

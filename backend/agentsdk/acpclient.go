@@ -23,6 +23,10 @@ type acpClient struct {
 	mu            sync.RWMutex
 	currentEvents chan<- Event
 
+	// When true, UserMessageChunk events are emitted (for LoadSession replay).
+	// During normal prompting, they're skipped (we broadcast user.echo ourselves).
+	replayMode bool
+
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
 	permChannels map[string]chan permResponse
@@ -192,8 +196,23 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		})
 
 	case update.UserMessageChunk != nil:
-		// Agent echoes user message — skip to avoid duplicate
-		// (we already broadcast the user message ourselves)
+		// During normal prompting, skip user echoes (we broadcast user.echo ourselves).
+		// During LoadSession replay, emit them so historical user messages appear.
+		if c.replayMode {
+			text := ""
+			if update.UserMessageChunk.Content.Text != nil {
+				text = update.UserMessageChunk.Content.Text.Text
+			}
+			if text != "" {
+				c.emit(Event{
+					Type: EventMessage,
+					Message: &Message{
+						Role:    RoleUser,
+						Content: []Block{{Type: BlockText, Text: text}},
+					},
+				})
+			}
+		}
 
 	default:
 		log.Debug().Msg("ACP: unknown session update type")

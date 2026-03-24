@@ -179,9 +179,8 @@ type Session interface {
 	Send(ctx context.Context, prompt string) (<-chan Event, error)
 
 	// LoadSession loads a historical session from the agent's persistence layer.
-	// Events from the replayed history arrive on the returned channel.
-	// The channel is always closed when replay finishes (or on error).
-	LoadSession(ctx context.Context, sessionID string, cwd string) (<-chan Event, error)
+	// Returns all replayed events synchronously.
+	LoadSession(ctx context.Context, sessionID string, cwd string) ([]Event, error)
 
 	// RespondToPermission responds to an EventPermissionRequest using an optionID.
 	RespondToPermission(ctx context.Context, toolCallID string, optionID string) error

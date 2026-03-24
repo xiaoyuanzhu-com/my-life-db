@@ -240,17 +240,44 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				acpSessions[sessionID] = sess
 				acpSessionsMu.Unlock()
 
-				// Forward replayed history events to the WS client
-				if histEvents != nil {
-					go func() {
-						for event := range histEvents {
-							frames := translateEventToEnvelopes(sessionID, event)
-							for _, frame := range frames {
-								sessionState.AppendAndBroadcast(frame)
+				// Forward replayed history events to the WS client.
+				// Inject turn.start / turn.complete boundaries based on role transitions
+				// so the frontend can create proper message objects.
+				if len(histEvents) > 0 {
+					inAssistantTurn := false
+					for _, event := range histEvents {
+						isUserMsg := event.Type == agentsdk.EventMessage && event.Message != nil && event.Message.Role == agentsdk.RoleUser
+						isAgentContent := !isUserMsg && (event.Type == agentsdk.EventDelta ||
+							(event.Type == agentsdk.EventMessage && event.Message != nil && event.Message.Role == agentsdk.RoleAssistant))
+
+						// Before user message: close any open assistant turn
+						if isUserMsg && inAssistantTurn {
+							if tc, err := agentsdk.TurnCompleteEnvelope(sessionID, "end_turn"); err == nil && tc != nil {
+								sessionState.AppendAndBroadcast(tc)
 							}
+							inAssistantTurn = false
 						}
-						log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
-					}()
+
+						// Before agent content: open a turn if not already open
+						if isAgentContent && !inAssistantTurn {
+							if ts, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && ts != nil {
+								sessionState.AppendAndBroadcast(ts)
+							}
+							inAssistantTurn = true
+						}
+
+						frames := translateEventToEnvelopes(sessionID, event)
+						for _, frame := range frames {
+							sessionState.AppendAndBroadcast(frame)
+						}
+					}
+					// Close final turn if open
+					if inAssistantTurn {
+						if tc, err := agentsdk.TurnCompleteEnvelope(sessionID, "end_turn"); err == nil && tc != nil {
+							sessionState.AppendAndBroadcast(tc)
+						}
+					}
+					log.Info().Str("sessionId", sessionID).Int("events", len(histEvents)).Msg("historical session replay complete")
 				}
 			} else if err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
@@ -535,6 +562,24 @@ func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte 
 		if event.Message == nil {
 			return nil
 		}
+
+		// User messages (from LoadSession replay) → user.echo envelope
+		if event.Message.Role == agentsdk.RoleUser {
+			contentBlocks := make([]map[string]any, 0, len(event.Message.Content))
+			for _, block := range event.Message.Content {
+				if block.Type == agentsdk.BlockText {
+					contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": block.Text})
+				}
+			}
+			if len(contentBlocks) > 0 {
+				data, err = agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
+				if err == nil && data != nil {
+					frames = append(frames, data)
+				}
+			}
+			return frames
+		}
+
 		for _, block := range event.Message.Content {
 			switch block.Type {
 			case agentsdk.BlockThinking:

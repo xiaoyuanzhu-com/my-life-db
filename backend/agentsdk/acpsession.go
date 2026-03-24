@@ -281,9 +281,15 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 }
 
 // LoadSession loads a historical session from the agent's persistence layer.
-// The ACP conn.LoadSession() call is blocking — events stream in via SessionUpdate
-// callbacks before it returns. The events channel is closed once replay finishes.
-func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) (<-chan Event, error) {
+// Returns the collected replay events synchronously. The ACP conn.LoadSession()
+// call blocks while the agent replays history via SessionUpdate notifications.
+//
+// Design: We use a large-buffer channel + async drain goroutine to avoid
+// deadlock. The ACP SDK's reader goroutine calls emit() for each replayed
+// event. If emit() blocks (channel full), the reader can't deliver the
+// LoadSession JSON-RPC response, causing deadlock. The drain goroutine
+// ensures the channel is always being consumed.
+func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) ([]Event, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -295,36 +301,58 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 	}
 	s.mu.Unlock()
 
-	events := make(chan Event, 256)
-	s.client.setEvents(events)
+	log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
 
+	// Enable replay mode so UserMessageChunk events are emitted (not skipped).
+	s.client.mu.Lock()
+	s.client.replayMode = true
+	s.client.mu.Unlock()
+
+	// Large buffer to avoid blocking the ACP SDK's reader goroutine.
+	collector := make(chan Event, 4096)
+	s.client.setEvents(collector)
+
+	// Drain collector into a slice asynchronously — this prevents deadlock
+	// between emit() blocking on a full channel and conn.LoadSession()
+	// waiting for the response that the blocked reader can't deliver.
+	var collected []Event
+	drainDone := make(chan struct{})
 	go func() {
-		defer close(events)
-		defer s.client.clearEvents()
-
-		log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
-
-		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
-			SessionId:  acp.SessionId(sessionID),
-			Cwd:        cwd,
-			McpServers: []acp.McpServer{},
-		})
-		if err != nil {
-			// Don't emit error event — LoadSession failure is expected for sessions
-			// that haven't been persisted by the agent (e.g., not found on disk).
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
-			return
+		defer close(drainDone)
+		for evt := range collector {
+			collected = append(collected, evt)
 		}
-
-		log.Info().Str("sessionId", sessionID).Msg("LoadSession completed, history replayed")
-
-		// Update the session's internal ACP session ID to the loaded one
-		s.mu.Lock()
-		s.sessionID = sessionID
-		s.mu.Unlock()
 	}()
 
-	return events, nil
+	// conn.LoadSession blocks. During this call, the agent replays history
+	// as SessionUpdate notifications → acpClient.emit() → collector channel.
+	_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
+		SessionId:  acp.SessionId(sessionID),
+		Cwd:        cwd,
+		McpServers: []acp.McpServer{},
+	})
+
+	// Stop collecting: disable replay mode, disconnect the channel, close it, wait for drain.
+	s.client.mu.Lock()
+	s.client.replayMode = false
+	s.client.mu.Unlock()
+	s.client.clearEvents()
+	close(collector)
+	<-drainDone
+
+	if err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Int("events", len(collected)).Msg("LoadSession failed")
+		return nil, err
+	}
+
+	log.Info().Str("sessionId", sessionID).Int("events", len(collected)).Msg("LoadSession completed")
+
+	// Update the session's internal ACP session ID to the loaded one
+	s.mu.Lock()
+	s.sessionID = sessionID
+	s.mu.Unlock()
+
+	return collected, nil
 }
 
 // RespondToPermission unblocks a pending permission request using an optionID.
