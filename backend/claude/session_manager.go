@@ -262,7 +262,7 @@ func (m *SessionManager) workingSessionIDs() ([]string, int) {
 
 // Shutdown gracefully stops the session manager.
 // It drains active sessions (waits for "working" sessions to finish their current turn),
-// then settles for 5 seconds, and finally cleans up resources.
+// then cleans up resources (each subprocess gets its own SIGINT → SIGKILL sequence).
 // The ctx deadline controls the maximum wait time for draining.
 func (m *SessionManager) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down SessionManager")
@@ -309,17 +309,6 @@ func (m *SessionManager) Shutdown(ctx context.Context) error {
 	}
 
 	unsubscribe()
-
-	// ── Settle: wait 5s for final writes to flush ──
-
-	settleTimer := time.NewTimer(5 * time.Second)
-	select {
-	case <-settleTimer.C:
-		log.Info().Msg("settle complete")
-	case <-ctx.Done():
-		settleTimer.Stop()
-		log.Warn().Msg("settle interrupted by context timeout")
-	}
 
 	// ── Cleanup ──
 
