@@ -224,8 +224,9 @@ function AgentComposer({
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
 
   return (
-    <div className="bg-background px-4 py-3">
-      <ComposerPrimitive.Root className="relative max-w-3xl mx-auto rounded-xl border border-border bg-muted/30 px-3 py-2">
+    <div className="bg-background py-3">
+     <div className="max-w-3xl mx-auto px-4">
+      <ComposerPrimitive.Root className="relative rounded-xl border border-border bg-muted/30 px-3 py-2">
         <SlashCommandPopover textareaRef={composerInputRef} />
         <FileTagPopover textareaRef={composerInputRef} />
         <ComposerPrimitive.Input
@@ -276,6 +277,7 @@ function AgentComposer({
           </div>
         </div>
       </ComposerPrimitive.Root>
+     </div>
     </div>
   )
 }
