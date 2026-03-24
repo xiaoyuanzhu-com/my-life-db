@@ -17,7 +17,6 @@ export interface ToolCallFields {
   toolCallId: string
   title?: string
   kind?: string
-  status?: string
   content?: unknown[]
   locations?: Array<{ path: string; line?: number }>
   rawInput?: unknown

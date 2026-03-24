@@ -289,9 +289,6 @@ export function useAgentRuntime(options: {
             if ("rawOutput" in f) {
               patch.result = f.rawOutput
             }
-            if ("status" in f && f.status === "failed") {
-              patch.isError = true
-            }
             if ("title" in f && typeof f.title === "string") {
               patch.toolName = f.title
             }

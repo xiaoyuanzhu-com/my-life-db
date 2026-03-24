@@ -612,13 +612,13 @@ func marshalEventFrames(event agentsdk.Event) [][]byte {
 				marshal(map[string]any{
 					"type": "agent.toolCall", "ts": ts,
 					"toolCallId": block.ToolUseID, "title": block.ToolName,
-					"kind": block.ToolKind, "status": "in_progress",
+					"kind": block.ToolKind,
 					"rawInput": json.RawMessage(block.ToolInput),
 				})
 			case agentsdk.BlockToolResult:
 				marshal(map[string]any{
 					"type": "agent.toolCallUpdate", "ts": ts,
-					"toolCallId": block.ToolUseID, "status": "completed",
+					"toolCallId": block.ToolUseID,
 					"rawOutput": map[string]any{"content": block.Text},
 				})
 			case agentsdk.BlockPlan:
