@@ -399,8 +399,21 @@ export function useAgentRuntime(options: {
             const last = findLastAssistant(updated)
             if (!last) return prev
 
+            // Mark any tool calls without results as complete.
+            // Some tools (e.g., WebSearch) may not send rawOutput in
+            // toolCallUpdate, leaving result undefined. Without this,
+            // assistant-ui keeps their status as "running" even after
+            // the turn ends.
+            const content = last.content.map((part) => {
+              if (part.type === "tool-call" && part.result === undefined) {
+                return { ...part, result: "" }
+              }
+              return part
+            })
+
             replaceLastAssistant(updated, {
               ...last,
+              content,
               status: { type: "complete", reason: "stop" },
             })
             return updated
@@ -421,8 +434,17 @@ export function useAgentRuntime(options: {
             const last = findLastAssistant(updated)
             if (!last) return prev
 
+            // Mark incomplete tool calls as errored
+            const content = last.content.map((part) => {
+              if (part.type === "tool-call" && part.result === undefined) {
+                return { ...part, result: "", isError: true }
+              }
+              return part
+            })
+
             replaceLastAssistant(updated, {
               ...last,
+              content,
               status: {
                 type: "incomplete",
                 reason: "error",
