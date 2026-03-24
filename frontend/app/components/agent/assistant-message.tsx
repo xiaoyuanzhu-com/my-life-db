@@ -44,21 +44,24 @@ function AssistantTextPart({ text }: { text: string }) {
   }, [text])
 
   return (
-    <div className="group/text relative">
-      <MarkdownContent text={text} className="text-foreground" />
-      {/* Copy button -- visible on hover, top-right */}
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="absolute -top-1 -right-1 opacity-0 group-hover/text:opacity-100 transition-opacity rounded-md p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
-        title="Copy text"
-      >
-        {copied ? (
-          <Check className="h-3.5 w-3.5" />
-        ) : (
-          <Copy className="h-3.5 w-3.5" />
-        )}
-      </button>
+    <div className="group/text relative flex items-start gap-2">
+      <MessageDot type="assistant" />
+      <div className="flex-1 min-w-0 relative">
+        <MarkdownContent text={text} className="text-foreground" />
+        {/* Copy button -- visible on hover, top-right */}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="absolute -top-1 -right-1 opacity-0 group-hover/text:opacity-100 transition-opacity rounded-md p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+          title="Copy text"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
     </div>
   )
 }

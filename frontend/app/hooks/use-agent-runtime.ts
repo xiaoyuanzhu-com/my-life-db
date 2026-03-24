@@ -19,6 +19,7 @@ import {
   type ErrorFrame,
   type ToolCallFields,
 } from "./use-agent-websocket"
+import { isSkippedXmlContent } from "~/lib/session-message-utils"
 
 // ── Internal State Types ──────────────────────────────────────────────
 
@@ -117,6 +118,12 @@ export function useAgentRuntime(options: {
           // ACP native: content is a single content block, not an array
           const f = frame as UserMessageChunkFrame
           const text = f.content?.type === "text" ? f.content.text || "" : ""
+
+          // Skip system-injected messages (slash commands, task notifications, etc.)
+          // These contain only XML tags like <command-name>, <task-notification>, etc.
+          if (isSkippedXmlContent(text) || text.trimStart().startsWith("<task-notification>")) {
+            break
+          }
 
           setMessages((prev) => {
             // Check if there's an optimistic user message with matching text

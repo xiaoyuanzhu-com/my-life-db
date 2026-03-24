@@ -226,7 +226,7 @@ function AgentComposer({
 
   return (
     <div className="bg-background py-3">
-     <div className="max-w-3xl mx-auto px-4">
+     <div className="max-w-3xl mx-auto px-3">
       <ComposerPrimitive.Root className="relative rounded-xl border border-border bg-muted/30 px-3 py-2">
         <SlashCommandPopover textareaRef={composerInputRef} />
         <FileTagPopover textareaRef={composerInputRef} />
