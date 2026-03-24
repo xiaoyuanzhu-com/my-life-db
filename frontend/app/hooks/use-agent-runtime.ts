@@ -146,7 +146,7 @@ export function useAgentRuntime(options: {
               const updated = [...prev]
               updated[optimisticIdx] = {
                 ...updated[optimisticIdx],
-                createdAt: new Date(frame.ts),
+                createdAt: new Date(),
                 isOptimistic: false,
               }
               return updated
@@ -158,7 +158,7 @@ export function useAgentRuntime(options: {
                 id: nextId(),
                 role: "user",
                 content: [{ type: "text", text }],
-                createdAt: new Date(frame.ts),
+                createdAt: new Date(),
               },
             ]
           })
@@ -173,7 +173,7 @@ export function useAgentRuntime(options: {
               id: nextId(),
               role: "assistant",
               content: [],
-              createdAt: new Date(frame.ts),
+              createdAt: new Date(),
               status: { type: "running" },
             },
           ])

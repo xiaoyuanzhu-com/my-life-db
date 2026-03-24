@@ -3,8 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 // ACP envelope frame — every WS message has this shape
 export interface AcpFrame {
   type: string
-  sessionId: string
-  ts: number
   [key: string]: unknown
 }
 
