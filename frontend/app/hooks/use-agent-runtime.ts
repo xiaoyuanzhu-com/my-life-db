@@ -9,7 +9,6 @@ import type { ReadonlyJSONObject } from "assistant-stream/utils"
 import {
   useAgentWebSocket,
   type AcpFrame,
-  type SessionInfoFrame,
   type AgentMessageChunkFrame,
   type AgentThoughtChunkFrame,
   type AgentToolCallFrame,
@@ -94,9 +93,6 @@ export function useAgentRuntime(options: {
     return `msg-${msgIdCounter.current}`
   }, [])
 
-  // Burst replay dedup: when session.info arrives and we already have messages,
-  // skip exactly totalMessages replayed frames (count-based, not flag-based).
-  const burstRemainingRef = useRef(0)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
@@ -104,19 +100,6 @@ export function useAgentRuntime(options: {
 
   const onFrame = useCallback(
     (frame: AcpFrame) => {
-      // Burst replay dedup: on reconnect, session.info tells us how many
-      // frames will be replayed. Skip exactly that many if we already have messages.
-      if (frame.type === "session.info") {
-        const info = frame as SessionInfoFrame
-        if (messagesRef.current.length > 0 && info.totalMessages > 0) {
-          burstRemainingRef.current = info.totalMessages
-        }
-        // Fall through to handle session.info normally below
-      } else if (burstRemainingRef.current > 0) {
-        burstRemainingRef.current--
-        return // skip burst replay frame
-      }
-
       switch (frame.type) {
         case "user.echo": {
           const content = (frame as AcpFrame & { content?: unknown[] }).content
@@ -453,21 +436,6 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "session.info": {
-          const isProcessing = (frame as AcpFrame & { isProcessing?: boolean })
-            .isProcessing
-          if (typeof isProcessing === "boolean") {
-            setIsRunning(isProcessing)
-            // If the session is not processing, clear any stale pending permissions
-            if (!isProcessing) {
-              setPendingPermissions((prev) => {
-                if (prev.size === 0) return prev
-                return new Map()
-              })
-            }
-          }
-          break
-        }
 
         case "session.modeUpdate": {
           const f = frame as AcpFrame & { modeId?: string; availableModes?: unknown[] }

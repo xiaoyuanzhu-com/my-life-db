@@ -144,21 +144,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		seenResultCount.Store(int32(rc))
 	}
 
-	// Send session.info metadata frame
-	totalMessages := len(sessionState.GetRecentMessages(0))
-	sessionState.Mu.RLock()
-	isProcessing := sessionState.IsProcessing
-	sessionState.Mu.RUnlock()
-	if infoBytes, err := json.Marshal(map[string]any{
-		"type":          "session.info",
-		"totalMessages": totalMessages,
-		"isProcessing":  isProcessing,
-	}); err == nil {
-		if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
-			return
-		}
-	}
-
 	// Register client BEFORE burst/history replay so concurrent broadcasts
 	// (from POST handler or history replay goroutine) are queued immediately.
 	uiClient := &agentsdk.WSClient{
@@ -213,7 +198,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	}
 
 	// If no messages in memory (e.g., server restart), try loading history via ACP
-	if totalMessages == 0 {
+	if len(burstMessages) == 0 {
 		log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
 		if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil && sessionRecord.WorkingDir != "" {
 			log.Info().Str("sessionId", sessionID).Str("workingDir", sessionRecord.WorkingDir).Msg("found session in DB, spawning ACP process for session/load")
