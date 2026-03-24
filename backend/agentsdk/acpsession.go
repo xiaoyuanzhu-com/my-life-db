@@ -206,9 +206,10 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 	return session, nil
 }
 
-// Send sends a prompt and streams back events.
-// Prompt() blocks internally; events arrive via the acpClient's SessionUpdate callback.
-func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, error) {
+// Send sends a prompt and streams back raw JSON frames.
+// Prompt() blocks internally; frames arrive via the acpClient's SessionUpdate callback.
+// The channel is closed when the turn completes.
+func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -220,7 +221,7 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 	}
 	s.mu.Unlock()
 
-	events := make(chan Event, 256)
+	events := make(chan []byte, 256)
 
 	// Wire the events channel to the ACP client
 	s.client.setEvents(events)
@@ -234,10 +235,22 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 	s.mu.Unlock()
 
 	if modes != nil {
-		events <- Event{Type: EventModeUpdate, SessionMeta: modes}
+		payload := map[string]any{"type": "session.modeUpdate", "modeId": modes.ModeID}
+		if modes.AvailableModes != nil {
+			payload["availableModes"] = json.RawMessage(modes.AvailableModes)
+		}
+		if data, err := json.Marshal(payload); err == nil {
+			events <- data
+		}
 	}
 	if models != nil {
-		events <- Event{Type: EventModelsUpdate, SessionMeta: models}
+		payload := map[string]any{"type": "session.modelsUpdate", "modelId": models.ModelID}
+		if models.AvailableModels != nil {
+			payload["availableModels"] = json.RawMessage(models.AvailableModels)
+		}
+		if data, err := json.Marshal(payload); err == nil {
+			events <- data
+		}
 	}
 
 	go func() {
@@ -249,18 +262,22 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 			Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
 		})
 		if err != nil {
-			// Check if this is a context cancellation (cancel returns error, not StopReason)
+			// Check if this is a context cancellation
 			if ctx.Err() != nil {
-				events <- Event{
-					Type:       EventComplete,
-					StopReason: "cancelled",
-					Usage:      &Usage{},
+				if data, err := json.Marshal(map[string]any{
+					"type":       "turn.complete",
+					"stopReason": "cancelled",
+				}); err == nil {
+					events <- data
 				}
 				return
 			}
-			events <- Event{
-				Type:  EventError,
-				Error: err,
+			if data, err := json.Marshal(map[string]any{
+				"type":    "error",
+				"message": err.Error(),
+				"code":    "AGENT_ERROR",
+			}); err == nil {
+				events <- data
 			}
 			return
 		}
@@ -270,10 +287,11 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 			Str("session_id", s.sessionID).
 			Msg("ACP prompt completed")
 
-		events <- Event{
-			Type:       EventComplete,
-			StopReason: string(resp.StopReason),
-			Usage:      &Usage{}, // ACP doesn't provide token usage
+		if data, err := json.Marshal(map[string]any{
+			"type":       "turn.complete",
+			"stopReason": string(resp.StopReason),
+		}); err == nil {
+			events <- data
 		}
 	}()
 
@@ -281,7 +299,7 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 }
 
 // LoadSession loads a historical session from the agent's persistence layer.
-// Returns the collected replay events synchronously. The ACP conn.LoadSession()
+// Returns the collected raw JSON frames synchronously. The ACP conn.LoadSession()
 // call blocks while the agent replays history via SessionUpdate notifications.
 //
 // Design: We use a large-buffer channel + async drain goroutine to avoid
@@ -289,7 +307,7 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan Event, err
 // event. If emit() blocks (channel full), the reader can't deliver the
 // LoadSession JSON-RPC response, causing deadlock. The drain goroutine
 // ensures the channel is always being consumed.
-func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) ([]Event, error) {
+func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd string) ([][]byte, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -303,24 +321,19 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 
 	log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
 
-	// Enable replay mode so UserMessageChunk events are emitted (not skipped).
-	s.client.mu.Lock()
-	s.client.replayMode = true
-	s.client.mu.Unlock()
-
 	// Large buffer to avoid blocking the ACP SDK's reader goroutine.
-	collector := make(chan Event, 4096)
+	collector := make(chan []byte, 4096)
 	s.client.setEvents(collector)
 
 	// Drain collector into a slice asynchronously — this prevents deadlock
 	// between emit() blocking on a full channel and conn.LoadSession()
 	// waiting for the response that the blocked reader can't deliver.
-	var collected []Event
+	var collected [][]byte
 	drainDone := make(chan struct{})
 	go func() {
 		defer close(drainDone)
-		for evt := range collector {
-			collected = append(collected, evt)
+		for frame := range collector {
+			collected = append(collected, frame)
 		}
 	}()
 
@@ -332,20 +345,17 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 		McpServers: []acp.McpServer{},
 	})
 
-	// Stop collecting: disable replay mode, disconnect the channel, close it, wait for drain.
-	s.client.mu.Lock()
-	s.client.replayMode = false
-	s.client.mu.Unlock()
+	// Stop collecting: disconnect the channel, close it, wait for drain.
 	s.client.clearEvents()
 	close(collector)
 	<-drainDone
 
 	if err != nil {
-		log.Warn().Err(err).Str("sessionId", sessionID).Int("events", len(collected)).Msg("LoadSession failed")
+		log.Warn().Err(err).Str("sessionId", sessionID).Int("frames", len(collected)).Msg("LoadSession failed")
 		return nil, err
 	}
 
-	log.Info().Str("sessionId", sessionID).Int("events", len(collected)).Msg("LoadSession completed")
+	log.Info().Str("sessionId", sessionID).Int("frames", len(collected)).Msg("LoadSession completed")
 
 	// Update the session's internal ACP session ID to the loaded one
 	s.mu.Lock()

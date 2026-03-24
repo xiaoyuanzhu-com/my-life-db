@@ -13,19 +13,15 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// acpClient implements the acp.Client interface, translating ACP callbacks
-// into our Event stream. One instance per session.
+// acpClient implements the acp.Client interface, re-marshaling ACP notifications
+// as raw JSON bytes and emitting them on a channel. One instance per session.
 type acpClient struct {
 	autoApprove bool
 	workingDir  string
 
 	// Current events channel — set by Send(), cleared when prompt completes.
 	mu            sync.RWMutex
-	currentEvents chan<- Event
-
-	// When true, UserMessageChunk events are emitted (for LoadSession replay).
-	// During normal prompting, they're skipped (we broadcast user.echo ourselves).
-	replayMode bool
+	currentEvents chan<- []byte
 
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
@@ -38,7 +34,7 @@ type permResponse struct {
 }
 
 // setEvents sets the current events channel for streaming.
-func (c *acpClient) setEvents(ch chan<- Event) {
+func (c *acpClient) setEvents(ch chan<- []byte) {
 	c.mu.Lock()
 	c.currentEvents = ch
 	c.mu.Unlock()
@@ -51,14 +47,14 @@ func (c *acpClient) clearEvents() {
 	c.mu.Unlock()
 }
 
-// emit sends an event to the current channel, if any.
-func (c *acpClient) emit(evt Event) {
+// emit sends raw JSON bytes to the current channel, if any.
+func (c *acpClient) emit(data []byte) {
 	c.mu.RLock()
 	ch := c.currentEvents
 	c.mu.RUnlock()
 
 	if ch != nil {
-		ch <- evt
+		ch <- data
 	}
 }
 
@@ -66,158 +62,26 @@ func (c *acpClient) emit(evt Event) {
 
 // SessionUpdate receives streaming updates from the agent.
 // Called on the ACP SDK's notification goroutine during Prompt().
+// Re-marshals the ACP notification's Update to raw JSON and emits it.
 func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotification) error {
 	update := params.Update
 
-	switch {
-	case update.AgentMessageChunk != nil:
-		text := ""
-		if update.AgentMessageChunk.Content.Text != nil {
-			text = update.AgentMessageChunk.Content.Text.Text
-		}
-		// Skip empty initial chunk (turn-start marker)
-		if text == "" {
-			return nil
-		}
-		c.emit(Event{
-			Type:  EventDelta,
-			Delta: text,
-		})
-
-	case update.AgentThoughtChunk != nil:
-		text := ""
-		if update.AgentThoughtChunk.Content.Text != nil {
-			text = update.AgentThoughtChunk.Content.Text.Text
-		}
-		if text == "" {
-			return nil
-		}
-		c.emit(Event{
-			Type: EventMessage,
-			Message: &Message{
-				Role: RoleAssistant,
-				Content: []Block{{
-					Type: BlockThinking,
-					Text: text,
-				}},
-			},
-		})
-
-	case update.ToolCall != nil:
-		tc := update.ToolCall
-		rawInput, _ := marshalAny(tc.RawInput)
-		c.emit(Event{
-			Type: EventMessage,
-			Message: &Message{
-				Role: RoleAssistant,
-				Content: []Block{{
-					Type:      BlockToolUse,
-					ToolName:  tc.Title,
-					ToolUseID: string(tc.ToolCallId),
-					ToolKind:  string(tc.Kind),
-					ToolInput: rawInput,
-				}},
-			},
-		})
-
-	case update.ToolCallUpdate != nil:
-		tc := update.ToolCallUpdate
-		if tc.Status != nil && *tc.Status == acp.ToolCallStatusCompleted {
-			// Extract output from content
-			output := extractToolCallOutput(tc.Content)
-			c.emit(Event{
-				Type: EventMessage,
-				Message: &Message{
-					Role: RoleAssistant,
-					Content: []Block{{
-						Type:      BlockToolResult,
-						ToolUseID: string(tc.ToolCallId),
-						Text:      output,
-					}},
-				},
-			})
-		}
-
-	case update.Plan != nil:
-		// Plan entries — emit as a message with structured plan data
-		if len(update.Plan.Entries) > 0 {
-			entries := make([]PlanEntry, len(update.Plan.Entries))
-			for i, e := range update.Plan.Entries {
-				entries[i] = PlanEntry{
-					Content:  e.Content,
-					Status:   string(e.Status),
-					Priority: string(e.Priority),
-				}
-			}
-			c.emit(Event{
-				Type: EventMessage,
-				Message: &Message{
-					Role: RoleAssistant,
-					Content: []Block{{
-						Type:        BlockPlan,
-						PlanEntries: entries,
-					}},
-				},
-			})
-		}
-
-	case update.CurrentModeUpdate != nil:
-		modeID := string(update.CurrentModeUpdate.CurrentModeId)
-		log.Info().Str("mode", modeID).Msg("ACP mode changed")
-		c.emit(Event{
-			Type: EventModeUpdate,
-			SessionMeta: &SessionMeta{
-				ModeID: modeID,
-			},
-		})
-
-	case update.AvailableCommandsUpdate != nil:
-		cmds := update.AvailableCommandsUpdate.AvailableCommands
-		log.Debug().Int("commands", len(cmds)).Msg("ACP commands updated")
-
-		cmdList := make([]map[string]any, len(cmds))
-		for i, cmd := range cmds {
-			entry := map[string]any{
-				"name":        cmd.Name,
-				"description": cmd.Description,
-			}
-			if cmd.Input != nil && cmd.Input.UnstructuredCommandInput != nil {
-				entry["input"] = map[string]any{"hint": cmd.Input.UnstructuredCommandInput.Hint}
-			}
-			cmdList[i] = entry
-		}
-		cmdJSON, _ := json.Marshal(cmdList)
-
-		c.emit(Event{
-			Type: EventCommandsUpdate,
-			SessionMeta: &SessionMeta{
-				Commands: cmdJSON,
-			},
-		})
-
-	case update.UserMessageChunk != nil:
-		// During normal prompting, skip user echoes (we broadcast user.echo ourselves).
-		// During LoadSession replay, emit them so historical user messages appear.
-		if c.replayMode {
-			text := ""
-			if update.UserMessageChunk.Content.Text != nil {
-				text = update.UserMessageChunk.Content.Text.Text
-			}
-			if text != "" {
-				c.emit(Event{
-					Type: EventMessage,
-					Message: &Message{
-						Role:    RoleUser,
-						Content: []Block{{Type: BlockText, Text: text}},
-					},
-				})
-			}
-		}
-
-	default:
-		log.Debug().Msg("ACP: unknown session update type")
+	// Skip empty initial agent_message_chunk (turn-start marker from ACP)
+	if update.AgentMessageChunk != nil &&
+		update.AgentMessageChunk.Content.Text != nil &&
+		update.AgentMessageChunk.Content.Text.Text == "" {
+		return nil
 	}
 
+	// Marshal the ACP SessionUpdate to JSON (uses ACP SDK's custom MarshalJSON
+	// which produces JSON with a "sessionUpdate" discriminator field).
+	data, err := json.Marshal(update)
+	if err != nil {
+		log.Warn().Err(err).Msg("ACP: failed to marshal session update")
+		return nil
+	}
+
+	c.emit(data)
 	return nil
 }
 
@@ -246,37 +110,16 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 		c.permMu.Unlock()
 	}()
 
-	// Build permission request event
-	rawInput, _ := marshalAny(params.ToolCall.RawInput)
-	title := ""
-	if params.ToolCall.Title != nil {
-		title = *params.ToolCall.Title
-	}
-	kind := ""
-	if params.ToolCall.Kind != nil {
-		kind = string(*params.ToolCall.Kind)
-	}
+	// Build permission request JSON frame
+	toolCallJSON, _ := json.Marshal(params.ToolCall)
+	optionsJSON, _ := json.Marshal(params.Options)
 
-	// Build option info for the frontend
-	options := make([]PermissionOption, len(params.Options))
-	for i, opt := range params.Options {
-		options[i] = PermissionOption{
-			ID:   string(opt.OptionId),
-			Kind: string(opt.Kind),
-			Name: opt.Name,
-		}
-	}
-
-	c.emit(Event{
-		Type: EventPermissionRequest,
-		PermissionRequest: &PermissionRequest{
-			ID:       requestID,
-			Tool:     title,
-			ToolKind: kind,
-			Input:    rawInput,
-			Options:  options,
-		},
+	frame, _ := json.Marshal(map[string]json.RawMessage{
+		"type":     json.RawMessage(`"permission.request"`),
+		"toolCall": toolCallJSON,
+		"options":  optionsJSON,
 	})
+	c.emit(frame)
 
 	// Block until RespondToPermission is called or context cancelled
 	select {

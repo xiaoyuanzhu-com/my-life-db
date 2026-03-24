@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-// ACP envelope frame — every WS message has this shape
+// ACP envelope frame — two possible discriminators
 export interface AcpFrame {
-  type: string
+  // ACP native frames use sessionUpdate as discriminator
+  sessionUpdate?: string
+  // Synthesized frames use type as discriminator
+  type?: string
   [key: string]: unknown
 }
 
@@ -21,6 +24,7 @@ export interface ToolCallFields {
   locations?: Array<{ path: string; line?: number }>
   rawInput?: unknown
   rawOutput?: unknown
+  status?: string // ACP provides this natively on tool_call and tool_call_update
 }
 
 // Permission option
@@ -30,32 +34,49 @@ export interface PermissionOption {
   kind: string
 }
 
-// Specific frame types
-export interface SessionInfoFrame extends AcpFrame {
-  type: "session.info"
-  totalMessages: number
-  isProcessing: boolean
-}
+// Specific frame types — ACP native frames (sessionUpdate discriminator)
 
 export interface AgentMessageChunkFrame extends AcpFrame {
-  type: "agent.messageChunk"
+  sessionUpdate: "agent_message_chunk"
   content: ContentBlock
 }
 
 export interface AgentThoughtChunkFrame extends AcpFrame {
-  type: "agent.thoughtChunk"
+  sessionUpdate: "agent_thought_chunk"
   content: ContentBlock
 }
 
 export interface AgentToolCallFrame extends AcpFrame, ToolCallFields {
-  type: "agent.toolCall"
+  sessionUpdate: "tool_call"
 }
 
 export interface AgentToolCallUpdateFrame extends AcpFrame {
-  type: "agent.toolCallUpdate"
+  sessionUpdate: "tool_call_update"
   toolCallId: string
-  [key: string]: unknown  // optional patch fields
+  [key: string]: unknown // optional patch fields
 }
+
+export interface UserMessageChunkFrame extends AcpFrame {
+  sessionUpdate: "user_message_chunk"
+  content: ContentBlock
+}
+
+export interface PlanFrame extends AcpFrame {
+  sessionUpdate: "plan"
+  entries: unknown[]
+}
+
+export interface CurrentModeUpdateFrame extends AcpFrame {
+  sessionUpdate: "current_mode_update"
+  currentModeId: string
+}
+
+export interface AvailableCommandsUpdateFrame extends AcpFrame {
+  sessionUpdate: "available_commands_update"
+  availableCommands: unknown[]
+}
+
+// Specific frame types — synthesized frames (type discriminator)
 
 export interface PermissionRequestFrame extends AcpFrame {
   type: "permission.request"
@@ -74,16 +95,26 @@ export interface ErrorFrame extends AcpFrame {
   code?: string
 }
 
+export interface SessionInfoFrame extends AcpFrame {
+  type: "session.info"
+  totalMessages: number
+  isProcessing: boolean
+}
+
 export type AgentFrame =
   | SessionInfoFrame
   | AgentMessageChunkFrame
   | AgentThoughtChunkFrame
   | AgentToolCallFrame
   | AgentToolCallUpdateFrame
+  | UserMessageChunkFrame
+  | PlanFrame
+  | CurrentModeUpdateFrame
+  | AvailableCommandsUpdateFrame
   | PermissionRequestFrame
   | TurnCompleteFrame
   | ErrorFrame
-  | AcpFrame  // catch-all for unknown types
+  | AcpFrame // catch-all for unknown types
 
 interface UseAgentWebSocketOptions {
   sessionId: string

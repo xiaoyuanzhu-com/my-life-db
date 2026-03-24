@@ -228,50 +228,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				acpSessions[sessionID] = sess
 				acpSessionsMu.Unlock()
 
-				// Forward replayed history events to the WS client.
-				// Inject turn.start / turn.complete boundaries based on role transitions
-				// so the frontend can create proper message objects.
+				// Forward replayed history frames to the WS client as-is.
+				// No turn.complete injection — the client knows this is replay
+				// (session not yet active) and handles turn boundaries itself.
 				if len(histEvents) > 0 {
-					inAssistantTurn := false
-					for _, event := range histEvents {
-						isUserMsg := event.Type == agentsdk.EventMessage && event.Message != nil && event.Message.Role == agentsdk.RoleUser
-						isAgentContent := !isUserMsg && (event.Type == agentsdk.EventDelta ||
-							(event.Type == agentsdk.EventMessage && event.Message != nil && event.Message.Role == agentsdk.RoleAssistant))
-
-						// Before user message: close any open assistant turn
-						if isUserMsg && inAssistantTurn {
-							if data, err := json.Marshal(map[string]any{
-								"type": "turn.complete", "ts": time.Now().UnixMilli(), "stopReason": "end_turn",
-							}); err == nil {
-								sessionState.AppendAndBroadcast(data)
-							}
-							inAssistantTurn = false
-						}
-
-						// Before agent content: open a turn if not already open
-						if isAgentContent && !inAssistantTurn {
-							if data, err := json.Marshal(map[string]any{
-								"type": "turn.start", "ts": time.Now().UnixMilli(),
-							}); err == nil {
-								sessionState.AppendAndBroadcast(data)
-							}
-							inAssistantTurn = true
-						}
-
-						frames := marshalEventFrames(event)
-						for _, frame := range frames {
-							sessionState.AppendAndBroadcast(frame)
-						}
+					for _, frame := range histEvents {
+						sessionState.AppendAndBroadcast(frame)
 					}
-					// Close final turn if open
-					if inAssistantTurn {
-						if data, err := json.Marshal(map[string]any{
-							"type": "turn.complete", "ts": time.Now().UnixMilli(), "stopReason": "end_turn",
-						}); err == nil {
-							sessionState.AppendAndBroadcast(data)
-						}
-					}
-					log.Info().Str("sessionId", sessionID).Int("events", len(histEvents)).Msg("historical session replay complete")
+					log.Info().Str("sessionId", sessionID).Int("frames", len(histEvents)).Msg("historical session replay complete")
 				}
 			} else if err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
@@ -359,21 +323,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			// Broadcast user echo
-			if data, err := json.Marshal(map[string]any{
-				"type": "user.echo", "ts": time.Now().UnixMilli(),
-				"content": contentBlocks,
-			}); err == nil {
-				sessionState.AppendAndBroadcast(data)
-			}
-
-			// Broadcast turn.start
-			if data, err := json.Marshal(map[string]any{
-				"type": "turn.start", "ts": time.Now().UnixMilli(),
-			}); err == nil {
-				sessionState.AppendAndBroadcast(data)
-			}
-
 			// Create ACP session lazily if needed
 			acpSessionsMu.Lock()
 			acpSession, exists := acpSessions[sessionID]
@@ -410,9 +359,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
-					if errBytes, err := json.Marshal(map[string]any{
-						"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
-					}); err == nil {
+					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to create agent session: "+err.Error(), "SESSION_ERROR")
+					if errBytes != nil {
 						conn.Write(ctx, websocket.MessageText, errBytes)
 					}
 					continue
@@ -423,12 +371,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				acpSession = sess
 			}
 
-			// Send prompt and start event forwarding
+			// Send prompt and start frame forwarding
 			go func(acpSess agentsdk.Session, prompt string) {
 				// Mark processing BEFORE Send() so any WS client connecting
 				// between turn.start and the first event sees the correct state.
 				sessionState.Mu.Lock()
 				sessionState.IsProcessing = true
+				sessionState.IsActive = true
 				sessionState.Mu.Unlock()
 
 				events, err := acpSess.Send(h.server.ShutdownContext(), prompt)
@@ -437,27 +386,22 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					sessionState.Mu.Lock()
 					sessionState.IsProcessing = false
 					sessionState.Mu.Unlock()
-					if errBytes, err := json.Marshal(map[string]any{
-						"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
-					}); err == nil {
+					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
+					if errBytes != nil {
 						sessionState.AppendAndBroadcast(errBytes)
 					}
 					return
 				}
 
-				for event := range events {
-					frames := marshalEventFrames(event)
-					for _, frame := range frames {
-						sessionState.AppendAndBroadcast(frame)
-					}
-					if event.Type == agentsdk.EventComplete {
-						sessionState.Mu.Lock()
-						sessionState.ResultCount++
-						sessionState.IsProcessing = false
-						sessionState.Mu.Unlock()
-						h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
-					}
+				for frame := range events {
+					sessionState.AppendAndBroadcast(frame)
 				}
+				// Channel closed = turn complete
+				sessionState.Mu.Lock()
+				sessionState.ResultCount++
+				sessionState.IsProcessing = false
+				sessionState.Mu.Unlock()
+				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
 			}(acpSession, promptText)
 
 			// Auto-unarchive
@@ -547,137 +491,3 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	<-pingDone
 }
 
-// marshalEventFrames converts an agentsdk.Event into zero or more
-// JSON frames for sending over WebSocket.
-func marshalEventFrames(event agentsdk.Event) [][]byte {
-	var frames [][]byte
-	ts := time.Now().UnixMilli()
-
-	marshal := func(m map[string]any) {
-		if data, err := json.Marshal(m); err == nil {
-			frames = append(frames, data)
-		}
-	}
-
-	switch event.Type {
-	case agentsdk.EventDelta:
-		marshal(map[string]any{
-			"type": "agent.messageChunk", "ts": ts,
-			"content": map[string]any{"type": "text", "text": event.Delta},
-		})
-
-	case agentsdk.EventMessage:
-		if event.Message == nil {
-			return nil
-		}
-
-		if event.Message.Role == agentsdk.RoleUser {
-			contentBlocks := make([]map[string]any, 0, len(event.Message.Content))
-			for _, block := range event.Message.Content {
-				if block.Type == agentsdk.BlockText {
-					contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": block.Text})
-				}
-			}
-			if len(contentBlocks) > 0 {
-				marshal(map[string]any{
-					"type": "user.echo", "ts": ts, "content": contentBlocks,
-				})
-			}
-			return frames
-		}
-
-		for _, block := range event.Message.Content {
-			switch block.Type {
-			case agentsdk.BlockThinking:
-				marshal(map[string]any{
-					"type": "agent.thoughtChunk", "ts": ts,
-					"content": map[string]any{"type": "text", "text": block.Text},
-				})
-			case agentsdk.BlockToolUse:
-				marshal(map[string]any{
-					"type": "agent.toolCall", "ts": ts,
-					"toolCallId": block.ToolUseID, "title": block.ToolName,
-					"kind": block.ToolKind,
-					"rawInput": json.RawMessage(block.ToolInput),
-				})
-			case agentsdk.BlockToolResult:
-				marshal(map[string]any{
-					"type": "agent.toolCallUpdate", "ts": ts,
-					"toolCallId": block.ToolUseID,
-					"rawOutput": map[string]any{"content": block.Text},
-				})
-			case agentsdk.BlockPlan:
-				marshal(map[string]any{
-					"type": "agent.plan", "ts": ts, "entries": block.PlanEntries,
-				})
-			case agentsdk.BlockText:
-				marshal(map[string]any{
-					"type": "agent.messageChunk", "ts": ts,
-					"content": map[string]any{"type": "text", "text": block.Text},
-				})
-			}
-		}
-
-	case agentsdk.EventPermissionRequest:
-		pr := event.PermissionRequest
-		options := make([]map[string]any, len(pr.Options))
-		for i, opt := range pr.Options {
-			options[i] = map[string]any{
-				"optionId": opt.ID, "name": opt.Name, "kind": opt.Kind,
-			}
-		}
-		marshal(map[string]any{
-			"type": "permission.request",
-			"toolCall": map[string]any{
-				"toolCallId": pr.ID, "title": pr.Tool,
-				"kind": pr.ToolKind, "rawInput": json.RawMessage(pr.Input),
-			},
-			"options": options,
-		})
-
-	case agentsdk.EventComplete:
-		stopReason := event.StopReason
-		if stopReason == "" {
-			stopReason = "end_turn"
-		}
-		marshal(map[string]any{
-			"type": "turn.complete", "ts": ts, "stopReason": stopReason,
-		})
-
-	case agentsdk.EventError:
-		msg := "unknown error"
-		if event.Error != nil {
-			msg = event.Error.Error()
-		}
-		marshal(map[string]any{
-			"type": "error", "message": msg, "code": "AGENT_ERROR",
-		})
-
-	case agentsdk.EventModeUpdate:
-		if event.SessionMeta != nil {
-			m := map[string]any{"type": "session.modeUpdate", "modeId": event.SessionMeta.ModeID}
-			if event.SessionMeta.AvailableModes != nil {
-				m["availableModes"] = json.RawMessage(event.SessionMeta.AvailableModes)
-			}
-			marshal(m)
-		}
-
-	case agentsdk.EventCommandsUpdate:
-		if event.SessionMeta != nil {
-			marshal(map[string]any{
-				"type": "session.commandsUpdate", "commands": json.RawMessage(event.SessionMeta.Commands),
-			})
-		}
-
-	case agentsdk.EventModelsUpdate:
-		if event.SessionMeta != nil {
-			m := map[string]any{"type": "session.modelsUpdate", "modelId": event.SessionMeta.ModelID}
-			if event.SessionMeta.AvailableModels != nil {
-				m["availableModels"] = json.RawMessage(event.SessionMeta.AvailableModels)
-			}
-			marshal(m)
-		}
-	}
-
-	return frames
-}

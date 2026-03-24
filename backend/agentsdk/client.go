@@ -2,6 +2,7 @@ package agentsdk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -108,15 +109,15 @@ func (c *Client) ResumeSession(ctx context.Context, sessionID string, config Ses
 // If LoadSession fails (e.g., session not found on disk), the session is still
 // usable — just without history. The returned events slice may be nil if
 // history loading failed.
-func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, []Event, error) {
+func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, historicalSessionID string) (Session, [][]byte, error) {
 	// Create the ACP session normally (spawns agent process)
 	sess, err := c.CreateSession(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Try to load the historical session (synchronous — collects all events)
-	events, err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir)
+	// Try to load the historical session (synchronous — collects all raw frames)
+	frames, err := sess.LoadSession(ctx, historicalSessionID, cfg.WorkingDir)
 	if err != nil {
 		// LoadSession failed — session is still usable, just no history
 		log.Warn().Err(err).
@@ -125,7 +126,7 @@ func (c *Client) CreateSessionWithLoad(ctx context.Context, cfg SessionConfig, h
 		return sess, nil, nil
 	}
 
-	return sess, events, nil
+	return sess, frames, nil
 }
 
 // RunTask runs a one-off agent task to completion.
@@ -142,32 +143,25 @@ func (c *Client) RunTask(ctx context.Context, config TaskConfig) (TaskResult, er
 	}
 	defer session.Close()
 
-	events, err := session.Send(ctx, config.Prompt)
+	frames, err := session.Send(ctx, config.Prompt)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	var messages []Message
-	var usage Usage
-	for event := range events {
-		switch event.Type {
-		case EventMessage:
-			if event.Message != nil {
-				messages = append(messages, *event.Message)
-			}
-		case EventComplete:
-			if event.Usage != nil {
-				usage = *event.Usage
-			}
-		case EventError:
-			return TaskResult{}, event.Error
+	// Drain frames — for RunTask we just need to detect errors
+	for frame := range frames {
+		var msg struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		}
+		if json.Unmarshal(frame, &msg) == nil && msg.Type == "error" {
+			return TaskResult{}, fmt.Errorf("%s: %s", msg.Code, msg.Message)
 		}
 	}
 
 	return TaskResult{
 		SessionID: session.ID(),
-		Messages:  messages,
-		Usage:     usage,
 	}, nil
 }
 

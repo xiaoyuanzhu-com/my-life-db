@@ -174,13 +174,13 @@ type AgentInfo struct {
 
 // Session represents an interactive agent conversation.
 type Session interface {
-	// Send a message and stream back the agent's response.
-	// The returned channel is always closed after EventComplete or EventError.
-	Send(ctx context.Context, prompt string) (<-chan Event, error)
+	// Send a message and stream back raw JSON frames.
+	// The returned channel is closed when the turn completes.
+	Send(ctx context.Context, prompt string) (<-chan []byte, error)
 
 	// LoadSession loads a historical session from the agent's persistence layer.
-	// Returns all replayed events synchronously.
-	LoadSession(ctx context.Context, sessionID string, cwd string) ([]Event, error)
+	// Returns all replayed raw JSON frames synchronously.
+	LoadSession(ctx context.Context, sessionID string, cwd string) ([][]byte, error)
 
 	// RespondToPermission responds to an EventPermissionRequest using an optionID.
 	RespondToPermission(ctx context.Context, toolCallID string, optionID string) error

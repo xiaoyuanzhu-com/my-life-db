@@ -19,6 +19,7 @@ type SessionState struct {
 	rawMessages  [][]byte
 	clients      map[*WSClient]bool
 	IsProcessing bool
+	IsActive     bool // true after first prompt sent (vs replay-only)
 	ResultCount  int
 }
 

@@ -2,9 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -112,23 +110,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	if req.Message != "" {
 		sessionState := GetOrCreateSessionState(sessionID)
 
-		// Broadcast user echo
-		contentBlocks := []map[string]any{{"type": "text", "text": req.Message}}
-		if data, err := json.Marshal(map[string]any{
-			"type": "user.echo", "ts": time.Now().UnixMilli(),
-			"content": contentBlocks,
-		}); err == nil {
-			sessionState.AppendAndBroadcast(data)
-		}
-
-		// Broadcast turn.start
-		if data, err := json.Marshal(map[string]any{
-			"type": "turn.start", "ts": time.Now().UnixMilli(),
-		}); err == nil {
-			sessionState.AppendAndBroadcast(data)
-		}
-
-		// Send prompt and forward events in a background goroutine
+		// Send prompt and forward raw frames in a background goroutine
 		go func(acpSess agentsdk.Session, prompt string) {
 			// Mark processing BEFORE Send() so any WS client connecting
 			// between turn.start and the first event sees the correct state.
@@ -143,27 +125,22 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 				sessionState.Mu.Lock()
 				sessionState.IsProcessing = false
 				sessionState.Mu.Unlock()
-				if errBytes, err := json.Marshal(map[string]any{
-					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
-				}); err == nil {
+				errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
+				if errBytes != nil {
 					sessionState.AppendAndBroadcast(errBytes)
 				}
 				return
 			}
 
-			for event := range events {
-				frames := marshalEventFrames(event)
-				for _, frame := range frames {
-					sessionState.AppendAndBroadcast(frame)
-				}
-				if event.Type == agentsdk.EventComplete {
-					sessionState.Mu.Lock()
-					sessionState.ResultCount++
-					sessionState.IsProcessing = false
-					sessionState.Mu.Unlock()
-					h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
-				}
+			for frame := range events {
+				sessionState.AppendAndBroadcast(frame)
 			}
+			// Channel closed = turn complete
+			sessionState.Mu.Lock()
+			sessionState.ResultCount++
+			sessionState.IsProcessing = false
+			sessionState.Mu.Unlock()
+			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
 		}(sess, req.Message)
 
 		log.Info().
@@ -262,6 +239,15 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		state = "archived"
 	}
 
+	// Enrich with in-memory runtime state
+	isActive := false
+	isProcessing := false
+	ss := GetOrCreateSessionState(sessionID)
+	ss.Mu.RLock()
+	isActive = ss.IsActive
+	isProcessing = ss.IsProcessing
+	ss.Mu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":           session.SessionID,
 		"title":        session.Title,
@@ -270,6 +256,8 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		"sessionState": state,
 		"createdAt":    session.CreatedAt,
 		"lastActivity": session.UpdatedAt,
+		"isActive":     isActive,
+		"isProcessing": isProcessing,
 	})
 }
 

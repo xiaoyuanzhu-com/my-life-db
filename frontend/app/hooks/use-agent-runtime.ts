@@ -13,9 +13,11 @@ import {
   type AgentThoughtChunkFrame,
   type AgentToolCallFrame,
   type AgentToolCallUpdateFrame,
+  type UserMessageChunkFrame,
   type PermissionRequestFrame,
   type PermissionOption,
   type ErrorFrame,
+  type ToolCallFields,
 } from "./use-agent-websocket"
 
 // ── Internal State Types ──────────────────────────────────────────────
@@ -86,6 +88,12 @@ export function useAgentRuntime(options: {
     Map<string, { toolName: string; options: PermissionOption[] }>
   >(() => new Map())
 
+  // Whether the session is active (user has sent a prompt).
+  // During replay (inactive), user_message_chunk closes previous assistant turns
+  // since ACP replay has no turn.complete. In active sessions, turn.complete handles it.
+  // Fetched from backend on connect, updated locally on first sendPrompt.
+  const sessionActiveRef = useRef(false)
+
   // Use a ref to generate stable message IDs
   const msgIdCounter = useRef(0)
   const nextId = useCallback(() => {
@@ -100,21 +108,15 @@ export function useAgentRuntime(options: {
 
   const onFrame = useCallback(
     (frame: AcpFrame) => {
-      switch (frame.type) {
-        case "user.echo": {
-          const content = (frame as AcpFrame & { content?: unknown[] }).content
-          const text =
-            Array.isArray(content)
-              ? content
-                  .filter(
-                    (b): b is { type: "text"; text: string } =>
-                      typeof b === "object" &&
-                      b !== null &&
-                      (b as { type: string }).type === "text"
-                  )
-                  .map((b) => b.text)
-                  .join("")
-              : ""
+      // Route by discriminator: ACP native frames use sessionUpdate,
+      // synthesized frames use type
+      const frameType = frame.sessionUpdate || frame.type
+
+      switch (frameType) {
+        case "user_message_chunk": {
+          // ACP native: content is a single content block, not an array
+          const f = frame as UserMessageChunkFrame
+          const text = f.content?.type === "text" ? f.content.text || "" : ""
 
           setMessages((prev) => {
             // Check if there's an optimistic user message with matching text
@@ -125,7 +127,6 @@ export function useAgentRuntime(options: {
                 m.content.some((p) => p.type === "text" && p.text === text)
             )
             if (optimisticIdx !== -1) {
-              // Replace optimistic message with server-confirmed one
               const updated = [...prev]
               updated[optimisticIdx] = {
                 ...updated[optimisticIdx],
@@ -134,44 +135,61 @@ export function useAgentRuntime(options: {
               }
               return updated
             }
-            // No optimistic match — add normally
-            return [
-              ...prev,
-              {
-                id: nextId(),
-                role: "user",
-                content: [{ type: "text", text }],
-                createdAt: new Date(),
-              },
-            ]
+
+            const updated = [...prev]
+
+            // During replay (session not active), close any running assistant
+            // message. ACP replay has no turn.complete — user_message_chunk
+            // is the only turn boundary signal.
+            if (!sessionActiveRef.current) {
+              const lastAssistant = findLastAssistant(updated)
+              if (lastAssistant && lastAssistant.status?.type !== "complete") {
+                const content = lastAssistant.content.map((part) => {
+                  if (part.type === "tool-call" && part.result === undefined) {
+                    return { ...part, result: "" }
+                  }
+                  return part
+                })
+                replaceLastAssistant(updated, {
+                  ...lastAssistant,
+                  content,
+                  status: { type: "complete", reason: "stop" },
+                })
+              }
+            }
+
+            updated.push({
+              id: nextId(),
+              role: "user",
+              content: [{ type: "text", text }],
+              createdAt: new Date(),
+            })
+            return updated
           })
           break
         }
 
-        case "turn.start": {
-          setIsRunning(true)
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: "assistant",
-              content: [],
-              createdAt: new Date(),
-              status: { type: "running" },
-            },
-          ])
-          break
-        }
-
-        case "agent.messageChunk": {
+        case "agent_message_chunk": {
           const f = frame as AgentMessageChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
 
+          setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
-            if (!last) return prev
+
+            // If no running assistant message exists, create one
+            if (!last || last.status?.type === "complete") {
+              updated.push({
+                id: nextId(),
+                role: "assistant",
+                content: [{ type: "text", text: chunk }],
+                createdAt: new Date(),
+                status: { type: "running" },
+              })
+              return updated
+            }
 
             const parts = [...last.content]
             const lastPart = parts[parts.length - 1]
@@ -190,15 +208,27 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "agent.thoughtChunk": {
+        case "agent_thought_chunk": {
           const f = frame as AgentThoughtChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
 
+          setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
-            if (!last) return prev
+
+            // If no running assistant message exists, create one
+            if (!last || last.status?.type === "complete") {
+              updated.push({
+                id: nextId(),
+                role: "assistant",
+                content: [{ type: "reasoning", text: chunk }],
+                createdAt: new Date(),
+                status: { type: "running" },
+              })
+              return updated
+            }
 
             const parts = [...last.content]
             const lastPart = parts[parts.length - 1]
@@ -217,16 +247,36 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "agent.toolCall": {
+        case "tool_call": {
           const f = frame as AgentToolCallFrame
           const rawInput = (f.rawInput ?? {}) as Record<string, unknown>
           // Include kind from the frame so tool renderers can dispatch on it
           const args = { ...rawInput, kind: f.kind } as ReadonlyJSONObject
 
+          setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
-            if (!last) return prev
+
+            // If no running assistant message exists, create one
+            if (!last || last.status?.type === "complete") {
+              updated.push({
+                id: nextId(),
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool-call",
+                    toolCallId: f.toolCallId,
+                    toolName: f.title ?? "unknown",
+                    args,
+                    argsText: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput ?? {}),
+                  },
+                ],
+                createdAt: new Date(),
+                status: { type: "running" },
+              })
+              return updated
+            }
 
             const parts = [...last.content]
             parts.push({
@@ -243,7 +293,7 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "agent.toolCallUpdate": {
+        case "tool_call_update": {
           const f = frame as AgentToolCallUpdateFrame
           const toolCallId = f.toolCallId
 
@@ -349,7 +399,7 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "agent.plan": {
+        case "plan": {
           const entries = (frame as AcpFrame & { entries?: unknown[] }).entries
           if (Array.isArray(entries)) {
             const parsed: PlanEntry[] = entries
@@ -436,8 +486,26 @@ export function useAgentRuntime(options: {
           break
         }
 
+        case "current_mode_update": {
+          // ACP native frame: field is currentModeId
+          const currentModeId = frame.currentModeId as string | undefined
+          if (currentModeId) {
+            setSessionMeta((prev) => ({ ...prev, mode: currentModeId }))
+          }
+          break
+        }
+
+        case "available_commands_update": {
+          // ACP native frame: field is availableCommands
+          const commands = frame.availableCommands as unknown[] | undefined
+          if (commands) {
+            setSessionMeta((prev) => ({ ...prev, commands }))
+          }
+          break
+        }
 
         case "session.modeUpdate": {
+          // Synthesized frame from initial session setup — uses old field names
           const f = frame as AcpFrame & { modeId?: string; availableModes?: unknown[] }
           const update: Partial<SessionMeta> = {}
           if (f.modeId) update.mode = f.modeId
@@ -449,21 +517,13 @@ export function useAgentRuntime(options: {
         }
 
         case "session.modelsUpdate": {
+          // Synthesized frame from initial session setup
           const f = frame as AcpFrame & { modelId?: string; availableModels?: unknown[] }
           const update: Partial<SessionMeta> = {}
           if (f.modelId) update.currentModel = f.modelId
           if (f.availableModels) update.availableModels = f.availableModels
           if (Object.keys(update).length > 0) {
             setSessionMeta((prev) => ({ ...prev, ...update }))
-          }
-          break
-        }
-
-        case "session.commandsUpdate": {
-          const commands = (frame as AcpFrame & { commands?: unknown[] })
-            .commands
-          if (commands) {
-            setSessionMeta((prev) => ({ ...prev, commands }))
           }
           break
         }
@@ -485,6 +545,19 @@ export function useAgentRuntime(options: {
       onFrame,
       enabled,
     })
+
+  // Fetch session active state from backend on connect
+  useEffect(() => {
+    if (!connected || !sessionId) return
+    fetch(`/api/agent/sessions/${sessionId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.isActive) {
+          sessionActiveRef.current = true
+        }
+      })
+      .catch(() => {}) // ignore errors — defaults to inactive (safe for replay)
+  }, [connected, sessionId])
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
@@ -550,6 +623,7 @@ export function useAgentRuntime(options: {
               },
             ])
             sendPrompt(text)
+            sessionActiveRef.current = true
           }
         }
       },

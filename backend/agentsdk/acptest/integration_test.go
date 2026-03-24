@@ -4,6 +4,7 @@ package acptest
 
 import (
 	"context"
+	"encoding/json"
 	"os/exec"
 	"strings"
 	"testing"
@@ -81,47 +82,57 @@ func TestClientSendPrompt(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	// Collect events
-	var allEvents []agentsdk.Event
+	// Collect raw frames — parse each to inspect
+	var allFrames [][]byte
 	var fullText string
-	for evt := range events {
-		allEvents = append(allEvents, evt)
-		switch evt.Type {
-		case agentsdk.EventDelta:
-			fullText += evt.Delta
-			t.Logf("[delta] %q", evt.Delta)
-		case agentsdk.EventMessage:
-			if evt.Message != nil {
-				for _, b := range evt.Message.Content {
-					t.Logf("[message] type=%s text=%q", b.Type, truncateStr(b.Text, 100))
+	for frame := range events {
+		allFrames = append(allFrames, frame)
+		var msg map[string]any
+		if err := json.Unmarshal(frame, &msg); err != nil {
+			t.Logf("[frame] unparseable: %s", truncateStr(string(frame), 200))
+			continue
+		}
+
+		switch {
+		case msg["sessionUpdate"] == "agent_message_chunk":
+			// Extract text from content.text.text
+			if content, ok := msg["content"].(map[string]any); ok {
+				if textObj, ok := content["text"].(map[string]any); ok {
+					if text, ok := textObj["text"].(string); ok {
+						fullText += text
+						t.Logf("[agent_message_chunk] %q", truncateStr(text, 100))
+					}
 				}
 			}
-		case agentsdk.EventComplete:
-			t.Logf("[complete] usage=%+v", evt.Usage)
-		case agentsdk.EventError:
-			t.Fatalf("[error] %v", evt.Error)
-		case agentsdk.EventPermissionRequest:
-			t.Logf("[permission] tool=%s", evt.PermissionRequest.Tool)
+		case msg["type"] == "turn.complete":
+			t.Logf("[turn.complete] stopReason=%v", msg["stopReason"])
+		case msg["type"] == "error":
+			t.Fatalf("[error] %v: %v", msg["code"], msg["message"])
+		case msg["type"] == "permission.request":
+			t.Logf("[permission.request]")
+		default:
+			t.Logf("[frame] %s", truncateStr(string(frame), 200))
 		}
 	}
 
 	t.Logf("Full text: %q", fullText)
-	t.Logf("Total events: %d", len(allEvents))
+	t.Logf("Total frames: %d", len(allFrames))
 
 	if !strings.Contains(strings.ToLower(fullText), "integration test ok") {
 		t.Errorf("expected response to contain 'integration test ok', got %q", fullText)
 	}
 
-	// Verify we got a complete event
+	// Verify we got a turn.complete frame
 	hasComplete := false
-	for _, evt := range allEvents {
-		if evt.Type == agentsdk.EventComplete {
+	for _, frame := range allFrames {
+		var msg map[string]any
+		if json.Unmarshal(frame, &msg) == nil && msg["type"] == "turn.complete" {
 			hasComplete = true
 			break
 		}
 	}
 	if !hasComplete {
-		t.Error("expected EventComplete event")
+		t.Error("expected turn.complete frame")
 	}
 }
 
@@ -195,9 +206,16 @@ func TestClientMultiTurn(t *testing.T) {
 	// Turn 2
 	events2, _ := session.Send(ctx, "What code did I tell you?")
 	var text string
-	for evt := range events2 {
-		if evt.Type == agentsdk.EventDelta {
-			text += evt.Delta
+	for frame := range events2 {
+		var msg map[string]any
+		if json.Unmarshal(frame, &msg) == nil && msg["sessionUpdate"] == "agent_message_chunk" {
+			if content, ok := msg["content"].(map[string]any); ok {
+				if textObj, ok := content["text"].(map[string]any); ok {
+					if t2, ok := textObj["text"].(string); ok {
+						text += t2
+					}
+				}
+			}
 		}
 	}
 
