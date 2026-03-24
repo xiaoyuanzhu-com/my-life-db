@@ -224,8 +224,8 @@ function AgentComposer({
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
 
   return (
-    <div className="border-t border-border bg-background px-4 py-3">
-      <ComposerPrimitive.Root className="relative rounded-xl border border-border bg-muted/30 px-3 py-2">
+    <div className="bg-background px-4 py-3">
+      <ComposerPrimitive.Root className="relative max-w-3xl mx-auto rounded-xl border border-border bg-muted/30 px-3 py-2">
         <SlashCommandPopover textareaRef={composerInputRef} />
         <FileTagPopover textareaRef={composerInputRef} />
         <ComposerPrimitive.Input
@@ -387,23 +387,25 @@ export function AgentChat({
 
           {/* Thread viewport */}
           <ThreadPrimitive.Viewport
-            className="flex-1 overflow-y-auto px-4 py-4"
+            className="flex-1 overflow-y-auto py-4"
             onScroll={isMobile ? onViewportScroll : undefined}
           >
-            <ThreadPrimitive.Empty>
-              <div className="flex h-full min-h-[120px] items-center justify-center text-sm text-muted-foreground">
-                Start a conversation
-              </div>
-            </ThreadPrimitive.Empty>
+            <div className="w-full max-w-3xl mx-auto px-4">
+              <ThreadPrimitive.Empty>
+                <div className="flex h-full min-h-[120px] items-center justify-center text-sm text-muted-foreground">
+                  Start a conversation
+                </div>
+              </ThreadPrimitive.Empty>
 
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage,
-                AssistantMessage,
-              }}
-            />
+              <ThreadPrimitive.Messages
+                components={{
+                  UserMessage,
+                  AssistantMessage,
+                }}
+              />
+            </div>
 
-            <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-0 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-4 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowDown className="h-4 w-4" />
             </ThreadPrimitive.ScrollToBottom>
           </ThreadPrimitive.Viewport>
