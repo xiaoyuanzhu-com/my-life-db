@@ -53,7 +53,9 @@ const (
 		CategoryCache | CategoryVirtualEnv | CategoryOS
 
 	// ExcludeForTree - exclusions for tree API (library browsing)
-	ExcludeForTree = CategoryHidden | CategoryDependencies | CategoryOS | CategoryAppReserved
+	// Don't blanket-hide dot-prefixed dirs — specific categories (VCS, IDE, Cache, etc.)
+	// already cover the ones that should be hidden.
+	ExcludeForTree = CategoryDependencies | CategoryOS | CategoryAppReserved
 
 	// ExcludeForIndexing - exclusions for file indexing/search
 	ExcludeForIndexing = CategoryHidden | CategoryBackup | CategoryVCS | CategoryIDE |
@@ -103,18 +105,13 @@ func (f *PathFilter) IsExcludedEntry(name string, atRoot bool) bool {
 	return f.isExcludedName(name, atRoot)
 }
 
-// Directories that are hidden (start with .) but should not be excluded
-var allowedHiddenNames = map[string]bool{
-	".claude": true, // Claude Code agent definitions
-}
-
 // isExcludedName checks if a single name matches exclusion rules
 func (f *PathFilter) isExcludedName(name string, atRoot bool) bool {
 	lower := strings.ToLower(name)
 
 	// Hidden files (starts with dot, but not "." itself)
 	if f.exclusions&CategoryHidden != 0 {
-		if strings.HasPrefix(name, ".") && name != "." && !allowedHiddenNames[lower] {
+		if strings.HasPrefix(name, ".") && name != "." {
 			return true
 		}
 	}

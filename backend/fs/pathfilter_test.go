@@ -134,7 +134,7 @@ func TestPathFilter_Presets(t *testing.T) {
 		{"default has deps", ExcludeDefault, CategoryDependencies, true},
 		{"default no app reserved", ExcludeDefault, CategoryAppReserved, false},
 
-		{"tree has hidden", ExcludeForTree, CategoryHidden, true},
+		{"tree no hidden", ExcludeForTree, CategoryHidden, false},
 		{"tree has deps", ExcludeForTree, CategoryDependencies, true},
 		{"tree has app reserved", ExcludeForTree, CategoryAppReserved, true},
 		{"tree no build", ExcludeForTree, CategoryBuild, false},
@@ -169,31 +169,29 @@ func TestDefaultPathFilter(t *testing.T) {
 	}
 }
 
-func TestAllowedHiddenNames(t *testing.T) {
-	// Test that .claude is not excluded even with CategoryHidden
-	tests := []struct {
-		name       string
-		exclusions Category
-		entry      string
-		want       bool
-	}{
-		// .claude is hidden but allowed
-		{".claude allowed", CategoryHidden, ".claude", false},
-		{".CLAUDE uppercase", CategoryHidden, ".CLAUDE", false},
-		// .git is hidden and excluded
-		{".git excluded", CategoryHidden, ".git", true},
-		// Other hidden files still excluded
-		{".hidden excluded", CategoryHidden, ".hidden", true},
-		// .claude works with ExcludeForTree preset
-		{".claude with tree preset", ExcludeForTree, ".claude", false},
+func TestExcludeForTree_ShowsDotDirs(t *testing.T) {
+	// ExcludeForTree should NOT blanket-hide dot-prefixed dirs.
+	// Specific categories (VCS, IDE, etc.) still hide their own dirs.
+	f := NewPathFilter(ExcludeForTree)
+
+	// Dot dirs that aren't in any specific excluded category should be visible
+	if f.IsExcludedEntry(".claude", false) {
+		t.Error(".claude should be visible in tree")
+	}
+	if f.IsExcludedEntry(".generated", false) {
+		t.Error(".generated should be visible in tree")
+	}
+	if f.IsExcludedEntry(".obsidian", false) {
+		t.Error(".obsidian should be visible in tree")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := NewPathFilter(tt.exclusions)
-			if got := f.IsExcludedEntry(tt.entry, false); got != tt.want {
-				t.Errorf("IsExcludedEntry(%q) = %v, want %v", tt.entry, got, tt.want)
-			}
-		})
+	// But OS-excluded dot files are still hidden (via CategoryOS)
+	if !f.IsExcludedEntry(".DS_Store", false) {
+		t.Error(".DS_Store should be excluded via CategoryOS")
+	}
+
+	// Dependencies still hidden
+	if !f.IsExcludedEntry("node_modules", false) {
+		t.Error("node_modules should be excluded via CategoryDependencies")
 	}
 }
