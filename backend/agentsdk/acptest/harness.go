@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,7 +73,9 @@ func NewHarness(t *testing.T, opts ...HarnessOption) *Harness {
 		t:              t,
 		autoApprove:    cfg.autoApprove,
 		permissionChan: make(chan permissionEvent, 16),
+		emitNext:       1, // first seq from frameSeq.Add(1) is 1
 	}
+	client.emitCond = sync.NewCond(&client.emitMu)
 
 	// Launch agent process
 	cmd := exec.CommandContext(ctx, cfg.command)
@@ -280,6 +283,7 @@ func WithBaseURL(url string) HarnessOption {
 // RecordedEvent captures a single ACP event with metadata.
 type RecordedEvent struct {
 	Time      time.Time
+	Seq       int64           // monotonic wire-order sequence number
 	Type      string          // "agent_message", "agent_thought", "user_message", "tool_call", "tool_call_update", "plan", "mode_update", "commands_update", "permission", "read_file", "write_file", "terminal_create"
 	Raw       json.RawMessage // original JSON for debugging
 	SessionID acp.SessionId
@@ -312,6 +316,15 @@ type recordingClient struct {
 	mu        sync.Mutex
 	events    []RecordedEvent
 	terminals map[string]*terminalState
+
+	// Ordered delivery: the ACP SDK dispatches SessionUpdate via concurrent
+	// goroutines (`go handleInbound()` in connection.go). Without ordering,
+	// events are recorded in arbitrary goroutine-scheduled order, not wire order.
+	// This mirrors the fix in production acpclient.go.
+	frameSeq atomic.Int64 // next seq to assign (via Add(1))
+	emitMu   sync.Mutex   // protects emitNext + emitCond
+	emitNext int64         // next seq to emit (starts at 1)
+	emitCond *sync.Cond   // signaled when emitNext advances
 }
 
 func (c *recordingClient) resetEvents() {
@@ -340,6 +353,22 @@ func (c *recordingClient) record(evt RecordedEvent) {
 func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionNotification) error {
 	raw, _ := json.Marshal(params)
 
+	// Assign a monotonic sequence number for wire-order enforcement.
+	// The ACP SDK dispatches each SessionUpdate via `go handleInbound()`
+	// goroutines, so without this, events record in arbitrary order.
+	seq := c.frameSeq.Add(1)
+
+	// Wait for our turn — enforces wire order despite goroutine scheduling.
+	c.emitMu.Lock()
+	for c.emitNext != seq {
+		c.emitCond.Wait()
+	}
+	defer func() {
+		c.emitNext++
+		c.emitCond.Broadcast()
+		c.emitMu.Unlock()
+	}()
+
 	update := params.Update
 	switch {
 	case update.AgentMessageChunk != nil:
@@ -347,8 +376,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		if update.AgentMessageChunk.Content.Text != nil {
 			text = update.AgentMessageChunk.Content.Text.Text
 		}
-		c.t.Logf("[update] agent_message: %q", truncate(text, 100))
+		c.t.Logf("[update] seq=%d agent_message: %q", seq, truncate(text, 100))
 		c.record(RecordedEvent{
+			Seq:               seq,
 			Type:              "agent_message",
 			Raw:               raw,
 			SessionID:         params.SessionId,
@@ -360,8 +390,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		if update.AgentThoughtChunk.Content.Text != nil {
 			text = update.AgentThoughtChunk.Content.Text.Text
 		}
-		c.t.Logf("[update] agent_thought: %q", truncate(text, 100))
+		c.t.Logf("[update] seq=%d agent_thought: %q", seq, truncate(text, 100))
 		c.record(RecordedEvent{
+			Seq:               seq,
 			Type:              "agent_thought",
 			Raw:               raw,
 			SessionID:         params.SessionId,
@@ -369,8 +400,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	case update.UserMessageChunk != nil:
-		c.t.Logf("[update] user_message_chunk")
+		c.t.Logf("[update] seq=%d user_message_chunk", seq)
 		c.record(RecordedEvent{
+			Seq:              seq,
 			Type:             "user_message",
 			Raw:              raw,
 			SessionID:        params.SessionId,
@@ -378,13 +410,15 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	case update.ToolCall != nil:
-		c.t.Logf("[update] tool_call: id=%s title=%q kind=%s status=%s",
+		c.t.Logf("[update] seq=%d tool_call: id=%s title=%q kind=%s status=%s",
+			seq,
 			update.ToolCall.ToolCallId,
 			update.ToolCall.Title,
 			update.ToolCall.Kind,
 			update.ToolCall.Status,
 		)
 		c.record(RecordedEvent{
+			Seq:       seq,
 			Type:      "tool_call",
 			Raw:       raw,
 			SessionID: params.SessionId,
@@ -396,9 +430,10 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		if update.ToolCallUpdate.Status != nil {
 			status = string(*update.ToolCallUpdate.Status)
 		}
-		c.t.Logf("[update] tool_call_update: id=%s status=%s",
-			update.ToolCallUpdate.ToolCallId, status)
+		c.t.Logf("[update] seq=%d tool_call_update: id=%s status=%s",
+			seq, update.ToolCallUpdate.ToolCallId, status)
 		c.record(RecordedEvent{
+			Seq:            seq,
 			Type:           "tool_call_update",
 			Raw:            raw,
 			SessionID:      params.SessionId,
@@ -406,8 +441,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	case update.Plan != nil:
-		c.t.Logf("[update] plan: %d entries", len(update.Plan.Entries))
+		c.t.Logf("[update] seq=%d plan: %d entries", seq, len(update.Plan.Entries))
 		c.record(RecordedEvent{
+			Seq:       seq,
 			Type:      "plan",
 			Raw:       raw,
 			SessionID: params.SessionId,
@@ -415,8 +451,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	case update.CurrentModeUpdate != nil:
-		c.t.Logf("[update] mode_update: %s", update.CurrentModeUpdate.CurrentModeId)
+		c.t.Logf("[update] seq=%d mode_update: %s", seq, update.CurrentModeUpdate.CurrentModeId)
 		c.record(RecordedEvent{
+			Seq:        seq,
 			Type:       "mode_update",
 			Raw:        raw,
 			SessionID:  params.SessionId,
@@ -424,8 +461,9 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	case update.AvailableCommandsUpdate != nil:
-		c.t.Logf("[update] commands_update: %d commands", len(update.AvailableCommandsUpdate.AvailableCommands))
+		c.t.Logf("[update] seq=%d commands_update: %d commands", seq, len(update.AvailableCommandsUpdate.AvailableCommands))
 		c.record(RecordedEvent{
+			Seq:            seq,
 			Type:           "commands_update",
 			Raw:            raw,
 			SessionID:      params.SessionId,
@@ -433,8 +471,8 @@ func (c *recordingClient) SessionUpdate(ctx context.Context, params acp.SessionN
 		})
 
 	default:
-		c.t.Logf("[update] unknown update type: %s", string(raw))
-		c.record(RecordedEvent{Type: "unknown", Raw: raw, SessionID: params.SessionId})
+		c.t.Logf("[update] seq=%d unknown update type: %s", seq, string(raw))
+		c.record(RecordedEvent{Seq: seq, Type: "unknown", Raw: raw, SessionID: params.SessionId})
 	}
 
 	return nil

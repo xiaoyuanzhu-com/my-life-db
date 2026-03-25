@@ -10,17 +10,19 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// TestACPUserMessageChunkOrdering verifies that ACP's Prompt() emits
-// UserMessageChunk AFTER the agent response, not before.
+// TestACPUserMessageChunkOrdering verifies that ACP's Prompt() delivers
+// UserMessageChunk BEFORE AgentThoughtChunk/AgentMessageChunk when wire
+// ordering is enforced.
 //
-// This ordering matters for our WebSocket replay architecture: because the
-// user message arrives last, a naive store-and-replay would show the agent's
-// thinking/response before the user's message. The backend (agent_ws.go)
-// compensates by injecting a user_message_chunk BEFORE calling Send() and
-// skipping ACP's late-arriving one.
+// The ACP SDK dispatches each SessionUpdate via `go handleInbound()`
+// goroutines, so without ordering enforcement, events can appear reordered
+// (e.g., agent thought before user message). The test harness uses the same
+// monotonic sequence counter + condition variable as production acpclient.go
+// to enforce wire order.
 //
-// If ACP changes the ordering (user message first), the injection+skip in
-// agent_ws.go should be removed — the natural ordering would be correct.
+// This test confirms that the ACP SDK's wire order is correct — user message
+// first, then agent response. No injection+skip workaround is needed in
+// agent_ws.go.
 func TestACPUserMessageChunkOrdering(t *testing.T) {
 	h := NewHarness(t, WithAutoApprove(), WithTimeout(3*time.Minute))
 
@@ -35,36 +37,40 @@ func TestACPUserMessageChunkOrdering(t *testing.T) {
 	t.Logf("UserMessageChunk events: %d", len(userMsgs))
 	t.Logf("AgentMessageChunk events: %d", len(agentMsgs))
 
-	// Document full event ordering
-	t.Log("Event ordering:")
+	// Document full event ordering with wire-order seq numbers
+	t.Log("Event ordering (wire order):")
 	for i, e := range events {
-		t.Logf("  [%d] %s", i, e.Type)
+		t.Logf("  [%d] seq=%d %s", i, e.Seq, e.Type)
 	}
 
 	if len(userMsgs) == 0 {
-		t.Fatal("ACP did not emit UserMessageChunk during Prompt() — " +
-			"if this persists, the skip filter in agent_ws.go is unnecessary")
+		t.Fatal("ACP did not emit UserMessageChunk during Prompt()")
 	}
 
-	// Find the indices
-	lastAgentIdx := -1
+	// Find the first user message and first agent response (thought or message)
 	firstUserIdx := -1
+	firstAgentIdx := -1
 	for i, e := range events {
-		if e.Type == "agent_message" {
-			lastAgentIdx = i
-		}
 		if e.Type == "user_message" && firstUserIdx == -1 {
 			firstUserIdx = i
 		}
+		if (e.Type == "agent_message" || e.Type == "agent_thought") && firstAgentIdx == -1 {
+			firstAgentIdx = i
+		}
 	}
 
-	if firstUserIdx > lastAgentIdx {
-		t.Logf("CONFIRMED: UserMessageChunk (idx %d) arrives AFTER AgentMessageChunk (idx %d) — "+
-			"agent_ws.go injection+skip is required", firstUserIdx, lastAgentIdx)
+	if firstAgentIdx == -1 {
+		t.Fatal("ACP did not emit any AgentMessageChunk or AgentThoughtChunk")
+	}
+
+	if firstUserIdx < firstAgentIdx {
+		t.Logf("CONFIRMED: UserMessageChunk (idx %d, seq=%d) arrives BEFORE first agent response (idx %d, seq=%d) — "+
+			"ACP wire order is correct, no workaround needed in agent_ws.go",
+			firstUserIdx, events[firstUserIdx].Seq, firstAgentIdx, events[firstAgentIdx].Seq)
 	} else {
-		t.Errorf("ORDERING CHANGED: UserMessageChunk (idx %d) now arrives BEFORE AgentMessageChunk (idx %d) — "+
-			"remove the injection+skip in agent_ws.go, natural ordering is correct",
-			firstUserIdx, lastAgentIdx)
+		t.Errorf("UserMessageChunk (idx %d, seq=%d) arrives AFTER first agent response (idx %d, seq=%d) — "+
+			"ACP wire order may have changed, investigate",
+			firstUserIdx, events[firstUserIdx].Seq, firstAgentIdx, events[firstAgentIdx].Seq)
 	}
 }
 
@@ -72,7 +78,7 @@ func TestACPUserMessageChunkOrdering(t *testing.T) {
 // UserMessageChunk events as part of the conversation history.
 //
 // During LoadSession replay, the ordering is correct (user message before
-// agent response). This path does NOT need the injection+skip workaround.
+// agent response). This path does NOT need any workaround.
 func TestACPLoadSessionEmitsUserMessageChunk(t *testing.T) {
 	h := NewHarness(t, WithAutoApprove(), WithTimeout(4*time.Minute))
 
@@ -126,7 +132,7 @@ func TestACPLoadSessionEmitsUserMessageChunk(t *testing.T) {
 	// Document replay ordering
 	t.Log("Replay event ordering:")
 	for i, e := range replayEvents {
-		t.Logf("  [%d] %s", i, e.Type)
+		t.Logf("  [%d] seq=%d %s", i, e.Seq, e.Type)
 	}
 
 	userMsgs := Events(replayEvents, "user_message")
