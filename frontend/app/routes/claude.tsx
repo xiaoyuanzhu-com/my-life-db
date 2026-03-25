@@ -751,7 +751,7 @@ export default function ClaudePage() {
   // on session switch, preserving the original reset behavior.
   const hasActiveSession = Boolean(activeSessionId)
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
