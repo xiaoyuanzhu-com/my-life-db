@@ -12,6 +12,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { useRef, type FC } from "react";
+import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
 import { createAssistantMessage } from "~/components/agent/assistant-message";
@@ -114,6 +115,7 @@ const ThreadWelcome: FC = () => {
 
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasTouch = useHasTouch();
   const {
     workingDir, onWorkingDirChange,
     permissionMode, onPermissionModeChange,
@@ -134,7 +136,7 @@ const Composer: FC = () => {
           placeholder="Message..."
           className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
           rows={1}
-          autoFocus
+          autoFocus={!hasTouch}
           aria-label="Message input"
         />
         <div className="aui-composer-action-wrapper relative flex items-center justify-between">
