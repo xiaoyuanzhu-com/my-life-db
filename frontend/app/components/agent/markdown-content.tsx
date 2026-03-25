@@ -12,6 +12,15 @@ interface MarkdownContentProps {
   className?: string
 }
 
+// Escape raw text for safe insertion into HTML
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
 // Configure marked for safe, simple rendering
 const renderer = new Renderer()
 
@@ -21,11 +30,25 @@ renderer.link = ({ href, title, text }) => {
   return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer" class="underline text-primary hover:text-primary/80">${text}</a>`
 }
 
-// Add styling to code blocks
+// Add styling to code blocks; render html blocks as live iframe previews
 renderer.code = ({ text, lang }) => {
+  // HTML blocks: render as sandboxed iframe preview
+  if (lang === "html") {
+    const srcdoc = text.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    return (
+      '<div class="html-preview-container my-2 rounded-md border border-border overflow-hidden">' +
+      '<div class="flex items-center justify-between px-3 py-1 border-b border-border">' +
+      '<span class="text-[10px] uppercase tracking-wide text-muted-foreground">html preview</span>' +
+      "</div>" +
+      `<iframe srcdoc="${srcdoc}" sandbox="allow-scripts" class="w-full bg-white" style="height:60vh;border:none;"></iframe>` +
+      "</div>"
+    )
+  }
+
+  const escaped = escapeHtml(text)
   const langClass = lang ? ` language-${lang}` : ""
   const langLabel = lang ? `<div class="text-[10px] uppercase tracking-wide text-muted-foreground px-3 py-1 border-b border-border">${lang}</div>` : ""
-  return `${langLabel}<pre class="overflow-x-auto rounded-md bg-muted/50 border border-border px-3 py-2 my-2"><code class="text-[12px] leading-relaxed font-mono${langClass}">${text}</code></pre>`
+  return `${langLabel}<pre class="overflow-x-auto rounded-md bg-muted/50 border border-border px-3 py-2 my-2"><code class="text-[12px] leading-relaxed font-mono${langClass}">${escaped}</code></pre>`
 }
 
 // Inline code styling
