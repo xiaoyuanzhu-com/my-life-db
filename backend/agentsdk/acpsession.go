@@ -280,15 +280,20 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 			return
 		}
 
-		log.Debug().
+		log.Info().
 			Str("stop_reason", string(resp.StopReason)).
 			Str("session_id", s.sessionID).
+			Bool("has_usage", resp.Usage != nil).
 			Msg("ACP prompt completed")
 
-		if data, err := json.Marshal(map[string]any{
+		turnComplete := map[string]any{
 			"type":       "turn.complete",
 			"stopReason": string(resp.StopReason),
-		}); err == nil {
+		}
+		if resp.Usage != nil {
+			turnComplete["usage"] = resp.Usage
+		}
+		if data, err := json.Marshal(turnComplete); err == nil {
 			events <- data
 		}
 	}()

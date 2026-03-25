@@ -112,6 +112,8 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		frameType = fmt.Sprintf("tool_call_update[%s]", update.ToolCallUpdate.ToolCallId)
 	case update.AvailableCommandsUpdate != nil:
 		frameType = "available_commands_update"
+	case update.UsageUpdate != nil:
+		frameType = fmt.Sprintf("usage_update[used=%d,size=%d]", update.UsageUpdate.Used, update.UsageUpdate.Size)
 	default:
 		frameType = "other"
 	}
