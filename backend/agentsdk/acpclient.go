@@ -18,6 +18,10 @@ import (
 //
 // Design: a single `onFrame` callback handles ALL frames for the session lifetime.
 // No temporary channels, no set/clear cycle, no gaps where frames can be dropped.
+//
+// Ordering: the ACP SDK (v0.6.4+) serializes notification delivery via a bounded
+// queue + single processNotifications() goroutine, so SessionUpdate calls arrive
+// in pipe order. No client-side ordering needed.
 type acpClient struct {
 	autoApprove bool
 	workingDir  string
@@ -27,14 +31,8 @@ type acpClient struct {
 	mu      sync.RWMutex
 	onFrame func([]byte)
 
-	// Ordered delivery: the ACP SDK calls SessionUpdate from concurrent goroutines
-	// (`go handleInbound()` in connection.go), so frames can arrive out of order.
-	// We assign a monotonic sequence number to each frame, then ensure emit()
-	// happens in strict seq order using a condition variable.
-	frameSeq atomic.Int64 // next seq to assign (via Add(1))
-	emitMu   sync.Mutex   // protects emitNext + emitCond
-	emitNext int64         // next seq to emit (starts at 1)
-	emitCond *sync.Cond   // signaled when emitNext advances
+	// Diagnostic counter for logging frame sequence.
+	frameSeq atomic.Int64
 
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
@@ -59,30 +57,6 @@ func (c *acpClient) emit(data []byte) {
 	} else {
 		log.Warn().Msg("ACP: frame dropped — onFrame not set")
 	}
-}
-
-// emitOrdered delivers a frame in strict sequence order.
-// Each caller holds its assigned seq; it waits until emitNext matches,
-// then delivers and advances the counter for the next waiter.
-func (c *acpClient) emitOrdered(seq int64, data []byte) {
-	c.emitMu.Lock()
-	for c.emitNext != seq {
-		c.emitCond.Wait()
-	}
-
-	c.mu.RLock()
-	fn := c.onFrame
-	c.mu.RUnlock()
-
-	if fn != nil {
-		fn(data)
-	} else {
-		log.Warn().Msg("ACP: frame dropped — onFrame not set")
-	}
-
-	c.emitNext++
-	c.emitCond.Broadcast()
-	c.emitMu.Unlock()
 }
 
 // --- ACP Client interface implementation ---
@@ -148,18 +122,10 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 	data, err := json.Marshal(update)
 	if err != nil {
 		log.Warn().Err(err).Int64("seq", seq).Msg("ACP: failed to marshal session update")
-		// Must still advance the sequence to avoid deadlocking other waiters.
-		c.emitMu.Lock()
-		for c.emitNext != seq {
-			c.emitCond.Wait()
-		}
-		c.emitNext++
-		c.emitCond.Broadcast()
-		c.emitMu.Unlock()
 		return nil
 	}
 
-	c.emitOrdered(seq, data)
+	c.emit(data)
 	return nil
 }
 
@@ -203,7 +169,7 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 	select {
 	case <-ctx.Done():
 		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+			Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 		}, nil
 
 	case resp := <-respCh:
@@ -212,36 +178,36 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 			for _, opt := range params.Options {
 				if opt.Kind == acp.PermissionOptionKindRejectOnce {
 					return acp.RequestPermissionResponse{
-						Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+						Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 					}, nil
 				}
 			}
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+				Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 			}, nil
 		}
 
 		// Use the specified option ID if provided, otherwise find allow_once
 		if resp.optionID != "" {
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeSelected(resp.optionID),
+				Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: resp.optionID}},
 			}, nil
 		}
 		for _, opt := range params.Options {
 			if opt.Kind == acp.PermissionOptionKindAllowOnce {
 				return acp.RequestPermissionResponse{
-					Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+					Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 				}, nil
 			}
 		}
 		// Fallback to first option
 		if len(params.Options) > 0 {
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeSelected(params.Options[0].OptionId),
+				Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: params.Options[0].OptionId}},
 			}, nil
 		}
 		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+			Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 		}, nil
 	}
 }
@@ -418,23 +384,23 @@ func autoApprovePermission(params acp.RequestPermissionRequest) (acp.RequestPerm
 	for _, opt := range params.Options {
 		if opt.Kind == acp.PermissionOptionKindAllowAlways {
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+				Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 			}, nil
 		}
 	}
 	for _, opt := range params.Options {
 		if opt.Kind == acp.PermissionOptionKindAllowOnce {
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+				Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 			}, nil
 		}
 	}
 	if len(params.Options) > 0 {
 		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeSelected(params.Options[0].OptionId),
+			Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: params.Options[0].OptionId}},
 		}, nil
 	}
 	return acp.RequestPermissionResponse{
-		Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+		Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 	}, nil
 }

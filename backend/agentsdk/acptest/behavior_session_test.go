@@ -243,7 +243,7 @@ func TestACPAskUserQuestionViaToolCall(t *testing.T) {
 				for _, opt := range evt.request.Options {
 					if opt.Kind == acp.PermissionOptionKindAllowOnce {
 						evt.response <- acp.RequestPermissionResponse{
-							Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+							Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 						}
 						break
 					}

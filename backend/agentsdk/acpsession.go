@@ -84,9 +84,7 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 	acpCli := &acpClient{
 		autoApprove: config.Permissions == PermissionAuto,
 		workingDir:  config.WorkingDir,
-		emitNext:    1, // first seq from frameSeq.Add(1) is 1
 	}
-	acpCli.emitCond = sync.NewCond(&acpCli.emitMu)
 
 	// Create ACP connection
 	conn := acp.NewClientSideConnection(acpCli, stdin, stdout)
@@ -359,9 +357,9 @@ func (s *acpSession) SetMode(ctx context.Context, modeID string) error {
 
 // SetModel changes the active model for this session.
 func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
-	_, err := s.conn.SetSessionModel(ctx, acp.SetSessionModelRequest{
+	_, err := s.conn.UnstableSetSessionModel(ctx, acp.UnstableSetSessionModelRequest{
 		SessionId: acp.SessionId(s.sessionID),
-		ModelId:   acp.ModelId(modelID),
+		ModelId:   acp.UnstableModelId(modelID),
 	})
 	return err
 }

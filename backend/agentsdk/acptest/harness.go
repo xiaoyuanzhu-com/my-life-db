@@ -510,7 +510,7 @@ func (c *recordingClient) RequestPermission(ctx context.Context, params acp.Requ
 			if opt.Kind == acp.PermissionOptionKindAllowOnce {
 				c.t.Logf("  → auto-approve (allow_once): %s", opt.OptionId)
 				return acp.RequestPermissionResponse{
-					Outcome: acp.NewRequestPermissionOutcomeSelected(opt.OptionId),
+					Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: opt.OptionId}},
 				}, nil
 			}
 		}
@@ -518,7 +518,7 @@ func (c *recordingClient) RequestPermission(ctx context.Context, params acp.Requ
 		if len(params.Options) > 0 {
 			c.t.Logf("  → auto-approve (first option): %s", params.Options[0].OptionId)
 			return acp.RequestPermissionResponse{
-				Outcome: acp.NewRequestPermissionOutcomeSelected(params.Options[0].OptionId),
+				Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: params.Options[0].OptionId}},
 			}, nil
 		}
 	}
@@ -528,13 +528,13 @@ func (c *recordingClient) RequestPermission(ctx context.Context, params acp.Requ
 	select {
 	case <-ctx.Done():
 		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+			Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 		}, nil
 	case evt := <-c.permissionChan:
 		// Not used in auto-approve mode
 		_ = evt
 		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
+			Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
 		}, nil
 	}
 }
