@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router'
-import { MessageList } from '~/components/claude/chat'
+import { MessageList } from '~/components/claude/_archived-chat'
 import {
   buildToolResultMap,
   normalizeMessage,

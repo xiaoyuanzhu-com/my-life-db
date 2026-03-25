@@ -159,7 +159,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   return (
     <div
       className={cn(
-        'claude-bg overflow-hidden transition-all duration-200 ease-out',
+        'overflow-hidden transition-all duration-200 ease-out',
         // On mobile, collapse height when hidden
         shouldHide ? 'pb-4 max-md:max-h-0 max-md:pb-0' : 'pb-4'
       )}
