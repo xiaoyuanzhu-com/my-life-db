@@ -78,8 +78,35 @@ export function useAgentRuntime(options: {
   enabled?: boolean
   /** When provided, onNew calls this instead of sendPrompt (used for new-session creation) */
   onSend?: (text: string) => void
+  /** Thread list data — when provided, powers the assistant-ui ThreadList component */
+  sessions?: Array<{
+    id: string
+    title?: string
+    summary?: string
+    sessionState: string
+  }>
+  activeSessionId?: string | null
+  onSwitchToThread?: (id: string) => void
+  onSwitchToNewThread?: () => void
+  onRenameThread?: (id: string, title: string) => void
+  onArchiveThread?: (id: string) => void
+  onUnarchiveThread?: (id: string) => void
+  onDeleteThread?: (id: string) => void
 }) {
-  const { sessionId, token, enabled = true, onSend } = options
+  const {
+    sessionId,
+    token,
+    enabled = true,
+    onSend,
+    sessions,
+    activeSessionId,
+    onSwitchToThread,
+    onSwitchToNewThread,
+    onRenameThread,
+    onArchiveThread,
+    onUnarchiveThread,
+    onDeleteThread,
+  } = options
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
@@ -639,8 +666,38 @@ export function useAgentRuntime(options: {
       onCancel: async () => {
         sendCancel()
       },
+      // Thread list adapter — conditionally included when sessions data is provided
+      ...(sessions ? {
+        adapters: {
+          threadList: {
+            // Note: threadId, onSwitchToNewThread, onSwitchToThread are @deprecated
+            // in current assistant-ui API. Pin version and watch for changes.
+            threadId: activeSessionId ?? undefined,
+            threads: sessions
+              .filter(s => s.sessionState !== 'archived')
+              .map(s => ({
+                status: "regular" as const,
+                id: s.id,
+                title: s.summary ?? s.title,
+              })),
+            archivedThreads: sessions
+              .filter(s => s.sessionState === 'archived')
+              .map(s => ({
+                status: "archived" as const,
+                id: s.id,
+                title: s.summary ?? s.title,
+              })),
+            onSwitchToNewThread: onSwitchToNewThread ?? (() => {}),
+            onSwitchToThread: onSwitchToThread ?? (() => {}),
+            onRename: onRenameThread,
+            onArchive: onArchiveThread,
+            onUnarchive: onUnarchiveThread,
+            onDelete: onDeleteThread,
+          },
+        },
+      } : {}),
     }),
-    [threadMessages, isRunning, sendPrompt, sendCancel, onSend]
+    [threadMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────
