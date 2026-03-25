@@ -26,7 +26,7 @@ import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
 import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
-import { GenericToolRenderer } from "./tools/generic-tool"
+import { ToolFallback } from "~/components/assistant-ui/tool-fallback"
 import { FolderPicker } from "./folder-picker"
 import { AgentTypeSelector, type AgentType } from "./agent-type-selector"
 import { PermissionModeSelector, type PermissionMode } from "./permission-mode-selector"
@@ -120,8 +120,10 @@ function AcpToolRenderer(props: ToolCallMessagePartProps) {
       return <SearchToolRenderer {...props} />
     case "fetch":
       return <FetchToolRenderer {...props} />
+    // TODO: restore tree connector symbols (└─ ├─) for visual hierarchy
+    // TODO: restore tool kind label with title-cased name
     default:
-      return <GenericToolRenderer {...props} />
+      return <ToolFallback {...props} />
   }
 }
 

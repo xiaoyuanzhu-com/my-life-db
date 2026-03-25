@@ -14,6 +14,7 @@ import { useMessage } from "@assistant-ui/react"
 import { Copy, Check } from "lucide-react"
 import { MarkdownText } from "~/components/assistant-ui/markdown-text"
 import { Reasoning, ReasoningGroup } from "~/components/assistant-ui/reasoning"
+import { ToolGroup } from "~/components/assistant-ui/tool-group"
 import { MessageDot } from "./message-dot"
 
 interface AssistantMessageProps {
@@ -95,6 +96,7 @@ export function createAssistantMessage(toolsConfig: AssistantMessageProps["tools
                 Text: AssistantTextPart,
                 Reasoning: Reasoning,
                 ReasoningGroup: ReasoningGroup,
+                ToolGroup: ToolGroup,
                 tools: toolsConfig,
               }}
             />
