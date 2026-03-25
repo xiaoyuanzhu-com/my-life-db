@@ -98,6 +98,13 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		db.SaveClaudeSessionPermissionMode(sessionID, req.PermissionMode)
 	}
 
+	// Wire onFrame BEFORE storing — ensures any Send() (from here or from the
+	// WebSocket handler) delivers agent_message_chunk frames to connected clients.
+	sessionState := GetOrCreateSessionState(sessionID)
+	sess.SetOnFrame(func(data []byte) {
+		sessionState.AppendAndBroadcast(data)
+	})
+
 	// Store the ACP session in the in-memory map so the WS handler can find it
 	StoreAcpSession(sessionID, sess)
 
@@ -109,7 +116,6 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 
 	// If a message was provided, start processing it in a background goroutine
 	if req.Message != "" {
-		sessionState := GetOrCreateSessionState(sessionID)
 
 		// Send prompt and forward raw frames in a background goroutine
 		go func(acpSess agentsdk.Session, prompt string) {
