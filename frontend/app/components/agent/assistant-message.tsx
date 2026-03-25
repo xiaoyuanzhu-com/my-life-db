@@ -24,6 +24,10 @@ interface AssistantMessageProps {
 }
 
 function AssistantTextPart({ text }: { text: string }) {
+  // assistant-ui may inject implicit empty text parts between content groups
+  // (e.g., between reasoning and tool-call parts) — skip rendering them
+  if (!text.trim()) return null
+
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {

@@ -257,6 +257,8 @@ export function useAgentRuntime(options: {
                 text: lastPart.text + chunk,
               }
             } else {
+              // Don't append an empty text part after non-text content (e.g., tool call)
+              if (!chunk) return prev
               parts.push({ type: "text", text: chunk })
             }
 
@@ -299,6 +301,8 @@ export function useAgentRuntime(options: {
                 text: lastPart.text + chunk,
               }
             } else {
+              // Don't append an empty reasoning part after non-reasoning content
+              if (!chunk) return prev
               parts.push({ type: "reasoning", text: chunk })
             }
 
