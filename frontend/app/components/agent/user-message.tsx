@@ -83,7 +83,7 @@ export function UserMessage() {
 
   return (
     <MessagePrimitive.Root className={cn("flex justify-end mb-4", isOptimistic && "opacity-70")}>
-      <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 break-words">
+      <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm break-words">
         <MessagePrimitive.Parts
           components={{
             Text: UserTextPart,

@@ -1,13 +1,8 @@
-import { MarkdownText } from "~/components/assistant-ui/markdown-text";
-import { ToolFallback } from "~/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "~/components/assistant-ui/tooltip-icon-button";
 import { Button } from "~/components/ui/button";
-import { cn } from "~/lib/utils";
 import {
-  ActionBarPrimitive,
   AuiIf,
   ComposerPrimitive,
-  MessagePrimitive,
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
@@ -46,24 +41,24 @@ export const Thread: FC = () => {
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
         ["--thread-max-width" as string]: "44rem",
-        ["--composer-radius" as string]: "24px",
-        ["--composer-padding" as string]: "10px",
+        ["--composer-radius" as string]: "12px",
+        ["--composer-padding" as string]: "8px",
       }}
     >
       <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
       <ThreadPrimitive.Viewport
         turnAnchor="top"
-        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
+        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-scroll scroll-smooth px-4 pt-4"
       >
         <AuiIf condition={(s) => s.thread.isEmpty}>
           <ThreadWelcome />
         </AuiIf>
 
-        <ThreadPrimitive.Messages>
+        <ThreadPrimitive.Messages className="mx-auto w-full max-w-(--thread-max-width)">
           {() => <ThreadMessage />}
         </ThreadPrimitive.Messages>
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
           <PlanView entries={planEntries} className="mb-2" />
           {isRunning && pendingPermissions.size === 0 && <AgentWIP className="px-4 mb-2" />}
@@ -110,14 +105,8 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
   return (
-    <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
-      <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
-        <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
-          <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            Start a conversation
-          </h1>
-        </div>
-      </div>
+    <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
+      <p className="text-muted-foreground text-sm">Start a conversation</p>
     </div>
   );
 };

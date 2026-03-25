@@ -85,9 +85,9 @@ function StreamingCursor() {
 export function createAssistantMessage(toolsConfig: AssistantMessageProps["toolsConfig"]) {
   return function AssistantMessage() {
     return (
-      <MessagePrimitive.Root className="mb-4">
+      <MessagePrimitive.Root className="mb-4 text-sm">
         <div className="min-w-0">
-          <div className="space-y-3">
+          <div className="space-y-2">
             <MessagePrimitive.Parts
               components={{
                 Text: AssistantTextPart,
