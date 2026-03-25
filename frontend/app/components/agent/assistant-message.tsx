@@ -13,7 +13,7 @@ import { useState, useCallback } from "react"
 import { MessagePrimitive, type ToolCallMessagePartProps } from "@assistant-ui/react"
 import { useMessage } from "@assistant-ui/react"
 import { Copy, Check } from "lucide-react"
-import { MarkdownContent } from "./markdown-content"
+import { MarkdownText } from "~/components/assistant-ui/markdown-text"
 import { MessageDot } from "./message-dot"
 
 interface AssistantMessageProps {
@@ -47,7 +47,10 @@ function AssistantTextPart({ text }: { text: string }) {
     <div className="group/text relative flex items-start gap-2">
       <MessageDot type="assistant" />
       <div className="flex-1 min-w-0 relative">
-        <MarkdownContent text={text} className="text-foreground" />
+        {/* TODO: add HTML iframe preview for lang="html" code blocks (custom markdown component override) */}
+        {/* TODO: wire preview-fullscreen.tsx into custom code block handler */}
+        {/* TODO: verify dark mode theme switching works with syntax highlighting */}
+        <MarkdownText />
         {/* Copy button -- visible on hover, top-right */}
         <button
           type="button"
