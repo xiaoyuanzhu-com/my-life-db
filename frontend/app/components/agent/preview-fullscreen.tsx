@@ -9,7 +9,7 @@
  */
 import { useEffect, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { X } from "lucide-react"
+import { Minimize2 } from "lucide-react"
 
 interface PreviewFullscreenProps {
   /** HTML content to render in the iframe */
@@ -89,9 +89,9 @@ export function PreviewFullscreen({ html, onClose }: PreviewFullscreenProps) {
         type="button"
         className="preview-fullscreen-collapse"
         onClick={onClose}
-        title="Close preview"
+        title="Exit fullscreen"
       >
-        <X className="h-5 w-5" />
+        <Minimize2 className="h-3.5 w-3.5" />
       </button>
     </div>,
     document.body

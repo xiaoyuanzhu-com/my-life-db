@@ -3,13 +3,14 @@
 import "streamdown/styles.css";
 
 import {
-  StreamdownTextPrimitive,
-  type SyntaxHighlighterProps,
-} from "@assistant-ui/react-streamdown";
-import { code } from "@streamdown/code";
-import { mermaid } from "@streamdown/mermaid";
-import { memo, useState, type FC } from "react";
-import { Maximize2 } from "lucide-react";
+  type CodeHeaderProps,
+  MarkdownTextPrimitive,
+  unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
+  useIsMarkdownCodeBlock,
+} from "@assistant-ui/react-markdown";
+import remarkGfm from "remark-gfm";
+import { type FC, memo, useState } from "react";
+import { CheckIcon, CopyIcon, Maximize2 } from "lucide-react";
 import { PreviewFullscreen } from "~/components/agent/preview-fullscreen";
 
 const plugins = { code, mermaid };
@@ -72,25 +73,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   // HTML blocks: render as sandboxed iframe preview instead of code header + block.
   // The sibling <pre> is hidden via the [data-html-preview]+pre CSS selector.
   if (language === "html" && code) {
-    // IMPORTANT: Do NOT entity-encode here. React's srcDoc prop sets the DOM
-    // property directly — no HTML attribute decoding step. If we encoded
-    // " → &quot;, the iframe's HTML parser would see class=&quot;foo&quot;
-    // in "unquoted attribute value" mode, where the decoded " becomes a
-    // literal character in the value instead of an attribute delimiter.
-    //
-    // Compare with html-preview.ts (innerHTML path) which DOES need encoding
-    // because innerHTML goes through an HTML attribute parse that decodes
-    // one layer of entities before setting the DOM property.
-    return (
-      <div data-html-preview className="my-2 rounded-lg border border-border/50 overflow-hidden">
-        <iframe
-          srcDoc={code}
-          sandbox="allow-scripts"
-          className="w-full bg-white"
-          style={{ height: "60vh", border: "none" }}
-        />
-      </div>
-    );
+    return <HtmlPreview code={code} />;
   }
 
   return (
@@ -123,6 +106,34 @@ const useCopyToClipboard = ({
   };
 
   return { isCopied, copyToClipboard };
+};
+
+const HtmlPreview: FC<{ code: string }> = ({ code }) => {
+  const [fullscreen, setFullscreen] = useState(false);
+  return (
+    <>
+      <div data-html-preview className="relative my-2 rounded-lg border border-border/50 overflow-hidden">
+        <iframe
+          srcDoc={code}
+          sandbox="allow-scripts"
+          className="w-full bg-white"
+          style={{ height: "60vh", border: "none" }}
+        />
+        <button
+          type="button"
+          className="preview-expand-btn"
+          aria-label="Expand preview"
+          title="Expand preview"
+          onClick={() => setFullscreen(true)}
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {fullscreen && (
+        <PreviewFullscreen html={code} onClose={() => setFullscreen(false)} />
+      )}
+    </>
+  );
 };
 
 const defaultComponents = memoizeMarkdownComponents({
