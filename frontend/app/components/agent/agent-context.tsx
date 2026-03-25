@@ -1,10 +1,11 @@
 /**
- * AgentContext — React context that exposes ACP-specific functions
- * (sendPermissionResponse, sendSetMode) to deeply nested components
- * without prop drilling.
+ * AgentContext — React context that exposes ACP-specific state and functions
+ * (permissions, plan entries, connection status, sendSetMode) to deeply nested
+ * components without prop drilling.
  */
 import { createContext, useContext } from "react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
+import type { PlanEntry } from "~/hooks/use-agent-runtime"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -16,6 +17,12 @@ export interface AgentContextValue {
   sendPermissionResponse: (toolCallId: string, optionId: string) => void
   /** Pending permission requests keyed by toolCallId */
   pendingPermissions: Map<string, PendingPermissionEntry>
+  /** Whether the WebSocket is connected */
+  connected: boolean
+  /** Plan entries from the agent runtime */
+  planEntries: PlanEntry[]
+  /** Send a setMode command to the agent */
+  sendSetMode: (mode: string) => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

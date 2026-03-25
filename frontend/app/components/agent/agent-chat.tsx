@@ -1,13 +1,13 @@
 /**
- * AgentChat — Top-level chat component backed by the ACP WebSocket runtime.
+ * AgentChat — Chat UI component backed by the ACP WebSocket runtime.
  *
- * Uses assistant-ui's AssistantRuntimeProvider + ThreadPrimitive + MessagePrimitive
- * to render the conversation. Tool calls are dispatched to kind-specific renderers.
- * Permission cards appear above the composer as popups.
+ * Expects to be rendered inside an AssistantRuntimeProvider + AgentContextProvider
+ * (provided by the route). Uses ThreadPrimitive + MessagePrimitive to render the
+ * conversation. Tool calls are dispatched to kind-specific renderers. Permission
+ * cards appear above the composer as popups.
  */
 import { useEffect, useRef, useState, useCallback } from "react"
 import {
-  AssistantRuntimeProvider,
   ThreadPrimitive,
   ComposerPrimitive,
   type ToolCallMessagePartProps,
@@ -15,9 +15,8 @@ import {
 import { useComposerRuntime } from "@assistant-ui/react"
 import { Send, Square, ArrowDown } from "lucide-react"
 import { cn } from "~/lib/utils"
-import { useAgentRuntime } from "~/hooks/use-agent-runtime"
 import { useDraftPersistence } from "~/hooks/use-draft-persistence"
-import { AgentContextProvider, useAgentContext } from "./agent-context"
+import { useAgentContext } from "./agent-context"
 import { PermissionCard } from "./permission-card"
 import { UserMessage } from "./user-message"
 import { createAssistantMessage } from "./assistant-message"
@@ -289,19 +288,11 @@ function AgentComposer({
 
 interface AgentChatProps {
   /**
-   * Session ID for the WebSocket connection. Pass an empty string when there is
-   * no active session (new-session empty state). In that case, provide
-   * `onCreateSession` to handle the first message send.
+   * Session ID — used for draft persistence and connection status display.
+   * Pass an empty string when there is no active session (new-session empty state).
    */
   sessionId: string
-  /** Auth token for the WebSocket connection (can be empty for cookie-based auth) */
-  token?: string
   className?: string
-  /**
-   * Called when the user sends a message but there is no session yet (sessionId="").
-   * The parent should create the session via API and navigate to it.
-   */
-  onCreateSession?: (message: string) => void
   /** Working directory (shown in composer, editable if onWorkingDirChange provided) */
   workingDir?: string
   onWorkingDirChange?: (path: string) => void
@@ -349,9 +340,7 @@ function useScrollDirection() {
  */
 export function AgentChat({
   sessionId,
-  token = "",
   className,
-  onCreateSession,
   workingDir,
   onWorkingDirChange,
   agentType,
@@ -362,17 +351,7 @@ export function AgentChat({
   const hasSession = Boolean(sessionId)
   const isMobile = useIsMobile()
   const { hidden: composerHidden, onScroll: onViewportScroll } = useScrollDirection()
-
-  // When no session exists, route sends to onCreateSession instead of WS
-  const onSend = !hasSession && onCreateSession ? onCreateSession : undefined
-
-  const { runtime, connected, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
-    useAgentRuntime({
-      sessionId,
-      token,
-      enabled: hasSession,
-      onSend,
-    })
+  const { connected, pendingPermissions, planEntries, sendSetMode } = useAgentContext()
 
   const handlePermissionModeChange = (mode: PermissionMode) => {
     onPermissionModeChange?.(mode)
@@ -383,65 +362,63 @@ export function AgentChat({
   const shouldHideComposer = isMobile && composerHidden && pendingPermissions.size === 0
 
   return (
-    <AgentContextProvider value={{ sendPermissionResponse, pendingPermissions }}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <DraftPersistenceSync sessionId={hasSession ? sessionId : undefined} />
-        <div className={cn("flex flex-col h-full bg-background", className)}>
-          {/* Connection status banner */}
-          <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
+    <>
+      <DraftPersistenceSync sessionId={hasSession ? sessionId : undefined} />
+      <div className={cn("flex flex-col h-full bg-background", className)}>
+        {/* Connection status banner */}
+        <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
 
-          {/* Thread viewport */}
-          <ThreadPrimitive.Viewport
-            className="flex-1 overflow-y-auto py-4"
-            onScroll={isMobile ? onViewportScroll : undefined}
-          >
-            <div className="w-full max-w-3xl mx-auto px-4">
-              <ThreadPrimitive.Empty>
-                <div className="flex h-full min-h-[120px] items-center justify-center text-sm text-muted-foreground">
-                  Start a conversation
-                </div>
-              </ThreadPrimitive.Empty>
+        {/* Thread viewport */}
+        <ThreadPrimitive.Viewport
+          className="flex-1 overflow-y-auto py-4"
+          onScroll={isMobile ? onViewportScroll : undefined}
+        >
+          <div className="w-full max-w-3xl mx-auto px-4">
+            <ThreadPrimitive.Empty>
+              <div className="flex h-full min-h-[120px] items-center justify-center text-sm text-muted-foreground">
+                Start a conversation
+              </div>
+            </ThreadPrimitive.Empty>
 
-              <ThreadPrimitive.Messages
-                components={{
-                  UserMessage,
-                  AssistantMessage,
-                }}
-              />
-
-              {/* Agent WIP indicator — rendered as part of the message list */}
-              <AgentWIPIndicator />
-            </div>
-
-            <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-4 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowDown className="h-4 w-4" />
-            </ThreadPrimitive.ScrollToBottom>
-          </ThreadPrimitive.Viewport>
-
-          {/* Plan entries — shown between thread and composer */}
-          {planEntries.length > 0 && <PlanView entries={planEntries} />}
-
-          {/* Permission cards — pop up above composer */}
-          <PendingPermissions />
-
-          {/* Composer — hidden on mobile when scrolling down */}
-          <div
-            className={cn(
-              "transition-all duration-200 overflow-hidden",
-              shouldHideComposer ? "max-h-0 opacity-0" : "max-h-[300px] opacity-100"
-            )}
-          >
-            <AgentComposer
-              workingDir={workingDir}
-              onWorkingDirChange={onWorkingDirChange}
-              agentType={agentType}
-              onAgentTypeChange={onAgentTypeChange}
-              permissionMode={permissionMode}
-              onPermissionModeChange={handlePermissionModeChange}
+            <ThreadPrimitive.Messages
+              components={{
+                UserMessage,
+                AssistantMessage,
+              }}
             />
+
+            {/* Agent WIP indicator — rendered as part of the message list */}
+            <AgentWIPIndicator />
           </div>
+
+          <ThreadPrimitive.ScrollToBottom className="sticky bottom-2 ml-auto mr-4 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowDown className="h-4 w-4" />
+          </ThreadPrimitive.ScrollToBottom>
+        </ThreadPrimitive.Viewport>
+
+        {/* Plan entries — shown between thread and composer */}
+        {planEntries.length > 0 && <PlanView entries={planEntries} />}
+
+        {/* Permission cards — pop up above composer */}
+        <PendingPermissions />
+
+        {/* Composer — hidden on mobile when scrolling down */}
+        <div
+          className={cn(
+            "transition-all duration-200 overflow-hidden",
+            shouldHideComposer ? "max-h-0 opacity-0" : "max-h-[300px] opacity-100"
+          )}
+        >
+          <AgentComposer
+            workingDir={workingDir}
+            onWorkingDirChange={onWorkingDirChange}
+            agentType={agentType}
+            onAgentTypeChange={onAgentTypeChange}
+            permissionMode={permissionMode}
+            onPermissionModeChange={handlePermissionModeChange}
+          />
         </div>
-      </AssistantRuntimeProvider>
-    </AgentContextProvider>
+      </div>
+    </>
   )
 }

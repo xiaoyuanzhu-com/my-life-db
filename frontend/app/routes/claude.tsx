@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { SessionList } from '~/components/claude/session-list'
 import type { PermissionMode } from '~/components/agent/permission-mode-selector'
 import type { AgentType } from '~/components/agent/agent-type-selector'
 import { AgentChat } from '~/components/agent/agent-chat'
+import { AgentContextProvider } from '~/components/agent/agent-context'
+import { useAgentRuntime } from '~/hooks/use-agent-runtime'
 import { Button } from '~/components/ui/button'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
 import {
@@ -751,6 +754,20 @@ export default function ClaudePage() {
     })
   }, [])
 
+  // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
+  // The runtime is owned at the route level so that AssistantRuntimeProvider
+  // wraps all AgentChat instances. The key on the provider forces a remount
+  // on session switch, preserving the original reset behavior.
+  const hasActiveSession = Boolean(activeSessionId)
+  const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
+  const { runtime, connected, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
+    useAgentRuntime({
+      sessionId: activeSessionId || "",
+      token: "",
+      enabled: hasActiveSession,
+      onSend: onSendForRuntime,
+    })
+
   // Show loading state while checking authentication
   if (authLoading || loading) {
     return (
@@ -790,6 +807,16 @@ export default function ClaudePage() {
     )
   }
 
+  // Shared context value for AgentContextProvider — keeps the reference stable
+  // across the multiple conditional render branches below.
+  const agentContextValue = {
+    sendPermissionResponse,
+    pendingPermissions,
+    connected,
+    planEntries,
+    sendSetMode,
+  }
+
   // ─── Native app: single layout, no responsive split ─────────────────────────
   // The desktop/mobile conditional rendering below uses useIsMobile() to render
   // ChatInterface in one section or the other. On iPhone, rotating from portrait
@@ -799,24 +826,27 @@ export default function ClaudePage() {
   // The native app always shows a single session, so bypass the split entirely.
   if (isNativeApp() && activeSessionId) {
     return (
-      <div className="flex h-full min-w-0 animate-content-ready">
-        <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
-          <AgentChat
-            key={activeSessionId}
-            sessionId={activeSessionId}
-            className="flex-1"
-            workingDir={effectiveActiveSession?.workingDir}
-            agentType={effectiveActiveSession?.agentType || 'claude_code'}
-            permissionMode={effectiveActiveSession?.permissionMode || 'default'}
-            onPermissionModeChange={(mode) => {
-              localStorage.setItem('claude-permission-mode', mode)
-            }}
-            onAgentTypeChange={(type) => {
-              localStorage.setItem('mld-agent-type', type)
-            }}
-          />
-        </div>
-      </div>
+      <AgentContextProvider value={agentContextValue}>
+        <AssistantRuntimeProvider key={activeSessionId} runtime={runtime}>
+          <div className="flex h-full min-w-0 animate-content-ready">
+            <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
+              <AgentChat
+                sessionId={activeSessionId}
+                className="flex-1"
+                workingDir={effectiveActiveSession?.workingDir}
+                agentType={effectiveActiveSession?.agentType || 'claude_code'}
+                permissionMode={effectiveActiveSession?.permissionMode || 'default'}
+                onPermissionModeChange={(mode) => {
+                  localStorage.setItem('claude-permission-mode', mode)
+                }}
+                onAgentTypeChange={(type) => {
+                  localStorage.setItem('mld-agent-type', type)
+                }}
+              />
+            </div>
+          </div>
+        </AssistantRuntimeProvider>
+      </AgentContextProvider>
     )
   }
 
@@ -876,6 +906,8 @@ export default function ClaudePage() {
   )
 
   return (
+    <AgentContextProvider value={agentContextValue}>
+    <AssistantRuntimeProvider key={activeSessionId ?? "new"} runtime={runtime}>
     <div className="flex h-full min-w-0 animate-content-ready">
       {/* ── Desktop: Resizable sidebar + chat ── */}
       <div className="hidden md:flex md:flex-1 h-full min-w-0">
@@ -945,7 +977,6 @@ export default function ClaudePage() {
                 )}
                 {activeSessionId && !isMobile ? (
                   <AgentChat
-                    key={activeSessionId}
                     sessionId={activeSessionId}
                     className="flex-1"
                     workingDir={effectiveActiveSession?.workingDir}
@@ -957,21 +988,17 @@ export default function ClaudePage() {
                     onAgentTypeChange={(type) => {
                       localStorage.setItem('mld-agent-type', type)
                     }}
-
                   />
                 ) : !activeSessionId ? (
                   <AgentChat
-                    key="new-session"
                     sessionId=""
                     className="flex-1 claude-bg"
-                    onCreateSession={createSessionWithMessage}
                     workingDir={newSessionWorkingDir}
                     onWorkingDirChange={setNewSessionWorkingDir}
                     agentType={newSessionAgentType}
                     onAgentTypeChange={setNewSessionAgentType}
                     permissionMode={newSessionPermissionMode}
                     onPermissionModeChange={setNewSessionPermissionMode}
-
                   />
                 ) : null}
               </div>
@@ -982,7 +1009,6 @@ export default function ClaudePage() {
           <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
             {activeSessionId && !isMobile ? (
               <AgentChat
-                key={activeSessionId}
                 sessionId={activeSessionId}
                 className="flex-1"
                 workingDir={effectiveActiveSession?.workingDir}
@@ -997,10 +1023,8 @@ export default function ClaudePage() {
               />
             ) : !activeSessionId ? (
               <AgentChat
-                key="new-session"
                 sessionId=""
                 className="flex-1 claude-bg"
-                onCreateSession={createSessionWithMessage}
                 workingDir={newSessionWorkingDir}
                 onWorkingDirChange={setNewSessionWorkingDir}
                 agentType={newSessionAgentType}
@@ -1037,7 +1061,6 @@ export default function ClaudePage() {
               </div>
             )}
             <AgentChat
-              key={activeSessionId}
               sessionId={activeSessionId}
               className="flex-1"
               workingDir={effectiveActiveSession?.workingDir}
@@ -1063,10 +1086,8 @@ export default function ClaudePage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <AgentChat
-              key="new-session-mobile"
               sessionId=""
               className="flex-1"
-              onCreateSession={createSessionWithMessage}
               workingDir={newSessionWorkingDir}
               onWorkingDirChange={setNewSessionWorkingDir}
               agentType={newSessionAgentType}
@@ -1097,9 +1118,7 @@ export default function ClaudePage() {
         ) : (
           /* No sidebar (hybrid app) — just the chat input */
           <AgentChat
-            key="new-session-mobile-nosidebar"
             sessionId=""
-            onCreateSession={createSessionWithMessage}
             className="flex-1 claude-bg"
             workingDir={newSessionWorkingDir}
             onWorkingDirChange={setNewSessionWorkingDir}
@@ -1111,5 +1130,7 @@ export default function ClaudePage() {
         )}
       </div>
     </div>
+    </AssistantRuntimeProvider>
+    </AgentContextProvider>
   )
 }
