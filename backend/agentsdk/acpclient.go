@@ -125,6 +125,10 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		return nil
 	}
 
+	// ⚠️ Mutates raw frame — reviewed perf exception to raw-frame-integrity principle.
+	// See StripHeavyToolCallContent doc comment for rationale and list of stripped fields.
+	data = StripHeavyToolCallContent(data)
+
 	c.emit(data)
 	return nil
 }
@@ -163,6 +167,8 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 		"toolCall": toolCallJSON,
 		"options":  optionsJSON,
 	})
+	// Strip heavy payloads from the embedded toolCall (same fields as tool_call frames).
+	frame = StripHeavyPermissionContent(frame)
 	c.emit(frame)
 
 	// Block until RespondToPermission is called or context cancelled
