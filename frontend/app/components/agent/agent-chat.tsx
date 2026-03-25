@@ -10,9 +10,6 @@ import { cn } from "~/lib/utils"
 import { Thread } from "~/components/assistant-ui/thread"
 
 // TODO: restore mobile scroll-direction hiding (hide composer on scroll down)
-// TODO: restore FolderPicker, AgentTypeSelector, PermissionModeSelector in composer
-// TODO: restore slash command popover
-// TODO: restore file tag popover
 // TODO: restore DraftPersistenceSync (uses useComposerRuntime to sync draft to localStorage)
 // TODO: restore user message truncation (10 lines / 500 chars) with gradient fade
 

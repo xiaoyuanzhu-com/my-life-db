@@ -23,6 +23,17 @@ export interface AgentContextValue {
   planEntries: PlanEntry[]
   /** Send a setMode command to the agent */
   sendSetMode: (mode: string) => void
+  /** Composer controls — working directory */
+  workingDir?: string
+  onWorkingDirChange?: (path: string) => void
+  /** Composer controls — permission mode */
+  permissionMode?: string
+  onPermissionModeChange?: (mode: string) => void
+  /** Composer controls — agent type */
+  agentType?: string
+  onAgentTypeChange?: (type: string) => void
+  /** Session metadata (commands, models, etc.) */
+  sessionCommands?: Array<{ name: string; description?: string }>
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

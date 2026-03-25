@@ -806,6 +806,13 @@ export default function ClaudePage() {
     connected,
     planEntries,
     sendSetMode,
+    workingDir: newSessionWorkingDir,
+    onWorkingDirChange: setNewSessionWorkingDir,
+    permissionMode: newSessionPermissionMode,
+    onPermissionModeChange: (mode: string) => setNewSessionPermissionMode(mode as PermissionMode),
+    agentType: newSessionAgentType,
+    onAgentTypeChange: (type: string) => setNewSessionAgentType(type as AgentType),
+    sessionCommands: sessionMeta?.commands,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────
