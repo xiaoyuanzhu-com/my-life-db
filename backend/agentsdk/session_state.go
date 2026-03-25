@@ -21,6 +21,7 @@ type SessionState struct {
 	IsProcessing bool
 	IsActive     bool // true after first prompt sent (vs replay-only)
 	ResultCount  int
+	HistoryOnce  sync.Once // ensures LoadSession runs at most once per session
 }
 
 // NewSessionState creates a new SessionState.

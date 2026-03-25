@@ -201,7 +201,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	}
 
 	// Send initial burst (last ~100 messages) via direct write (bypasses client channel)
-	burstMessages := sessionState.GetRecentMessages(100)
+	burstMessages := sessionState.GetRecentMessages(0)
 	if len(burstMessages) > 0 {
 		log.Debug().
 			Str("sessionId", sessionID).
@@ -216,10 +216,18 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}
 
-	// If no messages in memory (e.g., server restart), try loading history via ACP
+	// If no messages in memory (e.g., server restart), try loading history via ACP.
+	// sync.Once ensures only one concurrent connection triggers LoadSession;
+	// others block until it completes, then receive frames via their registered client channel.
 	if len(burstMessages) == 0 {
-		log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
-		if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil && sessionRecord.WorkingDir != "" {
+		sessionState.HistoryOnce.Do(func() {
+			log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
+			sessionRecord, _ := db.GetAgentSession(sessionID)
+			if sessionRecord == nil || sessionRecord.WorkingDir == "" {
+				log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
+				return
+			}
+
 			log.Info().Str("sessionId", sessionID).Str("workingDir", sessionRecord.WorkingDir).Msg("found session in DB, spawning ACP process for session/load")
 			agentType := agentsdk.AgentClaudeCode
 			if sessionRecord.AgentType == "codex" {
@@ -241,31 +249,28 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				WorkingDir:  sessionRecord.WorkingDir,
 			})
 
-			if err == nil && sess != nil {
-				// Wire the permanent frame handler BEFORE LoadSession so all
-				// replayed frames flow directly to the WebSocket clients.
-				sess.SetOnFrame(func(data []byte) {
-					sessionState.AppendAndBroadcast(data)
-				})
-
-				// Store the ACP session for future prompts
-				acpSessionsMu.Lock()
-				acpSessions[sessionID] = sess
-				acpSessionsMu.Unlock()
-
-				// LoadSession triggers history replay. Frames are delivered
-				// via onFrame → sessionState.AppendAndBroadcast automatically.
-				if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
-				} else {
-					log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
-				}
-			} else if err != nil {
+			if err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
+				return
 			}
-		} else {
-			log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
-		}
+			if sess == nil {
+				return
+			}
+
+			sess.SetOnFrame(func(data []byte) {
+				sessionState.AppendAndBroadcast(data)
+			})
+
+			acpSessionsMu.Lock()
+			acpSessions[sessionID] = sess
+			acpSessionsMu.Unlock()
+
+			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
+			} else {
+				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
+			}
+		})
 	}
 
 	// Goroutine: ping every 30s
