@@ -72,11 +72,15 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   // HTML blocks: render as sandboxed iframe preview instead of code header + block.
   // The sibling <pre> is hidden via the [data-html-preview]+pre CSS selector.
   if (language === "html" && code) {
-    // React's srcDoc prop sets the DOM property directly (no HTML attribute
-    // decoding step), so we pass raw HTML as-is. Entity encoding would cause
-    // the iframe's parser to mishandle attribute delimiters (e.g., &quot;
-    // becomes a literal " inside an unquoted attribute value instead of a
-    // proper attribute delimiter).
+    // IMPORTANT: Do NOT entity-encode here. React's srcDoc prop sets the DOM
+    // property directly — no HTML attribute decoding step. If we encoded
+    // " → &quot;, the iframe's HTML parser would see class=&quot;foo&quot;
+    // in "unquoted attribute value" mode, where the decoded " becomes a
+    // literal character in the value instead of an attribute delimiter.
+    //
+    // Compare with html-preview.ts (innerHTML path) which DOES need encoding
+    // because innerHTML goes through an HTML attribute parse that decodes
+    // one layer of entities before setting the DOM property.
     return (
       <div data-html-preview className="my-2 rounded-lg border border-border/50 overflow-hidden">
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/50 text-xs">
