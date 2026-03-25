@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
-import { SessionList } from '~/components/claude/session-list'
+import { ThreadList } from '~/components/assistant-ui/thread-list'
 import type { PermissionMode } from '~/components/agent/permission-mode-selector'
 import type { AgentType } from '~/components/agent/agent-type-selector'
 import { AgentChat } from '~/components/agent/agent-chat'
@@ -745,15 +745,6 @@ export default function ClaudePage() {
     )
   }, [])
 
-  // Helper: persist agent chat toggle
-  const handleToggleAgentChat = useCallback(() => {
-    setUseAgentChat((prev) => {
-      const next = !prev
-      localStorage.setItem('mld-use-agent-chat', String(next))
-      return next
-    })
-  }, [])
-
   // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
   // The runtime is owned at the route level so that AssistantRuntimeProvider
   // wraps all AgentChat instances. The key on the provider forces a remount
@@ -833,15 +824,6 @@ export default function ClaudePage() {
               <AgentChat
                 sessionId={activeSessionId}
                 className="flex-1"
-                workingDir={effectiveActiveSession?.workingDir}
-                agentType={effectiveActiveSession?.agentType || 'claude_code'}
-                permissionMode={effectiveActiveSession?.permissionMode || 'default'}
-                onPermissionModeChange={(mode) => {
-                  localStorage.setItem('claude-permission-mode', mode)
-                }}
-                onAgentTypeChange={(type) => {
-                  localStorage.setItem('mld-agent-type', type)
-                }}
               />
             </div>
           </div>
@@ -931,20 +913,15 @@ export default function ClaudePage() {
                 isSidebarCollapsed && 'hidden'
               )}
             >
-              <SessionsHeader showCollapseButton />
-              <div className="flex-1 overflow-hidden">
-                <SessionList
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                  onSelect={handleSelectSession}
-                  onDelete={deleteSession}
-                  onRename={updateSessionTitle}
-                  onArchive={archiveSession}
-                  onUnarchive={unarchiveSession}
-                  hasMore={pagination.hasMore}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={loadMoreSessions}
-                />
+              <div className="flex-1 overflow-hidden p-2">
+                {/* TODO: restore time grouping (Today, Yesterday, Past Week, Past Month, Earlier) */}
+                {/* TODO: restore status dots (amber=working, green=unread) */}
+                {/* TODO: restore inline rename editing */}
+                {/* TODO: restore infinite scroll pagination (cursor-based, 20 per page) */}
+                {/* TODO: restore resizable sidebar (desktop) + stack navigation (mobile) */}
+                {/* TODO: restore session filter (active|archived|all) with localStorage persistence */}
+                {/* TODO: restore SSE notifications for live session updates */}
+                <ThreadList />
               </div>
             </ResizablePanel>
 
@@ -979,26 +956,11 @@ export default function ClaudePage() {
                   <AgentChat
                     sessionId={activeSessionId}
                     className="flex-1"
-                    workingDir={effectiveActiveSession?.workingDir}
-                    agentType={effectiveActiveSession?.agentType || 'claude_code'}
-                    permissionMode={effectiveActiveSession?.permissionMode || 'default'}
-                    onPermissionModeChange={(mode) => {
-                      localStorage.setItem('claude-permission-mode', mode)
-                    }}
-                    onAgentTypeChange={(type) => {
-                      localStorage.setItem('mld-agent-type', type)
-                    }}
                   />
                 ) : !activeSessionId ? (
                   <AgentChat
                     sessionId=""
                     className="flex-1 claude-bg"
-                    workingDir={newSessionWorkingDir}
-                    onWorkingDirChange={setNewSessionWorkingDir}
-                    agentType={newSessionAgentType}
-                    onAgentTypeChange={setNewSessionAgentType}
-                    permissionMode={newSessionPermissionMode}
-                    onPermissionModeChange={setNewSessionPermissionMode}
                   />
                 ) : null}
               </div>
@@ -1011,26 +973,11 @@ export default function ClaudePage() {
               <AgentChat
                 sessionId={activeSessionId}
                 className="flex-1"
-                workingDir={effectiveActiveSession?.workingDir}
-                agentType={effectiveActiveSession?.agentType || 'claude_code'}
-                permissionMode={effectiveActiveSession?.permissionMode || 'default'}
-                onPermissionModeChange={(mode) => {
-                  localStorage.setItem('claude-permission-mode', mode)
-                }}
-                onAgentTypeChange={(type) => {
-                  localStorage.setItem('mld-agent-type', type)
-                }}
               />
             ) : !activeSessionId ? (
               <AgentChat
                 sessionId=""
                 className="flex-1 claude-bg"
-                workingDir={newSessionWorkingDir}
-                onWorkingDirChange={setNewSessionWorkingDir}
-                agentType={newSessionAgentType}
-                onAgentTypeChange={setNewSessionAgentType}
-                permissionMode={newSessionPermissionMode}
-                onPermissionModeChange={setNewSessionPermissionMode}
               />
             ) : null}
           </div>
@@ -1063,15 +1010,6 @@ export default function ClaudePage() {
             <AgentChat
               sessionId={activeSessionId}
               className="flex-1"
-              workingDir={effectiveActiveSession?.workingDir}
-              agentType={effectiveActiveSession?.agentType || 'claude_code'}
-              permissionMode={effectiveActiveSession?.permissionMode || 'default'}
-              onPermissionModeChange={(mode) => {
-                localStorage.setItem('claude-permission-mode', mode)
-              }}
-              onAgentTypeChange={(type) => {
-                localStorage.setItem('mld-agent-type', type)
-              }}
             />
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
@@ -1088,44 +1026,18 @@ export default function ClaudePage() {
             <AgentChat
               sessionId=""
               className="flex-1"
-              workingDir={newSessionWorkingDir}
-              onWorkingDirChange={setNewSessionWorkingDir}
-              agentType={newSessionAgentType}
-              onAgentTypeChange={setNewSessionAgentType}
-              permissionMode={newSessionPermissionMode}
-              onPermissionModeChange={setNewSessionPermissionMode}
             />
           </div>
         ) : sessionSidebar ? (
           /* List view: full-screen session list */
-          <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
-            <SessionsHeader />
-            <div className="flex-1 overflow-hidden">
-              <SessionList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                onSelect={handleSelectSession}
-                onDelete={deleteSession}
-                onRename={updateSessionTitle}
-                onArchive={archiveSession}
-                onUnarchive={unarchiveSession}
-                hasMore={pagination.hasMore}
-                isLoadingMore={isLoadingMore}
-                onLoadMore={loadMoreSessions}
-              />
-            </div>
+          <div className="flex flex-1 flex-col bg-muted/30 min-w-0 p-2">
+            <ThreadList />
           </div>
         ) : (
           /* No sidebar (hybrid app) — just the chat input */
           <AgentChat
             sessionId=""
             className="flex-1 claude-bg"
-            workingDir={newSessionWorkingDir}
-            onWorkingDirChange={setNewSessionWorkingDir}
-            agentType={newSessionAgentType}
-            onAgentTypeChange={setNewSessionAgentType}
-            permissionMode={newSessionPermissionMode}
-            onPermissionModeChange={setNewSessionPermissionMode}
           />
         )}
       </div>
