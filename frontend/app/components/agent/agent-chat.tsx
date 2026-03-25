@@ -9,9 +9,6 @@
 import { cn } from "~/lib/utils"
 import { Thread } from "~/components/assistant-ui/thread"
 
-// TODO: restore PlanView between messages and composer
-// TODO: restore AgentWIPIndicator
-// TODO: restore PendingPermissions above composer
 // TODO: restore mobile scroll-direction hiding (hide composer on scroll down)
 // TODO: restore FolderPicker, AgentTypeSelector, PermissionModeSelector in composer
 // TODO: restore slash command popover

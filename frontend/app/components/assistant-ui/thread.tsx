@@ -23,14 +23,18 @@ import { createAssistantMessage } from "~/components/agent/assistant-message";
 import { UserMessage as AcpUserMessage } from "~/components/agent/user-message";
 import { acpToolsConfig } from "~/components/agent/tool-dispatch";
 import { ConnectionStatusBanner } from "~/components/agent/connection-status-banner";
+import { PlanView } from "~/components/agent/plan-view";
+import { AgentWIP } from "~/components/agent/agent-wip";
+import { PermissionCard } from "~/components/agent/permission-card";
 import { useAgentContext } from "~/components/agent/agent-context";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { connected } = useAgentContext();
+  const { connected, planEntries, pendingPermissions } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
+  const isRunning = useAuiState((s) => s.thread.isRunning);
 
   return (
     <ThreadPrimitive.Root
@@ -54,8 +58,24 @@ export const Thread: FC = () => {
           {() => <ThreadMessage />}
         </ThreadPrimitive.Messages>
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
+          <PlanView entries={planEntries} className="mb-2" />
+          {isRunning && pendingPermissions.size === 0 && <AgentWIP className="px-4 mb-2" />}
+          {pendingPermissions.size > 0 && (
+            <div className="px-4 mb-2 space-y-2">
+              {Array.from(pendingPermissions.entries()).map(([toolCallId, entry], index) => (
+                <PermissionCard
+                  key={toolCallId}
+                  toolCallId={toolCallId}
+                  toolName={entry.toolName}
+                  args={{}}
+                  options={entry.options}
+                  isFirst={index === 0}
+                />
+              ))}
+            </div>
+          )}
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
