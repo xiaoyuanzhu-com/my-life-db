@@ -187,7 +187,7 @@ export function MessageList({ messages, toolResultMap, optimisticMessage, stream
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 claude-interface claude-bg"
         style={{ touchAction: 'pan-y' }}
       >
-        <div ref={contentRef} className="w-full max-w-4xl mx-auto px-6 md:px-8 py-8 flex flex-col min-h-full">
+        <div ref={contentRef} className="w-full max-w-4xl mx-auto px-8 md:px-12 py-8 flex flex-col min-h-full">
           {!hasMessages ? (
             <div className="flex-1" />
           ) : (
