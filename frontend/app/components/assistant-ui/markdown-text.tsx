@@ -83,13 +83,6 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
     // one layer of entities before setting the DOM property.
     return (
       <div data-html-preview className="my-2 rounded-lg border border-border/50 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/50 text-xs">
-          <span className="font-medium text-muted-foreground">html preview</span>
-          <TooltipIconButton tooltip="Copy" onClick={onCopy}>
-            {!isCopied && <CopyIcon />}
-            {isCopied && <CheckIcon />}
-          </TooltipIconButton>
-        </div>
         <iframe
           srcDoc={code}
           sandbox="allow-scripts"
