@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -112,13 +114,18 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 
 		// Broadcast user echo
 		contentBlocks := []map[string]any{{"type": "text", "text": req.Message}}
-		if userEcho, err := agentsdk.UserEchoEnvelope(sessionID, contentBlocks); err == nil && userEcho != nil {
-			sessionState.AppendAndBroadcast(userEcho)
+		if data, err := json.Marshal(map[string]any{
+			"type": "user.echo", "ts": time.Now().UnixMilli(),
+			"content": contentBlocks,
+		}); err == nil {
+			sessionState.AppendAndBroadcast(data)
 		}
 
 		// Broadcast turn.start
-		if turnStart, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && turnStart != nil {
-			sessionState.AppendAndBroadcast(turnStart)
+		if data, err := json.Marshal(map[string]any{
+			"type": "turn.start", "ts": time.Now().UnixMilli(),
+		}); err == nil {
+			sessionState.AppendAndBroadcast(data)
 		}
 
 		// Send prompt and forward events in a background goroutine
@@ -136,15 +143,16 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 				sessionState.Mu.Lock()
 				sessionState.IsProcessing = false
 				sessionState.Mu.Unlock()
-				errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
-				if errBytes != nil {
+				if errBytes, err := json.Marshal(map[string]any{
+					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
+				}); err == nil {
 					sessionState.AppendAndBroadcast(errBytes)
 				}
 				return
 			}
 
 			for event := range events {
-				frames := translateEventToEnvelopes(sessionID, event)
+				frames := marshalEventFrames(event)
 				for _, frame := range frames {
 					sessionState.AppendAndBroadcast(frame)
 				}

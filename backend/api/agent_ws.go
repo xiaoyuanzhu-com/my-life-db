@@ -149,8 +149,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	sessionState.Mu.RLock()
 	isProcessing := sessionState.IsProcessing
 	sessionState.Mu.RUnlock()
-	infoBytes, err := agentsdk.SessionInfoEnvelope(sessionID, totalMessages, isProcessing)
-	if err == nil {
+	if infoBytes, err := json.Marshal(map[string]any{
+		"type":          "session.info",
+		"totalMessages": totalMessages,
+		"isProcessing":  isProcessing,
+	}); err == nil {
 		if err := conn.Write(ctx, websocket.MessageText, infoBytes); err != nil {
 			return
 		}
@@ -252,29 +255,35 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 						// Before user message: close any open assistant turn
 						if isUserMsg && inAssistantTurn {
-							if tc, err := agentsdk.TurnCompleteEnvelope(sessionID, "end_turn"); err == nil && tc != nil {
-								sessionState.AppendAndBroadcast(tc)
+							if data, err := json.Marshal(map[string]any{
+								"type": "turn.complete", "ts": time.Now().UnixMilli(), "stopReason": "end_turn",
+							}); err == nil {
+								sessionState.AppendAndBroadcast(data)
 							}
 							inAssistantTurn = false
 						}
 
 						// Before agent content: open a turn if not already open
 						if isAgentContent && !inAssistantTurn {
-							if ts, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && ts != nil {
-								sessionState.AppendAndBroadcast(ts)
+							if data, err := json.Marshal(map[string]any{
+								"type": "turn.start", "ts": time.Now().UnixMilli(),
+							}); err == nil {
+								sessionState.AppendAndBroadcast(data)
 							}
 							inAssistantTurn = true
 						}
 
-						frames := translateEventToEnvelopes(sessionID, event)
+						frames := marshalEventFrames(event)
 						for _, frame := range frames {
 							sessionState.AppendAndBroadcast(frame)
 						}
 					}
 					// Close final turn if open
 					if inAssistantTurn {
-						if tc, err := agentsdk.TurnCompleteEnvelope(sessionID, "end_turn"); err == nil && tc != nil {
-							sessionState.AppendAndBroadcast(tc)
+						if data, err := json.Marshal(map[string]any{
+							"type": "turn.complete", "ts": time.Now().UnixMilli(), "stopReason": "end_turn",
+						}); err == nil {
+							sessionState.AppendAndBroadcast(data)
 						}
 					}
 					log.Info().Str("sessionId", sessionID).Int("events", len(histEvents)).Msg("historical session replay complete")
@@ -366,13 +375,18 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Broadcast user echo
-			if userEcho, err := agentsdk.UserEchoEnvelope(sessionID, contentBlocks); err == nil && userEcho != nil {
-				sessionState.AppendAndBroadcast(userEcho)
+			if data, err := json.Marshal(map[string]any{
+				"type": "user.echo", "ts": time.Now().UnixMilli(),
+				"content": contentBlocks,
+			}); err == nil {
+				sessionState.AppendAndBroadcast(data)
 			}
 
 			// Broadcast turn.start
-			if turnStart, err := agentsdk.TurnStartEnvelope(sessionID); err == nil && turnStart != nil {
-				sessionState.AppendAndBroadcast(turnStart)
+			if data, err := json.Marshal(map[string]any{
+				"type": "turn.start", "ts": time.Now().UnixMilli(),
+			}); err == nil {
+				sessionState.AppendAndBroadcast(data)
 			}
 
 			// Create ACP session lazily if needed
@@ -411,8 +425,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
-					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to create agent session: "+err.Error(), "SESSION_ERROR")
-					if errBytes != nil {
+					if errBytes, err := json.Marshal(map[string]any{
+						"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
+					}); err == nil {
 						conn.Write(ctx, websocket.MessageText, errBytes)
 					}
 					continue
@@ -437,15 +452,16 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					sessionState.Mu.Lock()
 					sessionState.IsProcessing = false
 					sessionState.Mu.Unlock()
-					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
-					if errBytes != nil {
+					if errBytes, err := json.Marshal(map[string]any{
+						"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
+					}); err == nil {
 						sessionState.AppendAndBroadcast(errBytes)
 					}
 					return
 				}
 
 				for event := range events {
-					frames := translateEventToEnvelopes(sessionID, event)
+					frames := marshalEventFrames(event)
 					for _, frame := range frames {
 						sessionState.AppendAndBroadcast(frame)
 					}
@@ -546,24 +562,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	<-pingDone
 }
 
-// translateEventToEnvelopes converts an agentsdk.Event into zero or more
-// ACP envelope frames for sending over WebSocket.
-func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte {
+// marshalEventFrames converts an agentsdk.Event into zero or more
+// JSON frames for sending over WebSocket.
+func marshalEventFrames(event agentsdk.Event) [][]byte {
 	var frames [][]byte
-	var data []byte
-	var err error
+	ts := time.Now().UnixMilli()
+
+	marshal := func(m map[string]any) {
+		if data, err := json.Marshal(m); err == nil {
+			frames = append(frames, data)
+		}
+	}
 
 	switch event.Type {
 	case agentsdk.EventDelta:
-		data, err = agentsdk.AgentMessageChunkEnvelope(sessionID,
-			map[string]any{"type": "text", "text": event.Delta})
+		marshal(map[string]any{
+			"type": "agent.messageChunk", "ts": ts,
+			"content": map[string]any{"type": "text", "text": event.Delta},
+		})
 
 	case agentsdk.EventMessage:
 		if event.Message == nil {
 			return nil
 		}
 
-		// User messages (from LoadSession replay) → user.echo envelope
 		if event.Message.Role == agentsdk.RoleUser {
 			contentBlocks := make([]map[string]any, 0, len(event.Message.Content))
 			for _, block := range event.Message.Content {
@@ -572,10 +594,9 @@ func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte 
 				}
 			}
 			if len(contentBlocks) > 0 {
-				data, err = agentsdk.UserEchoEnvelope(sessionID, contentBlocks)
-				if err == nil && data != nil {
-					frames = append(frames, data)
-				}
+				marshal(map[string]any{
+					"type": "user.echo", "ts": ts, "content": contentBlocks,
+				})
 			}
 			return frames
 		}
@@ -583,88 +604,95 @@ func translateEventToEnvelopes(sessionID string, event agentsdk.Event) [][]byte 
 		for _, block := range event.Message.Content {
 			switch block.Type {
 			case agentsdk.BlockThinking:
-				data, err = agentsdk.AgentThoughtChunkEnvelope(sessionID,
-					map[string]any{"type": "text", "text": block.Text})
+				marshal(map[string]any{
+					"type": "agent.thoughtChunk", "ts": ts,
+					"content": map[string]any{"type": "text", "text": block.Text},
+				})
 			case agentsdk.BlockToolUse:
-				fields := map[string]any{
-					"toolCallId": block.ToolUseID,
-					"title":      block.ToolName,
-					"kind":       block.ToolKind,
-					"status":     "in_progress",
-					"rawInput":   json.RawMessage(block.ToolInput),
-				}
-				data, err = agentsdk.AgentToolCallEnvelope(sessionID, fields)
+				marshal(map[string]any{
+					"type": "agent.toolCall", "ts": ts,
+					"toolCallId": block.ToolUseID, "title": block.ToolName,
+					"kind": block.ToolKind, "status": "in_progress",
+					"rawInput": json.RawMessage(block.ToolInput),
+				})
 			case agentsdk.BlockToolResult:
-				fields := map[string]any{
-					"toolCallId": block.ToolUseID,
-					"status":     "completed",
-					"rawOutput":  map[string]any{"content": block.Text},
-				}
-				data, err = agentsdk.AgentToolCallUpdateEnvelope(sessionID, fields)
+				marshal(map[string]any{
+					"type": "agent.toolCallUpdate", "ts": ts,
+					"toolCallId": block.ToolUseID, "status": "completed",
+					"rawOutput": map[string]any{"content": block.Text},
+				})
 			case agentsdk.BlockPlan:
-				data, err = agentsdk.AgentPlanEnvelope(sessionID, block.PlanEntries)
+				marshal(map[string]any{
+					"type": "agent.plan", "ts": ts, "entries": block.PlanEntries,
+				})
 			case agentsdk.BlockText:
-				data, err = agentsdk.AgentMessageChunkEnvelope(sessionID,
-					map[string]any{"type": "text", "text": block.Text})
-			}
-			if err == nil && data != nil {
-				frames = append(frames, data)
-				data = nil
+				marshal(map[string]any{
+					"type": "agent.messageChunk", "ts": ts,
+					"content": map[string]any{"type": "text", "text": block.Text},
+				})
 			}
 		}
-		return frames
 
 	case agentsdk.EventPermissionRequest:
 		pr := event.PermissionRequest
-		toolCall := map[string]any{
-			"toolCallId": pr.ID,
-			"title":      pr.Tool,
-			"kind":       pr.ToolKind,
-			"rawInput":   json.RawMessage(pr.Input),
-		}
 		options := make([]map[string]any, len(pr.Options))
 		for i, opt := range pr.Options {
 			options[i] = map[string]any{
 				"optionId": opt.ID, "name": opt.Name, "kind": opt.Kind,
 			}
 		}
-		data, err = agentsdk.PermissionRequestEnvelope(sessionID, toolCall, options)
+		marshal(map[string]any{
+			"type": "permission.request",
+			"toolCall": map[string]any{
+				"toolCallId": pr.ID, "title": pr.Tool,
+				"kind": pr.ToolKind, "rawInput": json.RawMessage(pr.Input),
+			},
+			"options": options,
+		})
 
 	case agentsdk.EventComplete:
 		stopReason := event.StopReason
 		if stopReason == "" {
 			stopReason = "end_turn"
 		}
-		data, err = agentsdk.TurnCompleteEnvelope(sessionID, stopReason)
+		marshal(map[string]any{
+			"type": "turn.complete", "ts": ts, "stopReason": stopReason,
+		})
 
 	case agentsdk.EventError:
 		msg := "unknown error"
 		if event.Error != nil {
 			msg = event.Error.Error()
 		}
-		data, err = agentsdk.ErrorEnvelope(sessionID, msg, "AGENT_ERROR")
+		marshal(map[string]any{
+			"type": "error", "message": msg, "code": "AGENT_ERROR",
+		})
 
 	case agentsdk.EventModeUpdate:
 		if event.SessionMeta != nil {
-			data, err = agentsdk.SessionModeUpdateEnvelope(sessionID,
-				event.SessionMeta.ModeID, json.RawMessage(event.SessionMeta.AvailableModes))
+			m := map[string]any{"type": "session.modeUpdate", "modeId": event.SessionMeta.ModeID}
+			if event.SessionMeta.AvailableModes != nil {
+				m["availableModes"] = json.RawMessage(event.SessionMeta.AvailableModes)
+			}
+			marshal(m)
 		}
 
 	case agentsdk.EventCommandsUpdate:
 		if event.SessionMeta != nil {
-			data, err = agentsdk.SessionCommandsUpdateEnvelope(sessionID,
-				json.RawMessage(event.SessionMeta.Commands))
+			marshal(map[string]any{
+				"type": "session.commandsUpdate", "commands": json.RawMessage(event.SessionMeta.Commands),
+			})
 		}
 
 	case agentsdk.EventModelsUpdate:
 		if event.SessionMeta != nil {
-			data, err = agentsdk.SessionModelsUpdateEnvelope(sessionID,
-				event.SessionMeta.ModelID, json.RawMessage(event.SessionMeta.AvailableModels))
+			m := map[string]any{"type": "session.modelsUpdate", "modelId": event.SessionMeta.ModelID}
+			if event.SessionMeta.AvailableModels != nil {
+				m["availableModels"] = json.RawMessage(event.SessionMeta.AvailableModels)
+			}
+			marshal(m)
 		}
 	}
 
-	if err == nil && data != nil {
-		frames = append(frames, data)
-	}
 	return frames
 }
