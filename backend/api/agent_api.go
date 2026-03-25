@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -125,8 +126,9 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 				sessionState.Mu.Lock()
 				sessionState.IsProcessing = false
 				sessionState.Mu.Unlock()
-				errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
-				if errBytes != nil {
+				if errBytes, err := json.Marshal(map[string]any{
+					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
+				}); err == nil {
 					sessionState.AppendAndBroadcast(errBytes)
 				}
 				return

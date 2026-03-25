@@ -382,8 +382,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
-					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to create agent session: "+err.Error(), "SESSION_ERROR")
-					if errBytes != nil {
+					if errBytes, err := json.Marshal(map[string]any{
+						"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
+					}); err == nil {
 						conn.Write(ctx, websocket.MessageText, errBytes)
 					}
 					continue
@@ -412,8 +413,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					sessionState.Mu.Lock()
 					sessionState.IsProcessing = false
 					sessionState.Mu.Unlock()
-					errBytes, _ := agentsdk.ErrorEnvelope(sessionID, "Failed to send message: "+err.Error(), "SEND_ERROR")
-					if errBytes != nil {
+					if errBytes, err := json.Marshal(map[string]any{
+						"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
+					}); err == nil {
 						sessionState.AppendAndBroadcast(errBytes)
 					}
 					return
