@@ -198,15 +198,8 @@ type ToolGroupComponent = FC<
 
 const ToolGroupImpl: FC<
   PropsWithChildren<{ startIndex: number; endIndex: number }>
-> = ({ children, startIndex, endIndex }) => {
-  const toolCount = endIndex - startIndex + 1;
-
-  return (
-    <ToolGroupRoot>
-      <ToolGroupTrigger count={toolCount} />
-      <ToolGroupContent>{children}</ToolGroupContent>
-    </ToolGroupRoot>
-  );
+> = ({ children }) => {
+  return <div className="flex flex-col gap-2">{children}</div>;
 };
 
 const ToolGroup = memo(ToolGroupImpl) as unknown as ToolGroupComponent;
