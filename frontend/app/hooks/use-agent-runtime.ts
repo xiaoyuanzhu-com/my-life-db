@@ -117,6 +117,17 @@ export function useAgentRuntime(options: {
     Map<string, { toolName: string; options: PermissionOption[] }>
   >(() => new Map())
 
+  // Reset all per-session state when switching sessions
+  const prevSessionIdRef = useRef(sessionId)
+  if (prevSessionIdRef.current !== sessionId) {
+    prevSessionIdRef.current = sessionId
+    setMessages([])
+    setIsRunning(false)
+    setSessionMeta({})
+    setPlanEntries([])
+    setPendingPermissions(new Map())
+  }
+
   // Whether the session is active (loaded via ACP + at least one prompt sent).
   // Populated from backend's session.info frame on WS connect (source of truth).
   // Inactive sessions never show "working"; active sessions rely on turn.complete.
@@ -152,9 +163,10 @@ export function useAgentRuntime(options: {
           const f = frame as UserMessageChunkFrame
           const text = f.content?.type === "text" ? f.content.text || "" : ""
 
-          // Skip system-injected messages (slash commands, task notifications, etc.)
-          // These contain only XML tags like <command-name>, <task-notification>, etc.
-          if (isSkippedXmlContent(text) || text.trimStart().startsWith("<task-notification>")) {
+          // Skip empty/whitespace-only messages (e.g., non-text content blocks,
+          // system-injected messages with no visible text) and system-injected
+          // messages (slash commands, task notifications containing only XML tags).
+          if (!text.trim() || isSkippedXmlContent(text) || text.trimStart().startsWith("<task-notification>")) {
             break
           }
 
@@ -223,6 +235,8 @@ export function useAgentRuntime(options: {
             // Active sessions use "running" (triggers WIP indicator);
             // inactive (replay) use "incomplete" (allows appending without triggering running).
             if (!last || last.status?.type === "complete") {
+              // Don't create a new assistant message from an empty text chunk
+              if (!chunk) return prev
               updated.push({
                 id: nextId(),
                 role: "assistant",
@@ -263,6 +277,8 @@ export function useAgentRuntime(options: {
             const last = findLastAssistant(updated)
 
             if (!last || last.status?.type === "complete") {
+              // Don't create a new assistant message from an empty thought chunk
+              if (!chunk) return prev
               updated.push({
                 id: nextId(),
                 role: "assistant",
