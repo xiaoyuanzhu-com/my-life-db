@@ -4,6 +4,7 @@ import { Header } from "~/components/header";
 import { AuthProvider } from "~/contexts/auth-context";
 import { FeatureFlagsProvider } from "~/contexts/feature-flags-context";
 import { Toaster } from "~/components/ui/sonner";
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { isNativeApp, nativeBridge, setupNativeListeners } from "~/lib/native-bridge";
 import { initLibraryRoot } from "~/lib/file-path-resolver";
 import "./globals.css";
@@ -69,6 +70,7 @@ export default function Root() {
 
   return (
     <FeatureFlagsProvider>
+      <TooltipProvider>
       {/* h-dvh is the sole height constraint — do NOT add min-h-screen.
           On iOS Safari 100vh > 100dvh (vh includes the URL bar), so min-h-screen
           would make the root taller than the visible viewport, creating a competing
@@ -84,6 +86,7 @@ export default function Root() {
         <ScrollRestoration />
         <Toaster position="bottom-right" richColors closeButton />
       </div>
+      </TooltipProvider>
     </FeatureFlagsProvider>
   );
 }
