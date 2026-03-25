@@ -804,8 +804,8 @@ export default function ClaudePage() {
   if (isNativeApp() && activeSessionId) {
     return (
       <AgentContextProvider value={agentContextValue}>
-        <AssistantRuntimeProvider key={activeSessionId} runtime={runtime}>
-          <div className="flex h-full min-w-0 animate-content-ready">
+        <AssistantRuntimeProvider runtime={runtime}>
+          <div className="flex h-full min-w-0">
             <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
               <AgentChat
                 sessionId={activeSessionId}
@@ -875,8 +875,8 @@ export default function ClaudePage() {
 
   return (
     <AgentContextProvider value={agentContextValue}>
-    <AssistantRuntimeProvider key={activeSessionId ?? "new"} runtime={runtime}>
-    <div className="flex h-full min-w-0 animate-content-ready">
+    <AssistantRuntimeProvider runtime={runtime}>
+    <div className="flex h-full min-w-0">
       {/* ── Desktop: Resizable sidebar + chat ── */}
       <div className="hidden md:flex md:flex-1 h-full min-w-0">
         {sessionSidebar ? (
