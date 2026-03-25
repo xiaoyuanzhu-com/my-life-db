@@ -741,6 +741,14 @@ export default function ClaudePage() {
       token: "",
       enabled: hasActiveSession,
       onSend: onSendForRuntime,
+      sessions,
+      activeSessionId,
+      onSwitchToThread: handleSelectSession,
+      onSwitchToNewThread: () => setActiveSessionId(null),
+      onRenameThread: updateSessionTitle,
+      onArchiveThread: archiveSession,
+      onUnarchiveThread: unarchiveSession,
+      onDeleteThread: deleteSession,
     })
 
   // Show loading state while checking authentication
