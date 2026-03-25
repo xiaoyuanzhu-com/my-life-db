@@ -34,6 +34,29 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
     copyToClipboard(code);
   };
 
+  // HTML blocks: render as sandboxed iframe preview instead of code header + block.
+  // The sibling <pre> is hidden via the [data-html-preview]+pre CSS selector.
+  if (language === "html" && code) {
+    const srcdoc = code.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return (
+      <div data-html-preview className="my-2 rounded-lg border border-border/50 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/50 text-xs">
+          <span className="font-medium text-muted-foreground">html preview</span>
+          <TooltipIconButton tooltip="Copy" onClick={onCopy}>
+            {!isCopied && <CopyIcon />}
+            {isCopied && <CheckIcon />}
+          </TooltipIconButton>
+        </div>
+        <iframe
+          srcDoc={srcdoc}
+          sandbox="allow-scripts"
+          className="w-full bg-white"
+          style={{ height: "60vh", border: "none" }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="aui-code-header-root mt-2.5 flex items-center justify-between rounded-t-lg border border-border/50 border-b-0 bg-muted/50 px-3 py-1.5 text-xs">
       <span className="aui-code-header-language font-medium text-muted-foreground lowercase">

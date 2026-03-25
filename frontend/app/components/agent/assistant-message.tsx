@@ -48,9 +48,6 @@ function AssistantTextPart({ text }: { text: string }) {
     <div className="group/text relative flex items-start gap-2">
       <MessageDot type="assistant" />
       <div className="flex-1 min-w-0 relative">
-        {/* TODO: add HTML iframe preview for lang="html" code blocks (custom markdown component override) */}
-        {/* TODO: wire preview-fullscreen.tsx into custom code block handler */}
-        {/* TODO: verify dark mode theme switching works with syntax highlighting */}
         <MarkdownText />
         {/* Copy button -- visible on hover, top-right */}
         <button

@@ -925,3 +925,8 @@ a.library-file-link:hover {
 .native-app .pb-safe {
   padding-bottom: 0;
 }
+
+/* Hide the <pre> code block when an HTML preview iframe is shown above it */
+[data-html-preview] + pre {
+  display: none;
+}
