@@ -48,6 +48,7 @@ export const Thread: FC = () => {
       <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
       <ThreadPrimitive.Viewport
         turnAnchor="top"
+        autoScroll
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-scroll scroll-smooth px-2 md:px-16 pt-4"
       >
         <AuiIf condition={(s) => s.thread.isEmpty}>
