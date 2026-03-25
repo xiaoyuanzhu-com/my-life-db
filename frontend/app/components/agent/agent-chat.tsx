@@ -9,7 +9,6 @@
 import { cn } from "~/lib/utils"
 import { Thread } from "~/components/assistant-ui/thread"
 
-// TODO: restore ConnectionStatusBanner
 // TODO: restore PlanView between messages and composer
 // TODO: restore AgentWIPIndicator
 // TODO: restore PendingPermissions above composer

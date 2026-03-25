@@ -22,11 +22,16 @@ import type { FC } from "react";
 import { createAssistantMessage } from "~/components/agent/assistant-message";
 import { UserMessage as AcpUserMessage } from "~/components/agent/user-message";
 import { acpToolsConfig } from "~/components/agent/tool-dispatch";
+import { ConnectionStatusBanner } from "~/components/agent/connection-status-banner";
+import { useAgentContext } from "~/components/agent/agent-context";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
+  const { connected } = useAgentContext();
+  const hasSession = useAuiState((s) => !s.thread.isEmpty);
+
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
@@ -36,6 +41,7 @@ export const Thread: FC = () => {
         ["--composer-padding" as string]: "10px",
       }}
     >
+      <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
