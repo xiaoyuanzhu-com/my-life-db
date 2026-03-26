@@ -47,11 +47,16 @@ const plugins = {
   renderers: [{ language: "html", component: HtmlRenderer }],
 };
 
+const controls = {
+  mermaid: false as const,
+};
+
 const MarkdownTextImpl = () => {
   const { text, status } = useMessagePartText();
   return (
     <Streamdown
       plugins={plugins}
+      controls={controls}
       isAnimating={status.type === "running"}
     >
       {text}
