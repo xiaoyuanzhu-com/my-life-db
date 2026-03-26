@@ -357,22 +357,41 @@ The backend uses structured logging via zerolog:
 
 ## Git Workflow
 
-**Always use worktrees for ANY task involving code.** Create the worktree FIRST — before reading, editing, building, or running any code. The main directory's files may be stale; never read or act on them. Use the `using-git-worktrees` skill to set one up — it handles directory selection, `.gitignore` verification, project setup, and baseline tests.
+**Local vs. remote environments (detect by platform: `darwin` = local, `linux` = remote):**
+- **Local (`darwin`/macOS):** Work directly in the main repo directory. Do NOT use worktrees — the user needs to test and review changes in-place before committing.
+- **Remote (`linux`/server):** Use git worktrees for isolation. Follow the worktree workflow below.
 
-**Project-specific rules that extend the skill:**
+**Common rules (both environments):**
 
-- **`git fetch origin` first — every time, no exceptions.** Branch from `origin/main`, not HEAD:
-  `git worktree add -b <branch> .worktrees/<name> origin/main`
-- **Main directory is off-limits** — only `git worktree add/remove` there; everything else (reads, edits, builds) happens inside the worktree.
-- **Sub-agents get the worktree path** — never pass the main repo path.
+- **`git fetch origin` first — every time, no exceptions.** Branch from `origin/main`, not HEAD.
 - **Never auto-commit or auto-push** — when changes are ready (tests pass, work complete), prompt: *"Ready to commit, push, and clean up?"* so the user can reply **"go"** to confirm. Consent applies to the current batch only; after each push + clean up cycle, wait for the user's next instruction.
 - **Always rebase, never merge** — push `<branch>:main` directly; no PRs, no merge commits.
 
+### Local workflow (direct changes in main repo)
+
+    # Work directly in the repo
+    cd <repo-root>
+    # ... edit, build, test ...
+
+    # When user approves commit:
+    git checkout -b <branch>
+    git add <files> && git commit
+
+    # Push + clean up
+    git fetch origin && git rebase origin/main
+    git push origin <branch>:main
+    git checkout main && git pull --rebase origin main
+    git branch -d <branch>
+
+### Remote workflow (worktrees)
+
+Use the `using-git-worktrees` skill to set up. Create the worktree FIRST — before reading, editing, building, or running any code.
+
+- **Main directory is off-limits** — only `git worktree add/remove` there; everything else happens inside the worktree.
+- **Sub-agents get the worktree path** — never pass the main repo path.
+
 **Each worktree has one lifecycle: create → work → push → clean up.**
 A worktree may accumulate multiple commits before pushing. After every push, clean up immediately.
-To continue work in the same session, start a **new worktree** — the full cycle (including commit/push consent) resets.
-
-**Workflow (commit only when user asks; push + sync + clean up after every push):**
 
     # --- start of work ---
     cd <repo-root>

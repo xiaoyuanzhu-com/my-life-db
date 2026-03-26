@@ -21,6 +21,8 @@ import "encoding/json"
 //
 //   - rawOutput: large tool output (e.g. file reads, command output).
 //     The frontend reads results from tool_call_update.rawOutput instead.
+//     Exception: rawOutput is PRESERVED for small-result tools (WebSearch,
+//     WebFetch, ToolSearch) whose renderers need the content.
 //
 // Preserved fields (used by frontend renderers):
 //
@@ -55,8 +57,9 @@ func StripHeavyToolCallContent(data []byte) []byte {
 		stripped = true
 	}
 
-	// Strip rawOutput (large tool output like file reads, command results)
-	if _, hasRawOutput := msg["rawOutput"]; hasRawOutput {
+	// Strip rawOutput (large tool output like file reads, command results).
+	// Preserve for small-result tools whose frontend renderers need the content.
+	if _, hasRawOutput := msg["rawOutput"]; hasRawOutput && !preserveRawOutput(msg) {
 		delete(msg, "rawOutput")
 		stripped = true
 	}
@@ -78,6 +81,26 @@ func StripHeavyToolCallContent(data []byte) []byte {
 		return data
 	}
 	return result
+}
+
+// preserveRawOutput returns true for tools whose rawOutput is small and needed
+// by the frontend renderer (e.g. WebSearch results, fetched page content).
+// Checks _meta.claudeCode.toolName which the CLI populates on every frame.
+func preserveRawOutput(msg map[string]interface{}) bool {
+	meta, _ := msg["_meta"].(map[string]interface{})
+	if meta == nil {
+		return false
+	}
+	cc, _ := meta["claudeCode"].(map[string]interface{})
+	if cc == nil {
+		return false
+	}
+	toolName, _ := cc["toolName"].(string)
+	switch toolName {
+	case "WebSearch", "WebFetch", "ToolSearch":
+		return true
+	}
+	return false
 }
 
 // StripHeavyPermissionContent strips large payloads from permission.request
