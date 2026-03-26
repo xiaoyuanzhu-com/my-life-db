@@ -1,12 +1,12 @@
 /**
  * SearchTool -- renderer for ACP ToolKind "search" (grep/glob file searches)
  *
- * Matches the old Claude Code grep-tool.tsx + glob-tool.tsx pattern:
- * - Header: MessageDot + "Search" (bold) + pattern/query (muted)
+ * - Header: MessageDot + "Search" (bold) + pattern/query (muted) + chevron
  * - Summary line with tree connector: "Found in N file(s)" or "No matches found"
- * - NOT expandable (matching old behavior)
+ * - Expandable: click header to show full result content
  * - Error with tree connector in destructive color
  */
+import { useState } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
@@ -62,6 +62,19 @@ function getSearchLabel(toolName: string): string {
   return "Search"
 }
 
+/** Extract result content as string */
+function extractResultContent(result: unknown): string | null {
+  if (result == null) return null
+  if (typeof result === "string") return result
+  if (typeof result === "object" && result !== null) {
+    const r = result as Record<string, unknown>
+    if (typeof r.rawOutput === "string") return r.rawOutput
+    if (typeof r.content === "string") return r.content
+    if (typeof r.result === "string") return r.result
+  }
+  return null
+}
+
 export function SearchToolRenderer({
   toolName,
   args,
@@ -71,6 +84,7 @@ export function SearchToolRenderer({
   const isComplete = status.type === "complete"
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action" || status.type === "incomplete"
+  const [expanded, setExpanded] = useState(false)
 
   const label = getSearchLabel(toolName)
   const isToolSearch = label === "ToolSearch"
@@ -82,6 +96,9 @@ export function SearchToolRenderer({
   })()
   const fileCount = isToolSearch ? null : extractFileCount(result)
   const toolNames = isToolSearch ? extractToolNames(result) : null
+
+  const resultContent = extractResultContent(result)
+  const hasContent = !!resultContent
 
   // Determine dot type
   const dotType = isError
@@ -110,8 +127,11 @@ export function SearchToolRenderer({
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: dot + label bold + pattern */}
-      <div className="flex items-start gap-2">
+      {/* Header: dot + label bold + pattern + chevron */}
+      <button
+        onClick={() => hasContent && setExpanded(!expanded)}
+        className={`flex items-start gap-2 w-full text-left ${hasContent ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+      >
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-foreground">
@@ -122,8 +142,13 @@ export function SearchToolRenderer({
               {searchQuery}
             </span>
           )}
+          {hasContent && (
+            <span className="ml-2 select-none text-[11px] text-muted-foreground/60">
+              {expanded ? "\u25BE" : "\u25B8"}
+            </span>
+          )}
         </div>
-      </div>
+      </button>
 
       {/* Summary: tree connector */}
       {summaryLine && (
@@ -134,6 +159,18 @@ export function SearchToolRenderer({
           </span>
         </div>
       )}
+
+      {/* Expanded content - smooth CSS grid collapse */}
+      <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
+        <div className="collapsible-grid-content">
+          <div
+            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 text-muted-foreground"
+            style={{ maxHeight: "60vh" }}
+          >
+            {resultContent}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
