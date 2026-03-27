@@ -79,10 +79,11 @@ ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
 # Node.js runtime (required for ACP agent ecosystem)
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
-USER 1000
 
-# ACP agent binaries
+# ACP agent binaries (must install as root for global npm path)
 RUN npm install -g @zed-industries/claude-agent-acp
+
+USER 1000
 
 # Environment variables
 ENV NODE_ENV=production
