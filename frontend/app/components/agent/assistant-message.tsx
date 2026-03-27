@@ -86,6 +86,27 @@ function StreamingCursor() {
   )
 }
 
+/** Error banner shown when the message ended with an error */
+function MessageError() {
+  const messageState = useMessage()
+  const status = messageState.status
+  if (status?.type !== "incomplete" || status.reason !== "error") return null
+
+  const errorText =
+    typeof status.error === "string"
+      ? status.error
+      : status.error
+        ? JSON.stringify(status.error)
+        : "Unknown error"
+
+  return (
+    <div className="mt-2 flex items-start gap-2">
+      <MessageDot type="tool-failed" />
+      <p className="text-sm text-destructive">{errorText}</p>
+    </div>
+  )
+}
+
 export function createAssistantMessage(toolsConfig: AssistantMessageProps["toolsConfig"]) {
   return function AssistantMessage() {
     return (
@@ -103,6 +124,7 @@ export function createAssistantMessage(toolsConfig: AssistantMessageProps["tools
             />
           </div>
           <StreamingCursor />
+          <MessageError />
         </div>
       </MessagePrimitive.Root>
     )
