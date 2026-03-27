@@ -626,6 +626,7 @@ export default function ClaudePage() {
         lastUserActivity: Date.now(),
         sessionState: 'idle',
         permissionMode: newSessionPermissionMode,
+        agentType: session.agentType ?? newSessionAgentType,
       }
 
       setSessions((prevSessions) => {
@@ -734,8 +735,12 @@ export default function ClaudePage() {
   // wraps all AgentChat instances. The key on the provider forces a remount
   // on session switch, preserving the original reset behavior.
   const hasActiveSession = Boolean(activeSessionId)
+  const activeSessionAgentType =
+    effectiveActiveSession?.agentType === 'codex' || effectiveActiveSession?.agentType === 'claude_code'
+      ? effectiveActiveSession.agentType
+      : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -789,11 +794,14 @@ export default function ClaudePage() {
     onWorkingDirChange: setNewSessionWorkingDir,
     permissionMode: newSessionPermissionMode,
     onPermissionModeChange: (mode: string) => setNewSessionPermissionMode(mode as PermissionMode),
-    agentType: newSessionAgentType,
-    onAgentTypeChange: (type: string) => setNewSessionAgentType(type as AgentType),
+    agentType: activeSessionAgentType ?? newSessionAgentType,
+    onAgentTypeChange: hasActiveSession
+      ? undefined
+      : (type: string) => setNewSessionAgentType(type as AgentType),
     sessionCommands: sessionMeta?.commands,
     hasActiveSession,
     historyLoadError,
+    sessionError,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

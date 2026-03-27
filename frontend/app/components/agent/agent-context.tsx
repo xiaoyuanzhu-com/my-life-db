@@ -38,6 +38,8 @@ export interface AgentContextValue {
   hasActiveSession?: boolean
   /** Non-null when session history failed to load (e.g., after server restart) */
   historyLoadError?: string | null
+  /** Non-null when a live session failed before any message rendered */
+  sessionError?: string | null
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

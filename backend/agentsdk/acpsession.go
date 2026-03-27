@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -33,8 +34,8 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 	// Build command
 	cmd := exec.CommandContext(ctx, agentCfg.Command, agentCfg.Args...)
 
-	// Set environment: inherit current env + merge configured env
-	cmd.Env = os.Environ()
+	// Set environment: optionally isolate from the parent process, then merge configured env.
+	cmd.Env = baseCommandEnv(agentCfg.CleanEnv)
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -221,6 +222,9 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 	}
 	s.mu.Unlock()
 
+	// Suppress ACP's user_message_chunk echo — the host synthesizes its own.
+	s.client.suppressUserMsg.Store(true)
+
 	// Channel for synthetic frames only (metadata, turn.complete, errors).
 	// ACP SessionUpdate frames go through onFrame directly — no temporary channel.
 	events := make(chan []byte, 256)
@@ -315,6 +319,9 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 		}
 	}
 	s.mu.Unlock()
+
+	// Allow ACP's user_message_chunk through — LoadSession replays historical messages.
+	s.client.suppressUserMsg.Store(false)
 
 	log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
 
@@ -433,4 +440,47 @@ func safeImplName(impl *acp.Implementation) string {
 		return "<unknown>"
 	}
 	return impl.Name
+}
+
+func baseCommandEnv(clean bool) []string {
+	if !clean {
+		return os.Environ()
+	}
+
+	keepExact := map[string]bool{
+		"HOME":          true,
+		"PATH":          true,
+		"SHELL":         true,
+		"TERM":          true,
+		"TMPDIR":        true,
+		"USER":          true,
+		"LOGNAME":       true,
+		"LANG":          true,
+		"COLORTERM":     true,
+		"NO_COLOR":      true,
+		"SSH_AUTH_SOCK": true,
+	}
+	keepPrefixes := []string{
+		"LC_",
+		"XDG_",
+	}
+
+	base := make([]string, 0, 16)
+	for _, entry := range os.Environ() {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if keepExact[key] {
+			base = append(base, entry)
+			continue
+		}
+		for _, prefix := range keepPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				base = append(base, entry)
+				break
+			}
+		}
+	}
+	return base
 }

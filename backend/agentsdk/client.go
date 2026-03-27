@@ -53,8 +53,8 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 		return nil, err
 	}
 
-	// Merge env vars (defaults + per-call)
-	env := c.MergeEnv(config)
+	// Merge env vars (global defaults + agent defaults + per-call)
+	env := c.MergeEnv(agentCfg, config)
 
 	// Spawn agent process and create ACP session
 	session, err := spawnACPSession(ctx, agentCfg, config, env)
@@ -184,9 +184,12 @@ func (c *Client) getAgent(agent AgentType) (AgentConfig, error) {
 }
 
 // MergeEnv merges default env with per-call env. Per-call takes precedence.
-func (c *Client) MergeEnv(config SessionConfig) map[string]string {
+func (c *Client) MergeEnv(agentCfg AgentConfig, config SessionConfig) map[string]string {
 	merged := make(map[string]string)
 	for k, v := range c.defaults.Env {
+		merged[k] = v
+	}
+	for k, v := range agentCfg.Env {
 		merged[k] = v
 	}
 	for k, v := range config.Env {

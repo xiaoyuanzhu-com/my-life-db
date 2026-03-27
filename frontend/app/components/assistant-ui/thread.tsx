@@ -33,15 +33,16 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { connected, planEntries, pendingPermissions, hasActiveSession, historyLoadError } = useAgentContext();
+  const { connected, planEntries, pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.
   // Covers both "WS connecting" and "WS connected, replay in progress".
   // Stop loading if the backend reported that history loading failed.
-  const isLoadingSession = hasActiveSession && !hasSession && !historyLoadError;
+  const isLoadingSession = hasActiveSession && !hasSession && !historyLoadError && !sessionError;
   const isHistoryError = hasActiveSession && !hasSession && !!historyLoadError;
+  const isSessionError = hasActiveSession && !hasSession && !!sessionError;
 
   return (
     <ThreadPrimitive.Root
@@ -62,6 +63,8 @@ export const Thread: FC = () => {
           <ThreadLoading />
         ) : isHistoryError ? (
           <ThreadHistoryError message={historyLoadError!} />
+        ) : isSessionError ? (
+          <ThreadSessionError message={sessionError!} />
         ) : (
           <AuiIf condition={(s) => s.thread.isEmpty}>
             <ThreadWelcome />
@@ -179,6 +182,16 @@ const ThreadHistoryError: FC<{ message: string }> = ({ message }) => {
   );
 };
 
+const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
+  return (
+    <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center gap-2">
+      <p className="text-muted-foreground text-sm">Session failed</p>
+      <p className="text-muted-foreground/60 text-xs max-w-sm text-center break-words">{message}</p>
+      <p className="text-muted-foreground/60 text-xs">You can start a new session or retry with a new message.</p>
+    </div>
+  );
+};
+
 const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
@@ -195,6 +208,7 @@ const Composer: FC = () => {
     permissionMode, onPermissionModeChange,
     agentType, onAgentTypeChange,
     sessionCommands,
+    hasActiveSession,
   } = useAgentContext();
 
   return (
@@ -218,8 +232,12 @@ const Composer: FC = () => {
             {workingDir !== undefined && onWorkingDirChange && (
               <FolderPicker value={workingDir} onChange={onWorkingDirChange} />
             )}
-            {agentType !== undefined && onAgentTypeChange && (
-              <AgentTypeSelector value={agentType as AgentType} onChange={(t) => onAgentTypeChange(t)} />
+            {agentType !== undefined && (
+              <AgentTypeSelector
+                value={agentType as AgentType}
+                onChange={(t) => onAgentTypeChange?.(t)}
+                disabled={!onAgentTypeChange || hasActiveSession}
+              />
             )}
             {permissionMode !== undefined && onPermissionModeChange && (
               <PermissionModeSelector value={permissionMode as PermissionMode} onChange={(m) => onPermissionModeChange(m)} />

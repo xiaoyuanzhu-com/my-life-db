@@ -118,6 +118,8 @@ export function useAgentRuntime(options: {
   >(() => new Map())
   // Set when backend signals history loading is complete but no messages arrived
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
+  // Set when a live session errors before any message can render
+  const [sessionError, setSessionError] = useState<string | null>(null)
 
   // Reset all per-session state when switching sessions
   const prevSessionIdRef = useRef(sessionId)
@@ -129,6 +131,7 @@ export function useAgentRuntime(options: {
     setPlanEntries([])
     setPendingPermissions(new Map())
     setHistoryLoadError(null)
+    setSessionError(null)
   }
 
   // Whether the session is active (loaded via ACP + at least one prompt sent).
@@ -172,6 +175,7 @@ export function useAgentRuntime(options: {
         }
 
         case "user_message_chunk": {
+          setSessionError(null)
           // ACP native: content is a single content block, not an array
           const f = frame as UserMessageChunkFrame
           const text = f.content?.type === "text" ? f.content.text || "" : ""
@@ -235,6 +239,7 @@ export function useAgentRuntime(options: {
         }
 
         case "agent_message_chunk": {
+          setSessionError(null)
           const f = frame as AgentMessageChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
@@ -282,6 +287,7 @@ export function useAgentRuntime(options: {
         }
 
         case "agent_thought_chunk": {
+          setSessionError(null)
           const f = frame as AgentThoughtChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
@@ -326,6 +332,7 @@ export function useAgentRuntime(options: {
         }
 
         case "tool_call": {
+          setSessionError(null)
           const f = frame as AgentToolCallFrame
           const rawInput = (f.rawInput ?? {}) as Record<string, unknown>
           // Include kind from the frame so tool renderers can dispatch on it.
@@ -542,6 +549,9 @@ export function useAgentRuntime(options: {
         case "error": {
           const f = frame as ErrorFrame
           setIsRunning(false)
+          if (messagesRef.current.length === 0) {
+            setSessionError(f.message)
+          }
           // Clear all pending permissions on error — the turn is done
           setPendingPermissions((prev) => {
             if (prev.size === 0) return prev
@@ -768,6 +778,7 @@ export function useAgentRuntime(options: {
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
     historyLoadError,
+    sessionError,
   }
 }
 

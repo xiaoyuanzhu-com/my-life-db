@@ -41,7 +41,7 @@ func TestClient_MergeEnv(t *testing.T) {
 		AgentConfig{Type: AgentClaudeCode, Name: "Claude Code", Command: "claude-agent-acp"},
 	)
 
-	merged := client.MergeEnv(SessionConfig{
+	merged := client.MergeEnv(AgentConfig{Type: AgentClaudeCode, Name: "Claude Code", Command: "claude-agent-acp"}, SessionConfig{
 		Agent: AgentClaudeCode,
 		Env:   map[string]string{"EXTRA": "value"},
 	})
@@ -63,7 +63,7 @@ func TestClient_MergeEnv_PerCallOverrides(t *testing.T) {
 		AgentConfig{Type: AgentClaudeCode, Name: "Claude Code", Command: "claude-agent-acp"},
 	)
 
-	merged := client.MergeEnv(SessionConfig{
+	merged := client.MergeEnv(AgentConfig{Type: AgentClaudeCode, Name: "Claude Code", Command: "claude-agent-acp"}, SessionConfig{
 		Agent: AgentClaudeCode,
 		Env:   map[string]string{"KEY": "override"},
 	})
@@ -76,9 +76,27 @@ func TestClient_MergeEnv_PerCallOverrides(t *testing.T) {
 func TestClient_MergeEnv_NilEnvs(t *testing.T) {
 	client := NewClient(SessionConfig{})
 
-	merged := client.MergeEnv(SessionConfig{})
+	merged := client.MergeEnv(AgentConfig{}, SessionConfig{})
 	if len(merged) != 0 {
 		t.Errorf("expected empty map, got %d entries", len(merged))
+	}
+}
+
+func TestClient_MergeEnv_AgentDefaults(t *testing.T) {
+	client := NewClient(SessionConfig{})
+
+	merged := client.MergeEnv(
+		AgentConfig{
+			Type:    AgentCodex,
+			Name:    "Codex",
+			Command: "codex-acp",
+			Env:     map[string]string{"AGENT_ONLY": "1"},
+		},
+		SessionConfig{},
+	)
+
+	if merged["AGENT_ONLY"] != "1" {
+		t.Errorf("missing agent default AGENT_ONLY, got %q", merged["AGENT_ONLY"])
 	}
 }
 

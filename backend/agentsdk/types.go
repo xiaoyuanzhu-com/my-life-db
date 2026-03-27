@@ -30,9 +30,11 @@ const (
 // AgentConfig registers an agent binary with the client.
 type AgentConfig struct {
 	Type    AgentType
-	Name    string   // display name: "Claude Code"
-	Command string   // binary: "claude-agent-acp"
-	Args    []string // default CLI args
+	Name    string            // display name: "Claude Code"
+	Command string            // binary: "claude-agent-acp"
+	Args    []string          // default CLI args
+	Env     map[string]string // agent-specific default env vars
+	CleanEnv bool             // when true, do not inherit the full parent environment
 }
 
 // SessionConfig configures an interactive agent session.

@@ -23,9 +23,8 @@ const AGENT_TYPES: AgentTypeOption[] = [
   {
     value: 'codex',
     label: 'Codex',
-    description: 'Coming soon',
+    description: 'OpenAI Codex via ACP',
     icon: <Box className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
-    disabled: true,
   },
 ]
 
@@ -92,7 +91,7 @@ export function AgentTypeSelector({
               className={cn(
                 'w-full px-2 py-1.5 rounded-md text-left',
                 'hover:bg-accent transition-colors',
-                'focus:outline-none focus:bg-accent',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
                 'flex items-start gap-2',
                 value === type.value && 'bg-accent',
                 type.disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
