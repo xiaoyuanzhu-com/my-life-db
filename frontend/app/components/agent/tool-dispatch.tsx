@@ -10,6 +10,7 @@ import { ReadToolRenderer } from "./tools/read-tool"
 import { EditToolRenderer } from "./tools/edit-tool"
 import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
+import { SkillToolRenderer } from "./tools/skill-tool"
 import { ToolFallback } from "~/components/assistant-ui/tool-fallback"
 
 /**
@@ -71,6 +72,9 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   // Move tool
   if (lower.startsWith("move") || lower === "move") return "move"
 
+  // Skill tool
+  if (lower.startsWith("skill") || lower === "skill") return "skill"
+
   // Agent/Task/TodoWrite -- intentionally "other" (use generic renderer)
   return "other"
 }
@@ -93,6 +97,8 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
       return <SearchToolRenderer {...props} />
     case "fetch":
       return <FetchToolRenderer {...props} />
+    case "skill":
+      return <SkillToolRenderer {...props} />
     // TODO: restore tree connector symbols (└─ ├─) for visual hierarchy
     // TODO: restore tool kind label with title-cased name
     default:
