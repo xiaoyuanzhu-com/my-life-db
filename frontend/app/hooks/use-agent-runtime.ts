@@ -731,19 +731,12 @@ export function useAgentRuntime(options: {
             // in current assistant-ui API. Pin version and watch for changes.
             threadId: activeSessionId ?? undefined,
             threads: sessions
-              .filter(s => s.sessionState !== 'archived')
               .map(s => ({
                 status: "regular" as const,
                 id: s.id,
                 title: s.summary ?? s.title,
               })),
-            archivedThreads: sessions
-              .filter(s => s.sessionState === 'archived')
-              .map(s => ({
-                status: "archived" as const,
-                id: s.id,
-                title: s.summary ?? s.title,
-              })),
+            archivedThreads: [],
             onSwitchToNewThread: onSwitchToNewThread ?? (() => {}),
             onSwitchToThread: onSwitchToThread ?? (() => {}),
             onRename: onRenameThread,

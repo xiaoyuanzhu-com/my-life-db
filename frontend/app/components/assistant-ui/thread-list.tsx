@@ -9,14 +9,12 @@ import {
 import {
   ArchiveIcon,
   MoreHorizontalIcon,
-  PlusIcon,
 } from "lucide-react";
 import type { FC } from "react";
 
 export const ThreadList: FC = () => {
   return (
-    <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 p-2 overflow-y-auto">
-      <ThreadListNew />
+    <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
         <ThreadListSkeleton />
       </AuiIf>
@@ -29,19 +27,6 @@ export const ThreadList: FC = () => {
   );
 };
 
-const ThreadListNew: FC = () => {
-  return (
-    <ThreadListPrimitive.New asChild>
-      <Button
-        variant="outline"
-        className="aui-thread-list-new h-8 justify-start gap-2 rounded-md px-2.5 text-[13px] hover:bg-muted data-active:bg-muted"
-      >
-        <PlusIcon className="size-3.5" />
-        New Chat
-      </Button>
-    </ThreadListPrimitive.New>
-  );
-};
 
 const ThreadListSkeleton: FC = () => {
   return (
