@@ -33,7 +33,7 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { connected, planEntries, pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
+  const { planEntries, pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
@@ -53,7 +53,6 @@ export const Thread: FC = () => {
         ["--composer-padding" as string]: "8px",
       }}
     >
-      <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         autoScroll
@@ -200,12 +199,14 @@ const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasTouch = useHasTouch();
   const {
+    connected,
     workingDir, onWorkingDirChange,
     permissionMode, onPermissionModeChange,
     agentType, onAgentTypeChange,
     sessionCommands,
     hasActiveSession,
   } = useAgentContext();
+  const hasSession = useAuiState((s) => !s.thread.isEmpty);
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
@@ -213,61 +214,64 @@ const Composer: FC = () => {
       <FileTagPopover textareaRef={textareaRef} />
       <div
         data-slot="composer-shell"
-        className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20"
+        className="flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20"
       >
-        <ComposerPrimitive.Input
-          ref={textareaRef}
-          placeholder="Message..."
-          className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
-          rows={1}
-          autoFocus={!hasTouch}
-          aria-label="Message input"
-        />
-        <div className="aui-composer-action-wrapper relative flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            {workingDir !== undefined && onWorkingDirChange && (
-              <FolderPicker value={workingDir} onChange={onWorkingDirChange} />
-            )}
-            {agentType !== undefined && (
-              <AgentTypeSelector
-                value={agentType as AgentType}
-                onChange={(t) => onAgentTypeChange?.(t)}
-                disabled={!onAgentTypeChange || hasActiveSession}
-              />
-            )}
-            {permissionMode !== undefined && onPermissionModeChange && (
-              <PermissionModeSelector value={permissionMode as PermissionMode} onChange={(m) => onPermissionModeChange(m)} />
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <AuiIf condition={(s) => !s.thread.isRunning}>
-              <ComposerPrimitive.Send asChild>
-                <TooltipIconButton
-                  tooltip="Send message"
-                  side="bottom"
-                  type="button"
-                  variant="default"
-                  size="icon"
-                  className="aui-composer-send size-8 rounded-full"
-                  aria-label="Send message"
-                >
-                  <ArrowUpIcon className="aui-composer-send-icon size-4" />
-                </TooltipIconButton>
-              </ComposerPrimitive.Send>
-            </AuiIf>
-            <AuiIf condition={(s) => s.thread.isRunning}>
-              <ComposerPrimitive.Cancel asChild>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="icon"
-                  className="aui-composer-cancel size-8 rounded-full"
-                  aria-label="Stop generating"
-                >
-                  <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-                </Button>
-              </ComposerPrimitive.Cancel>
-            </AuiIf>
+        <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
+        <div className="flex flex-col gap-2 p-(--composer-padding)">
+          <ComposerPrimitive.Input
+            ref={textareaRef}
+            placeholder="Message..."
+            className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
+            rows={1}
+            autoFocus={!hasTouch}
+            aria-label="Message input"
+          />
+          <div className="aui-composer-action-wrapper relative flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              {workingDir !== undefined && onWorkingDirChange && (
+                <FolderPicker value={workingDir} onChange={onWorkingDirChange} />
+              )}
+              {agentType !== undefined && (
+                <AgentTypeSelector
+                  value={agentType as AgentType}
+                  onChange={(t) => onAgentTypeChange?.(t)}
+                  disabled={!onAgentTypeChange || hasActiveSession}
+                />
+              )}
+              {permissionMode !== undefined && onPermissionModeChange && (
+                <PermissionModeSelector value={permissionMode as PermissionMode} onChange={(m) => onPermissionModeChange(m)} />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <AuiIf condition={(s) => !s.thread.isRunning}>
+                <ComposerPrimitive.Send asChild>
+                  <TooltipIconButton
+                    tooltip="Send message"
+                    side="bottom"
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="aui-composer-send size-8 rounded-full"
+                    aria-label="Send message"
+                  >
+                    <ArrowUpIcon className="aui-composer-send-icon size-4" />
+                  </TooltipIconButton>
+                </ComposerPrimitive.Send>
+              </AuiIf>
+              <AuiIf condition={(s) => s.thread.isRunning}>
+                <ComposerPrimitive.Cancel asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="aui-composer-cancel size-8 rounded-full"
+                    aria-label="Stop generating"
+                  >
+                    <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+                  </Button>
+                </ComposerPrimitive.Cancel>
+              </AuiIf>
+            </div>
           </div>
         </div>
       </div>

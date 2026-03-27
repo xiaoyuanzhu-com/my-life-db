@@ -1,12 +1,11 @@
 /**
  * ConnectionStatusBanner -- shows connection state for the ACP WebSocket.
  *
- * Matches the old Claude Code connection-status-banner.tsx pattern:
- * - CSS grid reveal/conceal animation (not instant show/hide)
- * - Muted text, proper icons (Loader2 spinning, WifiOff, Check)
- * - Auto-dismiss reconnected after 1.5s
+ * Renders inside the composer shell (attached to top of input box).
+ * Uses banner-grid CSS for slide-open/slide-closed animations.
+ * Optimistic no-show: hidden by default, grace period before showing disconnected.
  */
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Loader2, WifiOff, Check } from "lucide-react"
 import { cn } from "~/lib/utils"
 
@@ -16,7 +15,10 @@ interface ConnectionStatusBannerProps {
   hasSession: boolean
 }
 
-type BannerState = "connecting" | "disconnected" | "connected" | "hidden"
+type BannerState = "disconnected" | "connected" | "hidden"
+
+/** Grace period (ms) before showing disconnected banner — avoids flash on brief drops */
+const DISCONNECT_GRACE_MS = 2000
 
 export function ConnectionStatusBanner({
   connected,
@@ -26,77 +28,91 @@ export function ConnectionStatusBanner({
   const [isDismissing, setIsDismissing] = useState(false)
   const wasConnected = useRef(false)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTimers = useCallback(() => {
+    if (dismissTimer.current) {
+      clearTimeout(dismissTimer.current)
+      dismissTimer.current = null
+    }
+    if (graceTimer.current) {
+      clearTimeout(graceTimer.current)
+      graceTimer.current = null
+    }
+  }, [])
 
   useEffect(() => {
+    // Clear grace timer on every connection state change
+    if (graceTimer.current) {
+      clearTimeout(graceTimer.current)
+      graceTimer.current = null
+    }
+
     if (!hasSession) {
       setState("hidden")
       setIsDismissing(false)
+      clearTimers()
       return
     }
 
     if (connected) {
       if (wasConnected.current) {
-        // Was disconnected, now reconnected -- show success briefly
+        // Was disconnected, now reconnected — show "Connected." briefly
         setState("connected")
         setIsDismissing(false)
+        if (dismissTimer.current) clearTimeout(dismissTimer.current)
         dismissTimer.current = setTimeout(() => {
           setIsDismissing(true)
-          // After conceal animation completes, hide completely
-          setTimeout(() => {
-            setState("hidden")
-            setIsDismissing(false)
-          }, 200)
+          // onTransitionEnd will set state to hidden
         }, 1500)
       } else {
-        // First connect -- no banner needed
+        // First connect — no banner needed (optimistic)
         setState("hidden")
       }
       wasConnected.current = true
     } else {
       if (wasConnected.current) {
-        // Was connected, now disconnected
-        setState("disconnected")
-        setIsDismissing(false)
-      } else {
-        // Still trying to connect for the first time
-        setState("connecting")
-        setIsDismissing(false)
+        // Was connected, now disconnected — wait grace period before showing
+        graceTimer.current = setTimeout(() => {
+          setState("disconnected")
+          setIsDismissing(false)
+        }, DISCONNECT_GRACE_MS)
       }
+      // First-time connecting: stay hidden (optimistic no-show)
     }
 
-    return () => {
-      if (dismissTimer.current) {
-        clearTimeout(dismissTimer.current)
-      }
+    return clearTimers
+  }, [connected, hasSession, clearTimers])
+
+  const handleTransitionEnd = useCallback((e: React.TransitionEvent) => {
+    if (e.propertyName === "grid-template-rows" && isDismissing) {
+      setState("hidden")
+      setIsDismissing(false)
     }
-  }, [connected, hasSession])
+  }, [isDismissing])
 
   if (state === "hidden") return null
+
+  const isReconnected = state === "connected"
 
   let icon: React.ReactNode
   let text: string
 
-  switch (state) {
-    case "connecting":
-      icon = <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-      text = "Connecting..."
-      break
-    case "disconnected":
-      icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />
-      text = "Disconnected."
-      break
-    case "connected":
-      icon = <Check className="h-3.5 w-3.5 shrink-0" />
-      text = "Connected."
-      break
+  if (isReconnected) {
+    icon = <Check className="h-3.5 w-3.5 shrink-0" />
+    text = "Connected."
+  } else {
+    icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />
+    text = "Disconnected."
   }
 
   return (
     <div
-      className={cn("collapsible-grid", isDismissing && "collapsed")}
+      className={cn("banner-grid", isDismissing && "concealing")}
+      onTransitionEnd={handleTransitionEnd}
     >
-      <div className="collapsible-grid-content">
-        <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-muted-foreground border-b border-border">
+      <div className="banner-grid-content">
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-muted-foreground border-b border-border">
           {icon}
           <span>{text}</span>
         </div>
