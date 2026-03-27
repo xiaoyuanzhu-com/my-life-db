@@ -281,19 +281,19 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 		})
 
-		// After history load attempt, if still no messages, notify the client
-		// so the frontend can exit the loading state.
-		if len(sessionState.GetRecentMessages(0)) == 0 {
-			payload := map[string]any{
+		// After history load attempt, notify the client if there was an error
+		// so the frontend can exit the loading state. Control frames like
+		// available_commands_update may arrive before the error, so check
+		// the error flag rather than message count.
+		sessionState.Mu.RLock()
+		histErr := sessionState.HistoryError
+		sessionState.Mu.RUnlock()
+		if histErr != "" {
+			if frame, err := json.Marshal(map[string]any{
 				"type":  "session.historyDone",
 				"empty": true,
-			}
-			sessionState.Mu.RLock()
-			if sessionState.HistoryError != "" {
-				payload["error"] = sessionState.HistoryError
-			}
-			sessionState.Mu.RUnlock()
-			if frame, err := json.Marshal(payload); err == nil {
+				"error": histErr,
+			}); err == nil {
 				_ = conn.Write(ctx, websocket.MessageText, frame)
 			}
 		}
