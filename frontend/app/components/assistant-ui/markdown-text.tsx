@@ -51,12 +51,21 @@ const controls = {
   mermaid: false as const,
 };
 
+const mermaidOptions = {
+  config: {
+    flowchart: { nodeSpacing: 80, rankSpacing: 80, padding: 20 },
+    sequence: { actorMargin: 80, messageMargin: 50 },
+    fontSize: 18,
+  },
+};
+
 const MarkdownTextImpl = () => {
   const { text, status } = useMessagePartText();
   return (
     <Streamdown
       plugins={plugins}
       controls={controls}
+      mermaid={mermaidOptions}
       isAnimating={status.type === "running"}
     >
       {text}

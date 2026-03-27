@@ -646,6 +646,10 @@
   display: none !important;
 }
 
+[data-streamdown="mermaid-block"] svg {
+  max-width: none !important;
+}
+
 /* Mermaid diagram styling */
 .mermaid-diagram {
   position: relative;
