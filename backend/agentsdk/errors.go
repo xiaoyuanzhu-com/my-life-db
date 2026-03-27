@@ -8,8 +8,7 @@ type ErrorType string
 const (
 	ErrQuotaExceeded   ErrorType = "quota_exceeded"    // 429 from LLM proxy
 	ErrNoCredentials   ErrorType = "no_credentials"    // no API key configured
-	ErrTooManySessions ErrorType = "too_many_sessions" // concurrent session limit reached
-	ErrAgentCrash      ErrorType = "agent_crash"       // CLI process died unexpectedly
+	ErrAgentCrash ErrorType = "agent_crash" // CLI process died unexpectedly
 	ErrTimeout         ErrorType = "timeout"           // task exceeded time limit
 	ErrNotFound        ErrorType = "not_found"         // agent or session not found
 )

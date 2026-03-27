@@ -101,34 +101,6 @@ func TestClient_UnknownAgent_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestClient_MaxSessions(t *testing.T) {
-	client := NewClient(SessionConfig{},
-		AgentConfig{Type: AgentClaudeCode, Name: "Claude Code", Command: "claude-agent-acp"},
-	)
-	client.SetMaxSessions(0) // no sessions allowed
-
-	_, err := client.CreateSession(context.Background(), SessionConfig{Agent: AgentClaudeCode})
-	if err == nil {
-		t.Fatal("expected error when max sessions reached, got nil")
-	}
-
-	var agentErr *AgentError
-	if !errors.As(err, &agentErr) {
-		t.Fatalf("expected *AgentError, got %T", err)
-	}
-	if agentErr.Type != ErrTooManySessions {
-		t.Errorf("error type = %q, want %q", agentErr.Type, ErrTooManySessions)
-	}
-}
-
-func TestClient_SetMaxSessions(t *testing.T) {
-	client := NewClient(SessionConfig{})
-	client.SetMaxSessions(10)
-	if client.maxSessions != 10 {
-		t.Errorf("maxSessions = %d, want 10", client.maxSessions)
-	}
-}
-
 func TestClient_SetProxyBaseURL(t *testing.T) {
 	client := NewClient(SessionConfig{})
 	client.SetProxyBaseURL("http://localhost:8080")

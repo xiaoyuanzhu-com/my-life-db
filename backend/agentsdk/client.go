@@ -14,7 +14,6 @@ import (
 type Client struct {
 	agents       map[AgentType]AgentConfig
 	defaults     SessionConfig
-	maxSessions  int
 	proxyBaseURL string
 
 	mu     sync.Mutex
@@ -28,15 +27,11 @@ func NewClient(defaults SessionConfig, agents ...AgentConfig) *Client {
 		m[a.Type] = a
 	}
 	return &Client{
-		agents:      m,
-		defaults:    defaults,
-		maxSessions: 5,
-		active:      make(map[string]Session),
+		agents:   m,
+		defaults: defaults,
+		active:   make(map[string]Session),
 	}
 }
-
-// SetMaxSessions sets the maximum number of concurrent agent processes.
-func (c *Client) SetMaxSessions(n int) { c.maxSessions = n }
 
 // SetProxyBaseURL sets the LLM proxy base URL for Complete() calls.
 func (c *Client) SetProxyBaseURL(url string) { c.proxyBaseURL = url }
@@ -57,17 +52,6 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 	if err != nil {
 		return nil, err
 	}
-
-	c.mu.Lock()
-	if len(c.active) >= c.maxSessions {
-		c.mu.Unlock()
-		return nil, &AgentError{
-			Type:    ErrTooManySessions,
-			Agent:   config.Agent,
-			Message: fmt.Sprintf("limit is %d concurrent sessions", c.maxSessions),
-		}
-	}
-	c.mu.Unlock()
 
 	// Merge env vars (defaults + per-call)
 	env := c.MergeEnv(config)
