@@ -19,7 +19,7 @@ interface MessageDotProps {
 
 const DOT_STYLES: Record<MessageDotType, { color: string; char: string; pulse: boolean }> = {
   "assistant":      { color: "#5F6368", char: "\u25CF", pulse: false },
-  "assistant-wip":  { color: "#E07A5F", char: "\u25CF", pulse: true },
+  "assistant-wip":  { color: "#5F6368", char: "\u25CF", pulse: true },
   "tool-pending":   { color: "#9CA3AF", char: "\u25CF", pulse: true },
   "tool-completed": { color: "#22C55E", char: "\u25CF", pulse: false },
   "tool-failed":    { color: "#D92D20", char: "\u25CF", pulse: false },

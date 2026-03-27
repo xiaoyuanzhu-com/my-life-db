@@ -77,8 +77,8 @@ export const Thread: FC = () => {
         </ThreadPrimitive.Messages>
 
         {isRunning && pendingPermissions.size === 0 && (
-          <div className="mx-auto w-full max-w-(--thread-max-width)">
-            <AgentWIP className="px-4" />
+          <div className="mx-auto w-full max-w-(--thread-max-width) mb-4 text-sm">
+            <AgentWIP />
           </div>
         )}
 
