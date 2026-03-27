@@ -634,21 +634,6 @@
   color: var(--shiki-dark) !important;
 }
 
-/* Streamdown mermaid block — hide header, single border level */
-[data-streamdown="mermaid-block"] {
-  padding: 0 !important;
-  gap: 0 !important;
-  background: transparent !important;
-  border: none !important;
-}
-
-[data-streamdown="mermaid-block"] > .flex.h-8.items-center {
-  display: none !important;
-}
-
-[data-streamdown="mermaid-block"] svg {
-  max-width: none !important;
-}
 
 /* Mermaid diagram styling */
 .mermaid-diagram {
