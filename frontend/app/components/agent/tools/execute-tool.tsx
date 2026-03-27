@@ -13,6 +13,7 @@ import { MessageDot, toolStatusToDotType } from "../message-dot"
 interface ExecuteArgs {
   kind?: string
   command?: string
+  metaToolName?: string
   [key: string]: unknown
 }
 
@@ -26,6 +27,9 @@ export function ExecuteToolRenderer({
   const isRunning = status.type === "running"
   const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
+
+  // Display label from _meta.claudeCode.toolName (e.g., "Bash") or fallback
+  const label = args?.metaToolName || "Execute"
 
   // Extract command text from args or toolName (e.g., "Bash ls -la" or "Execute npm run build")
   const commandText = args?.command || (() => {
@@ -76,7 +80,7 @@ export function ExecuteToolRenderer({
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <span className="font-semibold text-foreground">
-            Execute
+            {label}
           </span>
           <span className="truncate text-muted-foreground">
             {commandText}

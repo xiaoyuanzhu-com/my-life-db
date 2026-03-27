@@ -328,8 +328,12 @@ export function useAgentRuntime(options: {
         case "tool_call": {
           const f = frame as AgentToolCallFrame
           const rawInput = (f.rawInput ?? {}) as Record<string, unknown>
-          // Include kind from the frame so tool renderers can dispatch on it
-          const args = { ...rawInput, kind: f.kind } as ReadonlyJSONObject
+          // Include kind from the frame so tool renderers can dispatch on it.
+          // Extract _meta.claudeCode.toolName for display label (e.g., "Bash").
+          const meta = f._meta as Record<string, unknown> | undefined
+          const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
+          const metaToolName = typeof claudeMeta?.toolName === "string" ? claudeMeta.toolName : undefined
+          const args = { ...rawInput, kind: f.kind, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
 
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
@@ -400,6 +404,11 @@ export function useAgentRuntime(options: {
 
             if ("rawOutput" in f) {
               patch.result = f.rawOutput
+            } else if (f.status === "completed") {
+              // Backend strips rawOutput for large-output tools (e.g., Bash).
+              // Use ACP status to mark the tool as finished so it doesn't show
+              // as failed/running during history replay.
+              patch.result = ""
             }
             if ("title" in f && typeof f.title === "string") {
               patch.toolName = f.title
