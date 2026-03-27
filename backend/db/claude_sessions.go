@@ -152,10 +152,9 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 func MarkClaudeSessionRead(sessionID string, resultCount int) error {
 	_, err := Run(
 		`UPDATE agent_sessions
-		 SET last_read_count = MAX(?, last_read_count),
-		     updated_at = ?
+		 SET last_read_count = MAX(?, last_read_count)
 		 WHERE session_id = ?`,
-		resultCount, NowMs(), sessionID,
+		resultCount, sessionID,
 	)
 	return err
 }
