@@ -37,11 +37,14 @@ export function ExecuteToolRenderer({
     return match ? match[1].trim() : toolName
   })() || "No command"
 
-  // Parse output
+  // Parse output — extract stdout/stderr from structured result
+  const execResult = result != null && typeof result === "object" && !Array.isArray(result)
+    ? result as { stdout?: string; stderr?: string; output?: string; interrupted?: boolean }
+    : null
   const outputStr = result != null
     ? typeof result === "string"
       ? result
-      : JSON.stringify(result, null, 2)
+      : [execResult?.stdout, execResult?.stderr].filter(Boolean).join("\n") || execResult?.output || JSON.stringify(result, null, 2)
     : null
 
   const hasOutput = !!outputStr
