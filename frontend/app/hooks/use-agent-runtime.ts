@@ -55,9 +55,15 @@ interface InternalMessage {
   isOptimistic?: boolean
 }
 
+export interface AvailableMode {
+  id: string
+  name: string
+  description: string
+}
+
 export interface SessionMeta {
   mode?: string
-  availableModes?: unknown[]
+  availableModes?: AvailableMode[]
   currentModel?: string
   availableModels?: unknown[]
   commands?: unknown[]

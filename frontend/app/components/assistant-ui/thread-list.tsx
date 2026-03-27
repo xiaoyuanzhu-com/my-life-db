@@ -5,6 +5,7 @@ import {
   ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
 import {
   ArchiveIcon,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import type { FC } from "react";
 
-export const ThreadList: FC = () => {
+export const ThreadList: FC<{ activeSessionId?: string | null }> = ({ activeSessionId }) => {
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
@@ -20,7 +21,7 @@ export const ThreadList: FC = () => {
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
-          {() => <ThreadListItem />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} />}
         </ThreadListPrimitive.Items>
       </AuiIf>
     </ThreadListPrimitive.Root>
@@ -45,9 +46,22 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
-const ThreadListItem: FC = () => {
+const ThreadListItem: FC<{ activeSessionId?: string | null }> = ({ activeSessionId }) => {
+  // Workaround: assistant-ui's ExternalStoreThreadListRuntimeCore has a bug where
+  // _mainThreadId is not set from the adapter's threadId on initial construction
+  // (constructor sets this.adapter before calling __internal_setAdapter, so
+  // previousThreadId === newThreadId and the update is skipped). This means
+  // data-active is not set on direct URL navigation. We read the item's ID from
+  // the store and set data-active ourselves. ThreadListItemPrimitive.Root spreads
+  // {...props} AFTER its own data-active, so our prop takes precedence.
+  const itemId = useAuiState((s) => s.threadListItem.id);
+  const isActive = itemId != null && itemId === activeSessionId;
+
   return (
-    <ThreadListItemPrimitive.Root className="aui-thread-list-item group flex h-8 items-center gap-1 rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted">
+    <ThreadListItemPrimitive.Root
+      {...(isActive ? { "data-active": "true" } : {})}
+      className="aui-thread-list-item group flex h-8 items-center gap-1 rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted"
+    >
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-[13px]">
         <span className="aui-thread-list-item-title min-w-0 flex-1 truncate text-foreground/80 group-data-active:text-foreground">
           <ThreadListItemPrimitive.Title fallback="New Chat" />

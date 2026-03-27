@@ -1,63 +1,29 @@
 import { useState } from 'react'
-import { Pencil, FastForward, Pause, Zap } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+import type { AvailableMode } from '~/hooks/use-agent-runtime'
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
-
-interface PermissionModeOption {
-  value: PermissionMode
-  label: string
-  description: string
-  icon: React.ReactNode
-}
-
-const PERMISSION_MODES: PermissionModeOption[] = [
-  {
-    value: 'default',
-    label: 'Ask before edits',
-    description: 'Prompts for tool permissions',
-    icon: <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
-  },
-  {
-    value: 'acceptEdits',
-    label: 'Edit automatically',
-    description: 'Auto-accepts file edits',
-    icon: <FastForward className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
-  },
-  {
-    value: 'plan',
-    label: 'Plan mode',
-    description: 'No tool execution',
-    icon: <Pause className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
-  },
-  {
-    value: 'bypassPermissions',
-    label: 'YOLO',
-    description: 'All tools auto-approved',
-    icon: <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
-  },
-]
+export type PermissionMode = string
 
 interface PermissionModeSelectorProps {
   value: PermissionMode
+  modes: AvailableMode[]
   onChange: (mode: PermissionMode) => void
   disabled?: boolean
-  /** Show label text next to the icon */
-  showLabel?: boolean
 }
 
 export function PermissionModeSelector({
   value,
+  modes,
   onChange,
   disabled = false,
-  showLabel = false,
 }: PermissionModeSelectorProps) {
   const [open, setOpen] = useState(false)
 
-  const currentMode = PERMISSION_MODES.find((m) => m.value === value) ?? PERMISSION_MODES[0]
+  const currentMode = modes.find((m) => m.id === value) ?? modes[0]
+  if (!currentMode) return null
 
-  const handleSelect = (mode: PermissionMode) => {
+  const handleSelect = (mode: string) => {
     onChange(mode)
     setOpen(false)
   }
@@ -74,16 +40,13 @@ export function PermissionModeSelector({
             'hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            showLabel ? 'px-1.5 sm:px-2 py-1 sm:py-1.5' : 'p-1 sm:p-1.5',
+            'px-1.5 sm:px-2 py-1 sm:py-1.5',
             open && 'bg-accent text-foreground'
           )}
-          aria-label={`Permission mode: ${currentMode.label}`}
-          title={`${currentMode.label}: ${currentMode.description}`}
+          aria-label={`Permission mode: ${currentMode.name}`}
+          title={`${currentMode.name}: ${currentMode.description}`}
         >
-          <span className="shrink-0">{currentMode.icon}</span>
-          {showLabel && (
-            <span className="hidden sm:inline">{currentMode.label}</span>
-          )}
+          <span>{currentMode.name}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -93,24 +56,20 @@ export function PermissionModeSelector({
         sideOffset={8}
       >
         <div className="space-y-0.5">
-          {PERMISSION_MODES.map((mode) => (
+          {modes.map((mode) => (
             <button
-              key={mode.value}
+              key={mode.id}
               type="button"
-              onClick={() => handleSelect(mode.value)}
+              onClick={() => handleSelect(mode.id)}
               className={cn(
                 'w-full px-2 py-1.5 rounded-md text-left',
                 'hover:bg-accent transition-colors',
                 'focus:outline-none focus:bg-accent',
-                'flex items-start gap-2',
-                value === mode.value && 'bg-accent'
+                value === mode.id && 'bg-accent'
               )}
             >
-              <span className="mt-0.5 text-muted-foreground">{mode.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">{mode.label}</div>
-                <div className="text-xs text-muted-foreground">{mode.description}</div>
-              </div>
+              <div className="text-sm font-medium text-foreground">{mode.name}</div>
+              <div className="text-xs text-muted-foreground">{mode.description}</div>
             </button>
           ))}
         </div>

@@ -5,7 +5,7 @@
  */
 import { createContext, useContext } from "react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
-import type { PlanEntry } from "~/hooks/use-agent-runtime"
+import type { PlanEntry, AvailableMode } from "~/hooks/use-agent-runtime"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -28,6 +28,7 @@ export interface AgentContextValue {
   onWorkingDirChange?: (path: string) => void
   /** Composer controls — permission mode */
   permissionMode?: string
+  availableModes?: AvailableMode[]
   onPermissionModeChange?: (mode: string) => void
   /** Composer controls — agent type */
   agentType?: string

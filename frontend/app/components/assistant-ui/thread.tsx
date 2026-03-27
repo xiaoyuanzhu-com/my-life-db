@@ -201,7 +201,7 @@ const Composer: FC = () => {
   const {
     connected,
     workingDir, onWorkingDirChange,
-    permissionMode, onPermissionModeChange,
+    permissionMode, availableModes, onPermissionModeChange,
     agentType, onAgentTypeChange,
     sessionCommands,
     hasActiveSession,
@@ -238,8 +238,8 @@ const Composer: FC = () => {
                   disabled={!onAgentTypeChange || hasActiveSession}
                 />
               )}
-              {permissionMode !== undefined && onPermissionModeChange && (
-                <PermissionModeSelector value={permissionMode as PermissionMode} onChange={(m) => onPermissionModeChange(m)} />
+              {permissionMode !== undefined && availableModes && onPermissionModeChange && (
+                <PermissionModeSelector value={permissionMode as PermissionMode} modes={availableModes} onChange={(m) => onPermissionModeChange(m)} />
               )}
             </div>
             <div className="flex items-center gap-1">

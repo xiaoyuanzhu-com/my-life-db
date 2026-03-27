@@ -776,7 +776,11 @@ export default function ClaudePage() {
     workingDir: newSessionWorkingDir,
     onWorkingDirChange: setNewSessionWorkingDir,
     permissionMode: newSessionPermissionMode,
-    onPermissionModeChange: (mode: string) => setNewSessionPermissionMode(mode as PermissionMode),
+    availableModes: sessionMeta?.availableModes,
+    onPermissionModeChange: (mode: string) => {
+      setNewSessionPermissionMode(mode as PermissionMode)
+      if (hasActiveSession) sendSetMode(mode)
+    },
     agentType: activeSessionAgentType ?? newSessionAgentType,
     onAgentTypeChange: hasActiveSession
       ? undefined
@@ -894,7 +898,7 @@ export default function ClaudePage() {
             >
               <SessionsHeader showCollapseButton />
               <div className="flex-1 overflow-hidden p-2">
-                <ThreadList />
+                <ThreadList activeSessionId={activeSessionId} />
               </div>
             </ResizablePanel>
 
@@ -1006,7 +1010,7 @@ export default function ClaudePage() {
           <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
             <SessionsHeader />
             <div className="flex-1 overflow-hidden p-2">
-              <ThreadList />
+              <ThreadList activeSessionId={activeSessionId} />
             </div>
           </div>
         ) : (
