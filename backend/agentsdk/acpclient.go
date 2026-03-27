@@ -83,10 +83,14 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		frameType = "user_message_chunk"
 		if update.UserMessageChunk.Content.Text != nil {
 			t := update.UserMessageChunk.Content.Text.Text
+			// DIAG: log full user_message_chunk content length and first 200 chars
+			log.Info().Int("textLen", len(t)).Str("text200", truncDiag(t, 200)).Msg("DIAG: user_message_chunk received from ACP")
 			if len(t) > 80 {
 				t = t[:80]
 			}
 			framePreview = t
+		} else {
+			log.Info().Msg("DIAG: user_message_chunk received with NON-TEXT content (content.Text is nil)")
 		}
 	case update.AgentMessageChunk != nil:
 		frameType = "agent_message_chunk"
@@ -386,6 +390,13 @@ func (c *acpClient) WaitForTerminalExit(ctx context.Context, params acp.WaitForT
 }
 
 // --- Helpers ---
+
+func truncDiag(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
 
 func autoApprovePermission(params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
 	// Prefer allow_always, then allow_once

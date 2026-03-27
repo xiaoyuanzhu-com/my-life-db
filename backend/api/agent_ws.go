@@ -202,12 +202,34 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	// Send initial burst (last ~100 messages) via direct write (bypasses client channel)
 	burstMessages := sessionState.GetRecentMessages(0)
-	if len(burstMessages) > 0 {
-		log.Debug().
-			Str("sessionId", sessionID).
-			Int("burstMessages", len(burstMessages)).
-			Msg("sending initial burst to new agent client")
 
+	// DIAG: count frame types in burst for debugging user message visibility
+	burstTypeCounts := map[string]int{}
+	for _, msgBytes := range burstMessages {
+		var envelope struct {
+			SessionUpdate string `json:"sessionUpdate"`
+			Type          string `json:"type"`
+		}
+		if json.Unmarshal(msgBytes, &envelope) == nil {
+			key := envelope.SessionUpdate
+			if key == "" {
+				key = envelope.Type
+			}
+			if key == "" {
+				key = "unknown"
+			}
+			burstTypeCounts[key]++
+		}
+	}
+	log.Info().
+		Str("sessionId", sessionID).
+		Int("totalBurst", len(burstMessages)).
+		Bool("isActive", isActive).
+		Bool("isProcessing", isProcessing).
+		Interface("burstTypeCounts", burstTypeCounts).
+		Msg("DIAG: burst replay summary")
+
+	if len(burstMessages) > 0 {
 		for _, msgBytes := range burstMessages {
 			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send burst message")
