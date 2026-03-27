@@ -156,7 +156,7 @@ export function AgentWIP({ className = "" }: AgentWIPProps) {
       <div className="font-mono text-[13px] leading-[1.5] flex items-start gap-2">
         <MessageDot type="assistant-wip" />
         <div className="flex-1 min-w-0">
-          <span style={{ color: "#E07A5F" }}>
+          <span className="text-foreground">
             {displayText.slice(0, charIndex)}
           </span>
         </div>

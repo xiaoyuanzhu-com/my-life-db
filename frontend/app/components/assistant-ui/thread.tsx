@@ -73,10 +73,15 @@ export const Thread: FC = () => {
           {() => <ThreadMessage />}
         </ThreadPrimitive.Messages>
 
+        {isRunning && pendingPermissions.size === 0 && (
+          <div className="mx-auto w-full max-w-(--thread-max-width)">
+            <AgentWIP className="px-4" />
+          </div>
+        )}
+
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible pb-4 md:pb-6">
           <ThreadScrollToBottom />
           <PlanView entries={planEntries} className="mb-2" />
-          {isRunning && pendingPermissions.size === 0 && <AgentWIP className="px-4 mb-2" />}
           {pendingPermissions.size > 0 && (
             <div className="px-4 mb-2 space-y-2">
               {Array.from(pendingPermissions.entries()).map(([toolCallId, entry], index) => (
