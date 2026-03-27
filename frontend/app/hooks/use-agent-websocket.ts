@@ -173,17 +173,26 @@ export function useAgentWebSocket({
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
       const url = `${protocol}//${window.location.host}/api/agent/sessions/${sessionId}/subscribe?token=${token}`
 
-      ws = new WebSocket(url)
-      wsRef.current = ws
+      // Capture this specific instance so async handlers (onopen/onclose)
+      // only mutate shared state when they belong to the current connection.
+      // Without this guard, a stale onclose from a previous session's WS
+      // fires after the new WS is set up and wipes wsRef.current to null,
+      // silently breaking send() for the new session.
+      const thisWs = new WebSocket(url)
+      ws = thisWs
+      wsRef.current = thisWs
 
-      ws.onopen = () => {
+      thisWs.onopen = () => {
+        if (wsRef.current !== thisWs) return
         setConnected(true)
         reconnectDelay = 1000 // reset on successful connect
       }
 
-      ws.onclose = () => {
-        setConnected(false)
-        wsRef.current = null
+      thisWs.onclose = () => {
+        if (wsRef.current === thisWs) {
+          setConnected(false)
+          wsRef.current = null
+        }
         // Reconnect with exponential backoff
         if (!unmounted) {
           reconnectTimer = setTimeout(() => {
@@ -193,7 +202,7 @@ export function useAgentWebSocket({
         }
       }
 
-      ws.onmessage = (event) => {
+      thisWs.onmessage = (event) => {
         try {
           const frame = JSON.parse(event.data) as AcpFrame
           onFrameRef.current(frame)
