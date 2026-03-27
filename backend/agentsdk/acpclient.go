@@ -34,6 +34,12 @@ type acpClient struct {
 	// Diagnostic counter for logging frame sequence.
 	frameSeq atomic.Int64
 
+	// suppressUserMsg is set to true before Send() and false before LoadSession().
+	// When true, user_message_chunk frames from the ACP agent are dropped because
+	// the host already synthesized one. When false (LoadSession replay), they are
+	// passed through as historical messages.
+	suppressUserMsg atomic.Bool
+
 	// Permission handling — maps request ID to response channel.
 	permMu       sync.Mutex
 	permChannels map[string]chan permResponse
@@ -74,6 +80,14 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		return nil
 	}
 
+	// Skip user_message_chunk echo during live Prompt() — the host already
+	// synthesized one before Send(). During LoadSession() replay the flag is
+	// false, so historical user messages pass through.
+	if update.UserMessageChunk != nil && c.suppressUserMsg.Load() {
+		log.Debug().Msg("skipping ACP user_message_chunk echo (host-synthesized)")
+		return nil
+	}
+
 	// Debug: log frame sequence to detect ACP SDK goroutine reordering.
 	seq := c.frameSeq.Add(1)
 	frameType := "unknown"
@@ -83,14 +97,10 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		frameType = "user_message_chunk"
 		if update.UserMessageChunk.Content.Text != nil {
 			t := update.UserMessageChunk.Content.Text.Text
-			// DIAG: log full user_message_chunk content length and first 200 chars
-			log.Info().Int("textLen", len(t)).Str("text200", truncDiag(t, 200)).Msg("DIAG: user_message_chunk received from ACP")
 			if len(t) > 80 {
 				t = t[:80]
 			}
 			framePreview = t
-		} else {
-			log.Info().Msg("DIAG: user_message_chunk received with NON-TEXT content (content.Text is nil)")
 		}
 	case update.AgentMessageChunk != nil:
 		frameType = "agent_message_chunk"
@@ -390,13 +400,6 @@ func (c *acpClient) WaitForTerminalExit(ctx context.Context, params acp.WaitForT
 }
 
 // --- Helpers ---
-
-func truncDiag(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
 
 func autoApprovePermission(params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
 	// Prefer allow_always, then allow_once

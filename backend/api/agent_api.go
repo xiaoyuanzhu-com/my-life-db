@@ -116,6 +116,10 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 
 	// If a message was provided, start processing it in a background goroutine
 	if req.Message != "" {
+		// Synthesize user_message_chunk BEFORE Send() so the user's message
+		// is in rawMessages for burst replay on page refresh. ACP does not
+		// echo user messages during live Prompt() calls.
+		sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(req.Message))
 
 		// Send prompt and forward raw frames in a background goroutine
 		go func(acpSess agentsdk.Session, prompt string) {
@@ -123,6 +127,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			// between turn.start and the first event sees the correct state.
 			sessionState.Mu.Lock()
 			sessionState.IsProcessing = true
+			sessionState.IsActive = true
 			sessionState.Mu.Unlock()
 
 			ctx := h.server.ShutdownContext()
