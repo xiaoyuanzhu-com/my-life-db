@@ -275,22 +275,21 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
 			}
 		})
+	}
 
-		// After history load attempt, notify the client if there was an error
-		// so the frontend can exit the loading state. Control frames like
-		// available_commands_update may arrive before the error, so check
-		// the error flag rather than message count.
-		sessionState.Mu.RLock()
-		histErr := sessionState.HistoryError
-		sessionState.Mu.RUnlock()
-		if histErr != "" {
-			if frame, err := json.Marshal(map[string]any{
-				"type":  "session.historyDone",
-				"empty": true,
-				"error": histErr,
-			}); err == nil {
-				_ = conn.Write(ctx, websocket.MessageText, frame)
-			}
+	// Always notify the client if history loading failed, even on reconnections
+	// where burst messages (ACP control frames) may bypass the history loading
+	// block above. This ensures the frontend can exit the loading state.
+	sessionState.Mu.RLock()
+	histErr := sessionState.HistoryError
+	sessionState.Mu.RUnlock()
+	if histErr != "" {
+		if frame, err := json.Marshal(map[string]any{
+			"type":  "session.historyDone",
+			"empty": true,
+			"error": histErr,
+		}); err == nil {
+			_ = conn.Write(ctx, websocket.MessageText, frame)
 		}
 	}
 
