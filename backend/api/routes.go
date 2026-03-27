@@ -120,7 +120,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
 		api.POST("/claude/sessions/:id/archive", h.ArchiveClaudeSession)
 		api.POST("/claude/sessions/:id/unarchive", h.UnarchiveClaudeSession)
-		api.DELETE("/claude/sessions/:id", h.DeleteClaudeSession)
+
 		api.POST("/claude/sessions/:id/share", h.ShareClaudeSession)
 		api.DELETE("/claude/sessions/:id/share", h.UnshareClaudeSession)
 
@@ -146,7 +146,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.POST("/sessions", h.CreateAgentSession)
 		agentRoutes.GET("/sessions/:id", h.GetAgentSession)
 		agentRoutes.PATCH("/sessions/:id", h.UpdateAgentSession)
-		agentRoutes.DELETE("/sessions/:id", h.DeleteAgentSession)
+
 		agentRoutes.GET("/sessions/:id/messages", h.GetAgentMessages)
 		agentRoutes.POST("/sessions/:id/deactivate", h.DeactivateAgentSession)
 		agentRoutes.POST("/sessions/:id/archive", h.ArchiveAgentSession)

@@ -287,24 +287,6 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// DeleteAgentSession deletes a session record.
-// DELETE /api/agent/sessions/:id
-func (h *Handlers) DeleteAgentSession(c *gin.Context) {
-	sessionID := c.Param("id")
-
-	// Clean up in-memory ACP session and session state before deleting from DB
-	CleanupAgentSession(sessionID)
-
-	// Delete from DB
-	_, err := db.Run("DELETE FROM agent_sessions WHERE session_id = ?", sessionID)
-	if err != nil {
-		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to delete agent session")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete session"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
 
 // ArchiveAgentSession archives a session.
 // POST /api/agent/sessions/:id/archive

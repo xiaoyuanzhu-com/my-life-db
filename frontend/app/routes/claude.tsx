@@ -643,23 +643,6 @@ export default function ClaudePage() {
     }
   }
 
-  const deleteSession = async (sessionId: string) => {
-    try {
-      const response = await api.delete(`/api/agent/sessions/${sessionId}`)
-
-      if (response.ok) {
-        setSessions(sessions.filter((s) => s.id !== sessionId))
-
-        // If deleted session was active, switch to another
-        if (activeSessionId === sessionId) {
-          const remaining = sessions.filter((s) => s.id !== sessionId)
-          setActiveSessionId(remaining.length > 0 ? remaining[0].id : null)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete session:', error)
-    }
-  }
 
   const updateSessionTitle = async (sessionId: string, title: string) => {
     try {
@@ -753,7 +736,7 @@ export default function ClaudePage() {
       onRenameThread: updateSessionTitle,
       onArchiveThread: archiveSession,
       onUnarchiveThread: unarchiveSession,
-      onDeleteThread: deleteSession,
+      onDeleteThread: () => {},
     })
 
   // Show loading state while checking authentication
@@ -909,14 +892,8 @@ export default function ClaudePage() {
                 isSidebarCollapsed && 'hidden'
               )}
             >
+              <SessionsHeader showCollapseButton />
               <div className="flex-1 overflow-hidden p-2">
-                {/* TODO: restore time grouping (Today, Yesterday, Past Week, Past Month, Earlier) */}
-                {/* TODO: restore status dots (amber=working, green=unread) */}
-                {/* TODO: restore inline rename editing */}
-                {/* TODO: restore infinite scroll pagination (cursor-based, 20 per page) */}
-                {/* TODO: restore resizable sidebar (desktop) + stack navigation (mobile) */}
-                {/* TODO: restore session filter (active|archived|all) with localStorage persistence */}
-                {/* TODO: restore SSE notifications for live session updates */}
                 <ThreadList />
               </div>
             </ResizablePanel>
@@ -1026,8 +1003,11 @@ export default function ClaudePage() {
           </div>
         ) : sessionSidebar ? (
           /* List view: full-screen session list */
-          <div className="flex flex-1 flex-col bg-muted/30 min-w-0 p-2">
-            <ThreadList />
+          <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
+            <SessionsHeader />
+            <div className="flex-1 overflow-hidden p-2">
+              <ThreadList />
+            </div>
           </div>
         ) : (
           /* No sidebar (hybrid app) — just the chat input */
