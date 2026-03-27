@@ -26,11 +26,38 @@ interface DiffResult {
   newText?: string
 }
 
+/** Result structure from Claude Code Edit tool */
+interface EditResult {
+  filePath?: string
+  oldString?: string
+  newString?: string
+  replaceAll?: boolean
+  structuredPatch?: StructuredPatchHunk[]
+  originalFile?: string
+  userModified?: boolean
+}
+
+interface StructuredPatchHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  lines: string[]
+}
+
 function isDiffResult(v: unknown): v is DiffResult {
   return (
     typeof v === "object" &&
     v !== null &&
     (v as { type?: string }).type === "diff"
+  )
+}
+
+function isEditResult(v: unknown): v is EditResult {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (typeof (v as EditResult).oldString === "string" || typeof (v as EditResult).newString === "string" || Array.isArray((v as EditResult).structuredPatch))
   )
 }
 
@@ -48,22 +75,26 @@ export function EditToolRenderer({
   const isError = status.type === "requires-action" || status.type === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
-  // Extract file path -- ACP title is e.g., "Edit /src/main.go"
-  const filePath = args?.file_path || (() => {
+  // Parse result structure
+  const editResult = isEditResult(result) ? result : null
+  const hasDiffResult = isDiffResult(result)
+
+  // Extract file path from args, result, or toolName
+  const filePath = args?.file_path || editResult?.filePath || (() => {
     const match = toolName.match(/^(?:Edit|Write)\s+(.+)$/i)
     return match ? match[1].trim() : toolName
   })() || ""
   const fileName = filePath.split("/").pop() || filePath
+  const replaceAll = args?.replace_all ?? editResult?.replaceAll ?? false
 
   // Determine dot type
   const dotType = isError
     ? "tool-failed" as const
     : toolStatusToDotType(status.type)
 
-  // Get diff lines from args (old_string/new_string) or result
-  const hasDiffResult = isDiffResult(result)
-  const oldStr = args?.old_string ?? (hasDiffResult ? (result as DiffResult).oldText : undefined) ?? ""
-  const newStr = args?.new_string ?? (hasDiffResult ? (result as DiffResult).newText : undefined) ?? ""
+  // Get diff lines from args (snake_case), result (camelCase), or DiffResult
+  const oldStr = args?.old_string ?? editResult?.oldString ?? (hasDiffResult ? (result as DiffResult).oldText : undefined) ?? ""
+  const newStr = args?.new_string ?? editResult?.newString ?? (hasDiffResult ? (result as DiffResult).newText : undefined) ?? ""
 
   const oldLines = oldStr ? oldStr.split("\n") : []
   const newLines = newStr ? newStr.split("\n") : []
@@ -75,7 +106,7 @@ export function EditToolRenderer({
   const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
 
   // Fallback output for non-diff results
-  const outputStr = !hasDiff && !hasDiffResult && result != null
+  const outputStr = !hasDiff && !hasDiffResult && !editResult && result != null
     ? typeof result === "string"
       ? result
       : JSON.stringify(result, null, 2)
@@ -93,7 +124,7 @@ export function EditToolRenderer({
           <span className="ml-2 text-muted-foreground break-all" title={filePath}>
             {fileName}
           </span>
-          {args?.replace_all && (
+          {replaceAll && (
             <span className="ml-2 text-muted-foreground/70">(replace all)</span>
           )}
         </div>

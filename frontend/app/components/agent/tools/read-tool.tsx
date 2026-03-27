@@ -35,13 +35,18 @@ export function ReadToolRenderer({
   })() || ""
   const fileName = filePath.split("/").pop() || filePath
 
-  // Count lines from result
+  // Extract content from structured result or plain string
+  const fileResult = result != null && typeof result === "object" && !Array.isArray(result)
+    ? result as { type?: string; file?: { content?: string; numLines?: number; startLine?: number; totalLines?: number }; text?: string }
+    : null
   const outputStr = result != null
     ? typeof result === "string"
       ? result
-      : JSON.stringify(result, null, 2)
+      : fileResult?.file?.content ?? fileResult?.text ?? JSON.stringify(result, null, 2)
     : null
-  const lineCount = outputStr ? outputStr.split("\n").length : 0
+  const lineCount = fileResult?.file?.numLines ?? (outputStr ? outputStr.split("\n").length : 0)
+  const startLine = fileResult?.file?.startLine
+  const totalLines = fileResult?.file?.totalLines
   const hasContent = !!outputStr
 
   // Determine dot type
@@ -72,11 +77,16 @@ export function ReadToolRenderer({
         </div>
       </button>
 
-      {/* Summary: line count */}
+      {/* Summary: line count + optional range */}
       {isComplete && lineCount > 0 && (
         <div className="flex gap-2 ml-5 text-muted-foreground">
           <span className="select-none">{"\u2514"}</span>
-          <span>Read {lineCount} line{lineCount !== 1 ? "s" : ""}</span>
+          <span>
+            Read {lineCount} line{lineCount !== 1 ? "s" : ""}
+            {startLine != null && totalLines != null && (
+              <span className="text-muted-foreground/60"> ({startLine}&ndash;{startLine + lineCount - 1} of {totalLines})</span>
+            )}
+          </span>
         </div>
       )}
 
