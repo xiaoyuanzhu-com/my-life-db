@@ -623,9 +623,37 @@ export function useAgentRuntime(options: {
           break
         }
 
+        case "config_option_update": {
+          // ACP native frame: unified config options (mode, model, etc.)
+          const configOptions = frame.configOptions as Array<{
+            id: string; category: string; currentValue: string;
+            options: Array<{ value: string; name: string; description: string }>
+          }> | undefined
+          if (configOptions) {
+            const update: Partial<SessionMeta> = {}
+            for (const opt of configOptions) {
+              if (opt.category === "mode") {
+                update.mode = opt.currentValue
+                update.availableModes = opt.options.map(o => ({
+                  id: o.value, name: o.name, description: o.description,
+                }))
+              } else if (opt.category === "model") {
+                update.currentModel = opt.currentValue
+                update.availableModels = opt.options.map(o => ({
+                  id: o.value, name: o.name, description: o.description,
+                }))
+              }
+            }
+            if (Object.keys(update).length > 0) {
+              setSessionMeta((prev) => ({ ...prev, ...update }))
+            }
+          }
+          break
+        }
+
         case "session.modeUpdate": {
-          // Synthesized frame from initial session setup — uses old field names
-          const f = frame as AcpFrame & { modeId?: string; availableModes?: unknown[] }
+          // Legacy synthesized frame — kept for backward compatibility
+          const f = frame as AcpFrame & { modeId?: string; availableModes?: AvailableMode[] }
           const update: Partial<SessionMeta> = {}
           if (f.modeId) update.mode = f.modeId
           if (f.availableModes) update.availableModes = f.availableModes
@@ -636,7 +664,7 @@ export function useAgentRuntime(options: {
         }
 
         case "session.modelsUpdate": {
-          // Synthesized frame from initial session setup
+          // Legacy synthesized frame — kept for backward compatibility
           const f = frame as AcpFrame & { modelId?: string; availableModels?: unknown[] }
           const update: Partial<SessionMeta> = {}
           if (f.modelId) update.currentModel = f.modelId

@@ -775,11 +775,14 @@ export default function ClaudePage() {
     sendSetMode,
     workingDir: newSessionWorkingDir,
     onWorkingDirChange: setNewSessionWorkingDir,
-    permissionMode: newSessionPermissionMode,
+    permissionMode: hasActiveSession ? sessionMeta?.mode : newSessionPermissionMode,
     availableModes: sessionMeta?.availableModes,
     onPermissionModeChange: (mode: string) => {
-      setNewSessionPermissionMode(mode as PermissionMode)
-      if (hasActiveSession) sendSetMode(mode)
+      if (hasActiveSession) {
+        sendSetMode(mode)
+      } else {
+        setNewSessionPermissionMode(mode as PermissionMode)
+      }
     },
     agentType: activeSessionAgentType ?? newSessionAgentType,
     onAgentTypeChange: hasActiveSession
