@@ -11,7 +11,7 @@ import {
   ArrowUpIcon,
   SquareIcon,
 } from "lucide-react";
-import { useRef, type FC } from "react";
+import { useEffect, useRef, type FC } from "react";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
@@ -33,9 +33,13 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { connected, planEntries, pendingPermissions } = useAgentContext();
+  const { connected, planEntries, pendingPermissions, hasActiveSession } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
+
+  // Show loading when we have an active session but messages haven't loaded into the store yet.
+  // Covers both "WS connecting" and "WS connected, replay in progress".
+  const isLoadingSession = hasActiveSession && !hasSession;
 
   return (
     <ThreadPrimitive.Root
@@ -52,9 +56,14 @@ export const Thread: FC = () => {
         autoScroll
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-scroll scroll-smooth px-2 md:px-16 pt-4"
       >
-        <AuiIf condition={(s) => s.thread.isEmpty}>
-          <ThreadWelcome />
-        </AuiIf>
+        {isLoadingSession ? (
+          <ThreadLoading />
+        ) : (
+          <AuiIf condition={(s) => s.thread.isEmpty}>
+            <ThreadWelcome />
+          </AuiIf>
+        )}
+        <InitialScrollToBottom />
 
         <ThreadPrimitive.Messages className="mx-auto w-full max-w-(--thread-max-width)">
           {() => <ThreadMessage />}
@@ -102,6 +111,52 @@ const ThreadScrollToBottom: FC = () => {
         <ArrowDownIcon />
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
+  );
+};
+
+/**
+ * Scrolls the viewport to bottom as content loads during initial WS replay.
+ * Uses ResizeObserver to react to actual content changes (not timers).
+ * Auto-disconnects once content stops changing (replay settled).
+ */
+const InitialScrollToBottom: FC = () => {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const { hasActiveSession } = useAgentContext();
+  const hasSession = useAuiState((s) => !s.thread.isEmpty);
+
+  useEffect(() => {
+    if (!hasSession || !hasActiveSession) return;
+
+    const viewport = anchorRef.current?.closest(
+      '.aui-thread-viewport',
+    ) as HTMLElement | null;
+    if (!viewport) return;
+
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const observer = new ResizeObserver(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' });
+      // Auto-disconnect after content stops changing
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => observer.disconnect(), 500);
+    });
+
+    observer.observe(viewport);
+
+    return () => {
+      observer.disconnect();
+      if (settleTimer) clearTimeout(settleTimer);
+    };
+  }, [hasSession, hasActiveSession]);
+
+  return <div ref={anchorRef} aria-hidden style={{ display: 'none' }} />;
+};
+
+const ThreadLoading: FC = () => {
+  return (
+    <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
+      <p className="text-muted-foreground text-sm">Loading...</p>
+    </div>
   );
 };
 

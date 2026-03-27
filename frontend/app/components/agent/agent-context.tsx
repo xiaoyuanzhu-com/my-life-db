@@ -34,6 +34,8 @@ export interface AgentContextValue {
   onAgentTypeChange?: (type: string) => void
   /** Session metadata (commands, models, etc.) */
   sessionCommands?: Array<{ name: string; description?: string }>
+  /** Whether there's an active session (WS is enabled/connecting) */
+  hasActiveSession?: boolean
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

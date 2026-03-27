@@ -792,6 +792,7 @@ export default function ClaudePage() {
     agentType: newSessionAgentType,
     onAgentTypeChange: (type: string) => setNewSessionAgentType(type as AgentType),
     sessionCommands: sessionMeta?.commands,
+    hasActiveSession,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────
