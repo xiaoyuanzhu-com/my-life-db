@@ -33,13 +33,15 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { connected, planEntries, pendingPermissions, hasActiveSession } = useAgentContext();
+  const { connected, planEntries, pendingPermissions, hasActiveSession, historyLoadError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.
   // Covers both "WS connecting" and "WS connected, replay in progress".
-  const isLoadingSession = hasActiveSession && !hasSession;
+  // Stop loading if the backend reported that history loading failed.
+  const isLoadingSession = hasActiveSession && !hasSession && !historyLoadError;
+  const isHistoryError = hasActiveSession && !hasSession && !!historyLoadError;
 
   return (
     <ThreadPrimitive.Root
@@ -58,6 +60,8 @@ export const Thread: FC = () => {
       >
         {isLoadingSession ? (
           <ThreadLoading />
+        ) : isHistoryError ? (
+          <ThreadHistoryError message={historyLoadError!} />
         ) : (
           <AuiIf condition={(s) => s.thread.isEmpty}>
             <ThreadWelcome />
@@ -156,6 +160,16 @@ const ThreadLoading: FC = () => {
   return (
     <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
       <p className="text-muted-foreground text-sm">Loading...</p>
+    </div>
+  );
+};
+
+const ThreadHistoryError: FC<{ message: string }> = ({ message }) => {
+  return (
+    <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center gap-2">
+      <p className="text-muted-foreground text-sm">Session history unavailable</p>
+      <p className="text-muted-foreground/60 text-xs max-w-sm text-center">{message}</p>
+      <p className="text-muted-foreground/60 text-xs">You can still send a new message to continue this session.</p>
     </div>
   );
 };

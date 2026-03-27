@@ -225,6 +225,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			sessionRecord, _ := db.GetAgentSession(sessionID)
 			if sessionRecord == nil || sessionRecord.WorkingDir == "" {
 				log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
+				sessionState.Mu.Lock()
+				sessionState.HistoryError = "session not found or no working directory"
+				sessionState.Mu.Unlock()
 				return
 			}
 
@@ -251,6 +254,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			if err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session for history loading")
+				sessionState.Mu.Lock()
+				sessionState.HistoryError = err.Error()
+				sessionState.Mu.Unlock()
 				return
 			}
 			if sess == nil {
@@ -267,10 +273,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
+				sessionState.Mu.Lock()
+				sessionState.HistoryError = err.Error()
+				sessionState.Mu.Unlock()
 			} else {
 				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
 			}
 		})
+
+		// After history load attempt, if still no messages, notify the client
+		// so the frontend can exit the loading state.
+		if len(sessionState.GetRecentMessages(0)) == 0 {
+			payload := map[string]any{
+				"type":  "session.historyDone",
+				"empty": true,
+			}
+			sessionState.Mu.RLock()
+			if sessionState.HistoryError != "" {
+				payload["error"] = sessionState.HistoryError
+			}
+			sessionState.Mu.RUnlock()
+			if frame, err := json.Marshal(payload); err == nil {
+				_ = conn.Write(ctx, websocket.MessageText, frame)
+			}
+		}
 	}
 
 	// Goroutine: ping every 30s

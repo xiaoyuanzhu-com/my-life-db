@@ -735,7 +735,7 @@ export default function ClaudePage() {
   // on session switch, preserving the original reset behavior.
   const hasActiveSession = Boolean(activeSessionId)
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -793,6 +793,7 @@ export default function ClaudePage() {
     onAgentTypeChange: (type: string) => setNewSessionAgentType(type as AgentType),
     sessionCommands: sessionMeta?.commands,
     hasActiveSession,
+    historyLoadError,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

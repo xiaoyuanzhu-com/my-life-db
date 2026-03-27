@@ -36,6 +36,8 @@ export interface AgentContextValue {
   sessionCommands?: Array<{ name: string; description?: string }>
   /** Whether there's an active session (WS is enabled/connecting) */
   hasActiveSession?: boolean
+  /** Non-null when session history failed to load (e.g., after server restart) */
+  historyLoadError?: string | null
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

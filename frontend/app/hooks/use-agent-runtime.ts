@@ -116,6 +116,8 @@ export function useAgentRuntime(options: {
   const [pendingPermissions, setPendingPermissions] = useState<
     Map<string, { toolName: string; options: PermissionOption[] }>
   >(() => new Map())
+  // Set when backend signals history loading is complete but no messages arrived
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
 
   // Reset all per-session state when switching sessions
   const prevSessionIdRef = useRef(sessionId)
@@ -126,6 +128,7 @@ export function useAgentRuntime(options: {
     setSessionMeta({})
     setPlanEntries([])
     setPendingPermissions(new Map())
+    setHistoryLoadError(null)
   }
 
   // Whether the session is active (loaded via ACP + at least one prompt sent).
@@ -155,6 +158,16 @@ export function useAgentRuntime(options: {
         case "session.info": {
           const f = frame as SessionInfoFrame
           isActiveRef.current = f.isActive
+          break
+        }
+
+        case "session.historyDone": {
+          const error = (frame as AcpFrame & { error?: string }).error
+          if (error) {
+            setHistoryLoadError(error)
+          } else {
+            setHistoryLoadError("Session history unavailable")
+          }
           break
         }
 
@@ -745,6 +758,7 @@ export function useAgentRuntime(options: {
     planEntries,
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
+    historyLoadError,
   }
 }
 

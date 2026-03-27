@@ -22,6 +22,7 @@ type SessionState struct {
 	IsActive     bool // true after first prompt sent (vs replay-only)
 	ResultCount  int
 	HistoryOnce  sync.Once // ensures LoadSession runs at most once per session
+	HistoryError string    // non-empty if LoadSession failed (shared across connections)
 }
 
 // NewSessionState creates a new SessionState.
