@@ -416,11 +416,21 @@ export function useAgentRuntime(options: {
 
             if ("rawOutput" in f) {
               patch.result = f.rawOutput
-            } else if (f.status === "completed") {
-              // Backend strips rawOutput for large-output tools (e.g., Bash).
-              // Use ACP status to mark the tool as finished so it doesn't show
-              // as failed/running during history replay.
-              patch.result = ""
+            } else {
+              // Check _meta.claudeCode.toolResponse for tool results delivered
+              // via metadata (some tools send results there instead of rawOutput)
+              const meta = f._meta as Record<string, unknown> | undefined
+              const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
+              if (claudeMeta?.toolResponse != null) {
+                patch.result = claudeMeta.toolResponse
+              } else if (f.status === "completed") {
+                // Backend strips rawOutput for large-output tools (e.g., Bash).
+                // Use ACP status to mark the tool as finished so it doesn't show
+                // as failed/running during history replay.
+                // assistant-ui uses `!part.result` (truthiness) to check if pending,
+                // so result must be truthy — empty string doesn't work.
+                patch.result = existing.result || " "
+              }
             }
             if ("title" in f && typeof f.title === "string") {
               patch.toolName = f.title
