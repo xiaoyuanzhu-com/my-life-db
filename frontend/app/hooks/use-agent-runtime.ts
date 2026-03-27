@@ -252,7 +252,10 @@ export function useAgentRuntime(options: {
             // If no open assistant message exists, create one.
             // Active sessions use "running" (triggers WIP indicator);
             // inactive (replay) use "incomplete" (allows appending without triggering running).
-            if (!last || last.status?.type === "complete") {
+            // Also create a new message if a user message is the most recent entry —
+            // a user message always marks a turn boundary, so never append across it.
+            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            if (!last || last.status?.type === "complete" || lastIsUser) {
               // Don't create a new assistant message from an empty text chunk
               if (!chunk) return prev
               updated.push({
@@ -297,7 +300,8 @@ export function useAgentRuntime(options: {
             const updated = [...prev]
             const last = findLastAssistant(updated)
 
-            if (!last || last.status?.type === "complete") {
+            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            if (!last || last.status?.type === "complete" || lastIsUser) {
               // Don't create a new assistant message from an empty thought chunk
               if (!chunk) return prev
               updated.push({
@@ -347,7 +351,8 @@ export function useAgentRuntime(options: {
             const updated = [...prev]
             const last = findLastAssistant(updated)
 
-            if (!last || last.status?.type === "complete") {
+            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            if (!last || last.status?.type === "complete" || lastIsUser) {
               updated.push({
                 id: nextId(),
                 role: "assistant",
