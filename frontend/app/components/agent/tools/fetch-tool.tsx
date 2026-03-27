@@ -116,9 +116,12 @@ export function FetchToolRenderer({
   result,
   status,
 }: ToolCallMessagePartProps<FetchArgs, unknown>) {
-  const isComplete = status.type === "complete"
-  const isRunning = status.type === "running"
-  const isError = status.type === "requires-action" || status.type === "incomplete"
+  // If no result yet and status is "incomplete" (e.g. history replay), treat as still working
+  const hasResult = result != null
+  const effectiveStatus = (status.type === "incomplete" && !hasResult) ? "running" : status.type
+  const isComplete = effectiveStatus === "complete"
+  const isRunning = effectiveStatus === "running"
+  const isError = effectiveStatus === "requires-action" || effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
   const isSearch = isWebSearch(args, toolName)
@@ -128,7 +131,7 @@ export function FetchToolRenderer({
 
   const dotType = isError
     ? "tool-failed" as const
-    : toolStatusToDotType(status.type)
+    : toolStatusToDotType(effectiveStatus)
 
   const resultContent = extractResultContent(result)
   const hasContent = !!resultContent

@@ -22,9 +22,12 @@ export function ReadToolRenderer({
   result,
   status,
 }: ToolCallMessagePartProps<ReadArgs, unknown>) {
-  const isComplete = status.type === "complete"
-  const isRunning = status.type === "running"
-  const isError = status.type === "requires-action" || status.type === "incomplete"
+  // If no result yet and status is "incomplete" (e.g. history replay), treat as still working
+  const hasResult = result != null
+  const effectiveStatus = (status.type === "incomplete" && !hasResult) ? "running" : status.type
+  const isComplete = effectiveStatus === "complete"
+  const isRunning = effectiveStatus === "running"
+  const isError = effectiveStatus === "requires-action" || effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
   // Extract file path -- show filename only in header, full path on hover
@@ -52,7 +55,7 @@ export function ReadToolRenderer({
   // Determine dot type
   const dotType = isError
     ? "tool-failed" as const
-    : toolStatusToDotType(status.type)
+    : toolStatusToDotType(effectiveStatus)
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
