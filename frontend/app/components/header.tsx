@@ -53,7 +53,7 @@ export function Header() {
   const navLinks = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/library', label: 'Library', icon: Library },
-    { href: '/claude', label: 'Claude', icon: Terminal },
+    { href: '/agent', label: 'Agent', icon: Terminal },
     { href: '/settings/data-sources', label: 'Data Sources', icon: Database },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];

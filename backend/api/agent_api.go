@@ -95,7 +95,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 
 	// Save permission mode if provided
 	if req.PermissionMode != "" {
-		db.SaveClaudeSessionPermissionMode(sessionID, req.PermissionMode)
+		db.SaveAgentSessionPermissionMode(sessionID, req.PermissionMode)
 	}
 
 	// Wire onFrame BEFORE storing — ensures any Send() (from here or from the
@@ -153,7 +153,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			sessionState.ResultCount++
 			sessionState.IsProcessing = false
 			sessionState.Mu.Unlock()
-			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
+			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, req.Message)
 
 		log.Info().
@@ -292,7 +292,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 // POST /api/agent/sessions/:id/archive
 func (h *Handlers) ArchiveAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := db.ArchiveClaudeSession(sessionID); err != nil {
+	if err := db.ArchiveAgentSession(sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to archive session"})
 		return
 	}
@@ -303,7 +303,7 @@ func (h *Handlers) ArchiveAgentSession(c *gin.Context) {
 // POST /api/agent/sessions/:id/unarchive
 func (h *Handlers) UnarchiveAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := db.UnarchiveClaudeSession(sessionID); err != nil {
+	if err := db.UnarchiveAgentSession(sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unarchive session"})
 		return
 	}
@@ -315,13 +315,13 @@ func (h *Handlers) UnarchiveAgentSession(c *gin.Context) {
 func (h *Handlers) ShareAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
 	shareToken := uuid.New().String()
-	if err := db.ShareClaudeSession(sessionID, shareToken); err != nil {
+	if err := db.ShareAgentSession(sessionID, shareToken); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to share session"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"shareToken": shareToken,
-		"shareUrl":   "/shared/claude/" + shareToken,
+		"shareUrl":   "/share/" + shareToken,
 	})
 }
 
@@ -329,7 +329,7 @@ func (h *Handlers) ShareAgentSession(c *gin.Context) {
 // DELETE /api/agent/sessions/:id/share
 func (h *Handlers) UnshareAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := db.UnshareClaudeSession(sessionID); err != nil {
+	if err := db.UnshareAgentSession(sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unshare session"})
 		return
 	}

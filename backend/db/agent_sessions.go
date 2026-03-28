@@ -95,8 +95,8 @@ func TouchAgentSession(sessionID string) error {
 
 // ── Archive operations ───────────────────────────────────────────────────────
 
-// ArchiveClaudeSession marks a Claude session as archived
-func ArchiveClaudeSession(sessionID string) error {
+// ArchiveAgentSession marks a session as archived
+func ArchiveAgentSession(sessionID string) error {
 	_, err := Run(
 		`UPDATE agent_sessions SET archived_at = ?, updated_at = ?
 		 WHERE session_id = ?`,
@@ -105,8 +105,8 @@ func ArchiveClaudeSession(sessionID string) error {
 	return err
 }
 
-// UnarchiveClaudeSession removes the archived mark from a Claude session
-func UnarchiveClaudeSession(sessionID string) error {
+// UnarchiveAgentSession removes the archived mark from a session
+func UnarchiveAgentSession(sessionID string) error {
 	_, err := Run(
 		`UPDATE agent_sessions SET archived_at = NULL, updated_at = ?
 		 WHERE session_id = ?`,
@@ -115,16 +115,16 @@ func UnarchiveClaudeSession(sessionID string) error {
 	return err
 }
 
-// IsClaudeSessionArchived checks if a single session is archived
-func IsClaudeSessionArchived(sessionID string) (bool, error) {
+// IsAgentSessionArchived checks if a single session is archived
+func IsAgentSessionArchived(sessionID string) (bool, error) {
 	return Exists(
 		`SELECT 1 FROM agent_sessions WHERE session_id = ? AND archived_at IS NOT NULL`,
 		sessionID,
 	)
 }
 
-// GetArchivedClaudeSessionIDs returns all archived session IDs as a set
-func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
+// GetArchivedAgentSessionIDs returns all archived session IDs as a set
+func GetArchivedAgentSessionIDs() (map[string]bool, error) {
 	rows, err := Select(
 		`SELECT session_id FROM agent_sessions WHERE archived_at IS NOT NULL`,
 		nil,
@@ -146,10 +146,10 @@ func GetArchivedClaudeSessionIDs() (map[string]bool, error) {
 
 // ── Read status operations ───────────────────────────────────────────────────
 
-// MarkClaudeSessionRead records the number of result messages (completed turns)
+// MarkAgentSessionRead records the number of result messages (completed turns)
 // that were delivered to the user via WebSocket. Uses upsert with MAX so that
 // a client disconnecting with a lower count can never regress the value.
-func MarkClaudeSessionRead(sessionID string, resultCount int) error {
+func MarkAgentSessionRead(sessionID string, resultCount int) error {
 	_, err := Run(
 		`UPDATE agent_sessions
 		 SET last_read_count = MAX(?, last_read_count)
@@ -189,9 +189,9 @@ func GetAllSessionReadStates() (map[string]int, error) {
 
 // ── Session preferences (permission mode + always-allowed tools) ─────────────
 
-// SaveClaudeSessionPermissionMode persists the permission mode for a session.
+// SaveAgentSessionPermissionMode persists the permission mode for a session.
 // Called when the user changes permission mode via the UI.
-func SaveClaudeSessionPermissionMode(sessionID string, mode string) error {
+func SaveAgentSessionPermissionMode(sessionID string, mode string) error {
 	_, err := Run(
 		`UPDATE agent_sessions SET permission_mode = ?, updated_at = ?
 		 WHERE session_id = ?`,
@@ -200,9 +200,9 @@ func SaveClaudeSessionPermissionMode(sessionID string, mode string) error {
 	return err
 }
 
-// SaveClaudeSessionAllowedTools persists the always-allowed tools list for a session.
+// SaveAgentSessionAllowedTools persists the always-allowed tools list for a session.
 // The tools slice is stored as a JSON array.
-func SaveClaudeSessionAllowedTools(sessionID string, tools []string) error {
+func SaveAgentSessionAllowedTools(sessionID string, tools []string) error {
 	toolsJSON, err := json.Marshal(tools)
 	if err != nil {
 		return err
@@ -218,24 +218,24 @@ func SaveClaudeSessionAllowedTools(sessionID string, tools []string) error {
 	return err
 }
 
-// ClaudeSessionPreferences holds the persisted preferences for a session.
-type ClaudeSessionPreferences struct {
+// AgentSessionPreferences holds the persisted preferences for a session.
+type AgentSessionPreferences struct {
 	SessionID          string
 	PermissionMode     string
 	AlwaysAllowedTools []string
 }
 
-// GetAllClaudeSessionPreferences bulk-loads preferences for all sessions that
+// GetAllAgentSessionPreferences bulk-loads preferences for all sessions that
 // have a non-default permission mode or non-empty always-allowed tools.
 // Returns a map keyed by session_id.
-func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, error) {
+func GetAllAgentSessionPreferences() (map[string]*AgentSessionPreferences, error) {
 	rows, err := Select(
 		`SELECT session_id, permission_mode, always_allowed_tools
 		 FROM agent_sessions
 		 WHERE permission_mode != '' OR always_allowed_tools != '[]'`,
 		nil,
-		func(rows *sql.Rows) (*ClaudeSessionPreferences, error) {
-			var p ClaudeSessionPreferences
+		func(rows *sql.Rows) (*AgentSessionPreferences, error) {
+			var p AgentSessionPreferences
 			var toolsJSON string
 			if err := rows.Scan(&p.SessionID, &p.PermissionMode, &toolsJSON); err != nil {
 				return nil, err
@@ -252,7 +252,7 @@ func GetAllClaudeSessionPreferences() (map[string]*ClaudeSessionPreferences, err
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]*ClaudeSessionPreferences, len(rows))
+	result := make(map[string]*AgentSessionPreferences, len(rows))
 	for _, p := range rows {
 		result[p.SessionID] = p
 	}
@@ -278,8 +278,8 @@ func GetAgentSessionPermissionMode(sessionID string) (string, error) {
 
 // ── Share operations ─────────────────────────────────────────────────────────
 
-// ShareClaudeSession sets the share token for a session (upsert).
-func ShareClaudeSession(sessionID, shareToken string) error {
+// ShareAgentSession sets the share token for a session (upsert).
+func ShareAgentSession(sessionID, shareToken string) error {
 	_, err := Run(
 		`INSERT INTO agent_sessions (session_id, share_token, shared_at, updated_at)
 		 VALUES (?, ?, ?, ?)
@@ -292,8 +292,8 @@ func ShareClaudeSession(sessionID, shareToken string) error {
 	return err
 }
 
-// UnshareClaudeSession removes the share token from a session.
-func UnshareClaudeSession(sessionID string) error {
+// UnshareAgentSession removes the share token from a session.
+func UnshareAgentSession(sessionID string) error {
 	_, err := Run(
 		`UPDATE agent_sessions SET share_token = NULL, shared_at = NULL, updated_at = ?
 		 WHERE session_id = ?`,

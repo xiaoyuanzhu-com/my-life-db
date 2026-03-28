@@ -122,10 +122,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	persistReadState := func() {
 		if n := int(seenResultCount.Load()); n > 0 {
-			if err := db.MarkClaudeSessionRead(sessionID, n); err != nil {
+			if err := db.MarkAgentSessionRead(sessionID, n); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
 			} else {
-				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "read")
 			}
 		}
 	}
@@ -136,10 +136,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	rc := sessionState.ResultCount
 	sessionState.Mu.RUnlock()
 	if rc > 0 {
-		if err := db.MarkClaudeSessionRead(sessionID, rc); err != nil {
+		if err := db.MarkAgentSessionRead(sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
 		} else {
-			h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "read")
+			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "read")
 		}
 		seenResultCount.Store(int32(rc))
 	}
@@ -458,12 +458,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.ResultCount++
 				sessionState.IsProcessing = false
 				sessionState.Mu.Unlock()
-				h.server.Notifications().NotifyClaudeSessionUpdated(sessionID, "result")
+				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 			}(acpSession, promptText)
 
 			// Auto-unarchive
-			if archived, err := db.IsClaudeSessionArchived(sessionID); err == nil && archived {
-				if err := db.UnarchiveClaudeSession(sessionID); err != nil {
+			if archived, err := db.IsAgentSessionArchived(sessionID); err == nil && archived {
+				if err := db.UnarchiveAgentSession(sessionID); err != nil {
 					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to auto-unarchive session")
 				} else {
 					log.Info().Str("sessionId", sessionID).Msg("auto-unarchived session on new message")

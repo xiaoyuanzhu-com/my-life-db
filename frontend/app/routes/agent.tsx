@@ -23,7 +23,7 @@ import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { cn } from '~/lib/utils'
 import { useAuth } from '~/contexts/auth-context'
 import { useFeatureFlags } from '~/contexts/feature-flags-context'
-import { useClaudeSessionNotifications } from '~/hooks/use-notifications'
+import { useAgentSessionNotifications } from '~/hooks/use-notifications'
 import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
 import { isNativeApp } from '~/lib/native-bridge'
@@ -33,7 +33,7 @@ import '@fontsource/jetbrains-mono'
 interface Session {
   id: string
   title: string // firstPrompt - fallback title
-  summary?: string // Claude-generated 5-10 word title
+  summary?: string // AI-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
   sessionState: 'idle' | 'working' | 'unread' | 'archived'
@@ -167,7 +167,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
   )
 }
 
-export default function ClaudePage() {
+export default function AgentPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
   const isMobile = useIsMobile()
@@ -188,7 +188,7 @@ export default function ClaudePage() {
   })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('claude-session-filter')
+      const saved = localStorage.getItem('agent-session-filter')
       if (saved === 'all' || saved === 'active' || saved === 'archived') {
         return saved
       }
@@ -200,7 +200,7 @@ export default function ClaudePage() {
   // Sidebar collapse state (desktop)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('claude-sidebar-collapsed') === 'true'
+      return localStorage.getItem('agent-sidebar-collapsed') === 'true'
     }
     return false
   })
@@ -211,7 +211,7 @@ export default function ClaudePage() {
   // Initialize from localStorage if available
   const [newSessionWorkingDir, setNewSessionWorkingDir] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('claude-last-working-dir') || ''
+      return localStorage.getItem('agent-last-working-dir') || ''
     }
     return ''
   })
@@ -224,7 +224,7 @@ export default function ClaudePage() {
   // - Passed to createSessionWithMessage API when user sends first message
   const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('claude-permission-mode')
+      const saved = localStorage.getItem('agent-permission-mode')
       if (saved === 'default' || saved === 'acceptEdits' || saved === 'plan' || saved === 'bypassPermissions') {
         return saved
       }
@@ -262,18 +262,18 @@ export default function ClaudePage() {
   // Persist working directory to localStorage
   useEffect(() => {
     if (newSessionWorkingDir) {
-      localStorage.setItem('claude-last-working-dir', newSessionWorkingDir)
+      localStorage.setItem('agent-last-working-dir', newSessionWorkingDir)
     }
   }, [newSessionWorkingDir])
 
   // Persist session filter to localStorage
   useEffect(() => {
-    localStorage.setItem('claude-session-filter', statusFilter)
+    localStorage.setItem('agent-session-filter', statusFilter)
   }, [statusFilter])
 
   // Persist permission mode to localStorage
   useEffect(() => {
-    localStorage.setItem('claude-permission-mode', newSessionPermissionMode)
+    localStorage.setItem('agent-permission-mode', newSessionPermissionMode)
   }, [newSessionPermissionMode])
 
   // Persist agent type to localStorage
@@ -283,7 +283,7 @@ export default function ClaudePage() {
 
   // Persist sidebar collapsed state
   useEffect(() => {
-    localStorage.setItem('claude-sidebar-collapsed', String(isSidebarCollapsed))
+    localStorage.setItem('agent-sidebar-collapsed', String(isSidebarCollapsed))
   }, [isSidebarCollapsed])
 
   // Sync sidebar panel with collapse state
@@ -301,7 +301,7 @@ export default function ClaudePage() {
   // (mode may have been changed inside an active session's ChatInterface)
   useEffect(() => {
     if (!activeSessionId) {
-      const saved = localStorage.getItem('claude-permission-mode') as PermissionMode | null
+      const saved = localStorage.getItem('agent-permission-mode') as PermissionMode | null
       if (saved && saved !== newSessionPermissionMode) {
         setNewSessionPermissionMode(saved)
       }
@@ -311,7 +311,7 @@ export default function ClaudePage() {
 
   // Sort sessions by last USER activity (most recent first)
   // Uses lastUserActivity (only updated on user input) instead of lastActivity
-  // (updated on any file write) to prevent sessions from jumping when Claude responds
+  // (updated on any file write) to prevent sessions from jumping when the agent responds
   const sortSessions = (sessionList: Session[]): Session[] => {
     return [...sessionList].sort((a: Session, b: Session) => {
       const dateA = a.lastUserActivity || a.lastActivity
@@ -463,10 +463,10 @@ export default function ClaudePage() {
       // NavigationStack pop — causing the user to land on a stale empty page
       // instead of the session list.
       const useReplace = isNativeApp() || prevId != null
-      navigate(`/claude/${activeSessionId}`, { replace: useReplace })
+      navigate(`/agent/${activeSessionId}`, { replace: useReplace })
     } else if (urlSessionId) {
       // Going back to list — replace so we don't duplicate the list entry
-      navigate('/claude', { replace: true })
+      navigate('/agent', { replace: true })
     }
   }, [activeSessionId, urlSessionId, navigate])
 
@@ -557,7 +557,7 @@ export default function ClaudePage() {
 
   // Refresh session list when titles change (SSE from backend)
   // Uses refreshSessions for seamless background updates without loading flash
-  useClaudeSessionNotifications({
+  useAgentSessionNotifications({
     onSessionUpdated: refreshSessions,
     enabled: isAuthenticated,
   })
@@ -635,7 +635,7 @@ export default function ClaudePage() {
       })
       setActiveSessionId(session.id)
       setShowNewSessionMobile(false)
-      localStorage.removeItem('claude-input:new-session')
+      localStorage.removeItem('agent-input:new-session')
     } catch (error) {
       console.error('Failed to create session:', error)
     } finally {
@@ -753,9 +753,9 @@ export default function ClaudePage() {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">Claude Code Sessions</h1>
+          <h1 className="text-3xl font-bold mb-4">Agent Sessions</h1>
           <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            Access your Claude Code interactive sessions for software development tasks.
+            Access your agent sessions for software development tasks.
           </p>
           <p className="text-muted-foreground">
             Please sign in using the button in the header to get started.
@@ -883,7 +883,7 @@ export default function ClaudePage() {
         {sessionSidebar ? (
           <ResizablePanelGroup
             direction="horizontal"
-            autoSaveId="claude-sidebar"
+            autoSaveId="agent-sidebar"
           >
             {/* Sidebar panel */}
             <ResizablePanel
@@ -941,7 +941,7 @@ export default function ClaudePage() {
                 ) : !activeSessionId ? (
                   <AgentChat
                     sessionId=""
-                    className="flex-1 claude-bg"
+                    className="flex-1 agent-bg"
                   />
                 ) : null}
               </div>
@@ -958,7 +958,7 @@ export default function ClaudePage() {
             ) : !activeSessionId ? (
               <AgentChat
                 sessionId=""
-                className="flex-1 claude-bg"
+                className="flex-1 agent-bg"
               />
             ) : null}
           </div>
@@ -995,7 +995,7 @@ export default function ClaudePage() {
           </div>
         ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
           /* New session view: full-screen chat input with back button */
-          <div className="relative flex flex-1 flex-col claude-bg min-w-0">
+          <div className="relative flex flex-1 flex-col agent-bg min-w-0">
             <Button
               variant="ghost"
               size="icon"
@@ -1021,7 +1021,7 @@ export default function ClaudePage() {
           /* No sidebar (hybrid app) — just the chat input */
           <AgentChat
             sessionId=""
-            className="flex-1 claude-bg"
+            className="flex-1 agent-bg"
           />
         )}
       </div>

@@ -146,7 +146,7 @@ export function PermissionCard({
     <div
       ref={cardRef}
       className={cn(
-        "p-3 text-sm",
+        "p-3 text-sm border-b border-border",
         isDismissing ? "animate-slide-down-fade" : "animate-permission-slide-up",
       )}
       onAnimationEnd={handleAnimationEnd}

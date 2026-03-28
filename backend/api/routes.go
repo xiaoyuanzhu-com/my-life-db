@@ -20,9 +20,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/oauth/token", h.OAuthToken)
 		public.POST("/oauth/logout", h.OAuthLogout)
 
-		// Claude Code CLI auth status (public — independent of app auth)
-		public.GET("/claude/auth-status", h.ClaudeAuthStatus)
-
 		// Public share routes (no auth required)
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
@@ -109,21 +106,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Vendor routes
 		api.GET("/vendors/openai/models", h.GetOpenAIModels)
 
-		// Claude Code routes — DEPRECATED: use /api/agent/sessions/* instead
-		// Kept temporarily for backward compatibility (native app may still use old URLs)
-		api.GET("/claude/sessions", h.ListClaudeSessions)
-		api.GET("/claude/sessions/all", h.ListAllClaudeSessions)
-		api.POST("/claude/sessions", h.CreateClaudeSession)
-		api.GET("/claude/sessions/:id", h.GetClaudeSession)
-		api.GET("/claude/sessions/:id/messages", h.GetClaudeSessionMessages)
-		api.PATCH("/claude/sessions/:id", h.UpdateClaudeSession)
-		api.POST("/claude/sessions/:id/deactivate", h.DeactivateClaudeSession)
-		api.POST("/claude/sessions/:id/archive", h.ArchiveClaudeSession)
-		api.POST("/claude/sessions/:id/unarchive", h.UnarchiveClaudeSession)
-
-		api.POST("/claude/sessions/:id/share", h.ShareClaudeSession)
-		api.DELETE("/claude/sessions/:id/share", h.UnshareClaudeSession)
-
 		// ASR routes
 		api.POST("/asr", h.ASRHandler)
 	}
@@ -131,9 +113,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// WebSocket routes - need auth but registered on main router
 	// Apply auth middleware individually
 	wsAuth := AuthMiddleware()
-	r.GET("/api/claude/sessions/:id/subscribe", wsAuth, h.ClaudeSubscribeWebSocket)
 	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
-	r.GET("/api/claude-login/ws", h.ClaudeLoginWebSocket)
 	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 
 	// Agent routes (new unified API)

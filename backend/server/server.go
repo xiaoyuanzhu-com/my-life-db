@@ -4,19 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
-	"github.com/xiaoyuanzhu-com/my-life-db/claude"
-	claudecodecollector "github.com/xiaoyuanzhu-com/my-life-db/collectors/claudecode"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -37,14 +31,9 @@ type Server struct {
 	digestWorker    *digest.Worker
 	meiliSyncWorker *meiliworker.SyncWorker
 	notifService    *notifications.Service
-	claudeManager   *claude.SessionManager
 	agent               *agent.Agent
-	claudeCodeCollector *claudecodecollector.Collector
 	llmProxy        *llm.Proxy
 	agentClient     *agentsdk.Client
-
-	// Claude Code CLI auth
-	claudeLoggedIn atomic.Bool
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -124,20 +113,6 @@ func New(cfg *Config) (*Server, error) {
 	log.Info().Msg("initializing notifications service")
 	s.notifService = notifications.NewService()
 
-	// 3.5. Create Claude session manager
-	log.Info().Msg("initializing Claude session manager")
-	claudeManager, err := claude.NewSessionManager()
-	if err != nil {
-		database.Close()
-		return nil, fmt.Errorf("failed to create Claude manager: %w", err)
-	}
-	s.claudeManager = claudeManager
-
-	// Subscribe to session events for SSE notifications
-	claudeManager.Subscribe(func(event claude.SessionEvent) {
-		s.notifService.NotifyClaudeSessionUpdated(event.SessionID, string(event.Type))
-	})
-
 	// 4. Create FS service
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
@@ -176,27 +151,11 @@ func New(cfg *Config) (*Server, error) {
 		log.Info().Msg("inbox agent disabled")
 	}
 
-	// 6.5. Create Claude Code data collector
-	{
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			sourceDir := filepath.Join(homeDir, ".claude", "projects")
-			destDir := filepath.Join(cfg.UserDataDir, "imports", "claude-code", "projects")
-			s.claudeCodeCollector = claudecodecollector.New(sourceDir, destDir)
-			log.Info().Str("source", sourceDir).Str("dest", destDir).Msg("initialized Claude Code data collector")
-		} else {
-			log.Warn().Err(err).Msg("failed to get home dir, Claude Code collector disabled")
-		}
-	}
-
 	// 8. Wire service connections
 	s.connectServices()
 
 	// 9. Setup HTTP router
 	s.setupRouter()
-
-	// 10. Check Claude Code CLI auth status
-	s.claudeLoggedIn.Store(checkClaudeAuthStatus())
 
 	log.Info().Msg("server initialized successfully")
 	return s, nil
@@ -289,11 +248,8 @@ func (s *Server) setupRouter() {
 			"/api/notifications/stream", // SSE - needs streaming
 			"/api/asr/realtime",         // WebSocket - protocol upgrade
 			"/api/upload/tus/",          // TUS - needs ResponseController for timeout extension
-			"/api/claude-login/ws",          // WebSocket - login terminal
 		}),
 		gzip.WithExcludedPathsRegexs([]string{
-			"/api/claude/sessions/.*/ws",        // WebSocket - terminal I/O
-			"/api/claude/sessions/.*/subscribe", // WebSocket - session updates
 			"/api/agent/sessions/.*/subscribe",  // WebSocket - agent session updates
 		}),
 	))
@@ -379,11 +335,6 @@ func (s *Server) Start() error {
 	// Start Meilisearch sync worker
 	s.meiliSyncWorker.Start()
 
-	// Start Claude Code collector sync
-	if s.claudeCodeCollector != nil {
-		go s.runClaudeCodeSync()
-	}
-
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -405,14 +356,7 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Info().Msg("shutting down server")
 
-	// 1. Signal Claude sessions that we're shutting down.
-	// Note: SignalShutdown() is also called earlier in main.go right after
-	// receiving the signal, but we call it here too for safety.
-	if s.claudeManager != nil {
-		s.claudeManager.SignalShutdown()
-	}
-
-	// 2. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE).
+	// 1. Cancel the shutdown context to signal all long-running handlers (WebSocket, SSE).
 	// This must happen BEFORE http.Server.Shutdown() so that SSE/WS handlers exit
 	// and release their connections — otherwise Shutdown() blocks waiting for them.
 	log.Info().Msg("signaling handlers to stop")
@@ -434,14 +378,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		log.Info().Msg("HTTP listener closed")
 	}
 
-	// 5. Drain active Claude sessions (waits for "working" sessions to finish)
-	if s.claudeManager != nil {
-		if err := s.claudeManager.Shutdown(ctx); err != nil {
-			log.Error().Err(err).Msg("Claude manager shutdown error")
-		}
-	}
-
-	// 5.5. Shutdown agent client (close all ACP sessions)
+	// 5. Shutdown agent client (close all ACP sessions)
 	if s.agentClient != nil {
 		if err := s.agentClient.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("agent client shutdown error")
@@ -471,55 +408,15 @@ func (s *Server) FS() *fs.Service                             { return s.fsServi
 func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
 func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSyncWorker }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
-func (s *Server) Claude() *claude.SessionManager              { return s.claudeManager }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 
-// SignalShutdown marks Claude sessions as shutting down early, before Shutdown() is called.
+// SignalShutdown signals the server to begin shutting down early, before Shutdown() is called.
 // This should be called immediately after receiving SIGINT/SIGTERM so that child processes
 // (which share the process group and receive the signal simultaneously) are expected to exit.
 func (s *Server) SignalShutdown() {
-	if s.claudeManager != nil {
-		s.claudeManager.SignalShutdown()
-	}
-}
-func (s *Server) ClaudeLoggedIn() bool                        { return s.claudeLoggedIn.Load() }
-func (s *Server) SetClaudeLoggedIn(v bool)                    { s.claudeLoggedIn.Store(v) }
-
-// runClaudeCodeSync runs the Claude Code collector on startup and periodically.
-func (s *Server) runClaudeCodeSync() {
-	// Initial sync on startup
-	if _, err := s.claudeCodeCollector.Sync(s.shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("Claude Code initial sync failed")
-	}
-
-	// Periodic sync every 10 minutes
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.shutdownCtx.Done():
-			return
-		case <-ticker.C:
-			if _, err := s.claudeCodeCollector.Sync(s.shutdownCtx); err != nil {
-				log.Error().Err(err).Msg("Claude Code periodic sync failed")
-			}
-		}
-	}
-}
-
-// checkClaudeAuthStatus runs `claude auth status` and returns true if exit code 0
-func checkClaudeAuthStatus() bool {
-	cmd := exec.Command("claude", "auth", "status")
-	err := cmd.Run()
-	if err != nil {
-		log.Info().Msg("Claude Code CLI not authenticated")
-		return false
-	}
-	log.Info().Msg("Claude Code CLI authenticated")
-	return true
+	// Agent client will be shut down in Shutdown()
 }

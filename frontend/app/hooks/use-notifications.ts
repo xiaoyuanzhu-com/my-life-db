@@ -324,13 +324,13 @@ export function useLibraryNotifications(options: UseLibraryNotificationsOptions)
   }, [enabled, debouncedOnChange]);
 }
 
-interface UseClaudeSessionNotificationsOptions {
+interface UseAgentSessionNotificationsOptions {
   onSessionUpdated: () => void;
   enabled?: boolean;
 }
 
 /**
- * Hook for Claude session update notifications.
+ * Hook for agent session update notifications.
  * Triggers when session metadata changes (title updates, new sessions, deletions).
  *
  * Debounced (200ms) to batch rapid SSE events — a single session creation can fire
@@ -341,7 +341,7 @@ interface UseClaudeSessionNotificationsOptions {
  * Also triggers on SSE reconnection (sse-reconnected) to catch up on events that
  * may have been missed during disconnect (network drop, sleep/wake, buffer overflow).
  */
-export function useClaudeSessionNotifications(options: UseClaudeSessionNotificationsOptions) {
+export function useAgentSessionNotifications(options: UseAgentSessionNotificationsOptions) {
   const { onSessionUpdated, enabled = true } = options;
 
   // Debounce the callback to batch rapid notifications (matches useInboxNotifications pattern)
@@ -356,7 +356,7 @@ export function useClaudeSessionNotifications(options: UseClaudeSessionNotificat
     const listener = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'claude-session-updated' || data.type === 'sse-reconnected') {
+        if (data.type === 'agent-session-updated' || data.type === 'sse-reconnected') {
           debouncedOnSessionUpdated();
         }
       } catch {

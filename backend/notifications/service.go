@@ -15,7 +15,7 @@ const (
 	EventDigestUpdate         EventType = "digest-update"
 	EventPreviewUpdated       EventType = "preview-updated"
 	EventConnected            EventType = "connected"
-	EventClaudeSessionUpdated EventType = "claude-session-updated"
+	EventAgentSessionUpdated EventType = "agent-session-updated"
 )
 
 // Event represents a notification event
@@ -135,11 +135,11 @@ func (s *Service) NotifyPreviewUpdated(path string, previewType string) {
 	})
 }
 
-// NotifyClaudeSessionUpdated sends a claude-session-updated event
-// Used when Claude session metadata changes (title, summary, message count, status)
-func (s *Service) NotifyClaudeSessionUpdated(sessionID string, operation string) {
+// NotifyAgentSessionUpdated sends an agent-session-updated event
+// Used when agent session metadata changes (title, summary, message count, status)
+func (s *Service) NotifyAgentSessionUpdated(sessionID string, operation string) {
 	s.Notify(Event{
-		Type:      EventClaudeSessionUpdated,
+		Type:      EventAgentSessionUpdated,
 		Timestamp: time.Now().UnixMilli(),
 		Data: map[string]interface{}{
 			"sessionId": sessionID,

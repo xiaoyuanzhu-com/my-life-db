@@ -19,7 +19,7 @@ import FileView from "./routes/file.$";
 import People from "./routes/people";
 import PeopleDetail from "./routes/people.$id";
 import Settings from "./routes/settings";
-import Claude from "./routes/claude";
+import Agent from "./routes/agent";
 
 export const routes: RouteObject[] = [
   {
@@ -63,12 +63,12 @@ export const routes: RouteObject[] = [
         Component: Settings,
       },
       {
-        path: "claude",
-        Component: Claude,
+        path: "agent",
+        Component: Agent,
       },
       {
-        path: "claude/:sessionId",
-        Component: Claude,
+        path: "agent/:sessionId",
+        Component: Agent,
       },
     ],
   },

@@ -385,111 +385,111 @@
 }
 
 /* ============================================
-   Claude Code Interface - Design System
+   Agent Interface - Design System
    ============================================ */
 
-/* Claude CSS Variables - globally available */
+/* Agent CSS Variables - globally available */
 :root {
   /* Base Colors */
-  --claude-bg-canvas: #FFFFFF;
-  --claude-bg-subtle: #F5F4EE;
-  --claude-bg-code-block: #F5F5F5;
-  --claude-bg-inline: #F3F4F6;
-  --claude-accent-edit: #FAF9F6;
+  --agent-bg-canvas: #FFFFFF;
+  --agent-bg-subtle: #F5F4EE;
+  --agent-bg-code-block: #F5F5F5;
+  --agent-bg-inline: #F3F4F6;
+  --agent-accent-edit: #FAF9F6;
 
   /* Typography Colors */
-  --claude-text-primary: #1A1A1A;
-  --claude-text-secondary: #5F6368;
-  --claude-text-tertiary: #9CA3AF;
-  --claude-text-system: #4A4A4A;
+  --agent-text-primary: #1A1A1A;
+  --agent-text-secondary: #5F6368;
+  --agent-text-tertiary: #9CA3AF;
+  --agent-text-system: #4A4A4A;
 
   /* Borders */
-  --claude-border-light: #E5E7EB;
+  --agent-border-light: #E5E7EB;
 
   /* Diff Colors */
-  --claude-diff-add-bg: #E6FFEC;
-  --claude-diff-add-fg: #22863A;
-  --claude-diff-del-bg: #FFEBE9;
-  --claude-diff-del-fg: #CB2431;
+  --agent-diff-add-bg: #E6FFEC;
+  --agent-diff-add-fg: #22863A;
+  --agent-diff-del-bg: #FFEBE9;
+  --agent-diff-del-fg: #CB2431;
 
   /* Status Colors */
-  --claude-status-alert: #D92D20;
-  --claude-status-warn: #D97706;
+  --agent-status-alert: #D92D20;
+  --agent-status-warn: #D97706;
 }
 
 .dark {
-  --claude-bg-canvas: #1A1A1A;
-  --claude-bg-subtle: #2A2A2A;
-  --claude-bg-code-block: #252525;
-  --claude-bg-inline: #2F2F2F;
-  --claude-accent-edit: #2A2822;
-  --claude-text-primary: #E8E8E8;
-  --claude-text-secondary: #A8A8A8;
-  --claude-text-tertiary: #6B6B6B;
-  --claude-text-system: #B8B8B8;
-  --claude-border-light: #404040;
-  --claude-diff-add-bg: #1A3A1F;
-  --claude-diff-add-fg: #6FD98F;
-  --claude-diff-del-bg: #4A1F1F;
-  --claude-diff-del-fg: #F97583;
-  --claude-status-alert: #F97583;
-  --claude-status-warn: #FFA657;
+  --agent-bg-canvas: #1A1A1A;
+  --agent-bg-subtle: #2A2A2A;
+  --agent-bg-code-block: #252525;
+  --agent-bg-inline: #2F2F2F;
+  --agent-accent-edit: #2A2822;
+  --agent-text-primary: #E8E8E8;
+  --agent-text-secondary: #A8A8A8;
+  --agent-text-tertiary: #6B6B6B;
+  --agent-text-system: #B8B8B8;
+  --agent-border-light: #404040;
+  --agent-diff-add-bg: #1A3A1F;
+  --agent-diff-add-fg: #6FD98F;
+  --agent-diff-del-bg: #4A1F1F;
+  --agent-diff-del-fg: #F97583;
+  --agent-status-alert: #F97583;
+  --agent-status-warn: #FFA657;
 }
 
-/* Claude background utility class */
-.claude-bg {
-  background: var(--claude-bg-canvas);
+/* Agent background utility class */
+.agent-bg {
+  background: var(--agent-bg-canvas);
 }
 
-/* Claude interface typography/styling */
-.claude-interface {
+/* Agent interface typography/styling */
+.agent-interface {
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 15px;
   line-height: 1.6;
-  color: var(--claude-text-primary);
+  color: var(--agent-text-primary);
 }
 
-/* Claude Code Typography Utilities */
-.claude-interface .font-mono {
+/* Agent Typography Utilities */
+.agent-interface .font-mono {
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
   font-feature-settings: 'liga' 1, 'calt' 1; /* Enable ligatures */
 }
 
-.claude-interface .text-body {
+.agent-interface .text-body {
   font-size: 15px;
   line-height: 1.6;
   font-weight: 400;
 }
 
-.claude-interface .text-metadata {
+.agent-interface .text-metadata {
   font-size: 13px;
   line-height: 1.4;
   font-weight: 400;
 }
 
-.claude-interface .text-code {
+.agent-interface .text-code {
   font-size: 13px;
   line-height: 1.5;
   font-weight: 400;
 }
 
 /* Inline code styling */
-.claude-interface code {
-  background-color: var(--claude-bg-inline);
-  color: var(--claude-text-primary);
+.agent-interface code {
+  background-color: var(--agent-bg-inline);
+  color: var(--agent-text-primary);
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
   font-size: 13px;
 }
 
 /* Code blocks */
-.claude-interface pre {
-  background-color: var(--claude-bg-code-block);
+.agent-interface pre {
+  background-color: var(--agent-bg-code-block);
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
   font-size: 13px;
   line-height: 1.5;
 }
 
-.claude-interface pre code {
+.agent-interface pre code {
   background-color: transparent;
 }
 
@@ -499,7 +499,7 @@
   font-size: 15px;
   line-height: 1.6;
   user-select: text;
-  color: var(--claude-text-primary);
+  color: var(--agent-text-primary);
   overflow-wrap: break-word;
   min-width: 0;
   overflow: hidden;
@@ -558,7 +558,7 @@
   font-size: 13px;
   padding: 2px 5px;
   border-radius: 0.25rem;
-  background-color: var(--claude-bg-inline);
+  background-color: var(--agent-bg-inline);
 }
 
 .prose-claude code::before,
@@ -571,7 +571,7 @@
   padding: 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;
-  background-color: var(--claude-bg-code-block);
+  background-color: var(--agent-bg-code-block);
 }
 
 .prose-claude pre code {
@@ -594,7 +594,7 @@
   margin: 1rem 0;
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid var(--claude-border-light);
+  border: 1px solid var(--agent-border-light);
 }
 
 .prose-claude .table-wrapper {
@@ -609,19 +609,19 @@
 }
 
 .prose-claude thead {
-  background-color: var(--claude-bg-subtle);
+  background-color: var(--agent-bg-subtle);
 }
 
 .prose-claude th {
   padding: 0.5rem 0.75rem;
   text-align: left;
   font-weight: 600;
-  border: 1px solid var(--claude-border-light);
+  border: 1px solid var(--agent-border-light);
 }
 
 .prose-claude td {
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--claude-border-light);
+  border: 1px solid var(--agent-border-light);
 }
 
 /* Shiki dual theme support - spans get color only, pre gets background */
@@ -675,7 +675,7 @@
 .html-preview-container {
   position: relative;
   margin: 1rem 0;
-  border: 1px solid var(--claude-border-light);
+  border: 1px solid var(--agent-border-light);
   border-radius: 0.5rem;
   overflow: hidden;
   background: white;
@@ -692,7 +692,7 @@
 /* Library file path links in session messages
    Use `a.library-file-link` (specificity 0,1,1) to override `.prose-claude a` underline. */
 a.library-file-link {
-  color: var(--claude-accent, var(--claude-text-secondary));
+  color: var(--claude-accent, var(--agent-text-secondary));
   text-decoration: none;
   cursor: pointer;
   border-bottom: 1px dotted currentColor;
