@@ -4,6 +4,7 @@
  * components without prop drilling.
  */
 import { createContext, useContext } from "react"
+import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
 import type { PlanEntry, AvailableMode } from "~/hooks/use-agent-runtime"
 
@@ -41,6 +42,8 @@ export interface AgentContextValue {
   historyLoadError?: string | null
   /** Non-null when a live session failed before any message rendered */
   sessionError?: string | null
+  /** Map from toolCallId to child messages for subagent tool calls */
+  subagentChildrenMap?: Map<string, ThreadMessageLike[]>
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

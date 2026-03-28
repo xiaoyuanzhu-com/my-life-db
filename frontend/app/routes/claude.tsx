@@ -723,7 +723,7 @@ export default function ClaudePage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -792,6 +792,7 @@ export default function ClaudePage() {
     hasActiveSession,
     historyLoadError,
     sessionError,
+    subagentChildrenMap,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

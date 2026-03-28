@@ -53,6 +53,7 @@ interface InternalMessage {
   createdAt: Date
   status?: MessageStatus
   isOptimistic?: boolean
+  parentToolUseId?: string
 }
 
 export interface AvailableMode {
@@ -74,6 +75,15 @@ export interface PlanEntry {
   content: string
   status: "pending" | "in_progress" | "completed"
   priority?: string
+}
+
+/** Extract parentToolUseId from ACP frame _meta.claudeCode */
+function getFrameParentToolUseId(frame: AcpFrame): string | undefined {
+  const meta = frame._meta as Record<string, unknown> | undefined
+  const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
+  return typeof claudeMeta?.parentToolUseId === "string"
+    ? claudeMeta.parentToolUseId
+    : undefined
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -249,18 +259,23 @@ export function useAgentRuntime(options: {
           const f = frame as AgentMessageChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
+          const parentToolUseId = getFrameParentToolUseId(frame)
 
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
+            const last = findLastAssistant(updated, parentToolUseId)
 
             // If no open assistant message exists, create one.
             // Active sessions use "running" (triggers WIP indicator);
             // inactive (replay) use "incomplete" (allows appending without triggering running).
             // Also create a new message if a user message is the most recent entry —
             // a user message always marks a turn boundary, so never append across it.
-            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            // For scoped (subagent) frames, check the last message within that scope.
+            const lastInScope = parentToolUseId
+              ? [...updated].reverse().find(m => m.parentToolUseId === parentToolUseId)
+              : updated[updated.length - 1]
+            const lastIsUser = lastInScope?.role === "user"
             if (!last || last.status?.type === "complete" || lastIsUser) {
               // Don't create a new assistant message from an empty text chunk
               if (!chunk) return prev
@@ -272,6 +287,7 @@ export function useAgentRuntime(options: {
                 status: isActiveRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
+                parentToolUseId,
               })
               return updated
             }
@@ -289,7 +305,7 @@ export function useAgentRuntime(options: {
               parts.push({ type: "text", text: chunk })
             }
 
-            replaceLastAssistant(updated, { ...last, content: parts })
+            replaceLastAssistant(updated, { ...last, content: parts }, parentToolUseId)
             return updated
           })
           break
@@ -300,13 +316,17 @@ export function useAgentRuntime(options: {
           const f = frame as AgentThoughtChunkFrame
           if (f.content?.type !== "text") break
           const chunk = f.content.text
+          const parentToolUseId = getFrameParentToolUseId(frame)
 
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
+            const last = findLastAssistant(updated, parentToolUseId)
 
-            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            const lastInScope = parentToolUseId
+              ? [...updated].reverse().find(m => m.parentToolUseId === parentToolUseId)
+              : updated[updated.length - 1]
+            const lastIsUser = lastInScope?.role === "user"
             if (!last || last.status?.type === "complete" || lastIsUser) {
               // Don't create a new assistant message from an empty thought chunk
               if (!chunk) return prev
@@ -318,6 +338,7 @@ export function useAgentRuntime(options: {
                 status: isActiveRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
+                parentToolUseId,
               })
               return updated
             }
@@ -335,7 +356,7 @@ export function useAgentRuntime(options: {
               parts.push({ type: "reasoning", text: chunk })
             }
 
-            replaceLastAssistant(updated, { ...last, content: parts })
+            replaceLastAssistant(updated, { ...last, content: parts }, parentToolUseId)
             return updated
           })
           break
@@ -350,14 +371,18 @@ export function useAgentRuntime(options: {
           const meta = f._meta as Record<string, unknown> | undefined
           const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
           const metaToolName = typeof claudeMeta?.toolName === "string" ? claudeMeta.toolName : undefined
+          const parentToolUseId = typeof claudeMeta?.parentToolUseId === "string" ? claudeMeta.parentToolUseId : undefined
           const args = { ...rawInput, kind: f.kind, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
 
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
+            const last = findLastAssistant(updated, parentToolUseId)
 
-            const lastIsUser = updated[updated.length - 1]?.role === "user"
+            const lastInScope = parentToolUseId
+              ? [...updated].reverse().find(m => m.parentToolUseId === parentToolUseId)
+              : updated[updated.length - 1]
+            const lastIsUser = lastInScope?.role === "user"
             if (!last || last.status?.type === "complete" || lastIsUser) {
               updated.push({
                 id: nextId(),
@@ -375,6 +400,7 @@ export function useAgentRuntime(options: {
                 status: isActiveRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
+                parentToolUseId,
               })
               return updated
             }
@@ -388,7 +414,7 @@ export function useAgentRuntime(options: {
               argsText: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput ?? {}),
             })
 
-            replaceLastAssistant(updated, { ...last, content: parts })
+            replaceLastAssistant(updated, { ...last, content: parts }, parentToolUseId)
             return updated
           })
           break
@@ -408,16 +434,8 @@ export function useAgentRuntime(options: {
 
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
-            if (!last) return prev
 
-            const parts = [...last.content]
-            const idx = parts.findIndex(
-              (p) => p.type === "tool-call" && p.toolCallId === toolCallId
-            )
-            if (idx === -1) return prev
-
-            const existing = parts[idx] as ToolCallPart
+            // Build the patch from the frame data
             const patch: Partial<ToolCallPart> = {}
 
             if ("rawOutput" in f) {
@@ -435,16 +453,47 @@ export function useAgentRuntime(options: {
                 // as failed/running during history replay.
                 // assistant-ui uses `!part.result` (truthiness) to check if pending,
                 // so result must be truthy — empty string doesn't work.
-                patch.result = existing.result || " "
+                patch.result = undefined // placeholder, set per-match below
               }
             }
             if ("title" in f && typeof f.title === "string") {
               patch.toolName = f.title
             }
+            // Patch args when rawInput arrives in update (e.g., Skill tool sends
+            // skill name in tool_call_update, not the initial tool_call frame)
+            if ("rawInput" in f && f.rawInput != null) {
+              const rawInput = f.rawInput as Record<string, unknown>
+              const meta = f._meta as Record<string, unknown> | undefined
+              const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
+              const metaToolName = typeof claudeMeta?.toolName === "string" ? claudeMeta.toolName : undefined
+              patch.args = { ...rawInput, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
+              patch.argsText = JSON.stringify(rawInput)
+            }
 
-            parts[idx] = { ...existing, ...patch }
-            replaceLastAssistant(updated, { ...last, content: parts })
-            return updated
+            // Reverse-scan ALL assistant messages to find the tool call.
+            // For subagent tool calls, the tool call may be in a different
+            // assistant message than the last one.
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const msg = updated[i]
+              if (msg.role !== "assistant") continue
+              const parts = [...msg.content]
+              const idx = parts.findIndex(
+                (p) => p.type === "tool-call" && p.toolCallId === toolCallId
+              )
+              if (idx === -1) continue
+
+              // Found it — apply patch and return
+              const existing = parts[idx] as ToolCallPart
+              // Handle the "completed but no rawOutput" case with existing result
+              if (!("rawOutput" in f) && f.status === "completed" && patch.result === undefined) {
+                patch.result = existing.result || " "
+              }
+              parts[idx] = { ...existing, ...patch }
+              updated[i] = { ...msg, content: parts }
+              return updated
+            }
+
+            return prev
           })
           break
         }
@@ -474,6 +523,10 @@ export function useAgentRuntime(options: {
             return next
           })
 
+          // Note: permission.request is not scoped by parentToolUseId.
+          // Permissions only apply to the top-level agent — subagent tool calls
+          // are auto-approved by the parent CLI process and never trigger
+          // permission requests in the UI.
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
@@ -540,6 +593,11 @@ export function useAgentRuntime(options: {
             if (prev.size === 0) return prev
             return new Map()
           })
+          // Note: turn.complete/error only close the root-scope assistant message.
+          // Subagent-scoped messages may retain stale status, but SubagentSession
+          // derives status from toolPart.result rather than message.status, so this
+          // is safe. If future code inspects message.status for subagent messages,
+          // this will need to iterate all scopes.
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated)
@@ -698,43 +756,66 @@ export function useAgentRuntime(options: {
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
-  const threadMessages: ThreadMessageLike[] = useMemo(
-    () =>
-      messages.map((msg) => ({
-        id: msg.id,
-        role: msg.role,
-        createdAt: msg.createdAt,
-        content:
-          msg.content.length === 0
-            ? [{ type: "text" as const, text: "" }]
-            : msg.content.map((part) => {
-                if (part.type === "text") {
-                  return { type: "text" as const, text: part.text }
-                }
-                if (part.type === "reasoning") {
-                  return { type: "reasoning" as const, text: part.text }
-                }
-                // tool-call
-                return {
-                  type: "tool-call" as const,
-                  toolCallId: part.toolCallId,
-                  toolName: part.toolName,
-                  args: part.args,
-                  result: part.result,
-                  isError: part.isError,
-                }
-              }),
-        status: msg.status,
-        metadata: msg.isOptimistic ? { custom: { isOptimistic: true } } : undefined,
-      })),
-    [messages]
+  const convertMessage = useCallback(
+    (msg: InternalMessage): ThreadMessageLike => ({
+      id: msg.id,
+      role: msg.role,
+      createdAt: msg.createdAt,
+      content:
+        msg.content.length === 0
+          ? [{ type: "text" as const, text: "" }]
+          : msg.content.map((part) => {
+              if (part.type === "text") {
+                return { type: "text" as const, text: part.text }
+              }
+              if (part.type === "reasoning") {
+                return { type: "reasoning" as const, text: part.text }
+              }
+              return {
+                type: "tool-call" as const,
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                args: part.args,
+                result: part.result,
+                isError: part.isError,
+              }
+            }),
+      status: msg.status,
+      metadata: msg.isOptimistic || msg.parentToolUseId
+        ? {
+            custom: {
+              ...(msg.isOptimistic && { isOptimistic: true }),
+              ...(msg.parentToolUseId && { parentToolUseId: msg.parentToolUseId }),
+            },
+          }
+        : undefined,
+    }),
+    []
   )
+
+  const { rootMessages, subagentChildrenMap } = useMemo(() => {
+    const root: ThreadMessageLike[] = []
+    const children = new Map<string, ThreadMessageLike[]>()
+
+    for (const msg of messages) {
+      const tmsg = convertMessage(msg)
+      if (msg.parentToolUseId) {
+        const list = children.get(msg.parentToolUseId) ?? []
+        list.push(tmsg)
+        children.set(msg.parentToolUseId, list)
+      } else {
+        root.push(tmsg)
+      }
+    }
+
+    return { rootMessages: root, subagentChildrenMap: children }
+  }, [messages, convertMessage])
 
   // ── ExternalStoreAdapter ──────────────────────────────────────────
 
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = useMemo(
     () => ({
-      messages: threadMessages,
+      messages: rootMessages,
       isRunning,
       convertMessage: (msg: ThreadMessageLike) => msg,
       onNew: async (message) => {
@@ -791,7 +872,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [threadMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
+    [rootMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────
@@ -821,26 +902,37 @@ export function useAgentRuntime(options: {
     sendSetMode,
     historyLoadError,
     sessionError,
+    subagentChildrenMap,
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function findLastAssistant(
-  messages: InternalMessage[]
+  messages: InternalMessage[],
+  parentToolUseId?: string
 ): InternalMessage | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant") return messages[i]
+    if (
+      messages[i].role === "assistant" &&
+      messages[i].parentToolUseId === parentToolUseId
+    ) {
+      return messages[i]
+    }
   }
   return undefined
 }
 
 function replaceLastAssistant(
   messages: InternalMessage[],
-  replacement: InternalMessage
+  replacement: InternalMessage,
+  parentToolUseId?: string
 ): void {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant") {
+    if (
+      messages[i].role === "assistant" &&
+      messages[i].parentToolUseId === parentToolUseId
+    ) {
       messages[i] = replacement
       return
     }

@@ -12,6 +12,8 @@ import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
 import { SkillToolRenderer } from "./tools/skill-tool"
 import { ToolFallback } from "~/components/assistant-ui/tool-fallback"
+import { SubagentSession } from "./subagent-session"
+import { useAgentContext } from "./agent-context"
 
 /**
  * Infer ACP ToolKind from the tool name and args.
@@ -22,6 +24,16 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   if (typeof args.kind === "string" && args.kind !== "other" && args.kind !== "") return args.kind
 
   const lower = toolName.toLowerCase()
+
+  // Check metaToolName from _meta.claudeCode.toolName as fallback
+  // (title may be a raw command like "cd /foo && npm run build" instead of "Bash <command>")
+  const metaName = typeof args.metaToolName === "string" ? args.metaToolName.toLowerCase() : ""
+  if (metaName === "bash") return "execute"
+  if (metaName === "read") return "read"
+  if (metaName === "edit" || metaName === "write") return "edit"
+  if (metaName === "grep" || metaName === "glob" || metaName === "websearch" || metaName === "toolsearch") return "search"
+  if (metaName === "webfetch") return "fetch"
+  if (metaName === "skill") return "skill"
 
   // Read tools
   if (lower.startsWith("read ") || lower === "read") return "read"
@@ -79,8 +91,41 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   return "other"
 }
 
+/** Check if a tool call is an Agent/Task dispatch */
+function isAgentToolCall(toolName: string, args: Record<string, unknown>): boolean {
+  const metaToolName = args.metaToolName as string | undefined
+  if (metaToolName === "Agent") return true
+  const lower = toolName.toLowerCase()
+  return lower.startsWith("task") && lower.includes(":")
+}
+
 /** Single Override renderer that dispatches to kind-specific components */
 export function AcpToolRenderer(props: ToolCallMessagePartProps) {
+  const { subagentChildrenMap } = useAgentContext()
+
+  // DEBUG: remove after investigation
+  const _args = (props.args ?? {}) as Record<string, unknown>
+  const _kind = inferToolKind(props.toolName, _args)
+  if (_kind === "other" || _kind === "execute") {
+    console.log("[AcpToolRenderer]", { toolName: props.toolName, kind: _args.kind, metaToolName: _args.metaToolName, inferredKind: _kind, argsKeys: Object.keys(_args) })
+  }
+
+  // Check if this is an Agent tool call with children
+  if (isAgentToolCall(props.toolName, (props.args ?? {}) as Record<string, unknown>)) {
+    const children = subagentChildrenMap?.get(props.toolCallId)
+    if (children && children.length > 0) {
+      return (
+        <SubagentSession
+          toolCallId={props.toolCallId}
+          toolName={props.toolName}
+          status={props.status}
+          childMessages={children}
+          childrenMap={subagentChildrenMap!}
+        />
+      )
+    }
+  }
+
   const kind = inferToolKind(
     props.toolName,
     (props.args ?? {}) as Record<string, unknown>
