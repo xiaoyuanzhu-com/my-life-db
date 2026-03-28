@@ -5,6 +5,7 @@ import {
   ComposerPrimitive,
   ThreadPrimitive,
   useAuiState,
+  useMessage,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -12,6 +13,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { useEffect, useRef, type FC } from "react";
+import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
@@ -33,7 +35,7 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { planEntries, pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
+  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
@@ -77,18 +79,28 @@ export const Thread: FC = () => {
 
         {isRunning && pendingPermissions.size === 0 && <AgentWIP />}
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible pb-4 md:pb-6">
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible">
           <ThreadScrollToBottom />
-          <PlanView entries={planEntries} className="mb-2" />
-          <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-col px-2 md:px-16 pb-4 md:pb-6">
+        <Composer />
+      </div>
     </ThreadPrimitive.Root>
   );
 };
 
 const ThreadMessage: FC = () => {
   const role = useAuiState((s) => s.message.role);
+  const message = useMessage();
+  const planEntries = (message as { metadata?: { custom?: { planEntries?: PlanEntry[] } } }).metadata?.custom?.planEntries;
+  if (planEntries && planEntries.length > 0) {
+    return (
+      <div className="mb-4">
+        <PlanView entries={planEntries} />
+      </div>
+    );
+  }
   if (role === "user") return <AcpUserMessage />;
   return <AcpAssistantMessage />;
 };
