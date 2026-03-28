@@ -28,23 +28,25 @@ type acpSession struct {
 	initialModels *SessionMeta
 }
 
-// spawnACPSession launches an agent binary, creates the ACP connection,
-// performs the initialization handshake, and creates a new session.
-func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionConfig, env map[string]string) (*acpSession, error) {
-	// Build command
+// warmConn is a pre-warmed ACP process with Initialize already complete.
+// Session-independent — can serve any SessionConfig via newSessionFromWarm().
+type warmConn struct {
+	cmd    *exec.Cmd
+	conn   *acp.ClientSideConnection
+	client *acpClient
+	done   <-chan struct{} // closed when agent process exits
+}
+
+// spawnWarmConn launches an agent binary and completes the Initialize handshake.
+// The returned warmConn is session-independent and ready for NewSession.
+func spawnWarmConn(ctx context.Context, agentCfg AgentConfig, env map[string]string) (*warmConn, error) {
 	cmd := exec.CommandContext(ctx, agentCfg.Command, agentCfg.Args...)
 
-	// Set environment: optionally isolate from the parent process, then merge configured env.
 	cmd.Env = baseCommandEnv(agentCfg.CleanEnv)
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 
-	if config.WorkingDir != "" {
-		cmd.Dir = config.WorkingDir
-	}
-
-	// Stderr goes to our logger
 	cmd.Stderr = &logWriter{prefix: "agent"}
 
 	stdin, err := cmd.StdinPipe()
@@ -81,16 +83,10 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		Int("pid", cmd.Process.Pid).
 		Msg("agent process started")
 
-	// Create ACP client
-	acpCli := &acpClient{
-		autoApprove: config.Permissions == PermissionAuto,
-		workingDir:  config.WorkingDir,
-	}
+	acpCli := &acpClient{}
 
-	// Create ACP connection
 	conn := acp.NewClientSideConnection(acpCli, stdin, stdout)
 
-	// Initialize handshake
 	initResp, err := conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
@@ -121,19 +117,28 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		Str("agent_name", safeImplName(initResp.AgentInfo)).
 		Msg("ACP initialized")
 
-	// Create session
+	return &warmConn{cmd: cmd, conn: conn, client: acpCli, done: conn.Done()}, nil
+}
+
+// newSessionFromWarm creates an acpSession from a pre-warmed connection.
+// Sets session-specific fields on the acpClient before calling NewSession.
+func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfig, config SessionConfig) (*acpSession, error) {
+	// Set session-specific fields on the client (safe — no callbacks until Prompt)
+	warm.client.autoApprove = config.Permissions == PermissionAuto
+	warm.client.workingDir = config.WorkingDir
+
 	cwd := config.WorkingDir
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
 
-	sessResp, err := conn.NewSession(ctx, acp.NewSessionRequest{
+	sessResp, err := warm.conn.NewSession(ctx, acp.NewSessionRequest{
 		Cwd:        cwd,
 		McpServers: []acp.McpServer{},
 	})
 	if err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
+		warm.cmd.Process.Kill()
+		warm.cmd.Wait()
 		return nil, &AgentError{
 			Type:    ErrAgentCrash,
 			Agent:   agentCfg.Type,
@@ -147,18 +152,17 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		Str("agent", string(agentCfg.Type)).
 		Msg("ACP session created")
 
-	// Set mode if specified
 	if config.Permissions == PermissionDeny {
-		conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
+		warm.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
 			SessionId: sessResp.SessionId,
 			ModeId:    "plan",
 		})
 	}
 
 	session := &acpSession{
-		cmd:       cmd,
-		conn:      conn,
-		client:    acpCli,
+		cmd:       warm.cmd,
+		conn:      warm.conn,
+		client:    warm.client,
 		sessionID: string(sessResp.SessionId),
 		agentType: agentCfg.Type,
 	}
@@ -180,7 +184,6 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		}
 	}
 
-	// Cache session models
 	if sessResp.Models != nil {
 		models := make([]map[string]any, len(sessResp.Models.AvailableModels))
 		for i, m := range sessResp.Models.AvailableModels {
@@ -195,9 +198,8 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 		}
 	}
 
-	// Watch for process exit
 	go func() {
-		<-conn.Done()
+		<-warm.conn.Done()
 		log.Info().
 			Str("session_id", session.sessionID).
 			Str("agent", string(agentCfg.Type)).
@@ -205,6 +207,16 @@ func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionCo
 	}()
 
 	return session, nil
+}
+
+// spawnACPSession launches an agent binary, creates the ACP connection,
+// performs the initialization handshake, and creates a new session.
+func spawnACPSession(ctx context.Context, agentCfg AgentConfig, config SessionConfig, env map[string]string) (*acpSession, error) {
+	warm, err := spawnWarmConn(ctx, agentCfg, env)
+	if err != nil {
+		return nil, err
+	}
+	return newSessionFromWarm(ctx, warm, agentCfg, config)
 }
 
 // Send sends a prompt and streams back raw JSON frames.
