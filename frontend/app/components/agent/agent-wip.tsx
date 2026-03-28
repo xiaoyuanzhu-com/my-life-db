@@ -12,14 +12,8 @@ export function AgentWIP() {
         <div className="group/text relative flex items-start gap-2">
           <MessageDot type="assistant-wip" />
           <div className="flex-1 min-w-0">
-            <span className="relative inline-block font-medium leading-none text-foreground">
-              <span>Working</span>
-              <span
-                aria-hidden
-                className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none"
-              >
-                Working
-              </span>
+            <span className="shimmer inline-block font-medium text-foreground motion-reduce:animate-none">
+              Working
             </span>
           </div>
         </div>

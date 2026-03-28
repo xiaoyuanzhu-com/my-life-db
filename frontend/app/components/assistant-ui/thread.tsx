@@ -77,23 +77,9 @@ export const Thread: FC = () => {
 
         {isRunning && pendingPermissions.size === 0 && <AgentWIP />}
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible pb-4 md:pb-6">
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible pb-4 md:pb-6">
           <ThreadScrollToBottom />
           <PlanView entries={planEntries} className="mb-2" />
-          {pendingPermissions.size > 0 && (
-            <div className="px-4 mb-2 space-y-2">
-              {Array.from(pendingPermissions.entries()).map(([toolCallId, entry], index) => (
-                <PermissionCard
-                  key={toolCallId}
-                  toolCallId={toolCallId}
-                  toolName={entry.toolName}
-                  args={{}}
-                  options={entry.options}
-                  isFirst={index === 0}
-                />
-              ))}
-            </div>
-          )}
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
@@ -205,6 +191,7 @@ const Composer: FC = () => {
     agentType, onAgentTypeChange,
     sessionCommands,
     hasActiveSession,
+    pendingPermissions,
   } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
 
@@ -214,8 +201,22 @@ const Composer: FC = () => {
       <FileTagPopover textareaRef={textareaRef} />
       <div
         data-slot="composer-shell"
-        className="flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20"
+        className="flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden"
       >
+        {pendingPermissions.size > 0 && (
+          <div>
+            {Array.from(pendingPermissions.entries()).map(([toolCallId, entry], index) => (
+              <PermissionCard
+                key={toolCallId}
+                toolCallId={toolCallId}
+                toolName={entry.toolName}
+                args={{}}
+                options={entry.options}
+                isFirst={index === 0}
+              />
+            ))}
+          </div>
+        )}
         <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
         <div className="flex flex-col gap-2 p-(--composer-padding)">
           <ComposerPrimitive.Input
