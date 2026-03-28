@@ -40,13 +40,13 @@ function countToolCalls(messages: ThreadMessageLike[]): number {
 
 /** Status icon for the subagent header */
 function StatusIcon({ status }: { status?: ToolCallMessagePartStatus }) {
-  if (!status || status.type === "running") {
+  if (!status || status.type === "running" || status.type === "requires-action") {
     return <LoaderIcon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
   }
   if (status.type === "complete") {
     return <CheckIcon className="h-3.5 w-3.5 text-green-500" />
   }
-  // requires-action or incomplete/error
+  // incomplete/error
   return <XCircleIcon className="h-3.5 w-3.5 text-destructive" />
 }
 

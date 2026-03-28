@@ -25,10 +25,10 @@ export function ExecuteToolRenderer({
 }: ToolCallMessagePartProps<ExecuteArgs, unknown>) {
   // If no result yet and status is "incomplete" (e.g. history replay), treat as still working
   const hasResult = result != null
-  const effectiveStatus = (status.type === "incomplete" && !hasResult) ? "running" : status.type
+  const effectiveStatus = (status.type === "incomplete" && !hasResult) || status.type === "requires-action" ? "running" : status.type
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
-  const isError = effectiveStatus === "requires-action" || effectiveStatus === "incomplete"
+  const isError = effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
 
   // Display label from _meta.claudeCode.toolName (e.g., "Bash") or fallback

@@ -29,10 +29,10 @@ export function SkillToolRenderer({
   status,
 }: ToolCallMessagePartProps<SkillArgs, unknown>) {
   const hasResult = result != null
-  const effectiveStatus = (status.type === "incomplete" && !hasResult) ? "running" : status.type
+  const effectiveStatus = (status.type === "incomplete" && !hasResult) || status.type === "requires-action" ? "running" : status.type
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
-  const isError = effectiveStatus === "requires-action" || effectiveStatus === "incomplete"
+  const isError = effectiveStatus === "incomplete"
   // Extract skill name from args or toolName
   const skillName = args?.skill || (() => {
     const match = toolName.match(/^Skill\s+(.+)$/i)

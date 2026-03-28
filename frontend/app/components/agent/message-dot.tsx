@@ -44,7 +44,7 @@ export function toolStatusToDotType(
   statusType: string
 ): MessageDotType {
   if (statusType === "complete") return "tool-completed"
-  if (statusType === "requires-action") return "tool-failed"
+  if (statusType === "requires-action") return "tool-pending"
   if (statusType === "running") return "tool-pending"
   return "tool-pending"
 }
