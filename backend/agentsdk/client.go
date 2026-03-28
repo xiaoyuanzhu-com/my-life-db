@@ -18,6 +18,8 @@ type Client struct {
 
 	mu     sync.Mutex
 	active map[string]Session // sessionID → Session
+
+	pool *ProcessPool // pre-warmed ACP connections
 }
 
 // NewClient creates a Client with registered agents and default config.
@@ -36,6 +38,39 @@ func NewClient(defaults SessionConfig, agents ...AgentConfig) *Client {
 // SetProxyBaseURL sets the LLM proxy base URL for Complete() calls.
 func (c *Client) SetProxyBaseURL(url string) { c.proxyBaseURL = url }
 
+// StartPool begins pre-warming ACP connections for the given agent type.
+// Call this once during server startup. poolSize=0 uses the default (3).
+func (c *Client) StartPool(ctx context.Context, agent AgentType, poolSize int) {
+	agentCfg, err := c.getAgent(agent)
+	if err != nil {
+		log.Warn().Err(err).Str("agent", string(agent)).Msg("cannot start pool: agent not registered")
+		return
+	}
+
+	env := c.MergeEnv(agentCfg, c.defaults)
+
+	c.pool = newProcessPool(PoolConfig{
+		Size:      poolSize,
+		AgentType: agent,
+		Spawn: func(ctx context.Context) (*warmConn, error) {
+			return spawnWarmConn(ctx, agentCfg, env)
+		},
+	})
+	c.pool.Start(ctx)
+
+	log.Info().
+		Str("agent", string(agent)).
+		Int("size", c.pool.cfg.Size).
+		Msg("ACP process pool started")
+}
+
+// ShutdownPool stops the pool and kills all warm connections.
+func (c *Client) ShutdownPool() {
+	if c.pool != nil {
+		c.pool.Shutdown()
+	}
+}
+
 // AvailableAgents returns metadata about all registered agents.
 func (c *Client) AvailableAgents() []AgentInfo {
 	infos := make([]AgentInfo, 0, len(c.agents))
@@ -53,13 +88,26 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 		return nil, err
 	}
 
-	// Merge env vars (global defaults + agent defaults + per-call)
-	env := c.MergeEnv(agentCfg, config)
+	var session *acpSession
 
-	// Spawn agent process and create ACP session
-	session, err := spawnACPSession(ctx, agentCfg, config, env)
-	if err != nil {
-		return nil, err
+	// Try pool first (only for the pooled agent type)
+	if c.pool != nil && config.Agent == c.pool.cfg.AgentType {
+		warm, err := c.pool.Acquire(ctx)
+		if err != nil {
+			return nil, err
+		}
+		session, err = newSessionFromWarm(ctx, warm, agentCfg, config)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// No pool or different agent type — spawn synchronously
+		env := c.MergeEnv(agentCfg, config)
+		var err error
+		session, err = spawnACPSession(ctx, agentCfg, config, env)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Track active session
@@ -67,7 +115,6 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 	c.active[session.ID()] = session
 	c.mu.Unlock()
 
-	// Remove from active on close
 	go func() {
 		<-session.Done()
 		c.mu.Lock()
