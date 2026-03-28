@@ -96,6 +96,7 @@ func New(cfg *Config) (*Server, error) {
 
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, claudeAgent, codexAgent)
 		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
+		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
 			Bool("llm_proxy", cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI()).
@@ -378,8 +379,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		log.Info().Msg("HTTP listener closed")
 	}
 
-	// 5. Shutdown agent client (close all ACP sessions)
+	// 5. Shutdown agent client (close all ACP sessions + warm pool)
 	if s.agentClient != nil {
+		s.agentClient.ShutdownPool()
 		if err := s.agentClient.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("agent client shutdown error")
 		}
