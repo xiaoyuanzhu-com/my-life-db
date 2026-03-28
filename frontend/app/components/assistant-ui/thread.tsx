@@ -4,6 +4,7 @@ import {
   AuiIf,
   ComposerPrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
   useMessage,
 } from "@assistant-ui/react";
@@ -193,6 +194,25 @@ const ThreadWelcome: FC = () => {
   );
 };
 
+/** Stop button that directly calls cancelRun on the thread runtime.
+ * ComposerPrimitive.Cancel gates on canCancel which can be unreliable
+ * with external store runtimes, so we bypass it entirely. */
+const StopButton: FC = () => {
+  const aui = useAui();
+  return (
+    <Button
+      type="button"
+      variant="default"
+      size="icon"
+      className="aui-composer-cancel size-8 rounded-full"
+      aria-label="Stop generating"
+      onClick={() => aui.thread().cancelRun()}
+    >
+      <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+    </Button>
+  );
+};
+
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasTouch = useHasTouch();
@@ -272,17 +292,7 @@ const Composer: FC = () => {
                 </ComposerPrimitive.Send>
               </AuiIf>
               <AuiIf condition={(s) => s.thread.isRunning}>
-                <ComposerPrimitive.Cancel asChild>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="icon"
-                    className="aui-composer-cancel size-8 rounded-full"
-                    aria-label="Stop generating"
-                  >
-                    <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-                  </Button>
-                </ComposerPrimitive.Cancel>
+                <StopButton />
               </AuiIf>
             </div>
           </div>

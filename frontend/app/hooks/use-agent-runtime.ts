@@ -54,6 +54,7 @@ interface InternalMessage {
   status?: MessageStatus
   isOptimistic?: boolean
   parentToolUseId?: string
+  planEntries?: PlanEntry[]
 }
 
 export interface AvailableMode {
@@ -582,6 +583,18 @@ export function useAgentRuntime(options: {
                 priority: typeof e.priority === "string" ? e.priority : undefined,
               }))
             setPlanEntries(parsed)
+            // Inject as a synthetic message block in the thread where it appears.
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "assistant",
+                content: [],
+                createdAt: new Date(),
+                status: { type: "complete", reason: "stop" },
+                planEntries: parsed,
+              },
+            ])
           }
           break
         }
@@ -781,11 +794,12 @@ export function useAgentRuntime(options: {
               }
             }),
       status: msg.status,
-      metadata: msg.isOptimistic || msg.parentToolUseId
+      metadata: (msg.isOptimistic || msg.parentToolUseId || msg.planEntries)
         ? {
             custom: {
               ...(msg.isOptimistic && { isOptimistic: true }),
               ...(msg.parentToolUseId && { parentToolUseId: msg.parentToolUseId }),
+              ...(msg.planEntries && { planEntries: msg.planEntries }),
             },
           }
         : undefined,
@@ -915,7 +929,8 @@ function findLastAssistant(
   for (let i = messages.length - 1; i >= 0; i--) {
     if (
       messages[i].role === "assistant" &&
-      messages[i].parentToolUseId === parentToolUseId
+      messages[i].parentToolUseId === parentToolUseId &&
+      !messages[i].planEntries // Skip synthetic plan messages
     ) {
       return messages[i]
     }
@@ -931,7 +946,8 @@ function replaceLastAssistant(
   for (let i = messages.length - 1; i >= 0; i--) {
     if (
       messages[i].role === "assistant" &&
-      messages[i].parentToolUseId === parentToolUseId
+      messages[i].parentToolUseId === parentToolUseId &&
+      !messages[i].planEntries // Skip synthetic plan messages
     ) {
       messages[i] = replacement
       return

@@ -50,7 +50,7 @@ export function PlanView({ entries, className }: PlanViewProps) {
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
         <MessageDot type="system" />
-        <span className="font-semibold text-foreground">Plan</span>
+        <span className="font-semibold text-foreground">Tasks</span>
       </div>
 
       {/* Plan items with tree connectors */}
