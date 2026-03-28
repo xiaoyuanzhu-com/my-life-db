@@ -1,12 +1,14 @@
 /**
  * ReadTool -- renderer for ACP ToolKind "read" (file reads)
  *
- * - Header: MessageDot + "Read" (bold) + file path (muted) + chevron
+ * - Header: MessageDot + "Read" (bold) + file path (muted)
  * - Summary line with tree connector showing line count
- * - Expandable: click header to show file content
  * - Error with tree connector in destructive color
+ *
+ * File content is stripped by the backend (StripHeavyToolCallContent) to reduce
+ * WebSocket payload size. Only metadata (numLines, startLine, totalLines) is
+ * preserved for the summary.
  */
-import { useState } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType } from "../message-dot"
 
@@ -28,7 +30,6 @@ export function ReadToolRenderer({
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
-  const [expanded, setExpanded] = useState(false)
 
   // Extract file path -- show filename only in header, full path on hover
   // The ACP title is e.g., "Read /src/main.go", so extract the path from it
@@ -38,19 +39,13 @@ export function ReadToolRenderer({
   })() || ""
   const fileName = filePath.split("/").pop() || filePath
 
-  // Extract content from structured result or plain string
+  // Extract metadata from structured result
   const fileResult = result != null && typeof result === "object" && !Array.isArray(result)
-    ? result as { type?: string; file?: { content?: string; numLines?: number; startLine?: number; totalLines?: number }; text?: string }
+    ? result as { type?: string; file?: { numLines?: number; startLine?: number; totalLines?: number }; text?: string }
     : null
-  const outputStr = result != null
-    ? typeof result === "string"
-      ? result
-      : fileResult?.file?.content ?? fileResult?.text ?? JSON.stringify(result, null, 2)
-    : null
-  const lineCount = fileResult?.file?.numLines ?? (outputStr ? outputStr.split("\n").length : 0)
+  const lineCount = fileResult?.file?.numLines ?? 0
   const startLine = fileResult?.file?.startLine
   const totalLines = fileResult?.file?.totalLines
-  const hasContent = !!outputStr
 
   // Determine dot type
   const dotType = isError
@@ -59,11 +54,8 @@ export function ReadToolRenderer({
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header: dot + "Read" bold + file path + chevron */}
-      <button
-        onClick={() => hasContent && setExpanded(!expanded)}
-        className={`flex items-start gap-2 w-full text-left ${hasContent ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-      >
+      {/* Header: dot + "Read" bold + file path */}
+      <div className="flex items-start gap-2">
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-foreground">
@@ -72,13 +64,8 @@ export function ReadToolRenderer({
           <span className="ml-2 text-muted-foreground truncate" title={filePath}>
             {fileName}
           </span>
-          {hasContent && (
-            <span className="ml-2 select-none text-[11px] text-muted-foreground/60">
-              {expanded ? "\u25BE" : "\u25B8"}
-            </span>
-          )}
         </div>
-      </button>
+      </div>
 
       {/* Summary: line count + optional range */}
       {isComplete && lineCount > 0 && (
@@ -108,18 +95,6 @@ export function ReadToolRenderer({
           <span>Error</span>
         </div>
       )}
-
-      {/* Expanded content - smooth CSS grid collapse */}
-      <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 text-muted-foreground"
-            style={{ maxHeight: "60vh" }}
-          >
-            {outputStr}
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

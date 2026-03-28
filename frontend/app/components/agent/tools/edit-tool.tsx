@@ -26,14 +26,14 @@ interface DiffResult {
   newText?: string
 }
 
-/** Result structure from Claude Code Edit tool */
+/** Result structure from Claude Code Edit tool.
+ * originalFile is stripped by backend (StripHeavyToolCallContent). */
 interface EditResult {
   filePath?: string
   oldString?: string
   newString?: string
   replaceAll?: boolean
   structuredPatch?: StructuredPatchHunk[]
-  originalFile?: string
   userModified?: boolean
 }
 
