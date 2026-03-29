@@ -6,7 +6,7 @@
  * - Expandable: click header to show raw result
  */
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { MessageDot, toolStatusToDotType } from "../message-dot"
+import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
 interface SkillArgs {
   kind?: string
@@ -29,7 +29,7 @@ export function SkillToolRenderer({
   status,
 }: ToolCallMessagePartProps<SkillArgs, unknown>) {
   const hasResult = result != null
-  const effectiveStatus = (status.type === "incomplete" && !hasResult) || status.type === "requires-action" ? "running" : status.type
+  const effectiveStatus = computeToolEffectiveStatus(status, hasResult)
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
@@ -45,7 +45,7 @@ export function SkillToolRenderer({
     : null
   const succeeded = skillResult?.success !== false
 
-  const dotType = isError || (isComplete && !succeeded)
+  const dotType = (isError || (isComplete && !succeeded))
     ? "tool-failed" as const
     : toolStatusToDotType(effectiveStatus)
 

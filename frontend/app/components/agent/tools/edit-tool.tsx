@@ -9,7 +9,7 @@
  */
 import { useState } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { MessageDot, toolStatusToDotType } from "../message-dot"
+import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
 interface EditArgs {
   kind?: string
@@ -70,9 +70,8 @@ export function EditToolRenderer({
   result,
   status,
 }: ToolCallMessagePartProps<EditArgs, unknown>) {
-  // If no result yet and status is "incomplete" (e.g. history replay), treat as still working
   const hasResult = result != null
-  const effectiveStatus = (status.type === "incomplete" && !hasResult) || status.type === "requires-action" ? "running" : status.type
+  const effectiveStatus = computeToolEffectiveStatus(status, hasResult)
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
@@ -91,9 +90,7 @@ export function EditToolRenderer({
   const replaceAll = args?.replace_all ?? editResult?.replaceAll ?? false
 
   // Determine dot type
-  const dotType = isError
-    ? "tool-failed" as const
-    : toolStatusToDotType(effectiveStatus)
+  const dotType = toolStatusToDotType(effectiveStatus)
 
   // Get diff lines from args (snake_case), result (camelCase), or DiffResult
   const oldStr = args?.old_string ?? editResult?.oldString ?? (hasDiffResult ? (result as DiffResult).oldText : undefined) ?? ""

@@ -10,7 +10,7 @@
  * preserved for the summary.
  */
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
-import { MessageDot, toolStatusToDotType } from "../message-dot"
+import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
 interface ReadArgs {
   kind?: string
@@ -24,9 +24,8 @@ export function ReadToolRenderer({
   result,
   status,
 }: ToolCallMessagePartProps<ReadArgs, unknown>) {
-  // If no result yet and status is "incomplete" (e.g. history replay), treat as still working
   const hasResult = result != null
-  const effectiveStatus = (status.type === "incomplete" && !hasResult) || status.type === "requires-action" ? "running" : status.type
+  const effectiveStatus = computeToolEffectiveStatus(status, hasResult)
   const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
@@ -48,9 +47,7 @@ export function ReadToolRenderer({
   const totalLines = fileResult?.file?.totalLines
 
   // Determine dot type
-  const dotType = isError
-    ? "tool-failed" as const
-    : toolStatusToDotType(effectiveStatus)
+  const dotType = toolStatusToDotType(effectiveStatus)
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">

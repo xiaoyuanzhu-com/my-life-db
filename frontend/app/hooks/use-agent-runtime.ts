@@ -224,22 +224,18 @@ export function useAgentRuntime(options: {
 
             const updated = [...prev]
 
-            // During replay (session not active), close any running assistant
-            // message. ACP replay has no turn.complete — user_message_chunk
-            // is the only turn boundary signal.
-            if (!isActiveRef.current) {
+            // Close any running assistant message when a new user message arrives.
+            // During replay this is the only turn boundary signal (no turn.complete).
+            // During live sessions this handles interruptions — the CLI doesn't emit
+            // turn.complete or tool_call_update for cancelled turns, so pending tool
+            // calls would stay as spinners forever without this.
+            // Mark as incomplete/cancelled so tool renderers show grey (not green/red).
+            {
               const lastAssistant = findLastAssistant(updated)
               if (lastAssistant && lastAssistant.status?.type !== "complete") {
-                const content = lastAssistant.content.map((part) => {
-                  if (part.type === "tool-call" && part.result === undefined) {
-                    return { ...part, result: "" }
-                  }
-                  return part
-                })
                 replaceLastAssistant(updated, {
                   ...lastAssistant,
-                  content,
-                  status: { type: "complete", reason: "stop" },
+                  status: { type: "incomplete", reason: "cancelled" },
                 })
               }
             }
