@@ -48,7 +48,7 @@ export function ExecuteToolRenderer({
   const outputStr = result != null
     ? typeof result === "string"
       ? result
-      : [execResult?.stdout, execResult?.stderr].filter(Boolean).join("\n") || execResult?.output || JSON.stringify(result, null, 2)
+      : [execResult?.stdout, execResult?.stderr].filter(Boolean).join("\n") || execResult?.output || (execResult ? null : JSON.stringify(result, null, 2))
     : null
 
   const hasOutput = !!outputStr
