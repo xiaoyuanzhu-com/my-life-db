@@ -50,6 +50,36 @@ function countToolCalls(messages: ThreadMessageLike[]): number {
   return count
 }
 
+/** Extract the latest activity description from child messages */
+function getLatestActivity(messages: ThreadMessageLike[]): string | null {
+  // Walk backwards to find the last assistant message with content
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== "assistant") continue
+
+    if (typeof msg.content === "string") {
+      const first = msg.content.trim().split("\n")[0]
+      return first.length > 80 ? first.slice(0, 80) + "..." : first
+    }
+
+    // Find the last meaningful part (tool-call or text)
+    for (let j = msg.content.length - 1; j >= 0; j--) {
+      const part = msg.content[j]
+      if (part.type === "tool-call") {
+        const toolPart = part as ToolCallPart
+        return toolPart.toolName
+      }
+      if (part.type === "text") {
+        const textPart = part as { type: "text"; text: string }
+        const first = textPart.text.trim().split("\n")[0]
+        if (!first) continue
+        return first.length > 80 ? first.slice(0, 80) + "..." : first
+      }
+    }
+  }
+  return null
+}
+
 // ── ToolCall content part shape (from ThreadMessageLike) ──────────────
 interface ToolCallPart {
   readonly type: "tool-call"
@@ -240,10 +270,10 @@ export function SubagentSession({
         <div className="collapsible-grid-content">
           <div className="flex gap-2 ml-5 text-muted-foreground">
             <span className="select-none">{"\u2514"}</span>
-            <span>
+            <span className="truncate">
               {isComplete
                 ? `${toolCount} tool call${toolCount !== 1 ? "s" : ""}`
-                : "Running..."}
+                : getLatestActivity(childMessages) ?? "Running..."}
             </span>
           </div>
         </div>
