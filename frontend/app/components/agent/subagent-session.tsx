@@ -1,22 +1,17 @@
 /**
  * SubagentSession — renders a collapsible sub-session for an Agent tool call.
- * Displays child messages (those with matching parentToolUseId) in a nested container.
+ * Styled like regular tool call blocks (Read/Edit/Execute) with:
+ * - Header: MessageDot + "Agent" (bold) + description (muted) + tool count + chevron
+ * - Collapsible content showing child messages
  * Recursive: if a child tool call has its own children, renders another SubagentSession.
  */
 import { useState } from "react"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { ToolCallMessagePartStatus } from "@assistant-ui/react"
 import type { ReadonlyJSONObject } from "assistant-stream/utils"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "~/components/ui/collapsible"
-import { CheckIcon, ChevronDownIcon, LoaderIcon, XCircleIcon } from "lucide-react"
-import { cn } from "~/lib/utils"
 import { MarkdownContent } from "~/components/agent/markdown-content"
 import { AcpToolRenderer } from "~/components/agent/tool-dispatch"
-import { MessageDot } from "./message-dot"
+import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "./message-dot"
 
 interface SubagentSessionProps {
   toolCallId: string
@@ -36,18 +31,6 @@ function countToolCalls(messages: ThreadMessageLike[]): number {
     }
   }
   return count
-}
-
-/** Status icon for the subagent header */
-function StatusIcon({ status }: { status?: ToolCallMessagePartStatus }) {
-  if (!status || status.type === "running" || status.type === "requires-action") {
-    return <LoaderIcon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-  }
-  if (status.type === "complete") {
-    return <CheckIcon className="h-3.5 w-3.5 text-green-500" />
-  }
-  // incomplete/error
-  return <XCircleIcon className="h-3.5 w-3.5 text-destructive" />
 }
 
 // ── ToolCall content part shape (from ThreadMessageLike) ──────────────
@@ -188,47 +171,65 @@ export function SubagentSession({
   childMessages,
   childrenMap,
 }: SubagentSessionProps) {
-  const isComplete = status?.type === "complete"
-  const [open, setOpen] = useState(!isComplete)
+  const hasResult = status?.type === "complete" || status?.type === "incomplete"
+  const effectiveStatus = computeToolEffectiveStatus(
+    status ?? { type: "running" },
+    hasResult
+  )
+  const isComplete = effectiveStatus === "complete"
+  const [expanded, setExpanded] = useState(!isComplete)
   const toolCount = countToolCalls(childMessages)
+  const dotType = toolStatusToDotType(effectiveStatus)
+
+  // Extract description from toolName (e.g., "Task task-id: description")
+  const description = toolName !== "Agent" ? toolName : ""
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div
-        className={cn(
-          "rounded-md border border-primary/30 bg-background",
-          "ml-2",
-        )}
+    <div className="font-mono text-[13px] leading-[1.5]">
+      {/* Header: dot + "Agent" bold + description + tool count + chevron */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-start gap-2 w-full text-left cursor-pointer hover:opacity-80"
       >
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-xs",
-              "hover:bg-muted/50 transition-colors rounded-t-md",
-              !open && "rounded-b-md",
-            )}
-          >
-            <StatusIcon status={status} />
-            <span className="font-medium text-foreground truncate">
-              {toolName}
+        <MessageDot type={dotType} />
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span className="font-semibold text-foreground">Agent</span>
+          {description && (
+            <span className="truncate text-muted-foreground">{description}</span>
+          )}
+          {toolCount > 0 && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
+              {toolCount}
             </span>
-            {toolCount > 0 && (
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
-                {toolCount}
-              </span>
-            )}
-            <ChevronDownIcon
-              className={cn(
-                "ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform",
-                open && "rotate-180",
-              )}
-            />
-          </button>
-        </CollapsibleTrigger>
+          )}
+          <span className="text-[11px] shrink-0 text-muted-foreground/60">
+            {expanded ? "\u25BE" : "\u25B8"}
+          </span>
+        </div>
+      </button>
 
-        <CollapsibleContent>
-          <div className="border-t border-primary/20 px-3 py-2 space-y-1">
+      {/* Summary line when collapsed */}
+      {!expanded && isComplete && (
+        <div className="flex gap-2 ml-5 text-muted-foreground">
+          <span className="select-none">{"\u2514"}</span>
+          <span>
+            {toolCount} tool call{toolCount !== 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Running state */}
+      {!expanded && !isComplete && (
+        <div className="flex gap-2 ml-5 text-muted-foreground">
+          <span className="select-none">{"\u2514"}</span>
+          <span>Running...</span>
+        </div>
+      )}
+
+      {/* Expanded content — child messages */}
+      <div className={`collapsible-grid ${expanded ? "" : "collapsed"}`}>
+        <div className="collapsible-grid-content">
+          <div className="mt-1 ml-5 space-y-1">
             {childMessages.map((msg, i) => (
               <SubagentMessage
                 key={msg.id ?? `sub-${toolCallId}-${i}`}
@@ -237,8 +238,8 @@ export function SubagentSession({
               />
             ))}
           </div>
-        </CollapsibleContent>
+        </div>
       </div>
-    </Collapsible>
+    </div>
   )
 }
