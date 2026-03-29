@@ -4,12 +4,12 @@ import "streamdown/styles.css";
 
 import { useMessagePartText } from "@assistant-ui/react";
 import { Streamdown, type CustomRendererProps } from "streamdown";
-import { code } from "@streamdown/code";
 import { mermaid as mermaidPlugin } from "@streamdown/mermaid";
 import mermaidLib from "mermaid";
 import { memo, useEffect, useId, useRef, useState, type FC } from "react";
 import { Maximize2 } from "lucide-react";
 import { PreviewFullscreen } from "~/components/agent/preview-fullscreen";
+import { ShikiCodeBlock } from "./shiki-code-block";
 
 const HtmlRenderer: FC<CustomRendererProps> = ({ code: htmlCode }) => {
   const [fullscreen, setFullscreen] = useState(false);
@@ -108,7 +108,6 @@ const MermaidRenderer: FC<CustomRendererProps> = ({ code: chart, isIncomplete })
 };
 
 const plugins = {
-  code,
   mermaid: mermaidPlugin,
   renderers: [
     { language: "html", component: HtmlRenderer },
@@ -116,11 +115,16 @@ const plugins = {
   ],
 };
 
+const components = {
+  pre: ShikiCodeBlock,
+};
+
 const MarkdownTextImpl = () => {
   const { text, status } = useMessagePartText();
   return (
     <Streamdown
       plugins={plugins}
+      components={components}
       isAnimating={status.type === "running"}
     >
       {text}
