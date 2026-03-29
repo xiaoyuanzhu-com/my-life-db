@@ -386,6 +386,15 @@ func (s *acpSession) SetMode(ctx context.Context, modeID string) error {
 		SessionId: acp.SessionId(s.sessionID),
 		ModeId:    acp.SessionModeId(modeID),
 	})
+	if err == nil {
+		// Update cached initial modes so Send()'s session.modeUpdate emission
+		// reflects the actual current mode, not the stale default from NewSession.
+		s.mu.Lock()
+		if s.initialModes != nil {
+			s.initialModes.ModeID = modeID
+		}
+		s.mu.Unlock()
+	}
 	return err
 }
 
