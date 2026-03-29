@@ -471,6 +471,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
+			// Send ack so the client can immediately update UI (stop spinner, clear permissions).
+			// turn.complete from ACP will arrive later and is idempotent.
+			if ackBytes, err := json.Marshal(map[string]any{
+				"type": "session.cancelled",
+			}); err == nil {
+				sessionState.BroadcastToClients(ackBytes)
+			}
+
 		case "session.setMode":
 			acpSessionsMu.Lock()
 			acpSession, exists := acpSessions[sessionID]

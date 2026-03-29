@@ -138,12 +138,41 @@ export function useAgentRuntime(options: {
   // Set when a live session errors before any message can render
   const [sessionError, setSessionError] = useState<string | null>(null)
 
+  // Optimistic message text that should survive the session ID reset
+  // when transitioning from "no session" → "new session created"
+  const pendingOptimisticRef = useRef<string | null>(null)
+
+  // Use a ref to generate stable message IDs
+  const msgIdCounter = useRef(0)
+  const nextId = useCallback(() => {
+    msgIdCounter.current += 1
+    return `msg-${msgIdCounter.current}`
+  }, [])
+
   // Reset all per-session state when switching sessions
   const prevSessionIdRef = useRef(sessionId)
   if (prevSessionIdRef.current !== sessionId) {
     prevSessionIdRef.current = sessionId
-    setMessages([])
-    setIsRunning(false)
+    // If we have a pending optimistic message (new session just created),
+    // preserve it so the user sees their message + working indicator
+    // while the WS connects and frames arrive.
+    const pendingText = pendingOptimisticRef.current
+    if (pendingText) {
+      pendingOptimisticRef.current = null
+      msgIdCounter.current = 0
+      setMessages([{
+        id: `msg-1`,
+        role: "user",
+        content: [{ type: "text", text: pendingText }],
+        createdAt: new Date(),
+        isOptimistic: true,
+      }])
+      msgIdCounter.current = 1
+      setIsRunning(true)
+    } else {
+      setMessages([])
+      setIsRunning(false)
+    }
     setSessionMeta({})
     setPlanEntries([])
     setPendingPermissions(new Map())
@@ -155,13 +184,6 @@ export function useAgentRuntime(options: {
   // Populated from backend's session.info frame on WS connect (source of truth).
   // Inactive sessions never show "working"; active sessions rely on turn.complete.
   const isActiveRef = useRef(false)
-
-  // Use a ref to generate stable message IDs
-  const msgIdCounter = useRef(0)
-  const nextId = useCallback(() => {
-    msgIdCounter.current += 1
-    return `msg-${msgIdCounter.current}`
-  }, [])
 
   const messagesRef = useRef(messages)
   messagesRef.current = messages
@@ -589,6 +611,34 @@ export function useAgentRuntime(options: {
           break
         }
 
+        case "session.cancelled": {
+          // Server ack for session.cancel — immediately stop spinner and clear permissions.
+          // turn.complete from ACP will arrive later and is idempotent.
+          setIsRunning(false)
+          setPendingPermissions((prev) => {
+            if (prev.size === 0) return prev
+            return new Map()
+          })
+          setMessages((prev) => {
+            const updated = [...prev]
+            const last = findLastAssistant(updated)
+            if (!last) return prev
+            const content = last.content.map((part) => {
+              if (part.type === "tool-call" && part.result === undefined) {
+                return { ...part, result: "" }
+              }
+              return part
+            })
+            replaceLastAssistant(updated, {
+              ...last,
+              content,
+              status: { type: "complete", reason: "stop" },
+            })
+            return updated
+          })
+          break
+        }
+
         case "turn.complete": {
           setIsRunning(false)
           // Clear all pending permissions — the turn is done
@@ -830,7 +880,22 @@ export function useAgentRuntime(options: {
         const text = textParts.map((p) => p.text).join("\n")
         if (text.trim()) {
           if (onSend) {
-            // Route to parent handler (e.g., create session via API)
+            // Show optimistic user message + working indicator immediately,
+            // then route to parent handler to create the session via API.
+            // The text is stashed in pendingOptimisticRef so the session ID
+            // reset (when the new session is created) preserves it.
+            pendingOptimisticRef.current = text
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "user",
+                content: [{ type: "text", text }],
+                createdAt: new Date(),
+                isOptimistic: true,
+              },
+            ])
+            setIsRunning(true)
             onSend(text)
           } else {
             // Add optimistic user message immediately
@@ -917,10 +982,12 @@ function findLastAssistant(
   parentToolUseId?: string
 ): InternalMessage | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
+    // Root-level plan messages act as a visual break — stop searching so
+    // subsequent content creates a new assistant message after the plan.
+    if (!parentToolUseId && messages[i].planEntries) return undefined
     if (
       messages[i].role === "assistant" &&
-      messages[i].parentToolUseId === parentToolUseId &&
-      !messages[i].planEntries // Skip synthetic plan messages
+      messages[i].parentToolUseId === parentToolUseId
     ) {
       return messages[i]
     }
@@ -934,10 +1001,11 @@ function replaceLastAssistant(
   parentToolUseId?: string
 ): void {
   for (let i = messages.length - 1; i >= 0; i--) {
+    // Stop at plan messages to match findLastAssistant behavior
+    if (!parentToolUseId && messages[i].planEntries) return
     if (
       messages[i].role === "assistant" &&
-      messages[i].parentToolUseId === parentToolUseId &&
-      !messages[i].planEntries // Skip synthetic plan messages
+      messages[i].parentToolUseId === parentToolUseId
     ) {
       messages[i] = replacement
       return
