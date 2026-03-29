@@ -112,6 +112,8 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
           toolCallId={props.toolCallId}
           toolName={props.toolName}
           status={props.status}
+          args={(props.args ?? {}) as Record<string, unknown>}
+          result={props.result}
           childMessages={children}
           childrenMap={subagentChildrenMap!}
         />

@@ -17,8 +17,25 @@ interface SubagentSessionProps {
   toolCallId: string
   toolName: string
   status?: ToolCallMessagePartStatus
+  args?: Record<string, unknown>
+  result?: unknown
   childMessages: ThreadMessageLike[]
   childrenMap: Map<string, ThreadMessageLike[]>
+}
+
+/** Extract the response text from the Agent tool result */
+function extractResponseText(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null
+  const r = result as Record<string, unknown>
+  // toolResponse shape: { content: [{ text: "...", type: "text" }], ... }
+  if (Array.isArray(r.content)) {
+    const texts = (r.content as Array<Record<string, unknown>>)
+      .filter((c) => c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text as string)
+    if (texts.length > 0) return texts.join("\n\n")
+  }
+  if (typeof r.text === "string") return r.text
+  return null
 }
 
 /** Count all tool-call parts across child messages */
@@ -168,6 +185,8 @@ export function SubagentSession({
   toolCallId,
   toolName,
   status,
+  args,
+  result,
   childMessages,
   childrenMap,
 }: SubagentSessionProps) {
@@ -183,6 +202,10 @@ export function SubagentSession({
 
   // Extract description from toolName (e.g., "Task task-id: description")
   const description = toolName !== "Agent" ? toolName : ""
+
+  // Extract prompt and response
+  const prompt = typeof args?.prompt === "string" ? args.prompt : null
+  const responseText = extractResponseText(result)
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -226,17 +249,42 @@ export function SubagentSession({
         </div>
       )}
 
-      {/* Expanded content — child messages */}
+      {/* Expanded content */}
       <div className={`collapsible-grid ${expanded ? "" : "collapsed"}`}>
         <div className="collapsible-grid-content">
-          <div className="mt-1 ml-5 space-y-1">
-            {childMessages.map((msg, i) => (
-              <SubagentMessage
-                key={msg.id ?? `sub-${toolCallId}-${i}`}
-                message={msg}
-                childrenMap={childrenMap}
-              />
-            ))}
+          <div className="mt-1 ml-5 space-y-2">
+            {/* Prompt — styled like user message bubble */}
+            {prompt && (
+              <div className="flex justify-end">
+                <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-xs break-words">
+                  <MarkdownContent
+                    text={prompt}
+                    className="text-primary-foreground [&_a]:text-primary-foreground/80 [&_code]:bg-primary-foreground/10 [&_pre]:bg-primary-foreground/10 [&_pre]:border-primary-foreground/20"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Child messages — internal tool calls */}
+            <div className="space-y-1">
+              {childMessages.map((msg, i) => (
+                <SubagentMessage
+                  key={msg.id ?? `sub-${toolCallId}-${i}`}
+                  message={msg}
+                  childrenMap={childrenMap}
+                />
+              ))}
+            </div>
+
+            {/* Response — styled like assistant message */}
+            {responseText && (
+              <div className="flex items-start gap-2">
+                <MessageDot type="assistant" />
+                <div className="flex-1 min-w-0">
+                  <MarkdownContent text={responseText} className="text-xs" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
