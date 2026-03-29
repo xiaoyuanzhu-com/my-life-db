@@ -26,7 +26,7 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
   });
 
   return (
-    <details open={isStreaming || undefined} className="mb-2 group">
+    <details className="mb-2 group">
       <summary className="flex items-start gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden text-muted-foreground hover:text-foreground">
         <span className="font-mono text-[8px] h-5 flex items-center shrink-0">
           <ChevronRightIcon className="size-3 transition-transform group-open:rotate-90" />
