@@ -78,11 +78,14 @@ function StreamingCursor() {
 
   if (!isRunning) return null
 
-  // Don't show cursor when the last content part is a tool call —
-  // the tool's own status indicator (pulsing dot) is sufficient.
+  // Don't show cursor when the last content part is a tool call or reasoning —
+  // tool calls have their own pulsing dot, and reasoning blocks show "Thinking..."
   const parts = messageState.content
-  if (parts.length > 0 && parts[parts.length - 1].type === "tool-call") {
-    return null
+  if (parts.length > 0) {
+    const lastType = parts[parts.length - 1].type
+    if (lastType === "tool-call" || lastType === "reasoning") {
+      return null
+    }
   }
 
   return (
