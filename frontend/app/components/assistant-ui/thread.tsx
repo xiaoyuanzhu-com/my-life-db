@@ -6,6 +6,7 @@ import {
   ThreadPrimitive,
   useAui,
   useAuiState,
+  useComposerRuntime,
   useMessage,
 } from "@assistant-ui/react";
 import {
@@ -213,6 +214,41 @@ const StopButton: FC = () => {
   );
 };
 
+/**
+ * DraftRestorer — restores unsent message text into the composer.
+ *
+ * Two recovery paths:
+ * 1. Failed send (pendingComposerText from context) — immediate restore.
+ * 2. Page refresh — checks localStorage for a persisted draft on mount.
+ */
+const DraftRestorer: FC = () => {
+  const composerRuntime = useComposerRuntime();
+  const { pendingComposerText, clearPendingComposerText, hasActiveSession } = useAgentContext();
+
+  // Restore from failure (runtime signals via pendingComposerText)
+  useEffect(() => {
+    if (pendingComposerText && clearPendingComposerText) {
+      composerRuntime.setText(pendingComposerText);
+      clearPendingComposerText();
+    }
+  }, [pendingComposerText, clearPendingComposerText, composerRuntime]);
+
+  // Restore from localStorage on mount (page refresh recovery).
+  // Only for the new-session case — existing sessions replay via WS.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || hasActiveSession) return;
+    restoredRef.current = true;
+    const draft = localStorage.getItem("agent-input:new-session");
+    if (draft) {
+      composerRuntime.setText(draft);
+      localStorage.removeItem("agent-input:new-session");
+    }
+  }, [hasActiveSession, composerRuntime]);
+
+  return null;
+};
+
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasTouch = useHasTouch();
@@ -229,6 +265,7 @@ const Composer: FC = () => {
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+      <DraftRestorer />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
       <FileTagPopover textareaRef={textareaRef} />
       <div
@@ -261,8 +298,8 @@ const Composer: FC = () => {
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
-              {workingDir !== undefined && onWorkingDirChange && (
-                <FolderPicker value={workingDir} onChange={onWorkingDirChange} />
+              {workingDir !== undefined && (
+                <FolderPicker value={workingDir} onChange={onWorkingDirChange ?? undefined} readOnly={!onWorkingDirChange || hasActiveSession} />
               )}
               {agentType !== undefined && (
                 <AgentTypeSelector
@@ -271,7 +308,7 @@ const Composer: FC = () => {
                   disabled={!onAgentTypeChange || hasActiveSession}
                 />
               )}
-              {permissionMode !== undefined && availableModes && onPermissionModeChange && (
+              {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
                 <PermissionModeSelector value={permissionMode as PermissionMode} modes={availableModes} onChange={(m) => onPermissionModeChange(m)} />
               )}
             </div>

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
 import type { PermissionMode } from '~/components/agent/permission-mode-selector'
-import type { AgentType } from '~/components/agent/agent-type-selector'
+import { DEFAULT_MODES, type AgentType } from '~/components/agent/agent-type-selector'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
@@ -225,9 +225,7 @@ export default function AgentPage() {
   const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('agent-permission-mode')
-      if (saved === 'default' || saved === 'acceptEdits' || saved === 'plan' || saved === 'bypassPermissions') {
-        return saved
-      }
+      if (saved) return saved
     }
     return 'default'
   })
@@ -638,6 +636,7 @@ export default function AgentPage() {
       localStorage.removeItem('agent-input:new-session')
     } catch (error) {
       console.error('Failed to create session:', error)
+      throw error // Re-throw so the runtime can restore composer text
     } finally {
       setIsCreatingSession(false)
     }
@@ -723,7 +722,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -773,10 +772,14 @@ export default function AgentPage() {
     connected,
     planEntries,
     sendSetMode,
-    workingDir: newSessionWorkingDir,
-    onWorkingDirChange: setNewSessionWorkingDir,
-    permissionMode: hasActiveSession ? sessionMeta?.mode : newSessionPermissionMode,
-    availableModes: sessionMeta?.availableModes,
+    workingDir: hasActiveSession ? (effectiveActiveSession?.workingDir ?? newSessionWorkingDir) : newSessionWorkingDir,
+    onWorkingDirChange: hasActiveSession
+      ? undefined
+      : setNewSessionWorkingDir,
+    permissionMode: hasActiveSession ? (sessionMeta?.mode ?? newSessionPermissionMode) : newSessionPermissionMode,
+    availableModes: hasActiveSession
+      ? sessionMeta?.availableModes ?? DEFAULT_MODES[newSessionAgentType as AgentType]
+      : DEFAULT_MODES[newSessionAgentType as AgentType],
     onPermissionModeChange: (mode: string) => {
       if (hasActiveSession) {
         sendSetMode(mode)
@@ -787,12 +790,22 @@ export default function AgentPage() {
     agentType: activeSessionAgentType ?? newSessionAgentType,
     onAgentTypeChange: hasActiveSession
       ? undefined
-      : (type: string) => setNewSessionAgentType(type as AgentType),
+      : (type: string) => {
+          const newType = type as AgentType
+          setNewSessionAgentType(newType)
+          // Reset mode if current selection isn't valid for the new agent type
+          const modes = DEFAULT_MODES[newType] ?? []
+          if (modes.length > 0 && !modes.some((m) => m.id === newSessionPermissionMode)) {
+            setNewSessionPermissionMode('default')
+          }
+        },
     sessionCommands: sessionMeta?.commands,
     hasActiveSession,
     historyLoadError,
     sessionError,
     subagentChildrenMap,
+    pendingComposerText,
+    clearPendingComposerText,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

@@ -164,9 +164,7 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
         className={cn(
           'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
           'text-[11px] sm:text-xs text-muted-foreground',
-          'hover:text-foreground hover:bg-foreground/10',
-          'cursor-pointer transition-colors',
-          disabled && 'opacity-50'
+          'opacity-50 cursor-not-allowed transition-colors',
         )}
       >
         <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
