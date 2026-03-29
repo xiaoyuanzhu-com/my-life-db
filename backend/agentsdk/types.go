@@ -18,15 +18,6 @@ const (
 	AgentCodex      AgentType = "codex"
 )
 
-// PermissionMode controls how the agent handles tool approvals.
-type PermissionMode string
-
-const (
-	PermissionAuto PermissionMode = "auto" // auto-accept all tool use
-	PermissionAsk  PermissionMode = "ask"  // emit EventPermissionRequest, wait for approval
-	PermissionDeny PermissionMode = "deny" // deny all tool use
-)
-
 // AgentConfig registers an agent binary with the client.
 type AgentConfig struct {
 	Type    AgentType
@@ -42,7 +33,7 @@ type SessionConfig struct {
 	Agent        AgentType
 	Model        string
 	SystemPrompt string
-	Permissions  PermissionMode
+	Mode         string // ACP mode ID (e.g. "bypassPermissions", "plan"); empty = default
 	WorkingDir   string
 	MaxTurns     int
 	Env          map[string]string // extra env vars for the agent process

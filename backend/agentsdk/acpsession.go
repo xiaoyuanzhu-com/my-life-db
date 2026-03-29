@@ -124,7 +124,7 @@ func spawnWarmConn(ctx context.Context, agentCfg AgentConfig, env map[string]str
 // Sets session-specific fields on the acpClient before calling NewSession.
 func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfig, config SessionConfig) (*acpSession, error) {
 	// Set session-specific fields on the client (safe — no callbacks until Prompt)
-	warm.client.autoApprove = config.Permissions == PermissionAuto
+	warm.client.autoApprove = config.Mode == "bypassPermissions"
 	warm.client.workingDir = config.WorkingDir
 
 	cwd := config.WorkingDir
@@ -152,10 +152,10 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 		Str("agent", string(agentCfg.Type)).
 		Msg("ACP session created")
 
-	if config.Permissions == PermissionDeny {
+	if config.Mode != "" {
 		warm.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
 			SessionId: sessResp.SessionId,
-			ModeId:    "plan",
+			ModeId:    acp.SessionModeId(config.Mode),
 		})
 	}
 

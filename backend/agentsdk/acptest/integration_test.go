@@ -32,7 +32,7 @@ func TestClientCreateSession(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:       agentsdk.AgentClaudeCode,
-		Permissions: agentsdk.PermissionAuto,
+		Mode: "bypassPermissions",
 		WorkingDir:  t.TempDir(),
 	})
 	if err != nil {
@@ -68,7 +68,7 @@ func TestClientSendPrompt(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:       agentsdk.AgentClaudeCode,
-		Permissions: agentsdk.PermissionAuto,
+		Mode: "bypassPermissions",
 		WorkingDir:  t.TempDir(),
 	})
 	if err != nil {
@@ -155,7 +155,7 @@ func TestClientRunTask(t *testing.T) {
 	result, err := client.RunTask(ctx, agentsdk.TaskConfig{
 		SessionConfig: agentsdk.SessionConfig{
 			Agent:       agentsdk.AgentClaudeCode,
-			Permissions: agentsdk.PermissionAuto,
+			Mode: "bypassPermissions",
 			WorkingDir:  t.TempDir(),
 		},
 		Prompt:  "Reply with exactly: task complete",
@@ -190,7 +190,7 @@ func TestClientMultiTurn(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:       agentsdk.AgentClaudeCode,
-		Permissions: agentsdk.PermissionAuto,
+		Mode: "bypassPermissions",
 		WorkingDir:  t.TempDir(),
 	})
 	if err != nil {
@@ -245,7 +245,7 @@ func TestClientShutdown(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:       agentsdk.AgentClaudeCode,
-		Permissions: agentsdk.PermissionAuto,
+		Mode: "bypassPermissions",
 		WorkingDir:  t.TempDir(),
 	})
 	if err != nil {

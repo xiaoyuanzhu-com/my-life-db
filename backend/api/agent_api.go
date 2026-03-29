@@ -61,21 +61,12 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		agentType = agentsdk.AgentCodex
 	}
 
-	// Map permissionMode string to agentsdk.PermissionMode
-	permMode := agentsdk.PermissionAsk
-	switch req.PermissionMode {
-	case "bypassPermissions":
-		permMode = agentsdk.PermissionAuto
-	case "plan":
-		permMode = agentsdk.PermissionDeny
-	}
-
 	// Spawn ACP agent process eagerly.
 	// Use background context — the ACP process must outlive this HTTP request.
 	sess, err := h.server.AgentClient().CreateSession(context.Background(), agentsdk.SessionConfig{
-		Agent:       agentType,
-		Permissions: permMode,
-		WorkingDir:  req.WorkingDir,
+		Agent:      agentType,
+		Mode:       req.PermissionMode,
+		WorkingDir: req.WorkingDir,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create ACP session")

@@ -231,20 +231,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			if sessionRecord.AgentType == "codex" {
 				agentType = agentsdk.AgentCodex
 			}
-			permMode := agentsdk.PermissionAsk
-			if pmStr, _ := db.GetAgentSessionPermissionMode(sessionID); pmStr != "" {
-				switch pmStr {
-				case "bypassPermissions":
-					permMode = agentsdk.PermissionAuto
-				case "plan":
-					permMode = agentsdk.PermissionDeny
-				}
-			}
+			mode, _ := db.GetAgentSessionPermissionMode(sessionID)
 
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-				Agent:       agentType,
-				Permissions: permMode,
-				WorkingDir:  sessionRecord.WorkingDir,
+				Agent:      agentType,
+				Mode:       mode,
+				WorkingDir: sessionRecord.WorkingDir,
 			})
 
 			if err != nil {
@@ -380,7 +372,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				log.Info().Str("sessionId", sessionID).Msg("no ACP session in memory, creating lazily for prompt")
 				// Look up session metadata from DB for agent type, working dir, permission mode
 				agentType := agentsdk.AgentClaudeCode
-				permMode := agentsdk.PermissionAsk
 				workDir := ""
 				if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil {
 					if sessionRecord.AgentType == "codex" {
@@ -388,22 +379,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					workDir = sessionRecord.WorkingDir
 				}
-				if pmStr, _ := db.GetAgentSessionPermissionMode(sessionID); pmStr != "" {
-					switch pmStr {
-					case "bypassPermissions":
-						permMode = agentsdk.PermissionAuto
-					case "plan":
-						permMode = agentsdk.PermissionDeny
-					default:
-						permMode = agentsdk.PermissionAsk
-					}
-				}
+				mode, _ := db.GetAgentSessionPermissionMode(sessionID)
 
 				// Create a new ACP session
 				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-					Agent:       agentType,
-					Permissions: permMode,
-					WorkingDir:  workDir,
+					Agent:      agentType,
+					Mode:       mode,
+					WorkingDir: workDir,
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
