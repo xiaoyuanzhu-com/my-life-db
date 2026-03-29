@@ -137,14 +137,16 @@ export function useAgentWebSocket({
   const onFrameRef = useRef(onFrame)
   onFrameRef.current = onFrame
 
-  const send = useCallback((msg: Record<string, unknown>) => {
+  const send = useCallback((msg: Record<string, unknown>): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ ...msg, sessionId }))
+      return true
     }
+    return false
   }, [sessionId])
 
-  const sendPrompt = useCallback((text: string) => {
-    send({ type: "session.prompt", content: [{ type: "text", text }] })
+  const sendPrompt = useCallback((text: string): boolean => {
+    return send({ type: "session.prompt", content: [{ type: "text", text }] })
   }, [send])
 
   const sendCancel = useCallback(() => {

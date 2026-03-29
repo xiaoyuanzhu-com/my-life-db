@@ -88,6 +88,11 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 		return nil, err
 	}
 
+	// Inherit default system prompt if not explicitly set
+	if config.SystemPrompt == "" && c.defaults.SystemPrompt != "" {
+		config.SystemPrompt = c.defaults.SystemPrompt
+	}
+
 	var session *acpSession
 
 	// Try pool first (only for the pooled agent type)

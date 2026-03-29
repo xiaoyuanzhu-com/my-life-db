@@ -6,6 +6,7 @@ import {
   ThreadPrimitive,
   useAui,
   useAuiState,
+  useComposer,
   useComposerRuntime,
   useMessage,
 } from "@assistant-ui/react";
@@ -14,7 +15,8 @@ import {
   ArrowUpIcon,
   SquareIcon,
 } from "lucide-react";
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useMemo, useRef, type FC } from "react";
+import { useLocation } from "react-router";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
@@ -215,36 +217,57 @@ const StopButton: FC = () => {
 };
 
 /**
- * DraftRestorer — restores unsent message text into the composer.
+ * DraftPersistenceSync — bidirectional sync between composer text and localStorage.
  *
- * Two recovery paths:
- * 1. Failed send (pendingComposerText from context) — immediate restore.
- * 2. Page refresh — checks localStorage for a persisted draft on mount.
+ * Saves: persists composer text as-you-type so it survives refresh/navigation.
+ * Restores: on mount, restores from localStorage; on failed send, restores from
+ *           pendingComposerText signalled by the runtime.
+ * Clears: localStorage is cleared when the text becomes empty (user deleted it)
+ *         or when a send is confirmed (handled in use-agent-runtime).
  */
-const DraftRestorer: FC = () => {
+const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
-  const { pendingComposerText, clearPendingComposerText, hasActiveSession } = useAgentContext();
+  const text = useComposer((s) => s.text);
+  const { pendingComposerText, clearPendingComposerText } = useAgentContext();
+  const { pathname } = useLocation();
 
-  // Restore from failure (runtime signals via pendingComposerText)
+  // Reactive storage key derived from URL — changes when navigating sessions.
+  const storageKey = useMemo(() => {
+    const match = pathname.match(/\/agent\/([^/]+)/);
+    return match ? `agent-input:${match[1]}` : "agent-input:new-session";
+  }, [pathname]);
+
+  // Track whether restore has run for this storageKey so the persist
+  // effect doesn't overwrite localStorage with empty string first.
+  const initializedKeyRef = useRef("");
+
+  // Restore from localStorage when storageKey changes (mount, session switch)
+  useEffect(() => {
+    const draft = localStorage.getItem(storageKey);
+    if (draft) {
+      composerRuntime.setText(draft);
+    }
+    initializedKeyRef.current = storageKey;
+  }, [storageKey, composerRuntime]);
+
+  // Persist as-you-type
+  useEffect(() => {
+    // Skip until restore has run for this key
+    if (initializedKeyRef.current !== storageKey) return;
+    if (text) {
+      localStorage.setItem(storageKey, text);
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  }, [text, storageKey]);
+
+  // Restore from failed send (runtime signals via pendingComposerText)
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
       composerRuntime.setText(pendingComposerText);
       clearPendingComposerText();
     }
   }, [pendingComposerText, clearPendingComposerText, composerRuntime]);
-
-  // Restore from localStorage on mount (page refresh recovery).
-  // Only for the new-session case — existing sessions replay via WS.
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current || hasActiveSession) return;
-    restoredRef.current = true;
-    const draft = localStorage.getItem("agent-input:new-session");
-    if (draft) {
-      composerRuntime.setText(draft);
-      localStorage.removeItem("agent-input:new-session");
-    }
-  }, [hasActiveSession, composerRuntime]);
 
   return null;
 };
@@ -265,7 +288,7 @@ const Composer: FC = () => {
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <DraftRestorer />
+      <DraftPersistenceSync />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
       <FileTagPopover textareaRef={textareaRef} />
       <div

@@ -253,6 +253,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			sess.SetOnFrame(func(data []byte) {
 				sessionState.AppendAndBroadcast(data)
 			})
+			// Set mode AFTER onFrame so the mode-change event is captured
+			if mode != "" {
+				if err := sess.SetMode(h.server.ShutdownContext(), mode); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set mode on history-load session")
+				}
+			}
 
 			acpSessionsMu.Lock()
 			acpSessions[sessionID] = sess
@@ -399,6 +405,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sess.SetOnFrame(func(data []byte) {
 					sessionState.AppendAndBroadcast(data)
 				})
+				// Set mode AFTER onFrame so the mode-change event is captured
+				if mode != "" {
+					if err := sess.SetMode(h.server.ShutdownContext(), mode); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set mode on lazy session")
+					}
+				}
 				acpSessionsMu.Lock()
 				acpSessions[sessionID] = sess
 				acpSessionsMu.Unlock()

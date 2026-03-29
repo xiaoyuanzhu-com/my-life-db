@@ -44,6 +44,10 @@ export interface AgentContextValue {
   sessionError?: string | null
   /** Map from toolCallId to child messages for subagent tool calls */
   subagentChildrenMap?: Map<string, ThreadMessageLike[]>
+  /** Text to restore into the composer after a failed send */
+  pendingComposerText?: string | null
+  /** Clear the pending composer text after it's been restored */
+  clearPendingComposerText?: () => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

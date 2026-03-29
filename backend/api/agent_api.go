@@ -96,6 +96,13 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		sessionState.AppendAndBroadcast(data)
 	})
 
+	// Set mode AFTER onFrame so the mode-change event is captured and forwarded
+	if req.PermissionMode != "" {
+		if err := sess.SetMode(context.Background(), req.PermissionMode); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", req.PermissionMode).Msg("failed to set initial mode")
+		}
+	}
+
 	// Store the ACP session in the in-memory map so the WS handler can find it
 	StoreAcpSession(sessionID, sess)
 

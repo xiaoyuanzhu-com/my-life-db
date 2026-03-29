@@ -94,7 +94,9 @@ func New(cfg *Config) (*Server, error) {
 			CleanEnv: true,
 		}
 
-		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, claudeAgent, codexAgent)
+		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
+			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
+		}, claudeAgent, codexAgent)
 		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
@@ -421,4 +423,49 @@ func (s *Server) ShutdownContext() context.Context            { return s.shutdow
 // (which share the process group and receive the signal simultaneously) are expected to exit.
 func (s *Server) SignalShutdown() {
 	// Agent client will be shut down in Shutdown()
+}
+
+// buildAgentSystemPrompt returns the system prompt appended to agent sessions.
+// dataDir is the user's data directory, used for file-based visualization paths.
+func buildAgentSystemPrompt(dataDir string) string {
+	return `When the user asks for a chart, diagram, or visualization, return it as a fenced code block. The frontend auto-renders these — do not describe the output unless asked.
+
+Two formats are supported:
+- Mermaid code blocks for flowcharts, sequence diagrams, Gantt charts, ER diagrams, etc.
+- HTML code blocks for anything richer or interactive (data-driven charts, styled layouts, computed tables). These render in a sandboxed iframe with scripts enabled.
+
+Prefer mermaid when it can express the visualization. Use HTML when it cannot.
+
+HTML output must be mobile-friendly and responsive — use relative units, flexbox/grid, and ensure readability on small screens.
+
+## Large HTML visualizations (file-based)
+
+When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide presentations, data-heavy charts), do NOT inline it. Use the file-based approach instead:
+
+1. Create the directory: mkdir -p ` + dataDir + `/.generated
+2. Write the full HTML to ` + dataDir + `/.generated/<descriptive-name>.html using the Write tool
+3. Return a small HTML code block wrapper that loads the file:
+
+` + "```html" + `
+<html>
+<head><style>
+  * { margin: 0; padding: 0; }
+  body, html { width: 100%; height: 100%; overflow: hidden; }
+  iframe { width: 100%; height: 100%; border: none; }
+</style></head>
+<body>
+  <iframe src="/raw/.generated/<descriptive-name>.html"></iframe>
+</body>
+</html>
+` + "```" + `
+
+IMPORTANT: Always write files to ` + dataDir + `/.generated/ (absolute path). The iframe src must use /raw/.generated/ (the /raw/ endpoint serves files relative to the data directory).
+
+This keeps the LLM response small (saving tokens and latency) while the frontend renders the full visualization by loading it from the server via the /raw/ endpoint.
+
+Use descriptive filenames: dashboard-sleep-trends.html, report-quarterly.html, chart-activity-by-month.html.
+
+**Versioning rule:** When the user asks to modify a previously generated HTML file, always write to a NEW file with a version suffix (e.g., -v2, -v3). Never overwrite the original — it is still referenced earlier in the conversation and must remain intact so the user can see what changed and why.
+
+For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.`
 }

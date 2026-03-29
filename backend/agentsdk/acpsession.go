@@ -132,10 +132,23 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 		cwd, _ = os.Getwd()
 	}
 
-	sessResp, err := warm.conn.NewSession(ctx, acp.NewSessionRequest{
+	req := acp.NewSessionRequest{
 		Cwd:        cwd,
 		McpServers: []acp.McpServer{},
-	})
+	}
+
+	// Pass system prompt via _meta.systemPrompt (append mode).
+	// This keeps the claude-agent-acp's default Claude Code preset
+	// and appends our custom instructions.
+	if config.SystemPrompt != "" {
+		req.Meta = map[string]any{
+			"systemPrompt": map[string]any{
+				"append": config.SystemPrompt,
+			},
+		}
+	}
+
+	sessResp, err := warm.conn.NewSession(ctx, req)
 	if err != nil {
 		warm.cmd.Process.Kill()
 		warm.cmd.Wait()
@@ -152,12 +165,9 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 		Str("agent", string(agentCfg.Type)).
 		Msg("ACP session created")
 
-	if config.Mode != "" {
-		warm.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
-			SessionId: sessResp.SessionId,
-			ModeId:    acp.SessionModeId(config.Mode),
-		})
-	}
+	// NOTE: SetSessionMode is NOT called here — the caller must call
+	// session.SetMode() AFTER SetOnFrame() so the mode-change event
+	// is captured and forwarded to connected clients.
 
 	session := &acpSession{
 		cmd:       warm.cmd,

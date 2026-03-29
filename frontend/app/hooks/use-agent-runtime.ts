@@ -142,6 +142,9 @@ export function useAgentRuntime(options: {
   // when transitioning from "no session" → "new session created"
   const pendingOptimisticRef = useRef<string | null>(null)
 
+  // Text to restore into the composer after a failed send
+  const [pendingComposerText, setPendingComposerText] = useState<string | null>(null)
+
   // Use a ref to generate stable message IDs
   const msgIdCounter = useRef(0)
   const nextId = useCallback(() => {
@@ -224,6 +227,21 @@ export function useAgentRuntime(options: {
           // messages (slash commands, task notifications containing only XML tags).
           if (!text.trim() || isSkippedXmlContent(text) || text.trimStart().startsWith("<task-notification>")) {
             break
+          }
+
+          // Check if this reconciles an optimistic message — if so, the
+          // message was confirmed sent and we can clear the persisted draft.
+          {
+            const hasOptimistic = messagesRef.current.some(
+              (m) =>
+                m.role === "user" &&
+                m.isOptimistic &&
+                m.content.some((p) => p.type === "text" && p.text === text)
+            )
+            if (hasOptimistic) {
+              localStorage.removeItem(`agent-input:${sessionId}`)
+              localStorage.removeItem("agent-input:new-session")
+            }
           }
 
           setMessages((prev) => {
@@ -880,6 +898,8 @@ export function useAgentRuntime(options: {
         const text = textParts.map((p) => p.text).join("\n")
         if (text.trim()) {
           if (onSend) {
+            // Persist to localStorage so the text survives failures / page refresh.
+            localStorage.setItem("agent-input:new-session", text)
             // Show optimistic user message + working indicator immediately,
             // then route to parent handler to create the session via API.
             // The text is stashed in pendingOptimisticRef so the session ID
@@ -896,8 +916,23 @@ export function useAgentRuntime(options: {
               },
             ])
             setIsRunning(true)
-            onSend(text)
+            // Fire and handle failure — if session creation fails, restore
+            // the text back into the composer so the user doesn't lose it.
+            Promise.resolve(onSend(text)).catch(() => {
+              pendingOptimisticRef.current = null
+              setMessages([])
+              setIsRunning(false)
+              setPendingComposerText(text)
+            })
           } else {
+            // Persist to localStorage before sending
+            localStorage.setItem(`agent-input:${sessionId}`, text)
+            // Try to send via WS — if not connected, restore to composer
+            const sent = sendPrompt(text)
+            if (!sent) {
+              setPendingComposerText(text)
+              return
+            }
             // Add optimistic user message immediately
             setMessages((prev) => [
               ...prev,
@@ -909,7 +944,6 @@ export function useAgentRuntime(options: {
                 isOptimistic: true,
               },
             ])
-            sendPrompt(text)
             isActiveRef.current = true
           }
         }
@@ -961,6 +995,10 @@ export function useAgentRuntime(options: {
     [sendPermissionResponse]
   )
 
+  const clearPendingComposerText = useCallback(() => {
+    setPendingComposerText(null)
+  }, [])
+
   return {
     runtime,
     connected,
@@ -972,6 +1010,8 @@ export function useAgentRuntime(options: {
     historyLoadError,
     sessionError,
     subagentChildrenMap,
+    pendingComposerText,
+    clearPendingComposerText,
   }
 }
 
