@@ -196,7 +196,7 @@ export function SubagentSession({
     hasResult
   )
   const isComplete = effectiveStatus === "complete"
-  const [expanded, setExpanded] = useState(!isComplete)
+  const [expanded, setExpanded] = useState(false)
   const toolCount = countToolCalls(childMessages)
   const dotType = toolStatusToDotType(effectiveStatus)
 
