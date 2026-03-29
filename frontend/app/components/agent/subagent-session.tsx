@@ -5,7 +5,7 @@
  * - Collapsible content showing child messages
  * Recursive: if a child tool call has its own children, renders another SubagentSession.
  */
-import { useState } from "react"
+import { useState, useRef, useMemo, memo } from "react"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { ToolCallMessagePartStatus } from "@assistant-ui/react"
 import type { ReadonlyJSONObject } from "assistant-stream/utils"
@@ -63,7 +63,7 @@ interface ToolCallPart {
 
 // ── SubagentMessage — renders a single ThreadMessageLike inside a sub-session ──
 
-function SubagentMessage({
+const SubagentMessage = memo(function SubagentMessage({
   message,
   childrenMap,
 }: {
@@ -177,7 +177,7 @@ function SubagentMessage({
       })}
     </div>
   )
-}
+})
 
 // ── SubagentSession — main exported component ─────────────────────────
 
@@ -197,7 +197,11 @@ export function SubagentSession({
   )
   const isComplete = effectiveStatus === "complete"
   const [expanded, setExpanded] = useState(false)
-  const toolCount = countToolCalls(childMessages)
+  // Lazy mount: only render content after first expand, then keep it mounted
+  // for smooth CSS transitions on subsequent toggles
+  const hasBeenExpandedRef = useRef(false)
+  if (expanded) hasBeenExpandedRef.current = true
+  const toolCount = useMemo(() => countToolCalls(childMessages), [childMessages])
   const dotType = toolStatusToDotType(effectiveStatus)
 
   // Extract description from toolName (e.g., "Task task-id: description")
@@ -205,7 +209,7 @@ export function SubagentSession({
 
   // Extract prompt and response
   const prompt = typeof args?.prompt === "string" ? args.prompt : null
-  const responseText = extractResponseText(result)
+  const responseText = useMemo(() => extractResponseText(result), [result])
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
@@ -231,63 +235,61 @@ export function SubagentSession({
         </div>
       </button>
 
-      {/* Summary line when collapsed */}
-      {!expanded && isComplete && (
-        <div className="flex gap-2 ml-5 text-muted-foreground">
-          <span className="select-none">{"\u2514"}</span>
-          <span>
-            {toolCount} tool call{toolCount !== 1 ? "s" : ""}
-          </span>
-        </div>
-      )}
-
-      {/* Running state */}
-      {!expanded && !isComplete && (
-        <div className="flex gap-2 ml-5 text-muted-foreground">
-          <span className="select-none">{"\u2514"}</span>
-          <span>Running...</span>
-        </div>
-      )}
-
-      {/* Expanded content */}
-      <div className={`collapsible-grid ${expanded ? "" : "collapsed"}`}>
+      {/* Summary line — animated inverse of content so both cross-fade smoothly */}
+      <div className={`collapsible-grid ${expanded ? "collapsed" : ""}`}>
         <div className="collapsible-grid-content">
-          <div className="mt-1 ml-5 space-y-2">
-            {/* Prompt — styled like user message bubble */}
-            {prompt && (
-              <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-xs break-words">
-                  <MarkdownContent
-                    text={prompt}
-                    className="text-primary-foreground [&_a]:text-primary-foreground/80 [&_code]:bg-primary-foreground/10 [&_pre]:bg-primary-foreground/10 [&_pre]:border-primary-foreground/20"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Child messages — internal tool calls */}
-            <div className="space-y-1">
-              {childMessages.map((msg, i) => (
-                <SubagentMessage
-                  key={msg.id ?? `sub-${toolCallId}-${i}`}
-                  message={msg}
-                  childrenMap={childrenMap}
-                />
-              ))}
-            </div>
-
-            {/* Response — styled like assistant message */}
-            {responseText && (
-              <div className="flex items-start gap-2">
-                <MessageDot type="assistant" />
-                <div className="flex-1 min-w-0">
-                  <MarkdownContent text={responseText} className="text-xs" />
-                </div>
-              </div>
-            )}
+          <div className="flex gap-2 ml-5 text-muted-foreground">
+            <span className="select-none">{"\u2514"}</span>
+            <span>
+              {isComplete
+                ? `${toolCount} tool call${toolCount !== 1 ? "s" : ""}`
+                : "Running..."}
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Expanded content — lazy mounted on first expand, kept in DOM for smooth transitions */}
+      {hasBeenExpandedRef.current && (
+        <div className={`collapsible-grid ${expanded ? "" : "collapsed"}`}>
+          <div className="collapsible-grid-content">
+            <div className="mt-1 ml-5 space-y-2">
+              {/* Prompt — styled like user message bubble */}
+              {prompt && (
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-xs break-words">
+                    <MarkdownContent
+                      text={prompt}
+                      className="text-primary-foreground [&_a]:text-primary-foreground/80 [&_code]:bg-primary-foreground/10 [&_pre]:bg-primary-foreground/10 [&_pre]:border-primary-foreground/20"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Child messages — internal tool calls */}
+              <div className="space-y-1">
+                {childMessages.map((msg, i) => (
+                  <SubagentMessage
+                    key={msg.id ?? `sub-${toolCallId}-${i}`}
+                    message={msg}
+                    childrenMap={childrenMap}
+                  />
+                ))}
+              </div>
+
+              {/* Response — styled like assistant message */}
+              {responseText && (
+                <div className="flex items-start gap-2">
+                  <MessageDot type="assistant" />
+                  <div className="flex-1 min-w-0">
+                    <MarkdownContent text={responseText} className="text-xs" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

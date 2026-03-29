@@ -6,7 +6,7 @@
  * - Expandable: click header to show full result content
  * - Error with tree connector in destructive color
  */
-import { useState } from "react"
+import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
@@ -87,6 +87,8 @@ export function SearchToolRenderer({
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
+  const hasBeenExpandedRef = useRef(false)
+  if (expanded) hasBeenExpandedRef.current = true
 
   const label = getSearchLabel(toolName)
   const isToolSearch = label === "ToolSearch"
@@ -160,17 +162,18 @@ export function SearchToolRenderer({
         </div>
       )}
 
-      {/* Expanded content - smooth CSS grid collapse */}
-      <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 text-muted-foreground"
-            style={{ maxHeight: "60vh" }}
-          >
-            {resultContent}
+      {/* Expanded content - lazy mounted, smooth CSS grid collapse */}
+      {hasBeenExpandedRef.current && (
+        <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
+          <div className="collapsible-grid-content">
+            <div
+              className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 text-muted-foreground max-h-[60vh]"
+            >
+              {resultContent}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

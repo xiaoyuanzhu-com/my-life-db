@@ -6,7 +6,7 @@
  * - Summary line with tree connector
  * - Collapsible output with smooth CSS grid animation
  */
-import { useState } from "react"
+import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
@@ -29,6 +29,8 @@ export function ExecuteToolRenderer({
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
+  const hasBeenExpandedRef = useRef(false)
+  if (expanded) hasBeenExpandedRef.current = true
 
   // Display label from _meta.claudeCode.toolName (e.g., "Bash") or fallback
   const label = args?.metaToolName || "Execute"
@@ -104,19 +106,20 @@ export function ExecuteToolRenderer({
         </div>
       )}
 
-      {/* Expanded output - smooth CSS grid collapse */}
-      <div className={`collapsible-grid ${expanded && hasOutput ? "" : "collapsed"}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50"
-            style={{ maxHeight: "60vh" }}
-          >
-            <span className={isError ? "text-destructive" : "text-muted-foreground"}>
-              {outputStr}
-            </span>
+      {/* Expanded output - lazy mounted, smooth CSS grid collapse */}
+      {hasBeenExpandedRef.current && (
+        <div className={`collapsible-grid ${expanded && hasOutput ? "" : "collapsed"}`}>
+          <div className="collapsible-grid-content">
+            <div
+              className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 max-h-[60vh]"
+            >
+              <span className={isError ? "text-destructive" : "text-muted-foreground"}>
+                {outputStr}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

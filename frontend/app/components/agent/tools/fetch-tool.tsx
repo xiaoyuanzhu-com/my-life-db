@@ -9,7 +9,7 @@
  * - Summary line with tree connector
  * - Expandable with markdown content, smooth CSS grid animation
  */
-import { useState } from "react"
+import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 import { MarkdownContent } from "../markdown-content"
@@ -122,6 +122,8 @@ export function FetchToolRenderer({
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
+  const hasBeenExpandedRef = useRef(false)
+  if (expanded) hasBeenExpandedRef.current = true
 
   const isSearch = isWebSearch(args, toolName)
   const label = isSearch ? "WebSearch" : "Fetch"
@@ -187,17 +189,18 @@ export function FetchToolRenderer({
         </div>
       )}
 
-      {/* Expanded content - smooth CSS grid collapse */}
-      <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-4 rounded-md overflow-y-auto bg-muted/50"
-            style={{ maxHeight: "60vh" }}
-          >
-            <MarkdownContent text={resultContent || ""} className="text-foreground text-xs" />
+      {/* Expanded content - lazy mounted, smooth CSS grid collapse */}
+      {hasBeenExpandedRef.current && (
+        <div className={`collapsible-grid ${expanded && hasContent ? "" : "collapsed"}`}>
+          <div className="collapsible-grid-content">
+            <div
+              className="mt-2 ml-5 p-4 rounded-md overflow-y-auto bg-muted/50 max-h-[60vh]"
+            >
+              <MarkdownContent text={resultContent || ""} className="text-foreground text-xs" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Error */}
       {isError && !summaryLine && (

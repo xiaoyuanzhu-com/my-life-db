@@ -6,7 +6,7 @@
  * - Summary line with tree connector
  * - Collapsible args/result with smooth CSS grid animation
  */
-import { useState } from "react"
+import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 
@@ -23,6 +23,8 @@ export function FallbackToolRenderer({
   const isError = effectiveStatus === "incomplete"
   const isCancelled = effectiveStatus === "cancelled"
   const [expanded, setExpanded] = useState(false)
+  const hasBeenExpandedRef = useRef(false)
+  if (expanded) hasBeenExpandedRef.current = true
 
   const dotType = toolStatusToDotType(effectiveStatus)
 
@@ -79,27 +81,28 @@ export function FallbackToolRenderer({
         </div>
       )}
 
-      {/* Expanded content - smooth CSS grid collapse */}
-      <div className={`collapsible-grid ${expanded && hasExpandableContent ? "" : "collapsed"}`}>
-        <div className="collapsible-grid-content">
-          <div
-            className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 flex flex-col gap-2"
-            style={{ maxHeight: "60vh" }}
-          >
-            {argsText && (
-              <div className="text-muted-foreground">
-                <pre className="whitespace-pre-wrap">{argsText}</pre>
-              </div>
-            )}
-            {resultStr && (
-              <div className={isError ? "text-destructive" : "text-muted-foreground"}>
-                <span className="font-semibold">Result:</span>
-                <pre className="whitespace-pre-wrap mt-1">{resultStr}</pre>
-              </div>
-            )}
+      {/* Expanded content - lazy mounted, smooth CSS grid collapse */}
+      {hasBeenExpandedRef.current && (
+        <div className={`collapsible-grid ${expanded && hasExpandableContent ? "" : "collapsed"}`}>
+          <div className="collapsible-grid-content">
+            <div
+              className="mt-2 ml-5 p-3 rounded-md overflow-y-auto whitespace-pre-wrap break-all bg-muted/50 flex flex-col gap-2 max-h-[60vh]"
+            >
+              {argsText && (
+                <div className="text-muted-foreground">
+                  <pre className="whitespace-pre-wrap">{argsText}</pre>
+                </div>
+              )}
+              {resultStr && (
+                <div className={isError ? "text-destructive" : "text-muted-foreground"}>
+                  <span className="font-semibold">Result:</span>
+                  <pre className="whitespace-pre-wrap mt-1">{resultStr}</pre>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
