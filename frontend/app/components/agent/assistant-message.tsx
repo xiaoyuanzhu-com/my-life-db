@@ -78,6 +78,13 @@ function StreamingCursor() {
 
   if (!isRunning) return null
 
+  // Don't show cursor when the last content part is a tool call —
+  // the tool's own status indicator (pulsing dot) is sufficient.
+  const parts = messageState.content
+  if (parts.length > 0 && parts[parts.length - 1].type === "tool-call") {
+    return null
+  }
+
   return (
     <span
       className="inline-block w-[2px] h-[1em] bg-foreground align-text-bottom ml-0.5"
