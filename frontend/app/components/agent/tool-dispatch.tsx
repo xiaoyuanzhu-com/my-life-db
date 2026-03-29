@@ -11,7 +11,7 @@ import { EditToolRenderer } from "./tools/edit-tool"
 import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
 import { SkillToolRenderer } from "./tools/skill-tool"
-import { ToolFallback } from "~/components/assistant-ui/tool-fallback"
+import { FallbackToolRenderer } from "./tools/fallback-tool"
 import { SubagentSession } from "./subagent-session"
 import { useAgentContext } from "./agent-context"
 
@@ -140,7 +140,7 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
     case "skill":
       return <SkillToolRenderer {...props} />
     default:
-      return <ToolFallback {...props} />
+      return <FallbackToolRenderer {...props} />
   }
 }
 
