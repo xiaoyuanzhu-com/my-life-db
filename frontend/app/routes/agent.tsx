@@ -800,6 +800,7 @@ export default function AgentPage() {
           }
         },
     sessionCommands: sessionMeta?.commands,
+    sessionId: activeSessionId || "",
     hasActiveSession,
     historyLoadError,
     sessionError,

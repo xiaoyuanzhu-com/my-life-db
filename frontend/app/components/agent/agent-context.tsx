@@ -36,6 +36,8 @@ export interface AgentContextValue {
   onAgentTypeChange?: (type: string) => void
   /** Session metadata (commands, models, etc.) */
   sessionCommands?: Array<{ name: string; description?: string }>
+  /** Active session ID (empty string when no session) */
+  sessionId?: string
   /** Whether there's an active session (WS is enabled/connecting) */
   hasActiveSession?: boolean
   /** Non-null when session history failed to load (e.g., after server restart) */

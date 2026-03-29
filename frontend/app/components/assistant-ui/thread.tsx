@@ -15,8 +15,7 @@ import {
   ArrowUpIcon,
   SquareIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, type FC } from "react";
-import { useLocation } from "react-router";
+import { useEffect, useRef, type FC } from "react";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
@@ -228,36 +227,31 @@ const StopButton: FC = () => {
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
   const text = useComposer((s) => s.text);
-  const { pendingComposerText, clearPendingComposerText } = useAgentContext();
-  const { pathname } = useLocation();
+  const { sessionId, pendingComposerText, clearPendingComposerText } = useAgentContext();
 
-  // Reactive storage key derived from URL — changes when navigating sessions.
-  const storageKey = useMemo(() => {
-    const match = pathname.match(/\/agent\/([^/]+)/);
-    return match ? `agent-input:${match[1]}` : "agent-input:new-session";
-  }, [pathname]);
+  const storageKey = sessionId ? `agent-input:${sessionId}` : "agent-input:new-session";
 
-  // Track whether restore has run for this storageKey so the persist
-  // effect doesn't overwrite localStorage with empty string first.
-  const initializedKeyRef = useRef("");
-
-  // Restore from localStorage when storageKey changes (mount, session switch)
+  // Restore from localStorage when session changes (mount, navigation).
+  // Deferred via setTimeout so it runs AFTER assistant-ui's internal
+  // thread-switch reset, which would otherwise overwrite our setText.
   useEffect(() => {
     const draft = localStorage.getItem(storageKey);
     if (draft) {
-      composerRuntime.setText(draft);
+      const timer = setTimeout(() => composerRuntime.setText(draft), 0);
+      return () => clearTimeout(timer);
     }
-    initializedKeyRef.current = storageKey;
   }, [storageKey, composerRuntime]);
 
-  // Persist as-you-type
+  // Persist as-you-type. Skip when storageKey just changed — the text
+  // may be stale from the previous session and we'd cross-contaminate.
+  const activeKeyRef = useRef(storageKey);
   useEffect(() => {
-    // Skip until restore has run for this key
-    if (initializedKeyRef.current !== storageKey) return;
+    if (activeKeyRef.current !== storageKey) {
+      activeKeyRef.current = storageKey;
+      return;
+    }
     if (text) {
       localStorage.setItem(storageKey, text);
-    } else {
-      localStorage.removeItem(storageKey);
     }
   }, [text, storageKey]);
 
