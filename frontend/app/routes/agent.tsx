@@ -722,7 +722,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText, suppressDraftRestore } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -807,6 +807,7 @@ export default function AgentPage() {
     subagentChildrenMap,
     pendingComposerText,
     clearPendingComposerText,
+    suppressDraftRestore,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────
