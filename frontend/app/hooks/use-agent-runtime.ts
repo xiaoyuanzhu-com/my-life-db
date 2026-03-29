@@ -378,6 +378,7 @@ export function useAgentRuntime(options: {
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
+
             const last = findLastAssistant(updated, parentToolUseId)
 
             const lastInScope = parentToolUseId
@@ -489,6 +490,14 @@ export function useAgentRuntime(options: {
               if (!("rawOutput" in f) && f.status === "completed" && patch.result === undefined) {
                 patch.result = existing.result || " "
               }
+              // Preserve kind and metaToolName from initial tool_call when
+              // tool_call_update replaces args (rawInput patching drops them)
+              if (patch.args && existing.args) {
+                const ea = existing.args as Record<string, unknown>
+                const pa = patch.args as Record<string, unknown>
+                if (ea.kind && !pa.kind) pa.kind = ea.kind
+                if (ea.metaToolName && !pa.metaToolName) pa.metaToolName = ea.metaToolName
+              }
               parts[idx] = { ...existing, ...patch }
               updated[i] = { ...msg, content: parts }
               return updated
@@ -524,47 +533,32 @@ export function useAgentRuntime(options: {
             return next
           })
 
-          // Note: permission.request is not scoped by parentToolUseId.
-          // Permissions only apply to the top-level agent — subagent tool calls
-          // are auto-approved by the parent CLI process and never trigger
-          // permission requests in the UI.
+          // Update status on existing tool-call part if it exists.
+          // Don't create new tool-call parts here — the tool_call frame
+          // handles that with proper kind/metaToolName/parentToolUseId.
+          // During replay, permission.request may arrive before tool_call;
+          // the tool_call handler will create the part in the correct scope.
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
-            if (!last) return prev
+            // Scan all assistant messages for the tool call part
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const msg = updated[i]
+              if (msg.role !== "assistant") continue
+              const parts = [...msg.content]
+              const idx = parts.findIndex(
+                (p) => p.type === "tool-call" && p.toolCallId === toolCallId
+              )
+              if (idx === -1) continue
 
-            const parts = [...last.content]
-            const idx = parts.findIndex(
-              (p) => p.type === "tool-call" && p.toolCallId === toolCallId
-            )
-
-            if (idx === -1) {
-              // Tool call part might not exist yet — create it
-              const rawInput = f.toolCall.rawInput
-              const args: ReadonlyJSONObject =
-                typeof rawInput === "object" && rawInput !== null
-                  ? (rawInput as ReadonlyJSONObject)
-                  : {}
-              parts.push({
-                type: "tool-call",
-                toolCallId,
-                toolName: f.toolCall.title ?? "unknown",
-                args,
-                argsText: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput ?? {}),
-              })
+              // Found — just update status
+              updated[i] = {
+                ...msg,
+                content: parts,
+                status: { type: "requires-action", reason: "tool-calls" },
+              }
+              return updated
             }
-
-            const newStatus: MessageStatus = {
-              type: "requires-action",
-              reason: "tool-calls",
-            }
-
-            replaceLastAssistant(updated, {
-              ...last,
-              content: parts,
-              status: newStatus,
-            })
-            return updated
+            return prev
           })
           break
         }

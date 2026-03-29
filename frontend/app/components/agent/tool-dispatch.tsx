@@ -124,12 +124,8 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
     (props.args ?? {}) as Record<string, unknown>
   )
 
-  // DEBUG: trace which branch renders
-  console.log("[AcpToolRenderer] switch", { toolName: props.toolName.slice(0, 60), kind, toolCallId: props.toolCallId })
-
   switch (kind) {
     case "execute":
-      console.log("[AcpToolRenderer] → ExecuteToolRenderer", props.toolCallId)
       return <ExecuteToolRenderer {...props} />
     case "read":
       return <ReadToolRenderer {...props} />
@@ -142,7 +138,6 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
     case "skill":
       return <SkillToolRenderer {...props} />
     default:
-      console.log("[AcpToolRenderer] → ToolFallback", props.toolCallId)
       return <ToolFallback {...props} />
   }
 }
