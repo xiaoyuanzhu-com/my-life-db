@@ -3,10 +3,15 @@
  *
  * Renders inside the composer shell (attached to top of input box).
  * Uses banner-grid CSS for slide-open/slide-closed animations.
- * Optimistic no-show: hidden by default, grace period before showing disconnected.
+ *
+ * Behavior:
+ * - Disconnected banner only appears after a 5s grace period (avoids flashing
+ *   on session switches or brief network blips).
+ * - Connected banner only appears when recovering from a *visible* disconnected
+ *   state. If the disconnect resolved within the grace period, nothing shows.
  */
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Loader2, WifiOff, Check } from "lucide-react"
+import { WifiOff, Check } from "lucide-react"
 import { cn } from "~/lib/utils"
 
 interface ConnectionStatusBannerProps {
@@ -17,8 +22,8 @@ interface ConnectionStatusBannerProps {
 
 type BannerState = "disconnected" | "connected" | "hidden"
 
-/** Grace period (ms) before showing disconnected banner — avoids flash on brief drops */
-const DISCONNECT_GRACE_MS = 2000
+/** Grace period (ms) before showing disconnected banner */
+const DISCONNECT_GRACE_MS = 5000
 
 export function ConnectionStatusBanner({
   connected,
@@ -51,24 +56,22 @@ export function ConnectionStatusBanner({
     if (!hasSession) {
       setState("hidden")
       setIsDismissing(false)
+      wasConnected.current = false
       clearTimers()
       return
     }
 
     if (connected) {
-      if (wasConnected.current) {
-        // Was disconnected, now reconnected — show "Connected." briefly
+      if (state === "disconnected") {
+        // Recovering from a *visible* disconnected state — show "Connected."
         setState("connected")
         setIsDismissing(false)
         if (dismissTimer.current) clearTimeout(dismissTimer.current)
         dismissTimer.current = setTimeout(() => {
           setIsDismissing(true)
-          // onTransitionEnd will set state to hidden
         }, 1500)
-      } else {
-        // First connect — no banner needed (optimistic)
-        setState("hidden")
       }
+      // If state is "hidden", disconnect was never shown — stay silent
       wasConnected.current = true
     } else {
       if (wasConnected.current) {
@@ -82,7 +85,7 @@ export function ConnectionStatusBanner({
     }
 
     return clearTimers
-  }, [connected, hasSession, clearTimers])
+  }, [connected, hasSession]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTransitionEnd = useCallback((e: React.TransitionEvent) => {
     if (e.propertyName === "grid-template-rows" && isDismissing) {
@@ -95,17 +98,6 @@ export function ConnectionStatusBanner({
 
   const isReconnected = state === "connected"
 
-  let icon: React.ReactNode
-  let text: string
-
-  if (isReconnected) {
-    icon = <Check className="h-3.5 w-3.5 shrink-0" />
-    text = "Connected."
-  } else {
-    icon = <WifiOff className="h-3.5 w-3.5 shrink-0" />
-    text = "Disconnected."
-  }
-
   return (
     <div
       className={cn("banner-grid", isDismissing && "concealing")}
@@ -113,8 +105,11 @@ export function ConnectionStatusBanner({
     >
       <div className="banner-grid-content">
         <div className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-muted-foreground border-b border-border">
-          {icon}
-          <span>{text}</span>
+          {isReconnected
+            ? <Check className="h-3.5 w-3.5 shrink-0" />
+            : <WifiOff className="h-3.5 w-3.5 shrink-0" />
+          }
+          <span>{isReconnected ? "Connected." : "Disconnected."}</span>
         </div>
       </div>
     </div>
