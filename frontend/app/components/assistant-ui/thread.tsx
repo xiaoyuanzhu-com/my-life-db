@@ -288,7 +288,7 @@ const Composer: FC = () => {
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <DraftPersistenceSync />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
-      <FileTagPopover textareaRef={textareaRef} />
+      <FileTagPopover textareaRef={textareaRef} workingDir={workingDir} />
       <div
         data-slot="composer-shell"
         className="flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden"

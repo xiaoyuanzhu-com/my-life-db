@@ -1,102 +1,172 @@
 /**
  * FileTagPopover — triggered when user types "@" at the start of a token
  * in the composer. Fetches file tree from /api/library/tree and shows
- * filtered results for quick file path insertion.
+ * fuzzy-matched results for quick file path insertion.
  *
- * Same approach as SlashCommandPopover but for "@" trigger.
+ * Ported from the claude chat implementation: fuzzy scoring, file/folder
+ * icons, loading state, and workingDir-scoped fetching.
  */
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useComposerRuntime, useComposer } from "@assistant-ui/react"
+import { File, Folder } from "lucide-react"
 import { cn } from "~/lib/utils"
 import { api } from "~/lib/api"
 
-interface FileEntry {
+// ── Types ──────────────────────────────────────────────────────────────────
+
+interface FileItem {
   path: string
-  name: string
+  type: "file" | "folder"
+}
+
+interface FileNode {
+  path: string
+  type: "file" | "folder"
+  children?: FileNode[]
 }
 
 interface FileTagPopoverProps {
-  /** Reference to the textarea element for keyboard event interception */
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  workingDir?: string
 }
 
-export function FileTagPopover({ textareaRef }: FileTagPopoverProps) {
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function flattenTree(nodes: FileNode[], prefix = ""): FileItem[] {
+  const result: FileItem[] = []
+  for (const node of nodes) {
+    const fullPath = prefix ? `${prefix}/${node.path}` : node.path
+    result.push({ path: fullPath, type: node.type })
+    if (node.children) {
+      result.push(...flattenTree(node.children, fullPath))
+    }
+  }
+  return result
+}
+
+/**
+ * Fuzzy match: checks if all characters in pattern appear in order in str.
+ * Returns a score (higher is better match) or -1 if no match.
+ *
+ * Scoring:
+ * - +1 per matched char, +2 if consecutive
+ * - +3 for word boundary matches (after / or .)
+ * - +10 if pattern is an exact substring
+ * - +15 if pattern matches in filename (not just path)
+ * - -0.1 per path char (prefer shorter paths)
+ */
+function fuzzyMatch(pattern: string, str: string): number {
+  const lowerPattern = pattern.toLowerCase()
+  const lowerStr = str.toLowerCase()
+
+  let patternIdx = 0
+  let score = 0
+  let lastMatchIdx = -1
+
+  for (let i = 0; i < lowerStr.length && patternIdx < lowerPattern.length; i++) {
+    if (lowerStr[i] === lowerPattern[patternIdx]) {
+      if (lastMatchIdx === i - 1) {
+        score += 2
+      } else {
+        score += 1
+      }
+      if (i === 0 || lowerStr[i - 1] === "/" || lowerStr[i - 1] === ".") {
+        score += 3
+      }
+      lastMatchIdx = i
+      patternIdx++
+    }
+  }
+
+  if (patternIdx < lowerPattern.length) return -1
+
+  if (lowerStr.includes(lowerPattern)) score += 10
+
+  const lastSlash = lowerStr.lastIndexOf("/")
+  const filename = lastSlash >= 0 ? lowerStr.slice(lastSlash + 1) : lowerStr
+  if (filename.includes(lowerPattern)) score += 15
+
+  score -= str.length * 0.1
+  return score
+}
+
+function filterFiles(files: FileItem[], query: string): FileItem[] {
+  if (!query) return files.slice(0, 50)
+
+  return files
+    .map((file) => ({ file, score: fuzzyMatch(query, file.path) }))
+    .filter(({ score }) => score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 50)
+    .map(({ file }) => file)
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
+export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps) {
   const composerRuntime = useComposerRuntime()
   const text = useComposer((s) => s.text)
   const [open, setOpen] = useState(false)
-  const [filter, setFilter] = useState("")
-  const [files, setFiles] = useState<FileEntry[]>([])
+  const [query, setQuery] = useState("")
+  const [allFiles, setAllFiles] = useState<FileItem[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [loaded, setLoaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [fetched, setFetched] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
+  const fetchedDirRef = useRef<string | undefined>(undefined)
 
-  // Detect @ trigger: look for @ at start of input or after whitespace
+  // Detect @ trigger
   useEffect(() => {
-    // Find the last token starting with @
     const match = text.match(/@(\S*)$/)
     if (match) {
       setOpen(true)
-      setFilter(match[1]?.toLowerCase() ?? "")
+      setQuery(match[1] ?? "")
       setSelectedIndex(0)
     } else {
       setOpen(false)
-      setFilter("")
+      setQuery("")
     }
   }, [text])
 
-  // Fetch file tree when popover opens
+  // Fetch file tree when popover opens (scoped to workingDir, unlimited depth)
   useEffect(() => {
-    if (!open || loaded) return
+    if (!open) return
+    if (fetched && fetchedDirRef.current === workingDir) return
 
     const fetchFiles = async () => {
+      setLoading(true)
       try {
-        const params = new URLSearchParams({
-          depth: "3",
-          fields: "path",
-        })
+        const params = new URLSearchParams({ depth: "0" })
+        if (workingDir) params.set("path", workingDir)
         const response = await api.get(`/api/library/tree?${params}`)
         if (response.ok) {
           const data = await response.json()
-          const entries: FileEntry[] = []
-          const basePath = data.basePath || ""
-
-          function walkTree(node: { path?: string; children?: unknown[] }, parentPath: string) {
-            const nodePath = node.path ? `${parentPath}/${node.path}` : parentPath
-            if (node.path) {
-              entries.push({
-                path: nodePath,
-                name: node.path,
-              })
-            }
-            if (Array.isArray(node.children)) {
-              for (const child of node.children) {
-                walkTree(child as { path?: string; children?: unknown[] }, nodePath)
-              }
-            }
-          }
-
-          walkTree(data, basePath)
-          setFiles(entries)
-          setLoaded(true)
+          const flattened = flattenTree(data.children ?? [])
+          setAllFiles(flattened)
+          setFetched(true)
+          fetchedDirRef.current = workingDir
         }
       } catch {
         // Ignore errors
+      } finally {
+        setLoading(false)
       }
     }
 
     fetchFiles()
-  }, [open, loaded])
+  }, [open, fetched, workingDir])
 
-  const filtered = files.filter(
-    (f) =>
-      !filter ||
-      f.name.toLowerCase().includes(filter) ||
-      f.path.toLowerCase().includes(filter)
-  ).slice(0, 20) // Limit to 20 results
+  // Re-fetch when workingDir changes
+  useEffect(() => {
+    if (fetchedDirRef.current !== workingDir) {
+      setFetched(false)
+    }
+  }, [workingDir])
+
+  const filtered = useMemo(() => filterFiles(allFiles, query), [allFiles, query])
 
   const handleSelect = useCallback(
     (filePath: string) => {
-      // Replace the @token with the file path
       const newText = text.replace(/@\S*$/, filePath + " ")
       composerRuntime.setText(newText)
       setOpen(false)
@@ -105,25 +175,39 @@ export function FileTagPopover({ textareaRef }: FileTagPopoverProps) {
     [text, composerRuntime, textareaRef]
   )
 
+  // Scroll focused item into view
+  useEffect(() => {
+    if (!open || filtered.length === 0) return
+    const list = popoverRef.current
+    if (!list) return
+    const focusedItem = list.children[selectedIndex] as HTMLElement | undefined
+    focusedItem?.scrollIntoView({ block: "nearest" })
+  }, [open, selectedIndex, filtered.length])
+
   // Keyboard navigation
   useEffect(() => {
     if (!open) return
-
     const textarea = textareaRef.current
     if (!textarea) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open || filtered.length === 0) return
+      if (!open) return
 
       if (e.key === "ArrowDown") {
         e.preventDefault()
-        setSelectedIndex((prev) => Math.min(prev + 1, filtered.length - 1))
+        setSelectedIndex((prev) =>
+          filtered.length > 0 ? (prev + 1) % filtered.length : 0
+        )
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
-        setSelectedIndex((prev) => Math.max(prev - 1, 0))
-      } else if (e.key === "Tab") {
+        setSelectedIndex((prev) =>
+          filtered.length > 0 ? (prev - 1 + filtered.length) % filtered.length : 0
+        )
+      } else if (e.key === "Tab" || (e.key === "Enter" && filtered.length > 0)) {
         e.preventDefault()
-        handleSelect(filtered[selectedIndex]?.path ?? "")
+        if (filtered.length > 0) {
+          handleSelect(filtered[selectedIndex]?.path ?? "")
+        }
       } else if (e.key === "Escape") {
         setOpen(false)
       }
@@ -133,35 +217,64 @@ export function FileTagPopover({ textareaRef }: FileTagPopoverProps) {
     return () => textarea.removeEventListener("keydown", handleKeyDown)
   }, [open, filtered, selectedIndex, handleSelect, textareaRef])
 
-  if (!open || filtered.length === 0) return null
+  if (!open) return null
 
   return (
     <div
-      ref={popoverRef}
-      className="absolute bottom-full left-0 mb-1 w-80 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
+      className="absolute bottom-full left-0 mb-1 w-full max-h-80 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
     >
-      {filtered.map((file, i) => (
-        <button
-          key={file.path}
-          type="button"
-          onMouseDown={(e) => {
-            e.preventDefault()
-            handleSelect(file.path)
-          }}
-          className={cn(
-            "w-full px-3 py-2 text-left text-sm transition-colors",
-            "hover:bg-accent",
-            i === selectedIndex && "bg-accent"
-          )}
-        >
-          <span className="font-mono text-xs text-foreground truncate block">
-            {file.name}
-          </span>
-          <span className="text-[10px] text-muted-foreground truncate block">
-            {file.path}
-          </span>
-        </button>
-      ))}
+      {loading ? (
+        <div className="px-3 py-6 text-sm text-muted-foreground text-center">
+          Loading files...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="px-3 py-6 text-sm text-muted-foreground text-center">
+          No matching files
+        </div>
+      ) : (
+        <div ref={popoverRef} className="py-1">
+          {filtered.map((file, i) => {
+            const parts = file.path.split("/")
+            const filename = parts[parts.length - 1] || file.path
+            const parentDir = parts.length > 1 ? parts.slice(0, -1).join("/") : ""
+
+            return (
+              <button
+                key={file.path}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  handleSelect(file.path)
+                }}
+                className={cn(
+                  "w-full px-3 py-2 text-left transition-colors",
+                  "hover:bg-accent",
+                  i === selectedIndex && "bg-accent"
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {file.type === "folder" ? (
+                    <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
+                  ) : (
+                    <File className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
+                  <span className="text-sm text-foreground truncate shrink-0 max-w-[50%]">
+                    {filename}
+                  </span>
+                  {parentDir && (
+                    <span
+                      className="text-sm text-muted-foreground truncate ml-auto"
+                      style={{ direction: "rtl", textAlign: "right" }}
+                    >
+                      {parentDir}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
