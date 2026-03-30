@@ -11,7 +11,6 @@ import { useState, useMemo } from "react"
 import { MessagePrimitive } from "@assistant-ui/react"
 import { useMessage } from "@assistant-ui/react"
 import { cn } from "~/lib/utils"
-import { MarkdownContent } from "./markdown-content"
 
 const MAX_LINES = 10
 const MAX_CHARS = 500
@@ -43,12 +42,11 @@ function UserTextPart({ text }: UserTextPartProps) {
     return { isTruncated: true, displayText: truncated }
   }, [text])
 
+  const shownText = expanded ? text : displayText
+
   return (
     <div className="relative">
-      <MarkdownContent
-        text={expanded ? text : displayText}
-        className="text-primary-foreground [&_a]:text-primary-foreground/80 [&_code]:bg-primary-foreground/10 [&_pre]:bg-primary-foreground/10 [&_pre]:border-primary-foreground/20"
-      />
+      <pre className="text-sm text-primary-foreground break-words whitespace-pre-wrap font-sans m-0">{shownText}</pre>
       {/* Gradient fade + "Show more" when truncated */}
       {isTruncated && !expanded && (
         <div className="relative">
