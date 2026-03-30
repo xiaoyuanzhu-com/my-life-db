@@ -24,10 +24,6 @@ interface AssistantMessageProps {
 }
 
 function AssistantTextPart({ text }: { text: string }) {
-  // assistant-ui may inject implicit empty text parts between content groups
-  // (e.g., between reasoning and tool-call parts) — skip rendering them
-  if (!text.trim()) return null
-
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -47,6 +43,10 @@ function AssistantTextPart({ text }: { text: string }) {
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }, [text])
+
+  // assistant-ui may inject implicit empty text parts between content groups
+  // (e.g., between reasoning and tool-call parts) — skip rendering them
+  if (!text.trim()) return null
 
   return (
     <div className="group/text relative flex items-start gap-2">
