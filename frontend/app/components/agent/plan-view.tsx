@@ -46,7 +46,7 @@ export function PlanView({ entries, className }: PlanViewProps) {
   if (entries.length === 0) return null
 
   return (
-    <div className={cn("font-mono text-[13px] leading-[1.5] px-4 py-2", className)}>
+    <div className={cn("font-mono text-[13px] leading-[1.5]", className)}>
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
         <MessageDot type="system" />
