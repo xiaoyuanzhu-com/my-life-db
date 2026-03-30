@@ -914,3 +914,11 @@ a.library-file-link:hover {
 .native-app .pb-safe {
   padding-bottom: 0;
 }
+
+/* Streamdown table: remove outer wrapper chrome */
+[data-streamdown="table-wrapper"] {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}

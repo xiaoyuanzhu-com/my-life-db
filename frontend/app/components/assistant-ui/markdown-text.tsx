@@ -178,6 +178,7 @@ const MarkdownTextImpl = () => {
         html: { SyntaxHighlighter: HtmlRenderer },
         mermaid: { SyntaxHighlighter: MermaidRenderer },
       }}
+      controls={{ table: false }}
     />
   );
 };
