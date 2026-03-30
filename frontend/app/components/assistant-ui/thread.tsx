@@ -225,30 +225,26 @@ const StopButton: FC = () => {
  * Saves: persists composer text as-you-type so it survives refresh/navigation.
  * Restores: on mount, restores from localStorage; on failed send, restores from
  *           pendingComposerText signalled by the runtime.
- * Clears: localStorage is cleared when the text becomes empty (user deleted it)
- *         or when a send is confirmed (handled in use-agent-runtime).
+ * Clears: localStorage is cleared immediately on send (in onNew) and again
+ *         when user_message_chunk confirms receipt (belt-and-suspenders).
  */
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
   const text = useComposer((s) => s.text);
-  const { sessionId, pendingComposerText, clearPendingComposerText, suppressDraftRestore } = useAgentContext();
+  const { sessionId, pendingComposerText, clearPendingComposerText } = useAgentContext();
 
   const storageKey = sessionId ? `agent-input:${sessionId}` : "agent-input:new-session";
 
   // Restore from localStorage when session changes (mount, navigation).
   // Deferred via setTimeout so it runs AFTER assistant-ui's internal
   // thread-switch reset, which would otherwise overwrite our setText.
-  // Skipped while suppressDraftRestore is true (between send and
-  // user_message_chunk confirmation) to prevent the stale draft from
-  // being restored when composerRuntime ref changes due to adapter rebuild.
   useEffect(() => {
-    if (suppressDraftRestore) return;
     const draft = localStorage.getItem(storageKey);
     if (draft) {
       const timer = setTimeout(() => composerRuntime.setText(draft), 0);
       return () => clearTimeout(timer);
     }
-  }, [storageKey, composerRuntime, suppressDraftRestore]);
+  }, [storageKey, composerRuntime]);
 
   // Persist as-you-type. Skip when storageKey just changed — the text
   // may be stale from the previous session and we'd cross-contaminate.

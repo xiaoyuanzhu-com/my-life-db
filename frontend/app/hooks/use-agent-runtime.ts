@@ -145,10 +145,6 @@ export function useAgentRuntime(options: {
   // Text to restore into the composer after a failed send
   const [pendingComposerText, setPendingComposerText] = useState<string | null>(null)
 
-  // Suppress DraftPersistenceSync's localStorage restore between send and
-  // user_message_chunk confirmation — prevents the restore effect from racing
-  // when composerRuntime ref changes due to adapter rebuild.
-  const [suppressDraftRestore, setSuppressDraftRestore] = useState(false)
 
   // Use a ref to generate stable message IDs
   const msgIdCounter = useRef(0)
@@ -246,7 +242,6 @@ export function useAgentRuntime(options: {
             if (hasOptimistic) {
               localStorage.removeItem(`agent-input:${sessionId}`)
               localStorage.removeItem("agent-input:new-session")
-              setSuppressDraftRestore(false)
             }
           }
 
@@ -922,14 +917,17 @@ export function useAgentRuntime(options: {
               },
             ])
             setIsRunning(true)
-            setSuppressDraftRestore(true)
+            // Clear draft now — failure recovery uses pendingComposerText,
+            // not localStorage. Without this the DraftPersistenceSync restore
+            // effect can race (composerRuntime ref changes when the adapter
+            // rebuilds) and put the just-sent text back into the composer.
+            localStorage.removeItem("agent-input:new-session")
             // Fire and handle failure — if session creation fails, restore
             // the text back into the composer so the user doesn't lose it.
             Promise.resolve(onSend(text)).catch(() => {
               pendingOptimisticRef.current = null
               setMessages([])
               setIsRunning(false)
-              setSuppressDraftRestore(false)
               setPendingComposerText(text)
             })
           } else {
@@ -941,7 +939,9 @@ export function useAgentRuntime(options: {
               setPendingComposerText(text)
               return
             }
-            setSuppressDraftRestore(true)
+            // Clear draft now — ws.send() accepted the bytes, and failure
+            // recovery uses pendingComposerText, not localStorage.
+            localStorage.removeItem(`agent-input:${sessionId}`)
             // Add optimistic user message immediately
             setMessages((prev) => [
               ...prev,
@@ -1021,7 +1021,6 @@ export function useAgentRuntime(options: {
     subagentChildrenMap,
     pendingComposerText,
     clearPendingComposerText,
-    suppressDraftRestore,
   }
 }
 

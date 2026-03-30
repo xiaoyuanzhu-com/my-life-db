@@ -50,8 +50,6 @@ export interface AgentContextValue {
   pendingComposerText?: string | null
   /** Clear the pending composer text after it's been restored */
   clearPendingComposerText?: () => void
-  /** True between send and user_message_chunk confirmation — suppresses draft restore */
-  suppressDraftRestore?: boolean
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)
