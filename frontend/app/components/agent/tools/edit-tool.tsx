@@ -72,7 +72,6 @@ export function EditToolRenderer({
 }: ToolCallMessagePartProps<EditArgs, unknown>) {
   const hasResult = result != null
   const effectiveStatus = computeToolEffectiveStatus(status, hasResult)
-  const isComplete = effectiveStatus === "complete"
   const isRunning = effectiveStatus === "running"
   const isError = effectiveStatus === "incomplete"
   const [expanded, setExpanded] = useState(false)
@@ -105,17 +104,10 @@ export function EditToolRenderer({
   const displayOldLines = expanded ? oldLines : oldLines.slice(0, MAX_OLD_LINES)
   const displayNewLines = expanded ? newLines : newLines.slice(0, MAX_NEW_LINES)
 
-  // Fallback output for non-diff results
-  const outputStr = !hasDiff && !hasDiffResult && !editResult && result != null
-    ? typeof result === "string"
-      ? result
-      : JSON.stringify(result, null, 2)
-    : null
-
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
       {/* Header: dot + "Edit" bold + file path */}
-      <div className="flex items-start gap-2 mb-3">
+      <div className="flex items-start gap-2">
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-foreground">
@@ -130,9 +122,9 @@ export function EditToolRenderer({
         </div>
       </div>
 
-      {/* Unified diff view */}
+      {/* Unified diff view — only when content is available */}
       {hasDiff && (
-        <div className="rounded-md overflow-hidden border border-border">
+        <div className="mt-3 rounded-md overflow-hidden border border-border">
           <div
             className={expanded && isTruncated ? "overflow-y-auto" : ""}
             style={expanded && isTruncated ? { maxHeight: "60vh" } : {}}
@@ -172,15 +164,8 @@ export function EditToolRenderer({
         </div>
       )}
 
-      {/* Raw output fallback (non-diff result) */}
-      {outputStr && (
-        <div className="mt-2 ml-5 p-3 rounded-md bg-muted/50 overflow-y-auto whitespace-pre-wrap break-all text-muted-foreground" style={{ maxHeight: "60vh" }}>
-          {outputStr}
-        </div>
-      )}
-
       {/* Running state */}
-      {isRunning && !hasDiff && !outputStr && (
+      {isRunning && !hasDiff && (
         <div className="flex gap-2 ml-5 text-muted-foreground">
           <span className="select-none">{"\u2514"}</span>
           <span>Editing...</span>
