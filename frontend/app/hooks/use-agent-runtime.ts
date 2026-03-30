@@ -265,19 +265,25 @@ export function useAgentRuntime(options: {
 
             const updated = [...prev]
 
-            // Close any running assistant message when a new user message arrives.
+            // Close all root-scope assistant messages when a new user message arrives.
             // During replay this is the only turn boundary signal (no turn.complete).
             // During live sessions this handles interruptions — the CLI doesn't emit
             // turn.complete or tool_call_update for cancelled turns, so pending tool
             // calls would stay as spinners forever without this.
-            // Mark as incomplete/cancelled so tool renderers show grey (not green/red).
-            {
-              const lastAssistant = findLastAssistant(updated)
-              if (lastAssistant && lastAssistant.status?.type !== "complete") {
-                replaceLastAssistant(updated, {
-                  ...lastAssistant,
+            // Must iterate all (not just findLastAssistant) because plan messages
+            // split a turn into multiple assistant messages.
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const msg = updated[i]
+              if (msg.role === "user") break
+              if (
+                msg.role === "assistant" &&
+                !msg.parentToolUseId &&
+                msg.status?.type !== "complete"
+              ) {
+                updated[i] = {
+                  ...msg,
                   status: { type: "incomplete", reason: "cancelled" },
-                })
+                }
               }
             }
 
@@ -672,27 +678,34 @@ export function useAgentRuntime(options: {
           // this will need to iterate all scopes.
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
-            if (!last) return prev
-
-            // Mark any tool calls without results as complete.
-            // Some tools (e.g., WebSearch) may not send rawOutput in
-            // toolCallUpdate, leaving result undefined. Without this,
-            // assistant-ui keeps their status as "running" even after
-            // the turn ends.
-            const content = last.content.map((part) => {
-              if (part.type === "tool-call" && part.result === undefined) {
-                return { ...part, result: "" }
+            // Close ALL root-scope assistant messages, not just the last one.
+            // Plan messages (TodoWrite) act as visual breaks that split a single
+            // turn into multiple assistant messages. Without this, earlier
+            // assistant messages before a plan keep status "running" forever.
+            let changed = false
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const msg = updated[i]
+              if (msg.role === "user") break // stop at turn boundary
+              if (
+                msg.role === "assistant" &&
+                !msg.parentToolUseId &&
+                msg.status?.type !== "complete"
+              ) {
+                const content = msg.content.map((part) => {
+                  if (part.type === "tool-call" && part.result === undefined) {
+                    return { ...part, result: "" }
+                  }
+                  return part
+                })
+                updated[i] = {
+                  ...msg,
+                  content,
+                  status: { type: "complete", reason: "stop" },
+                }
+                changed = true
               }
-              return part
-            })
-
-            replaceLastAssistant(updated, {
-              ...last,
-              content,
-              status: { type: "complete", reason: "stop" },
-            })
-            return updated
+            }
+            return changed ? updated : prev
           })
           break
         }
@@ -710,27 +723,35 @@ export function useAgentRuntime(options: {
           })
           setMessages((prev) => {
             const updated = [...prev]
-            const last = findLastAssistant(updated)
-            if (!last) return prev
-
-            // Mark incomplete tool calls as errored
-            const content = last.content.map((part) => {
-              if (part.type === "tool-call" && part.result === undefined) {
-                return { ...part, result: "", isError: true }
+            // Close all root-scope assistant messages (same rationale as turn.complete)
+            let changed = false
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const msg = updated[i]
+              if (msg.role === "user") break
+              if (
+                msg.role === "assistant" &&
+                !msg.parentToolUseId &&
+                msg.status?.type !== "complete"
+              ) {
+                const content = msg.content.map((part) => {
+                  if (part.type === "tool-call" && part.result === undefined) {
+                    return { ...part, result: "", isError: true }
+                  }
+                  return part
+                })
+                updated[i] = {
+                  ...msg,
+                  content,
+                  status: {
+                    type: "incomplete",
+                    reason: "error",
+                    error: f.message,
+                  },
+                }
+                changed = true
               }
-              return part
-            })
-
-            replaceLastAssistant(updated, {
-              ...last,
-              content,
-              status: {
-                type: "incomplete",
-                reason: "error",
-                error: f.message,
-              },
-            })
-            return updated
+            }
+            return changed ? updated : prev
           })
           break
         }
