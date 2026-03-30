@@ -74,18 +74,18 @@ func New(cfg *Config) (*Server, error) {
 
 	// 1.6. Initialize Agent Client (ACP-based)
 	{
-		claudeAgentEnv := map[string]string{}
+		ccEnv := map[string]string{}
 		if cfg.LLM.HasAnthropic() {
-			claudeAgentEnv["ANTHROPIC_BASE_URL"] = fmt.Sprintf("http://localhost:%d/api/anthropic", cfg.Port)
-			claudeAgentEnv["ANTHROPIC_API_KEY"] = "dummy"
-			claudeAgentEnv["MLD_PROXY_TOKEN"] = s.llmProxy.Token()
+			ccEnv["ANTHROPIC_BASE_URL"] = fmt.Sprintf("http://localhost:%d/api/anthropic", cfg.Port)
+			ccEnv["ANTHROPIC_API_KEY"] = "dummy"
+			ccEnv["MLD_PROXY_TOKEN"] = s.llmProxy.Token()
 		}
 
-		claudeAgent := agentsdk.AgentConfig{
+		ccAgent := agentsdk.AgentConfig{
 			Type:    agentsdk.AgentClaudeCode,
 			Name:    "Claude Code",
 			Command: "claude-agent-acp",
-			Env:     claudeAgentEnv,
+			Env:     ccEnv,
 		}
 		codexAgent := agentsdk.AgentConfig{
 			Type:     agentsdk.AgentCodex,
@@ -96,7 +96,7 @@ func New(cfg *Config) (*Server, error) {
 
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
-		}, claudeAgent, codexAgent)
+		}, ccAgent, codexAgent)
 		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 

@@ -78,12 +78,12 @@ export interface PlanEntry {
   priority?: string
 }
 
-/** Extract parentToolUseId from ACP frame _meta.claudeCode */
+/** Extract parentToolUseId from ACP frame _meta */
 function getFrameParentToolUseId(frame: AcpFrame): string | undefined {
   const meta = frame._meta as Record<string, unknown> | undefined
-  const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
-  return typeof claudeMeta?.parentToolUseId === "string"
-    ? claudeMeta.parentToolUseId
+  const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field name
+  return typeof acpMeta?.parentToolUseId === "string"
+    ? acpMeta.parentToolUseId
     : undefined
 }
 
@@ -405,11 +405,11 @@ export function useAgentRuntime(options: {
           const f = frame as AgentToolCallFrame
           const rawInput = (f.rawInput ?? {}) as Record<string, unknown>
           // Include kind from the frame so tool renderers can dispatch on it.
-          // Extract _meta.claudeCode.toolName for display label (e.g., "Bash").
+          // Extract _meta toolName for display label (e.g., "Bash").
           const meta = f._meta as Record<string, unknown> | undefined
-          const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
-          const metaToolName = typeof claudeMeta?.toolName === "string" ? claudeMeta.toolName : undefined
-          const parentToolUseId = typeof claudeMeta?.parentToolUseId === "string" ? claudeMeta.parentToolUseId : undefined
+          const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
+          const metaToolName = typeof acpMeta?.toolName === "string" ? acpMeta.toolName : undefined
+          const parentToolUseId = typeof acpMeta?.parentToolUseId === "string" ? acpMeta.parentToolUseId : undefined
           const args = { ...rawInput, kind: f.kind, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
 
           if (isActiveRef.current) setIsRunning(true)
@@ -480,12 +480,12 @@ export function useAgentRuntime(options: {
             if ("rawOutput" in f) {
               patch.result = f.rawOutput
             } else {
-              // Check _meta.claudeCode.toolResponse for tool results delivered
+              // Check _meta toolResponse for tool results delivered
               // via metadata (some tools send results there instead of rawOutput)
               const meta = f._meta as Record<string, unknown> | undefined
-              const claudeMeta = meta?.claudeCode as Record<string, unknown> | undefined
-              if (claudeMeta?.toolResponse != null) {
-                patch.result = claudeMeta.toolResponse
+              const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
+              if (acpMeta?.toolResponse != null) {
+                patch.result = acpMeta.toolResponse
               } else if (f.status === "completed") {
                 // Backend strips rawOutput for large-output tools (e.g., Bash).
                 // Use ACP status to mark the tool as finished so it doesn't show

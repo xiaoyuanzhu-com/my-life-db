@@ -47,11 +47,11 @@ function ConditionalHeader() {
   const isSharePage = /^\/share\//.test(location.pathname);
   if (isSharePage) return null;
 
-  // Hide header on mobile only for Claude session detail (not the list page)
-  const isClaudeSessionDetail = /^\/claude\/[^/]+/.test(location.pathname);
+  // Hide header on mobile only for agent session detail (not the list page)
+  const isAgentSessionDetail = /^\/agent\/[^/]+/.test(location.pathname);
 
   return (
-    <div className={isClaudeSessionDetail ? 'hidden md:block' : ''}>
+    <div className={isAgentSessionDetail ? 'hidden md:block' : ''}>
       <Header />
     </div>
   );

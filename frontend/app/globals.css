@@ -493,136 +493,6 @@
   background-color: transparent;
 }
 
-/* Prose styling for markdown content in Claude chat */
-.prose-claude {
-  max-width: none;
-  font-size: 15px;
-  line-height: 1.6;
-  user-select: text;
-  color: var(--agent-text-primary);
-  overflow-wrap: break-word;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.prose-claude p {
-  margin: 1rem 0;
-}
-
-.prose-claude p:first-child {
-  margin-top: 0;
-}
-
-.prose-claude h1 {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.5;
-  margin-bottom: 0.75rem;
-  margin-top: 1rem;
-}
-
-.prose-claude h2 {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.5;
-  margin-bottom: 0.75rem;
-  margin-top: 1rem;
-}
-
-.prose-claude h3 {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.5;
-  margin-bottom: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.prose-claude ul {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-  list-style-type: disc;
-}
-
-.prose-claude ol {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-  list-style-type: decimal;
-}
-
-.prose-claude li {
-  margin-bottom: 0.25rem;
-}
-
-.prose-claude code {
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
-  font-size: 13px;
-  padding: 2px 5px;
-  border-radius: 0.25rem;
-  background-color: var(--agent-bg-inline);
-}
-
-.prose-claude code::before,
-.prose-claude code::after {
-  content: none;
-}
-
-.prose-claude pre {
-  margin: 0.75rem 0;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  overflow-x: auto;
-  background-color: var(--agent-bg-code-block);
-}
-
-.prose-claude pre code {
-  padding: 0;
-  background-color: transparent;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.prose-claude strong {
-  font-weight: 600;
-}
-
-.prose-claude a {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.prose-claude table {
-  margin: 1rem 0;
-  width: 100%;
-  border-collapse: collapse;
-  border: 1px solid var(--agent-border-light);
-}
-
-.prose-claude .table-wrapper {
-  overflow-x: auto;
-  margin: 1rem 0;
-}
-
-.prose-claude .table-wrapper table {
-  margin: 0;
-  width: max-content;
-  min-width: 100%;
-}
-
-.prose-claude thead {
-  background-color: var(--agent-bg-subtle);
-}
-
-.prose-claude th {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  font-weight: 600;
-  border: 1px solid var(--agent-border-light);
-}
-
-.prose-claude td {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--agent-border-light);
-}
 
 /* Shiki dual theme support - spans get color only, pre gets background */
 .shiki span {
@@ -689,10 +559,9 @@
   display: block;
 }
 
-/* Library file path links in session messages
-   Use `a.library-file-link` (specificity 0,1,1) to override `.prose-claude a` underline. */
+/* Library file path links in session messages */
 a.library-file-link {
-  color: var(--claude-accent, var(--agent-text-secondary));
+  color: var(--agent-text-secondary);
   text-decoration: none;
   cursor: pointer;
   border-bottom: 1px dotted currentColor;

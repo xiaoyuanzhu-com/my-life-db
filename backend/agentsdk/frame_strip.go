@@ -7,7 +7,7 @@ import "encoding/json"
 //
 // ⚠️  DESIGN VIOLATION: Raw frame integrity
 //
-// Same rationale as claude.StripHeavyToolContent — we mutate frames before
+// Same rationale as the legacy strip helper — we mutate frames before
 // they reach the frontend to avoid shipping large, unrenderable payloads over
 // WebSocket and holding them in memory.
 //
@@ -84,7 +84,7 @@ func StripHeavyToolCallContent(data []byte) []byte {
 	// toolResponse has a different shape and the frontend renderer may depend on
 	// any field. Only add a new case here after confirming the renderer doesn't
 	// need the stripped field.
-	if cc := getClaudeCodeMeta(msg); cc != nil {
+	if cc := getACPMeta(msg); cc != nil {
 		toolName, _ := cc["toolName"].(string)
 		switch toolName {
 		case "Read":
@@ -109,8 +109,8 @@ func StripHeavyToolCallContent(data []byte) []byte {
 	return result
 }
 
-// getClaudeCodeMeta returns the _meta.claudeCode map if present.
-func getClaudeCodeMeta(msg map[string]interface{}) map[string]interface{} {
+// getACPMeta returns the _meta.claudeCode map if present (protocol field from the CLI).
+func getACPMeta(msg map[string]interface{}) map[string]interface{} {
 	meta, _ := msg["_meta"].(map[string]interface{})
 	if meta == nil {
 		return nil
@@ -123,7 +123,7 @@ func getClaudeCodeMeta(msg map[string]interface{}) map[string]interface{} {
 // by the frontend renderer (e.g. WebSearch results, fetched page content).
 // Checks _meta.claudeCode.toolName which the CLI populates on every frame.
 func preserveRawOutput(msg map[string]interface{}) bool {
-	cc := getClaudeCodeMeta(msg)
+	cc := getACPMeta(msg)
 	if cc == nil {
 		return false
 	}
