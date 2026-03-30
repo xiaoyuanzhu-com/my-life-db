@@ -25,7 +25,7 @@ const HtmlRenderer: FC<SyntaxHighlighterProps> = ({ code: htmlCode }) => {
       <div className="relative my-2 rounded-lg border border-border/50 overflow-hidden">
         <iframe
           srcDoc={htmlCode}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-same-origin"
           className="w-full bg-white"
           style={{ height: "60vh", border: "none" }}
         />

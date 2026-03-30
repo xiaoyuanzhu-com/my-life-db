@@ -82,7 +82,7 @@ export function PreviewFullscreen({ html, onClose }: PreviewFullscreenProps) {
       <iframe
         className="preview-fullscreen-iframe"
         srcDoc={srcdoc}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-same-origin"
         title="Preview fullscreen"
       />
       <button

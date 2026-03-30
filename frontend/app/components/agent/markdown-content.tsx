@@ -40,7 +40,7 @@ renderer.code = ({ text, lang }) => {
       '<div class="flex items-center justify-between px-3 py-1 border-b border-border">' +
       '<span class="text-[10px] uppercase tracking-wide text-muted-foreground">html preview</span>' +
       "</div>" +
-      `<iframe srcdoc="${srcdoc}" sandbox="allow-scripts" class="w-full bg-white" style="height:60vh;border:none;"></iframe>` +
+      `<iframe srcdoc="${srcdoc}" sandbox="allow-scripts allow-same-origin" class="w-full bg-white" style="height:60vh;border:none;"></iframe>` +
       "</div>"
     )
   }
