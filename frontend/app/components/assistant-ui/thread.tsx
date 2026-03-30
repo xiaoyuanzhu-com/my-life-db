@@ -123,7 +123,9 @@ const ThreadScrollToBottom: FC = () => {
 
 /**
  * Scrolls the viewport to bottom as content loads during initial WS replay.
- * Uses ResizeObserver to react to actual content changes (not timers).
+ * Uses MutationObserver to detect DOM changes (new messages being inserted).
+ * ResizeObserver doesn't work here because the viewport's own dimensions don't
+ * change when content is added inside a scrollable container — only scrollHeight does.
  * Auto-disconnects once content stops changing (replay settled).
  */
 const InitialScrollToBottom: FC = () => {
@@ -141,14 +143,17 @@ const InitialScrollToBottom: FC = () => {
 
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const observer = new ResizeObserver(() => {
+    const scrollToEnd = () => {
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' });
-      // Auto-disconnect after content stops changing
       if (settleTimer) clearTimeout(settleTimer);
       settleTimer = setTimeout(() => observer.disconnect(), 500);
-    });
+    };
 
-    observer.observe(viewport);
+    const observer = new MutationObserver(scrollToEnd);
+    observer.observe(viewport, { childList: true, subtree: true });
+
+    // Initial scroll in case content is already rendered
+    scrollToEnd();
 
     return () => {
       observer.disconnect();
