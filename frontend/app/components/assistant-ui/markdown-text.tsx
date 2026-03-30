@@ -4,7 +4,16 @@ import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-streamdown";
 import { useIsCodeFenceIncomplete } from "streamdown";
 import mermaidLib from "mermaid";
-import { memo, useEffect, useId, useRef, useState, type FC } from "react";
+import {
+  isValidElement,
+  memo,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FC,
+  type ReactNode,
+} from "react";
 import { Maximize2 } from "lucide-react";
 import { PreviewFullscreen } from "~/components/agent/preview-fullscreen";
 import { getHighlighter, LIGHT_THEME, DARK_THEME } from "~/lib/markdown/shiki";
@@ -170,14 +179,56 @@ const CodeRenderer: FC<SyntaxHighlighterProps> = ({ code, language }) => {
   );
 };
 
+const LANGUAGE_REGEX = /language-([^\s]+)/;
+
+function extractCode(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  if (!isValidElement(children)) return "";
+  const props = children.props as Record<string, unknown>;
+  if (props && typeof props["children"] === "string")
+    return props["children"] as string;
+  return "";
+}
+
+/**
+ * Custom code component that bypasses @assistant-ui/react-streamdown's
+ * buggy createCodeAdapter (which calls memo() result as a function).
+ * Instead we handle inline/block detection and language dispatch directly.
+ */
+const CustomCode: FC<{
+  node?: SyntaxHighlighterProps["node"];
+  className?: string;
+  children?: ReactNode;
+  "data-block"?: string;
+}> = ({ node, className, children, "data-block": dataBlock, ...props }) => {
+  if (!dataBlock) {
+    return (
+      <code
+        className={`aui-streamdown-inline-code ${className ?? ""}`.trim()}
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  const match = className?.match(LANGUAGE_REGEX);
+  const language = match?.[1] ?? "";
+  const code = extractCode(children);
+
+  if (language === "html") {
+    return <HtmlRenderer node={node} language={language} code={code} />;
+  }
+  if (language === "mermaid") {
+    return <MermaidRenderer node={node} language={language} code={code} />;
+  }
+  return <CodeRenderer node={node} language={language} code={code} />;
+};
+
 const MarkdownTextImpl = () => {
   return (
     <StreamdownTextPrimitive
-      components={{ SyntaxHighlighter: CodeRenderer }}
-      componentsByLanguage={{
-        html: { SyntaxHighlighter: HtmlRenderer },
-        mermaid: { SyntaxHighlighter: MermaidRenderer },
-      }}
+      components={{ code: CustomCode }}
       controls={{ table: false }}
     />
   );
