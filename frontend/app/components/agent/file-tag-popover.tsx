@@ -167,7 +167,7 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
 
   const handleSelect = useCallback(
     (filePath: string) => {
-      const newText = text.replace(/@\S*$/, filePath + " ")
+      const newText = text.replace(/@\S*$/, "@" + filePath + " ")
       composerRuntime.setText(newText)
       setOpen(false)
       textareaRef.current?.focus()
