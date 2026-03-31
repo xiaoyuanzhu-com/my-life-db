@@ -660,11 +660,16 @@ export default function AgentPage() {
       const response = await api.post(`/api/agent/sessions/${sessionId}/archive`)
 
       if (response.ok) {
-        setSessions(
-          sessions.map((s) =>
-            s.id === sessionId ? { ...s, sessionState: 'archived' as const } : s
+        if (statusFilter === 'active') {
+          // Remove from list when viewing active sessions
+          setSessions(sessions.filter((s) => s.id !== sessionId))
+        } else {
+          setSessions(
+            sessions.map((s) =>
+              s.id === sessionId ? { ...s, sessionState: 'archived' as const } : s
+            )
           )
-        )
+        }
       }
     } catch (error) {
       console.error('Failed to archive session:', error)
@@ -676,11 +681,16 @@ export default function AgentPage() {
       const response = await api.post(`/api/agent/sessions/${sessionId}/unarchive`)
 
       if (response.ok) {
-        setSessions(
-          sessions.map((s) =>
-            s.id === sessionId ? { ...s, sessionState: 'idle' as const } : s
+        if (statusFilter === 'archived') {
+          // Remove from list when viewing archived sessions
+          setSessions(sessions.filter((s) => s.id !== sessionId))
+        } else {
+          setSessions(
+            sessions.map((s) =>
+              s.id === sessionId ? { ...s, sessionState: 'idle' as const } : s
+            )
           )
-        )
+        }
       }
     } catch (error) {
       console.error('Failed to unarchive session:', error)
@@ -731,7 +741,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, sendKill, isStuck, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -816,6 +826,8 @@ export default function AgentPage() {
     subagentChildrenMap,
     pendingComposerText,
     clearPendingComposerText,
+    isStuck,
+    sendKill,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────
