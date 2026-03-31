@@ -138,11 +138,6 @@ export function useAgentRuntime(options: {
   // Set when a live session errors before any message can render
   const [sessionError, setSessionError] = useState<string | null>(null)
 
-  // Watchdog: tracks whether the session appears stuck (isRunning but no
-  // content frames arriving). Exposes isStuck + sendKill for the UI.
-  const [isStuck, setIsStuck] = useState(false)
-  const lastContentTimeRef = useRef(0)
-
   // Optimistic message text that should survive the session ID reset
   // when transitioning from "no session" → "new session created"
   const pendingOptimisticRef = useRef<string | null>(null)
@@ -325,8 +320,7 @@ export function useAgentRuntime(options: {
           const chunk = f.content.text
           const parentToolUseId = getFrameParentToolUseId(frame)
 
-          lastContentTimeRef.current = Date.now()
-          setIsStuck(false)
+
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
@@ -384,8 +378,7 @@ export function useAgentRuntime(options: {
           const chunk = f.content.text
           const parentToolUseId = getFrameParentToolUseId(frame)
 
-          lastContentTimeRef.current = Date.now()
-          setIsStuck(false)
+
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
@@ -442,8 +435,7 @@ export function useAgentRuntime(options: {
           const parentToolUseId = typeof acpMeta?.parentToolUseId === "string" ? acpMeta.parentToolUseId : undefined
           const args = { ...rawInput, kind: f.kind, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
 
-          lastContentTimeRef.current = Date.now()
-          setIsStuck(false)
+
           if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
@@ -494,8 +486,7 @@ export function useAgentRuntime(options: {
         case "tool_call_update": {
           const f = frame as AgentToolCallUpdateFrame
           const toolCallId = f.toolCallId
-          lastContentTimeRef.current = Date.now()
-          setIsStuck(false)
+
 
           // Clear pending permission for this tool call (it has a result now)
           setPendingPermissions((prev) => {
@@ -668,8 +659,7 @@ export function useAgentRuntime(options: {
           // Backend signals that prompt processing has begun. Sets isRunning
           // so the stop button is available even before content frames arrive.
           // Also present in burst replay on reconnect.
-          lastContentTimeRef.current = Date.now()
-          setIsStuck(false)
+
           if (isActiveRef.current) {
             setIsRunning(true)
           }
@@ -876,7 +866,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode } =
+  const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -886,28 +876,6 @@ export function useAgentRuntime(options: {
 
   // isActiveRef is populated from session.info frame sent by backend on WS connect.
   // No separate API fetch needed — the frame arrives before burst/replay.
-
-  // ── Watchdog: detect stuck sessions ────────────────────────────────
-  // When isRunning is true but no content frames arrive for 30s, flag as stuck.
-  const isRunningRef = useRef(isRunning)
-  isRunningRef.current = isRunning
-
-  useEffect(() => {
-    if (!isRunning) {
-      setIsStuck(false)
-      return
-    }
-    // Seed the content time when isRunning starts
-    if (lastContentTimeRef.current === 0) {
-      lastContentTimeRef.current = Date.now()
-    }
-    const interval = setInterval(() => {
-      if (isRunningRef.current && Date.now() - lastContentTimeRef.current > 30_000) {
-        setIsStuck(true)
-      }
-    }, 5_000)
-    return () => clearInterval(interval)
-  }, [isRunning])
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
@@ -1107,8 +1075,6 @@ export function useAgentRuntime(options: {
     planEntries,
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
-    sendKill,
-    isStuck,
     historyLoadError,
     sessionError,
     subagentChildrenMap,
