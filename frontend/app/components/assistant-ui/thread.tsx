@@ -14,6 +14,8 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   SquareIcon,
+  AlertTriangleIcon,
+  XCircleIcon,
 } from "lucide-react";
 import { useEffect, useRef, type FC } from "react";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
@@ -38,7 +40,7 @@ import { useAgentContext } from "~/components/agent/agent-context";
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 export const Thread: FC = () => {
-  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
+  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, isStuck, sendKill } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
@@ -80,6 +82,7 @@ export const Thread: FC = () => {
         </ThreadPrimitive.Messages>
 
         {isRunning && pendingPermissions.size === 0 && <AgentWIP />}
+        {isStuck && <StuckBanner onKill={sendKill} />}
 
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible">
           <ThreadScrollToBottom />
@@ -196,6 +199,32 @@ const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
       <p className="text-muted-foreground text-sm">Start a conversation</p>
+    </div>
+  );
+};
+
+/** Banner shown when the session appears stuck (running but no content for 30s+). */
+const StuckBanner: FC<{ onKill?: () => void }> = ({ onKill }) => {
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) my-2 px-2">
+      <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
+        <AlertTriangleIcon className="h-4 w-4 text-amber-500 shrink-0" />
+        <span className="text-muted-foreground flex-1">
+          Response is taking longer than expected
+        </span>
+        {onKill && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={onKill}
+          >
+            <XCircleIcon className="h-3.5 w-3.5" />
+            Force stop
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

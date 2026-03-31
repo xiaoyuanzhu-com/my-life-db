@@ -20,6 +20,7 @@ type SessionState struct {
 	clients      map[*WSClient]bool
 	IsProcessing bool
 	IsActive     bool // true after first prompt sent (vs replay-only)
+	Killed       bool // set by session.kill — suppresses Send() goroutine cleanup
 	ResultCount  int
 	HistoryOnce  sync.Once // ensures LoadSession runs at most once per session
 	HistoryError string    // non-empty if LoadSession failed (shared across connections)

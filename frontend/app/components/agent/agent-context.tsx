@@ -50,6 +50,10 @@ export interface AgentContextValue {
   pendingComposerText?: string | null
   /** Clear the pending composer text after it's been restored */
   clearPendingComposerText?: () => void
+  /** Whether the session appears stuck (running but no content for 30s+) */
+  isStuck?: boolean
+  /** Force-kill the ACP process (safety net for unresponsive sessions) */
+  sendKill?: () => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

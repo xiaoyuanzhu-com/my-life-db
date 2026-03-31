@@ -456,32 +456,59 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Mu.Lock()
 				sessionState.IsProcessing = true
 				sessionState.IsActive = true
+				sessionState.Killed = false // reset from previous force-kill
 				sessionState.Mu.Unlock()
 				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
+
+				// Emit turn.start so the frontend knows processing has begun.
+				// Stored in rawMessages for burst replay on reconnect, ensuring
+				// isRunning=true even if no content frames have arrived yet.
+				if startBytes, err := json.Marshal(map[string]any{
+					"type": "turn.start",
+				}); err == nil {
+					sessionState.AppendAndBroadcast(startBytes)
+				}
 
 				events, err := acpSess.Send(h.server.ShutdownContext(), prompt)
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt to ACP session")
 					sessionState.Mu.Lock()
-					sessionState.IsProcessing = false
+					killed := sessionState.Killed
+					if !killed {
+						sessionState.IsProcessing = false
+					}
 					sessionState.Mu.Unlock()
-					if errBytes, err := json.Marshal(map[string]any{
-						"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
-					}); err == nil {
-						sessionState.AppendAndBroadcast(errBytes)
+					if !killed {
+						if errBytes, err := json.Marshal(map[string]any{
+							"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
+						}); err == nil {
+							sessionState.AppendAndBroadcast(errBytes)
+						}
 					}
 					return
 				}
 
 				for frame := range events {
+					// Skip frames if session was force-killed (kill handler
+					// already emitted turn.complete).
+					sessionState.Mu.RLock()
+					killed := sessionState.Killed
+					sessionState.Mu.RUnlock()
+					if killed {
+						continue
+					}
 					sessionState.AppendAndBroadcast(frame)
 				}
 				// Channel closed = turn complete
 				sessionState.Mu.Lock()
-				sessionState.ResultCount++
-				sessionState.IsProcessing = false
+				if !sessionState.Killed {
+					sessionState.ResultCount++
+					sessionState.IsProcessing = false
+				}
 				sessionState.Mu.Unlock()
-				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
+				if !sessionState.Killed {
+					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
+				}
 			}(acpSession, promptText)
 
 			// Auto-unarchive
@@ -518,6 +545,39 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				"type": "session.cancelled",
 			}); err == nil {
 				sessionState.BroadcastToClients(ackBytes)
+			}
+
+		case "session.kill":
+			// Force-kill: terminates the ACP process when normal cancellation is stuck.
+			// Used as a safety net when the session is unresponsive.
+			acpSessionsMu.Lock()
+			acpSession, exists := acpSessions[sessionID]
+			if exists {
+				delete(acpSessions, sessionID)
+			}
+			acpSessionsMu.Unlock()
+
+			if exists {
+				acpSession.CancelAllPermissions()
+				if err := acpSession.Close(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to force-kill agent session")
+				} else {
+					log.Info().Str("sessionId", sessionID).Msg("agent session force-killed via WebSocket")
+				}
+			}
+
+			// Mark killed so the Send() goroutine skips its cleanup (avoids
+			// duplicate turn.complete / spurious error frames).
+			sessionState.Mu.Lock()
+			sessionState.Killed = true
+			sessionState.IsProcessing = false
+			sessionState.Mu.Unlock()
+
+			if completeBytes, err := json.Marshal(map[string]any{
+				"type":       "turn.complete",
+				"stopReason": "killed",
+			}); err == nil {
+				sessionState.AppendAndBroadcast(completeBytes)
 			}
 
 		case "session.setMode":

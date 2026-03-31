@@ -161,6 +161,10 @@ export function useAgentWebSocket({
     send({ type: "session.setMode", modeId })
   }, [send])
 
+  const sendKill = useCallback(() => {
+    send({ type: "session.kill" })
+  }, [send])
+
   useEffect(() => {
     if (!enabled || !sessionId) return
 
@@ -225,5 +229,5 @@ export function useAgentWebSocket({
     }
   }, [sessionId, token, enabled])
 
-  return { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode }
+  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode }
 }
