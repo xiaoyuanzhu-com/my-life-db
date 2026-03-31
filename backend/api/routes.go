@@ -143,6 +143,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		r.GET("/api/llm/v1/models", gin.WrapH(proxy.ModelsHandler()))
 	}
 
+	// Agent apps API - protected
+	api.GET("/agent-apps", h.GetAgentApps)
+	api.GET("/agent-apps/:app", h.GetAgentAppFiles)
+
+	// Agent app static files - protected
+	r.GET("/apps/*path", wsAuth, h.ServeAgentApp)
+
 	// Raw file serving - protected
 	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
 	r.PUT("/raw/*path", wsAuth, h.SaveRawFile)
