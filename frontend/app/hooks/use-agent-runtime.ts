@@ -204,6 +204,21 @@ export function useAgentRuntime(options: {
         case "session.info": {
           const f = frame as SessionInfoFrame
           isActiveRef.current = f.isActive
+          // The backend replays full history on every WS connection (including
+          // reconnects).  Clear existing messages so the replay doesn't create
+          // duplicates.  Preserve any optimistic messages — they haven't been
+          // confirmed by the server yet and will be reconciled when the
+          // matching user_message_chunk arrives in the replay.
+          setMessages((prev) => {
+            const kept = prev.filter((m) => m.isOptimistic)
+            // Reset counter, but skip past IDs already used by optimistic messages
+            msgIdCounter.current = kept.length
+            return kept
+          })
+          setIsRunning(f.isProcessing)
+          setPendingPermissions(new Map())
+          setHistoryLoadError(null)
+          setSessionError(null)
           break
         }
 
