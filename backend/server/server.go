@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -34,6 +36,7 @@ type Server struct {
 	agent               *agent.Agent
 	llmProxy        *llm.Proxy
 	agentClient     *agentsdk.Client
+	agentApps       *agentapps.Service
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -63,7 +66,19 @@ func New(cfg *Config) (*Server, error) {
 	}
 	s.database = database
 
-	// 1.5. Initialize LLM proxy
+	// 1.5. Initialize agent apps service
+	s.agentApps = agentapps.NewService(cfg.AppDataDir)
+
+	// Write .mcp.json to UserDataDir so Claude Code sessions pick up the agent-apps MCP server
+	if binaryPath, err := os.Executable(); err == nil {
+		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.AppDataDir); err != nil {
+			log.Warn().Err(err).Msg("failed to write .mcp.json for agent-apps")
+		} else {
+			log.Info().Str("dir", cfg.UserDataDir).Msg("wrote .mcp.json for agent-apps MCP server")
+		}
+	}
+
+	// 1.6. Initialize LLM proxy
 	s.llmProxy = llm.NewProxy(cfg.LLM)
 	if cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI() {
 		log.Info().
@@ -415,6 +430,7 @@ func (s *Server) Notifications() *notifications.Service       { return s.notifSe
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
+func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 
