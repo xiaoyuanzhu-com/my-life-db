@@ -203,9 +203,10 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
         setSelectedIndex((prev) =>
           filtered.length > 0 ? (prev - 1 + filtered.length) % filtered.length : 0
         )
-      } else if (e.key === "Tab" || (e.key === "Enter" && filtered.length > 0)) {
-        e.preventDefault()
+      } else if (e.key === "Tab" || e.key === "Enter") {
         if (filtered.length > 0) {
+          e.preventDefault()
+          e.stopPropagation()
           handleSelect(filtered[selectedIndex]?.path ?? "")
         }
       } else if (e.key === "Escape") {
@@ -213,8 +214,8 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
       }
     }
 
-    textarea.addEventListener("keydown", handleKeyDown)
-    return () => textarea.removeEventListener("keydown", handleKeyDown)
+    textarea.addEventListener("keydown", handleKeyDown, { capture: true })
+    return () => textarea.removeEventListener("keydown", handleKeyDown, { capture: true })
   }, [open, filtered, selectedIndex, handleSelect, textareaRef])
 
   if (!open) return null

@@ -71,6 +71,15 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
     [composerRuntime, textareaRef]
   )
 
+  // Scroll selected item into view
+  useEffect(() => {
+    if (!open) return
+    const list = popoverRef.current
+    if (!list) return
+    const focusedItem = list.children[selectedIndex] as HTMLElement | undefined
+    focusedItem?.scrollIntoView({ block: "nearest" })
+  }, [open, selectedIndex, filtered.length])
+
   // Keyboard navigation
   useEffect(() => {
     if (!open) return
@@ -87,10 +96,10 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
         setSelectedIndex((prev) => Math.max(prev - 1, 0))
-      } else if (e.key === "Tab" || (e.key === "Enter" && filtered.length > 0)) {
-        // Only intercept Enter if the popover is showing commands
-        if (filtered.length > 0 && e.key === "Tab") {
+      } else if (e.key === "Tab" || e.key === "Enter") {
+        if (filtered.length > 0) {
           e.preventDefault()
+          e.stopPropagation()
           handleSelect(filtered[selectedIndex]?.name ?? filtered[0]?.name ?? "")
         }
       } else if (e.key === "Escape") {
@@ -98,8 +107,8 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
       }
     }
 
-    textarea.addEventListener("keydown", handleKeyDown)
-    return () => textarea.removeEventListener("keydown", handleKeyDown)
+    textarea.addEventListener("keydown", handleKeyDown, { capture: true })
+    return () => textarea.removeEventListener("keydown", handleKeyDown, { capture: true })
   }, [open, filtered, selectedIndex, handleSelect, textareaRef])
 
   if (!open || filtered.length === 0) return null
@@ -107,7 +116,7 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-full left-0 mb-1 w-64 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
+      className="absolute bottom-full left-0 mb-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
     >
       {filtered.map((cmd, i) => (
         <button
