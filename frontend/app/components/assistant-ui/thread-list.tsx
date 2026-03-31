@@ -5,10 +5,12 @@ import {
   ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
+  useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import {
   ArchiveIcon,
+  ArchiveRestoreIcon,
   MoreHorizontalIcon,
 } from "lucide-react";
 import type { FC } from "react";
@@ -30,6 +32,9 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} />}
+        </ThreadListPrimitive.Items>
+        <ThreadListPrimitive.Items archived>
           {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} />}
         </ThreadListPrimitive.Items>
       </AuiIf>
@@ -68,6 +73,7 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
 
   // Show status dot for working/unread sessions that aren't currently active
   const sessionState = itemId ? sessionStates?.[itemId] : undefined;
+  const isArchived = sessionState === 'archived';
   const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
 
   return (
@@ -76,7 +82,10 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
       className="aui-thread-list-item group flex h-8 items-center gap-1 rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted"
     >
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-[13px]">
-        <span className="aui-thread-list-item-title min-w-0 flex-1 truncate text-foreground/80 group-data-active:text-foreground">
+        <span className={cn(
+          "aui-thread-list-item-title min-w-0 flex-1 truncate group-data-active:text-foreground",
+          isArchived ? "text-foreground/40" : "text-foreground/80"
+        )}>
           <ThreadListItemPrimitive.Title fallback="New Chat" />
         </span>
         {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
@@ -92,12 +101,15 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
           )}
         </span>
       </ThreadListItemPrimitive.Trigger>
-      <ThreadListItemMore />
+      <ThreadListItemMore isArchived={isArchived} />
     </ThreadListItemPrimitive.Root>
   );
 };
 
-const ThreadListItemMore: FC = () => {
+const ThreadListItemMore: FC<{ isArchived?: boolean }> = ({ isArchived }) => {
+  const aui = useAui();
+  const handleUnarchive = () => aui.threadListItem().unarchive();
+
   return (
     <ThreadListItemMorePrimitive.Root>
       <ThreadListItemMorePrimitive.Trigger asChild>
@@ -115,12 +127,22 @@ const ThreadListItemMore: FC = () => {
         align="start"
         className="aui-thread-list-item-more-content z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
       >
-        <ThreadListItemPrimitive.Archive asChild>
-          <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
-            <ArchiveIcon className="size-4" />
-            Archive
+        {isArchived ? (
+          <ThreadListItemMorePrimitive.Item
+            onClick={handleUnarchive}
+            className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+          >
+            <ArchiveRestoreIcon className="size-4" />
+            Unarchive
           </ThreadListItemMorePrimitive.Item>
-        </ThreadListItemPrimitive.Archive>
+        ) : (
+          <ThreadListItemPrimitive.Archive asChild>
+            <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
+              <ArchiveIcon className="size-4" />
+              Archive
+            </ThreadListItemMorePrimitive.Item>
+          </ThreadListItemPrimitive.Archive>
+        )}
       </ThreadListItemMorePrimitive.Content>
     </ThreadListItemMorePrimitive.Root>
   );
