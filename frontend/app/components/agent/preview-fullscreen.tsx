@@ -51,7 +51,7 @@ export function PreviewFullscreen({ html, onClose }: PreviewFullscreenProps) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 0; font-family: system-ui, sans-serif; }
   </style>
 </head>
 <body>
