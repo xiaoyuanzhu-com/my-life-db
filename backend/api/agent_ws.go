@@ -59,6 +59,34 @@ func GetOrCreateSessionState(sessionID string) *agentsdk.SessionState {
 	return getOrCreateSessionState(sessionID)
 }
 
+// PeekSessionState returns the in-memory SessionState for the given session ID
+// without creating one. Returns nil if the session has no in-memory state
+// (i.e., no active WebSocket connection or ACP process).
+func PeekSessionState(sessionID string) *agentsdk.SessionState {
+	agentSessionStatesMu.Lock()
+	defer agentSessionStatesMu.Unlock()
+	return agentSessionStates[sessionID]
+}
+
+// GetAllSessionRuntimeStates returns a snapshot of IsProcessing and ResultCount
+// for all sessions that have in-memory state. Used by REST endpoints to compute
+// the "working"/"unread" session states without creating empty SessionState objects.
+func GetAllSessionRuntimeStates() map[string]struct{ IsProcessing bool; ResultCount int } {
+	agentSessionStatesMu.Lock()
+	defer agentSessionStatesMu.Unlock()
+
+	result := make(map[string]struct{ IsProcessing bool; ResultCount int }, len(agentSessionStates))
+	for id, ss := range agentSessionStates {
+		ss.Mu.RLock()
+		result[id] = struct{ IsProcessing bool; ResultCount int }{
+			IsProcessing: ss.IsProcessing,
+			ResultCount:  ss.ResultCount,
+		}
+		ss.Mu.RUnlock()
+	}
+	return result
+}
+
 // CleanupAgentSession closes and removes the in-memory ACP session and session
 // state for the given session ID. Called from DeleteAgentSession in agent_api.go.
 func CleanupAgentSession(sessionID string) {
@@ -429,6 +457,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.IsProcessing = true
 				sessionState.IsActive = true
 				sessionState.Mu.Unlock()
+				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
 				events, err := acpSess.Send(h.server.ShutdownContext(), prompt)
 				if err != nil {

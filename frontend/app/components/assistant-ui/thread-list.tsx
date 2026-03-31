@@ -12,8 +12,17 @@ import {
   MoreHorizontalIcon,
 } from "lucide-react";
 import type { FC } from "react";
+import { cn } from "~/lib/utils";
 
-export const ThreadList: FC<{ activeSessionId?: string | null }> = ({ activeSessionId }) => {
+type SessionState = 'idle' | 'working' | 'unread' | 'archived';
+
+interface ThreadListProps {
+  activeSessionId?: string | null;
+  /** Map of session ID → sessionState, used to render status dots */
+  sessionStates?: Record<string, SessionState>;
+}
+
+export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates }) => {
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
@@ -21,7 +30,7 @@ export const ThreadList: FC<{ activeSessionId?: string | null }> = ({ activeSess
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
-          {() => <ThreadListItem activeSessionId={activeSessionId} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} />}
         </ThreadListPrimitive.Items>
       </AuiIf>
     </ThreadListPrimitive.Root>
@@ -46,7 +55,7 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
-const ThreadListItem: FC<{ activeSessionId?: string | null }> = ({ activeSessionId }) => {
+const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState> }> = ({ activeSessionId, sessionStates }) => {
   // Workaround: assistant-ui's ExternalStoreThreadListRuntimeCore has a bug where
   // _mainThreadId is not set from the adapter's threadId on initial construction
   // (constructor sets this.adapter before calling __internal_setAdapter, so
@@ -57,6 +66,10 @@ const ThreadListItem: FC<{ activeSessionId?: string | null }> = ({ activeSession
   const itemId = useAuiState((s) => s.threadListItem.id);
   const isActive = itemId != null && itemId === activeSessionId;
 
+  // Show status dot for working/unread sessions that aren't currently active
+  const sessionState = itemId ? sessionStates?.[itemId] : undefined;
+  const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
+
   return (
     <ThreadListItemPrimitive.Root
       {...(isActive ? { "data-active": "true" } : {})}
@@ -65,6 +78,18 @@ const ThreadListItem: FC<{ activeSessionId?: string | null }> = ({ activeSession
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-[13px]">
         <span className="aui-thread-list-item-title min-w-0 flex-1 truncate text-foreground/80 group-data-active:text-foreground">
           <ThreadListItemPrimitive.Title fallback="New Chat" />
+        </span>
+        {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
+        <span className="w-2 shrink-0 flex items-center ml-1">
+          {showDot && (
+            <span
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                sessionState === 'working' ? 'bg-amber-500' : 'bg-emerald-500'
+              )}
+              title={sessionState === 'working' ? 'Agent is working' : 'New messages — waiting for you'}
+            />
+          )}
         </span>
       </ThreadListItemPrimitive.Trigger>
       <ThreadListItemMore />

@@ -127,6 +127,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			sessionState.IsProcessing = true
 			sessionState.IsActive = true
 			sessionState.Mu.Unlock()
+			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
 			ctx := h.server.ShutdownContext()
 			events, err := acpSess.Send(ctx, prompt)
@@ -192,20 +193,14 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 		sessions = archived
 	}
 
-	// Load read states for unread tracking
+	// Load read states and runtime states for sessionState computation
 	readStates, _ := db.GetAllSessionReadStates()
+	runtimeStates := GetAllSessionRuntimeStates()
 
 	// Convert to response format matching what the frontend expects
 	result := make([]map[string]any, 0, len(sessions))
 	for _, s := range sessions {
-		state := "idle"
-		if s.ArchivedAt != nil {
-			state = "archived"
-		} else if readCount, ok := readStates[s.SessionID]; ok {
-			// If there are results the user hasn't seen, mark unread
-			// (simplified — the old code checked IsProcessing too)
-			_ = readCount
-		}
+		state := computeSessionState(s.SessionID, s.ArchivedAt != nil, readStates, runtimeStates)
 
 		entry := map[string]any{
 			"id":           s.SessionID,
@@ -245,10 +240,10 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		return
 	}
 
-	state := "idle"
-	if session.ArchivedAt != nil {
-		state = "archived"
-	}
+	// Compute state using same logic as list endpoint
+	readStates, _ := db.GetAllSessionReadStates()
+	runtimeStates := GetAllSessionRuntimeStates()
+	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":           session.SessionID,
@@ -357,4 +352,38 @@ func (h *Handlers) GetAgentMessages(c *gin.Context) {
 // POST /api/agent/sessions/:id/deactivate
 func (h *Handlers) DeactivateAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// computeSessionState derives a unified session state string from archived flag,
+// DB read state, and in-memory runtime state.
+//
+// Priority: archived > working > unread > idle
+//   - "archived": session is archived
+//   - "working":  agent is actively processing (IsProcessing=true)
+//   - "unread":   agent finished but user hasn't viewed results (ResultCount > lastReadCount)
+//   - "idle":     all caught up
+func computeSessionState(
+	sessionID string,
+	isArchived bool,
+	readStates map[string]int,
+	runtimeStates map[string]struct{ IsProcessing bool; ResultCount int },
+) string {
+	if isArchived {
+		return "archived"
+	}
+
+	rt, hasRuntime := runtimeStates[sessionID]
+	if hasRuntime && rt.IsProcessing {
+		return "working"
+	}
+
+	// Check for unread results: ResultCount (in-memory) > last_read_count (DB)
+	if hasRuntime && rt.ResultCount > 0 {
+		lastRead := readStates[sessionID] // 0 if not found
+		if rt.ResultCount > lastRead {
+			return "unread"
+		}
+	}
+
+	return "idle"
 }

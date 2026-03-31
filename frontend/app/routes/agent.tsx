@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
@@ -712,6 +712,15 @@ export default function AgentPage() {
     )
   }, [])
 
+  // Build a map of session ID → sessionState for the thread list status dots
+  const sessionStates = useMemo(() => {
+    const map: Record<string, 'idle' | 'working' | 'unread' | 'archived'> = {}
+    for (const s of sessions) {
+      map[s.id] = s.sessionState
+    }
+    return map
+  }, [sessions])
+
   // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
   // The runtime is owned at the route level so that AssistantRuntimeProvider
   // wraps all AgentChat instances. The key on the provider forces a remount
@@ -916,7 +925,7 @@ export default function AgentPage() {
             >
               <SessionsHeader showCollapseButton />
               <div className="flex-1 overflow-hidden p-2">
-                <ThreadList activeSessionId={activeSessionId} />
+                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} />
               </div>
             </ResizablePanel>
 
@@ -1028,7 +1037,7 @@ export default function AgentPage() {
           <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
             <SessionsHeader />
             <div className="flex-1 overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} />
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} />
             </div>
           </div>
         ) : (
