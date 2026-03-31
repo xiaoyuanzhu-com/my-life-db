@@ -282,21 +282,21 @@ func serveSitemapXml() gin.HandlerFunc {
 }
 
 // runMCPAgentApps runs the binary in MCP server mode (stdio JSON-RPC).
-// Invoked via: ./my-life-db mcp-agent-apps [--app-data-dir <path>]
+// Invoked via: ./my-life-db mcp-agent-apps [--user-data-dir <path>]
 func runMCPAgentApps() {
-	// Parse --app-data-dir flag (default from config)
-	appDataDir := ""
+	// Parse --user-data-dir flag (default from config)
+	userDataDir := ""
 	for i, arg := range os.Args[2:] {
-		if arg == "--app-data-dir" && i+1 < len(os.Args[2:])-1 {
-			appDataDir = os.Args[2+i+1]
+		if arg == "--user-data-dir" && i+1 < len(os.Args[2:]) {
+			userDataDir = os.Args[2+i+1]
 		}
 	}
-	if appDataDir == "" {
+	if userDataDir == "" {
 		cfg := config.Get()
-		appDataDir = cfg.AppDataDir
+		userDataDir = cfg.UserDataDir
 	}
 
-	svc := agentapps.NewService(appDataDir)
+	svc := agentapps.NewService(userDataDir)
 	srv := agentapps.NewMCPServer(svc)
 	if err := srv.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "mcp-agent-apps error: %v\n", err)

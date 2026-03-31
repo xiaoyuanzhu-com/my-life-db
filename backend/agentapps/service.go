@@ -13,14 +13,14 @@ import (
 	"time"
 )
 
-// Service manages agent app files under APP_DATA_DIR/agent-apps/.
+// Service manages agent app files under USER_DATA_DIR/apps/.
 type Service struct {
-	baseDir string // e.g. /path/to/app-data/agent-apps
+	baseDir string // e.g. /path/to/user-data/apps
 }
 
 // NewService creates a new agent apps service.
-func NewService(appDataDir string) *Service {
-	dir := filepath.Join(appDataDir, "agent-apps")
+func NewService(userDataDir string) *Service {
+	dir := filepath.Join(userDataDir, "apps")
 	return &Service{baseDir: dir}
 }
 

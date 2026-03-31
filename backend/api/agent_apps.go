@@ -62,7 +62,7 @@ func (h *Handlers) ServeAgentApp(c *gin.Context) {
 	}
 
 	cfg := config.Get()
-	fullPath := filepath.Join(cfg.AppDataDir, "agent-apps", path)
+	fullPath := filepath.Join(cfg.UserDataDir, "apps", path)
 
 	// If path is just an app name (no file), try index.html
 	info, err := os.Stat(fullPath)

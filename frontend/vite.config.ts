@@ -138,6 +138,10 @@ export default defineConfig({
         changeOrigin: false,
         secure: true,
       },
+      "/apps": {
+        target: "http://localhost:12345",
+        changeOrigin: false,
+      },
     },
   },
 

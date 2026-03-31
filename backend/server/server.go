@@ -67,11 +67,11 @@ func New(cfg *Config) (*Server, error) {
 	s.database = database
 
 	// 1.5. Initialize agent apps service
-	s.agentApps = agentapps.NewService(cfg.AppDataDir)
+	s.agentApps = agentapps.NewService(cfg.UserDataDir)
 
 	// Write .mcp.json to UserDataDir so Claude Code sessions pick up the agent-apps MCP server
 	if binaryPath, err := os.Executable(); err == nil {
-		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.AppDataDir); err != nil {
+		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.UserDataDir); err != nil {
 			log.Warn().Err(err).Msg("failed to write .mcp.json for agent-apps")
 		} else {
 			log.Info().Str("dir", cfg.UserDataDir).Msg("wrote .mcp.json for agent-apps MCP server")

@@ -21,13 +21,13 @@ type MCPServerEntry struct {
 // WriteMCPConfig writes a .mcp.json file to the given directory,
 // configuring the agent-apps MCP server. The binaryPath should be
 // the path to the my-life-db binary (which supports `mcp-agent-apps` subcommand).
-func WriteMCPConfig(dir, binaryPath, appDataDir string) error {
+func WriteMCPConfig(dir, binaryPath, userDataDir string) error {
 	config := MCPConfig{
 		McpServers: map[string]MCPServerEntry{
 			"agent-apps": {
 				Type:    "stdio",
 				Command: binaryPath,
-				Args:    []string{"mcp-agent-apps", "--app-data-dir", appDataDir},
+				Args:    []string{"mcp-agent-apps", "--user-data-dir", userDataDir},
 			},
 		},
 	}
