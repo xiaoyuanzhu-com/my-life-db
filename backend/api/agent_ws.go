@@ -172,46 +172,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		seenResultCount.Store(int32(rc))
 	}
 
-	// Register client BEFORE burst/history replay so concurrent broadcasts
-	// (from POST handler or history replay goroutine) are queued immediately.
-	uiClient := &agentsdk.WSClient{
-		ID:   uuid.New().String(),
-		Send: make(chan []byte, 256),
-	}
-	sessionState.AddClient(uiClient)
-	defer sessionState.RemoveClient(uiClient)
-
-	// Start poll goroutine BEFORE burst so it can drain the client channel
-	// while burst messages are sent via direct conn.Write.
-	pollDone := make(chan struct{})
-	go func() {
-		defer close(pollDone)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data, ok := <-uiClient.Send:
-				if !ok {
-					return
-				}
-				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-					if ctx.Err() == nil {
-						log.Debug().Err(err).Str("sessionId", sessionID).Msg("agent WebSocket write failed")
-					}
-					return
-				}
-				var mt struct{ Type string `json:"type"` }
-				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
-					seenResultCount.Add(1)
-					persistReadState()
-				}
-			}
-		}
-	}()
-
-	// Send session.info before burst so the frontend knows active/processing state
-	// before any content frames arrive. This gates the frontend's isRunning:
-	// inactive sessions never show "working", active sessions rely on turn.complete.
+	// Send session.info before registering so the frontend knows active/processing
+	// state before any content frames arrive.
 	sessionState.Mu.RLock()
 	isActive := sessionState.IsActive
 	isProcessing := sessionState.IsProcessing
@@ -228,21 +190,45 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}
 
-	// Send initial burst (last ~100 messages) via direct write (bypasses client channel)
-	burstMessages := sessionState.GetRecentMessages(0)
-	if len(burstMessages) > 0 {
-		for _, msgBytes := range burstMessages {
-			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send burst message")
+	// Register client with cursor at 0 so it replays all stored messages,
+	// then picks up live frames via notification.
+	uiClient := agentsdk.NewWSClient(uuid.New().String(), 0)
+	sessionState.AddClient(uiClient)
+	defer sessionState.RemoveClient(uiClient)
+
+	// Write loop: drains rawMessages from cursor position at its own pace.
+	// No data is ever dropped — the client simply catches up.
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+		for {
+			msgs := sessionState.Drain(uiClient)
+			for _, data := range msgs {
+				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+					if ctx.Err() == nil {
+						log.Debug().Err(err).Str("sessionId", sessionID).Msg("agent WebSocket write failed")
+					}
+					return
+				}
+				var mt struct{ Type string `json:"type"` }
+				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
+					seenResultCount.Add(1)
+					persistReadState()
+				}
+			}
+			// Wait for new data or context cancellation
+			select {
+			case <-ctx.Done():
 				return
+			case <-uiClient.Notify:
 			}
 		}
-	}
+	}()
 
 	// If no messages in memory (e.g., server restart), try loading history via ACP.
 	// sync.Once ensures only one concurrent connection triggers LoadSession;
-	// others block until it completes, then receive frames via their registered client channel.
-	if len(burstMessages) == 0 {
+	// others block until it completes, then receive frames via the cursor-based write loop.
+	if sessionState.MessageCount() == 0 {
 		sessionState.HistoryOnce.Do(func() {
 			log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
 			sessionRecord, _ := db.GetAgentSession(sessionID)

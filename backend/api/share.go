@@ -118,26 +118,19 @@ func (h *Handlers) SharedSessionSubscribeWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Register as broadcast client for live updates
-	uiClient := &agentsdk.WSClient{
-		ID:   uuid.New().String(),
-		Send: make(chan []byte, 256),
-	}
+	// Register client with cursor at 0 to replay all stored messages,
+	// then pick up live frames via notification.
+	uiClient := agentsdk.NewWSClient(uuid.New().String(), 0)
 	sessionState.AddClient(uiClient)
 	defer sessionState.RemoveClient(uiClient)
 
-	// Forward broadcasts to WebSocket
+	// Write loop: drains rawMessages from cursor position at its own pace.
 	pollDone := make(chan struct{})
 	go func() {
 		defer close(pollDone)
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data, ok := <-uiClient.Send:
-				if !ok {
-					return
-				}
+			msgs := sessionState.Drain(uiClient)
+			for _, data := range msgs {
 				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 					if ctx.Err() == nil {
 						log.Debug().Err(err).Str("token", token).Msg("shared WebSocket write failed")
@@ -145,16 +138,13 @@ func (h *Handlers) SharedSessionSubscribeWebSocket(c *gin.Context) {
 					return
 				}
 			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-uiClient.Notify:
+			}
 		}
 	}()
-
-	// Send initial burst of recent messages
-	burstMessages := sessionState.GetRecentMessages(0)
-	for _, msgBytes := range burstMessages {
-		if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-			return
-		}
-	}
 
 	// Ping goroutine
 	pingTicker := time.NewTicker(30 * time.Second)
