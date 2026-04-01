@@ -428,6 +428,12 @@ type FileNode struct {
 	Children     []FileNode `json:"children,omitempty"`
 }
 
+// flatFileResult represents a file/folder in flat search results
+type flatFileResult struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+}
+
 // fieldSet tracks which fields to include in the response
 type fieldSet map[string]bool
 
@@ -455,6 +461,7 @@ func parseFields(fieldsParam string) fieldSet {
 //   - limit: max nodes to return (default: unlimited)
 //   - fields: comma-separated fields to include (default: all)
 //   - folderOnly: if true, return folders only (default: false)
+//   - query: search query for server-side filtering (returns flat results)
 func (h *Handlers) GetLibraryTree(c *gin.Context) {
 	requestedPath := c.Query("path")
 
@@ -479,6 +486,9 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 	// Parse fields
 	fields := parseFields(c.Query("fields"))
+
+	// Parse search query
+	query := c.Query("query")
 
 	// Normalize and validate path
 	var baseDir, fullPath string
@@ -514,16 +524,113 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 		return
 	}
 
+	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
+
+	// Server-side search mode: walk entire tree, fuzzy-match, return flat results
+	if query != "" {
+		results, totalWalked := h.searchFiles(fullPath, requestedPath, query, limit, foldersOnly, pathFilter)
+		c.JSON(http.StatusOK, gin.H{
+			"basePath":   baseDir,
+			"path":       requestedPath,
+			"files":      results,
+			"totalCount": totalWalked,
+			"truncated":  limit > 0 && len(results) >= limit,
+		})
+		return
+	}
+
 	// Track count for limit
 	count := 0
-	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
 	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly, pathFilter)
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"basePath": baseDir,
 		"path":     requestedPath,
 		"children": children,
+	}
+	if limit > 0 {
+		response["truncated"] = count >= limit
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// searchFiles walks the directory tree and returns flat results matching the query.
+// It uses case-insensitive substring matching on the full relative path and filename.
+func (h *Handlers) searchFiles(rootPath, requestedPath, query string, limit int, foldersOnly bool, pathFilter *fs.PathFilter) ([]flatFileResult, int) {
+	lowerQuery := strings.ToLower(query)
+	var results []flatFileResult
+	totalWalked := 0
+
+	var walk func(dir, relPath string)
+	walk = func(dir, relPath string) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+
+		atRoot := relPath == ""
+		for _, entry := range entries {
+			name := entry.Name()
+
+			if pathFilter.IsExcludedEntry(name, atRoot) {
+				continue
+			}
+
+			isDir := entry.IsDir()
+			if foldersOnly && !isDir {
+				continue
+			}
+
+			var childRelPath string
+			if relPath == "" {
+				childRelPath = name
+			} else {
+				childRelPath = relPath + "/" + name
+			}
+
+			totalWalked++
+
+			// Match against full path and filename
+			lowerPath := strings.ToLower(childRelPath)
+			lowerName := strings.ToLower(name)
+			if strings.Contains(lowerPath, lowerQuery) || strings.Contains(lowerName, lowerQuery) {
+				nodeType := "file"
+				if isDir {
+					nodeType = "folder"
+				}
+				results = append(results, flatFileResult{
+					Path: childRelPath,
+					Type: nodeType,
+				})
+			}
+
+			// Always recurse into directories
+			if isDir {
+				walk(filepath.Join(dir, name), childRelPath)
+			}
+		}
+	}
+
+	walk(rootPath, "")
+
+	// Sort: prefer filename matches over path-only matches, then alphabetically
+	sort.Slice(results, func(i, j int) bool {
+		iName := strings.ToLower(filepath.Base(results[i].Path))
+		jName := strings.ToLower(filepath.Base(results[j].Path))
+		iNameMatch := strings.Contains(iName, lowerQuery)
+		jNameMatch := strings.Contains(jName, lowerQuery)
+		if iNameMatch != jNameMatch {
+			return iNameMatch
+		}
+		return results[i].Path < results[j].Path
 	})
+
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results, totalWalked
 }
 
 // readDirRecursive reads directory contents recursively up to specified depth
@@ -544,11 +651,6 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	var nodes []FileNode
 	atRoot := relativePath == ""
 	for _, entry := range entries {
-		// Check limit
-		if limit > 0 && *count >= limit {
-			break
-		}
-
 		name := entry.Name()
 
 		// Skip excluded files/directories
@@ -556,8 +658,10 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 			continue
 		}
 
+		isDir := entry.IsDir()
+
 		// Skip files if foldersOnly is true
-		if foldersOnly && !entry.IsDir() {
+		if foldersOnly && !isDir {
 			continue
 		}
 
@@ -569,8 +673,12 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 			childRelPath = relativePath + "/" + name
 		}
 
+		// Check limit
+		if limit > 0 && *count >= limit {
+			break
+		}
+
 		info, _ := entry.Info()
-		isDir := entry.IsDir()
 
 		// Build node with requested fields only
 		node := FileNode{}

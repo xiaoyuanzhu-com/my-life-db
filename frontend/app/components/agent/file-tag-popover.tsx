@@ -3,8 +3,8 @@
  * in the composer. Fetches file tree from /api/library/tree and shows
  * fuzzy-matched results for quick file path insertion.
  *
- * Ported from the claude chat implementation: fuzzy scoring, file/folder
- * icons, loading state, and workingDir-scoped fetching.
+ * Performance: fetches up to 1000 files initially. If the directory has more,
+ * switches to server-side search with debounced queries as the user types.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useComposerRuntime, useComposer } from "@assistant-ui/react"
@@ -30,6 +30,9 @@ interface FileTagPopoverProps {
   workingDir?: string
 }
 
+const FILE_LIMIT = 1000
+const DEBOUNCE_MS = 200
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function flattenTree(nodes: FileNode[], prefix = ""): FileItem[] {
@@ -47,13 +50,6 @@ function flattenTree(nodes: FileNode[], prefix = ""): FileItem[] {
 /**
  * Fuzzy match: checks if all characters in pattern appear in order in str.
  * Returns a score (higher is better match) or -1 if no match.
- *
- * Scoring:
- * - +1 per matched char, +2 if consecutive
- * - +3 for word boundary matches (after / or .)
- * - +10 if pattern is an exact substring
- * - +15 if pattern matches in filename (not just path)
- * - -0.1 per path char (prefer shorter paths)
  */
 function fuzzyMatch(pattern: string, str: string): number {
   const lowerPattern = pattern.toLowerCase()
@@ -109,11 +105,15 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [allFiles, setAllFiles] = useState<FileItem[]>([])
+  const [serverFiles, setServerFiles] = useState<FileItem[] | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+  const [truncated, setTruncated] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const fetchedDirRef = useRef<string | undefined>(undefined)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const abortRef = useRef<AbortController>(undefined)
 
   // Detect @ trigger
   useEffect(() => {
@@ -128,7 +128,7 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
     }
   }, [text])
 
-  // Fetch file tree when popover opens (scoped to workingDir, unlimited depth)
+  // Fetch file tree when popover opens (with limit)
   useEffect(() => {
     if (!open) return
     if (fetched && fetchedDirRef.current === workingDir) return
@@ -136,13 +136,18 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
     const fetchFiles = async () => {
       setLoading(true)
       try {
-        const params = new URLSearchParams({ depth: "0" })
+        const params = new URLSearchParams({
+          depth: "0",
+          limit: String(FILE_LIMIT),
+          fields: "path,type",
+        })
         if (workingDir) params.set("path", workingDir)
         const response = await api.get(`/api/library/tree?${params}`)
         if (response.ok) {
           const data = await response.json()
           const flattened = flattenTree(data.children ?? [])
           setAllFiles(flattened)
+          setTruncated(data.truncated === true)
           setFetched(true)
           fetchedDirRef.current = workingDir
         }
@@ -160,10 +165,65 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
   useEffect(() => {
     if (fetchedDirRef.current !== workingDir) {
       setFetched(false)
+      setTruncated(false)
+      setServerFiles(null)
     }
   }, [workingDir])
 
-  const filtered = useMemo(() => filterFiles(allFiles, query), [allFiles, query])
+  // Server-side search when truncated and user has typed a query
+  useEffect(() => {
+    if (!truncated || !open) {
+      setServerFiles(null)
+      return
+    }
+
+    // No query — show the initial batch
+    if (!query) {
+      setServerFiles(null)
+      return
+    }
+
+    // Debounce server requests
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      try {
+        const params = new URLSearchParams({
+          depth: "0",
+          limit: "50",
+          query,
+        })
+        if (workingDir) params.set("path", workingDir)
+        const response = await api.get(`/api/library/tree?${params}`, {
+          signal: controller.signal,
+        })
+        if (response.ok) {
+          const data = await response.json()
+          // Server-side search returns flat "files" array
+          setServerFiles(data.files ?? [])
+          setSelectedIndex(0)
+        }
+      } catch {
+        // Ignore abort errors
+      }
+    }, DEBOUNCE_MS)
+
+    return () => {
+      clearTimeout(debounceRef.current)
+      abortRef.current?.abort()
+    }
+  }, [truncated, open, query, workingDir])
+
+  // When truncated and we have server results, use those; otherwise client-side filter
+  const filtered = useMemo(() => {
+    if (truncated && query && serverFiles !== null) {
+      return serverFiles.slice(0, 50)
+    }
+    return filterFiles(allFiles, query)
+  }, [allFiles, query, truncated, serverFiles])
 
   const handleSelect = useCallback(
     (filePath: string) => {
@@ -230,7 +290,7 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
         </div>
       ) : filtered.length === 0 ? (
         <div className="px-3 py-6 text-sm text-muted-foreground text-center">
-          No matching files
+          {truncated && query ? "Searching..." : "No matching files"}
         </div>
       ) : (
         <div ref={popoverRef} className="py-1">
