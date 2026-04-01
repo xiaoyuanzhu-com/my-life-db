@@ -445,6 +445,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				acpSession = sess
 			}
 
+			// Update the session's updated_at so the session list re-sorts
+			// by last user activity (agent responses don't touch this).
+			if err := db.TouchAgentSession(sessionID); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to touch agent session")
+			}
+
 			// Synthesize user_message_chunk BEFORE Send() so the user's message
 			// is in rawMessages for burst replay on page refresh.
 			sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(promptText))
