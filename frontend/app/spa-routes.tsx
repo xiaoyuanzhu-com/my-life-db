@@ -1,25 +1,18 @@
 /**
  * SPA Routes Configuration
  *
- * This file defines routes for the SPA build (Go server).
- * It mirrors the routes.ts configuration but uses react-router's createBrowserRouter format.
+ * Three-tab navigation: Data, Agent, Me
  */
 import type { RouteObject } from "react-router";
 
 // Layout component
 import Root from "./root";
 
-// Direct imports (no lazy loading) - bundle all routes in main
-import Home from "./routes/home";
-import Inbox from "./routes/inbox";
-import InboxDetail from "./routes/inbox.$id";
-import Library from "./routes/library";
-import LibraryBrowse from "./routes/library.browse";
+// Route components
+import Data from "./routes/data";
 import FileView from "./routes/file.$";
-import People from "./routes/people";
-import PeopleDetail from "./routes/people.$id";
-import Settings from "./routes/settings";
 import Agent from "./routes/agent";
+import Me from "./routes/me";
 
 export const routes: RouteObject[] = [
   {
@@ -28,39 +21,11 @@ export const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        Component: Home,
-      },
-      {
-        path: "inbox",
-        Component: Inbox,
-      },
-      {
-        path: "inbox/:id",
-        Component: InboxDetail,
-      },
-      {
-        path: "library",
-        Component: Library,
-      },
-      {
-        path: "library/browse",
-        Component: LibraryBrowse,
+        Component: Data,
       },
       {
         path: "file/*",
         Component: FileView,
-      },
-      {
-        path: "people",
-        Component: People,
-      },
-      {
-        path: "people/:id",
-        Component: PeopleDetail,
-      },
-      {
-        path: "settings/*",
-        Component: Settings,
       },
       {
         path: "agent",
@@ -69,6 +34,10 @@ export const routes: RouteObject[] = [
       {
         path: "agent/:sessionId",
         Component: Agent,
+      },
+      {
+        path: "me/*",
+        Component: Me,
       },
     ],
   },

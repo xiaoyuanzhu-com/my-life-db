@@ -413,7 +413,7 @@ export default function FileInfoPage() {
   }, [fileInfo, stopDigestPolling]);
 
   const handleBack = () => {
-    navigate(`/library?open=${encodeURIComponent(filePath)}`);
+    navigate(-1);
   };
 
   const handleDigest = async () => {

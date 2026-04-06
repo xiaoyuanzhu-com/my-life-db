@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation, useNavigate } from "react-router";
 import { Header } from "~/components/header";
+import { BottomNav } from "~/components/bottom-nav";
 import { AuthProvider } from "~/contexts/auth-context";
 import { FeatureFlagsProvider } from "~/contexts/feature-flags-context";
 import { Toaster } from "~/components/ui/sonner";
@@ -57,6 +58,14 @@ function ConditionalHeader() {
   );
 }
 
+function ConditionalBottomNav() {
+  const location = useLocation();
+  const isSharePage = /^\/share\//.test(location.pathname);
+  const isAgentSessionDetail = /^\/agent\/[^/]+/.test(location.pathname);
+  if (isSharePage || isAgentSessionDetail) return null;
+  return <BottomNav />;
+}
+
 export default function Root() {
   useDarkMode();
   useNativeBridge();
@@ -79,9 +88,10 @@ export default function Root() {
         <AuthProvider>
           {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
           {!native && <ConditionalHeader />}
-          <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2'}`}>
+          <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2 pb-[60px] md:pb-0'}`}>
             <Outlet />
           </main>
+          {!native && <ConditionalBottomNav />}
         </AuthProvider>
         <ScrollRestoration />
         <Toaster position="bottom-right" richColors closeButton />

@@ -41,7 +41,7 @@ interface DigesterInfo {
 function SettingsHeader() {
   return (
     <div>
-      <h1 className="text-3xl font-bold">Settings</h1>
+      <h1 className="text-3xl font-bold">Me</h1>
     </div>
   );
 }
@@ -222,11 +222,11 @@ function SettingsContent() {
   };
 
   const tabs = [
-    { label: "General", value: "general", path: "/settings" },
-    { label: "Vendors", value: "vendors", path: "/settings/vendors" },
-    { label: "Digest", value: "digest", path: "/settings/digest" },
-    { label: "Data Sources", value: "data-sources", path: "/settings/data-sources" },
-    { label: "Stats", value: "stats", path: "/settings/stats" },
+    { label: "General", value: "general", path: "/me" },
+    { label: "Vendors", value: "vendors", path: "/me/vendors" },
+    { label: "Digest", value: "digest", path: "/me/digest" },
+    { label: "Data Sources", value: "data-sources", path: "/me/data-sources" },
+    { label: "Stats", value: "stats", path: "/me/stats" },
   ];
 
   return (
@@ -703,7 +703,7 @@ function SettingsContent() {
   );
 }
 
-export default function SettingsPage() {
+export default function MePage() {
   const { isAuthenticated, isLoading } = useAuth();
 
   // Show loading state while checking authentication
@@ -716,7 +716,7 @@ export default function SettingsPage() {
     return (
       <div className="flex items-center justify-center h-screen p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">Settings</h1>
+          <h1 className="text-3xl font-bold mb-4">Me</h1>
           <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
             Configure your preferences and system settings.
           </p>

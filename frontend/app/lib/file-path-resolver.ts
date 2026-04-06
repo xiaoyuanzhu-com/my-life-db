@@ -120,8 +120,7 @@ export function extractAndResolvePaths(text: string): ResolvedPath[] {
  */
 export function libraryUrl(resolved: ResolvedPath): string {
   if (resolved.libraryRelative === null) return '#'
-  const param = resolved.isDirectory ? 'dir' : 'open'
-  return `/library?${param}=${encodeURIComponent(resolved.libraryRelative)}`
+  return `/file/${resolved.libraryRelative}`
 }
 
 /**
