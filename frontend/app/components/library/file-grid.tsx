@@ -1,17 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { FolderPlus, Plus, Upload, FolderUp } from 'lucide-react';
+import { FolderPlus } from 'lucide-react';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { Input } from '~/components/ui/input';
-import { Button } from '~/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '~/components/ui/dropdown-menu';
 import {
   type FileNode,
   getNodeName,
@@ -20,7 +13,6 @@ import {
   getFolderUploadStatus,
 } from './library-utils';
 import { GridItem } from './grid-item';
-import { BreadcrumbNav } from './breadcrumb-nav';
 
 interface FileGridProps {
   onFileOpen: (path: string, name: string) => void;
@@ -321,7 +313,6 @@ export function FileGrid({
 
   const allNodes = sortNodes([...virtualChildren, ...annotatedChildren]);
 
-  const hasActions = onUploadFile || onUploadFolder;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -341,38 +332,6 @@ export function FileGrid({
         onChange={handleTargetFolderInputChange}
         {...{ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>}
       />
-
-      {/* Breadcrumb navigation + action button */}
-      <div className="shrink-0 px-3 py-2 border-b flex items-center gap-2">
-        <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} className="flex-1 min-w-0" />
-        {hasActions && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0">
-                <Plus className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onUploadFile && (
-                <DropdownMenuItem onClick={onUploadFile}>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload File
-                </DropdownMenuItem>
-              )}
-              {onUploadFolder && (
-                <DropdownMenuItem onClick={onUploadFolder}>
-                  <FolderUp className="w-4 h-4 mr-2" />
-                  Upload Folder
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => setIsCreatingFolder(true)}>
-                <FolderPlus className="w-4 h-4 mr-2" />
-                New Folder
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
 
       {/* Grid content */}
       <div className="flex-1 overflow-y-auto p-2">
