@@ -124,7 +124,7 @@ func GetMeiliClient() *MeiliClient {
 		}
 
 		// Configure searchable attributes
-		searchableAttrs := []string{"content", "summary", "tags", "filePath"}
+		searchableAttrs := []string{"content", "filePath"}
 		searchableTask, err := index.UpdateSearchableAttributes(&searchableAttrs)
 		if err != nil {
 			log.Warn().Err(err).Msg("failed to update searchable attributes")

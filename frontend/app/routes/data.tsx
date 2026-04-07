@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Search, MoreVertical, Upload, FolderUp, FolderPlus, RefreshCw } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
+import { SearchResults } from "~/components/search-results";
+import { useSearch } from "~/components/omni-input/modules/use-search";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -21,6 +23,7 @@ function DataContent() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const { results: searchResults, isSearching, search, clear: clearSearch } = useSearch();
 
   useUploadNotifications();
 
@@ -75,12 +78,14 @@ function DataContent() {
     e.target.value = "";
   };
 
-  const handleSearch = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      toast.info("Search coming soon");
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (value.trim()) {
+      search(value);
+    } else {
+      clearSearch();
     }
-  }, [searchQuery]);
+  }, [search, clearSearch]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -97,16 +102,16 @@ function DataContent() {
 
       {/* Top bar: search + actions */}
       <div className="shrink-0 px-4 py-3 flex items-center gap-2 md:px-[10%]">
-        <form onSubmit={handleSearch} className="flex-1 relative">
+        <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
             placeholder="Search files..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
-        </form>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -134,16 +139,27 @@ function DataContent() {
         </DropdownMenu>
       </div>
 
-      {/* File grid (same component for mobile and desktop) */}
+      {/* Search results or file grid */}
       <div className="flex-1 overflow-hidden md:px-[10%]">
-        <FileGrid
-          key={refreshTrigger}
-          onFileOpen={handleFileOpen}
-          selectedFilePath={null}
-          createFolderTrigger={createFolderTrigger}
-          onUploadFile={handleUploadFile}
-          onUploadFolder={handleUploadFolder}
-        />
+        {searchQuery.trim() ? (
+          <SearchResults
+            keywordResults={searchResults.keywordResults}
+            semanticResults={searchResults.semanticResults}
+            isKeywordSearching={searchResults.isKeywordSearching}
+            isSemanticSearching={searchResults.isSemanticSearching}
+            keywordError={searchResults.keywordError}
+            semanticError={searchResults.semanticError}
+          />
+        ) : (
+          <FileGrid
+            key={refreshTrigger}
+            onFileOpen={handleFileOpen}
+            selectedFilePath={null}
+            createFolderTrigger={createFolderTrigger}
+            onUploadFile={handleUploadFile}
+            onUploadFolder={handleUploadFolder}
+          />
+        )}
       </div>
     </div>
   );

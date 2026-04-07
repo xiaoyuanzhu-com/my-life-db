@@ -67,16 +67,9 @@ func (r *Registry) GetDigesterInfo() []map[string]interface{} {
 
 // digesterOrder defines the explicit execution order of all digesters
 // Digesters are executed in this exact order to respect dependencies
-var digesterOrder = []Digester{
-	// Phase 1: Content extraction
-	&SpeechRecognitionDigester{},
-	// Phase 2: Secondary processing
-	&SpeechRecognitionCleanupDigester{},
-	&SpeechRecognitionSummaryDigester{},
-	// Phase 3: Tags and search
-	&TagsDigester{},
-	&SearchKeywordDigester{},
-}
+// NOTE: All digesters disabled — Meilisearch indexing is now handled directly
+// by the MeiliIndexer (workers/meili/indexer.go), not through the digest pipeline.
+var digesterOrder = []Digester{}
 
 // InitializeRegistry registers all digesters in their defined order
 func InitializeRegistry() {

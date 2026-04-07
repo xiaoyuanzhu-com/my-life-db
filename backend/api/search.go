@@ -205,49 +205,6 @@ func (h *Handlers) Search(c *gin.Context) {
 		}
 	}
 
-	// If no search services available and keyword search was requested, fall back to database search
-	if len(sources) == 0 && useKeyword {
-		log.Warn().Msg("no search services available, falling back to database search")
-		sources = append(sources, "database")
-
-		// Simple LIKE search on file names and text preview
-		rows, err := db.GetDB().Query(`
-			SELECT path, name, is_folder, size, mime_type, modified_at, created_at, text_preview, preview_sqlar, preview_status
-			FROM files
-			WHERE (name LIKE '%' || ? || '%' OR text_preview LIKE '%' || ? || '%')
-			ORDER BY modified_at DESC
-			LIMIT ? OFFSET ?
-		`, query, query, limit, offset)
-
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var f db.FileRecord
-				var isFolder int
-				if err := rows.Scan(&f.Path, &f.Name, &isFolder, &f.Size, &f.MimeType, &f.ModifiedAt, &f.CreatedAt, &f.TextPreview, &f.PreviewSqlar, &f.PreviewStatus); err != nil {
-					continue
-				}
-				f.IsFolder = isFolder == 1
-
-				results = append(results, SearchResultItem{
-					Path:            f.Path,
-					Name:            f.Name,
-					IsFolder:        f.IsFolder,
-					Size:            f.Size,
-					MimeType:        f.MimeType,
-					ModifiedAt:      f.ModifiedAt,
-					CreatedAt:       f.CreatedAt,
-					Digests:         []db.Digest{},
-					Score:           0.5,
-					Snippet:         "",
-					TextPreview:     f.TextPreview,
-					PreviewSqlar:  f.PreviewSqlar,
-					PreviewStatus: f.PreviewStatus,
-				})
-			}
-		}
-	}
-
 	response := SearchResponse{
 		Results: results,
 		Query:   query,

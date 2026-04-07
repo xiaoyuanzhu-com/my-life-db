@@ -32,6 +32,7 @@ type Server struct {
 	fsService       *fs.Service
 	digestWorker    *digest.Worker
 	meiliSyncWorker *meiliworker.SyncWorker
+	meiliIndexer    *meiliworker.Indexer
 	notifService    *notifications.Service
 	agent               *agent.Agent
 	llmProxy        *llm.Proxy
@@ -148,6 +149,7 @@ func New(cfg *Config) (*Server, error) {
 	// 5.5. Create Meilisearch sync worker
 	log.Info().Msg("initializing meili sync worker")
 	s.meiliSyncWorker = meiliworker.NewSyncWorker()
+	s.meiliIndexer = meiliworker.NewIndexer(s.fsService.DataRoot(), s.meiliSyncWorker.Nudge)
 
 	// 6. Create agent (if enabled)
 	if cfg.InboxAgentEnabled {
@@ -181,9 +183,10 @@ func New(cfg *Config) (*Server, error) {
 
 // connectServices wires up event handlers between services
 func (s *Server) connectServices() {
-	// FS → Digest: When files change, trigger digest processing
+	// FS → Meili Indexer + Digest: When files change, index for search and trigger digest processing
 	s.fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
 		if event.ContentChanged {
+			s.meiliIndexer.OnFileChange(event.FilePath, event.IsNew, true)
 			s.digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
 		}
 
@@ -353,6 +356,9 @@ func (s *Server) Start() error {
 	// Start Meilisearch sync worker
 	s.meiliSyncWorker.Start()
 
+	// Start Meilisearch indexer backfill
+	go s.meiliIndexer.Backfill()
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -426,6 +432,7 @@ func (s *Server) DB() *db.DB                                  { return s.databas
 func (s *Server) FS() *fs.Service                             { return s.fsService }
 func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
 func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSyncWorker }
+func (s *Server) MeiliIndexer() *meiliworker.Indexer          { return s.meiliIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }

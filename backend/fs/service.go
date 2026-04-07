@@ -203,6 +203,11 @@ func (s *Service) IsExcluded(path string) bool {
 	return s.validator.IsExcluded(path)
 }
 
+// DataRoot returns the root directory for user data files
+func (s *Service) DataRoot() string {
+	return s.cfg.DataRoot
+}
+
 // GetFileInfo retrieves file metadata from database
 func (s *Service) GetFileInfo(ctx context.Context, path string) (*db.FileRecord, error) {
 	if err := s.ValidatePath(path); err != nil {
