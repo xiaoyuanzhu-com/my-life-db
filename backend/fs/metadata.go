@@ -123,7 +123,7 @@ func (p *metadataProcessor) isTextFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	textExts := []string{
 		".txt", ".md", ".markdown", ".tex", ".typ",
-		".json", ".yaml", ".yml",
+		".json", ".jsonl", ".yaml", ".yml",
 		".log", ".csv", ".tsv",
 		".xml", ".html", ".htm",
 		".js", ".ts", ".jsx", ".tsx",

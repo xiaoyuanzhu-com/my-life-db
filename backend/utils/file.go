@@ -145,6 +145,7 @@ func DetectMimeType(filename string) string {
 		".mdx":      "text/markdown",
 		".markdown": "text/markdown",
 		".json":     "application/json",
+		".jsonl":    "application/x-ndjson",
 		".html":     "text/html",
 		".htm":      "text/html",
 		".css":      "text/css",

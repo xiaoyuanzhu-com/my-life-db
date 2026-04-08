@@ -14,7 +14,7 @@ const MaxContentBytes = 1 * 1024 * 1024
 // textExtensions is the set of file extensions recognized as text
 var textExtensions = map[string]bool{
 	".txt": true, ".md": true, ".markdown": true, ".tex": true, ".typ": true,
-	".json": true, ".yaml": true, ".yml": true,
+	".json": true, ".jsonl": true, ".yaml": true, ".yml": true,
 	".log": true, ".csv": true, ".tsv": true,
 	".xml": true, ".html": true, ".htm": true,
 	".js": true, ".ts": true, ".jsx": true, ".tsx": true,

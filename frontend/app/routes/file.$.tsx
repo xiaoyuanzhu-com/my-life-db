@@ -19,9 +19,9 @@ import type { FileRecord, Digest } from "~/types";
 import { TranscriptViewer } from "~/components/transcript-viewer";
 import { api } from "~/lib/api";
 
-interface FileInfoData {
-  file: FileRecord;
+interface FileInfoData extends FileRecord {
   digests: Digest[];
+  isPinned: boolean;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -72,6 +72,7 @@ function getStatusColor(status: string): string {
 
 const TEXT_CONTENT_TYPES = new Set([
   "application/json",
+  "application/x-ndjson",
   "application/xml",
   "application/javascript",
   "application/x-sh",
@@ -403,7 +404,7 @@ export default function FileInfoPage() {
       return;
     }
 
-    const hasPending = fileInfo.digests.some((digest) => PENDING_DIGEST_STATUSES.has(digest.status));
+    const hasPending = fileInfo.digests?.some((digest) => PENDING_DIGEST_STATUSES.has(digest.status)) ?? false;
 
     if (hasPending) {
       setIsPollingDigests(true);
@@ -488,7 +489,8 @@ export default function FileInfoPage() {
     );
   }
 
-  const { file, digests } = fileInfo;
+  const file = fileInfo;
+  const digests = fileInfo.digests ?? [];
   const displayContentType = fileContentType || file.mimeType || null;
 
   let fileContentBody;

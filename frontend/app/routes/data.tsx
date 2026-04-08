@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Search, MoreVertical, Upload, FolderUp, FolderPlus, RefreshCw } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
-import { SearchResults } from "~/components/search-results";
 import { useSearch } from "~/components/omni-input/modules/use-search";
+import { GridItem } from "~/components/library/grid-item";
+import type { FileNode } from "~/components/library/library-utils";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -15,6 +16,71 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
+
+function SearchResultsGrid({
+  results,
+  isSearching,
+  error,
+  onFileOpen,
+}: {
+  results: import("~/types/api").SearchResponse | null;
+  isSearching: boolean;
+  error: string | null;
+  onFileOpen: (path: string, name: string) => void;
+}) {
+  const nodes: FileNode[] = useMemo(() => {
+    if (!results?.results) return [];
+    return results.results.map((r) => ({
+      path: r.path,
+      type: r.isFolder ? "folder" as const : "file" as const,
+      size: r.size ?? undefined,
+      modifiedAt: r.modifiedAt,
+      previewSqlar: r.previewSqlar ?? undefined,
+    }));
+  }, [results]);
+
+  if (isSearching && nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        Searching...
+      </div>
+    );
+  }
+
+  if (error && nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-sm text-destructive">
+        Search failed: {error}
+      </div>
+    );
+  }
+
+  if (results && nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        No results found
+      </div>
+    );
+  }
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <div className="h-full overflow-y-auto p-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1">
+        {nodes.map((node) => (
+          <GridItem
+            key={node.path}
+            node={node}
+            fullPath={node.path}
+            onClick={() => onFileOpen(node.path, node.path.split("/").pop() || node.path)}
+            onRefresh={() => {}}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function DataContent() {
   const navigate = useNavigate();
@@ -142,13 +208,11 @@ function DataContent() {
       {/* Search results or file grid */}
       <div className="flex-1 overflow-hidden md:px-[10%]">
         {searchQuery.trim() ? (
-          <SearchResults
-            keywordResults={searchResults.keywordResults}
-            semanticResults={searchResults.semanticResults}
-            isKeywordSearching={searchResults.isKeywordSearching}
-            isSemanticSearching={searchResults.isSemanticSearching}
-            keywordError={searchResults.keywordError}
-            semanticError={searchResults.semanticError}
+          <SearchResultsGrid
+            results={searchResults.keywordResults}
+            isSearching={searchResults.isKeywordSearching}
+            error={searchResults.keywordError}
+            onFileOpen={handleFileOpen}
           />
         ) : (
           <FileGrid
