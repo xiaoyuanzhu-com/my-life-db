@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { Database, Bot, User } from 'lucide-react';
+import { Database, Bot, User, Compass } from 'lucide-react';
 import { cn } from '~/lib/utils';
 
 const navItems = [
@@ -7,6 +7,11 @@ const navItems = [
     href: '/',
     label: 'Data',
     icon: Database,
+  },
+  {
+    href: '/explore',
+    label: 'Explore',
+    icon: Compass,
   },
   {
     href: '/agent',

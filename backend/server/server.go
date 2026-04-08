@@ -15,6 +15,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -38,6 +39,7 @@ type Server struct {
 	llmProxy        *llm.Proxy
 	agentClient     *agentsdk.Client
 	agentApps       *agentapps.Service
+	explore         *explore.Service
 
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
@@ -70,9 +72,12 @@ func New(cfg *Config) (*Server, error) {
 	// 1.5. Initialize agent apps service
 	s.agentApps = agentapps.NewService(cfg.UserDataDir)
 
+	// 1.5.1. Initialize explore service
+	s.explore = explore.NewService(cfg.UserDataDir)
+
 	// Write .mcp.json to UserDataDir so Claude Code sessions pick up the agent-apps MCP server
 	if binaryPath, err := os.Executable(); err == nil {
-		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.UserDataDir); err != nil {
+		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.UserDataDir, cfg.Port); err != nil {
 			log.Warn().Err(err).Msg("failed to write .mcp.json for agent-apps")
 		} else {
 			log.Info().Str("dir", cfg.UserDataDir).Msg("wrote .mcp.json for agent-apps MCP server")
@@ -438,6 +443,7 @@ func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
+func (s *Server) Explore() *explore.Service                      { return s.explore }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 

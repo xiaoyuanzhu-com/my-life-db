@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 )
 
 // SetupRoutes configures all API routes with handlers
@@ -142,6 +143,16 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		r.Any("/api/openai/*path", gin.WrapH(proxy.OpenAIHandler()))
 		r.GET("/api/llm/v1/models", gin.WrapH(proxy.ModelsHandler()))
 	}
+
+	// Explore routes
+	api.GET("/explore/posts", h.GetExplorePosts)
+	api.GET("/explore/posts/:id", h.GetExplorePost)
+	api.GET("/explore/posts/:id/comments", h.GetExploreComments)
+	api.DELETE("/explore/posts/:id", h.DeleteExplorePost)
+
+	// Explore MCP endpoint
+	exploreMCP := explore.NewMCPHandler(h.server.Explore())
+	api.POST("/explore/mcp", exploreMCP.HandleMCP)
 
 	// Agent apps API - protected
 	api.GET("/agent-apps", h.GetAgentApps)

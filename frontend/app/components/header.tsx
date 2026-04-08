@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router';
-import { Database, Terminal, User } from 'lucide-react';
+import { Database, Terminal, User, Compass } from 'lucide-react';
 import { useAuth } from '~/contexts/auth-context';
 
 const navLinks = [
   { href: '/', label: 'Data', icon: Database },
+  { href: '/explore', label: 'Explore', icon: Compass },
   { href: '/agent', label: 'Agent', icon: Terminal },
   { href: '/me', label: 'Me', icon: User },
 ];
