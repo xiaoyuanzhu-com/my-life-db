@@ -58,6 +58,27 @@ function isEpub(mimeType: string, ext: string): boolean {
   return mimeType === 'application/epub+zip' || ext === 'epub';
 }
 
+const textExtensions = new Set([
+  'txt', 'md', 'markdown', 'tex', 'typ',
+  'json', 'jsonl', 'yaml', 'yml',
+  'log', 'csv', 'tsv',
+  'xml', 'html', 'htm',
+  'js', 'ts', 'jsx', 'tsx',
+  'py', 'go', 'java', 'c', 'cpp', 'h',
+  'sh', 'bash', 'zsh',
+  'sql', 'conf', 'config',
+  'ini', 'toml',
+  'css', 'scss', 'less',
+  'rs', 'rb', 'swift', 'kt', 'scala',
+  'lua', 'pl', 'r',
+  'vue', 'svelte',
+  'env', 'gitignore',
+]);
+
+function isTextExtension(ext: string): boolean {
+  return textExtensions.has(ext);
+}
+
 /**
  * Determine the content type of a file for card/modal dispatch
  * Priority: MIME type > Extension > textPreview > fallback
@@ -78,7 +99,9 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
   if (isExcel(mimeType, ext)) return 'xls';
   if (isEpub(mimeType, ext)) return 'epub';
 
-  // 3. Text content (has preview)
+  // 3. Text content (by MIME, extension, or preview)
+  if (mimeType.startsWith('text/')) return 'text';
+  if (isTextExtension(ext)) return 'text';
   if (file.textPreview) return 'text';
 
   // 4. Fallback
